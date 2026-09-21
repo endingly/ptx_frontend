@@ -1464,9 +1464,14 @@ TEST(ResolvedIrChecker, RevalidationRejectsWrongLop3PredicateLaneType) {
             CheckDiagnosticKind::OperandTypeMismatch);
 }
 
-TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailabilityAndSelectorRange) {
+/** Every documented `prmt` selector mode shares the PTX 2.0 / SM 20 boundary. */
+TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailability) {
   for (const auto source :
-       {"prmt.b32 %r0, %r1, %r2, 0;", "prmt.b32 %r0, %r1, %r2, 65535;"}) {
+       {"prmt.b32 %r0, 0x10000, -1, 0x12345410;",
+        "prmt.b32.f4e %r0, 1, %r2, 0x10000;",
+        "prmt.b32.b4e %r0, %r1, 2, 0xffff;", "prmt.b32.rc8 %r0, %r1, %r2, %r3;",
+        "prmt.b32.ecl %r0, 1, 2, 4;", "prmt.b32.ecr %r0, %r1, %r2, 0xffff;",
+        "prmt.b32.rc16 %r0, 1, %r2, 4;"}) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value());
@@ -1480,17 +1485,6 @@ TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailabilityAndSelectorRange) {
                      .has_value());
     EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0},
                                                  .sm_version = 19}})
-                     .has_value());
-  }
-  for (const auto source :
-       {"prmt.b32 %r0, %r1, %r2, 65536;", "prmt.b32 %r0, %r1, %r2, -1;"}) {
-    PtxSyntaxParser parser(source);
-    const auto ast = parser.parseInstruction();
-    ASSERT_TRUE(ast.has_value());
-    const auto prmt = resolve<Prmt>(*ast);
-    ASSERT_TRUE(prmt.has_value());
-    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0},
-                                                 .sm_version = 20}})
                      .has_value());
   }
 }
@@ -1862,24 +1856,58 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRnF32F64Availability) {
           .has_value());
 }
 
-TEST(ResolvedIrChecker, ChecksGeneratedIsspacepGlobalU64Availability) {
-  PtxSyntaxParser parser("isspacep.global %p0, %rd0;");
-  const auto ast = parser.parseInstruction();
-  ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto isspacep = resolve<Isspacep>(*ast);
-  ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
-  EXPECT_FALSE(check(*isspacep, Context{.target = {.ptx_version = {1, 9},
-                                                   .sm_version = 20},
-                                        .instruction_range = ast->range})
-                   .has_value());
-  EXPECT_FALSE(check(*isspacep, Context{.target = {.ptx_version = {2, 0},
-                                                   .sm_version = 19},
-                                        .instruction_range = ast->range})
-                   .has_value());
-  EXPECT_TRUE(check(*isspacep,
-                    Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                            .instruction_range = ast->range})
-                  .has_value());
+/** Minimum target profile for one fixed `isspacep` state-space spelling. */
+struct IsspacepAvailabilityCase {
+  /** Standalone PTX instruction using the spelling under test. */
+  std::string_view source;
+  /** First PTX version that admits the form. */
+  PtxVersion minimum_ptx;
+  /** Immediately preceding rejected PTX version. */
+  PtxVersion rejected_ptx;
+  /** First SM version that admits the form. */
+  uint16_t minimum_sm;
+};
+
+/** Generated `isspacep` variants enforce every documented PTX and SM boundary. */
+TEST(ResolvedIrChecker, ChecksGeneratedIsspacepAvailabilityBoundaries) {
+  constexpr std::array cases{
+      IsspacepAvailabilityCase{"isspacep.global %p0, %r0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{"isspacep.const %p0, %rd0;", {3, 1}, {3, 0}, 20},
+      IsspacepAvailabilityCase{"isspacep.local %p0, %rd0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{
+          "isspacep.shared %p0, %rd0;", {2, 0}, {1, 9}, 20},
+      IsspacepAvailabilityCase{
+          "isspacep.shared::cta %p0, %rd0;", {7, 8}, {7, 7}, 30},
+      IsspacepAvailabilityCase{
+          "isspacep.shared::cluster %p0, %rd0;", {7, 8}, {7, 7}, 90},
+      IsspacepAvailabilityCase{"isspacep.param %p0, %rd0;", {7, 7}, {7, 6}, 70},
+      IsspacepAvailabilityCase{
+          "isspacep.param::entry %p0, %rd0;", {8, 3}, {8, 2}, 70},
+  };
+  for (const IsspacepAvailabilityCase& test : cases) {
+    SCOPED_TRACE(test.source);
+    PtxSyntaxParser parser(test.source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto isspacep = resolve<Isspacep>(*ast);
+    ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
+    EXPECT_FALSE(
+        check(*isspacep, Context{.target = {.ptx_version = test.rejected_ptx,
+                                            .sm_version = test.minimum_sm},
+                                 .instruction_range = ast->range})
+            .has_value());
+    EXPECT_FALSE(
+        check(*isspacep, Context{.target = {.ptx_version = test.minimum_ptx,
+                                            .sm_version = static_cast<uint16_t>(
+                                                test.minimum_sm - 1)},
+                                 .instruction_range = ast->range})
+            .has_value());
+    EXPECT_TRUE(
+        check(*isspacep, Context{.target = {.ptx_version = test.minimum_ptx,
+                                            .sm_version = test.minimum_sm},
+                                 .instruction_range = ast->range})
+            .has_value());
+  }
 }
 
 TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
@@ -1934,22 +1962,40 @@ TEST(ResolvedIrChecker, ChecksGeneratedM12CvtAvailability) {
                   .has_value());
 }
 
-TEST(ResolvedIrChecker, ChecksGeneratedM12CvtPackAvailability) {
-  PtxSyntaxParser parser("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
+/** `cvt.pack` enforces base and sub-byte type-value target boundaries. */
+TEST(ResolvedIrChecker, ChecksGeneratedCvtPackAvailability) {
+  for (const auto source : {"cvt.pack.sat.u16.s32 %r0, %r1, %r2;",
+                            "cvt.pack.sat.s8.s32.b32 %r0, %r1, %r2, 0;"}) {
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+    const auto cvt = resolve<Cvt>(*ast);
+    ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
+    EXPECT_FALSE(
+        check(*cvt, Context{.target = {.ptx_version = {6, 4}, .sm_version = 72},
+                            .instruction_range = ast->range})
+            .has_value());
+    EXPECT_FALSE(
+        check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 71},
+                            .instruction_range = ast->range})
+            .has_value());
+    EXPECT_TRUE(
+        check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 72},
+                            .instruction_range = ast->range})
+            .has_value());
+  }
+
+  PtxSyntaxParser parser("cvt.pack.sat.u4.s32.b32 %r0, %r1, %r2, 0;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto cvt = resolve<Cvt>(*ast);
   ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
   EXPECT_FALSE(
-      check(*cvt, Context{.target = {.ptx_version = {6, 4}, .sm_version = 72},
-                          .instruction_range = ast->range})
-          .has_value());
-  EXPECT_FALSE(
-      check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 71},
+      check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
                           .instruction_range = ast->range})
           .has_value());
   EXPECT_TRUE(
-      check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 72},
+      check(*cvt, Context{.target = {.ptx_version = {6, 5}, .sm_version = 75},
                           .instruction_range = ast->range})
           .has_value());
 }

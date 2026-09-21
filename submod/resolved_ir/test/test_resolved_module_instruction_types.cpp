@@ -711,31 +711,48 @@ TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
   }
 }
 
-TEST(ResolvedModule, ChecksM12CvtPackOperandTypes) {
+/** All `cvt.pack` topologies retain their physical register type contracts. */
+TEST(ResolvedModule, ChecksCvtPackOperandTypes) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .entry kernel() {
-  .reg .u32 %r0, %r1, %r2, %r3;
-  cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;
+  .reg .u32 %dst;
+  .reg .s32 %a, %b;
+  .reg .b32 %carry;
+  cvt.pack.sat.u8.s32.b32 %dst, %a, %b, 0;
+  cvt.pack.sat.u16.s32 %dst, %a, %b;
+  cvt.pack.sat.s16.s32 %dst, %a, %b;
+  cvt.pack.sat.s8.s32.b32 %dst, %a, %b, %carry;
+  cvt.pack.sat.u4.s32.b32 %dst, %a, %b, 0;
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  const auto& instruction =
-      std::get<Cvt>(valid->functions.front().body.front());
-  EXPECT_TRUE(
-      std::holds_alternative<Cvt::PackSatU8S32B32>(instruction.variant));
-  EXPECT_TRUE(checker::check(instruction,
-                             checker::Context{.target = {.ptx_version = {6, 5},
-                                                         .sm_version = 72}})
-                  .has_value());
+  const auto context =
+      checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 75}};
+  ASSERT_EQ(valid->functions.front().body.size(), 5u);
+  EXPECT_TRUE(std::holds_alternative<Cvt::PackSatU8S32B32>(
+      std::get<Cvt>(valid->functions.front().body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cvt::PackSat16S32>(
+      std::get<Cvt>(valid->functions.front().body[1]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cvt::PackSatSmallS32B32>(
+      std::get<Cvt>(valid->functions.front().body[3]).variant));
+  for (const ResolvedInstruction& resolved_instruction :
+       valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(std::get<Cvt>(resolved_instruction), context)
+                    .has_value());
+  }
 
   for (const auto source : {
-           ".entry kernel() { .reg .u16 %dst; .reg .u32 %a, %b, %c; "
+           ".entry kernel() { .reg .u16 %dst; .reg .s32 %a, %b; .reg .b32 %c; "
            "cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
-           ".entry kernel() { .reg .u32 %dst, %a, %c; .reg .f32 %b; "
+           ".entry kernel() { .reg .u32 %dst; .reg .s32 %a; .reg .f32 %b; .reg "
+           ".b32 %c; "
            "cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
-           ".entry kernel() { .reg .u32 %dst, %a, %b; .reg .u64 %c; "
+           ".entry kernel() { .reg .u32 %dst; .reg .s64 %a; .reg .s32 %b; .reg "
+           ".b32 %c; "
+           "cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
+           ".entry kernel() { .reg .u32 %dst; .reg .s32 %a, %b; .reg .u64 %c; "
            "cvt.pack.sat.u8.s32.b32 %dst, %a, %b, %c; }",
        }) {
     SCOPED_TRACE(source);
@@ -744,8 +761,7 @@ TEST(ResolvedModule, ChecksM12CvtPackOperandTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Cvt>(wrong->functions.front().body.front()),
-        checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 72}});
+        std::get<Cvt>(wrong->functions.front().body.front()), context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -831,39 +847,65 @@ TEST(ResolvedModule, ChecksCvtaNonSubspaceRegisterFormsAndWidths) {
   }
 }
 
-TEST(ResolvedModule, ChecksIsspacepGlobalU64OperandTypes) {
+/** `isspacep` accepts the documented 32-bit and 64-bit generic address containers. */
+TEST(ResolvedModule, ChecksIsspacepAddressOperandTypes) {
   const auto parsed_module_1 = parseModule(R"ptx(
+.version 9.3
+.target sm_90
 .entry kernel() {
-  .reg .pred %p;
+  .reg .pred %p<8>;
+  .reg .u32 %r;
   .reg .u64 %rd;
-  isspacep.global %p, %rd;
+  .reg .b32 %b;
+  .reg .b64 %bd;
+  isspacep.global %p0, %r;
+  isspacep.const %p1, %rd;
+  isspacep.local %p2, %b;
+  isspacep.shared %p3, %bd;
+  isspacep.shared::cta %p4, %r;
+  isspacep.shared::cluster %p5, %rd;
+  isspacep.param %p6, %b;
+  isspacep.param::entry %p7, %bd;
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  const auto& instruction =
-      std::get<Isspacep>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Isspacep::GlobalU64>(instruction.variant));
-  EXPECT_TRUE(checker::check(instruction,
-                             checker::Context{.target = {.ptx_version = {2, 0},
-                                                         .sm_version = 20}})
-                  .has_value());
+  const auto& body = valid->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  EXPECT_TRUE(std::holds_alternative<Isspacep::GlobalU64>(
+      std::get<Isspacep>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Isspacep::SharedCta>(
+      std::get<Isspacep>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Isspacep::SharedCluster>(
+      std::get<Isspacep>(body[5]).variant));
+  EXPECT_TRUE(std::holds_alternative<Isspacep::ParamEntry>(
+      std::get<Isspacep>(body[7]).variant));
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  for (const auto& resolved_instruction : body) {
+    EXPECT_TRUE(
+        checker::check(std::get<Isspacep>(resolved_instruction), context)
+            .has_value());
+  }
 
   for (const auto source : {
-           ".entry kernel() { .reg .pred %p; .reg .u32 %r; isspacep.global %p, "
-           "%r; }",
-           ".entry kernel() { .reg .pred %p; .reg .s32 %s; isspacep.global %p, "
-           "%s; }",
+           ".version 9.3 .target sm_90 .entry kernel() { .reg .pred %p; .reg "
+           ".u16 %h; isspacep.global %p, %h; }",
+           ".version 9.3 .target sm_90 .entry kernel() { .reg .pred %p; .reg "
+           ".f32 %f; isspacep.global %p, %f; }",
+           ".version 9.3 .target sm_90 .entry kernel() { .reg .pred %p; .reg "
+           ".f64 %fd; isspacep.global %p, %fd; }",
+           ".version 9.3 .target sm_90 .entry kernel() { .reg .pred %p; .reg "
+           ".b128 %b; isspacep.global %p, %b; }",
        }) {
     SCOPED_TRACE(source);
     const auto parsed_module_2 = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-    const auto wrong = resolveModule(*parsed_module_2);
+    const auto wrong = resolveModuleOnly(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Isspacep>(wrong->functions.front().body.front()),
-        checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
+        std::get<Isspacep>(wrong->functions.front().body.front()), context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -1827,21 +1869,23 @@ TEST(ResolvedModule, ChecksM12ShfTypesAndCounts) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 
-TEST(ResolvedModule, ChecksM12PrmtRegisterWidths) {
+/** Generic and specialized `prmt` selectors retain their b32 register contract. */
+TEST(ResolvedModule, ChecksPrmtRegisterWidths) {
   const auto parsed_module_1 = parseModule(
       ".entry kernel() { .reg .u32 %r0, %r1, %r2, %r3; prmt.b32 %r0, %r1, %r2, "
-      "0x5410; prmt.b32.f4e %r0, %r1, %r2, %r3; }");
+      "0x5410; prmt.b32 %r0, %r1, %r2, %r3; prmt.b32.f4e %r0, %r1, %r2, %r3; "
+      "prmt.b32.b4e %r0, %r1, %r2, %r3; prmt.b32.rc8 %r0, %r1, %r2, %r3; "
+      "prmt.b32.ecl %r0, %r1, %r2, %r3; prmt.b32.ecr %r0, %r1, %r2, %r3; "
+      "prmt.b32.rc16 %r0, %r1, %r2, %r3; }");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto context =
       checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
-  EXPECT_TRUE(
-      checker::check(std::get<Prmt>(valid->functions.front().body[0]), context)
-          .has_value());
-  EXPECT_TRUE(
-      checker::check(std::get<Prmt>(valid->functions.front().body[1]), context)
-          .has_value());
+  for (const auto& resolved_instruction : valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(std::get<Prmt>(resolved_instruction), context)
+                    .has_value());
+  }
   const auto parsed_module_2 = parseModule(
       ".entry kernel() { .reg .u16 %r0; .reg .u32 %r1, %r2; prmt.b32 %r0, %r1, "
       "%r2, 0; }");

@@ -532,15 +532,23 @@ class OperandNormalizationTests(unittest.TestCase):
         self.assertIs(
             operand.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER
         )
+        operand = normalize_operand(
+            _operand("reg_or_imm")
+            | {"type": {"expr": "modifier(type)"},
+               "register_width": "equal_or_wider"}
+        )
+        self.assertIs(
+            operand.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER
+        )
 
     def test_equal_or_wider_requires_supported_kind_and_type(self) -> None:
-        for kind in ("imm", "reg_or_imm", "vector_reg", "vector_sreg"):
+        for kind in ("imm", "vector_reg", "vector_sreg"):
             raw = _vector(kind) if kind.startswith("vector_") else _operand(kind)
             with self.subTest(kind=kind):
                 self.assert_rejected(
                     raw | {"type": "b32", "register_width": "equal_or_wider"},
                     ValueError,
-                    "operand 'x': equal_or_wider register_width is only valid for kind 'reg' or 'reg_vector'",
+                    "operand 'x': equal_or_wider register_width is only valid for kind 'reg', 'reg_or_imm', or 'reg_vector'",
                 )
         for raw in (_operand(), _vector()):
             with self.subTest(kind=raw["kind"]):

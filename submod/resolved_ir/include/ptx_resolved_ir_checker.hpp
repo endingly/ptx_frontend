@@ -98,6 +98,9 @@ CheckResult check_modifier_value_availability(
 CheckResult check_modifier_value_domain(
     std::span<const ModifierValueDomainDescriptor>,
     std::span<const ModifierValueView>, const Context&);
+/** Check the typed scalar conversion relation selected by a generated `cvt` form. */
+CheckResult check_cvt_rule(std::span<const ModifierValueView>,
+                           std::span<const OperandView>, const Context&);
 /** Check generated ld/st memory-order and address-space cross constraints. */
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,

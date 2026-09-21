@@ -87,6 +87,54 @@ constexpr std::string_view k_cvta_member_identity_module_fixture = R"ptx(
 }
 )ptx";
 
+/** Complete-context fixture for a generated explicit `isspacep` subspace form. */
+constexpr std::string_view k_isspacep_member_identity_module_fixture = R"ptx(
+.version 9.3
+.target sm_90
+.entry kernel() {
+  .reg .pred %p;
+  .reg .u32 %r;
+  isspacep.shared::cta %p, %r;
+  ret;
+}
+)ptx";
+
+/** Complete-context fixture for register-or-immediate `prmt` inputs. */
+constexpr std::string_view k_prmt_member_identity_module_fixture = R"ptx(
+.version 9.3
+.target sm_80
+.entry kernel() {
+  .reg .u32 %r<3>;
+  prmt.b32 %r0, 1, %r1, 0x12345410;
+  prmt.b32.f4e %r0, %r1, 2, %r2;
+  ret;
+}
+)ptx";
+
+/** Complete-context fixture for a dynamic low-bit `cvt.pack` modifier. */
+constexpr std::string_view k_cvt_pack_member_identity_module_fixture = R"ptx(
+.version 6.5
+.target sm_75
+.entry kernel() {
+  .reg .u32 %dst;
+  .reg .s32 %a, %b;
+  .reg .b32 %carry;
+  cvt.pack.sat.u4.s32.b32 %dst, %a, %b, %carry;
+  ret;
+}
+)ptx";
+
+/** Complete-context fixture for a typed scalar `cvt` rule after AST handoff. */
+constexpr std::string_view k_cvt_rule_member_identity_module_fixture = R"ptx(
+.version 9.3
+.target sm_90
+.entry kernel() {
+  .reg .f32 %dst, %src;
+  cvt.rni.f32.f32 %dst, %src;
+  ret;
+}
+)ptx";
+
 /** Header-only target fixtures isolate strict source-profile diagnostics. */
 constexpr std::string_view k_unknown_target_module_fixture = R"ptx(
 .version 9.3
@@ -512,6 +560,171 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtaOperandsWithoutAst) {
       module, ModuleValidationPolicy::RequireCompleteContext,
       checker::CheckDiagnosticKind::OperandTypeMismatch);
   source.declared_type = original_type;
+
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** Generated `isspacep` fields retain layout and widened-source contracts after AST release. */
+TEST(OwnedModuleHandoff, RevalidatesGeneratedIsspacepOperandsWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_isspacep_member_identity_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  ResolvedFunction& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 2u);
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Isspacep& isspacep = std::get<Isspacep>(kernel.body.front());
+  Isspacep::SharedCta& shared_cta =
+      std::get<Isspacep::SharedCta>(isspacep.variant);
+  const uint16_t original_layout = shared_cta.operand_layout.value;
+  ++shared_cta.operand_layout.value;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+  shared_cta.operand_layout.value = original_layout;
+
+  ResolvedRegisterRef& source = shared_cta.src.value;
+  ASSERT_TRUE(source.declared_type.has_value());
+  const ScalarType original_type = *source.declared_type;
+  source.declared_type = ScalarType::F32;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::OperandTypeMismatch);
+  source.declared_type = original_type;
+
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** `prmt` register-or-immediate fields retain type checks after AST release. */
+TEST(OwnedModuleHandoff, RevalidatesGeneratedPrmtOperandsWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_prmt_member_identity_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  ResolvedFunction& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 3u);
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Prmt& prmt = std::get<Prmt>(kernel.body[1]);
+  Prmt::F4eB32& f4e = std::get<Prmt::F4eB32>(prmt.variant);
+  ResolvedRegisterRef& selector =
+      std::get<ResolvedRegisterRef>(f4e.selector.value);
+  ASSERT_TRUE(selector.declared_type.has_value());
+  const ScalarType original_type = *selector.declared_type;
+  selector.declared_type = ScalarType::B64;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::OperandTypeMismatch);
+  selector.declared_type = original_type;
+
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** Dynamic `cvt.pack` type values and physical operands remain independently valid. */
+TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtPackWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_cvt_pack_member_identity_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  ResolvedFunction& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 2u);
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Cvt& cvt = std::get<Cvt>(kernel.body.front());
+  Cvt::PackSatSmallS32B32& pack =
+      std::get<Cvt::PackSatSmallS32B32>(cvt.variant);
+  const ScalarType original_dst_type = pack.dst_type.value;
+  pack.dst_type.value = ScalarType::U8;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
+  pack.dst_type.value = original_dst_type;
+
+  ResolvedRegisterRef& carry = std::get<ResolvedRegisterRef>(pack.carry.value);
+  ASSERT_TRUE(carry.declared_type.has_value());
+  const ScalarType original_carry_type = *carry.declared_type;
+  carry.declared_type = ScalarType::B64;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::OperandTypeMismatch);
+  carry.declared_type = original_carry_type;
+
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+}
+
+/** Typed ordinary `cvt` rule checks survive AST destruction and mutation. */
+TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtRuleWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_cvt_rule_member_identity_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Source fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  Cvt& cvt = std::get<Cvt>(module.functions.front().body.front());
+  Cvt::RequiredNonRnRzi& ordinary =
+      std::get<Cvt::RequiredNonRnRzi>(cvt.variant);
+  const RoundingMode original_rounding = ordinary.rounding.value;
+  ordinary.rounding.value = RoundingMode::Rn;
+  expect_owned_validation_kind(module,
+                               ModuleValidationPolicy::RequireCompleteContext,
+                               checker::CheckDiagnosticKind::RuleViolation);
+  ordinary.rounding.value = original_rounding;
 
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);

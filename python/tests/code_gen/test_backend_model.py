@@ -193,6 +193,11 @@ class BackendModelTests(unittest.TestCase):
                 "rm": "RoundingMode::Rm",
                 "rp": "RoundingMode::Rp",
                 "rzi": "RoundingMode::Rzi",
+                "rni": "RoundingMode::Rni",
+                "rmi": "RoundingMode::Rmi",
+                "rpi": "RoundingMode::Rpi",
+                "rna": "RoundingMode::Rna",
+                "rs": "RoundingMode::Rs",
             },
         )
         self.assertEqual(
@@ -426,7 +431,7 @@ class BackendModelTests(unittest.TestCase):
                                         "name": "type",
                                         "kind": "type",
                                         "presence": "fixed",
-                                        "value": "u4",
+                                        "value": "b1",
                                     }
                                 ],
                                 "operands": [],
@@ -438,7 +443,7 @@ class BackendModelTests(unittest.TestCase):
         )[0]
         field = from_instruction_spec(instruction).variants[0].modifier_fields[0]
 
-        with self.assertRaisesRegex(ValueError, "has no value 'u4'"):
+        with self.assertRaisesRegex(ValueError, "has no value 'b1'"):
             field_cpp_constant_expr(field, backend=self.backend)
 
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:

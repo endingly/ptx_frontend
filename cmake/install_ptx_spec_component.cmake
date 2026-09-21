@@ -4,7 +4,7 @@ function(install_ptx_spec_component)
     include(GNUInstallDirs)
 
     set(_data_install_dir "${CMAKE_INSTALL_DATADIR}/ptx_frontend")
-    set(_resource_dir "${PROJECT_SOURCE_DIR}/python/code_gen/resources")
+    set(_resource_dir "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/resources")
 
     install(
         DIRECTORY "${_resource_dir}/ptx_spec/"

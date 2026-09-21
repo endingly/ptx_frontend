@@ -2718,24 +2718,22 @@ TEST(ResolveLogicAndShift, SelectsExpandedWidths) {
   }
 }
 
-TEST(ResolvePrmt, SelectsFrozenGenericAndF4eVariants) {
+/** Generic and specialized `prmt` forms select their documented selector layouts. */
+TEST(ResolvePrmt, SelectsGenericAndSpecializedVariants) {
   for (const auto source :
-       {"prmt.b32 %r0, %r1, %r2, 0x5410;", "prmt.b32 %r0, %r1, %r2, 0;",
-        "prmt.b32 %r0, %r1, %r2, 65535;"})
+       {"prmt.b32 %r0, %r1, %r2, 0x5410;",
+        "prmt.b32 %r0, 0x10000, -1, 0x12345410;",
+        "prmt.b32.f4e %r0, 1, %r2, 0x10000;",
+        "prmt.b32.b4e %r0, %r1, 2, 0xffff;", "prmt.b32.rc8 %r0, %r1, %r2, %r3;",
+        "prmt.b32.ecl %r0, 1, 2, 4;", "prmt.b32.ecr %r0, %r1, %r2, 0xffff;",
+        "prmt.b32.rc16 %r0, 1, %r2, 4;"})
     EXPECT_TRUE(resolve<Prmt>(parse_instruction(source)).has_value()) << source;
-  EXPECT_TRUE(
-      resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, %r3;"))
-          .has_value());
 }
 
-TEST(ResolvePrmt, RejectsWrongSelectorFormsAndModes) {
-  EXPECT_FALSE(resolve<Prmt>(parse_instruction("prmt.b32 %r0, %r1, %r2, %r3;"))
-                   .has_value());
+/** `prmt` accepts only its documented selector mode tokens. */
+TEST(ResolvePrmt, RejectsUnknownSelectorMode) {
   EXPECT_FALSE(
-      resolve<Prmt>(parse_instruction("prmt.b32.f4e %r0, %r1, %r2, 0;"))
-          .has_value());
-  EXPECT_FALSE(
-      selectVariant<Prmt>(parse_instruction("prmt.b32.b4e %r0, %r1, %r2, %r3;"))
+      selectVariant<Prmt>(parse_instruction("prmt.b32.b4x %r0, %r1, %r2, %r3;"))
           .has_value());
 }
 
@@ -2778,7 +2776,8 @@ TEST(ResolveBfind, SelectsEveryTypeAndShiftAmountForm) {
                    .has_value());
 }
 
-TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {
+/** All documented `isspacep` state-space spellings select their fixed variants. */
+TEST(ResolveIsspacep, SelectsStateSpaceVariantsAndRejectsOtherForms) {
   const auto ast = parse_instruction("isspacep.global %p0, %rd0;");
   const auto resolved = resolve<Isspacep>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
@@ -2787,8 +2786,32 @@ TEST(ResolveIsspacep, SelectsFrozenGlobalU64AndRejectsOtherForms) {
   EXPECT_EQ(Isspacep::GlobalU64::state_space, MemoryStateSpace::Global);
   EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
 
+  for (const auto source : {
+           "isspacep.global %p0, %r0;",
+           "isspacep.const %p0, %rd0;",
+           "isspacep.local %p0, %rd0;",
+           "isspacep.shared %p0, %rd0;",
+           "isspacep.shared::cta %p0, %rd0;",
+           "isspacep.shared::cluster %p0, %rd0;",
+           "isspacep.param %p0, %rd0;",
+           "isspacep.param::entry %p0, %rd0;",
+       }) {
+    SCOPED_TRACE(source);
+    EXPECT_TRUE(resolve<Isspacep>(parse_instruction(source)).has_value());
+  }
+
+  const auto shared_cta =
+      resolve<Isspacep>(parse_instruction("isspacep.shared::cta %p0, %rd0;"));
+  ASSERT_TRUE(shared_cta.has_value()) << shared_cta.error().message;
+  EXPECT_NE(std::get_if<Isspacep::SharedCta>(&shared_cta->variant), nullptr);
+  const auto parameter_entry =
+      resolve<Isspacep>(parse_instruction("isspacep.param::entry %p0, %rd0;"));
+  ASSERT_TRUE(parameter_entry.has_value()) << parameter_entry.error().message;
+  EXPECT_NE(std::get_if<Isspacep::ParamEntry>(&parameter_entry->variant),
+            nullptr);
+
   for (const auto source :
-       {"isspacep %p0, %rd0;", "isspacep.shared %p0, %rd0;",
+       {"isspacep %p0, %rd0;", "isspacep.param::func %p0, %rd0;",
         "isspacep.global %r0, %rd0;", "isspacep.global %p0, [%rd0];"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Isspacep>(parse_instruction(source)).has_value());
@@ -2847,18 +2870,20 @@ TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
   EXPECT_EQ(Cvt::RnF16x2F32::src_type, ScalarType::F32);
 }
 
-TEST(ResolveCvt, RejectsM12UnfrozenAndPackedTwoOperandForms) {
+/** Select scalar syntax independently from cross-field conversion rules. */
+TEST(ResolveCvt, SelectsScalarAndPackedFormsButRejectsMissingInputs) {
   for (const auto source :
        {"cvt.rz.f32.s32 %f0, %r0;", "cvt.rn.f32.s16 %f0, %r0;",
         "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+    EXPECT_TRUE(selectVariant<Cvt>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;"))
                    .has_value());
 }
 
-TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
+/** All `cvt.pack` layouts select their topology-specific generated variants. */
+TEST(ResolveCvt, SelectsPackedSatVariantsAndRejectsInvalidTopologies) {
   const auto ast =
       parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
   const auto resolved = resolve<Cvt>(ast);
@@ -2870,15 +2895,30 @@ TEST(ResolveCvt, SelectsM12PackedSatVariantAndRejectsUnfrozenForms) {
   EXPECT_EQ(Cvt::PackSatU8S32B32::src_type, ScalarType::S32);
   EXPECT_EQ(Cvt::PackSatU8S32B32::carry_type, ScalarType::B32);
 
+  const auto packed_16 =
+      resolve<Cvt>(parse_instruction("cvt.pack.sat.s16.s32 %r0, %r1, %r2;"));
+  ASSERT_TRUE(packed_16.has_value()) << packed_16.error().message;
+  const auto* s16 = std::get_if<Cvt::PackSat16S32>(&packed_16->variant);
+  ASSERT_NE(s16, nullptr);
+  EXPECT_EQ(s16->dst_type.value, ScalarType::S16);
+
+  const auto packed_small = resolve<Cvt>(
+      parse_instruction("cvt.pack.sat.u4.s32.b32 %r0, %r1, %r2, 0;"));
+  ASSERT_TRUE(packed_small.has_value()) << packed_small.error().message;
+  const auto* u4 = std::get_if<Cvt::PackSatSmallS32B32>(&packed_small->variant);
+  ASSERT_NE(u4, nullptr);
+  EXPECT_EQ(u4->dst_type.value, ScalarType::U4);
+
   const auto dispatched = resolveInstruction(ast);
   ASSERT_TRUE(dispatched.has_value()) << dispatched.error().message;
   EXPECT_TRUE(std::holds_alternative<Cvt>(*dispatched));
 
   for (const auto source : {"cvt.sat.u8.s32.b32 %r0, %r1, %r2, %r3;",
                             "cvt.pack.u8.s32.b32 %r0, %r1, %r2, %r3;",
-                            "cvt.pack.sat.u16.s32.b32 %r0, %r1, %r2, %r3;"}) {
+                            "cvt.pack.sat.u16.s32.b32 %r0, %r1, %r2, %r3;",
+                            "cvt.pack.sat.u4.s32.b32 %r0, %r1, %r2;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Cvt>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(resolve<Cvt>(parse_instruction(source)).has_value());
   }
   EXPECT_FALSE(
       resolve<Cvt>(parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2;"))
@@ -2919,23 +2959,25 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
   }
 }
 
-TEST(ResolveCvt, RejectsUnfrozenFloatVariants) {
+/** Select scalar syntax independently from cross-field conversion rules. */
+TEST(ResolveCvt, SelectsOrdinaryFloatSyntaxBeforeRuleChecking) {
   for (const auto source :
        {"cvt.f32.f64 %f0, %fd0;", "cvt.rz.f32.f64 %f0, %fd0;",
         "cvt.rn.f64.f32 %fd0, %f0;"}) {
     const auto selected = selectVariant<Cvt>(parse_instruction(source));
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selected.has_value());
+    EXPECT_TRUE(selected.has_value());
   }
 }
 
-TEST(ResolveCvt, RejectsUnfrozenMixedVariants) {
+/** Select scalar syntax independently from cross-field conversion rules. */
+TEST(ResolveCvt, SelectsMixedSyntaxBeforeRuleChecking) {
   for (const auto source :
        {"cvt.rz.f32.u32 %f0, %r0;", "cvt.rn.u32.f32 %r0, %f0;",
         "cvt.rzi.f32.u32 %f0, %r0;"}) {
     const auto selected = selectVariant<Cvt>(parse_instruction(source));
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selected.has_value());
+    EXPECT_TRUE(selected.has_value());
   }
 }
 

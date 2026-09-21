@@ -27,7 +27,7 @@ from ptx_frontend.code_gen.model import (
     OperandRegisterWidthPolicy,
     OperandVectorTypePolicy,
 )
-from ptx_frontend.spec.model import OperandKind
+from ptx_frontend.spec.model import OperandKind, SemanticRule
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.ir.syntax_ast import (
@@ -706,6 +706,40 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
 
+    def test_normalizes_only_known_semantic_rules(self) -> None:
+        """Normalize rule spellings before later IR and emitter stages."""
+
+        def normalize_rule(rule: object):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "operands": [],
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "rule": rule,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalized = normalize_rule("data_movement.cvt")
+        self.assertIs(
+            normalized[0].variants[0].rule,
+            SemanticRule.DATA_MOVEMENT_CVT,
+        )
+        with self.assertRaisesRegex(ValueError, "unknown semantic rule"):
+            normalize_rule("test.unimplemented")
+        with self.assertRaisesRegex(ValueError, "semantic rule must be a string"):
+            normalize_rule(True)
+
     def test_type_expression_requires_supported_active_type_modifier(self) -> None:
         def normalize_with_expr(expression: str, modifiers: list[dict[str, object]]):
             return normalize_instruction_spec(
@@ -1053,8 +1087,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_width(register_width="same_width").register_width_policy,
             OperandRegisterWidthPolicy.SAME_WIDTH,
         )
+        self.assertEqual(
+            normalize_width(kind="reg_or_imm").register_width_policy,
+            OperandRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
         with self.assertRaisesRegex(ValueError, "only valid for kind 'reg'"):
-            normalize_width(kind="reg_or_imm")
+            normalize_width(kind="imm")
         with self.assertRaisesRegex(ValueError, "requires a type expression"):
             normalize_width(operand_type=None)
         with self.assertRaisesRegex(ValueError, "unsupported register_width"):

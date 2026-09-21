@@ -26,6 +26,55 @@ class _SemanticToken(Enum):
         return self.value
 
 
+class SemanticRule(_SemanticToken):
+    """Closed semantic checker identities accepted from instruction YAML."""
+
+    CONTROL_FLOW_BRA = "control_flow.bra"
+    CONTROL_FLOW_BRX_IDX = "control_flow.brx_idx"
+    DATA_MOVEMENT_APPLYPRIORITY = "data_movement.applypriority"
+    DATA_MOVEMENT_CP_ASYNC = "data_movement.cp_async"
+    DATA_MOVEMENT_CP_ASYNC_COMMIT_GROUP = "data_movement.cp_async_commit_group"
+    DATA_MOVEMENT_CP_ASYNC_MBARRIER_ARRIVE = "data_movement.cp_async_mbarrier_arrive"
+    DATA_MOVEMENT_CP_ASYNC_WAIT_ALL = "data_movement.cp_async_wait_all"
+    DATA_MOVEMENT_CP_ASYNC_WAIT_GROUP = "data_movement.cp_async_wait_group"
+    DATA_MOVEMENT_CREATEPOLICY = "data_movement.createpolicy"
+    DATA_MOVEMENT_CVT = "data_movement.cvt"
+    DATA_MOVEMENT_DISCARD = "data_movement.discard"
+    DATA_MOVEMENT_LD_EXPLICIT = "data_movement.ld_explicit"
+    DATA_MOVEMENT_LD_GENERIC = "data_movement.ld_generic"
+    DATA_MOVEMENT_LDMATRIX = "data_movement.ldmatrix"
+    DATA_MOVEMENT_MOV = "data_movement.mov"
+    DATA_MOVEMENT_PREFETCH = "data_movement.prefetch"
+    DATA_MOVEMENT_ST_EXPLICIT = "data_movement.st_explicit"
+    DATA_MOVEMENT_ST_GENERIC = "data_movement.st_generic"
+    FLOATING_POINT_ADD = "floating_point.add"
+    FLOATING_POINT_ADD_BFLOAT = "floating_point.add_bfloat"
+    FLOATING_POINT_ADD_HALF = "floating_point.add_half"
+    FLOATING_POINT_SUB = "floating_point.sub"
+    FLOATING_POINT_SUB_BFLOAT = "floating_point.sub_bfloat"
+    FLOATING_POINT_SUB_HALF = "floating_point.sub_half"
+    INTEGER_ARITH_ADD = "integer_arith.add"
+    INTEGER_ARITH_ADD_PACKED = "integer_arith.add_packed"
+    INTEGER_ARITH_ADD_SAT = "integer_arith.add_sat"
+    INTEGER_ARITH_SUB = "integer_arith.sub"
+    INTEGER_ARITH_SUB_SAT = "integer_arith.sub_sat"
+    MATRIX_MMA = "matrix.mma"
+    MIXED_PRECISION_ADD = "mixed_precision.add"
+    MIXED_PRECISION_SUB = "mixed_precision.sub"
+    PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"
+    PARALLEL_SYNC_AND_COMMUNICATION_ATOM = "parallel_sync_and_communication.atom"
+    PARALLEL_SYNC_AND_COMMUNICATION_BAR_ARRIVE = "parallel_sync_and_communication.bar_arrive"
+    PARALLEL_SYNC_AND_COMMUNICATION_BAR_RED_AND = "parallel_sync_and_communication.bar_red_and"
+    PARALLEL_SYNC_AND_COMMUNICATION_BAR_RED_OR = "parallel_sync_and_communication.bar_red_or"
+    PARALLEL_SYNC_AND_COMMUNICATION_BAR_RED_POPC = "parallel_sync_and_communication.bar_red_popc"
+    PARALLEL_SYNC_AND_COMMUNICATION_BAR_SYNC = "parallel_sync_and_communication.bar_sync"
+    PARALLEL_SYNC_AND_COMMUNICATION_FENCE = "parallel_sync_and_communication.fence"
+    PARALLEL_SYNC_AND_COMMUNICATION_MEMBAR = "parallel_sync_and_communication.membar"
+    PARALLEL_SYNC_AND_COMMUNICATION_RED = "parallel_sync_and_communication.red"
+    PARALLEL_SYNC_AND_COMMUNICATION_SHFL = "parallel_sync_and_communication.shfl"
+    PARALLEL_SYNC_AND_COMMUNICATION_VOTE = "parallel_sync_and_communication.vote"
+
+
 class ModifierKind(_SemanticToken):
     """PTX semantic category selected by a modifier declaration."""
 
@@ -416,7 +465,7 @@ class VariantSpec:
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
-    rule: str | None = None
+    rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
     permits_unified_address: bool = False

@@ -754,7 +754,8 @@ artifact 与门禁均已退役；下表保留历史完成语境，不要求重�
 - generic、architecture-specific exact identity、`family` 与 capability 在同一
   `TargetProfile` 路径中分别验证。`family` 是最低 family-specific 源特性 target，只查
   `enabled_family_features`：`sm_100`/`sm_103` 为无，`sm_100f`/`sm_100a` 为 `sm_100f`，
-  `sm_103f`/`sm_103a` 为 `sm_100f`+`sm_103f`，`sm_120f` 仅为 `sm_120f`。此集合不由数值或
+  `sm_103f`/`sm_103a` 为 `sm_100f`+`sm_103f`，`sm_120` 为无，`sm_120f`/`sm_120a` 为
+  `sm_120f`，`sm_121` 为无，`sm_121f`/`sm_121a` 为 `sm_120f`+`sm_121f`。此集合不由数值或
   suffix 推导，也不表示当前未建模的 PTX-to-physical-GPU translation compatibility；numeric
   target/SM 受 `uint32_t` 范围约束。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时

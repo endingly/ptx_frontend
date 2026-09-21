@@ -13,6 +13,10 @@ supported surface and its exclusions.
 
 - [English documentation](docs/us-en/) and [简体中文文档](docs/zh-han/) cover
   design decisions, public contracts, and per-family support boundaries.
+- [Conversion coverage](docs/us-en/conversion_coverage.md) and its
+  [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
+  `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`
+  surface, including target-qualified modern conversion forms.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

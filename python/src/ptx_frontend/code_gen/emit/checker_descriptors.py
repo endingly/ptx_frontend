@@ -146,7 +146,7 @@ const checker::InstructionDescriptor&
 
 
 def _emit_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
-    rule_id = variant.rule or ""
+    rule_id = variant.rule.value if variant.rule is not None else ""
     consistency = variant.memory_consistency
     memory_consistency = ""
     if consistency is not None:

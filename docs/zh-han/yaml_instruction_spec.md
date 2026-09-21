@@ -521,12 +521,15 @@ checker 公共逻辑解释最低 PTX、SM 与 `family` 要求。`family` 是最�
 family-specific 源特性 target：checker 只在 source target profile 的
 `enabled_family_features` 中查找。显式 catalog 为：`sm_100` → 无；
 `sm_100f`/`sm_100a` → `sm_100f`；`sm_103` → 无；`sm_103f`/`sm_103a` →
-`sm_100f`、`sm_103f`；`sm_120f` → 仅 `sm_120f`。不得由 SM 数字或 target 后缀
-推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
+`sm_100f`、`sm_103f`；`sm_120` → 无；`sm_120f`/`sm_120a` 为 `sm_120f`；
+`sm_121` → 无；`sm_121f`/`sm_121a` 为 `sm_120f`、`sm_121f`。不得由 SM 数字或
+target 后缀推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
 `a` target 是 exact identity，不能作 family spelling；需要精确 target 时使用
 `any_of: [{target: sm_100a}]`。capability clause、exact target 与 `family` 均是相互独立的
-constraint。`rule` 是稳定 rule ID，供 instruction-specific checker 使用。
-`examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
+constraint。`rule` 是封闭的 semantic-rule ID，供 instruction-specific checker 使用。
+normalization 会在构造 IR 前拒绝未知或非字符串的 rule spelling；emitter 按 typed identity
+dispatch，而 checker descriptor 仅将该 spelling 保留为 inert metadata。`examples`、`doc` 和
+`description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 
 `any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一

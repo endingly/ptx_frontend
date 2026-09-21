@@ -36,8 +36,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | PTX 9.3 logic/shift | 支持 | `and`/`or`/`xor`/`not` 覆盖 `.pred/.b16/.b32/.b64`；`cnot` 覆盖 `.b16/.b32/.b64`；`lop3` 覆盖 base 与带 predicate-result 的 `.and/.or` layout，并检查 `.u8` LUT；`shf` 覆盖所有 `.l/.r` × `.clamp/.wrap` form；`shl` 覆盖 bit width；`shr` 覆盖 bit、unsigned 与 signed width。详见 [logic/shift 覆盖](logic_shift_coverage.md)。 |
 | PTX 9.3 整数位操作 | 支持 | `popc`、`clz`、`brev`、`bfind`、`bfe` 与 `bfi` 覆盖文档定义的 PTX 2.0 / `sm_20` width、sign、`.shiftamt` 与 control-operand form。详见 [位操作覆盖](bit_operations_coverage.md)。 |
 | PTX 9.3 整数算术 | 支持 | 已通过 parsing、resolution、operand/type check 与 target availability 建模 §9.7.1 全部文档 syntax form。详见 [整数算术覆盖](integer_arithmetic_coverage.md)。 |
-| 冻结的 mixed `cvt` | 支持 | register-only `cvt.rn.f32.u32` 与 `cvt.rzi.u32.f32`（两端接受 equal-or-wider register declaration；PTX 1.0 / SM 0） |
-| `cvta` 未显式子限定的 state-space register forms | 支持子集 | 支持 `.global`、`.local`、`.shared`、`.const`、`.param` 的 register-only `cvta`/`cvta.to`，每种都有 `.u32`/`.u64`。`.shared` 保留默认 CTA 语义，`.param` 保留默认 entry 语义；显式子限定 spelling 不在本 slice。global/local/shared 需要 PTX 2.0 / SM 20；const 需要 PTX 3.1 / SM 20；param 需要 PTX 7.7 / SM 70。variable address、offset 与 provenance inference 仍不支持。本 slice 不扩展 `isspacep`、`cvt`、`cvt.pack`、`prmt`、`mapa` 或 `getctarank`。规范依据为 NVIDIA [PTX 9.3 `cvta` specification](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvta)。 |
+| conversion 与 address-query form | 支持子集 | 已建模的 `isspacep`、`cvta`、`cvt`、`cvt.pack`、`prmt`、`mapa` 与 `getctarank` syntax、operand layout、typed modifier boundary 及每个 form 的 PTX/target minimum 见 [conversion coverage](conversion_coverage.md)。这是 frontend 的 source acceptance/validation boundary，不表示 conversion execution，也不表示完整 PTX conversion family。 |
 | 已建模的 `mul` | 支持 | 完整 PTX 9.3 integer、floating、half 与 bfloat MUL form、其 modifier/operand contract 和 availability 见 [MUL 覆盖矩阵](mul_coverage.md)；simulator execution 仍不支持 |
 | 已建模的 `setp` | 支持 | 普通与 half/bfloat 比较、Boolean predicate source、destination shape 及目标边界见 [SETP 覆盖](setp_coverage.md)；不执行比较运算 |
 | 已建模的 `ld`/`st` | 支持 | Scalar/vector、shared 子空间、cache-control 组合、有序语义、NC load 和 unified-address 检查见 [LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)；内存执行与分配不属于 frontend |
@@ -46,12 +45,8 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |
 | 冻结的 integer `div` | 支持 | register-or-immediate source `div.u32`（PTX 1.0 / SM 0）；zero divisor 保持接受，行为由 PTX 指定为 unspecified |
 
-conversion family 的 inventory 仍刻意保持 partial。本次将 `cvta` 从原有两个
-global/u64 direction 扩至 20 个 fixed variant，新增 18 个未显式子限定的
-state-space form。`isspacep` 仍是既有的 `isspacep.global`/u64 slice；`cvt`、
-`cvt.pack`、`prmt`、`mapa` 与 `getctarank` 保持各自既有的 YAML-defined subset。
-此处不声明完整 `cvt` matrix 或 conversion-family closure；剩余 `cvta` 工作包括
-显式子限定 spelling 与非 register address form。
+conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
+该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。
 
 Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留未知 opcode；这两种情况
 都不表示该结构能够 lower 到 Resolved IR。

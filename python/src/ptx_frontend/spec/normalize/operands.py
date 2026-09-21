@@ -361,10 +361,14 @@ def _normalize_register_width(
             f"{raw.get('register_width')!r}"
         ) from error
     if register_width_policy is OperandRegisterWidthPolicy.EQUAL_OR_WIDER:
-        if raw["kind"] not in {OperandKind.REGISTER, OperandKind.REGISTER_VECTOR}:
+        if raw["kind"] not in {
+            OperandKind.REGISTER,
+            OperandKind.REGISTER_OR_IMMEDIATE,
+            OperandKind.REGISTER_VECTOR,
+        }:
             raise ValueError(
                 f"operand {raw['name']!r}: equal_or_wider register_width is "
-                "only valid for kind 'reg' or 'reg_vector'"
+                "only valid for kind 'reg', 'reg_or_imm', or 'reg_vector'"
             )
         if type_expression is None:
             raise ValueError(

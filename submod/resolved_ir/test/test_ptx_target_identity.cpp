@@ -71,6 +71,8 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   constexpr std::array<std::string_view, 2> sm103f_features{"sm_100f",
                                                             "sm_103f"};
   constexpr std::array<std::string_view, 1> sm120f_features{"sm_120f"};
+  constexpr std::array<std::string_view, 2> sm121f_features{"sm_120f",
+                                                            "sm_121f"};
   constexpr std::array<std::string_view, 1> sm110f_features{"sm_110f"};
   constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
                                                               "graph_exec"};
@@ -86,6 +88,8 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   const std::array profiles{
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_89", 89, TargetFlavor::Generic, none,
                       sm80_capabilities},
       ExpectedProfile{"sm_90", 90, TargetFlavor::Generic, none,
                       sm90_capabilities},
@@ -115,6 +119,12 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
                       sm120f_features, sm90_capabilities},
       ExpectedProfile{"sm_120f", 120, TargetFlavor::FamilySpecific,
                       sm120f_features, sm90_capabilities},
+      ExpectedProfile{"sm_121", 121, TargetFlavor::Generic, none,
+                      sm90_capabilities},
+      ExpectedProfile{"sm_121a", 121, TargetFlavor::ArchitectureSpecific,
+                      sm121f_features, sm90_capabilities},
+      ExpectedProfile{"sm_121f", 121, TargetFlavor::FamilySpecific,
+                      sm121f_features, sm90_capabilities},
   };
 
   for (const auto& expected : profiles) {
@@ -155,6 +165,9 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
   const auto sm120 = find_target_profile("sm_120");
   const auto sm120a = find_target_profile("sm_120a");
   const auto sm120f = find_target_profile("sm_120f");
+  const auto sm121 = find_target_profile("sm_121");
+  const auto sm121a = find_target_profile("sm_121a");
+  const auto sm121f = find_target_profile("sm_121f");
   ASSERT_TRUE(sm90.has_value());
   ASSERT_TRUE(sm90a.has_value());
   ASSERT_TRUE(sm100.has_value());
@@ -169,6 +182,9 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
   ASSERT_TRUE(sm120.has_value());
   ASSERT_TRUE(sm120a.has_value());
   ASSERT_TRUE(sm120f.has_value());
+  ASSERT_TRUE(sm121.has_value());
+  ASSERT_TRUE(sm121a.has_value());
+  ASSERT_TRUE(sm121f.has_value());
 
   EXPECT_TRUE(sm90->enabled_family_features.empty());
   EXPECT_TRUE(sm90a->enabled_family_features.empty());
@@ -194,18 +210,31 @@ TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {
                                  std::array<std::string_view, 1>{"sm_120f"}));
   EXPECT_TRUE(std::ranges::equal(sm120f->enabled_family_features,
                                  std::array<std::string_view, 1>{"sm_120f"}));
+  EXPECT_TRUE(sm121->enabled_family_features.empty());
+  EXPECT_TRUE(std::ranges::equal(
+      sm121a->enabled_family_features,
+      std::array<std::string_view, 2>{"sm_120f", "sm_121f"}));
+  EXPECT_TRUE(std::ranges::equal(
+      sm121f->enabled_family_features,
+      std::array<std::string_view, 2>{"sm_120f", "sm_121f"}));
 }
 
 TEST(TargetProfile, ExposesOnlyExplicitCapabilityBoundaries) {
   const auto sm80 = find_target_profile("sm_80");
+  const auto sm89 = find_target_profile("sm_89");
   const auto sm90 = find_target_profile("sm_90");
   ASSERT_TRUE(sm80.has_value());
+  ASSERT_TRUE(sm89.has_value());
   ASSERT_TRUE(sm90.has_value());
 
   EXPECT_TRUE(target_has_capability(*sm80, "reserved_smem"));
   EXPECT_TRUE(target_has_capability(*sm80, "graph_exec"));
   EXPECT_FALSE(target_has_capability(*sm80, "cluster"));
   EXPECT_FALSE(target_has_capability(*sm80, "aggregate_smem"));
+  EXPECT_TRUE(target_has_capability(*sm89, "reserved_smem"));
+  EXPECT_TRUE(target_has_capability(*sm89, "graph_exec"));
+  EXPECT_FALSE(target_has_capability(*sm89, "cluster"));
+  EXPECT_FALSE(target_has_capability(*sm89, "aggregate_smem"));
   EXPECT_TRUE(target_has_capability(*sm90, "cluster"));
   EXPECT_TRUE(target_has_capability(*sm90, "aggregate_smem"));
   EXPECT_TRUE(target_has_capability(*sm90, "reserved_smem"));

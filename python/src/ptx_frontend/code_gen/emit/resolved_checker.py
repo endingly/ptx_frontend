@@ -8,7 +8,7 @@ from pathlib import Path
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
-from ptx_frontend.spec.model import CodegenUnit
+from ptx_frontend.spec.model import CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
 def generate_resolved_ir_checker_declarations_header(
@@ -350,6 +350,14 @@ def _emit_cross_rule_checks(
               diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
                                  immediate_multiple_of_check.error().end());
             }}
+"""
+    if variant.rule is SemanticRule.DATA_MOVEMENT_CVT:
+        checks += """            const auto cvt_rule_check = check_cvt_rule(
+                modifier_values, operands, context);
+            if (!cvt_rule_check) {
+              diagnostics.insert(diagnostics.end(), cvt_rule_check.error().begin(),
+                                 cvt_rule_check.error().end());
+            }
 """
     return checks
 

@@ -13,12 +13,16 @@ domains:
     default: ScalarType::Invalid
     runtime_lookup: ptx_suffix
     values:
+      u2: ScalarType::U2
+      u4: ScalarType::U4
       u8: ScalarType::U8
       u8x4: ScalarType::U8x4
       u16: ScalarType::U16
       u16x2: ScalarType::U16x2
       u32: ScalarType::U32
       u64: ScalarType::U64
+      s2: ScalarType::S2
+      s4: ScalarType::S4
       s8: ScalarType::S8
       s8x4: ScalarType::S8x4
       s16: ScalarType::S16
@@ -39,6 +43,16 @@ domains:
       bf16x2: ScalarType::BF16x2
       e4m3x2: ScalarType::E4m3x2
       e5m2x2: ScalarType::E5m2x2
+      e2m1x2: ScalarType::E2m1x2
+      e2m3x2: ScalarType::E2m3x2
+      e3m2x2: ScalarType::E3m2x2
+      e4m3x4: ScalarType::E4m3x4
+      e5m2x4: ScalarType::E5m2x4
+      e2m1x4: ScalarType::E2m1x4
+      e2m3x4: ScalarType::E2m3x4
+      e3m2x4: ScalarType::E3m2x4
+      ue8m0x2: ScalarType::UE8M0x2
+      s2f6x2: ScalarType::S2f6x2
       pred: ScalarType::Pred
       tf32: ScalarType::TF32
       e4m3: ScalarType::E4m3
@@ -63,6 +77,11 @@ domains:
       rm: RoundingMode::Rm
       rp: RoundingMode::Rp
       rzi: RoundingMode::Rzi
+      rni: RoundingMode::Rni
+      rmi: RoundingMode::Rmi
+      rpi: RoundingMode::Rpi
+      rna: RoundingMode::Rna
+      rs: RoundingMode::Rs
 
   comparison_operators:
     cpp_type: ComparisonOperator

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import stat
+import tempfile
 
 from ptx_frontend.base.utils import format_file_inplace
 from ptx_frontend.code_gen.context import build_generation_context
@@ -43,11 +46,10 @@ def main() -> None:
             print(path)
         return
     output_dir.mkdir(parents=True, exist_ok=True)
-    remove_legacy_generated_files(output_dir)
+    remove_obsolete_generated_files(output_dir, plan.paths)
     for artifact in plan.artifacts:
-        artifact.emit(context, output_path=artifact.path)
-    for generated_file in plan.paths:
-        format_file_inplace(str(generated_file))
+        write_formatted_artifact(context, artifact.emit, artifact.path)
+    write_output_manifest(output_dir, plan.paths)
 
 
 def validate_directory(path: Path, option: str) -> None:
@@ -68,20 +70,89 @@ def validate_file(path: Path, option: str) -> None:
         raise IsADirectoryError(f"{option} is not a file: {path}")
 
 
-def remove_legacy_generated_files(output_dir: Path) -> None:
-    """Remove only obsolete output names before a non-listing generation run."""
+def write_formatted_artifact(context, emit, output_path: Path) -> None:
+    """Format a sibling candidate and replace ``output_path`` only if changed."""
 
-    legacy_patterns = (
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_mode = (
+        stat.S_IMODE(output_path.stat().st_mode)
+        if output_path.exists()
+        else 0o644
+    )
+    descriptor, candidate_name = tempfile.mkstemp(
+        prefix=f".{output_path.stem}.", suffix=output_path.suffix,
+        dir=output_path.parent,
+    )
+    os.close(descriptor)
+    candidate = Path(candidate_name)
+    try:
+        emit(context, output_path=candidate)
+        format_file_inplace(str(candidate))
+        candidate_bytes = candidate.read_bytes()
+        if not output_path.exists() or output_path.read_bytes() != candidate_bytes:
+            candidate.chmod(output_mode)
+            os.replace(candidate, output_path)
+        else:
+            candidate.unlink()
+    finally:
+        if candidate.exists():
+            candidate.unlink()
+
+
+def remove_obsolete_generated_files(output_dir: Path, active_paths: tuple[Path, ...]) -> None:
+    """Remove only prior generator outputs absent from the active artifact plan."""
+
+    active = {path.relative_to(output_dir).as_posix() for path in active_paths}
+    obsolete = read_output_manifest(output_dir) - active
+    obsolete.update({
+        "private/syntax_descriptor.gen.cpp",
+        "private/resolved_descriptor.gen.cpp",
+        "private/resolved_ir_checker_descriptor.gen.cpp",
+        "public/ptx_ir/resolved/resolved_ir.gen.hpp",
+        "private/syntax_descriptor.gen.hpp",
+    } - active)
+    for pattern in (
         "public/ptx_ir/resolved/resolved_ir.gen.hpp",
         "public/ptx_ir_*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
-        "private/syntax_descriptor.gen.hpp",
-    )
-    for pattern in legacy_patterns:
-        for path in output_dir.glob(pattern):
+        "private/resolved_ir_*.gen.cpp",
+    ):
+        obsolete.update(
+            path.relative_to(output_dir).as_posix()
+            for path in output_dir.glob(pattern)
+            if path.relative_to(output_dir).as_posix() not in active
+        )
+    for relative_path in obsolete:
+        path = output_dir / relative_path
+        if path.is_file():
             path.unlink()
-    checker_descriptor_name = "resolved_ir_checker_descriptor.gen.cpp"
-    for path in (output_dir / "private").glob("resolved_ir_*.gen.cpp"):
-        if path.name != checker_descriptor_name:
-            path.unlink()
+
+
+def read_output_manifest(output_dir: Path) -> set[str]:
+    """Read the previous plan-owned output set without treating other files as owned."""
+
+    manifest = output_dir / ".ptx_resolved_ir_outputs.txt"
+    if not manifest.is_file():
+        return set()
+    paths = set(manifest.read_text(encoding="utf-8").splitlines())
+    if any(not is_output_relative_path(path) for path in paths):
+        raise ValueError("generated-output manifest contains a path outside its output root")
+    return paths
+
+
+def write_output_manifest(output_dir: Path, active_paths: tuple[Path, ...]) -> None:
+    """Record the output paths owned by the successfully completed plan."""
+
+    manifest = output_dir / ".ptx_resolved_ir_outputs.txt"
+    paths = sorted(path.relative_to(output_dir).as_posix() for path in active_paths)
+    content = "\n".join(paths) + "\n"
+    if not manifest.is_file() or manifest.read_text(encoding="utf-8") != content:
+        manifest.write_text(content, encoding="utf-8")
+
+
+def is_output_relative_path(path: str) -> bool:
+    """Return whether a manifest entry cannot escape its generated output root."""
+
+    candidate = Path(path)
+    return bool(path) and not candidate.is_absolute() and ".." not in candidate.parts

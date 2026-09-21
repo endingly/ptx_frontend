@@ -465,12 +465,15 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 
 `selectVariant<T>` 是手写公共 ABI 头中的通用模板适配器，任何满足 `PtxOperator`
 concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line 的非模板 matcher，
-再把选中的 variant name 转成对应 `VariantType`。全部 opcode struct 以及
-`resolve<T>`、`check<T>` 的显式特化
-声明集中在单一生成头 `resolved_ir.gen.hpp`；后两者的定义不使用 `inline`，而是按 YAML
-category 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的
-类型适配留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、
-大型 resolve builder 与 checker visit/lambda，并保留统一公开 include。
+再把选中的 variant name 转成对应 `VariantType`。opcode struct 以及
+`resolve<T>`、`check<T>` 的显式特化声明按 YAML `codegen_category` 生成。
+聚合 `resolved_ir.gen.hpp`、`resolved_ir_resolution.gen.hpp` 与
+`resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
+可以只包含所属 category 的 model 与特化声明头。完整 `ResolvedInstruction` union
+仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
+生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
+留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、大型
+resolve builder 与 checker visit/lambda。
 
 ## 三份 descriptor
 

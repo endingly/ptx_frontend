@@ -157,15 +157,17 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs, their alternative union, and module-reference visitors; paired declarations come from `emit.resolved_resolver` and `emit.resolved_checker` |
+| `public/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | one category's opcode structs and module-reference visitors |
+| `public/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate compatibility header for all category model headers and the union |
+| `public/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | self-contained category specialization declarations |
+| `public/resolved_ir_resolution.gen.hpp` / `public/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line resolver and checker specialization definitions for one category |
-| `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source-syntax descriptors and getters |
-| `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors and getters |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors and getters |
+| `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category-owned descriptor storage and getters |
 
-The generated public header remains flat under the `generated/public` include
+The generated public headers remain under the `generated/public` include
 root in the `submod/resolved_ir` build tree. `submod/resolved_ir` includes the
 project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
 `gen_all.py` atomically to list and generate all outputs before compiling them
@@ -185,6 +187,12 @@ normalized `codegen_category`, which is separate from PTX documentation
 sources, which CMake compiles into the `resolved_ir` library. Consumers retain
 one include entry point, while the complex `std::visit` code, lambdas, and
 resolve builders are compiled only once inside the library.
+
+The generator formats a sibling candidate before comparing bytes with an
+existing artifact. Identical formatted output, including the output manifest,
+keeps its modification time. Whole-module APIs continue to include the
+aggregate model and complete union; category-local consumers include only their
+category model and resolver/checker declaration headers.
 
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in

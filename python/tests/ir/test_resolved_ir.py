@@ -35,7 +35,11 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
-from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
+from ptx_frontend.code_gen.emit.resolved_model import (
+    generate_resolved_instruction_union_header,
+    generate_resolved_ir_category_header,
+    generate_resolved_ir_header,
+)
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.emit.references import emit_reference_visitor
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
@@ -1413,7 +1417,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertFalse(variants["AnySync"].operand_layouts[0].bindings[0].allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(build_test_generation_context(database), output_path=output_path)
+            generate_resolved_descriptor_source(build_test_generation_context(database), category="parallel_synchronization_and_communication", output_path=output_path)
             source = output_path.read_text(encoding="utf-8")
         self.assertIn('.allow_predicate_sink = true,', source)
         self.assertIn("ResolvedValueKind::RegisterOrSink", source)
@@ -1536,7 +1540,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertFalse(membermask.allow_predicate_sink)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(build_test_generation_context(database), output_path=output_path)
+            generate_resolved_descriptor_source(build_test_generation_context(database), category="parallel_synchronization_and_communication", output_path=output_path)
             source = output_path.read_text(encoding="utf-8")
         self.assertIn('.allow_destination_sink = true,', source)
 
@@ -3452,7 +3456,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
             generate_resolved_ir_category_source(build_test_generation_context(database), category="control_flow", output_path=output_path
             )
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="control_flow", output_path=descriptor_path
             )
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
@@ -3788,7 +3792,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
             generate_resolved_ir_category_source(build_test_generation_context(database), category="data_movement", output_path=output_path
             )
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database), output_path=descriptor_path
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="data_movement", output_path=descriptor_path
             )
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
@@ -4138,8 +4142,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir.gen.hpp"
-            generate_resolved_ir_header(build_test_generation_context(database), output_path=output_path)
-            source = output_path.read_text(encoding="utf-8")
+            context = build_test_generation_context(database)
+            generate_resolved_ir_header(context, output_path=output_path)
+            categories = tuple(sorted({
+                entry.specification.codegen_category for entry in context.entries
+            }))
+            category_paths = []
+            for category in categories:
+                category_path = Path(directory) / f"{category}.gen.hpp"
+                generate_resolved_ir_category_header(
+                    context, category=category, output_path=category_path
+                )
+                category_paths.append(category_path)
+            union_path = Path(directory) / "resolved_instruction_union.gen.hpp"
+            generate_resolved_instruction_union_header(
+                context, output_path=union_path
+            )
+            source = "\n".join(
+                path.read_text(encoding="utf-8") for path in (*category_paths, union_path)
+            )
 
         self.assertTrue(
             source.startswith("// Generated by python/scripts/gen_all.py. Do not edit.")
@@ -4535,7 +4556,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
 
         self.assertNotIn("#pragma once", source)
-        self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>', source)
+        self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>', source)
+        self.assertIn('#include "resolved_ir/checker/arithmetic.gen.hpp"', source)
         self.assertNotIn(
             "std::expected<Add::VariantType, ResolveDiagnostic>", source
         )
@@ -4587,7 +4609,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             descriptor = root / "resolved_descriptor.gen.cpp"
             generate_resolved_ir_category_source(build_test_generation_context(self.database), category="arithmetic", output_path=arithmetic
             )
-            generate_resolved_descriptor_source(build_test_generation_context(self.database), output_path=descriptor
+            generate_resolved_descriptor_source(build_test_generation_context(self.database), category="arithmetic", output_path=descriptor
             )
             checker_source = arithmetic.read_text(encoding="utf-8")
             descriptor_source = descriptor.read_text(encoding="utf-8")
@@ -4610,20 +4632,25 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_descriptor.gen.cpp"
-            generate_resolved_descriptor_source(build_test_generation_context(database),
-                output_path=output_path,
-            )
-            source = output_path.read_text(encoding="utf-8")
+            context = build_test_generation_context(database)
+            sources = []
+            for category in sorted({entry.specification.codegen_category for entry in context.entries}):
+                output_path = Path(directory) / f"resolved_descriptor_{category}.gen.cpp"
+                generate_resolved_descriptor_source(context, category=category, output_path=output_path)
+                sources.append(output_path.read_text(encoding="utf-8"))
+            source = "\n".join(sources)
 
         self.assertTrue(
             source.startswith("// Generated by python/scripts/gen_all.py. Do not edit.")
         )
         self.assertNotIn("#pragma once", source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>', source)
-        self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>', source)
+        self.assertIn('#include "resolved_ir/model/arithmetic.gen.hpp"', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
-        self.assertEqual(source.count("namespace generated_detail {"), 1)
+        self.assertTrue(
+            all(category_source.count("namespace generated_detail {") == 1
+                for category_source in sources)
+        )
         self.assertIn("struct AddResolvedDescriptorStorage {", source)
         self.assertIn("struct BarResolvedDescriptorStorage {", source)
         self.assertIn("check_end::ResolvedFieldDescriptor", source)
@@ -4754,15 +4781,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
 
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
-                output_path=output_path,
-            )
-            source = output_path.read_text(encoding="utf-8")
+            context = build_test_generation_context(database)
+            sources = []
+            for category in sorted({entry.specification.codegen_category for entry in context.entries}):
+                output_path = Path(directory) / f"resolved_ir_checker_descriptor_{category}.gen.cpp"
+                generate_resolved_checker_descriptor_source(context, category=category, output_path=output_path)
+                sources.append(output_path.read_text(encoding="utf-8"))
+            source = "\n".join(sources)
 
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>', source)
-        self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>', source)
-        self.assertEqual(source.count("namespace generated_detail {"), 1)
+        self.assertIn('#include "resolved_ir/model/arithmetic.gen.hpp"', source)
+        self.assertTrue(
+            all(category_source.count("namespace generated_detail {") == 1
+                for category_source in sources)
+        )
         self.assertIn("struct AddCheckerDescriptorStorage {", source)
         self.assertIn("struct BarCheckerDescriptorStorage {", source)
         self.assertIn("checker::VariantDescriptor", source)
@@ -4844,7 +4876,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="test",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4949,7 +4981,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
             checker_path = Path(directory) / "resolved_ir_test.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="test",
                 output_path=output_path,
             )
             generate_resolved_ir_category_source(build_test_generation_context(database),
@@ -5027,7 +5059,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="test",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -5081,7 +5113,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="test",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -5153,7 +5185,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=specs)
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database),
+            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="test",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -5300,9 +5332,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = CodegenDatabase(spec_schema="ptx-instr/v1", instructions=(instruction,))
 
         with tempfile.TemporaryDirectory() as directory:
-            header_path = Path(directory) / "resolved_ir.gen.hpp"
+            header_path = Path(directory) / "uncategorized.gen.hpp"
             source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
-            generate_resolved_ir_header(build_test_generation_context(database), output_path=header_path)
+            generate_resolved_ir_category_header(
+                build_test_generation_context(database),
+                category="uncategorized", output_path=header_path,
+            )
             generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="uncategorized",
                 output_path=source_path,

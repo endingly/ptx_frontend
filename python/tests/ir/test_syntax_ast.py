@@ -1897,6 +1897,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("SOURCE_DATE_EPOCH", None)
                 generate_syntax_descriptor_source(build_test_generation_context(database),
+                    category="arithmetic",
                     output_path=output_path,
                 )
             source = output_path.read_text(encoding="utf-8")
@@ -1915,13 +1916,13 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>',
+            '#include "resolved_ir/model/arithmetic.gen.hpp"',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertEqual(source.count("namespace {"), 1)
         self.assertIn("struct AddDescriptorStorage {", source)
-        self.assertIn("struct BarDescriptorStorage {", source)
+        self.assertNotIn("struct BarDescriptorStorage {", source)
         self.assertIn("Add::get_syntax_descriptor() noexcept", source)
 
     def test_generation_timestamp_uses_source_date_epoch(self) -> None:

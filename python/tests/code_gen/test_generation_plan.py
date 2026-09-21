@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import argparse
 import ast
 from contextlib import redirect_stdout
 from io import StringIO
 import sys
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from typing import cast
@@ -23,7 +25,11 @@ from ptx_frontend.code_gen.emit.category_source import (
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
-from ptx_frontend.code_gen.plan import build_generation_plan
+from ptx_frontend.code_gen.plan import (
+    GeneratedArtifact,
+    GenerationPlan,
+    build_generation_plan,
+)
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
 from ptx_frontend.spec.database import load_codegen_database
 
@@ -77,7 +83,9 @@ class GenerationPlanTests(unittest.TestCase):
             output = Path(directory)
             syntax_path = output / "syntax.cpp"
             category_path = output / "arithmetic.cpp"
-            generate_syntax_descriptor_source(reordered, output_path=syntax_path)
+            generate_syntax_descriptor_source(
+                reordered, category="arithmetic", output_path=syntax_path
+            )
             generate_resolved_ir_category_source(
                 reordered, category="arithmetic", output_path=category_path
             )
@@ -85,7 +93,9 @@ class GenerationPlanTests(unittest.TestCase):
             syntax = syntax_path.read_text(encoding="utf-8")
             category = category_path.read_text(encoding="utf-8")
             self.assertIn(f'Opcode_name = "{arithmetic.specification.opcode}"', syntax)
-            self.assertIn(f'Opcode_name = "{control_flow.specification.opcode}"', syntax)
+            self.assertNotIn(
+                f'Opcode_name = "{control_flow.specification.opcode}"', syntax
+            )
             self.assertIn(
                 f"resolve<{arithmetic.resolved.cpp_name}>", category
             )
@@ -203,6 +213,115 @@ class GenerationPlanTests(unittest.TestCase):
                 sys.argv = previous
             self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
             format_file.assert_not_called()
+
+    def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated/public/model.gen.hpp"
+            raw_contents = iter(("first raw candidate\n", "second raw candidate\n"))
+
+            def emit(_context, *, output_path: Path) -> None:
+                output_path.write_text(next(raw_contents), encoding="utf-8")
+
+            def format_candidate(path: str) -> None:
+                Path(path).write_text("formatted candidate\n", encoding="utf-8")
+
+            with patch(
+                "ptx_frontend.code_gen.cli.format_file_inplace",
+                side_effect=format_candidate,
+            ):
+                cli.write_formatted_artifact(None, emit, output)
+                first_mtime = output.stat().st_mtime_ns
+                self.assertEqual(output.stat().st_mode & 0o777, 0o644)
+                time.sleep(0.01)
+                cli.write_formatted_artifact(None, emit, output)
+            self.assertEqual(output.stat().st_mtime_ns, first_mtime)
+
+    def test_formatted_artifact_preserves_existing_mode_when_replacing(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated/public/model.gen.hpp"
+            output.parent.mkdir(parents=True)
+            output.write_text("old content\n", encoding="utf-8")
+            output.chmod(0o640)
+
+            def emit(_context, *, output_path: Path) -> None:
+                output_path.write_text("new raw content\n", encoding="utf-8")
+
+            with patch("ptx_frontend.code_gen.cli.format_file_inplace"):
+                cli.write_formatted_artifact(None, emit, output)
+            self.assertEqual(output.read_text(encoding="utf-8"), "new raw content\n")
+            self.assertEqual(output.stat().st_mode & 0o777, 0o640)
+
+    def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated"
+            active = output / "private/resolved_ir_arithmetic.gen.cpp"
+            stale = output / "private/resolved_ir_legacy.gen.cpp"
+            stale_nested = output / "public/resolved_ir/model/retired.gen.hpp"
+            active.parent.mkdir(parents=True)
+            active.write_text("active", encoding="utf-8")
+            stale.write_text("stale", encoding="utf-8")
+            stale_nested.parent.mkdir(parents=True)
+            stale_nested.write_text("stale", encoding="utf-8")
+            (output / ".ptx_resolved_ir_outputs.txt").write_text(
+                "private/resolved_ir_arithmetic.gen.cpp\n"
+                "public/resolved_ir/model/retired.gen.hpp\n",
+                encoding="utf-8",
+            )
+            cli.remove_obsolete_generated_files(output, (active,))
+            self.assertTrue(active.exists())
+            self.assertFalse(stale.exists())
+            self.assertFalse(stale_nested.exists())
+            (output / ".ptx_resolved_ir_outputs.txt").write_text(
+                "../outside.gen.hpp\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "outside its output root"):
+                cli.read_output_manifest(output)
+
+    def test_main_repairs_missing_active_output_without_touching_manifest_on_noop(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec_dir = root / "spec"
+            backend_spec = root / "backend.yaml"
+            output = root / "generated"
+            spec_dir.mkdir()
+            backend_spec.write_text("backend\n", encoding="utf-8")
+            active = output / "public/resolved_ir/model/arithmetic.gen.hpp"
+
+            def emit(_context, *, output_path: Path) -> None:
+                output_path.write_text("model\n", encoding="utf-8")
+
+            plan = GenerationPlan((GeneratedArtifact(active, emit),))
+            arguments = argparse.Namespace(
+                spec_dir=spec_dir,
+                output=output,
+                backend_spec=backend_spec,
+                list_outputs=False,
+            )
+            with (
+                patch("ptx_frontend.code_gen.cli.parse_arguments", return_value=arguments),
+                patch("ptx_frontend.code_gen.cli.load_codegen_database"),
+                patch("ptx_frontend.code_gen.cli.load_cpp_backend"),
+                patch("ptx_frontend.code_gen.cli.build_generation_context", return_value=object()),
+                patch("ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan),
+                patch("ptx_frontend.code_gen.cli.format_file_inplace"),
+            ):
+                cli.main()
+                manifest = output / ".ptx_resolved_ir_outputs.txt"
+                first_manifest_mtime = manifest.stat().st_mtime_ns
+                time.sleep(0.01)
+                cli.main()
+                self.assertEqual(manifest.stat().st_mtime_ns, first_manifest_mtime)
+                active.unlink()
+                cli.main()
+            self.assertEqual(active.read_text(encoding="utf-8"), "model\n")
 
     def test_plan_rejects_category_path_collision_before_writes(self) -> None:
         conflicting_instruction = replace(

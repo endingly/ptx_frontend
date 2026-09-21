@@ -30,6 +30,7 @@ from ptx_frontend.ir.syntax_ast import (
 def generate_syntax_descriptor_source(
     context: GenerationContext,
     *,
+    category: str,
     output_path: Path,
 ) -> None:
     """Generate one private C++ source for syntax descriptor storage."""
@@ -38,6 +39,8 @@ def generate_syntax_descriptor_source(
     storage_definitions: list[str] = []
     getter_definitions: list[str] = []
     for entry in context.entries:
+        if entry.specification.codegen_category != category:
+            continue
         instruction = entry.specification
         descriptor = from_InstructionSpec(instruction)
         storage_definitions.append(
@@ -54,7 +57,7 @@ def generate_syntax_descriptor_source(
 {generated_at_comment()}
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
+#include "resolved_ir/model/{category}.gen.hpp"
 
 namespace ptx_frontend::resolved_ir {{
 

@@ -225,6 +225,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.rounding_mode == actual.rounding_mode;
     case ModifierValueKind::ComparisonOperator:
       return descriptor.comparison_operator == actual.comparison_operator;
+    case ModifierValueKind::TestProperty:
+      return descriptor.test_property == actual.test_property;
     case ModifierValueKind::BooleanOperator:
       return descriptor.boolean_operator == actual.boolean_operator;
     case ModifierValueKind::CacheOperator:

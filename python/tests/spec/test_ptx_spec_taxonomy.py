@@ -65,6 +65,8 @@ EXPECTED_SECTIONS = {
         "dp4a": {"9.7.1.24"},
         "dp2a": {"9.7.1.25"},
         "fma": {"9.7.3.6", "9.7.4.4", "9.7.5.3"},
+        "testp": {"9.7.3.1"},
+        "copysign": {"9.7.3.2"},
     },
     "comparison_and_selection.yaml": {
         "set": {"9.7.6.1"},

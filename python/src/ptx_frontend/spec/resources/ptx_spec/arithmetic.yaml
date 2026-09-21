@@ -288,6 +288,20 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  testp_float_scalar:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - name: src
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: {expr: "modifier(type)"}
+      register_width: same_width
+
+  copysign_float_scalar:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: sign_source, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: magnitude_source, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+
   binary_float_register:
     - name: dst
       kind: reg
@@ -2502,3 +2516,37 @@ instructions:
           - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
           - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: testp
+    section: "9.7.3.1"
+    doc: "Floating-point property classification without arithmetic execution."
+    syntax: "testp.{finite|infinite|number|notanumber|normal|subnormal}.{f32|f64} dst, src"
+    operands: $testp_float_scalar
+    variants:
+      - name: testp_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: property, kind: test_property, domain: test_properties, presence: required, values: [finite, infinite, number, notanumber, normal, subnormal]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "testp.finite.f32 %p0, %f1;", valid: true}]
+      - name: testp_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: property, kind: test_property, domain: test_properties, presence: required, values: [finite, infinite, number, notanumber, normal, subnormal]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "testp.subnormal.f64 %p0, %fd1;", valid: true}]
+
+  - opcode: copysign
+    section: "9.7.3.2"
+    doc: "Copy the sign of the first source into the magnitude of the second source."
+    syntax: "copysign.{f32|f64} dst, sign_source, magnitude_source"
+    operands: $copysign_float_scalar
+    variants:
+      - name: copysign_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}]
+        examples: [{ptx: "copysign.f32 %f0, %f1, %f2;", valid: true}]
+      - name: copysign_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}]
+        examples: [{ptx: "copysign.f64 %fd0, %fd1, %fd2;", valid: true}]

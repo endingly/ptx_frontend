@@ -17,6 +17,9 @@ supported surface and its exclusions.
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`
   surface, including target-qualified modern conversion forms.
+- [`testp` and `copysign` coverage](docs/us-en/testp_copysign_coverage.md) and
+  its [简体中文版本](docs/zh-han/testp_copysign_coverage.md) define the currently
+  modelled floating classification and sign-copy forms.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

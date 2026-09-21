@@ -91,6 +91,7 @@ class ModifierKind(_SemanticToken):
     ROUNDING = "rounding"
     PREDICATE = "predicate"
     COMPARISON = "comparison"
+    TEST_PROPERTY = "test_property"
     BOOLEAN_OP = "boolean_op"
     SHAPE = "shape"
     LAYOUT = "layout"

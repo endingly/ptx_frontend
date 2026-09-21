@@ -17,6 +17,7 @@ class SemanticDomain(Enum):
     SCALAR_TYPE = "scalar_type"
     ROUNDING_MODE = "rounding_mode"
     COMPARISON_OPERATOR = "comparison_operator"
+    TEST_PROPERTY = "test_property"
     BOOLEAN_OPERATOR = "boolean_operator"
     CACHE_OPERATOR = "cache_operator"
     EVICTION_PRIORITY = "eviction_priority"
@@ -38,6 +39,7 @@ MODIFIER_SEMANTIC_DOMAINS = MappingProxyType({
     ModifierKind.TYPE: SemanticDomain.SCALAR_TYPE,
     ModifierKind.ROUNDING: SemanticDomain.ROUNDING_MODE,
     ModifierKind.COMPARISON: SemanticDomain.COMPARISON_OPERATOR,
+    ModifierKind.TEST_PROPERTY: SemanticDomain.TEST_PROPERTY,
     ModifierKind.BOOLEAN_OP: SemanticDomain.BOOLEAN_OPERATOR,
     ModifierKind.CACHE: SemanticDomain.CACHE_OPERATOR,
     ModifierKind.EVICTION_PRIORITY: SemanticDomain.EVICTION_PRIORITY,
@@ -71,6 +73,9 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     SemanticDomain.COMPARISON_OPERATOR: frozenset({
         "eq", "ne", "lt", "le", "gt", "ge", "lo", "ls", "hi", "hs", "equ",
         "neu", "ltu", "leu", "gtu", "geu", "num", "nan",
+    }),
+    SemanticDomain.TEST_PROPERTY: frozenset({
+        "finite", "infinite", "number", "notanumber", "normal", "subnormal",
     }),
     SemanticDomain.BOOLEAN_OPERATOR: frozenset({"and", "or", "xor"}),
     SemanticDomain.CACHE_OPERATOR: frozenset({"ca", "cg", "cs", "lu", "cv", "wb", "wt"}),

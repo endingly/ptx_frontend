@@ -107,6 +107,18 @@ domains:
       num: ComparisonOperator::Num
       nan: ComparisonOperator::Nan
 
+  test_properties:
+    cpp_type: TestProperty
+    default: TestProperty::Invalid
+    runtime_lookup: ptx_suffix
+    values:
+      finite: TestProperty::Finite
+      infinite: TestProperty::Infinite
+      number: TestProperty::Number
+      notanumber: TestProperty::NotANumber
+      normal: TestProperty::Normal
+      subnormal: TestProperty::Subnormal
+
   boolean_operators:
     cpp_type: BooleanOperator
     default: BooleanOperator::Invalid
@@ -263,6 +275,7 @@ domains:
       ScalarType: ScalarType
       RoundingMode: RoundingMode
       ComparisonOperator: ComparisonOperator
+      TestProperty: TestProperty
       BooleanOperator: BooleanOperator
       CacheOperator: CacheOperator
       EvictionPriority: EvictionPriority
@@ -350,6 +363,7 @@ domains:
       ScalarType: check_end::ResolvedValueKind::ScalarType
       RoundingMode: check_end::ResolvedValueKind::RoundingMode
       ComparisonOperator: check_end::ResolvedValueKind::ComparisonOperator
+      TestProperty: check_end::ResolvedValueKind::TestProperty
       BooleanOperator: check_end::ResolvedValueKind::BooleanOperator
       CacheOperator: check_end::ResolvedValueKind::CacheOperator
       EvictionPriority: check_end::ResolvedValueKind::EvictionPriority
@@ -457,6 +471,7 @@ domains:
       ScalarType: checker::ModifierValueKind::ScalarType
       RoundingMode: checker::ModifierValueKind::RoundingMode
       ComparisonOperator: checker::ModifierValueKind::ComparisonOperator
+      TestProperty: checker::ModifierValueKind::TestProperty
       BooleanOperator: checker::ModifierValueKind::BooleanOperator
       CacheOperator: checker::ModifierValueKind::CacheOperator
       EvictionPriority: checker::ModifierValueKind::EvictionPriority

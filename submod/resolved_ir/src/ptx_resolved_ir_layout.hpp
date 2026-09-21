@@ -4,7 +4,7 @@
 #include <expected>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
 namespace ptx_frontend::resolved_ir::detail {
 

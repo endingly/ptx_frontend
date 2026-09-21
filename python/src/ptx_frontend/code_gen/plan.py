@@ -14,12 +14,18 @@ from ptx_frontend.code_gen.emit.category_source import (
     generate_resolved_ir_category_source,
 )
 from ptx_frontend.code_gen.emit.resolved_checker import (
+    generate_resolved_ir_checker_category_declarations_header,
     generate_resolved_ir_checker_declarations_header,
 )
 from ptx_frontend.code_gen.emit.resolved_descriptors import generate_resolved_descriptor_source
 from ptx_frontend.code_gen.emit.resolved_dispatch import generate_resolved_dispatch_source
-from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
+from ptx_frontend.code_gen.emit.resolved_model import (
+    generate_resolved_instruction_union_header,
+    generate_resolved_ir_category_header,
+    generate_resolved_ir_header,
+)
 from ptx_frontend.code_gen.emit.resolved_resolver import (
+    generate_resolved_ir_resolution_category_declarations_header,
     generate_resolved_ir_resolution_declarations_header,
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import generate_syntax_descriptor_source
@@ -64,11 +70,52 @@ def instruction_categories(context: GenerationContext) -> tuple[str, ...]:
 def build_generation_plan(context: GenerationContext, output_dir: Path) -> GenerationPlan:
     """Build every artifact exactly once from an already lowered context."""
 
+    categories = instruction_categories(context)
     artifacts: list[GeneratedArtifact] = [
         GeneratedArtifact(output_dir / "private/resolved_value_domains.gen.hpp", generate_resolved_value_domain_header),
-        GeneratedArtifact(output_dir / "public/resolved_ir.gen.hpp", generate_resolved_ir_header),
-        GeneratedArtifact(output_dir / "public/resolved_ir_resolution.gen.hpp", generate_resolved_ir_resolution_declarations_header),
-        GeneratedArtifact(output_dir / "public/resolved_ir_checker.gen.hpp", generate_resolved_ir_checker_declarations_header),
+        *(
+            GeneratedArtifact(
+                output_dir / f"public/resolved_ir/model/{category}.gen.hpp",
+                lambda active_context, *, output_path, category=category: generate_resolved_ir_category_header(
+                    active_context, category=category, output_path=output_path
+                ),
+            )
+            for category in categories
+        ),
+        GeneratedArtifact(
+            output_dir / "public/resolved_instruction_union.gen.hpp",
+            generate_resolved_instruction_union_header,
+        ),
+        GeneratedArtifact(
+            output_dir / "public/resolved_ir.gen.hpp",
+            generate_resolved_ir_header,
+        ),
+        *(
+            GeneratedArtifact(
+                output_dir / f"public/resolved_ir/resolution/{category}.gen.hpp",
+                lambda active_context, *, output_path, category=category: generate_resolved_ir_resolution_category_declarations_header(
+                    active_context, category=category, output_path=output_path
+                ),
+            )
+            for category in categories
+        ),
+        GeneratedArtifact(
+            output_dir / "public/resolved_ir_resolution.gen.hpp",
+            generate_resolved_ir_resolution_declarations_header,
+        ),
+        *(
+            GeneratedArtifact(
+                output_dir / f"public/resolved_ir/checker/{category}.gen.hpp",
+                lambda active_context, *, output_path, category=category: generate_resolved_ir_checker_category_declarations_header(
+                    active_context, category=category, output_path=output_path
+                ),
+            )
+            for category in categories
+        ),
+        GeneratedArtifact(
+            output_dir / "public/resolved_ir_checker.gen.hpp",
+            generate_resolved_ir_checker_declarations_header,
+        ),
         GeneratedArtifact(output_dir / "private/resolved_ir_dispatch.gen.cpp", generate_resolved_dispatch_source),
     ]
     artifacts.extend(
@@ -78,13 +125,29 @@ def build_generation_plan(context: GenerationContext, output_dir: Path) -> Gener
                 active_context, category=category, output_path=output_path
             ),
         )
-        for category in instruction_categories(context)
+        for category in categories
     )
-    artifacts.extend((
-        GeneratedArtifact(output_dir / "private/syntax_descriptor.gen.cpp", generate_syntax_descriptor_source),
-        GeneratedArtifact(output_dir / "private/resolved_descriptor.gen.cpp", generate_resolved_descriptor_source),
-        GeneratedArtifact(output_dir / "private/resolved_ir_checker_descriptor.gen.cpp", generate_resolved_checker_descriptor_source),
-    ))
+    for category in categories:
+        artifacts.extend((
+            GeneratedArtifact(
+                output_dir / f"private/syntax_descriptor_{category}.gen.cpp",
+                lambda active_context, *, output_path, category=category: generate_syntax_descriptor_source(
+                    active_context, category=category, output_path=output_path
+                ),
+            ),
+            GeneratedArtifact(
+                output_dir / f"private/resolved_descriptor_{category}.gen.cpp",
+                lambda active_context, *, output_path, category=category: generate_resolved_descriptor_source(
+                    active_context, category=category, output_path=output_path
+                ),
+            ),
+            GeneratedArtifact(
+                output_dir / f"private/resolved_ir_checker_descriptor_{category}.gen.cpp",
+                lambda active_context, *, output_path, category=category: generate_resolved_checker_descriptor_source(
+                    active_context, category=category, output_path=output_path
+                ),
+            ),
+        ))
     paths = tuple(artifact.path for artifact in artifacts)
     if len(paths) != len(set(paths)):
         raise ValueError("generation plan contains duplicate artifact paths")

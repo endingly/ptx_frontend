@@ -595,14 +595,18 @@ uses `ResolveException`, distinct from `ResolveDiagnostic`.
 `selectVariant<T>` remains a common template adapter in the handwritten public
 ABI header, so every type satisfying the `PtxOperator` concept can use it
 directly. It passes the descriptor to an out-of-line non-template matcher and
-converts the selected variant name to the opcode's `VariantType`. One generated
-`resolved_ir.gen.hpp` centralizes all opcode structs and
-the explicit-specialization declarations for `resolve<T>` and `check<T>`.
-Definitions of the latter two are non-inline and emitted by YAML category into
-`resolved_ir_<category>.gen.cpp`, which is compiled into the library. This
-boundary keeps only the small type adapter as a template while preventing every
-consumer translation unit from reparsing the matcher or instantiating large
-resolve builders and checker visits/lambdas, with one public include entry point.
+converts the selected variant name to the opcode's `VariantType`. Generated
+model headers, and the explicit-specialization declarations for `resolve<T>`
+and `check<T>`, are emitted by YAML `codegen_category`. The aggregate
+`resolved_ir.gen.hpp`, `resolved_ir_resolution.gen.hpp`, and
+`resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
+category-local consumer can include only its model and specialization headers.
+The complete `ResolvedInstruction` union remains in its own aggregate header in
+canonical instruction order. Specialization definitions are non-inline and
+emitted into `resolved_ir_<category>.gen.cpp`, which is compiled into the
+library. This boundary keeps only the small type adapter as a template while
+preventing every consumer translation unit from reparsing the matcher or
+instantiating large resolve builders and checker visits/lambdas.
 
 ## Three descriptors
 

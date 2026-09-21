@@ -10,7 +10,7 @@
 
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
 namespace ptx_frontend::resolved_ir::check_end {
 /** Classify one complete syntax-AST operand for resolution-only matching. */

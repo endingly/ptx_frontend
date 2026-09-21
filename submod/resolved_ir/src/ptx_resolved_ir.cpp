@@ -1,5 +1,5 @@
 #include <limits>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <string_view>
 #include "ptx_resolved_ir_layout.hpp"
 #include "ptx_resolved_ir_private.hpp"

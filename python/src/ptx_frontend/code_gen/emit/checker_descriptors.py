@@ -28,12 +28,18 @@ from ptx_frontend.code_gen.resolved_value_traits import (
 def generate_resolved_checker_descriptor_source(
     context: GenerationContext,
     *,
+    category: str,
     output_path: Path,
 ) -> None:
     """Generate private checker descriptor storage and instruction getters."""
 
 
-    instructions = context.instructions
+    instructions = tuple(
+        entry.resolved for entry in context.entries
+        if entry.specification.codegen_category == category
+    )
+    if not instructions:
+        raise ValueError(f"instruction category {category!r} is empty")
     storage_definitions = "\n\n".join(
         _emit_instruction_descriptor_storage(instruction, context.backend)
         for instruction in instructions
@@ -45,7 +51,7 @@ def generate_resolved_checker_descriptor_source(
 {generated_at_comment()}
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
+#include "resolved_ir/model/{category}.gen.hpp"
 
 namespace ptx_frontend::resolved_ir {{
 

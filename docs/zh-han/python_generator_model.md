@@ -138,15 +138,17 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | opcode structs、alternative union 与 module-reference visitor；配套声明由 `emit.resolved_resolver` 与 `emit.resolved_checker` 提供 |
+| `public/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 一个 category 的 opcode struct 与 module-reference visitor |
+| `public/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
+| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合所有 category model header 与 union 的兼容头 |
+| `public/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 可独立包含的 category 特化声明 |
+| `public/resolved_ir_resolution.gen.hpp` / `public/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 一个 category 的 out-of-line resolver 与 checker 特化定义 |
-| `private/syntax_descriptor.gen.cpp` | `emit.syntax_descriptors` | source syntax descriptors 与 getter |
-| `private/resolved_descriptor.gen.cpp` | `emit.resolved_descriptors` | resolved field/binding descriptors 与 getter |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `emit.checker_descriptors` | availability/rule descriptors 与 getter |
+| `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category 所有的 descriptor storage 与 getter |
 
-生成的公开头在 `submod/resolved_ir` 的构建树中仍平铺于 `generated/public` include
+生成的公开头位于 `submod/resolved_ir` 的构建树 `generated/public` include
 root。`submod/resolved_ir` include 工程级的 `cmake/generate_ptx_frontend.cmake`；
 该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
 target。顶层只提供 submodule 编排与 facade target。
@@ -160,6 +162,10 @@ opcode 类型的 getter，并由 variant selection/resolution 消费；在生成
 `codegen_category`，生成脚本据此产生稳定的 category 源文件，
 并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
+
+生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
+output manifest）时保留 modification time。whole-module API 继续包含聚合 model 与完整
+union；category-local consumer 只包含自己的 model 以及 resolver/checker 声明头。
 
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker

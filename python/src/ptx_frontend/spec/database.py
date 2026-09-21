@@ -30,6 +30,23 @@ class CodegenDatabase:
     instructions: tuple[InstructionSpec, ...]
 
 
+@dataclass(frozen=True)
+class CodegenCategoryInputs:
+    """Specification files contributing instructions to one codegen category."""
+
+    category: str
+    spec_files: tuple[Traversable, ...]
+
+
+@dataclass(frozen=True)
+class _NormalizedSpecFile:
+    """One validated source specification and its normalized instructions."""
+
+    path: Traversable
+    schema: str
+    instructions: tuple[InstructionSpec, ...]
+
+
 def discover_spec_files(
     spec_dir: Traversable,
 ) -> tuple[Traversable, ...]:
@@ -55,21 +72,9 @@ def load_codegen_database(*, spec_dir: Traversable) -> CodegenDatabase:
     spec_files = discover_spec_files(spec_dir)
     if not spec_files:
         raise ValueError(f"no PTX instruction specs found in {spec_dir}")
-    specs = tuple((path, load_yaml(path)) for path in spec_files)
-    for path, spec in specs:
-        _validate_instruction_schema(path, spec)
-    schema_versions = {str(spec["schema"]) for _, spec in specs}
-    if len(schema_versions) != 1:
-        raise ValueError(f"mixed PTX spec schema versions: {sorted(schema_versions)}")
-    definitions = tuple(
-        instruction
-        for _, spec in specs
-        for instruction in normalize_instruction_spec(spec)
-    )
-    instructions = _merge_instruction_definitions(definitions)
-    return CodegenDatabase(
-        spec_schema=next(iter(schema_versions)),
-        instructions=instructions,
+
+    return load_codegen_database_from_files(
+        spec_files=spec_files,
     )
 
 
@@ -193,7 +198,7 @@ def _variant_modifier_language(
     """Return the union of canonical and declared alias modifier languages."""
 
     slot_names: set[str] = set()
-    owners_by_spelling: dict[str, list[tuple[str, str]]] = {}
+    owners_by_spelling: dict[str, list[tuple[str, ModifierPresence]]] = {}
     for modifier in variant.modifiers:
         if modifier.name in slot_names:
             raise ValueError(
@@ -222,8 +227,7 @@ def _variant_modifier_language(
                 if owners and (
                     modifier.presence is ModifierPresence.OPTIONAL
                     or any(
-                        presence is ModifierPresence.OPTIONAL
-                        for _, presence in owners
+                        presence is ModifierPresence.OPTIONAL for _, presence in owners
                     )
                 ):
                     raise ValueError(
@@ -300,6 +304,102 @@ def _duplicates(values: list[str]) -> set[str]:
     return duplicates
 
 
+def _load_normalized_spec_files(
+    spec_files: Iterable[Traversable],
+) -> tuple[_NormalizedSpecFile, ...]:
+    """Load, validate, and normalize an explicit stable set of spec files."""
+
+    paths = tuple(spec_files)
+    if not paths:
+        raise ValueError("no PTX instruction specs supplied")
+
+    records: list[_NormalizedSpecFile] = []
+
+    for path in paths:
+        spec = load_yaml(path)
+        _validate_instruction_schema(path, spec)
+
+        records.append(
+            _NormalizedSpecFile(
+                path=path,
+                schema=str(spec["schema"]),
+                instructions=tuple(normalize_instruction_spec(spec)),
+            )
+        )
+
+    schema_versions = {record.schema for record in records}
+    if len(schema_versions) != 1:
+        raise ValueError(f"mixed PTX spec schema versions: {sorted(schema_versions)}")
+
+    return tuple(records)
+
+
+def load_codegen_database_from_files(
+    *,
+    spec_files: Iterable[Traversable],
+    category: str | None = None,
+) -> CodegenDatabase:
+    """Load a codegen database from explicit specification files."""
+
+    records = _load_normalized_spec_files(spec_files)
+
+    definitions = tuple(
+        instruction
+        for record in records
+        for instruction in record.instructions
+        if category is None or instruction.codegen_category == category
+    )
+
+    if not definitions:
+        if category is None:
+            raise ValueError("no PTX instruction definitions found")
+        raise ValueError(
+            f"no PTX instruction definitions found for category {category!r}"
+        )
+
+    # IMPORTANT:
+    # Never return `definitions` directly. Besides merging split opcode
+    # definitions, this also runs the merged-instruction semantic validation
+    # such as variant/modifier-language exclusivity.
+    instructions = _merge_instruction_definitions(definitions)
+
+    return CodegenDatabase(
+        spec_schema=records[0].schema,
+        instructions=instructions,
+    )
+
+
+def discover_codegen_category_inputs(
+    *,
+    spec_dir: Traversable,
+) -> tuple[CodegenCategoryInputs, ...]:
+    """Return the spec files contributing to each codegen category."""
+
+    spec_files = discover_spec_files(spec_dir)
+    if not spec_files:
+        raise ValueError(f"no PTX instruction specs found in {spec_dir}")
+
+    records = _load_normalized_spec_files(spec_files)
+
+    files_by_category: dict[str, list[Traversable]] = {}
+
+    for record in records:
+        categories = {
+            instruction.codegen_category for instruction in record.instructions
+        }
+
+        for category in categories:
+            files_by_category.setdefault(category, []).append(record.path)
+
+    return tuple(
+        CodegenCategoryInputs(
+            category=category,
+            spec_files=tuple(files_by_category[category]),
+        )
+        for category in sorted(files_by_category)
+    )
+
+
 def load_spec_database(*, spec_dir: Traversable) -> CodegenDatabase:
     """Load and normalize PTX instruction specs from ``spec_dir``."""
 
@@ -318,4 +418,7 @@ __all__ = [
     "load_spec_database",
     "CodegenDatabase",
     "load_codegen_database",
+    "CodegenCategoryInputs",
+    "discover_codegen_category_inputs",
+    "load_codegen_database_from_files",
 ]

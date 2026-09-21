@@ -283,27 +283,96 @@ TEST(ConversionCompleteness, EnforcesCvtaExplicitSpaceAvailability) {
   }
 }
 
-/** `.ptr.const` kernel parameters prohibit only forward generic constant addresses. */
-TEST(ConversionCompleteness, EnforcesCvtaConstantPointerRestriction) {
+/** Register-source CVTA constant addresses are forbidden module-wide. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerRegisterSources) {
   expectModuleValidationDiagnostic(R"ptx(
 .version 8.3
 .target sm_90
 .address_size 64
-.const .align 8 .u64 constant_value;
+.func helper() {
+  .reg .u32 %r<2>;
+  cvta.const.u32 %r0, %r1;
+  ret;
+}
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
 .func helper() {
   .reg .u64 %rd<2>;
   cvta.const.u64 %rd0, %rd1;
   ret;
 }
 .entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
-  .reg .u64 %rd<2>;
-  cvta.const.u64 %rd0, constant_value;
-  cvta.const.u64 %rd1, constant_value+8;
-  cvta.to.const.u64 %rd0, %rd1;
   ret;
 }
 )ptx",
                                    checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** Direct constant-symbol CVTA addresses are forbidden by `.ptr.const` inputs. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerDirectSymbolSources) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u32 %r0;
+  cvta.const.u32 %r0, constant_value;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd0;
+  cvta.const.u64 %rd0, constant_value;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** Offset constant-symbol CVTA addresses are forbidden by `.ptr.const` inputs. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerOffsetSymbolSources) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u32 %r0;
+  cvta.const.u32 %r0, constant_value+4;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd0;
+  cvta.const.u64 %rd0, constant_value+8;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** `.ptr.const` kernel parameters leave explicit positive controls available. */
+TEST(ConversionCompleteness, AllowsCvtaConstantPointerPositiveControls) {
   expectModuleAccepted(R"ptx(
 .version 8.3
 .target sm_90

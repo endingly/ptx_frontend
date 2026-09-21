@@ -15,8 +15,6 @@ from ptx_frontend.ir.resolved_ir import (
 from ptx_frontend.spec.model import CodegenUnit
 
 
-
-
 def _address_symbol_resolution_policy(
     field: ResolvedField, layout: ResolvedOperandLayout
 ) -> str:
@@ -29,7 +27,12 @@ def _address_symbol_resolution_policy(
          if binding.target_field_id == field.name),
         None,
     )
-    if binding is None or binding.preserve_parameter_address_space:
+    if binding is None:
+        raise ValueError(
+            f"layout {layout.layout_id!r} is missing a binding for "
+            f"MOV_SOURCE field {field.name!r}"
+        )
+    if binding.preserve_parameter_address_space:
         return "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace"
     return "checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter"
 

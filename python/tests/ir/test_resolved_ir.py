@@ -37,6 +37,7 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
+from ptx_frontend.code_gen.emit.references import emit_reference_visitor
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.code_gen.resolved_field_names import (
     field_cpp_constant_expr as _field_cpp_constant_expr,
@@ -2270,6 +2271,52 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(source.preserve_parameter_address_space, not has_to)
+
+    def test_reference_visitor_rejects_missing_mov_source_binding(self) -> None:
+        """Reference generation rejects malformed MOV-source layouts explicitly."""
+
+        cvta = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "cvta"
+        ))
+        const_u32 = next(
+            variant for variant in cvta.variants
+            if variant.cpp_name == "ConstU32"
+        )
+        layout = const_u32.operand_layouts[0]
+        malformed_layout = replace(
+            layout,
+            bindings=tuple(
+                binding for binding in layout.bindings
+                if binding.target_field_id != "src"
+            ),
+        )
+        malformed_cvta = replace(
+            cvta,
+            variants=(replace(const_u32, operand_layouts=(malformed_layout,)),),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, r"layout .* missing a binding for MOV_SOURCE field 'src'"
+        ):
+            emit_reference_visitor(malformed_cvta, BACKEND)
+
+        mov = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "mov"
+        ))
+        self.assertIn(
+            "visitor(payload.src.value, payload.src.locs, "
+            "checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter);",
+            emit_reference_visitor(mov, BACKEND),
+        )
+        self.assertIn(
+            "visitor(selected.src.value, selected.src.locs, "
+            "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);",
+            emit_reference_visitor(replace(cvta, variants=(const_u32,)), BACKEND),
+        )
 
     def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
         mbarrier = next(

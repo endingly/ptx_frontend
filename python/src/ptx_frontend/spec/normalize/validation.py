@@ -72,9 +72,10 @@ def _validate_modifier_state_space_expressions(
                     "state-space modifier"
                 )
             if operand.parameter_constraint is not None:
-                allows_parameter = modifier.value == "param" or any(
-                    value.value == "param" for value in modifier.values
-                )
+                allows_parameter = (
+                    modifier.value is not None
+                    and modifier.value.startswith("param")
+                ) or any(value.value.startswith("param") for value in modifier.values)
                 if not allows_parameter:
                     raise ValueError(
                         f"operand {operand.name!r}: parameter constraint requires "

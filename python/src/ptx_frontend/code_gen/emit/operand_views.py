@@ -572,6 +572,21 @@ def emit_check_operand_view(
                   }}
                   return std::nullopt;
                 }};
+                const auto parameter_direction_from_symbol =
+                    [](const ResolvedSymbolRef* symbol) {{
+                  if (symbol == nullptr || !symbol->declaration_kind)
+                    return ParameterDirection::None;
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::InputParameter)
+                    return {_cpp(backend, CppDomain.PARAMETER_DIRECTIONS, "input")};
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::ReturnParameter)
+                    return {_cpp(backend, CppDomain.PARAMETER_DIRECTIONS, "return")};
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::CallParameter)
+                    return ParameterDirection::CallArgument;
+                  return ParameterDirection::None;
+                }};
                 if (const auto* immediate =
                         std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
                   return OperandView{{
@@ -632,6 +647,9 @@ def emit_check_operand_view(
                       .immediate_type = std::nullopt,
                       .register_type = std::nullopt,
                       .address_state_space = state_space_from_symbol(symbol),
+                      .enclosing_function_kind = symbol->enclosing_function_kind,
+                      .parameter_direction = parameter_direction_from_symbol(symbol),
+                      .parameter_qualifier = symbol->parameter_qualifier,
                       .value_availability = symbol->address_availability,
                       .value_name = symbol->spelling,
                       .locations = {object_name}.{field.name}.locs,
@@ -650,6 +668,9 @@ def emit_check_operand_view(
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
                     .address_state_space = state_space_from_symbol(symbol),
+                    .enclosing_function_kind = address.enclosing_function_kind,
+                    .parameter_direction = parameter_direction_from_symbol(symbol),
+                    .parameter_qualifier = address.parameter_qualifier,
                     .value_availability =
                         symbol == nullptr ? std::nullopt
                                           : symbol->address_availability,

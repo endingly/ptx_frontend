@@ -39,11 +39,27 @@ register operands only, so variable addresses and variable-plus-offset forms
 are outside it.
 
 `cvta` and `cvta.to` cover unqualified `.global`, `.local`, `.shared`,
-`.const`, and `.param` spellings with `.u32` and `.u64` in both directions.
-Global/local/shared require PTX 2.0 / SM 20, constant PTX 3.1 / SM 20, and
-parameter PTX 7.7 / SM 70. The retained public `GlobalU64` and `ToGlobalU64`
-variants keep their names. Explicit sub-qualifiers and non-register/offset
-address expressions are deliberately not part of this `cvta` slice.
+`.const`, and `.param` spellings, plus `.shared::cta`, `.shared::cluster`, and
+`.param::entry`, with `.u32` and `.u64` in both directions. Global/local/shared
+require PTX 2.0 / SM 20, constant PTX 3.1 / SM 20, parameter PTX 7.7 / SM 70,
+explicit shared forms PTX 7.8 (SM 30 for `::cta`, SM 90 for `::cluster`), and
+`param::entry` PTX 8.3 / SM 70. The retained public `GlobalU64` and
+`ToGlobalU64` variant names remain stable.
+
+Forward `cvta.space` accepts a same-width register, an addressable declaration
+in the selected space, or that declaration plus an immediate offset. Its public
+source field is therefore the existing `ResolvedMovSource` sum type. This
+changes the API type from `ResolvedRegisterRef` for existing forward variants;
+callers inspect a register alternative with `std::get` or `std::get_if`.
+Variant names are preserved. `cvta.to` remains register-only. Declaration-bound
+addresses retain their declared space
+through owned resolution; a known wrong symbol space is rejected, and
+`.param{::entry}` symbol sources must be kernel input parameters. Register
+sources remain accepted without attempting to infer runtime pointer provenance.
+Owned validation also cross-checks direct and offset symbol identity against its
+cached declaration space, parameter role, and function context. Generic MOV
+address-taking retains its distinct device-parameter-to-local materialization
+rule.
 
 `mapa{.shared::cluster}.{u32|u64}` and
 `getctarank{.shared::cluster}.{u32|u64}`, together with their generic shared
@@ -146,13 +162,23 @@ The standalone [installed consumer](../../examples/conversion_consumer/README.md
 exercises the public conversion API and validates an owned module after its
 source and syntax AST are destroyed.
 
-The supported conversion scope is the set of forms listed above. The remaining
-`cvta` boundary is explicit state-space sub-qualifier spellings and
-variable-address or variable-plus-offset operands. Runtime conversion,
-address-mapping, and CTA-rank semantics are not executed by this frontend.
+The supported conversion scope is the set of forms listed above. When any
+kernel input has a `.ptr.const` attribute, owned module validation rejects every
+forward `cvta.const.{u32|u64}` in that module, including a register source; it
+does not reject `cvta.to.const`. This is a module-local declaration check. It
+does not infer runtime pointer provenance or external/link-time declarations.
+Runtime conversion, address-mapping, and CTA-rank semantics are not executed
+by this frontend.
 
 The recorded probes use CUDA 13.1 `ptxas` V13.1.115, whose highest accepted PTX
-version is 9.1. They are reproducible with `ptxas --version` and
+version is 9.1; it rejects a PTX 9.3 profile. A 64-bit forward-source probe at
+`sm_120` passed across the supported spaces, symbol-plus-offset forms,
+sub-qualifiers, and `.to` u64 forms. The 32-bit forward and minimum-profile
+probes were blocked by the tool's unsupported 32-bit compilation/ABI path, so
+they are not semantic evidence. A device-formal `.param` probe was accepted by
+the assembler even though this frontend rejects it for CVTA's kernel-parameter
+contract; a device-formal `.local` probe was rejected for the expected space
+mismatch. The probes are reproducible with `ptxas --version` and
 `ptxas -arch=<target> <fixture>.ptx -o <fixture>.cubin`. The ordinary matrix
 recorded 140 accepted cases and four 8-bit integer-width discrepancies. Those
 observations are compiler-tool evidence, not a replacement for PTX 9.3, and

@@ -38,6 +38,19 @@ void expectModuleValidationRejected(std::string_view source) {
   EXPECT_FALSE(validateModule(*module).has_value());
 }
 
+/** Check that a complete module fails validation with the selected diagnostic. */
+void expectModuleValidationDiagnostic(
+    std::string_view source, checker::CheckDiagnosticKind diagnostic_kind) {
+  const auto ast = parseModule(source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  const auto module = resolveModuleOnly(*ast);
+  ASSERT_TRUE(module.has_value()) << module.error().front().message;
+  const auto validation = validateModule(*module);
+  ASSERT_FALSE(validation.has_value());
+  ASSERT_FALSE(validation.error().empty());
+  EXPECT_EQ(validation.error().front().kind, diagnostic_kind);
+}
+
 /** Parse and resolve a module whose selected form must violate an instruction rule. */
 void expectModuleRuleViolation(std::string_view source) {
   const auto ast = parseModule(source);
@@ -137,6 +150,250 @@ std::string buildOrdinaryScalarConversionModule() {
   }
   module += "}\n";
   return module;
+}
+
+/** Cover explicit CVTA spaces and declaration-bound symbol address sources. */
+TEST(ConversionCompleteness, ResolvesCvtaExplicitSpacesAndSymbolAddresses) {
+  expectModuleAccepted(R"ptx(
+.version 8.3
+.target sm_90
+.global .align 8 .u64 global_value;
+.const .align 8 .u64 constant_value;
+.shared .align 8 .u64 shared_value;
+.entry kernel(.param .u64 parameter) {
+  .reg .u32 %r<3>;
+  .reg .u64 %rd<4>;
+  cvta.global.u64 %rd0, global_value+8;
+  cvta.const.u64 %rd0, constant_value;
+  cvta.local.u32 %r0, %r1;
+  cvta.shared::cta.u64 %rd0, shared_value+8;
+  cvta.shared::cluster.u64 %rd1, shared_value;
+  cvta.param.u64 %rd2, parameter;
+  cvta.param::entry.u64 %rd2, parameter+8;
+  cvta.to.shared::cta.u32 %r0, %r1;
+  cvta.to.shared::cluster.u64 %rd0, %rd1;
+  cvta.to.param::entry.u64 %rd0, %rd1;
+}
+)ptx");
+}
+
+/** Register-space input and return formals remain ordinary CVTA sources. */
+TEST(ConversionCompleteness, ResolvesCvtaRegisterParameterSources) {
+  expectModuleAccepted(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.func (.reg .u64 %result) convert_address(.reg .u64 %input) {
+  .reg .u64 %rd;
+  cvta.global.u64 %rd, %input;
+  cvta.global.u64 %rd, %result;
+  ret;
+}
+)ptx");
+}
+
+/** Reject CVTA symbol sources whose declared state space disagrees with the modifier. */
+TEST(ConversionCompleteness, RejectsCvtaWrongSymbolStateSpace) {
+  expectModuleValidationDiagnostic(
+      R"ptx(
+.version 8.3
+.target sm_90
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  cvta.shared::cta.u64 %rd0, global_value;
+}
+)ptx",
+      checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  expectModuleValidationDiagnostic(
+      R"ptx(
+.version 8.3
+.target sm_70
+.func device(.param .u32 formal) {
+  .reg .u64 %rd0;
+  cvta.param::entry.u64 %rd0, formal;
+}
+)ptx",
+      checker::CheckDiagnosticKind::ParameterQualifierMismatch);
+  expectModuleValidationDiagnostic(
+      R"ptx(
+.version 8.3
+.target sm_70
+.func device(.param .u32 formal) {
+  .reg .u64 %rd0;
+  cvta.param.u64 %rd0, formal+4;
+}
+)ptx",
+      checker::CheckDiagnosticKind::ParameterQualifierMismatch);
+  expectModuleValidationDiagnostic(
+      R"ptx(
+.version 8.3
+.target sm_70
+.func device(.param .u32 formal) {
+  .reg .u64 %rd0;
+  cvta.local.u64 %rd0, formal;
+}
+)ptx",
+      checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+}
+
+/** Preserve CVTA's equal-width register contract and register-only `.to` source. */
+TEST(ConversionCompleteness, EnforcesCvtaWidthAndToSourceContracts) {
+  expectModuleValidationRejected(R"ptx(
+.version 7.8
+.target sm_30
+.entry kernel() {
+  .reg .u32 %r0;
+  .reg .u64 %rd0;
+  cvta.shared::cta.u32 %r0, %rd0;
+}
+)ptx");
+  expectModuleResolutionRejected(R"ptx(
+.version 7.8
+.target sm_30
+.shared .u32 shared_value;
+.entry kernel() {
+  .reg .u32 %r0;
+  cvta.to.shared::cta.u32 %r0, shared_value;
+}
+)ptx");
+}
+
+/** Enforce explicit CVTA sub-qualifier version and target availability. */
+TEST(ConversionCompleteness, EnforcesCvtaExplicitSpaceAvailability) {
+  for (
+      const std::string_view source : {
+          R"ptx(.version 7.7 .target sm_30 .entry kernel() { .reg .u32 %r<2>; cvta.shared::cta.u32 %r0, %r1; })ptx",
+          R"ptx(.version 7.8 .target sm_20 .entry kernel() { .reg .u32 %r<2>; cvta.to.shared::cta.u32 %r0, %r1; })ptx",
+          R"ptx(.version 7.8 .target sm_80 .entry kernel() { .reg .u64 %rd<2>; cvta.shared::cluster.u64 %rd0, %rd1; })ptx",
+          R"ptx(.version 8.2 .target sm_70 .entry kernel() { .reg .u32 %r<2>; cvta.to.param::entry.u32 %r0, %r1; })ptx",
+          R"ptx(.version 8.3 .target sm_60 .entry kernel() { .reg .u64 %rd<2>; cvta.param::entry.u64 %rd0, %rd1; })ptx",
+      }) {
+    SCOPED_TRACE(source);
+    expectModuleValidationRejected(source);
+  }
+  for (
+      const std::string_view source : {
+          R"ptx(.version 7.8 .target sm_30 .entry kernel() { .reg .u32 %r<2>; cvta.shared::cta.u32 %r0, %r1; })ptx",
+          R"ptx(.version 7.8 .target sm_90 .entry kernel() { .reg .u64 %rd<2>; cvta.shared::cluster.u64 %rd0, %rd1; })ptx",
+          R"ptx(.version 8.3 .target sm_70 .entry kernel() { .reg .u64 %rd<2>; cvta.param::entry.u64 %rd0, %rd1; })ptx",
+      }) {
+    SCOPED_TRACE(source);
+    expectModuleAccepted(source);
+  }
+}
+
+/** Register-source CVTA constant addresses are forbidden module-wide. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerRegisterSources) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.func helper() {
+  .reg .u32 %r<2>;
+  cvta.const.u32 %r0, %r1;
+  ret;
+}
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.func helper() {
+  .reg .u64 %rd<2>;
+  cvta.const.u64 %rd0, %rd1;
+  ret;
+}
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** Direct constant-symbol CVTA addresses are forbidden by `.ptr.const` inputs. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerDirectSymbolSources) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u32 %r0;
+  cvta.const.u32 %r0, constant_value;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd0;
+  cvta.const.u64 %rd0, constant_value;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** Offset constant-symbol CVTA addresses are forbidden by `.ptr.const` inputs. */
+TEST(ConversionCompleteness, RejectsCvtaConstantPointerOffsetSymbolSources) {
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u32 %r0;
+  cvta.const.u32 %r0, constant_value+4;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+  expectModuleValidationDiagnostic(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.const .align 8 .u64 constant_value;
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd0;
+  cvta.const.u64 %rd0, constant_value+8;
+  ret;
+}
+)ptx",
+                                   checker::CheckDiagnosticKind::RuleViolation);
+}
+
+/** `.ptr.const` kernel parameters leave explicit positive controls available. */
+TEST(ConversionCompleteness, AllowsCvtaConstantPointerPositiveControls) {
+  expectModuleAccepted(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.entry kernel(.param .u64 .ptr .global .align 8 global_pointer,
+              .param .u64 scalar) {
+  .reg .u64 %rd<2>;
+  cvta.const.u64 %rd0, %rd1;
+  ret;
+}
+)ptx");
+  expectModuleAccepted(R"ptx(
+.version 8.3
+.target sm_90
+.address_size 64
+.entry kernel(.param .u64 .ptr .const .align 8 constant_pointer) {
+  .reg .u64 %rd<2>;
+  cvta.to.const.u64 %rd0, %rd1;
+  ret;
+}
+)ptx");
 }
 
 /** Exercise ordinary integer and floating conversion families in one module. */

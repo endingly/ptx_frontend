@@ -37,6 +37,7 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_ir_header
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
+from ptx_frontend.code_gen.emit.references import emit_reference_visitor
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.code_gen.resolved_field_names import (
     field_cpp_constant_expr as _field_cpp_constant_expr,
@@ -2203,6 +2204,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "SharedU32", "ToSharedU32", "SharedU64", "ToSharedU64",
             "ConstU32", "ToConstU32", "ConstU64", "ToConstU64",
             "ParamU32", "ToParamU32", "ParamU64", "ToParamU64",
+            "SharedCtaU32", "ToSharedCtaU32", "SharedCtaU64",
+            "ToSharedCtaU64", "SharedClusterU32", "ToSharedClusterU32",
+            "SharedClusterU64", "ToSharedClusterU64", "ParamEntryU32",
+            "ToParamEntryU32", "ParamEntryU64", "ToParamEntryU64",
         ]
         self.assertEqual([variant.cpp_name for variant in cvta.variants],
                          expected_names)
@@ -2212,6 +2217,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             "Shared": {"ptx": "2.0", "sm": 20},
             "Const": {"ptx": "3.1", "sm": 20},
             "Param": {"ptx": "7.7", "sm": 70},
+            "SharedCta": {"ptx": "7.8", "sm": 30},
+            "SharedCluster": {"ptx": "7.8", "sm": 90},
+            "ParamEntry": {"ptx": "8.3", "sm": 70},
         }
         for variant in cvta.variants:
             has_to = variant.cpp_name.startswith("To")
@@ -2238,8 +2246,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "global": "Global",
                 "local": "Local",
                 "shared": "Shared",
+                "shared::cta": "SharedCta",
+                "shared::cluster": "SharedCluster",
                 "const": "Const",
                 "param": "Param",
+                "param::entry": "ParamEntry",
             }[state_space]
             self.assertEqual(dict(variant.availability),
                              expected_availability[expected_key])
@@ -2248,6 +2259,64 @@ class ResolvedIrBuildTest(unittest.TestCase):
                  for binding in variant.operand_layouts[0].bindings],
                 [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
             )
+            source = variant.operand_layouts[0].bindings[1]
+            self.assertEqual(
+                source.allowed_shapes,
+                (ResolvedOperandShape.REGISTER,)
+                if has_to
+                else (
+                    ResolvedOperandShape.REGISTER,
+                    ResolvedOperandShape.SYMBOL,
+                    ResolvedOperandShape.ADDRESS,
+                ),
+            )
+            self.assertEqual(source.preserve_parameter_address_space, not has_to)
+
+    def test_reference_visitor_rejects_missing_mov_source_binding(self) -> None:
+        """Reference generation rejects malformed MOV-source layouts explicitly."""
+
+        cvta = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "cvta"
+        ))
+        const_u32 = next(
+            variant for variant in cvta.variants
+            if variant.cpp_name == "ConstU32"
+        )
+        layout = const_u32.operand_layouts[0]
+        malformed_layout = replace(
+            layout,
+            bindings=tuple(
+                binding for binding in layout.bindings
+                if binding.target_field_id != "src"
+            ),
+        )
+        malformed_cvta = replace(
+            cvta,
+            variants=(replace(const_u32, operand_layouts=(malformed_layout,)),),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, r"layout .* missing a binding for MOV_SOURCE field 'src'"
+        ):
+            emit_reference_visitor(malformed_cvta, BACKEND)
+
+        mov = from_instruction_spec(next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "mov"
+        ))
+        self.assertIn(
+            "visitor(payload.src.value, payload.src.locs, "
+            "checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter);",
+            emit_reference_visitor(mov, BACKEND),
+        )
+        self.assertIn(
+            "visitor(selected.src.value, selected.src.locs, "
+            "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);",
+            emit_reference_visitor(replace(cvta, variants=(const_u32,)), BACKEND),
+        )
 
     def test_mbarrier_init_models_layout_space_and_count_ranges(self) -> None:
         mbarrier = next(
@@ -4154,7 +4223,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("struct Ldu {", source)
         self.assertIn("struct Prefetch {", source)
         self.assertIn("WithLocs<ResolvedBranchTarget> target;", source)
-        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 3)
+        self.assertEqual(source.count("WithLocs<ResolvedMovSource> src;"), 19)
         mov = source[source.index("struct Mov {"):source.index("struct Mapa {")]
         mapa = source[
             source.index("struct Mapa {"):source.index("struct Getctarank {")
@@ -4162,9 +4231,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         getctarank = source[
             source.index("struct Getctarank {"):source.index("struct Ld {")
         ]
+        cvta = source[source.index("struct Cvta {"):source.index("struct Cvt {")]
         self.assertIn("WithLocs<ResolvedMovSource> src;", mov)
         self.assertIn("WithLocs<ResolvedMovSource> src;", mapa)
         self.assertIn("WithLocs<ResolvedMovSource> src;", getctarank)
+        self.assertEqual(cvta.count("WithLocs<ResolvedMovSource> src;"), 16)
+        self.assertIn("struct GlobalU64 {", cvta)
+        self.assertIn("struct ToGlobalU64 {", cvta)
+        self.assertIn("WithLocs<ResolvedRegisterRef> src;", cvta)
         self.assertIn("WithLocs<ResolvedAddress> address;", source)
         self.assertIn(
             "std::optional<WithLocs<ResolvedPredicate>> execution_predicate;",

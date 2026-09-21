@@ -314,6 +314,8 @@ $defs:
       - param::entry
       - param::func
       - shared
+      - shared::cta
+      - shared::cluster
       - tex
       - surf
       - generic

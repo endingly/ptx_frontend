@@ -1980,7 +1980,7 @@ TEST(ResolveSlct, RejectsUnfrozenModifierForms) {
   }
 }
 
-TEST(ResolveCvta, SelectsUnqualifiedStateSpaceRegisterVariants) {
+TEST(ResolveCvta, SelectsStateSpaceRegisterVariants) {
   /** One accepted spelling and its generated semantic variant contract. */
   struct Case {
     std::string_view source;
@@ -2029,6 +2029,39 @@ TEST(ResolveCvta, SelectsUnqualifiedStateSpaceRegisterVariants) {
            MemoryStateSpace::Parameter, ScalarType::U64},
       Case{"cvta.to.param.u64 %rd0, %rd1;", Cvta::VariantType::ToParamU64,
            MemoryStateSpace::Parameter, ScalarType::U64},
+      Case{"cvta.shared::cta.u32 %r0, %r1;", Cvta::VariantType::SharedCtaU32,
+           MemoryStateSpace::Shared, ScalarType::U32},
+      Case{"cvta.to.shared::cta.u32 %r0, %r1;",
+           Cvta::VariantType::ToSharedCtaU32, MemoryStateSpace::Shared,
+           ScalarType::U32},
+      Case{"cvta.shared::cta.u64 %rd0, %rd1;", Cvta::VariantType::SharedCtaU64,
+           MemoryStateSpace::Shared, ScalarType::U64},
+      Case{"cvta.to.shared::cta.u64 %rd0, %rd1;",
+           Cvta::VariantType::ToSharedCtaU64, MemoryStateSpace::Shared,
+           ScalarType::U64},
+      Case{"cvta.shared::cluster.u32 %r0, %r1;",
+           Cvta::VariantType::SharedClusterU32, MemoryStateSpace::Shared,
+           ScalarType::U32},
+      Case{"cvta.to.shared::cluster.u32 %r0, %r1;",
+           Cvta::VariantType::ToSharedClusterU32, MemoryStateSpace::Shared,
+           ScalarType::U32},
+      Case{"cvta.shared::cluster.u64 %rd0, %rd1;",
+           Cvta::VariantType::SharedClusterU64, MemoryStateSpace::Shared,
+           ScalarType::U64},
+      Case{"cvta.to.shared::cluster.u64 %rd0, %rd1;",
+           Cvta::VariantType::ToSharedClusterU64, MemoryStateSpace::Shared,
+           ScalarType::U64},
+      Case{"cvta.param::entry.u32 %r0, %r1;", Cvta::VariantType::ParamEntryU32,
+           MemoryStateSpace::Parameter, ScalarType::U32},
+      Case{"cvta.to.param::entry.u32 %r0, %r1;",
+           Cvta::VariantType::ToParamEntryU32, MemoryStateSpace::Parameter,
+           ScalarType::U32},
+      Case{"cvta.param::entry.u64 %rd0, %rd1;",
+           Cvta::VariantType::ParamEntryU64, MemoryStateSpace::Parameter,
+           ScalarType::U64},
+      Case{"cvta.to.param::entry.u64 %rd0, %rd1;",
+           Cvta::VariantType::ToParamEntryU64, MemoryStateSpace::Parameter,
+           ScalarType::U64},
   };
 
   for (const auto& test : cases) {
@@ -2049,37 +2082,45 @@ TEST(ResolveCvta, SelectsUnqualifiedStateSpaceRegisterVariants) {
   }
 }
 
-TEST(ResolveCvta, RejectsExplicitSubQualifiersAndUnsupportedOperands) {
+TEST(ResolveCvta, RejectsMalformedModifierOrderingAndUnsupportedSpaces) {
   for (const auto source :
        {"cvta.global.to.u64 %rd0, %rd1;", "cvta.u64.global %rd0, %rd1;",
-        "cvta.shared::cta.u32 %r0, %r1;", "cvta.shared::cluster.u32 %r0, %r1;",
-        "cvta.param::entry.u32 %r0, %r1;", "cvta.generic.u32 %r0, %r1;"}) {
+        "cvta.generic.u32 %r0, %r1;"}) {
     const auto selected = selectVariant<Cvta>(parse_instruction(source));
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
+}
 
-  for (const auto source : {R"ptx(
+TEST(ResolveCvta, ResolvesForwardSymbolAndOffsetSources) {
+  PtxSyntaxParser parser(R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
 .global .u32 value;
-.entry kernel() { .reg .u64 %rd; cvta.global.u64 %rd, value; }
-)ptx",
-                            R"ptx(
-.version 9.3
-.target sm_80
-.address_size 64
-.global .u32 value;
-.entry kernel() { .reg .u64 %rd; cvta.global.u64 %rd, value+4; }
-)ptx"}) {
-    PtxSyntaxParser parser(source);
-    const auto ast = parser.parseModule();
-    ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto resolved = resolveModule(*ast);
-    SCOPED_TRACE(source);
-    EXPECT_FALSE(resolved.has_value());
-  }
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  cvta.global.u64 %rd0, value;
+  cvta.global.u64 %rd1, value+4;
+}
+)ptx");
+  const auto parsed = parser.parseModule();
+  ASSERT_TRUE(parsed.has_value()) << parsed.diagnostics.front().message;
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+
+  const Cvta& direct = std::get<Cvta>(body[0]);
+  const auto& direct_variant = std::get<Cvta::GlobalU64>(direct.variant);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedSymbolRef>(direct_variant.src.value));
+
+  const Cvta& offset = std::get<Cvta>(body[1]);
+  const auto& offset_variant = std::get<Cvta::GlobalU64>(offset.variant);
+  const auto* address = std::get_if<ResolvedAddress>(&offset_variant.src.value);
+  ASSERT_NE(address, nullptr);
+  EXPECT_TRUE(std::holds_alternative<ResolvedSymbolRef>(address->base));
 }
 
 TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {

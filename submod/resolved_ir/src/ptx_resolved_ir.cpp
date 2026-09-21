@@ -150,12 +150,27 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         field, binding, ast.operands[index], fields, context);
     if (!value)
       return std::unexpected(value.error());
+    ParameterAddressQualifier parameter_qualifier =
+        ParameterAddressQualifier::Default;
+    const auto state_space = actual_modifiers->find("state_space");
+    if (state_space != actual_modifiers->end()) {
+      parameter_qualifier = detail::parameter_address_qualifier_from_modifier(
+          state_space->second->syntax.text);
+      if (binding.preserve_parameter_address_space &&
+          binding.parameter_constraint.direction == ParameterDirection::Input &&
+          state_space->second->syntax.text == ".param") {
+        parameter_qualifier = ParameterAddressQualifier::Entry;
+      }
+    }
     if (auto* address = std::get_if<WithLocs<ResolvedAddress>>(&*value)) {
-      const auto state_space = actual_modifiers->find("state_space");
-      if (state_space != actual_modifiers->end()) {
-        address->value.parameter_qualifier =
-            detail::parameter_address_qualifier_from_modifier(
-                state_space->second->syntax.text);
+      address->value.parameter_qualifier = parameter_qualifier;
+    }
+    if (auto* source = std::get_if<WithLocs<ResolvedMovSource>>(&*value)) {
+      if (auto* address = std::get_if<ResolvedAddress>(&source->value)) {
+        address->parameter_qualifier = parameter_qualifier;
+      }
+      if (auto* symbol = std::get_if<ResolvedSymbolRef>(&source->value)) {
+        symbol->parameter_qualifier = parameter_qualifier;
       }
     }
     const auto [_, inserted] =

@@ -27,6 +27,18 @@ mixed-precision 的 **FP32 addend/subtrahend** 此前声明为 register-only，�
 - mixed 的 operand 顺序被强制：narrow source 必须位于中间。
 - half 为 RN-only 但接受 `.ftz` 与 `.sat`；BF16 两者都不接受且为 RN-only；FP64 与 `f32x2` 不接受 saturation。
 
+## 已安装 surface 变更
+
+开放 addend 接受 immediate 会改变两个公共成员已安装生成 payload 的形状：`Add::MixedF32::addend` 与 `Sub::MixedF32::subtrahend` 从 register reference 变为既有的 register-or-immediate 表示。consumer 的读取方式随之改变：
+
+```c
+mixed.addend.value.spelling;                              // 之前
+std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // 之后：register spelling
+std::get<ResolvedImmediate>(mixed.addend.value).bits;        // 之后：immediate payload
+```
+
+没有提供兼容 shim，也没有引入并行表示：该改动复用 scalar `add`/`sub` 与 DIV cohort 已在使用的同一条 typed register/immediate 路径。destination 与 narrow source 保持 register payload。这是一次刻意且有文档记录的小幅 consumer 迁移，而不是一个对 public model 没有影响的切片。
+
 ## 证据
 
 CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <module>.ptx -o <temporary>.o`。49 个 module 的 matrix 有 27 个预期接受、22 个拒绝，且没有 assembler divergence。version floor 由双向确认：`add.bf16` 以 `Feature 'add.bf16' requires PTX ISA .version 7.8 or later` 拒绝 `.version 7.5`，`add.f32x2` 与 mixed form 以对应的 `requires PTX ISA .version 8.6 or later` 拒绝 `.version 8.5`。target floor 在 `sm_90` 确认，packed 与 mixed cohort 都报告 `requires .target sm_100 or higher`。

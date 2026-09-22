@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -33,23 +34,68 @@ TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
   }
 }
 
-/** Reject literals outside the audited positions. */
+/** Reject literals outside the audited positions.
+ *
+ * These are operand-shape rules, so instruction resolution is the right level:
+ * the rejection is decided by layout selection alone, with no module binding
+ * that an unrelated unresolved name could fail on instead.
+ */
 TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
-  for (
-      const auto source : {
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; add.f32 1.0, %f1, %f2; })ptx",
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; .reg .f16 %h; add.f32.f16 %f0, 1.0, %f2; })ptx",
-          // Destinations are registers for every cohort.
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; .reg .b16 %b<2>; add.f32.bf16 1.0, %b1, %f2; })ptx",
-          // The narrow source is register-only, including the BF16 cohort.
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; .reg .b16 %b<2>; add.f32.bf16 %f0, 1.0, %f2; })ptx",
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<3>; sub.f32.bf16 %f0, 1.0, %f2; })ptx",
-      }) {
+  for (const auto source : {
+           // Destinations are registers for every cohort.
+           "add.f32 1.0, %f1, %f2;",
+           "add.f32.bf16 1.0, %b1, %f2;",
+           // The narrow source is register-only, including the BF16 cohort.
+           "add.f32.f16 %f0, 1.0, %f2;",
+           "sub.f32.bf16 %f0, 1.0, %f2;",
+           // The newly immediate-capable addend admits floating literals only.
+           "add.f32.f16 %f0, %h1, 1;",
+           "sub.f32.f16 %f0, %h1, 1;",
+           "add.f32.bf16 %f0, %b1, 1;",
+       }) {
     SCOPED_TRACE(source);
+    const auto parsed = test_helpers::parseInstruction(source);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveInstruction(*parsed).has_value());
+  }
+}
+
+/** Pin the typed immediate handoff for the newly immediate-capable mixed operand. */
+TEST(AddSubAudit, OwnsMixedAddendImmediateAndRevalidates) {
+  std::optional<ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel() { .reg .f32 %f<3>; .reg .f16 %h<2>;
+  add.f32.f16 %f0, %h1, 1.0; sub.f32.f16 %f0, %h1, 2.0; }
+)ptx";
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
   }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  const auto& add = std::get<Add::MixedF32>(
+      std::get<Add>(owned->functions.front().body[0]).variant);
+  const auto* addend = std::get_if<ResolvedImmediate>(&add.addend.value);
+  ASSERT_NE(addend, nullptr);
+  EXPECT_EQ(addend->type, ScalarType::F32);
+  EXPECT_EQ(addend->bits, 0x3F800000u);
+  // The narrow source keeps its register representation, not the wide one.
+  EXPECT_EQ(add.src.value.spelling, "%h1");
+
+  const auto& sub = std::get<Sub::MixedF32>(
+      std::get<Sub>(owned->functions.front().body[1]).variant);
+  const auto* subtrahend =
+      std::get_if<ResolvedImmediate>(&sub.subtrahend.value);
+  ASSERT_NE(subtrahend, nullptr);
+  EXPECT_EQ(subtrahend->type, ScalarType::F32);
+  EXPECT_EQ(subtrahend->bits, 0x40000000u);
 }
 
 /** Pin the audited physical containers each cohort accepts and rejects. */

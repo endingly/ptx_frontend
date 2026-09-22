@@ -27,6 +27,18 @@ These were the likely defect sites, and probing showed the model already agrees 
 - Mixed operand order is enforced: the narrow source must be the middle operand.
 - Half is RN-only but admits `.ftz` and `.sat`; BF16 admits neither and is RN-only; FP64 and `f32x2` admit no saturation.
 
+## Installed-surface change
+
+Opening the addend to immediates changes the installed generated payload of two public members: `Add::MixedF32::addend` and `Sub::MixedF32::subtrahend` move from a register reference to the existing register-or-immediate representation. Consumers read them differently:
+
+```c
+mixed.addend.value.spelling;                              // before
+std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // after, register spelling
+std::get<ResolvedImmediate>(mixed.addend.value).bits;        // after, immediate payload
+```
+
+No compatibility shim is provided, and no parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination and the narrow source keep their register payloads. This is a small, deliberate consumer migration rather than a slice with no public-model effect.
+
 ## Evidence
 
 CUDA 13.3.73 `ptxas` evidence used `/usr/local/cuda/bin/ptxas -arch=<arch> <module>.ptx -o <temporary>.o`. The 49-module matrix had 27 expected accepts, 22 rejects, and no assembler divergence. Version floors were confirmed in both directions: `add.bf16` rejects `.version 7.5` with `Feature 'add.bf16' requires PTX ISA .version 7.8 or later`, and `add.f32x2` and the mixed form reject `.version 8.5` with the corresponding `requires PTX ISA .version 8.6 or later`. Target floors were confirmed at `sm_90`, where both the packed and mixed cohorts report `requires .target sm_100 or higher`.

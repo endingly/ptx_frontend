@@ -3667,7 +3667,8 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   EXPECT_TRUE(add->saturate.value);
   EXPECT_EQ(add->dst.value.spelling, "%f0");
   EXPECT_EQ(add->src.value.spelling, "%h1");
-  EXPECT_EQ(add->addend.value.spelling, "%f2");
+  // The addend is immediate-capable, so the reference is unwrapped explicitly.
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(add->addend.value).spelling, "%f2");
   EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);
 }
 
@@ -3695,7 +3696,8 @@ TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
   EXPECT_EQ(Sub::MixedF32::result_type, ScalarType::F32);
   EXPECT_EQ(mixed->input_type.value, ScalarType::BF16);
   EXPECT_TRUE(mixed->saturate.value);
-  EXPECT_EQ(mixed->subtrahend.value.spelling, "%f2");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(mixed->subtrahend.value).spelling,
+            "%f2");
 }
 
 TEST(SelectVariantAdd, RejectsFloatingModifierOutsideItsForm) {

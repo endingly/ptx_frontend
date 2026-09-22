@@ -29,4 +29,4 @@ CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <modul
 
 共享 checker 结构的新增成员一律**追加**而非插入，因此既有 aggregate initializer 仍可编译：`checker::ModifierValueView` 的 `slot` 是最后一个成员，`checker::OperandLayoutDescriptor` 新增 `forbidden_modifiers`，同时新增 `CheckDiagnosticKind::ModifierNotAllowedForLayout`。该 modifier 诊断在 provenance 仍保留时报告 offending modifier 自身的 source range，否则回落到 context range。
 
-Issue 142 剩余工作是对既有 ADD/SUB 与 mixed-precision contract 的审计；这里不添加它们的 execution semantics。
+[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成 §9.7.3–§9.7.5 其余 cohort 的对账；这里不添加它们的 execution semantics。

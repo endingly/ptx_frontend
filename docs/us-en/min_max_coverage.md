@@ -29,4 +29,4 @@ Two generated public types change shape, deliberately and confined to the opcode
 
 Additions to shared checker structures are **appended** rather than inserted, so existing aggregate initializers keep compiling: `checker::ModifierValueView` gains `slot` as its final member, and `checker::OperandLayoutDescriptor` gains `forbidden_modifiers` alongside the new `CheckDiagnosticKind::ModifierNotAllowedForLayout`. The modifier diagnostic also reports the offending modifier's own source range when it is still retained, falling back to the context range otherwise.
 
-The remaining Issue 142 work is the audit of the existing ADD/SUB and mixed-precision contracts. It gains no execution semantics here.
+[Floating and mixed ADD/SUB](add_sub_coverage.md) reconciles the remaining §9.7.3–§9.7.5 cohorts. It gains no execution semantics here.

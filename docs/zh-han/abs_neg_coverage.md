@@ -14,4 +14,4 @@ integer literal、错误宽度或 integer register container、未支持 modifie
 
 记录的 CUDA 13.3.73 `sm_90` probe command 是 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`。146 个 module 覆盖 modern positive form、FP literal、physical container、forbidden modifier、source/destination mismatch 及 sink rejection。即使当前 assembler 对 native `.f16x2` container 较宽松，模型仍以 manual 对 `neg.f16x2` 的 exact `.b32` contract 为准。
 
-[explicit 浮点 MAD](mad_coverage.md)、[DIV](div_coverage.md)、[reciprocal/square-root form](unary_float_coverage.md)、[浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。Issue 142 剩余工作是既有 ADD/SUB 与 mixed-family contract 的审计。这里不添加这些 operation 的 execution semantics。
+[explicit 浮点 MAD](mad_coverage.md)、[DIV](div_coverage.md)、[reciprocal/square-root form](unary_float_coverage.md)、[浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成 §9.7.3–§9.7.5 其余 cohort 的对账。这里不添加这些 operation 的 execution semantics。

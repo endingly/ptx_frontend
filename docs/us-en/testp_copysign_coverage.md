@@ -32,6 +32,5 @@ target evidence.
 [Explicit floating MAD](mad_coverage.md), [DIV](div_coverage.md),
 [reciprocal/square-root forms](unary_float_coverage.md),
 [floating transcendentals](transcendental_coverage.md), and
-[floating MIN/MAX](min_max_coverage.md) are modelled separately. Later Issue 142
-work covers an audit of the existing ADD/SUB and mixed-family contracts; it is
-intentionally not part of this document's implementation scope.
+[floating MIN/MAX](min_max_coverage.md) are modelled separately. The remaining
+Issue 142 work is reconciled by [floating and mixed ADD/SUB](add_sub_coverage.md).

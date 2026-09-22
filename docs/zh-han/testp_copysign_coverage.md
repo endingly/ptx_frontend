@@ -27,4 +27,4 @@ PTX 2.0 / `sm_20` 边界由 frontend checker test 强制，而非 assembler targ
 [浮点 transcendental](transcendental_coverage.md) 与
 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。Issue 142 后续工作会处理
 现有 ADD/SUB 与 mixed-family
-contract 的审计；这些内容刻意不属于本文档的实现范围。
+contract 由 [浮点与 mixed ADD/SUB](add_sub_coverage.md) 对账。

@@ -129,7 +129,6 @@ def emit_check_modifier_value_view(
 
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
-                  .slot = ModifierSlotTag{{{slot_index}}},
                   .value_kind = {value_kind},
                   .bool_value = {members[ResolvedValueKind.BOOL]},
                   .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
@@ -150,6 +149,7 @@ def emit_check_modifier_value_view(
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .is_present = {is_present},
                   .locations = {locations},
+                  .slot = ModifierSlotTag{{{slot_index}}},
               }}"""
 
 

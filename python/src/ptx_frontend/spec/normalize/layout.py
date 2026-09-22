@@ -141,17 +141,17 @@ def _validate_forbidden_modifiers(
             f"operand layout {layout_name!r}: forbidden_modifiers names "
             f"undeclared modifier slots {sorted(unknown)}"
         )
-    # Forbidding a slot that cannot be omitted would leave the layout with no
-    # reachable spelling at all.
-    unomittable = [
-        slot
-        for slot in forbidden
-        if presence_by_slot[slot] not in {"optional", "absent"}
+    # Forbidden references name active optional slots. A fixed or required slot
+    # cannot be omitted, so forbidding it would leave the layout unreachable; an
+    # absent slot is redundant and cannot be lowered, because the resolved IR
+    # drops absent modifiers before slot indexing.
+    unsupported = [
+        slot for slot in forbidden if presence_by_slot[slot] != "optional"
     ]
-    if unomittable:
+    if unsupported:
         raise ValueError(
             f"operand layout {layout_name!r}: forbidden_modifiers may only name "
-            f"optional or absent slots, got {sorted(unomittable)}"
+            f"optional slots, got {sorted(unsupported)}"
         )
 
 

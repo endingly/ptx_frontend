@@ -7,6 +7,7 @@ import unittest
 import jsonschema
 import yaml
 
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
 from ptx_frontend.spec.database import load_codegen_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -84,6 +85,24 @@ def _probe_spec(operand_layouts: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _absent_leading_slot_spec() -> dict[str, object]:
+    """Return a variant whose absent slot precedes every active slot."""
+
+    spec = _probe_spec(
+        [
+            {
+                "name": "binary",
+                "operands": _probe_operands(1),
+                "forbidden_modifiers": ["abs"],
+            },
+            {"name": "ternary", "operands": _probe_operands(2)},
+        ]
+    )
+    modifiers = spec["instructions"][0]["variants"][0]["modifiers"]
+    modifiers.insert(0, {"name": "sat", "kind": "flag", "presence": "absent"})
+    return spec
+
+
 class LayoutModifierConstraintTests(unittest.TestCase):
     """Keep forbidden-modifier declarations declared, omittable, and reachable."""
 
@@ -141,7 +160,32 @@ class LayoutModifierConstraintTests(unittest.TestCase):
                     ]
                 )
             )
-        self.assertIn("optional or absent slots", str(raised.exception))
+        self.assertIn("may only name optional slots", str(raised.exception))
+
+    def test_rejects_forbidding_an_absent_slot(self) -> None:
+        """Reject a redundant absent reference instead of letting lowering fail."""
+
+        spec = _absent_leading_slot_spec()
+        spec["instructions"][0]["variants"][0]["operand_layouts"][0][
+            "forbidden_modifiers"
+        ] = ["sat"]
+        with self.assertRaises(ValueError) as raised:
+            normalize_instruction_spec(spec)
+        self.assertIn("may only name optional slots", str(raised.exception))
+
+    def test_lowers_forbidden_slots_past_a_leading_absent_slot(self) -> None:
+        """Index active slots only, so a leading absent slot shifts no index."""
+
+        (instruction,) = normalize_instruction_spec(_absent_leading_slot_spec())
+        resolved = from_instruction_spec(instruction)
+        layout = resolved.variants[0].operand_layouts[0]
+        self.assertEqual(layout.forbidden_modifiers, ("abs",))
+        # Active order is ftz, abs, type; the absent sat slot is not indexed.
+        self.assertEqual(layout.forbidden_modifier_slots, (1,))
+        # Every slot restriction is lowerable, so no name survives unindexed.
+        self.assertEqual(
+            len(layout.forbidden_modifiers), len(layout.forbidden_modifier_slots)
+        )
 
     def test_rejects_a_slot_forbidden_by_every_layout(self) -> None:
         """Require every optional slot to stay spellable through some layout."""

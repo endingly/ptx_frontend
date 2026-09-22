@@ -20,12 +20,13 @@ The audit also recorded an assembler-permissive container result the model follo
 
 ## Installed-surface change
 
-This slice renames and reshapes generated public types, with no compatibility shim:
+Two generated public types change shape, deliberately and confined to the opcodes this slice rewrites:
 
 - `Min::NanF32` / `Max::NanF32` become `Min::F32` / `Max::F32`, because the frozen `.NaN` seeds are folded into the general FP32 cohort rather than duplicated.
 - `Min::F32` and `Max::F32` now carry `Operands = std::variant<BinaryOperands, TernaryOperands>`, and `ResolvedOperandLayoutTag{0}` selects the two-source layout while `{1}` selects the three-source one.
-- `checker::OperandLayoutDescriptor` gains `forbidden_modifiers`, `checker::ModifierValueView` gains the typed `slot` identity, and `CheckDiagnosticKind` gains `ModifierNotAllowedForLayout`.
 
-`docs/us-en/code_conventions.md` records that public spellings are compatibility contracts needing "a reviewed compatibility path or an explicitly versioned API break". This slice takes the second path. The repository has no dedicated migration or changelog document, so the change is recorded here.
+`docs/us-en/code_conventions.md` requires a public rename to take "a reviewed compatibility path or an explicitly versioned API break". This slice takes neither: the package still carries no version boundary, so this is a deliberate documented break rather than a versioned one. The repository has no dedicated migration or changelog document, so the change is recorded here.
+
+Additions to shared checker structures are **appended** rather than inserted, so existing aggregate initializers keep compiling: `checker::ModifierValueView` gains `slot` as its final member, and `checker::OperandLayoutDescriptor` gains `forbidden_modifiers` alongside the new `CheckDiagnosticKind::ModifierNotAllowedForLayout`. The modifier diagnostic also reports the offending modifier's own source range when it is still retained, falling back to the context range otherwise.
 
 The remaining Issue 142 work is the audit of the existing ADD/SUB and mixed-precision contracts. It gains no execution semantics here.

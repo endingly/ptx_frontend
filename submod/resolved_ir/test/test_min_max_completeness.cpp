@@ -190,6 +190,65 @@ TEST(MinMaxCompleteness, RejectsModifiersForbiddenByTheSelectedLayout) {
   }
 }
 
+/** Keep the positional aggregate form of the public modifier view source-compatible. */
+TEST(MinMaxCompleteness, PreservesLegacyModifierViewAggregateInitialization) {
+  const checker::ModifierValueView legacy{"ftz",
+                                          checker::ModifierValueKind::Bool};
+  EXPECT_EQ(legacy.kind_id, "ftz");
+  EXPECT_EQ(legacy.value_kind, checker::ModifierValueKind::Bool);
+  EXPECT_FALSE(legacy.is_present);
+  EXPECT_TRUE(legacy.locations.empty());
+  // The appended slot identity defaults, so older initializers stay valid.
+  EXPECT_EQ(legacy.slot.value, 0u);
+}
+
+/** Report the offending modifier's own range when it is still retained. */
+TEST(MinMaxCompleteness, ReportsForbiddenModifierOwnRange) {
+  const auto parsed =
+      test_helpers::parseInstruction("min.abs.f32 %f0, %f1, %f2;");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveInstruction(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+
+  const auto& variant = std::get<Min::F32>(std::get<Min>(*resolved).variant);
+  ASSERT_FALSE(variant.abs.locs.empty());
+  const auto checked = std::visit(
+      [](const auto& instruction) {
+        return checker::check(instruction,
+                              checker::Context{.target = {.ptx_version = {9, 3},
+                                                          .sm_version = 100}});
+      },
+      *resolved);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
+  EXPECT_EQ(checked.error().front().range, variant.abs.locs.front());
+}
+
+/** Keep matching by slot identity once the modifier's retained locations are gone. */
+TEST(MinMaxCompleteness, MatchesForbiddenSlotAfterLocationsAreCleared) {
+  const auto parsed =
+      test_helpers::parseInstruction("min.abs.f32 %f0, %f1, %f2;");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+  auto resolved = resolveInstruction(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+
+  auto& variant = std::get<Min::F32>(std::get<Min>(*resolved).variant);
+  variant.abs.locs.clear();
+  const auto checked = std::visit(
+      [](const auto& instruction) {
+        return checker::check(instruction,
+                              checker::Context{.target = {.ptx_version = {9, 3},
+                                                          .sm_version = 100}});
+      },
+      *resolved);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
+  // Without modifier provenance the diagnostic falls back to the context range.
+  EXPECT_EQ(checked.error().front().range, (SourceRange{}));
+}
+
 /** Check each cohort's independent PTX and target floor. */
 TEST(MinMaxCompleteness, ChecksIndependentAvailability) {
   /** One representative source and its independent availability boundary. */

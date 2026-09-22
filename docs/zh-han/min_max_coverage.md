@@ -20,12 +20,13 @@ CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <modul
 
 ## 已安装 surface 变更
 
-本切片重命名并重塑了生成的公共类型，且未提供兼容 shim：
+两个生成的公共类型改变了形状，这是刻意为之，且仅限本切片重写的 opcode：
 
 - `Min::NanF32` / `Max::NanF32` 变为 `Min::F32` / `Max::F32`，因为 frozen `.NaN` seed 被并入通用 FP32 cohort，而不是重复建模。
 - `Min::F32` 与 `Max::F32` 现在带 `Operands = std::variant<BinaryOperands, TernaryOperands>`，`ResolvedOperandLayoutTag{0}` 选择 two-source layout，`{1}` 选择 three-source layout。
-- `checker::OperandLayoutDescriptor` 新增 `forbidden_modifiers`，`checker::ModifierValueView` 新增 typed `slot` identity，`CheckDiagnosticKind` 新增 `ModifierNotAllowedForLayout`。
 
-`docs/us-en/code_conventions.md` 规定 public spelling 是 compatibility contract，需要「a reviewed compatibility path or an explicitly versioned API break」。本切片采取第二条路径。仓库目前没有专门的 migration 或 changelog 文档，因此该变更记录在此处。
+`docs/us-en/code_conventions.md` 要求 public rename 采取「a reviewed compatibility path or an explicitly versioned API break」。本切片两者都未采取：该 package 目前仍没有 version boundary，因此这是一次刻意且已记录的 break，而不是 versioned break。仓库目前没有专门的 migration 或 changelog 文档，因此该变更记录在此处。
+
+共享 checker 结构的新增成员一律**追加**而非插入，因此既有 aggregate initializer 仍可编译：`checker::ModifierValueView` 的 `slot` 是最后一个成员，`checker::OperandLayoutDescriptor` 新增 `forbidden_modifiers`，同时新增 `CheckDiagnosticKind::ModifierNotAllowedForLayout`。该 modifier 诊断在 provenance 仍保留时报告 offending modifier 自身的 source range，否则回落到 context range。
 
 Issue 142 剩余工作是对既有 ADD/SUB 与 mixed-precision contract 的审计；这里不添加它们的 execution semantics。

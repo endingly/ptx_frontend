@@ -395,8 +395,6 @@ struct ModifierValueDomainDescriptor {
 };
 struct ModifierValueView {
   std::string_view kind_id;
-  /** Position of this slot in the variant's generated modifier order. */
-  ModifierSlotTag slot;
   ModifierValueKind value_kind;
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;
@@ -417,6 +415,11 @@ struct ModifierValueView {
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
   std::span<const SourceRange> locations;
+  /**
+   * Position of this slot in the variant's generated modifier order. Appended
+   * so that existing positional aggregate initializers keep compiling.
+   */
+  ModifierSlotTag slot;
 };
 struct VariantDescriptor {
   std::string_view variant_name;

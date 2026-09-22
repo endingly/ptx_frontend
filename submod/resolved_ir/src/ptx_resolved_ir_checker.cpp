@@ -1157,7 +1157,7 @@ CheckResult check_operand_layout_modifiers(
       continue;
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ModifierNotAllowedForLayout,
-        .range = context.instruction_range,
+        .range = diagnostic_range(actual.locations, context),
         .message = fmt::format(
             "Operand layout '{}' of instruction variant '{}' does not accept "
             "modifier '{}'.",

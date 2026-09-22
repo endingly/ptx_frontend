@@ -1481,6 +1481,155 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
         examples: [{ptx: "rsqrt.approx.ftz.f64 %d0, 1.0;", valid: true}]
 
+  - opcode: sin
+    section: "9.7.3.18"
+    doc: "Fast approximate single-precision sine."
+    syntax: "sin.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: sin_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "sin.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "sin.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: cos
+    section: "9.7.3.19"
+    doc: "Fast approximate single-precision cosine."
+    syntax: "cos.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: cos_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "cos.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "cos.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: lg2
+    section: "9.7.3.20"
+    doc: "Fast approximate single-precision base-2 logarithm."
+    syntax: "lg2.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: lg2_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "lg2.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "lg2.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: ex2
+    section: "9.7.3.21"
+    doc: "Fast approximate single-precision base-2 exponential."
+    syntax: "ex2.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: ex2_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "ex2.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "ex2.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: ex2
+    section: "9.7.4.10"
+    doc: "Half- and bfloat-precision base-2 exponential. The bfloat cohorts require FTZ."
+    syntax: "ex2.approx.{f16|f16x2} | ex2.approx.ftz.{bf16|bf16x2} dst, src"
+    variants:
+      - name: ex2_approx_f16
+        operands: $unary_f16_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples: [{ptx: "ex2.approx.f16 %h0, %h1;", valid: true}]
+      - name: ex2_approx_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples: [{ptx: "ex2.approx.f16x2 %r0, %r1;", valid: true}]
+      - name: ex2_approx_ftz_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples: [{ptx: "ex2.approx.ftz.bf16 %b0, %b1;", valid: true}]
+      - name: ex2_approx_ftz_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples: [{ptx: "ex2.approx.ftz.bf16x2 %r0, %r1;", valid: true}]
+
+  - opcode: tanh
+    section: "9.7.3.22"
+    doc: "Single-precision hyperbolic tangent. No FTZ, rounding, or saturation modifier."
+    syntax: "tanh.approx.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: tanh_approx_f32
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "tanh.approx.f32 %f0, %f1;", valid: true}]
+
+  - opcode: tanh
+    section: "9.7.4.9"
+    doc: "Half- and bfloat-precision hyperbolic tangent. No FTZ, rounding, or saturation modifier."
+    syntax: "tanh.approx.{f16|f16x2|bf16|bf16x2} dst, src"
+    variants:
+      - name: tanh_approx_f16
+        operands: $unary_f16_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples: [{ptx: "tanh.approx.f16 %h0, %h1;", valid: true}]
+      - name: tanh_approx_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples: [{ptx: "tanh.approx.f16x2 %r0, %r1;", valid: true}]
+      - name: tanh_approx_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples: [{ptx: "tanh.approx.bf16 %b0, %b1;", valid: true}]
+      - name: tanh_approx_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples: [{ptx: "tanh.approx.bf16x2 %r0, %r1;", valid: true}]
+
   - opcode: add
     section: "9.7.1.1"
     doc: "Integer add."

@@ -32,6 +32,9 @@ supported surface and its exclusions.
 - [Floating reciprocal and square-root coverage](docs/us-en/unary_float_coverage.md)
   and its [简体中文版本](docs/zh-han/unary_float_coverage.md) define the explicit
   `rcp`, `sqrt`, and `rsqrt` FP32/FP64 forms.
+- [Floating transcendental coverage](docs/us-en/transcendental_coverage.md) and
+  its [简体中文版本](docs/zh-han/transcendental_coverage.md) define the explicit
+  `sin`, `cos`, `lg2`, `ex2`, and `tanh` FP32 and half/bfloat forms.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

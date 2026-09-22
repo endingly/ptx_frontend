@@ -28,4 +28,4 @@ containers. Historical omitted-mode DIV for PTX 1.0–1.3 and
 `.target map_f64_to_f32` behavior are deliberately excluded because they need a
 target-profile contract outside these explicit forms.
 
-[Explicit reciprocal and square-root forms](unary_float_coverage.md) are now modelled separately. Transcendentals, MIN/MAX, and the existing ADD/SUB audit remain outside this document's scope.
+[Explicit reciprocal and square-root forms](unary_float_coverage.md) and [floating transcendentals](transcendental_coverage.md) are now modelled separately. MIN/MAX and the existing ADD/SUB audit remain outside this document's scope.

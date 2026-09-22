@@ -405,14 +405,16 @@ def _emit_variant_layout_descriptors(variant: ResolvedVariant, backend: CodegenU
 def _emit_operand_layout_forbidden_modifiers(
     variant: ResolvedVariant, index: int, layout: ResolvedOperandLayout
 ) -> str:
-    """Emit the slot-name array a layout rejects, or an empty string when it rejects none."""
+    """Emit the typed slot-index array a layout rejects, or an empty string."""
 
-    if not layout.forbidden_modifiers:
+    if not layout.forbidden_modifier_slots:
         return ""
-    values = ", ".join(f'"{slot}"' for slot in layout.forbidden_modifiers)
+    values = ", ".join(
+        f"checker::ModifierSlotTag{{{slot}}}" for slot in layout.forbidden_modifier_slots
+    )
     return (
-        f"  inline static constexpr std::array<std::string_view, "
-        f"{len(layout.forbidden_modifiers)}>\n"
+        f"  inline static constexpr std::array<checker::ModifierSlotTag, "
+        f"{len(layout.forbidden_modifier_slots)}>\n"
         f"      {variant.cpp_name}_operand_layout_{index}_forbidden_modifiers = "
         f"{{{values}}};"
     )
@@ -421,7 +423,7 @@ def _emit_operand_layout_forbidden_modifiers(
 def _emit_operand_layout_descriptor(
     variant: ResolvedVariant, index: int, layout: ResolvedOperandLayout
 ) -> str:
-    if layout.forbidden_modifiers:
+    if layout.forbidden_modifier_slots:
         forbidden = (
             f"{variant.cpp_name}_operand_layout_{index}_forbidden_modifiers"
         )

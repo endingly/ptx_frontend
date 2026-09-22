@@ -45,25 +45,25 @@ TEST(MinMaxCompleteness, ResolvesBinaryAndTernaryCohortsByArity) {
   EXPECT_EQ(binary.operand_layout, (ResolvedOperandLayoutTag{0}));
   EXPECT_FALSE(binary.ftz.value);
   EXPECT_FALSE(binary.nan.value);
-  EXPECT_FALSE(binary.xorsign.value);
+  EXPECT_FALSE(binary.xorsign_abs.value);
   EXPECT_TRUE(
       std::holds_alternative<Min::F32::BinaryOperands>(binary.operands));
 
   const auto& nan = std::get<Min::F32>(std::get<Min>(body[1]).variant);
   EXPECT_TRUE(nan.nan.value);
-  EXPECT_FALSE(nan.xorsign.value);
+  EXPECT_FALSE(nan.xorsign_abs.value);
 
   const auto& paired = std::get<Min::F32>(std::get<Min>(body[2]).variant);
   EXPECT_TRUE(paired.ftz.value);
   EXPECT_TRUE(paired.nan.value);
-  EXPECT_TRUE(paired.xorsign.value);
+  EXPECT_TRUE(paired.xorsign_abs.value);
   EXPECT_FALSE(paired.abs.value);
   EXPECT_EQ(paired.operand_layout, (ResolvedOperandLayoutTag{0}));
 
   const auto& ternary = std::get<Min::F32>(std::get<Min>(body[3]).variant);
   EXPECT_EQ(ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
   EXPECT_TRUE(ternary.abs.value);
-  EXPECT_FALSE(ternary.xorsign.value);
+  EXPECT_FALSE(ternary.xorsign_abs.value);
   EXPECT_TRUE(
       std::holds_alternative<Min::F32::TernaryOperands>(ternary.operands));
 
@@ -79,21 +79,63 @@ TEST(MinMaxCompleteness, ResolvesBinaryAndTernaryCohortsByArity) {
   EXPECT_EQ(Min::Bf16x2::type, ScalarType::BF16x2);
 
   const auto& max_paired = std::get<Max::F32>(std::get<Max>(body[11]).variant);
-  EXPECT_TRUE(max_paired.xorsign.value);
+  EXPECT_TRUE(max_paired.xorsign_abs.value);
   EXPECT_EQ(max_paired.operand_layout, (ResolvedOperandLayoutTag{0}));
   const auto& max_ternary = std::get<Max::F32>(std::get<Max>(body[12]).variant);
   EXPECT_TRUE(max_ternary.abs.value);
   EXPECT_EQ(max_ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
 
-  // Pin the generated descriptor's per-layout rejection sets.
+  // Pin the generated descriptor's per-layout rejection sets. Slots are
+  // addressed by their variant-local index: ftz=0, nan=1, xorsign_abs=2,
+  // abs=3, type=4.
   const auto& f32 = Min::get_checker_descriptor().variants[1];
   ASSERT_EQ(f32.operand_layouts.size(), 2u);
   EXPECT_EQ(f32.operand_layouts[0].layout_name, "binary");
   EXPECT_EQ(f32.operand_layouts[1].layout_name, "ternary");
   ASSERT_EQ(f32.operand_layouts[0].forbidden_modifiers.size(), 1u);
-  EXPECT_EQ(f32.operand_layouts[0].forbidden_modifiers.front(), "abs");
+  EXPECT_EQ(f32.operand_layouts[0].forbidden_modifiers.front().value, 3u);
   ASSERT_EQ(f32.operand_layouts[1].forbidden_modifiers.size(), 1u);
-  EXPECT_EQ(f32.operand_layouts[1].forbidden_modifiers.front(), "xorsign");
+  EXPECT_EQ(f32.operand_layouts[1].forbidden_modifiers.front().value, 2u);
+}
+
+/** Accept floating literals in every scalar source position of both arities. */
+TEST(MinMaxCompleteness, AcceptsScalarSourceLiterals) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel() {
+  .reg .f32 %f<4>; .reg .f64 %d<4>;
+  min.f32 %f0, 0f3f800000, %f1;
+  min.f32 %f0, %f1, 1.0;
+  max.f32 %f0, %f1, 0f00000000;
+  min.f64 %d0, 1.0, %d1;
+  min.f64 %d0, %d1, 1.0;
+  min.f32 %f0, %f1, %f2, 1.0;
+  min.abs.f32 %f0, 1.0, %f1, %f2;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  EXPECT_EQ(resolved->functions.front().body.size(), 7u);
+}
+
+/** Reject literals outside the scalar source positions. */
+TEST(MinMaxCompleteness, RejectsLiteralsWhereRegistersAreRequired) {
+  for (const auto source : {
+           "min.f32 1.0, %f1, %f2;",
+           "min.f32 %f0, 1, %f1;",
+           "min.f64 %d0, 1, %d1;",
+           "min.f16 %h0, %h1, 1.0;",
+           "min.f16x2 %r0, %r1, 1.0;",
+           "min.bf16 %b0, %b1, 1.0;",
+           "min.bf16x2 %r0, %r1, 1.0;",
+       }) {
+    SCOPED_TRACE(source);
+    const auto parsed = test_helpers::parseInstruction(source);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveInstruction(*parsed).has_value());
+  }
 }
 
 /** Reject the spellings each cohort or layout forbids, and the wrong arities. */

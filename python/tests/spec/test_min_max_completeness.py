@@ -75,7 +75,7 @@ class MinMaxCompletenessTests(unittest.TestCase):
             # cohort takes `.abs` alone.
             self.assertEqual(
                 [layout.forbidden_modifiers for layout in variant.operand_layouts],
-                [("abs",), ("xorsign",)],
+                [("abs",), ("xorsign_abs",)],
             )
             binary, ternary = variant.operand_layouts
             self.assertEqual(dict(ternary.availability), {"ptx": "8.8", "sm": 100})
@@ -94,8 +94,8 @@ class MinMaxCompletenessTests(unittest.TestCase):
                 modifiers = self.modifiers(opcode, name)
                 # No slot spells `.xorsign` without `.abs`, and the paired
                 # spelling is one token rather than two independent flags.
-                self.assertEqual(modifiers["xorsign"].token, ".xorsign.abs", name)
-                self.assertIs(modifiers["xorsign"].presence, ModifierPresence.OPTIONAL, name)
+                self.assertEqual(modifiers["xorsign_abs"].token, ".xorsign.abs", name)
+                self.assertIs(modifiers["xorsign_abs"].presence, ModifierPresence.OPTIONAL, name)
                 self.assertEqual(modifiers["nan"].token, ".NaN", name)
 
             for name in (f"{opcode}_f32", f"{opcode}_f16", f"{opcode}_f16x2"):
@@ -112,27 +112,34 @@ class MinMaxCompletenessTests(unittest.TestCase):
                     self.assertNotIn("abs", self.modifiers(opcode, name), name)
 
             # FP64 admits no FP32-only spelling at all.
-            for slot in ("ftz", "nan", "xorsign", "abs"):
+            for slot in ("ftz", "nan", "xorsign_abs", "abs"):
                 self.assertNotIn(slot, self.modifiers(opcode, f"{opcode}_f64"))
 
     def test_declares_per_cohort_register_containers(self) -> None:
-        """Pin each cohort's container, including the exact BF16 bit containers."""
+        """Pin each cohort's container and immediate policy, including BF16 bit containers."""
 
         # The FP32/FP64 cohorts take their type from the modifier slot, so only
-        # the half and bfloat cohorts bind a concrete container here.
+        # the half and bfloat cohorts bind a concrete container here. Only the
+        # scalar cohorts admit floating literals; half and bfloat stay
+        # register-only.
         containers = {}
         for opcode in ("min", "max"):
-            containers[f"{opcode}_f32"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH)
-            containers[f"{opcode}_f64"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH)
-            containers[f"{opcode}_f16"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH)
-            containers[f"{opcode}_f16x2"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH)
-            containers[f"{opcode}_bf16"] = ("b16", OperandRegisterWidthPolicy.EXACT)
-            containers[f"{opcode}_bf16x2"] = ("b32", OperandRegisterWidthPolicy.EXACT)
+            containers[f"{opcode}_f32"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH, True)
+            containers[f"{opcode}_f64"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH, True)
+            containers[f"{opcode}_f16"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH, False)
+            containers[f"{opcode}_f16x2"] = (None, OperandRegisterWidthPolicy.SAME_WIDTH, False)
+            containers[f"{opcode}_bf16"] = ("b16", OperandRegisterWidthPolicy.EXACT, False)
+            containers[f"{opcode}_bf16x2"] = ("b32", OperandRegisterWidthPolicy.EXACT, False)
 
-        for name, (container, policy) in containers.items():
+        for name, (container, policy, admits_literals) in containers.items():
             opcode = name.split("_", 1)[0]
             operands = self.instructions[opcode][name].operand_layouts[0].operands
-            self.assertEqual(tuple(operand.kind for operand in operands), (OperandKind.REGISTER,) * 3, name)
+            expected_kinds = (
+                (OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE, OperandKind.REGISTER_OR_IMMEDIATE)
+                if admits_literals
+                else (OperandKind.REGISTER,) * 3
+            )
+            self.assertEqual(tuple(operand.kind for operand in operands), expected_kinds, name)
             self.assertEqual(
                 tuple(operand.register_width_policy for operand in operands),
                 (policy,) * 3,
@@ -144,6 +151,17 @@ class MinMaxCompletenessTests(unittest.TestCase):
                     (container,) * 3,
                     name,
                 )
+
+    def test_three_source_layout_admits_literals_in_every_source(self) -> None:
+        """Keep the three-source sources immediate-capable like the binary ones."""
+
+        for opcode in ("min", "max"):
+            ternary = self.instructions[opcode][f"{opcode}_f32"].operand_layouts[1]
+            self.assertEqual(
+                tuple(operand.kind for operand in ternary.operands),
+                (OperandKind.REGISTER,)
+                + (OperandKind.REGISTER_OR_IMMEDIATE,) * 3,
+            )
 
 
 if __name__ == "__main__":

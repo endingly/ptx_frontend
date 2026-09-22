@@ -1,9 +1,13 @@
 """Boundary regressions for per-layout modifier constraints."""
 
+import pathlib
+import tempfile
 import unittest
 
 import jsonschema
+import yaml
 
+from ptx_frontend.spec.database import load_codegen_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize import normalize_instruction_spec
 from ptx_frontend.spec.resources import packaged_spec_schema
@@ -160,6 +164,82 @@ class LayoutModifierConstraintTests(unittest.TestCase):
                 )
             )
         self.assertIn("forbidden by every operand layout", str(raised.exception))
+
+    def test_rejects_cross_variant_overlap_despite_layout_constraints(self) -> None:
+        """Keep exclusivity conservative over the language the resolver matches.
+
+        ``select_variant_name`` does not consult layout constraints, so narrowing
+        one variant's layouts must not let two variants that share a syntactic
+        spelling pass the exclusivity check.
+        """
+
+        def flag(
+            name: str, presence: str, token: str, **extra: object
+        ) -> dict[str, object]:
+            entry: dict[str, object] = {
+                "name": name,
+                "kind": "flag",
+                "presence": presence,
+                "token": token,
+            }
+            entry.update(extra)
+            return entry
+
+        scalar_type = {
+            "name": "type",
+            "kind": "type",
+            "domain": "scalar_types",
+            "presence": "fixed",
+            "value": "f32",
+        }
+        # ``probe_a`` forbids each optional flag on one of its two layouts, so a
+        # layout-aware comparison would call it disjoint from ``probe_b`` even
+        # though both match ``.ftz.abs.f32``.
+        spec = _probe_spec([])
+        spec["instructions"][0]["variants"] = [
+            {
+                "name": "probe_a",
+                "availability": {"ptx": "1.0", "sm": 0},
+                "modifiers": [
+                    flag("ftz", "optional", ".ftz", default=False),
+                    flag("abs", "optional", ".abs", default=False),
+                    scalar_type,
+                ],
+                "operand_layouts": [
+                    {
+                        "name": "one",
+                        "operands": _probe_operands(1),
+                        "forbidden_modifiers": ["abs"],
+                    },
+                    {
+                        "name": "two",
+                        "operands": _probe_operands(2),
+                        "forbidden_modifiers": ["ftz"],
+                    },
+                ],
+            },
+            {
+                "name": "probe_b",
+                "availability": {"ptx": "1.0", "sm": 0},
+                "modifiers": [
+                    flag("ftz", "fixed", ".ftz", value=True),
+                    flag("abs", "fixed", ".abs", value=True),
+                    scalar_type,
+                ],
+                "operand_layouts": [
+                    {"name": "one", "operands": _probe_operands(1)}
+                ],
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "00.yaml").write_text(
+                yaml.safe_dump(spec, sort_keys=False), encoding="utf-8"
+            )
+            with self.assertRaises(ValueError) as raised:
+                load_codegen_database(spec_dir=root)
+        self.assertIn("overlapping modifier combination", str(raised.exception))
 
     def test_schema_accepts_forbidden_modifiers(self) -> None:
         """Keep the operand-layout property declared for the packaged schema."""

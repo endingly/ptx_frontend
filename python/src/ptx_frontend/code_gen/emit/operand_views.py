@@ -82,8 +82,12 @@ def emit_check_modifier_value_view(
     variant: ResolvedVariant,
     field: ResolvedField,
     backend: CodegenUnit,
+    slot_index: int,
 ) -> str:
     """Emit one checker view of a selected resolved modifier value."""
+
+    # The variant-local slot index is the typed identity layout constraints
+    # compare against; the source name stays for diagnostics.
 
     value_expr = (
         f"{instruction.cpp_name}::{variant.cpp_name}::{field.name}"
@@ -125,6 +129,7 @@ def emit_check_modifier_value_view(
 
     return f"""              ModifierValueView{{
                   .kind_id = "{field.source_name}",
+                  .slot = ModifierSlotTag{{{slot_index}}},
                   .value_kind = {value_kind},
                   .bool_value = {members[ResolvedValueKind.BOOL]},
                   .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},

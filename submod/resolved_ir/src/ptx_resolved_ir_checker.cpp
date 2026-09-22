@@ -1153,7 +1153,7 @@ CheckResult check_operand_layout_modifiers(
   for (const ModifierValueView& actual : actual_values) {
     if (!actual.is_present)
       continue;
-    if (!std::ranges::contains(layout.forbidden_modifiers, actual.kind_id))
+    if (!std::ranges::contains(layout.forbidden_modifiers, actual.slot))
       continue;
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ModifierNotAllowedForLayout,

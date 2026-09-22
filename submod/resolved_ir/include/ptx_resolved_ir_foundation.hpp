@@ -317,11 +317,16 @@ struct TargetInfo {
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
 };
+/** Variant-local index of one modifier slot in generated descriptor order. */
+struct ModifierSlotTag {
+  uint16_t value = 0;
+  bool operator==(const ModifierSlotTag&) const = default;
+};
 struct OperandLayoutDescriptor {
   std::string_view layout_name;
   AvailabilityDescriptor availability;
-  /** Modifier slot ids this layout rejects; layout selection is shape-only. */
-  std::span<const std::string_view> forbidden_modifiers;
+  /** Modifier slots this layout rejects; layout selection is shape-only. */
+  std::span<const ModifierSlotTag> forbidden_modifiers;
 };
 enum class ModifierValueKind : uint8_t {
   Bool,
@@ -390,6 +395,8 @@ struct ModifierValueDomainDescriptor {
 };
 struct ModifierValueView {
   std::string_view kind_id;
+  /** Position of this slot in the variant's generated modifier order. */
+  ModifierSlotTag slot;
   ModifierValueKind value_kind;
   bool bool_value = false;
   ScalarType scalar_type = ScalarType::Invalid;

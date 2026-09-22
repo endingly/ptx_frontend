@@ -134,8 +134,8 @@ def _emit_check_variant_lambda(
         for field in modifier_fields
     )
     modifier_value_views = ",\n".join(
-        emit_check_modifier_value_view(instruction, variant, field, backend)
-        for field in modifier_fields
+        emit_check_modifier_value_view(instruction, variant, field, backend, slot_index)
+        for slot_index, field in enumerate(modifier_fields)
     )
     operand_check = _emit_check_operand_dispatch(instruction, variant, variant_index, backend)
     lambda_name = _check_lambda_name(instruction, variant)

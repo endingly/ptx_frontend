@@ -751,7 +751,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(s32.fields[0].constant_value, "s32")
         self.assertEqual(
             [field.name for field in f32.modifier_fields],
-            ["ftz", "nan", "xorsign", "abs", "type"],
+            ["ftz", "nan", "xorsign_abs", "abs", "type"],
         )
         self.assertEqual(f32.modifier_fields[-1].constant_value, "f32")
 
@@ -766,7 +766,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(
             [layout.forbidden_modifiers for layout in f32.operand_layouts],
-            [("abs",), ("xorsign",)],
+            [("abs",), ("xorsign_abs",)],
         )
         binary, ternary = f32.operand_layouts
         self.assertEqual(
@@ -807,12 +807,12 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(s32.fields[0].constant_value, "s32")
         self.assertEqual(
             [field.name for field in f32.modifier_fields],
-            ["ftz", "nan", "xorsign", "abs", "type"],
+            ["ftz", "nan", "xorsign_abs", "abs", "type"],
         )
         self.assertEqual(f32.modifier_fields[-1].constant_value, "f32")
         self.assertEqual(
             [layout.forbidden_modifiers for layout in f32.operand_layouts],
-            [("abs",), ("xorsign",)],
+            [("abs",), ("xorsign_abs",)],
         )
 
     def test_abs_has_complete_signed_and_float_unary_variants(self) -> None:

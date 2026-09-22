@@ -96,6 +96,9 @@ TEST(TranscendentalCompleteness, RejectsInvalidExplicitForms) {
            "sin.approx.f32 %f0, %f1, %f2;",
            "sin.approx.f32 %f0, 1;",
            "tanh.approx.f16 %h0, 1.0;",
+           "sin.approx.f32 _, %f1;",
+           "tanh.approx.f16 _, %h1;",
+           "ex2.approx.ftz.bf16 _, %b1;",
        }) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
@@ -112,13 +115,41 @@ TEST(TranscendentalCompleteness, RejectsIntegerAndWrongWidthContainers) {
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .u32 %i; .reg .f32 %f; sin.approx.f32 %f, %i; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f; .reg .f64 %d; lg2.approx.f32 %f, %d; })ptx",
           R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f; ex2.approx.f16 %f, %f; })ptx",
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f16 %h; .reg .b16 %b; ex2.approx.f16x2 %h0, %b1; })ptx",
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f; tanh.approx.bf16x2 %f0, %f1; })ptx",
-          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .u32 %i; tanh.approx.bf16 %i, %i; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f16x2 %hx<2>; .reg .b16 %b<2>; ex2.approx.f16x2 %hx0, %b1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; tanh.approx.bf16x2 %f0, %f1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .u32 %i<2>; tanh.approx.bf16 %i0, %i1; })ptx",
       }) {
+    SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
+    // Resolution must succeed, so the rejection comes from the container
+    // contract rather than an unresolved register reference.
+    const auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    const auto invalid = validateModule(
+        *resolved, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(invalid.has_value());
+    EXPECT_EQ(invalid.error().front().kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
+/** Accept the declared container alternatives for the half and packed cohorts. */
+TEST(TranscendentalCompleteness, AcceptsDeclaredContainerAlternatives) {
+  for (
+      const auto source : {
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; sin.approx.f32 %f0, 1.0; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f16 %h<2>; .reg .b16 %b<2>; ex2.approx.f16 %h0, %b1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f16x2 %hx<2>; .reg .b32 %r<2>; ex2.approx.f16x2 %hx0, %r1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .b16 %b<2>; tanh.approx.bf16 %b0, %b1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .b32 %r<2>; tanh.approx.bf16x2 %r0, %r1; })ptx",
+          R"ptx(.version 9.3 .target sm_100 .entry kernel() { .reg .f32 %f<2>; ex2.approx.ftz.f32 %f0, %f1; })ptx",
+      }) {
+    SCOPED_TRACE(source);
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   }
 }
 

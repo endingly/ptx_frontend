@@ -1137,6 +1137,38 @@ CheckResult check_operand_layout_tag(std::string_view variant_name,
   }});
 }
 
+CheckResult check_operand_layout_modifiers(
+    const VariantDescriptor& variant, uint16_t selected_layout,
+    std::span<const ModifierValueView> actual_values, const Context& context) {
+  if (selected_layout >= variant.operand_layouts.size()) {
+    return check_operand_layout_tag(variant.variant_name, selected_layout,
+                                    variant.operand_layouts.size(), context);
+  }
+
+  const auto& layout = variant.operand_layouts[selected_layout];
+  if (layout.forbidden_modifiers.empty())
+    return {};
+
+  CheckDiagnostics diagnostics;
+  for (const ModifierValueView& actual : actual_values) {
+    if (!actual.is_present)
+      continue;
+    if (!std::ranges::contains(layout.forbidden_modifiers, actual.kind_id))
+      continue;
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierNotAllowedForLayout,
+        .range = context.instruction_range,
+        .message = fmt::format(
+            "Operand layout '{}' of instruction variant '{}' does not accept "
+            "modifier '{}'.",
+            layout.layout_name, variant.variant_name, actual.kind_id),
+    });
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
                                               uint16_t selected_layout,
                                               const Context& context) {

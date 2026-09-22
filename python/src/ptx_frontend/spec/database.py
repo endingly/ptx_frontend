@@ -238,34 +238,50 @@ def _variant_modifier_language(
                 owners.append((modifier.name, modifier.presence))
 
     modifiers_by_name = {modifier.name: modifier for modifier in variant.modifiers}
-    languages: dict[tuple[str, ...], tuple[str, ...]] = {}
+    bindings: dict[tuple[str, ...], tuple[str, ...]] = {}
     orders = (
         tuple(modifier.name for modifier in variant.modifiers),
         *variant.modifier_order_aliases,
     )
-    for order in orders:
-        language = _modifier_order_language(
-            tuple(modifiers_by_name[slot_name] for slot_name in order)
-        )
-        for sequence, binding in language.items():
-            previous_binding = languages.setdefault(sequence, binding)
-            if previous_binding != binding:
-                raise ValueError(
-                    f"opcode {opcode!r} variant {variant.name!r} modifier "
-                    f"order aliases bind {sequence!r} to different slot identities"
-                )
-    return set(languages)
+    language: set[tuple[str, ...]] = set()
+    # Layouts are arity-selected alternatives rather than competing variants, so
+    # the variant accepts the union of their languages and each layout
+    # contributes only the spellings it permits.
+    for forbidden in _layout_forbidden_sets(variant):
+        for order in orders:
+            order_language = _modifier_order_language(
+                tuple(modifiers_by_name[slot_name] for slot_name in order),
+                forbidden,
+            )
+            for sequence, binding in order_language.items():
+                previous_binding = bindings.setdefault(sequence, binding)
+                if previous_binding != binding:
+                    raise ValueError(
+                        f"opcode {opcode!r} variant {variant.name!r} modifier "
+                        f"order aliases bind {sequence!r} to different slot identities"
+                    )
+            language.update(order_language)
+    return language
+
+
+def _layout_forbidden_sets(variant: VariantSpec) -> set[frozenset[str]]:
+    """Return the distinct forbidden-slot sets across a variant's layouts."""
+
+    if not variant.operand_layouts:
+        return {frozenset()}
+    return {frozenset(layout.forbidden_modifiers) for layout in variant.operand_layouts}
 
 
 def _modifier_order_language(
     modifiers: tuple[ModifierSpec, ...],
+    forbidden: frozenset[str] = frozenset(),
 ) -> dict[tuple[str, ...], tuple[str, ...]]:
     """Return source sequences and their slot bindings for one complete order."""
 
     language: dict[tuple[str, ...], tuple[str, ...]] = {(): ()}
     for modifier in modifiers:
         spellings = set(modifier_spellings(modifier))
-        if modifier.presence is ModifierPresence.ABSENT:
+        if modifier.name in forbidden or modifier.presence is ModifierPresence.ABSENT:
             choices: set[str | None] = {None}
         elif modifier.presence is ModifierPresence.OPTIONAL:
             choices = {None, *spellings}

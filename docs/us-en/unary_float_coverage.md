@@ -16,4 +16,4 @@ Each source accepts a floating literal or same-width native floating/bit registe
 
 CUDA 13.3.73 evidence used `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`: 60 matrix modules yielded 39 expected accepts, 20 rejects, and the one documented permissive FP64-FTZ acceptance; four focused special-FP64 immediate/container probes all passed. Historical omitted-mode forms before PTX 1.4 and `.target map_f64_to_f32` behavior remain excluded because they require target-profile semantics outside the explicit model.
 
-[Floating transcendentals](transcendental_coverage.md) are now modelled separately. MIN/MAX and the existing ADD/SUB audit remain outside this document's scope.
+[Floating transcendentals](transcendental_coverage.md) and [floating MIN/MAX](min_max_coverage.md) are now modelled separately. The existing ADD/SUB audit remains outside this document's scope.

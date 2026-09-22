@@ -40,6 +40,7 @@ enum class CheckDiagnosticKind : uint8_t {
   MissingValidationContext,
   ModifierValueDomainMismatch,
   InvalidExecutionPredicate,
+  ModifierNotAllowedForLayout,
 };
 
 /** A checker failure anchored to a stable resolved-IR source range. */
@@ -89,6 +90,10 @@ CheckResult check_operand_layout_tag(std::string_view, uint16_t, size_t,
 /** Check target requirements contributed by a selected operand layout. */
 CheckResult check_operand_layout_availability(const VariantDescriptor&,
                                               uint16_t, const Context&);
+/** Check that spelled modifiers are admitted by the selected operand layout. */
+CheckResult check_operand_layout_modifiers(const VariantDescriptor&, uint16_t,
+                                           std::span<const ModifierValueView>,
+                                           const Context&);
 /** Check target requirements of selected dynamic modifier values. */
 CheckResult check_modifier_value_availability(
     std::span<const ModifierValueAvailabilityDescriptor>,

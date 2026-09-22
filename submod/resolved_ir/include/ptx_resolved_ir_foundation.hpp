@@ -320,6 +320,8 @@ struct TargetInfo {
 struct OperandLayoutDescriptor {
   std::string_view layout_name;
   AvailabilityDescriptor availability;
+  /** Modifier slot ids this layout rejects; layout selection is shape-only. */
+  std::span<const std::string_view> forbidden_modifiers;
 };
 enum class ModifierValueKind : uint8_t {
   Bool,

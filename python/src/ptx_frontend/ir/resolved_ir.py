@@ -413,6 +413,9 @@ class ResolvedOperandLayout:
     fields: tuple[ResolvedField, ...]
     bindings: tuple[ResolvedOperandBinding, ...]
     availability: tuple[tuple[str, Any], ...]
+    # Variant modifier slots this layout rejects. The checker reports a spelled
+    # slot in this set because layout selection itself is shape-only.
+    forbidden_modifiers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -533,6 +536,7 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             layout.operands,
             layout.availability,
             {field.source_name: field.name for field in modifier_fields},
+            layout.forbidden_modifiers,
         )
         for layout in variant.operand_layouts
     )
@@ -901,6 +905,7 @@ def _build_operand_layout(
     operands: tuple[OperandSpec, ...],
     availability: dict[str, Any],
     modifier_field_ids: dict[str, str],
+    forbidden_modifiers: tuple[str, ...] = (),
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -973,6 +978,7 @@ def _build_operand_layout(
             for operand, field in zip(operands, fields, strict=True)
         ),
         availability=tuple(availability.items()),
+        forbidden_modifiers=forbidden_modifiers,
     )
 
 

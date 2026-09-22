@@ -443,6 +443,10 @@ class OperandLayoutSpec:
     # Empty means that this layout introduces no target requirement beyond its
     # containing variant's availability.
     availability: dict[str, Any] = field(default_factory=dict)
+    # Modifier slots the containing variant admits but this layout rejects.
+    # Selection is by operand shape only, so a spelling outside this set is
+    # reported by the checker rather than being an ambiguity.
+    forbidden_modifiers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

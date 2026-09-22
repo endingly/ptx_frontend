@@ -1623,7 +1623,7 @@ TEST(ResolvedModule, ChecksM12MinTypes) {
   const auto& integer_min = std::get<Min>(body[0]);
   const auto& nan_min = std::get<Min>(body[1]);
   EXPECT_TRUE(std::holds_alternative<Min::S32>(integer_min.variant));
-  EXPECT_TRUE(std::holds_alternative<Min::NanF32>(nan_min.variant));
+  EXPECT_TRUE(std::holds_alternative<Min::F32>(nan_min.variant));
   EXPECT_TRUE(checker::check(integer_min,
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})
@@ -1683,7 +1683,7 @@ TEST(ResolvedModule, ChecksM12MaxTypes) {
   const auto& integer_max = std::get<Max>(body[0]);
   const auto& nan_max = std::get<Max>(body[1]);
   EXPECT_TRUE(std::holds_alternative<Max::S32>(integer_max.variant));
-  EXPECT_TRUE(std::holds_alternative<Max::NanF32>(nan_max.variant));
+  EXPECT_TRUE(std::holds_alternative<Max::F32>(nan_max.variant));
   EXPECT_TRUE(checker::check(integer_max,
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})

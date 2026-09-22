@@ -29,7 +29,8 @@ predicate destinations. That assembler cannot target `sm_20`, so the PTX 2.0 /
 `sm_20` boundary is enforced by frontend checker tests rather than assembler
 target evidence.
 
-[Explicit floating MAD](mad_coverage.md) is modelled separately. Later Issue 142
-work covers DIV, reciprocal and square-root families, transcendentals, MIN/MAX,
-and an audit of the existing ADD/SUB and mixed-family contracts; they are
+[Explicit floating MAD](mad_coverage.md), [DIV](div_coverage.md), and
+[reciprocal/square-root forms](unary_float_coverage.md) are modelled
+separately. Later Issue 142 work covers transcendentals, MIN/MAX, and an
+audit of the existing ADD/SUB and mixed-family contracts; they are
 intentionally not part of this document's implementation scope.

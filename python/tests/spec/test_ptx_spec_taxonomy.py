@@ -67,6 +67,9 @@ EXPECTED_SECTIONS = {
         "fma": {"9.7.3.6", "9.7.4.4", "9.7.5.3"},
         "testp": {"9.7.3.1"},
         "copysign": {"9.7.3.2"},
+        "rcp": {"9.7.3.13"},
+        "sqrt": {"9.7.3.15"},
+        "rsqrt": {"9.7.3.16"}
     },
     "comparison_and_selection.yaml": {
         "set": {"9.7.6.1"},

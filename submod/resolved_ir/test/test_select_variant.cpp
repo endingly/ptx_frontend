@@ -2551,9 +2551,11 @@ TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
   EXPECT_EQ(Div::RnF64::type, ScalarType::F64);
 }
 
-TEST(ResolveDiv, RejectsUnfrozenVariants) {
+TEST(ResolveDiv, RejectsInvalidFloatingModeCombinations) {
   for (const auto source :
-       {"div.rz.f32 %f0, %f1, %f2;", "div.approx.f32 %f0, %f1, %f2;",
+       {"div.f32 %f0, %f1, %f2;", "div.f64 %d0, %d1, %d2;",
+        "div.approx.rn.f32 %f0, %f1, %f2;",
+        "div.approx.full.f32 %f0, %f1, %f2;", "div.rn.ftz.f64 %d0, %d1, %d2;",
         "div.full.f64 %d0, %d1, %d2;", "div.rn.f16 %h0, %h1, %h2;",
         "div.sat.u32 %r0, %r1, %r2;"}) {
     const auto selected = selectVariant<Div>(parse_instruction(source));

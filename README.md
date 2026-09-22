@@ -26,6 +26,12 @@ supported surface and its exclusions.
 - [Floating `mad` coverage](docs/us-en/mad_coverage.md) and its
   [简体中文版本](docs/zh-han/mad_coverage.md) define the explicit-rounding FP32
   and FP64 forms and their excluded legacy profiles.
+- [Floating `div` coverage](docs/us-en/div_coverage.md) and its
+  [简体中文版本](docs/zh-han/div_coverage.md) define the explicit approximate,
+  full-range, and rounded FP32/FP64 forms.
+- [Floating reciprocal and square-root coverage](docs/us-en/unary_float_coverage.md)
+  and its [简体中文版本](docs/zh-han/unary_float_coverage.md) define the explicit
+  `rcp`, `sqrt`, and `rsqrt` FP32/FP64 forms.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

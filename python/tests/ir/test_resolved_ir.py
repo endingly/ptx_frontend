@@ -656,13 +656,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_div_merges_complete_integer_and_floating_binary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.div_instruction.variants],
-            ["RnF32", "RnF64", "U32", "S32", "U16", "U64", "S16", "S64"],
+            [
+                "RnF32",
+                "RnF64",
+                "DirectedF32",
+                "ApproxF32",
+                "FullF32",
+                "DirectedF64",
+                "U32",
+                "S32",
+                "U16",
+                "U64",
+                "S16",
+                "S64",
+            ],
         )
         self.assertEqual(
-            [field.name for field in self.div_instruction.variants[2].fields],
+            [field.name for field in self.div_instruction.variants[6].fields],
             ["type", "dst", "src1", "src2"],
         )
-        for variant in self.div_instruction.variants[:2]:
+        for variant in self.div_instruction.variants[:6]:
             self.assertEqual(
                 [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
                 [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,

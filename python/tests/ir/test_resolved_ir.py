@@ -4753,7 +4753,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertNotIn("#pragma once", source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>', source)
-        self.assertIn('#include "resolved_ir/checker/arithmetic.gen.hpp"', source)
+        self.assertIn('#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>', source)
         self.assertNotIn(
             "std::expected<Add::VariantType, ResolveDiagnostic>", source
         )
@@ -4841,7 +4841,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertNotIn("#pragma once", source)
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>', source)
-        self.assertIn('#include "resolved_ir/model/arithmetic.gen.hpp"', source)
+        self.assertIn('#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>', source)
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertTrue(
             all(category_source.count("namespace generated_detail {") == 1
@@ -4986,7 +4986,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = "\n".join(sources)
 
         self.assertIn('#include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>', source)
-        self.assertIn('#include "resolved_ir/model/arithmetic.gen.hpp"', source)
+        self.assertIn('#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>', source)
         self.assertTrue(
             all(category_source.count("namespace generated_detail {") == 1
                 for category_source in sources)

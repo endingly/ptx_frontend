@@ -36,7 +36,7 @@ def generate_resolved_ir_checker_category_declarations_header(
 #pragma once
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
-#include "resolved_ir/model/{category}.gen.hpp"
+#include <ptx_frontend/resolved_ir/model/{category}.gen.hpp>
 
 namespace ptx_frontend::resolved_ir::checker {{
 
@@ -60,7 +60,7 @@ def generate_resolved_ir_checker_declarations_header(
     }))
 
     includes = "\n".join(
-        f'#include "resolved_ir/checker/{category}.gen.hpp"'
+        f'#include <ptx_frontend/resolved_ir/checker/{category}.gen.hpp>'
         for category in category_headers
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)

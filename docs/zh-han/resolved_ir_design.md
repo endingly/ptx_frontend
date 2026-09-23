@@ -467,8 +467,9 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line 的非模板 matcher，
 再把选中的 variant name 转成对应 `VariantType`。opcode struct 以及
 `resolve<T>`、`check<T>` 的显式特化声明按 YAML `codegen_category` 生成。
-聚合 `resolved_ir.gen.hpp`、`resolved_ir_resolution.gen.hpp` 与
-`resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
+聚合 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`、
+`ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` 与
+`ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
 可以只包含所属 category 的 model 与特化声明头。完整 `ResolvedInstruction` union
 仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
 生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
@@ -549,7 +550,7 @@ instruction 约束仍不属于当前 ABI。
 
 实现入口见 `submod/resolved_ir/include/ptx_resolved_ir.hpp`、
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
-`resolved_ir.gen.hpp`。
+`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call

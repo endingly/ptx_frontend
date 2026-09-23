@@ -25,8 +25,16 @@ Two generated public types change shape, deliberately and confined to the opcode
 - `Min::NanF32` / `Max::NanF32` become `Min::F32` / `Max::F32`, because the frozen `.NaN` seeds are folded into the general FP32 cohort rather than duplicated.
 - `Min::F32` and `Max::F32` now carry `Operands = std::variant<BinaryOperands, TernaryOperands>`, and `ResolvedOperandLayoutTag{0}` selects the two-source layout while `{1}` selects the three-source one.
 
-`docs/us-en/code_conventions.md` requires a public rename to take "a reviewed compatibility path or an explicitly versioned API break". This slice takes neither: the package still carries no version boundary, so this is a deliberate documented break rather than a versioned one. The repository has no dedicated migration or changelog document, so the change is recorded here.
+For consumers, `Min::NanF32` / `Max::NanF32` references migrate to `Min::F32` / `Max::F32`. Given a `Min::F32` value named `value`, select the variant alternative matching its operand count:
+
+```cpp
+const auto& binary_operands = std::get<Min::F32::BinaryOperands>(value.operands);  // two-source
+// Or, when the instruction has three sources:
+const auto& ternary_operands = std::get<Min::F32::TernaryOperands>(value.operands);
+```
+
+These public shape changes define an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. No compatibility shim or parallel legacy representation is provided, so consumers must migrate to the renamed cohort and operand variant. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package remains at `0.1.0`. These are independent package versions with no lockstep requirement. The repository has no dedicated migration or changelog document, so this migration note stays here.
 
 Additions to shared checker structures are **appended** rather than inserted, so existing aggregate initializers keep compiling: `checker::ModifierValueView` gains `slot` as its final member, and `checker::OperandLayoutDescriptor` gains `forbidden_modifiers` alongside the new `CheckDiagnosticKind::ModifierNotAllowedForLayout`. The modifier diagnostic also reports the offending modifier's own source range when it is still retained, falling back to the context range otherwise.
 
-The remaining Issue 142 work is the audit of the existing ADD/SUB and mixed-precision contracts. It gains no execution semantics here.
+[Floating and mixed ADD/SUB](add_sub_coverage.md) reconciles the remaining §9.7.3–§9.7.5 cohorts. It gains no execution semantics here.

@@ -1,12 +1,12 @@
-#include <cassert>
 #include <iostream>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/base/base.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace {
@@ -36,9 +36,210 @@ constexpr std::string_view kFixture = R"ptx(
   cvt.pack.sat.u2.s32.b32 %u0, %s0, %s1, 0x12345678;
   cvt.rmi.s32.f32 %s2, %f0;
   cvt.rn.satfinite.scaled::n2::ue8m0.s2f6x2.f32 %h0, %f2, %f3, %h1;
+  testp.normal.f32 %p0, %f1;
+  copysign.f32 %f0, %f1, %f2;
+  sin.approx.ftz.f32 %f0, %f1;
+  ex2.approx.ftz.bf16 %h0, %h1;
+  min.ftz.NaN.xorsign.abs.f32 %f0, %f1, %f2;
+  min.ftz.NaN.abs.f32 %f0, %f1, %f2, %f3;
+  max.xorsign.abs.f32 %f0, %f1, %f2;
+  max.abs.f32 %f0, %f1, %f2, %f3;
+  add.f32.f16 %f0, %h1, %f1;
+  add.f32.f16 %f0, %h1, 1.0;
+  sub.f32.bf16 %f0, %h1, %f1;
+  sub.f32.bf16 %f0, %h1, 2.0;
   ret;
 }
 )ptx";
+
+namespace ir = ptx_frontend::resolved_ir;
+
+/** Report a failed public-contract check in both Debug and Release builds. */
+bool require(bool condition, std::string_view description) {
+  if (!condition)
+    std::cerr << "consumer contract failed: " << description << '\n';
+  return condition;
+}
+
+/** Check that owned validation rejects a deliberate public-IR mutation. */
+bool rejectsMutation(const ir::ResolvedModule& module,
+                     ir::checker::CheckDiagnosticKind expected,
+                     std::string_view description) {
+  const auto result = ir::validateModule(
+      module, ir::ModuleValidationPolicy::RequireCompleteContext);
+  const bool matched = !result && !result.error().empty() &&
+                       result.error().front().kind == expected;
+  if (!matched && !result && !result.error().empty())
+    std::cerr << "observed validation diagnostic: "
+              << result.error().front().message << '\n';
+  return require(matched, description);
+}
+
+/** Inspect the typed instruction contract after all syntax owners are gone. */
+bool checkExtendedContract(ir::ResolvedModule& module) {
+  if (!require(module.functions.size() == 1, "one owned function"))
+    return false;
+  auto& body = module.functions.front().body;
+  if (!require(body.size() == 21, "all conversion and arithmetic instructions"))
+    return false;
+
+  auto* testp = std::get_if<ir::Testp>(&body[8]);
+  auto* property =
+      testp ? std::get_if<ir::Testp::F32>(&testp->variant) : nullptr;
+  if (!require(property && property->property.value ==
+                               ptx_frontend::base::TestProperty::Normal,
+               "typed testp.normal.f32 property"))
+    return false;
+  const auto* copysign = std::get_if<ir::Copysign>(&body[9]);
+  if (!require(copysign &&
+                   std::holds_alternative<ir::Copysign::F32>(copysign->variant),
+               "typed copysign.f32 variant"))
+    return false;
+  const auto* sin = std::get_if<ir::Sin>(&body[10]);
+  const auto* sin_f32 =
+      sin ? std::get_if<ir::Sin::ApproxF32>(&sin->variant) : nullptr;
+  if (!require(sin_f32 && sin_f32->ftz.value,
+               "typed transcendental approximation and FTZ"))
+    return false;
+  const auto* ex2 = std::get_if<ir::Ex2>(&body[11]);
+  if (!require(
+          ex2 && std::holds_alternative<ir::Ex2::ApproxFtzBf16>(ex2->variant),
+          "typed BF16 transcendental variant"))
+    return false;
+
+  auto* min_binary_instruction = std::get_if<ir::Min>(&body[12]);
+  auto* min_ternary_instruction = std::get_if<ir::Min>(&body[13]);
+  auto* max_binary_instruction = std::get_if<ir::Max>(&body[14]);
+  auto* max_ternary_instruction = std::get_if<ir::Max>(&body[15]);
+  auto* min_binary =
+      min_binary_instruction
+          ? std::get_if<ir::Min::F32>(&min_binary_instruction->variant)
+          : nullptr;
+  auto* min_ternary =
+      min_ternary_instruction
+          ? std::get_if<ir::Min::F32>(&min_ternary_instruction->variant)
+          : nullptr;
+  auto* max_binary =
+      max_binary_instruction
+          ? std::get_if<ir::Max::F32>(&max_binary_instruction->variant)
+          : nullptr;
+  auto* max_ternary =
+      max_ternary_instruction
+          ? std::get_if<ir::Max::F32>(&max_ternary_instruction->variant)
+          : nullptr;
+  if (!require(
+          min_binary && min_ternary && max_binary && max_ternary &&
+              min_binary->operand_layout == ir::ResolvedOperandLayoutTag{0} &&
+              min_ternary->operand_layout == ir::ResolvedOperandLayoutTag{1} &&
+              max_binary->operand_layout == ir::ResolvedOperandLayoutTag{0} &&
+              max_ternary->operand_layout == ir::ResolvedOperandLayoutTag{1} &&
+              std::holds_alternative<ir::Min::F32::BinaryOperands>(
+                  min_binary->operands) &&
+              std::holds_alternative<ir::Min::F32::TernaryOperands>(
+                  min_ternary->operands) &&
+              std::holds_alternative<ir::Max::F32::BinaryOperands>(
+                  max_binary->operands) &&
+              std::holds_alternative<ir::Max::F32::TernaryOperands>(
+                  max_ternary->operands) &&
+              min_binary->ftz.value && min_binary->nan.value &&
+              min_binary->xorsign_abs.value && !min_binary->abs.value &&
+              min_ternary->ftz.value && min_ternary->nan.value &&
+              !min_ternary->xorsign_abs.value && min_ternary->abs.value &&
+              max_binary->xorsign_abs.value && !max_binary->abs.value &&
+              !max_ternary->xorsign_abs.value && max_ternary->abs.value,
+          "typed MIN/MAX modifier and operand layouts"))
+    return false;
+
+  auto* add_register_instruction = std::get_if<ir::Add>(&body[16]);
+  auto* add_immediate_instruction = std::get_if<ir::Add>(&body[17]);
+  auto* sub_register_instruction = std::get_if<ir::Sub>(&body[18]);
+  auto* sub_immediate_instruction = std::get_if<ir::Sub>(&body[19]);
+  auto* add_register =
+      add_register_instruction
+          ? std::get_if<ir::Add::MixedF32>(&add_register_instruction->variant)
+          : nullptr;
+  auto* add_immediate =
+      add_immediate_instruction
+          ? std::get_if<ir::Add::MixedF32>(&add_immediate_instruction->variant)
+          : nullptr;
+  auto* sub_register =
+      sub_register_instruction
+          ? std::get_if<ir::Sub::MixedF32>(&sub_register_instruction->variant)
+          : nullptr;
+  auto* sub_immediate =
+      sub_immediate_instruction
+          ? std::get_if<ir::Sub::MixedF32>(&sub_immediate_instruction->variant)
+          : nullptr;
+  if (!require(add_register && add_immediate && sub_register && sub_immediate &&
+                   add_register->input_type.value ==
+                       ptx_frontend::base::ScalarType::F16 &&
+                   add_immediate->input_type.value ==
+                       ptx_frontend::base::ScalarType::F16 &&
+                   sub_register->input_type.value ==
+                       ptx_frontend::base::ScalarType::BF16 &&
+                   sub_immediate->input_type.value ==
+                       ptx_frontend::base::ScalarType::BF16,
+               "typed mixed ADD/SUB variants"))
+    return false;
+  const auto* addend_register =
+      std::get_if<ir::ResolvedRegisterRef>(&add_register->addend.value);
+  const auto* subtrahend_register =
+      std::get_if<ir::ResolvedRegisterRef>(&sub_register->subtrahend.value);
+  const auto* addend_immediate =
+      std::get_if<ir::ResolvedImmediate>(&add_immediate->addend.value);
+  const auto* subtrahend_immediate =
+      std::get_if<ir::ResolvedImmediate>(&sub_immediate->subtrahend.value);
+  if (!require(
+          addend_register && addend_register->spelling == "%f1" &&
+              addend_register->declared_type ==
+                  ptx_frontend::base::ScalarType::F32 &&
+              subtrahend_register && subtrahend_register->spelling == "%f1" &&
+              subtrahend_register->declared_type ==
+                  ptx_frontend::base::ScalarType::F32 &&
+              addend_immediate &&
+              addend_immediate->type == ptx_frontend::base::ScalarType::F32 &&
+              addend_immediate->bits == 0x3F800000u && subtrahend_immediate &&
+              subtrahend_immediate->type ==
+                  ptx_frontend::base::ScalarType::F32 &&
+              subtrahend_immediate->bits == 0x40000000u,
+          "mixed register and floating-immediate values"))
+    return false;
+
+  min_binary->abs.value = true;
+  const bool forbidden_binary_modifier = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
+      "binary MIN forbids ternary abs modifier");
+  min_binary->abs.value = false;
+  if (!forbidden_binary_modifier)
+    return false;
+  max_ternary->xorsign_abs.value = true;
+  const bool forbidden_ternary_modifier = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
+      "ternary MAX forbids binary xorsign modifier");
+  max_ternary->xorsign_abs.value = false;
+  if (!forbidden_ternary_modifier)
+    return false;
+  const auto original_abs = min_ternary->abs;
+  min_ternary->abs = ptx_frontend::WithLocs<bool>{false};
+  min_ternary->operand_layout = ir::ResolvedOperandLayoutTag{0};
+  const bool mismatched_layout = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+      "MIN rejects a layout tag/payload mismatch");
+  min_ternary->operand_layout = ir::ResolvedOperandLayoutTag{1};
+  min_ternary->abs = original_abs;
+  if (!mismatched_layout)
+    return false;
+  property->property.value = ptx_frontend::base::TestProperty::Invalid;
+  const bool invalid_property = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "TESTP rejects an invalid typed property");
+  property->property.value = ptx_frontend::base::TestProperty::Normal;
+  return invalid_property &&
+         require(ir::validateModule(
+                     module, ir::ModuleValidationPolicy::RequireCompleteContext)
+                     .has_value(),
+                 "restored owned module validates");
+}
 
 /**
  * Resolve a module while parser state is alive, then validate the owned model
@@ -69,7 +270,8 @@ int runOwnedValidation() {
     owned.emplace(std::move(*resolved));
   }
 
-  assert(owned.has_value());
+  if (!require(owned.has_value(), "resolved module survived parser lifetime"))
+    return 3;
   const auto checked = ptx_frontend::resolved_ir::validateModule(
       *owned, ptx_frontend::resolved_ir::ModuleValidationPolicy::
                   RequireCompleteContext);
@@ -78,8 +280,10 @@ int runOwnedValidation() {
               << " diagnostic(s)\n";
     for (const auto& diagnostic : checked.error())
       std::cerr << diagnostic.message << '\n';
-    return 3;
+    return 4;
   }
+  if (!checkExtendedContract(*owned))
+    return 5;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

@@ -8,8 +8,8 @@
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
+#include <ptx_frontend/resolved_ir/resolved_ir.gen.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
-#include "resolved_ir.gen.hpp"
 
 namespace ptx_frontend::resolved_ir {
 

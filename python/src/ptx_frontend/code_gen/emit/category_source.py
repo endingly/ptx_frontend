@@ -42,8 +42,8 @@ def generate_resolved_ir_category_source(
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
-#include "resolved_ir/checker/{category}.gen.hpp"
-#include "resolved_ir/resolution/{category}.gen.hpp"
+#include <ptx_frontend/resolved_ir/checker/{category}.gen.hpp>
+#include <ptx_frontend/resolved_ir/resolution/{category}.gen.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 

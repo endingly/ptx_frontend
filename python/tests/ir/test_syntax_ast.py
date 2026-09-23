@@ -436,7 +436,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [
                 (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
                 (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
-                (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
+                # The FP32 subtrahend is immediate-capable; the narrow source
+                # and the destination are not.
+                (
+                    OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+                    OperandPresence.REQUIRED,
+                ),
             ],
         )
 
@@ -1916,7 +1921,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include "resolved_ir/model/arithmetic.gen.hpp"',
+            '#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)

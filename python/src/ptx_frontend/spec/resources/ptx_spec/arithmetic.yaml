@@ -386,7 +386,7 @@ operand_patterns:
         expr: modifier(input_type)
 
     - name: addend
-      kind: reg
+      kind: reg_or_imm
       role: src2
       access: read
       type:
@@ -653,6 +653,8 @@ instructions:
             valid: true
           - ptx: "add.rz.sat.f32.bf16 d, a, c;"
             valid: true
+          - ptx: "add.f32.f16 d, a, 1.0;"
+            valid: true
 
   - opcode: sub
     section: "9.7.3.4"
@@ -884,7 +886,7 @@ instructions:
               expr: modifier(input_type)
 
           - name: subtrahend
-            kind: reg
+            kind: reg_or_imm
             role: src2
             access: read
             type:

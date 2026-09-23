@@ -138,18 +138,20 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 一个 category 的 opcode struct 与 module-reference visitor |
-| `public/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合所有 category model header 与 union 的兼容头 |
-| `public/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 可独立包含的 category 特化声明 |
-| `public/resolved_ir_resolution.gen.hpp` / `public/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 一个 category 的 opcode struct 与 module-reference visitor |
+| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
+| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合所有 category model header 与 union 的兼容头 |
+| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 可独立包含的 category 特化声明 |
+| `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 一个 category 的 out-of-line resolver 与 checker 特化定义 |
 | `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category 所有的 descriptor storage 与 getter |
 
-生成的公开头位于 `submod/resolved_ir` 的构建树 `generated/public` include
-root。`submod/resolved_ir` include 工程级的 `cmake/generate_ptx_frontend.cmake`；
+生成的公开头位于 `submod/resolved_ir` 构建树的
+`generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
+私有生成源码和支持头保留在 `generated/private`，不安装。`submod/resolved_ir`
+include 工程级的 `cmake/generate_ptx_frontend.cmake`；
 该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
 target。顶层只提供 submodule 编排与 facade target。
 

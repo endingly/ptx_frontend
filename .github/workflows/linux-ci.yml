@@ -172,6 +172,21 @@ jobs:
             --output "$CCACHE_METRICS_DIR/tests.json" || true
           ccache --show-stats || true
 
+      - name: Test installed public API consumer
+        if: success() && matrix.preset == 'ci-linux-gcc-debug'
+        shell: bash
+        run: |
+          install_prefix="$RUNNER_TEMP/ptx-frontend-consumer-install"
+          consumer_build="$RUNNER_TEMP/ptx-frontend-consumer-build"
+          dependency_prefix="$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/vcpkg_installed/x64-linux"
+          cmake --install "out/build/${{ matrix.preset }}" --prefix "$install_prefix"
+          cmake -S examples/conversion_consumer -B "$consumer_build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dptx_frontend_DIR="$install_prefix/lib/cmake/ptx_frontend" \
+            -DCMAKE_PREFIX_PATH="$install_prefix;$dependency_prefix"
+          cmake --build "$consumer_build"
+          "$consumer_build/conversion_consumer"
+
       - name: Save PR compiler cache
         if: >
           github.event_name == 'pull_request' &&

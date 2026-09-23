@@ -19,11 +19,13 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 The package then defines:
 
 - `ptx_frontend_PTX_SPEC_DIR`, the installed directory containing the public PTX instruction YAML files;
-- `ptx_frontend_PTX_SPEC_SCHEMA`, the installed `ptx-instr-v1.schema.yaml` path.
+- `ptx_frontend_PTX_SPEC_SCHEMA`, the installed `ptx-instr-v1.schema.yaml` path;
+- `ptx_frontend_PTX_CPP_BACKEND_SPEC`, the installed C++ backend mapping YAML path;
+- `ptx_frontend_PTX_CPP_BACKEND_SCHEMA`, the installed backend schema path.
 
 The canonical PTX specification lives in `python/src/ptx_frontend/spec/resources/ptx_spec` and is also packaged as Python package data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` is the repository input directory used by the source build.
 
-The repository-specific C++ backend policy remains at `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`; it is deliberately not part of the public `ptx_spec` component.
+The C++ backend mapping is sourced from `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and installed at `share/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml`. Its schema is installed at `share/ptx_frontend/ptx-cpp-backend-v2.schema.yaml`. The four resource paths are checked when `ptx_spec` is requested, and the exported paths are relative to the package's installed prefix so the package can be relocated.
 
 ## Python model reuse
 

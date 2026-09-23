@@ -167,6 +167,14 @@ class GenerationPlanTests(unittest.TestCase):
             output = Path(directory) / "generated"
             plan = build_generation_plan(context, output)
             self.assertEqual(len(plan.paths), len(set(plan.paths)))
+            self.assertTrue(
+                all(
+                    path.relative_to(output).parts[:3]
+                    == ("public", "ptx_frontend", "resolved_ir")
+                    for path in plan.paths
+                    if path.relative_to(output).parts[0] == "public"
+                )
+            )
             self.assertEqual(
                 plan.paths,
                 build_generation_plan(context, output).paths,
@@ -296,21 +304,28 @@ class GenerationPlanTests(unittest.TestCase):
             output = Path(directory) / "generated"
             active = output / "private/resolved_ir_arithmetic.gen.cpp"
             stale = output / "private/resolved_ir_legacy.gen.cpp"
-            stale_nested = output / "public/resolved_ir/model/retired.gen.hpp"
+            stale_nested = output / "public/ptx_frontend/resolved_ir/model/retired.gen.hpp"
+            old_public = output / "public/resolved_ir.gen.hpp"
+            old_category = output / "public/resolved_ir/model/arithmetic.gen.hpp"
             active.parent.mkdir(parents=True)
             active.write_text("active", encoding="utf-8")
             stale.write_text("stale", encoding="utf-8")
             stale_nested.parent.mkdir(parents=True)
             stale_nested.write_text("stale", encoding="utf-8")
+            old_public.write_text("old layout", encoding="utf-8")
+            old_category.parent.mkdir(parents=True)
+            old_category.write_text("old layout", encoding="utf-8")
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
                 "private/resolved_ir_arithmetic.gen.cpp\n"
-                "public/resolved_ir/model/retired.gen.hpp\n",
+                "public/ptx_frontend/resolved_ir/model/retired.gen.hpp\n",
                 encoding="utf-8",
             )
             cli.remove_obsolete_generated_files(output, (active,))
             self.assertTrue(active.exists())
             self.assertFalse(stale.exists())
             self.assertFalse(stale_nested.exists())
+            self.assertFalse(old_public.exists())
+            self.assertFalse(old_category.exists())
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
                 "../outside.gen.hpp\n", encoding="utf-8"
             )
@@ -329,7 +344,7 @@ class GenerationPlanTests(unittest.TestCase):
             output = root / "generated"
             spec_dir.mkdir()
             backend_spec.write_text("backend\n", encoding="utf-8")
-            active = output / "public/resolved_ir/model/arithmetic.gen.hpp"
+            active = output / "public/ptx_frontend/resolved_ir/model/arithmetic.gen.hpp"
 
             def emit(_context, *, output_path: Path) -> None:
                 output_path.write_text("model\n", encoding="utf-8")

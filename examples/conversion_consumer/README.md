@@ -17,6 +17,8 @@ The source covers a targeted module with these representative forms:
   addend/subtrahend values;
 - ordinary `set` with typed floating comparison and Boolean predicate constant;
 - half/bfloat `set` with typed packed and scalar result/source alternatives;
+- ordinary `slct` with integer and floating numeric selectors, data and
+  selector immediates, and typed `.ftz`;
 - ordinary `selp.s32` and the retained `selp.u32` alternative, including
   complemented register and integer predicate sources.
 

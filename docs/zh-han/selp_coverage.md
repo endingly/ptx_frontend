@@ -6,6 +6,6 @@ Frontend 建模 [PTX ISA 9.3 §9.7.6.3](https://docs.nvidia.com/cuda/archive/13.
 
 全部 form 的 PTX minimum 为 1.0。`.f64` 另需 `sm_13`；其余 type 没有本 instruction 额外的 target minimum。Target-aware checker 拒绝在更早 SM 上使用 `.f64`，owned-IR revalidation 会拒绝被改成选定 variant domain 之外的 type。Frontend 不求值 predicate，也不复制选定 value。
 
-[C++ SELP 测试](../../submod/resolved_ir/test/test_selp_completeness.cpp) 覆盖经验证 module 中的所有 type、已有 U32 variant、无效 modifier/operand、声明 type 不匹配、`.f64` target 边界以及被修改的 public IR。[Python spec 测试](../../python/tests/spec/test_selp_completeness.py) 验证不重叠的 type domain、value availability 和 operand descriptor。Ordinary `set`、half/bfloat `set` 与更广的 `slct` form 属于后续独立覆盖工作。
+[C++ SELP 测试](../../submod/resolved_ir/test/test_selp_completeness.cpp) 覆盖经验证 module 中的所有 type、已有 U32 variant、无效 modifier/operand、声明 type 不匹配、`.f64` target 边界以及被修改的 public IR。[Python spec 测试](../../python/tests/spec/test_selp_completeness.py) 验证不重叠的 type domain、value availability 和 operand descriptor。相关 [SET](set_coverage.md) 与 [SLCT](slct_coverage.md) form 分别有自己的覆盖 contract。
 
 C++ package version 从 0.1.0 升至 0.2.0，因为 `Selp::U32::predicate.value` 现在保存 `ResolvedPredicateSource`，原先为 `ResolvedPredicate`。读取 register predicate 的 consumer 需先检查 variant alternative，再使用 `std::get<ResolvedPredicate>(value)`；source text 为 integer predicate 时还需处理 `ResolvedPredicateConstant`。`Selp::U32` variant identity 不变。这是 source 与 binary API 变更；installed C++ consumer 需使用新 header 与 library 重新构建。

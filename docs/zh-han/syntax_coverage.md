@@ -41,6 +41,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `setp` | 支持 | 普通与 half/bfloat 比较、Boolean predicate source、destination shape 及目标边界见 [SETP 覆盖](setp_coverage.md)；不执行比较运算 |
 | 已建模的 `set` | 支持 | 普通与 half/bfloat result/source type、comparison 与 Boolean domain、`.ftz`、operand container 及 target 下限见 [SET 覆盖](set_coverage.md)；不执行比较运算 |
 | Ordinary `selp` | 支持 | PTX 9.3 全部 ordinary scalar type、predicate selection operand 与 `.f64` target 边界见 [SELP 覆盖](selp_coverage.md)；不执行选择运算 |
+| 已建模的 `slct` | 支持 | PTX 9.3 全部 ordinary data type、numeric selector、`.ftz`、operand container 与 `.f64` target 边界见 [SLCT 覆盖](slct_coverage.md)；不执行选择运算 |
 | 已建模的 `ld`/`st` | 支持 | Scalar/vector、shared 子空间、cache-control 组合、有序语义、NC load 和 unified-address 检查见 [LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)；内存执行与分配不属于 frontend |
 | 扩展精度整数 | 支持 | §9.7.2 全部文档化的 `add`/`addc`/`sub`/`subc`/`mad`/`madc` type、mode 与 CC-effect 组合均提供 typed carry/borrow effect 和目标检查，见 [carry 覆盖](carry_coverage.md)；运行时 CC 状态仍不属于 frontend |
 | 已建模的 `mad` | 支持子集 | 保留 integer 与 carry form；explicit-rounding FP32/FP64 form、operand、target minimum 及排除的 legacy profile 见 [MAD 覆盖](mad_coverage.md)。 |

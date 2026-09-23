@@ -53,6 +53,8 @@ constexpr std::string_view kFixture = R"ptx(
   selp.u32 %u0, %u0, 0, 2;
   set.num.xor.ftz.f16x2.f16x2 %b3, %b1, %b2, !0;
   set.eq.bf16.f16 %h0, %h1, %h1;
+  slct.u32.s32 %u0, %u0, 0, -1;
+  slct.ftz.u64.f32 %rd0, %rd0, %rd0, -0.0;
   ret;
 }
 )ptx";
@@ -85,7 +87,7 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 26, "all conversion and arithmetic instructions"))
+  if (!require(body.size() == 28, "all conversion and arithmetic instructions"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);
@@ -267,6 +269,31 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed half/bfloat SET alternatives and owned operands"))
     return false;
 
+  auto* slct_integer_instruction = std::get_if<ir::Slct>(&body[25]);
+  auto* slct_integer =
+      slct_integer_instruction
+          ? std::get_if<ir::Slct::S32>(&slct_integer_instruction->variant)
+          : nullptr;
+  auto* slct_floating_instruction = std::get_if<ir::Slct>(&body[26]);
+  auto* slct_floating =
+      slct_floating_instruction
+          ? std::get_if<ir::Slct::F32>(&slct_floating_instruction->variant)
+          : nullptr;
+  if (!require(slct_integer &&
+                   slct_integer->dtype.value ==
+                       ptx_frontend::base::ScalarType::U32 &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_integer->src_false.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_integer->selector.value) &&
+                   slct_floating && slct_floating->ftz.value &&
+                   slct_floating->dtype.value ==
+                       ptx_frontend::base::ScalarType::U64 &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_floating->selector.value),
+               "typed SLCT selector variants and owned numeric operands"))
+    return false;
+
   min_binary->abs.value = true;
   const bool forbidden_binary_modifier = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
@@ -311,6 +338,13 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
       "half SET rejects an integer-only comparison");
   set_half->comparison.value = ptx_frontend::base::ComparisonOperator::Num;
   if (!invalid_half_domain)
+    return false;
+  slct_floating->dtype.value = ptx_frontend::base::ScalarType::F16;
+  const bool invalid_slct_data_type = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "SLCT rejects an unsupported data type");
+  slct_floating->dtype.value = ptx_frontend::base::ScalarType::U64;
+  if (!invalid_slct_data_type)
     return false;
   selp_scalar->type.value = ptx_frontend::base::ScalarType::F16;
   const bool invalid_selp_domain = rejectsMutation(

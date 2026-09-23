@@ -47,6 +47,9 @@ supported surface and its exclusions.
 - [`set` coverage](docs/us-en/set_coverage.md) and its
   [简体中文版本](docs/zh-han/set_coverage.md) define ordinary and half/bfloat
   result/source types, Boolean and `.ftz` controls, and target limits.
+- [`slct` coverage](docs/us-en/slct_coverage.md) and its
+  [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
+  types, numeric selectors, `.ftz`, operand containers, and target limits.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

@@ -77,7 +77,7 @@ EXPECTED_SECTIONS = {
         "tanh": {"9.7.3.22", "9.7.4.9"}
     },
     "comparison_and_selection.yaml": {
-        "set": {"9.7.6.1"},
+        "set": {"9.7.6.1", "9.7.7.1"},
         "setp": {"9.7.6.2", "9.7.7.2"},
         "selp": {"9.7.6.3"},
         "slct": {"9.7.6.4"},

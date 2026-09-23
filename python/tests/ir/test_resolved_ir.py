@@ -3435,7 +3435,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             {"ptx": "2.0", "sm": 20},
         )
 
-    def test_ldu_global_u32_model(self) -> None:
+    def test_ldu_scalar_and_vector_models(self) -> None:
         database = self.database
         ldu = next(
             instruction
@@ -3446,29 +3446,72 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Ldu")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["GlobalU32"]
-        )
-        variant = resolved.variants[0]
-        self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 0})
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
+            [variant.cpp_name for variant in resolved.variants],
             [
-                ("state_space", "MemoryStateSpace"),
-                ("type", "ScalarType"),
+                "GenericScalar",
+                "ExplicitScalar",
+                "GenericV2",
+                "ExplicitV2",
+                "GenericV4",
+                "ExplicitV4",
+            ],
+        )
+        (
+            generic_scalar,
+            explicit_scalar,
+            generic_v2,
+            explicit_v2,
+            generic_v4,
+            explicit_v4,
+        ) = resolved.variants
+        self.assertEqual(dict(generic_scalar.availability), {"ptx": "2.0", "sm": 20})
+        self.assertEqual(dict(explicit_scalar.availability), {"ptx": "2.0", "sm": 0})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in generic_scalar.fields],
+            [
+                ("type", "WithLocs<ScalarType>"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("address", "WithLocs<ResolvedAddress>"),
             ],
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[0].register_width_policy,
+            generic_scalar.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[1].state_space_modifier_field_id,
+            [(field.name, field_cpp_type(field)) for field in explicit_scalar.fields],
+            [
+                ("state_space", "MemoryStateSpace"),
+                ("type", "WithLocs<ScalarType>"),
+                ("dst", "WithLocs<ResolvedRegisterRef>"),
+                ("address", "WithLocs<ResolvedAddress>"),
+            ],
+        )
+        self.assertEqual(
+            explicit_scalar.operand_layouts[0].bindings[1].state_space_modifier_field_id,
+            "state_space",
+        )
+        for variant in (generic_v2, explicit_v2, generic_v4, explicit_v4):
+            vector_binding = variant.operand_layouts[0].bindings[0]
+            self.assertEqual(
+                vector_binding.register_width_policy,
+                ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER,
+            )
+            self.assertEqual(
+                vector_binding.vector_arity_modifier_field_id,
+                "vector",
+            )
+            self.assertEqual(
+                vector_binding.vector_type_policy,
+                ResolvedVectorTypePolicy.ELEMENT,
+            )
+            self.assertFalse(vector_binding.allow_vector_sink)
+        self.assertEqual(
+            explicit_v4.operand_layouts[0].bindings[1].state_space_modifier_field_id,
             "state_space",
         )
 
-    def test_prefetch_global_l1_model(self) -> None:
+    def test_prefetch_ordinary_and_tensormap_models(self) -> None:
         database = self.database
         prefetch = next(
             instruction
@@ -3479,9 +3522,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Prefetch")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["GlobalL1"]
+            [variant.cpp_name for variant in resolved.variants],
+            [
+                "GenericL1", "GenericL2", "GlobalL1", "GlobalL2",
+                "LocalL1", "LocalL2", "GlobalL2Evict",
+                "ConstTensormap", "ParamTensormap", "GenericTensormap",
+            ],
         )
-        variant = resolved.variants[0]
+        variants = {variant.cpp_name: variant for variant in resolved.variants}
+        variant = variants["GlobalL1"]
         self.assertEqual(dict(variant.availability), {"ptx": "2.0", "sm": 20})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
@@ -3495,6 +3544,33 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant.operand_layouts[0].bindings[0].state_space_modifier_field_id,
             "state_space",
         )
+        self.assertEqual(
+            [space.value for space in variants["GenericL1"].operand_layouts[0]
+             .bindings[0].allowed_address_state_spaces],
+            ["global", "local", "shared"],
+        )
+        self.assertEqual(
+            dict(variants["GlobalL2Evict"].availability),
+            {"ptx": "7.4", "sm": 80},
+        )
+        for name in ("ConstTensormap", "ParamTensormap", "GenericTensormap"):
+            self.assertEqual(
+                dict(variants[name].availability), {"ptx": "8.0", "sm": 90}
+            )
+        generic_tensormap = variants["GenericTensormap"]
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in generic_tensormap.fields],
+            [("tensormap", "bool"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        generic_address = generic_tensormap.operand_layouts[0].bindings[0]
+        self.assertEqual(
+            [space.value for space in generic_address.allowed_address_state_spaces],
+            ["global"],
+        )
+        self.assertIsNone(generic_address.parameter_constraint)
+        param = variants["ParamTensormap"].operand_layouts[0].bindings[0]
+        self.assertEqual(param.state_space_modifier_field_id, "state_space")
+        self.assertEqual(param.parameter_constraint.direction, "input")
 
     def test_prefetchu_l1_model(self) -> None:
         database = self.database
@@ -3519,7 +3595,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["generic"],
         )
 
-    def test_createpolicy_fractional_l2_evict_last_model(self) -> None:
+    def test_createpolicy_topologies(self) -> None:
         database = self.database
         createpolicy = next(
             instruction
@@ -3531,21 +3607,45 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Createpolicy")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["FractionalL2EvictLastB64"],
+            [
+                "FractionalL2B64", "FractionalL2SecondaryB64",
+                "RangeGenericL2B64", "RangeGenericL2SecondaryB64",
+                "RangeGlobalL2B64", "RangeGlobalL2SecondaryB64",
+                "CvtL2B64",
+            ],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
         self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
+            [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
             [
                 ("fractional", "bool"),
-                ("eviction_priority", "EvictionPriority"),
+                ("primary_priority", "WithLocs<EvictionPriority>"),
                 ("type", "ScalarType"),
-                ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("fraction", "WithLocs<ResolvedImmediate>"),
             ],
         )
-        self.assertEqual(variant.immediate_value.values, (1056964608,)) # pyright: ignore[reportOptionalMemberAccess]
+        self.assertEqual(
+            [layout.cpp_name for layout in variant.operand_layouts],
+            ["Default", "WithFraction"],
+        )
+        self.assertEqual(
+            [field.name for field in resolved.variants[1].modifier_fields],
+            ["fractional", "primary_priority", "secondary_priority", "type"],
+        )
+        for range_variant in resolved.variants[2:6]:
+            size_bindings = [
+                binding
+                for binding in range_variant.operand_layouts[0].bindings
+                if binding.target_field_id in {"primary_size", "total_size"}
+            ]
+            self.assertEqual(len(size_bindings), 2)
+            self.assertTrue(
+                all(
+                    binding.immediate_conversion_policy
+                    is ResolvedImmediateConversionPolicy.REQUIRE_TARGET_RANGE
+                    for binding in size_bindings
+                )
+            )
         self.assertEqual(
             variant.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
@@ -3563,7 +3663,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Applypriority")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["GlobalL2EvictNormal"],
+            ["GlobalL2EvictNormal", "GenericL2EvictNormal"],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
@@ -3578,6 +3678,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.values, (128,)) # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(variant.address_alignments[0].alignment, 128)
+        generic = resolved.variants[1]
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in generic.fields],
+            [
+                ("eviction_priority", "EvictionPriority"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
 
     def test_discard_global_l2_model(self) -> None:
         database = self.database
@@ -3590,7 +3699,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Discard")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["GlobalL2"]
+            [variant.cpp_name for variant in resolved.variants],
+            ["GlobalL2", "GenericL2"],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "7.4", "sm": 80})
@@ -3605,6 +3715,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(variant.immediate_value.values, (128,)) # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(variant.address_alignments[0].alignment, 128)
+        generic = resolved.variants[1]
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in generic.fields],
+            [
+                ("l2", "bool"),
+                ("address", "WithLocs<ResolvedAddress>"),
+                ("size", "WithLocs<ResolvedImmediate>"),
+            ],
+        )
 
     def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
         database = self.database

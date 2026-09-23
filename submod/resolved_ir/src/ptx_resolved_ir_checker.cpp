@@ -1,6 +1,9 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstdint>
 
 #include <fmt/format.h>
 
@@ -2026,6 +2029,78 @@ CheckResult check_immediate_range(
       .message = fmt::format(
           "Immediate operand '{}' has value {} outside the supported range.",
           descriptor.operand_field_id, value),
+  }});
+}
+
+/** Validate source-known createpolicy fraction and range-size values. */
+CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
+                                    const Context& context) {
+  if (const OperandView* fraction = find_operand(operands, "fraction")) {
+    // A register value is dynamic; only source constants can be bounded here.
+    if (fraction->actual_shape != OperandShape::Register) {
+      if (fraction->actual_shape != OperandShape::Immediate ||
+          fraction->immediate_type != ScalarType::F32 ||
+          !fraction->immediate_bits || *fraction->immediate_bits > UINT32_MAX) {
+        return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(fraction->locations, context),
+            .message = "createpolicy fraction must be an f32 value.",
+        }});
+      }
+      const float value = std::bit_cast<float>(
+          static_cast<uint32_t>(*fraction->immediate_bits));
+      if (!std::isfinite(value) || value <= 0.0f || value > 1.0f) {
+        return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+            .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+            .range = diagnostic_range(fraction->locations, context),
+            .message = "createpolicy fraction must be in (0.0, 1.0].",
+        }});
+      }
+    }
+  }
+
+  const OperandView* primary = find_operand(operands, "primary_size");
+  const OperandView* total = find_operand(operands, "total_size");
+  if (primary == nullptr && total == nullptr)
+    return {};
+  if (primary == nullptr || total == nullptr) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "createpolicy range requires both size operands.",
+    }});
+  }
+  for (const OperandView* size : {primary, total}) {
+    if (size->actual_shape == OperandShape::Register)
+      continue;
+    if (size->actual_shape != OperandShape::Immediate ||
+        size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format(
+              "createpolicy {} must be a 32-bit register or immediate.",
+              size->field_id),
+      }});
+    }
+    if (*size->immediate_bits > UINT32_MAX) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format("createpolicy {} immediate exceeds 32 bits.",
+                                 size->field_id),
+      }});
+    }
+  }
+  if (primary->actual_shape == OperandShape::Register ||
+      total->actual_shape == OperandShape::Register)
+    return {};
+  if (*primary->immediate_bits <= *total->immediate_bits)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(primary->locations, context),
+      .message = "createpolicy primary size exceeds total size.",
   }});
 }
 

@@ -1,7 +1,7 @@
 # LD 覆盖情况
 
 本文记录 frontend 接受的 PTX 9.3 `ld` 与 `ld.global.nc` form。machine-readable
-authority 是 `python/code_gen/resources/ptx_spec/data_movement_and_conversion.yaml`；
+authority 是 `python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`；
 本文描述 public boundary，不表示 simulator execution 或 GPU conformance。
 
 规范依据为 NVIDIA PTX ISA 9.3 的 [load instruction](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-ld)

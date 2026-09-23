@@ -412,6 +412,14 @@ def _emit_cross_rule_checks(
                                  cvt_rule_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_CREATEPOLICY:
+        checks += """            const auto createpolicy_rule_check = check_createpolicy_rule(
+                operands, context);
+            if (!createpolicy_rule_check) {
+              diagnostics.insert(diagnostics.end(), createpolicy_rule_check.error().begin(),
+                                 createpolicy_rule_check.error().end());
+            }
+"""
     return checks
 
 

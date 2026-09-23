@@ -2,7 +2,7 @@
 
 This document records the PTX 9.3 `st` forms accepted by the frontend. The
 machine-readable authority is
-`python/code_gen/resources/ptx_spec/data_movement_and_conversion.yaml`; this
+`python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`; this
 is a frontend contract, not simulator execution or GPU conformance.
 
 The normative source is NVIDIA's PTX ISA 9.3 [store instruction](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st).

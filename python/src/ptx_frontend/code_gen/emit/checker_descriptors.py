@@ -351,6 +351,7 @@ def _emit_modifier_value_descriptor(
               .scalar_type = {members[ResolvedValueKind.SCALAR_TYPE]},
               .rounding_mode = {members[ResolvedValueKind.ROUNDING_MODE]},
               .comparison_operator = {members[ResolvedValueKind.COMPARISON_OPERATOR]},
+              .test_property = {members[ResolvedValueKind.TEST_PROPERTY]},
               .boolean_operator = {members[ResolvedValueKind.BOOLEAN_OPERATOR]},
               .cache_operator = {members[ResolvedValueKind.CACHE_OPERATOR]},
               .eviction_priority = {members[ResolvedValueKind.EVICTION_PRIORITY]},

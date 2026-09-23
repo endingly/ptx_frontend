@@ -36,9 +36,9 @@ operand_patterns:
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}}
 
-  unary_scalar_register:
-    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
-    - {name: src, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}}
+  unary_float_register_or_immediate:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
 
   unary_integer_arith:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
@@ -47,6 +47,18 @@ operand_patterns:
   unary_f16x2_register:
     - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
     - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
+
+  unary_f16_register:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+
+  unary_b16_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+
+  unary_b32_register_exact:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
 
   popc_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
@@ -288,6 +300,20 @@ operand_patterns:
       type:
         expr: modifier(type)
 
+  testp_float_scalar:
+    - {name: dst, kind: pred, role: dst, access: write, type: pred}
+    - name: src
+      kind: reg_or_imm
+      role: src1
+      access: read
+      type: {expr: "modifier(type)"}
+      register_width: same_width
+
+  copysign_float_scalar:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: sign_source, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: magnitude_source, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+
   binary_float_register:
     - name: dst
       kind: reg
@@ -309,6 +335,11 @@ operand_patterns:
       access: read
       type:
         expr: modifier(type)
+
+  binary_float_register_or_immediate:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
 
   ternary_float_register:
     - name: dst
@@ -1206,39 +1237,398 @@ instructions:
 
   - opcode: mad
     section: "9.7.3.7"
-    doc: "Frozen round-to-nearest single-precision multiply-add."
-    syntax: "mad.rn.f32 dst, src1, src2, src3"
-    operands: $ternary_float_register
+    doc: "Explicit-rounding single- and double-precision multiply-add."
+    syntax: "mad.rnd{.ftz}{.sat}.f32 | mad.rnd.f64 dst, src1, src2, src3"
+    operands: $ternary_arith
     variants:
       - name: mad_rn_f32
         availability: {ptx: "2.0", sm: 20}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "mad.rn.f32 %f0, %f1, %f2, %f3;", valid: true}
+          - {ptx: "mad.rn.ftz.sat.f32 %f0, %f1, 1.0, %f3;", valid: true}
+
+      - name: mad_directed_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "mad.rz.ftz.sat.f32 %f0, %f1, %f2, 1.0;", valid: true}
+
+      - name: mad_rn_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "mad.rn.f64 %d0, %d1, %d2, %d3;", valid: true}
+
+      - name: mad_directed_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "mad.rp.f64 %d0, %d1, %d2, 1.0;", valid: true}
 
   - opcode: div
     section: "9.7.3.8"
-    doc: "Frozen round-to-nearest single- and double-precision division."
-    syntax: "div.rn.f32 | div.rn.f64 dst, src1, src2"
-    operands: $binary_float_register
+    doc: "Explicit approximate, full-range, and rounded single- and double-precision division."
+    syntax: "div.{approx|full}{.ftz}.f32 | div.rnd{.ftz}.f32 | div.rnd.f64 dst, src1, src2"
+    operands: $binary_float_register_or_immediate
     variants:
       - name: div_rn_f32
         availability: {ptx: "1.4", sm: 20}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "div.rn.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "div.rn.ftz.f32 %f0, %f1, 1.0;", valid: true}
 
       - name: div_rn_f64
         availability: {ptx: "1.4", sm: 13}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
         examples:
           - {ptx: "div.rn.f64 %d0, %d1, %d2;", valid: true}
+
+      - name: div_directed_f32
+        availability: {ptx: "1.4", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "div.rz.ftz.f32 %f0, 1.0, %f2;", valid: true}
+
+      - name: div_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: full, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "div.approx.ftz.f32 %f0, %r1, 1.0;", valid: true}
+
+      - name: div_full_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: fixed, value: true, token: .full}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "div.full.ftz.f32 %r0, 1.0, %f2;", valid: true}
+
+      - name: div_directed_f64
+        availability: {ptx: "1.4", sm: 20}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "div.rp.f64 %d0, 1.0, %d2;", valid: true}
+
+  - opcode: rcp
+    section: "9.7.3.13"
+    doc: "Explicit approximate and rounded single- and double-precision reciprocal."
+    syntax: "rcp.approx{.ftz}.f32 | rcp.rnd{.ftz}.f32 | rcp.rnd.f64 | rcp.approx.ftz.f64 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: rcp_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "rcp.approx.ftz.f32 %f0, 1.0;", valid: true}]
+      - name: rcp_rn_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "rcp.rn.f32 %f0, %f1;", valid: true}]
+      - name: rcp_directed_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "rcp.rz.ftz.f32 %f0, 1.0;", valid: true}]
+      - name: rcp_rn_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "rcp.rn.f64 %d0, %d1;", valid: true}]
+      - name: rcp_directed_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "rcp.rp.f64 %d0, 1.0;", valid: true}]
+      - name: rcp_approx_ftz_f64
+        availability: {ptx: "2.1", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "rcp.approx.ftz.f64 %d0, 1.0;", valid: true}]
+
+  - opcode: sqrt
+    section: "9.7.3.15"
+    doc: "Explicit approximate and rounded single- and double-precision square root."
+    syntax: "sqrt.approx{.ftz}.f32 | sqrt.rnd{.ftz}.f32 | sqrt.rnd.f64 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: sqrt_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "sqrt.approx.ftz.f32 %f0, 1.0;", valid: true}]
+      - name: sqrt_rn_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "sqrt.rn.f32 %f0, %f1;", valid: true}]
+      - name: sqrt_directed_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "sqrt.rz.ftz.f32 %f0, 1.0;", valid: true}]
+      - name: sqrt_rn_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "sqrt.rn.f64 %d0, %d1;", valid: true}]
+      - name: sqrt_directed_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: required, values: [rz, rm, rp]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "sqrt.rp.f64 %d0, 1.0;", valid: true}]
+
+  - opcode: rsqrt
+    section: "9.7.3.16"
+    doc: "Explicit approximate single- and double-precision reciprocal square root."
+    syntax: "rsqrt.approx{.ftz}.f32 | rsqrt.approx.f64 | rsqrt.approx.ftz.f64 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: rsqrt_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "rsqrt.approx.ftz.f32 %f0, 1.0;", valid: true}]
+      - name: rsqrt_approx_f64
+        availability: {ptx: "1.4", sm: 13}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "rsqrt.approx.f64 %d0, %d1;", valid: true}]
+      - name: rsqrt_approx_ftz_f64
+        availability: {ptx: "4.0", sm: 20}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "rsqrt.approx.ftz.f64 %d0, 1.0;", valid: true}]
+
+  - opcode: sin
+    section: "9.7.3.18"
+    doc: "Fast approximate single-precision sine."
+    syntax: "sin.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: sin_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "sin.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "sin.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: cos
+    section: "9.7.3.19"
+    doc: "Fast approximate single-precision cosine."
+    syntax: "cos.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: cos_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "cos.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "cos.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: lg2
+    section: "9.7.3.20"
+    doc: "Fast approximate single-precision base-2 logarithm."
+    syntax: "lg2.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: lg2_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "lg2.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "lg2.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: ex2
+    section: "9.7.3.21"
+    doc: "Fast approximate single-precision base-2 exponential."
+    syntax: "ex2.approx{.ftz}.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: ex2_approx_f32
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "ex2.approx.f32 %f0, %f1;", valid: true}
+          - {ptx: "ex2.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+  - opcode: ex2
+    section: "9.7.4.10"
+    doc: "Half- and bfloat-precision base-2 exponential. The bfloat cohorts require FTZ."
+    syntax: "ex2.approx.{f16|f16x2} | ex2.approx.ftz.{bf16|bf16x2} dst, src"
+    variants:
+      - name: ex2_approx_f16
+        operands: $unary_f16_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples: [{ptx: "ex2.approx.f16 %h0, %h1;", valid: true}]
+      - name: ex2_approx_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples: [{ptx: "ex2.approx.f16x2 %r0, %r1;", valid: true}]
+      - name: ex2_approx_ftz_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples: [{ptx: "ex2.approx.ftz.bf16 %b0, %b1;", valid: true}]
+      - name: ex2_approx_ftz_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: ftz, kind: flag, presence: fixed, value: true, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples: [{ptx: "ex2.approx.ftz.bf16x2 %r0, %r1;", valid: true}]
+
+  - opcode: tanh
+    section: "9.7.3.22"
+    doc: "Single-precision hyperbolic tangent. No FTZ, rounding, or saturation modifier."
+    syntax: "tanh.approx.f32 dst, src"
+    operands: $unary_float_register_or_immediate
+    variants:
+      - name: tanh_approx_f32
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "tanh.approx.f32 %f0, %f1;", valid: true}]
+
+  - opcode: tanh
+    section: "9.7.4.9"
+    doc: "Half- and bfloat-precision hyperbolic tangent. No FTZ, rounding, or saturation modifier."
+    syntax: "tanh.approx.{f16|f16x2|bf16|bf16x2} dst, src"
+    variants:
+      - name: tanh_approx_f16
+        operands: $unary_f16_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples: [{ptx: "tanh.approx.f16 %h0, %h1;", valid: true}]
+      - name: tanh_approx_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "7.0", sm: 75}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples: [{ptx: "tanh.approx.f16x2 %r0, %r1;", valid: true}]
+      - name: tanh_approx_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples: [{ptx: "tanh.approx.bf16 %b0, %b1;", valid: true}]
+      - name: tanh_approx_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: approx, kind: flag, presence: fixed, value: true, token: .approx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples: [{ptx: "tanh.approx.bf16x2 %r0, %r1;", valid: true}]
 
   - opcode: add
     section: "9.7.1.1"
@@ -1730,16 +2120,71 @@ instructions:
 
   - opcode: abs
     section: "9.7.3.9"
-    doc: "Frozen single-precision floating-point absolute value."
-    syntax: "abs.f32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Single- and double-precision floating-point absolute value."
+    syntax: "abs{.ftz}.f32 | abs.f64 dst, src"
+    operands: $unary_float_register_or_immediate
     variants:
       - name: abs_f32
         availability: {ptx: "1.0", sm: 0}
         modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - value: true
+                availability: {ptx: "1.4"}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "abs.f32 %f0, %f1;", valid: true}
+          - {ptx: "abs.ftz.f32 %f0, %f1;", valid: true}
+      - name: abs_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "abs.f64 %fd0, %fd1;", valid: true}
+
+  - opcode: abs
+    section: "9.7.4.6"
+    doc: "Half- and bfloat-precision floating-point absolute value."
+    variants:
+      - name: abs_f16
+        operands: $unary_f16_register
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "abs.f16 %h0, %h1;", valid: true}
+          - {ptx: "abs.ftz.f16 %h0, %h1;", valid: true}
+      - name: abs_f16x2
+        operands: $unary_f16x2_register
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "abs.f16x2 %r0, %r1;", valid: true}
+          - {ptx: "abs.ftz.f16x2 %r0, %r1;", valid: true}
+      - name: abs_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "abs.bf16 %b0, %b1;", valid: true}
+      - name: abs_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "abs.bf16x2 %r0, %r1;", valid: true}
 
   - opcode: neg
     section: "9.7.1.12"
@@ -1756,29 +2201,77 @@ instructions:
 
   - opcode: neg
     section: "9.7.3.10"
-    doc: "Frozen single-precision floating-point negation."
-    syntax: "neg.f32 dst, src"
-    operands: $unary_scalar_register
+    doc: "Single- and double-precision floating-point negation."
+    syntax: "neg{.ftz}.f32 | neg.f64 dst, src"
+    operands: $unary_float_register_or_immediate
     variants:
       - name: neg_f32
         availability: {ptx: "1.0", sm: 0}
         modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - value: true
+                availability: {ptx: "1.4"}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples:
           - {ptx: "neg.f32 %f0, %f1;", valid: true}
+          - {ptx: "neg.ftz.f32 %f0, %f1;", valid: true}
+      - name: neg_f64
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "neg.f64 %fd0, %fd1;", valid: true}
 
   - opcode: neg
     section: "9.7.4.5"
-    doc: "Frozen packed half-precision negation using b32 register containers."
-    syntax: "neg.f16x2 dst, src"
-    operands: $unary_f16x2_register
+    doc: "Half-precision floating-point negation with a packed b32 form."
+    syntax: "neg{.ftz}.{f16|f16x2} dst, src"
     variants:
-      - name: neg_f16x2
+      - name: neg_f16
+        operands: $unary_f16_register
         availability: {ptx: "6.0", sm: 53}
         modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        examples:
+          - {ptx: "neg.f16 %h0, %h1;", valid: true}
+          - {ptx: "neg.ftz.f16 %h0, %h1;", valid: true}
+      - name: neg_f16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "6.0", sm: 53}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
         examples:
           - {ptx: "neg.f16x2 %r0, %r1;", valid: true}
+          - {ptx: "neg.ftz.f16x2 %r0, %r1;", valid: true}
+
+  - opcode: neg
+    section: "9.7.4.5"
+    doc: "Bfloat-precision floating-point negation."
+    variants:
+      - name: neg_bf16
+        operands: $unary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "neg.bf16 %b0, %b1;", valid: true}
+      - name: neg_bf16x2
+        operands: $unary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "neg.bf16x2 %r0, %r1;", valid: true}
 
   - opcode: popc
     section: "9.7.1.15"
@@ -2502,3 +2995,37 @@ instructions:
           - {name: lo, kind: flag, presence: fixed, value: true, token: .lo}
           - {name: cc, kind: flag, presence: fixed, value: true, token: .cc}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u64, s64]}
+
+  - opcode: testp
+    section: "9.7.3.1"
+    doc: "Floating-point property classification without arithmetic execution."
+    syntax: "testp.{finite|infinite|number|notanumber|normal|subnormal}.{f32|f64} dst, src"
+    operands: $testp_float_scalar
+    variants:
+      - name: testp_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: property, kind: test_property, domain: test_properties, presence: required, values: [finite, infinite, number, notanumber, normal, subnormal]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples: [{ptx: "testp.finite.f32 %p0, %f1;", valid: true}]
+      - name: testp_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - {name: property, kind: test_property, domain: test_properties, presence: required, values: [finite, infinite, number, notanumber, normal, subnormal]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples: [{ptx: "testp.subnormal.f64 %p0, %fd1;", valid: true}]
+
+  - opcode: copysign
+    section: "9.7.3.2"
+    doc: "Copy the sign of the first source into the magnitude of the second source."
+    syntax: "copysign.{f32|f64} dst, sign_source, magnitude_source"
+    operands: $copysign_float_scalar
+    variants:
+      - name: copysign_f32
+        availability: {ptx: "2.0", sm: 20}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}]
+        examples: [{ptx: "copysign.f32 %f0, %f1, %f2;", valid: true}]
+      - name: copysign_f64
+        availability: {ptx: "2.0", sm: 20}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}]
+        examples: [{ptx: "copysign.f64 %fd0, %fd1, %fd2;", valid: true}]

@@ -2206,7 +2206,7 @@ TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
-TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
+TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
   const auto lo =
       resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(lo.has_value()) << lo.error().message;
@@ -2227,12 +2227,28 @@ TEST(ResolveMad, SelectsM12LoWideAndRnVariants) {
   ASSERT_NE(std::get_if<Mad::RnF32>(&rn->variant), nullptr);
   EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
+
+  const auto directed =
+      resolve<Mad>(parse_instruction("mad.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(directed.has_value()) << directed.error().message;
+  const auto* directed_variant =
+      std::get_if<Mad::DirectedF32>(&directed->variant);
+  ASSERT_NE(directed_variant, nullptr);
+  EXPECT_EQ(directed_variant->rounding.value, RoundingMode::Rz);
+
+  const auto f64 =
+      resolve<Mad>(parse_instruction("mad.rp.f64 %d0, %d1, %d2, %d3;"));
+  ASSERT_TRUE(f64.has_value()) << f64.error().message;
+  const auto* f64_variant = std::get_if<Mad::DirectedF64>(&f64->variant);
+  ASSERT_NE(f64_variant, nullptr);
+  EXPECT_EQ(f64_variant->rounding.value, RoundingMode::Rp);
 }
 
 TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
        {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
-        "mad.rz.f32 %f0, %f1, %f2, %f3;",
+        "mad.f32 %f0, %f1, %f2, %f3;", "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
+        "mad.rn.sat.f64 %d0, %d1, %d2, %d3;",
         "mad.lo.cc.s16 %r0, %r1, %r2, %r3;"}) {
     const auto selected = selectVariant<Mad>(parse_instruction(source));
     SCOPED_TRACE(source);
@@ -2535,9 +2551,11 @@ TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
   EXPECT_EQ(Div::RnF64::type, ScalarType::F64);
 }
 
-TEST(ResolveDiv, RejectsUnfrozenVariants) {
+TEST(ResolveDiv, RejectsInvalidFloatingModeCombinations) {
   for (const auto source :
-       {"div.rz.f32 %f0, %f1, %f2;", "div.approx.f32 %f0, %f1, %f2;",
+       {"div.f32 %f0, %f1, %f2;", "div.f64 %d0, %d1, %d2;",
+        "div.approx.rn.f32 %f0, %f1, %f2;",
+        "div.approx.full.f32 %f0, %f1, %f2;", "div.rn.ftz.f64 %d0, %d1, %d2;",
         "div.full.f64 %d0, %d1, %d2;", "div.rn.f16 %h0, %h1, %h2;",
         "div.sat.u32 %r0, %r1, %r2;"}) {
     const auto selected = selectVariant<Div>(parse_instruction(source));
@@ -2627,8 +2645,8 @@ TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
   EXPECT_EQ(Abs::F32::type, ScalarType::F32);
 }
 
-TEST(ResolveAbs, RejectsUnfrozenAndInvalidForms) {
-  for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f32 %f0, %f1;"}) {
+TEST(ResolveAbs, RejectsInvalidForms) {
+  for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f64 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
   }
@@ -2654,11 +2672,150 @@ TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
   EXPECT_EQ(Neg::F16x2::type, ScalarType::F16x2);
 }
 
-TEST(ResolveNeg, RejectsUnfrozenForms) {
-  for (const auto source : {"neg.ftz.f32 %f0, %f1;", "neg.bf16x2 %r0, %r1;",
+TEST(ResolveNeg, RejectsInvalidForms) {
+  for (const auto source : {"neg.ftz.f64 %f0, %f1;", "neg.ftz.bf16x2 %r0, %r1;",
                             "neg.sat.s32 %r0, %r1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Neg>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveSin, SelectsFrozenApproxVariant) {
+  const auto resolved =
+      resolve<Sin>(parse_instruction("sin.approx.ftz.f32 %f0, %f1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Sin::ApproxF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Sin::ApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(Sin::ApproxF32::approx);
+  EXPECT_TRUE(std::get<Sin::ApproxF32>(resolved->variant).ftz.value);
+}
+
+TEST(ResolveSin, RejectsInvalidForms) {
+  for (const auto source :
+       {"sin.f32 %f0, %f1;", "sin.approx.f64 %d0, %d1;",
+        "sin.approx.f32x2 %f0, %f1;", "sin.approx.sat.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Sin>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveCos, SelectsFrozenApproxVariant) {
+  const auto resolved =
+      resolve<Cos>(parse_instruction("cos.approx.f32 %f0, %f1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Cos::ApproxF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Cos::ApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(Cos::ApproxF32::approx);
+}
+
+TEST(ResolveCos, RejectsInvalidForms) {
+  for (const auto source :
+       {"cos.f32 %f0, %f1;", "cos.approx.f64 %d0, %d1;",
+        "cos.approx.f32x2 %f0, %f1;", "cos.rz.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Cos>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveLg2, SelectsFrozenApproxVariant) {
+  const auto resolved =
+      resolve<Lg2>(parse_instruction("lg2.approx.ftz.f32 %f0, %f1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(std::get_if<Lg2::ApproxF32>(&resolved->variant), nullptr);
+  EXPECT_EQ(Lg2::ApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(Lg2::ApproxF32::approx);
+}
+
+TEST(ResolveLg2, RejectsInvalidForms) {
+  for (const auto source :
+       {"lg2.f32 %f0, %f1;", "lg2.approx.f64 %d0, %d1;",
+        "lg2.approx.f32x2 %f0, %f1;", "lg2.approx.sat.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Lg2>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveEx2, SelectsFrozenFloatAndLowPrecisionVariants) {
+  const auto f32 =
+      resolve<Ex2>(parse_instruction("ex2.approx.ftz.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Ex2::ApproxF32>(&f32->variant), nullptr);
+  EXPECT_EQ(Ex2::ApproxF32::type, ScalarType::F32);
+
+  const auto f16 = resolve<Ex2>(parse_instruction("ex2.approx.f16 %h0, %h1;"));
+  ASSERT_TRUE(f16.has_value()) << f16.error().message;
+  ASSERT_NE(std::get_if<Ex2::ApproxF16>(&f16->variant), nullptr);
+  EXPECT_EQ(Ex2::ApproxF16::type, ScalarType::F16);
+
+  const auto f16x2 =
+      resolve<Ex2>(parse_instruction("ex2.approx.f16x2 %r0, %r1;"));
+  ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
+  ASSERT_NE(std::get_if<Ex2::ApproxF16x2>(&f16x2->variant), nullptr);
+  EXPECT_EQ(Ex2::ApproxF16x2::type, ScalarType::F16x2);
+
+  const auto bf16 =
+      resolve<Ex2>(parse_instruction("ex2.approx.ftz.bf16 %b0, %b1;"));
+  ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
+  ASSERT_NE(std::get_if<Ex2::ApproxFtzBf16>(&bf16->variant), nullptr);
+  EXPECT_TRUE(Ex2::ApproxFtzBf16::ftz);
+  EXPECT_EQ(Ex2::ApproxFtzBf16::type, ScalarType::BF16);
+
+  const auto bf16x2 =
+      resolve<Ex2>(parse_instruction("ex2.approx.ftz.bf16x2 %r0, %r1;"));
+  ASSERT_TRUE(bf16x2.has_value()) << bf16x2.error().message;
+  ASSERT_NE(std::get_if<Ex2::ApproxFtzBf16x2>(&bf16x2->variant), nullptr);
+  EXPECT_EQ(Ex2::ApproxFtzBf16x2::type, ScalarType::BF16x2);
+}
+
+TEST(ResolveEx2, RejectsInvalidForms) {
+  for (const auto source :
+       {"ex2.f32 %f0, %f1;", "ex2.approx.bf16 %b0, %b1;",
+        "ex2.approx.bf16x2 %r0, %r1;", "ex2.approx.ftz.f16 %h0, %h1;",
+        "ex2.approx.f64 %d0, %d1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Ex2>(parse_instruction(source)).has_value());
+  }
+}
+
+TEST(ResolveTanh, SelectsFrozenFloatAndLowPrecisionVariants) {
+  const auto f32 =
+      resolve<Tanh>(parse_instruction("tanh.approx.f32 %f0, %f1;"));
+  ASSERT_TRUE(f32.has_value()) << f32.error().message;
+  ASSERT_NE(std::get_if<Tanh::ApproxF32>(&f32->variant), nullptr);
+  EXPECT_EQ(Tanh::ApproxF32::type, ScalarType::F32);
+
+  const auto f16 =
+      resolve<Tanh>(parse_instruction("tanh.approx.f16 %h0, %h1;"));
+  ASSERT_TRUE(f16.has_value()) << f16.error().message;
+  ASSERT_NE(std::get_if<Tanh::ApproxF16>(&f16->variant), nullptr);
+  EXPECT_EQ(Tanh::ApproxF16::type, ScalarType::F16);
+
+  const auto f16x2 =
+      resolve<Tanh>(parse_instruction("tanh.approx.f16x2 %r0, %r1;"));
+  ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
+  ASSERT_NE(std::get_if<Tanh::ApproxF16x2>(&f16x2->variant), nullptr);
+  EXPECT_EQ(Tanh::ApproxF16x2::type, ScalarType::F16x2);
+
+  const auto bf16 =
+      resolve<Tanh>(parse_instruction("tanh.approx.bf16 %b0, %b1;"));
+  ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
+  ASSERT_NE(std::get_if<Tanh::ApproxBf16>(&bf16->variant), nullptr);
+  EXPECT_EQ(Tanh::ApproxBf16::type, ScalarType::BF16);
+
+  const auto bf16x2 =
+      resolve<Tanh>(parse_instruction("tanh.approx.bf16x2 %r0, %r1;"));
+  ASSERT_TRUE(bf16x2.has_value()) << bf16x2.error().message;
+  ASSERT_NE(std::get_if<Tanh::ApproxBf16x2>(&bf16x2->variant), nullptr);
+  EXPECT_EQ(Tanh::ApproxBf16x2::type, ScalarType::BF16x2);
+}
+
+TEST(ResolveTanh, RejectsInvalidForms) {
+  for (const auto source :
+       {"tanh.f32 %f0, %f1;", "tanh.approx.ftz.f32 %f0, %f1;",
+        "tanh.approx.ftz.f16 %h0, %h1;", "tanh.approx.ftz.bf16 %b0, %b1;",
+        "tanh.approx.f64 %d0, %d1;", "tanh.rz.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(selectVariant<Tanh>(parse_instruction(source)).has_value());
   }
 }
 

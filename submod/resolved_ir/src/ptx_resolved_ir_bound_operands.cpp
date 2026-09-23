@@ -2006,6 +2006,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::ScalarType:
     case ResolvedValueKind::RoundingMode:
     case ResolvedValueKind::ComparisonOperator:
+    case ResolvedValueKind::TestProperty:
     case ResolvedValueKind::BooleanOperator:
     case ResolvedValueKind::CacheOperator:
     case ResolvedValueKind::EvictionPriority:

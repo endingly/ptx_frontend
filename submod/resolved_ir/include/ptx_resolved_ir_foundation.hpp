@@ -87,6 +87,7 @@ using base::PrefetchSize;
 using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
+using base::TestProperty;
 
 namespace detail {
 template <typename Function>
@@ -244,6 +245,7 @@ struct FieldView {
   std::optional<PrefetchSize> prefetch_size;
   std::optional<ScalarType> scalar_type;
   std::optional<ComparisonOperator> comparison_operator;
+  std::optional<TestProperty> test_property;
   std::optional<BooleanOperator> boolean_operator;
   std::optional<VectorArity> vector_arity;
   std::optional<MemoryStateSpace> memory_state_space;
@@ -324,6 +326,7 @@ enum class ModifierValueKind : uint8_t {
   ScalarType,
   RoundingMode,
   ComparisonOperator,
+  TestProperty,
   BooleanOperator,
   CacheOperator,
   EvictionPriority,
@@ -344,6 +347,7 @@ struct ModifierValueAvailabilityDescriptor {
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
+  TestProperty test_property = TestProperty::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
@@ -368,6 +372,7 @@ struct ModifierValueDomainDescriptor {
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
+  TestProperty test_property = TestProperty::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
@@ -388,6 +393,7 @@ struct ModifierValueView {
   ScalarType scalar_type = ScalarType::Invalid;
   RoundingMode rounding_mode = RoundingMode::Invalid;
   ComparisonOperator comparison_operator = ComparisonOperator::Invalid;
+  TestProperty test_property = TestProperty::Invalid;
   BooleanOperator boolean_operator = BooleanOperator::Invalid;
   CacheOperator cache_operator = CacheOperator::Unspecified;
   EvictionPriority eviction_priority = EvictionPriority::Invalid;
@@ -479,6 +485,7 @@ using base::PrefetchSize;
 using base::ProxyKindPair;
 using base::RoundingMode;
 using base::ScalarType;
+using base::TestProperty;
 enum class ParameterDeclarationRole : uint8_t {
   EntryInput,
   DeviceInput,

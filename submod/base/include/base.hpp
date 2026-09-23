@@ -149,6 +149,17 @@ enum class ComparisonOperator : uint8_t {
   Nan,
 };
 
+/** Semantic value of a PTX floating-point `testp` property modifier. */
+enum class TestProperty : uint8_t {
+  Invalid = 0,
+  Finite,
+  Infinite,
+  Number,
+  NotANumber,
+  Normal,
+  Subnormal,
+};
+
 /** Semantic value of a PTX predicate-combine operator modifier. */
 enum class BooleanOperator : uint8_t {
   Invalid = 0,

@@ -91,6 +91,26 @@ resolve_comparison_operator(const syntax_ast::AstModifier& modifier) {
   return WithLocs<ComparisonOperator>{*value, modifier.syntax.range};
 }
 
+/** Look up one typed `testp` property suffix. */
+std::optional<TestProperty> test_property_from_ptx_name(
+    std::string_view spelling) {
+  return lookup_ptx_suffix(generated_detail::kTestProperties, spelling);
+}
+
+/** Resolve one source `testp` property while retaining its location. */
+std::expected<WithLocs<TestProperty>, ResolveDiagnostic> resolve_test_property(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value = test_property_from_ptx_name(modifier.syntax.text);
+  if (!value) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message =
+            fmt::format("Unknown test property '{}'.", modifier.syntax.text),
+    });
+  }
+  return WithLocs<TestProperty>{*value, modifier.syntax.range};
+}
+
 std::optional<BooleanOperator> boolean_operator_from_ptx_name(
     std::string_view spelling) {
   return lookup_ptx_suffix(generated_detail::kBooleanOperators, spelling);
@@ -319,6 +339,7 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(scalar_type, resolve_scalar_type)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(rounding_mode, resolve_rounding_mode)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(comparison_operator,
                                  resolve_comparison_operator)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(test_property, resolve_test_property)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(boolean_operator, resolve_boolean_operator)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(cache_operator, resolve_cache_operator)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(eviction_priority, resolve_eviction_priority)
@@ -414,6 +435,8 @@ struct ModifierDomainMapping {
     default_rounding_mode_modifier, "rounding-mode", Supported)               \
   X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,    \
     "comparison-operator", UnsupportedDomain)                                 \
+  X(TestProperty, None, parse_test_property_modifier, nullptr,                \
+    "test-property", UnsupportedDomain)                                       \
   X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,          \
     "boolean-operator", UnsupportedDomain)                                    \
   X(CacheOperator, CacheOperator, parse_cache_operator_modifier,              \

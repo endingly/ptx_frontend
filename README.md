@@ -17,6 +17,24 @@ supported surface and its exclusions.
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`
   surface, including target-qualified modern conversion forms.
+- [`testp` and `copysign` coverage](docs/us-en/testp_copysign_coverage.md) and
+  its [简体中文版本](docs/zh-han/testp_copysign_coverage.md) define the currently
+  modelled floating classification and sign-copy forms.
+- [Floating `abs` and `neg` coverage](docs/us-en/abs_neg_coverage.md) and its
+  [简体中文版本](docs/zh-han/abs_neg_coverage.md) define their scalar, half, and
+  bfloat source, storage, modifier, and target contracts.
+- [Floating `mad` coverage](docs/us-en/mad_coverage.md) and its
+  [简体中文版本](docs/zh-han/mad_coverage.md) define the explicit-rounding FP32
+  and FP64 forms and their excluded legacy profiles.
+- [Floating `div` coverage](docs/us-en/div_coverage.md) and its
+  [简体中文版本](docs/zh-han/div_coverage.md) define the explicit approximate,
+  full-range, and rounded FP32/FP64 forms.
+- [Floating reciprocal and square-root coverage](docs/us-en/unary_float_coverage.md)
+  and its [简体中文版本](docs/zh-han/unary_float_coverage.md) define the explicit
+  `rcp`, `sqrt`, and `rsqrt` FP32/FP64 forms.
+- [Floating transcendental coverage](docs/us-en/transcendental_coverage.md) and
+  its [简体中文版本](docs/zh-han/transcendental_coverage.md) define the explicit
+  `sin`, `cos`, `lg2`, `ex2`, and `tanh` FP32 and half/bfloat forms.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

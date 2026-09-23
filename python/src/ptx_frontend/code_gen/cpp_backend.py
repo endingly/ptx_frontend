@@ -29,6 +29,7 @@ class CppDomain(str, Enum):
     SCALAR_TYPES = "scalar_types"  # YAML: domains.scalar_types
     ROUNDING_MODES = "rounding_modes"  # YAML: domains.rounding_modes
     COMPARISON_OPERATORS = "comparison_operators"
+    TEST_PROPERTIES = "test_properties"
     BOOLEAN_OPERATORS = "boolean_operators"
     CACHE_OPERATORS = "cache_operators"  # YAML: domains.cache_operators
     EVICTION_PRIORITIES = "eviction_priorities"

@@ -45,6 +45,10 @@ _RESOLVED_MODIFIER_VALUE_TRAITS: dict[
         cpp_domain=CppDomain.COMPARISON_OPERATORS,
         descriptor_member="comparison_operator",
     ),
+    ResolvedValueKind.TEST_PROPERTY: ResolvedValueTraits(
+        cpp_domain=CppDomain.TEST_PROPERTIES,
+        descriptor_member="test_property",
+    ),
     ResolvedValueKind.BOOLEAN_OPERATOR: ResolvedValueTraits(
         cpp_domain=CppDomain.BOOLEAN_OPERATORS,
         descriptor_member="boolean_operator",

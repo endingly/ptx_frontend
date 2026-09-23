@@ -410,14 +410,22 @@ TEST(RegisterTypePolicy, PackedBfloatStorageRemainsExact) {
                      occurrenceRange(source, "%src1", 2));
 }
 
-/** Packed-half negation and conversion use compatible containers, not exact identity. */
-TEST(RegisterTypePolicy, PackedHalfContainersRemainSameWidth) {
+/** Packed-half negation requires b32 while conversion retains compatible containers. */
+TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
   constexpr std::string_view neg_source =
-      ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src; neg.f16x2 %dst, "
+      ".entry kernel() { .reg .b32 %dst, %src; neg.f16x2 %dst, "
       "%src; }";
   const auto neg = resolveSingleInstruction(neg_source);
   ASSERT_TRUE(neg);
   expectAccepted(checker::check(std::get<Neg>(*neg), kContext));
+
+  constexpr std::string_view native_neg_source =
+      ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src; neg.f16x2 %dst, "
+      "%src; }";
+  const auto native_neg = resolveSingleInstruction(native_neg_source);
+  ASSERT_TRUE(native_neg);
+  expectTypeMismatch(checker::check(std::get<Neg>(*native_neg), kContext),
+                     occurrenceRange(native_neg_source, "%dst", 2));
 
   constexpr std::string_view cvt_f16x2_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src1, %src2; "
@@ -474,7 +482,8 @@ TEST(RegisterTypePolicy, GeneratedDescriptorsExposeTheWidthPolicy) {
   expectBindingPolicy(Div::get_resolved_descriptor(), "RnF64", same_width);
   expectBindingPolicy(Min::get_resolved_descriptor(), "NanF32", same_width);
   expectBindingPolicy(Max::get_resolved_descriptor(), "NanF32", same_width);
-  expectBindingPolicy(Neg::get_resolved_descriptor(), "F16x2", same_width);
+  expectBindingPolicy(Neg::get_resolved_descriptor(), "F16x2",
+                      base::ScalarTypeSizePolicy::Exact);
   expectBindingPolicy(Cvt::get_resolved_descriptor(), "RnF16x2F32",
                       base::ScalarTypeSizePolicy::EqualOrWider);
   expectBindingPolicy(Fma::get_resolved_descriptor(), "Bf16",

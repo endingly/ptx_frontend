@@ -10,6 +10,7 @@ class ResolvedValueKind(Enum):
     SCALAR_TYPE = "ScalarType"
     ROUNDING_MODE = "RoundingMode"
     COMPARISON_OPERATOR = "ComparisonOperator"
+    TEST_PROPERTY = "TestProperty"
     BOOLEAN_OPERATOR = "BooleanOperator"
     CACHE_OPERATOR = "CacheOperator"
     EVICTION_PRIORITY = "EvictionPriority"

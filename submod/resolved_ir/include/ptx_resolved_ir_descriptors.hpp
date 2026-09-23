@@ -41,6 +41,7 @@ enum class ResolvedValueKind : uint8_t {
   ScalarType,
   RoundingMode,
   ComparisonOperator,
+  TestProperty,
   BooleanOperator,
   CacheOperator,
   EvictionPriority,

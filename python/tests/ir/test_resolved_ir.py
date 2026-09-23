@@ -191,6 +191,31 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in database.instructions
             if instruction.opcode == "neg"
         )
+        sin_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "sin"
+        )
+        cos_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "cos"
+        )
+        lg2_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "lg2"
+        )
+        ex2_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "ex2"
+        )
+        tanh_instruction = next(
+            instruction
+            for instruction in database.instructions
+            if instruction.opcode == "tanh"
+        )
         lop3_instruction = next(
             instruction
             for instruction in database.instructions
@@ -228,6 +253,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         cls.max_instruction = from_instruction_spec(max_instruction)
         cls.abs_instruction = from_instruction_spec(abs_instruction)
         cls.neg_instruction = from_instruction_spec(neg_instruction)
+        cls.sin_instruction = from_instruction_spec(sin_instruction)
+        cls.cos_instruction = from_instruction_spec(cos_instruction)
+        cls.lg2_instruction = from_instruction_spec(lg2_instruction)
+        cls.ex2_instruction = from_instruction_spec(ex2_instruction)
+        cls.tanh_instruction = from_instruction_spec(tanh_instruction)
         cls.lop3_instruction = from_instruction_spec(lop3_instruction)
         cls.shf_instruction = from_instruction_spec(shf_instruction)
         cls.bfe_instruction = from_instruction_spec(bfe_instruction)
@@ -567,23 +597,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_mad_merges_complete_integer_and_floating_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.mad_instruction.variants],
-            ["RnF32", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
+            ["RnF32", "DirectedF32", "RnF64", "DirectedF64", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
              "LoS16", "LoS64", "HiU16", "HiU32", "HiU64", "HiS16",
              "HiS32", "HiS64", "WideU16", "WideS16", "WideS32", "HiSatS32",
              "HiCc32", "LoCc32", "HiCc64", "LoCc64"],
         )
         self.assertEqual(
-            [field.name for field in self.mad_instruction.variants[1].fields],
+            [field.name for field in self.mad_instruction.variants[4].fields],
             ["lo", "type", "dst", "src1", "src2", "src3"],
         )
         self.assertEqual(
-            self.mad_instruction.variants[1].operand_layouts[0].bindings[3].role,
+            self.mad_instruction.variants[4].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
         self.assertEqual(
             [
                 binding.register_width_policy
-                for binding in self.mad_instruction.variants[3].operand_layouts[0].bindings
+                for binding in self.mad_instruction.variants[6].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
         )
@@ -593,6 +623,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for binding in self.mad_instruction.variants[0].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+        )
+        self.assertEqual(
+            [field.name for field in self.mad_instruction.variants[0].fields],
+            ["rounding", "ftz", "sat", "type", "dst", "src1", "src2", "src3"],
         )
 
     def test_fma_models_all_ptx_93_ternary_layouts(self) -> None:
@@ -652,13 +686,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_div_merges_complete_integer_and_floating_binary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.div_instruction.variants],
-            ["RnF32", "RnF64", "U32", "S32", "U16", "U64", "S16", "S64"],
+            [
+                "RnF32",
+                "RnF64",
+                "DirectedF32",
+                "ApproxF32",
+                "FullF32",
+                "DirectedF64",
+                "U32",
+                "S32",
+                "U16",
+                "U64",
+                "S16",
+                "S64",
+            ],
         )
         self.assertEqual(
-            [field.name for field in self.div_instruction.variants[2].fields],
+            [field.name for field in self.div_instruction.variants[6].fields],
             ["type", "dst", "src1", "src2"],
         )
-        for variant in self.div_instruction.variants[:2]:
+        for variant in self.div_instruction.variants[:6]:
             self.assertEqual(
                 [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
                 [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
@@ -723,38 +770,139 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_abs_has_complete_signed_and_float_unary_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.abs_instruction.variants],
-            ["S32", "F32", "S16", "S64"],
+            ["S32", "F32", "F64", "F16", "F16x2", "Bf16", "Bf16x2", "S16", "S64"],
         )
-        for variant, scalar_type in zip(
-            self.abs_instruction.variants, ("s32", "f32", "s16", "s64"), strict=True
+        for variant, scalar_type, fields in zip(
+            self.abs_instruction.variants,
+            ("s32", "f32", "f64", "f16", "f16x2", "bf16", "bf16x2", "s16", "s64"),
+            (
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+            ),
+            strict=True,
         ):
-            self.assertEqual(
-                [field.name for field in variant.fields], ["type", "dst", "src"]
-            )
-            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+            self.assertEqual([field.name for field in variant.fields], list(fields))
+            self.assertEqual(variant.fields[-3].constant_value, scalar_type)
 
     def test_neg_has_complete_scalar_and_packed_unary_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.neg_instruction.variants],
-            ["S32", "F32", "F16x2", "S16", "S64", "S8x4"],
+            ["S32", "F32", "F64", "F16", "F16x2", "Bf16", "Bf16x2", "S16", "S64", "S8x4"],
         )
-        for variant, scalar_type in zip(
-            self.neg_instruction.variants, ("s32", "f32", "f16x2", "s16", "s64", "s8x4"), strict=True
+        for variant, scalar_type, fields in zip(
+            self.neg_instruction.variants,
+            ("s32", "f32", "f64", "f16", "f16x2", "bf16", "bf16x2", "s16", "s64", "s8x4"),
+            (
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("ftz", "type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+                ("type", "dst", "src"),
+            ),
+            strict=True,
         ):
-            self.assertEqual(
-                [field.name for field in variant.fields], ["type", "dst", "src"]
-            )
-            self.assertEqual(variant.fields[0].constant_value, scalar_type)
+            self.assertEqual([field.name for field in variant.fields], list(fields))
+            self.assertEqual(variant.fields[-3].constant_value, scalar_type)
         self.assertEqual(
             [binding.register_width_policy
-             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+             for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
+            [ResolvedRegisterWidthPolicy.EXACT] * 2,
         )
         self.assertEqual(
             [binding.type_expression.scalar_type
-             for binding in self.neg_instruction.variants[2].operand_layouts[0].bindings],
-            ["f16x2"] * 2,
+             for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
+            ["b32"] * 2,
         )
+
+    def test_transcendental_models_typed_approx_and_cohort_containers(self) -> None:
+        by_opcode = {
+            "sin": self.sin_instruction,
+            "cos": self.cos_instruction,
+            "lg2": self.lg2_instruction,
+            "ex2": self.ex2_instruction,
+            "tanh": self.tanh_instruction,
+        }
+        expected = {
+            "sin": (("ApproxF32", "f32", ("approx", "ftz", "type", "dst", "src")),),
+            "cos": (("ApproxF32", "f32", ("approx", "ftz", "type", "dst", "src")),),
+            "lg2": (("ApproxF32", "f32", ("approx", "ftz", "type", "dst", "src")),),
+            "ex2": (
+                ("ApproxF32", "f32", ("approx", "ftz", "type", "dst", "src")),
+                ("ApproxF16", "f16", ("approx", "type", "dst", "src")),
+                ("ApproxF16x2", "f16x2", ("approx", "type", "dst", "src")),
+                ("ApproxFtzBf16", "bf16", ("approx", "ftz", "type", "dst", "src")),
+                ("ApproxFtzBf16x2", "bf16x2", ("approx", "ftz", "type", "dst", "src")),
+            ),
+            "tanh": (
+                ("ApproxF32", "f32", ("approx", "type", "dst", "src")),
+                ("ApproxF16", "f16", ("approx", "type", "dst", "src")),
+                ("ApproxF16x2", "f16x2", ("approx", "type", "dst", "src")),
+                ("ApproxBf16", "bf16", ("approx", "type", "dst", "src")),
+                ("ApproxBf16x2", "bf16x2", ("approx", "type", "dst", "src")),
+            ),
+        }
+        for opcode, variants in expected.items():
+            instruction = by_opcode[opcode]
+            self.assertEqual(
+                [variant.cpp_name for variant in instruction.variants],
+                [name for name, _, _ in variants],
+            )
+            for variant, (cpp_name, scalar_type, fields) in zip(
+                instruction.variants, variants, strict=True
+            ):
+                self.assertEqual([field.name for field in variant.fields], list(fields), cpp_name)
+                self.assertIs(variant.fields[0].constant_value, True, cpp_name)
+                self.assertEqual(variant.fields[-3].constant_value, scalar_type, cpp_name)
+
+        for opcode in ("sin", "cos", "lg2", "ex2", "tanh"):
+            variant = next(
+                item for item in by_opcode[opcode].variants if item.cpp_name == "ApproxF32"
+            )
+            self.assertEqual(
+                [binding.register_width_policy for binding in variant.operand_layouts[0].bindings],
+                [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
+                opcode,
+            )
+
+        # BF16 is an instruction-only format and binds exact bit containers; the
+        # packed F16 cohort also admits .b32 through same-width compatibility.
+        containers = {
+            ("ex2", "ApproxF16"): ("f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+            ("ex2", "ApproxF16x2"): ("f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+            ("ex2", "ApproxFtzBf16"): ("b16", ResolvedRegisterWidthPolicy.EXACT),
+            ("ex2", "ApproxFtzBf16x2"): ("b32", ResolvedRegisterWidthPolicy.EXACT),
+            ("tanh", "ApproxF16"): ("f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+            ("tanh", "ApproxF16x2"): ("f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+            ("tanh", "ApproxBf16"): ("b16", ResolvedRegisterWidthPolicy.EXACT),
+            ("tanh", "ApproxBf16x2"): ("b32", ResolvedRegisterWidthPolicy.EXACT),
+        }
+        for (opcode, cpp_name), (container, policy) in containers.items():
+            variant = next(
+                item for item in by_opcode[opcode].variants if item.cpp_name == cpp_name
+            )
+            bindings = variant.operand_layouts[0].bindings
+            self.assertEqual(
+                [binding.register_width_policy for binding in bindings],
+                [policy] * 2,
+                cpp_name,
+            )
+            self.assertEqual(
+                [binding.type_expression.scalar_type for binding in bindings],
+                [container] * 2,
+                cpp_name,
+            )
 
     def test_lop3_has_base_and_boolop_layouts_with_u8_lut_range(self) -> None:
         variant, boolop = self.lop3_instruction.variants

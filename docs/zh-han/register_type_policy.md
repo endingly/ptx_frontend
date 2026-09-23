@@ -42,7 +42,8 @@ resolver 的 suffix table 仍只是 instruction-modifier 的机械映射。`.par
 | Consumer | Policy 决策 |
 | --- | --- |
 | `mul/mad.wide.u32`、`popc/clz`、`bfind/bfe`、普通 `mad/div/min/max` 浮点形式 | 同宽基础类型兼容，保留各 operand 原有位宽 |
-| `neg.f16x2`、packed `cvt` 的 destination | expected type 使用 `f16x2` 加 `same_width`，接受 `.f16x2`/`.b32`，不接受任意 32 位存储 |
+| `neg.f16x2` | 两个 operand 都要求 exact `.b32` storage；不接受 native `.f16x2` 寄存器 |
+| packed `cvt` 的 destination | expected type 使用 `f16x2` 加 `same_width`，接受 `.f16x2`/`.b32`，不接受任意 32 位存储 |
 | `cvt` 普通 f32 operand、`mapa/getctarank`、`isspacep` | 同宽兼容；address shape/state-space 检查独立保留 |
 | `vote/match/redux/elect/activemask`、mbarrier count/parity/hint、解码后的 cluster CTA ID | 同宽兼容；mask、数值范围与 target 检查独立保留 |
 | alternate-format FMA（`bf16`、`bf16x2`、`f32x2`、mixed bf16 source） | 保留 exact bit-container 要求 |

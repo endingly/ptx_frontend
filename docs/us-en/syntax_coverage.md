@@ -45,7 +45,7 @@ execution evidence for eleven commonly used operation names.
 | Extended-precision integer | Supported | All documented §9.7.2 `add`/`addc`/`sub`/`subc`/`mad`/`madc` type, mode, and CC-effect combinations expose typed carry/borrow effects and target-aware validation; see [carry coverage](carry_coverage.md). Runtime CC state remains outside the frontend |
 | Modelled `mad` | Supported subset | Integer and carry forms remain available; explicit-rounding FP32/FP64 forms, operands, target minima, and excluded legacy profiles are documented in [MAD coverage](mad_coverage.md). |
 | Modelled `fma` | Supported | The 16 PTX 9.3 FMA variants, their modifier/operand contracts, and availability are listed in the [FMA coverage matrix](fma_coverage.md); simulator execution remains unsupported |
-| Frozen integer `div` | Supported | `div.u32` with register-or-immediate sources (PTX 1.0 / SM 0); a zero divisor remains accepted with PTX-specified unspecified behavior |
+| Modelled `div` | Supported subset | Frozen integer `div.u32` (PTX 1.0 / SM 0) and explicit FP32/FP64 forms; see [DIV coverage](div_coverage.md). A zero divisor remains accepted with PTX-specified unspecified behavior. |
 
 The conversion-family inventory is documented separately in
 [conversion coverage](conversion_coverage.md). It names the modelled forms and

@@ -48,7 +48,7 @@ TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
            // The narrow source is register-only, including the BF16 cohort.
            "add.f32.f16 %f0, 1.0, %f2;",
            "sub.f32.bf16 %f0, 1.0, %f2;",
-           // The newly immediate-capable addend admits floating literals only.
+           // The mixed addend and subtrahend admit floating literals only.
            "add.f32.f16 %f0, %h1, 1;",
            "sub.f32.f16 %f0, %h1, 1;",
            "add.f32.bf16 %f0, %b1, 1;",

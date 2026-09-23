@@ -25,6 +25,5 @@ PTX 2.0 / `sm_20` 边界由 frontend checker test 强制，而非 assembler targ
 [explicit 浮点 MAD](mad_coverage.md)、[DIV](div_coverage.md)、
 [reciprocal/square-root form](unary_float_coverage.md)、
 [浮点 transcendental](transcendental_coverage.md) 与
-[浮点 MIN/MAX](min_max_coverage.md) 已单独建模。Issue 142 后续工作会处理
-现有 ADD/SUB 与 mixed-family
-contract 由 [浮点与 mixed ADD/SUB](add_sub_coverage.md) 对账。
+[浮点 MIN/MAX](min_max_coverage.md) 已单独建模。Issue 142 的剩余工作已由
+[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成对账。

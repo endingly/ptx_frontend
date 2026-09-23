@@ -25,7 +25,15 @@ CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <modul
 - `Min::NanF32` / `Max::NanF32` 变为 `Min::F32` / `Max::F32`，因为 frozen `.NaN` seed 被并入通用 FP32 cohort，而不是重复建模。
 - `Min::F32` 与 `Max::F32` 现在带 `Operands = std::variant<BinaryOperands, TernaryOperands>`，`ResolvedOperandLayoutTag{0}` 选择 two-source layout，`{1}` 选择 three-source layout。
 
-`docs/us-en/code_conventions.md` 要求 public rename 采取「a reviewed compatibility path or an explicitly versioned API break」。本切片两者都未采取：该 package 目前仍没有 version boundary，因此这是一次刻意且已记录的 break，而不是 versioned break。仓库目前没有专门的 migration 或 changelog 文档，因此该变更记录在此处。
+consumer 需将 `Min::NanF32` / `Max::NanF32` 引用迁移到 `Min::F32` / `Max::F32`。假设有一个名为 `value` 的 `Min::F32` 值，应按 operand 数量选择对应的 variant alternative：
+
+```cpp
+const auto& binary_operands = std::get<Min::F32::BinaryOperands>(value.operands);  // two-source
+// Or, when the instruction has three sources:
+const auto& ternary_operands = std::get<Min::F32::TernaryOperands>(value.operands);
+```
+
+这些 public shape change 在 installed C++ package `0.1.0` 明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。不提供 compatibility shim 或并行的 legacy representation，因此 consumer 需要迁移到重命名后的 cohort 和 operand variant。Python package 仍为 `0.0.1b0`，并独立管理版本。仓库没有专用 migration 或 changelog 文档，因此迁移说明保留在此处。
 
 共享 checker 结构的新增成员一律**追加**而非插入，因此既有 aggregate initializer 仍可编译：`checker::ModifierValueView` 的 `slot` 是最后一个成员，`checker::OperandLayoutDescriptor` 新增 `forbidden_modifiers`，同时新增 `CheckDiagnosticKind::ModifierNotAllowedForLayout`。该 modifier 诊断在 provenance 仍保留时报告 offending modifier 自身的 source range，否则回落到 context range。
 

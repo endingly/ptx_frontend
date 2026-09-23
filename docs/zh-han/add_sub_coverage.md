@@ -37,7 +37,7 @@ std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // 之后：registe
 std::get<ResolvedImmediate>(mixed.addend.value).bits;        // 之后：immediate payload
 ```
 
-这些 public member 变更在 installed C++ package `0.1.0` 明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。consumer 需按上文迁移到 register-or-immediate variant 的访问方式。不提供 compatibility shim，也不引入并行表示：该改动复用 scalar `add`/`sub` 与 DIV cohort 已在使用的同一条 typed register/immediate 路径。destination 与 narrow source 保持 register payload。Python wheel 版本为 `0.1.0b0`，属于 beta prerelease；installed C++ package 仍为 `0.1.0`。两者是独立的 package 版本，没有锁步要求。
+这些 public member 变更在 installed C++ package `0.1.0` 曾明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。consumer 需按上文迁移到 register-or-immediate variant 的访问方式。不提供 compatibility shim，也不引入并行表示：该改动复用 scalar `add`/`sub` 与 DIV cohort 已在使用的同一条 typed register/immediate 路径。destination 与 narrow source 保持 register payload。Python wheel 版本为 `0.1.0b0`，属于 beta prerelease；installed C++ package 当前为 `0.2.0`。两者是独立的 package 版本，没有锁步要求。
 
 ## 证据
 

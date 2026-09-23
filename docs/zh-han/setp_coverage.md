@@ -1,6 +1,6 @@
 # SETP 覆盖情况
 
-本文记录 frontend 建模的完整 PTX 9.3 `setp` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，不表示 simulator execution 或 physical GPU 行为。唯一的 machine-readable source 是 `python/code_gen/resources/ptx_spec/comparison_and_selection.yaml`。
+本文记录 frontend 建模的完整 PTX 9.3 `setp` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，不表示 simulator execution 或 physical GPU 行为。唯一的 machine-readable source 是 `python/src/ptx_frontend/spec/resources/ptx_spec/comparison_and_selection.yaml`。
 
 规范依据为 NVIDIA PTX ISA 9.3 archive：[ordinary SETP §9.7.6.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-setp) 和 [half/bfloat SETP §9.7.7.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-setp)。
 
@@ -30,4 +30,4 @@ ordinary syntax 允许单个 `_` destination，或 predicate pair 的一个 `_` 
 
 ## 验证来源
 
-[专用 C++ SETP 测试](../../submod/resolved_ir/test/test_setp_completeness.cpp) 覆盖所有 family 的 parse、resolve、declared-operand checking、target minimum、modifier/layout negative、predicate-constant truth value，以及 mutation 后的 IR sink validation。[已安装 consumer SETP 测试](../../submod/resolved_ir/test/package_consumer/setp_completeness.cpp) 只用 installed public header 验证 floating form、ordinary sink pair、predicate constant，以及 checker 对 selected domain 外 comparison enum 的 rejection。focused Python database test 验证 variant、comparison domain、availability、sink boundary、predicate-source kind 和 packed container。这些来源仅定义 frontend 边界；不验证 simulator 或 hardware execution result。
+[专用 C++ SETP 测试](../../submod/resolved_ir/test/test_setp_completeness.cpp) 覆盖所有 family 的 parse、resolve、declared-operand checking、target minimum、modifier/layout negative、predicate-constant truth value，以及 mutation 后的 IR sink validation。[Python database 测试](../../python/tests/spec/test_setp_completeness.py) 验证 variant、comparison domain、availability、sink boundary、predicate-source kind 和 packed container。这些来源仅定义 frontend 边界；不验证 simulator 或 hardware execution result。

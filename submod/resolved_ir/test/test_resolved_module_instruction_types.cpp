@@ -393,7 +393,7 @@ TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
       std::get<Set>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Set::LtAndF32S32>(instruction.variant);
+  const auto& variant = std::get<Set::SignedBoolean>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});

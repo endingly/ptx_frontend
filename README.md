@@ -41,6 +41,12 @@ supported surface and its exclusions.
 - [Floating and mixed `add`/`sub` coverage](docs/us-en/add_sub_coverage.md) and
   its [简体中文版本](docs/zh-han/add_sub_coverage.md) reconcile the scalar,
   packed, half/bfloat, and mixed-precision operand contracts.
+- [Ordinary `selp` coverage](docs/us-en/selp_coverage.md) and its
+  [简体中文版本](docs/zh-han/selp_coverage.md) define the modelled scalar types,
+  predicate operand, and `.f64` target boundary.
+- [Ordinary `set` coverage](docs/us-en/set_coverage.md) and its
+  [简体中文版本](docs/zh-han/set_coverage.md) define scalar comparison/result
+  types, Boolean and `.ftz` controls, and target limits.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.

@@ -2,7 +2,7 @@
 
 This example consumes the installed `ptx_frontend` package through its public
 CMake target `ptx_frontend::resolved_ir` and the `ptx_spec` data component,
-requesting package version `0.1.0`. Configuration checks that the installed PTX
+requesting package version `0.2.0`. Configuration checks that the installed PTX
 and C++ backend YAML/schema paths all exist.
 The source covers a targeted module with these representative forms:
 
@@ -14,7 +14,10 @@ The source covers a targeted module with these representative forms:
 - typed `testp.normal.f32`, `copysign.f32`, and FP32/BF16 transcendental forms;
 - binary and ternary FP32 `min`/`max` modifier and operand layouts;
 - mixed FP32/F16 `add` and FP32/BF16 `sub`, with register and floating-immediate
-  addend/subtrahend values.
+  addend/subtrahend values;
+- ordinary `set` with typed floating comparison and Boolean predicate constant;
+- ordinary `selp.s32` and the retained `selp.u32` alternative, including
+  complemented register and integer predicate sources.
 
 The module uses PTX 9.3 and `sm_121a`, which supplies the exact target context
 for the scaled `s2f6x2` form. The program also checks the public scalar and
@@ -22,7 +25,8 @@ rounding enum values at compile time. It resolves the syntax while parser state
 is alive, moves the result into an owned resolved module, and validates that
 owned model after the source, parser, and AST have left scope. Runtime checks
 inspect the typed instruction variants and revalidate deliberate invalid
-modifier, layout, and property mutations, including in Release builds.
+modifier, layout, property, comparison, and selection type mutations, including
+in Release builds.
 
 Configure and build it from the repository checkout after installing the
 library to a fresh prefix:

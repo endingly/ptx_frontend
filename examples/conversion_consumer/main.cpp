@@ -51,6 +51,8 @@ constexpr std::string_view kFixture = R"ptx(
   set.nan.xor.f32.f32 %f0, %f1, %f2, !0;
   selp.s32 %s0, %s1, -1, !%p0;
   selp.u32 %u0, %u0, 0, 2;
+  set.num.xor.ftz.f16x2.f16x2 %b3, %b1, %b2, !0;
+  set.eq.bf16.f16 %h0, %h1, %h1;
   ret;
 }
 )ptx";
@@ -83,7 +85,7 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 24, "all conversion and arithmetic instructions"))
+  if (!require(body.size() == 26, "all conversion and arithmetic instructions"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);
@@ -241,6 +243,30 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed SET and both SELP public alternatives"))
     return false;
 
+  auto* set_half_instruction = std::get_if<ir::Set>(&body[23]);
+  auto* set_half = set_half_instruction
+                       ? std::get_if<ir::Set::HalfNativeF16x2Boolean>(
+                             &set_half_instruction->variant)
+                       : nullptr;
+  auto* set_bfloat_instruction = std::get_if<ir::Set>(&body[24]);
+  auto* set_bfloat =
+      set_bfloat_instruction
+          ? std::get_if<ir::Set::HalfBf16F16>(&set_bfloat_instruction->variant)
+          : nullptr;
+  if (!require(
+          set_half && set_half->ftz.value &&
+              set_half->comparison.value ==
+                  ptx_frontend::base::ComparisonOperator::Num &&
+              std::get<ir::ResolvedPredicateConstant>(set_half->combine.value)
+                  .value &&
+              set_bfloat &&
+              set_bfloat->comparison.value ==
+                  ptx_frontend::base::ComparisonOperator::Eq &&
+              set_bfloat->dst.value.declared_type ==
+                  ptx_frontend::base::ScalarType::B16,
+          "typed half/bfloat SET alternatives and owned operands"))
+    return false;
+
   min_binary->abs.value = true;
   const bool forbidden_binary_modifier = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
@@ -278,6 +304,13 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
       "SET rejects a comparison outside its floating domain");
   set_float->comparison.value = ptx_frontend::base::ComparisonOperator::Nan;
   if (!invalid_set_domain)
+    return false;
+  set_half->comparison.value = ptx_frontend::base::ComparisonOperator::Lo;
+  const bool invalid_half_domain = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "half SET rejects an integer-only comparison");
+  set_half->comparison.value = ptx_frontend::base::ComparisonOperator::Num;
+  if (!invalid_half_domain)
     return false;
   selp_scalar->type.value = ptx_frontend::base::ScalarType::F16;
   const bool invalid_selp_domain = rejectsMutation(

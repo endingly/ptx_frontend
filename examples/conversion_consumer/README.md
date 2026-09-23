@@ -16,6 +16,7 @@ The source covers a targeted module with these representative forms:
 - mixed FP32/F16 `add` and FP32/BF16 `sub`, with register and floating-immediate
   addend/subtrahend values;
 - ordinary `set` with typed floating comparison and Boolean predicate constant;
+- half/bfloat `set` with typed packed and scalar result/source alternatives;
 - ordinary `selp.s32` and the retained `selp.u32` alternative, including
   complemented register and integer predicate sources.
 

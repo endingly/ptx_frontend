@@ -19,6 +19,116 @@ operand_patterns:
     - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(stype)"}}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
+  set_half_result_scalar:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(stype)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(stype)"}}
+
+  set_half_result_scalar_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(stype)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(stype)"}}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_half_result_f16:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+
+  set_half_result_f16_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_bfloat_result_scalar:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(stype)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(stype)"}}
+
+  set_bfloat_result_scalar_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(stype)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(stype)"}}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_bfloat_result_f16:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+
+  set_bfloat_result_f16_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_integer_result_f16:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+
+  set_integer_result_f16_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_integer_result_bf16:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+
+  set_integer_result_bf16_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b16, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b16, register_width: exact}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_native_f16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+
+  set_native_f16x2_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_integer_result_f16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+
+  set_integer_result_f16x2_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_bfloat_result_bf16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+
+  set_bfloat_result_bf16x2_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: exact}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
+  set_integer_result_bf16x2:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+
+  set_integer_result_bf16x2_boolean:
+    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
+    - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
   setp_scalar_single:
     - {name: dst, kind: pred_or_sink, role: dst, access: write, type: pred}
     - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(type)"}}
@@ -255,6 +365,281 @@ instructions:
           - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u32, s32, f32]}
           - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
         operands: $set_scalar_boolean
+  - opcode: set
+    section: "9.7.7.1"
+    doc: "PTX 9.3 half and bfloat SET comparisons with typed result, source, Boolean, FTZ, and target contracts."
+    syntax: "set.CmpOp{.BoolOp}{.ftz}.dtype.stype dst, src1, src2{, combine}"
+    variants:
+      - name: set_half_f16_bit
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
+        operands: $set_half_result_scalar
+      - name: set_half_f16_bit_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
+        operands: $set_half_result_scalar_boolean
+      - name: set_half_f16_integer
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
+        operands: $set_half_result_scalar
+      - name: set_half_f16_integer_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
+        operands: $set_half_result_scalar_boolean
+      - name: set_half_f16_f16
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_half_result_f16
+      - name: set_half_f16_f16_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_half_result_f16_boolean
+      - name: set_half_f16_f32
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $set_half_result_scalar
+      - name: set_half_f16_f32_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operands: $set_half_result_scalar_boolean
+      - name: set_half_f16_f64
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        operands: $set_half_result_scalar
+      - name: set_half_f16_f64_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        operands: $set_half_result_scalar_boolean
+      - name: set_half_bf16_bit
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
+        operands: $set_bfloat_result_scalar
+      - name: set_half_bf16_bit_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
+        operands: $set_bfloat_result_scalar_boolean
+      - name: set_half_bf16_integer
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
+        operands: $set_bfloat_result_scalar
+      - name: set_half_bf16_integer_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
+        operands: $set_bfloat_result_scalar_boolean
+      - name: set_half_bf16_f16
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_bfloat_result_f16
+      - name: set_half_bf16_f16_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_bfloat_result_f16_boolean
+      - name: set_half_bf16_wide_float
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [f32, f64]}
+        operands: $set_bfloat_result_scalar
+      - name: set_half_bf16_wide_float_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+          - {name: stype, kind: type, domain: scalar_types, presence: required, values: [f32, f64]}
+        operands: $set_bfloat_result_scalar_boolean
+      - name: set_half_integer_f16
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u16, s16, u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_integer_result_f16
+      - name: set_half_integer_f16_boolean
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u16, s16, u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16}
+        operands: $set_integer_result_f16_boolean
+      - name: set_half_integer_bf16
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u16, s16, u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        operands: $set_integer_result_bf16
+      - name: set_half_integer_bf16_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u16, s16, u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        operands: $set_integer_result_bf16_boolean
+      - name: set_half_native_f16x2
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        operands: $set_native_f16x2
+      - name: set_half_native_f16x2_boolean
+        availability: {ptx: "4.2", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        operands: $set_native_f16x2_boolean
+      - name: set_half_integer_f16x2
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        operands: $set_integer_result_f16x2
+      - name: set_half_integer_f16x2_boolean
+        availability: {ptx: "6.5", sm: 53}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        operands: $set_integer_result_f16x2_boolean
+      - name: set_half_native_bf16x2
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        operands: $set_bfloat_result_bf16x2
+      - name: set_half_native_bf16x2_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        operands: $set_bfloat_result_bf16x2_boolean
+      - name: set_half_integer_bf16x2
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        operands: $set_integer_result_bf16x2
+      - name: set_half_integer_bf16x2_boolean
+        availability: {ptx: "7.8", sm: 90}
+        modifiers:
+          - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
+          - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: dtype, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+          - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        operands: $set_integer_result_bf16x2_boolean
   - opcode: setp
     section: "9.7.6.2"
     doc: "Complete PTX 9.3 ordinary, half, and bfloat predicate comparisons with descriptor-driven type, sink, and availability contracts."

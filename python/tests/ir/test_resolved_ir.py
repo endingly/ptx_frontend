@@ -4335,7 +4335,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Vote")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["SyncBallotB32"]
+            [variant.cpp_name for variant in resolved.variants],
+            ["SyncBallotB32", "SyncAllPred", "SyncAnyPred", "SyncUniPred"],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
@@ -4354,6 +4355,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
+        for predicate_vote in resolved.variants[1:]:
+            self.assertEqual(
+                dict(predicate_vote.availability), {"ptx": "6.0", "sm": 30}
+            )
+            self.assertEqual(
+                [
+                    (field.name, field_cpp_type(field))
+                    for field in predicate_vote.operand_layouts[0].fields
+                ],
+                [
+                    ("dst", "WithLocs<ResolvedPredicate>"),
+                    ("predicate", "WithLocs<ResolvedPredicate>"),
+                    ("membermask", "WithLocs<RegOrImm>"),
+                ],
+            )
 
     def test_shfl_sync_idx_b32_model(self) -> None:
         database = self.database
@@ -4365,15 +4381,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         resolved = from_instruction_spec(shfl)
 
         self.assertEqual(resolved.cpp_name, "Shfl")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["SyncIdxB32", "SyncUpB32", "SyncDownB32", "SyncBflyB32"],
+        )
         variant = resolved.variants[0]
         self.assertEqual(variant.cpp_name, "SyncIdxB32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
         self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
-                ("sync", "bool"),
-                ("idx", "bool"),
-                ("type", "ScalarType"),
+                (field.name, field_cpp_type(field))
+                for field in variant.operand_layouts[1].fields
+            ],
+            [
                 ("dst", "WithLocs<ResolvedShflSyncDestination>"),
                 ("src", "WithLocs<ResolvedRegisterRef>"),
                 ("lane", "WithLocs<RegOrImm>"),
@@ -4382,13 +4402,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[0].allowed_shapes,
+            variant.operand_layouts[1].bindings[0].allowed_shapes,
             (ResolvedOperandShape.SHFL_DESTINATION,),
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[0].register_width_policy,
+            variant.operand_layouts[1].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
+        self.assertEqual(
+            field_cpp_type(variant.operand_layouts[0].fields[0]),
+            "WithLocs<ResolvedRegisterRef>",
+        )
+        for mode in resolved.variants:
+            self.assertEqual(dict(mode.availability), {"ptx": "6.0", "sm": 30})
+            self.assertEqual(
+                [layout.cpp_name for layout in mode.operand_layouts],
+                ["WithoutPredicate", "WithPredicate"],
+            )
 
     def test_shfl_generator_emits_pair_operand_view(self) -> None:
         database = self.database
@@ -4404,7 +4434,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::ShflDestination,", source
         )
-        self.assertIn("selected.dst.value.data\n                      ?", source)
+        self.assertGreaterEqual(
+            source.count(".actual_shape = check_end::OperandShape::ShflDestination,"),
+            4,
+        )
 
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
         database = self.database

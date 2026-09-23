@@ -162,7 +162,24 @@ operand_patterns:
       type: b32
       register_width: same_width
     - name: predicate
+      kind: pred_or_not
+      role: predicate
+      access: read
+      type: pred
+    - name: membermask
+      kind: reg_or_imm
+      role: src
+      access: read
+      type: u32
+
+  vote_sync_predicate:
+    - name: dst
       kind: pred
+      role: dst
+      access: write
+      type: pred
+    - name: predicate
+      kind: pred_or_not
       role: predicate
       access: read
       type: pred
@@ -1285,8 +1302,8 @@ instructions:
 
   - opcode: vote
     section: "9.7.14.10"
-    doc: "Vote operation, limited to synchronized ballot.b32."
-    syntax: "vote.sync.ballot.b32 dst, predicate, membermask"
+    doc: "Synchronized warp vote with optional source-predicate negation."
+    syntax: "vote.sync.{all|any|uni}.pred dst, {!}predicate, membermask | vote.sync.ballot.b32 dst, {!}predicate, membermask"
 
     variants:
       - name: vote_sync_ballot_b32
@@ -1312,6 +1329,44 @@ instructions:
 
         examples:
           - ptx: "vote.sync.ballot.b32 %b0, %p0, 0xffffffff;"
+            valid: true
+          - ptx: "vote.sync.ballot.b32 %b0, !%p0, 0xffffffff;"
+            valid: true
+
+      - name: vote_sync_all_pred
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: all, kind: flag, presence: fixed, value: true, token: .all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_sync_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - ptx: "vote.sync.all.pred %p1, !%p0, 0xffffffff;"
+            valid: true
+
+      - name: vote_sync_any_pred
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: any, kind: flag, presence: fixed, value: true, token: .any}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_sync_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - ptx: "vote.sync.any.pred %p1, %p0, 0xffffffff;"
+            valid: true
+
+      - name: vote_sync_uni_pred
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: uni, kind: flag, presence: fixed, value: true, token: .uni}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_sync_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - ptx: "vote.sync.uni.pred %p1, !%p0, 0xffffffff;"
             valid: true
 
   - opcode: match

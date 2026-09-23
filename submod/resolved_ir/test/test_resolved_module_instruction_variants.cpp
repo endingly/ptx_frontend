@@ -2883,6 +2883,81 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   ASSERT_FALSE(missing_mask.has_value());
 }
 
+TEST(ResolvedModule, PreservesVoteSyncModesAndSourceNegation) {
+  const auto parsed = parseModule(R"ptx(
+.version 6.0
+.target sm_30
+.entry kernel() {
+  .reg .pred %p<3>;
+  .reg .b32 %b;
+  .reg .u32 %mask;
+  vote.sync.all.pred %p1, %p0, 0xffffffff;
+  vote.sync.all.pred %p1, !%p0, %mask;
+  vote.sync.any.pred %p1, %p0, 0xffffffff;
+  vote.sync.any.pred %p1, !%p0, %mask;
+  vote.sync.uni.pred %p1, %p0, 0xffffffff;
+  vote.sync.uni.pred %p1, !%p0, %mask;
+  vote.sync.ballot.b32 %b, %p0, 0xffffffff;
+  vote.sync.ballot.b32 %b, !%p0, %mask;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = parsed->range,
+  };
+  for (const auto& candidate : body) {
+    ASSERT_TRUE(checker::check(std::get<Vote>(candidate), context).has_value());
+  }
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncAllPred>(
+      std::get<Vote>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncAnyPred>(
+      std::get<Vote>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncUniPred>(
+      std::get<Vote>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncBallotB32>(
+      std::get<Vote>(body[6]).variant));
+  EXPECT_FALSE(std::get<Vote::SyncAllPred>(std::get<Vote>(body[0]).variant)
+                   .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncAllPred>(std::get<Vote>(body[1]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncAnyPred>(std::get<Vote>(body[3]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncUniPred>(std::get<Vote>(body[5]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncBallotB32>(std::get<Vote>(body[7]).variant)
+                  .predicate.value.negated);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .pred %p<2>; .reg .b32 %b; "
+           "vote.sync.all.pred %b, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; .reg .b32 %b; "
+           "vote.sync.ballot.b32 %p1, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.sync.uni.pred %p1, %p0; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.sync.all.pred !%p1, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.uni.pred %p1, %p0; }",
+       }) {
+    const auto invalid_ast = parseModule(source);
+    if (invalid_ast.diagnostics.empty()) {
+      const auto invalid = resolveModule(*invalid_ast);
+      if (invalid.has_value()) {
+        EXPECT_FALSE(
+            checker::check(
+                std::get<Vote>(invalid->functions.front().body.front()),
+                context)
+                .has_value());
+      }
+    }
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksBarWarpSyncSlice) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .entry kernel() {

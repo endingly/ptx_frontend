@@ -76,6 +76,19 @@ constexpr std::string_view k_member_identity_module_fixture = R"ptx(
 }
 )ptx";
 
+/** Synchronized warp forms whose typed operands must outlive their AST. */
+constexpr std::string_view k_warp_sync_module_fixture = R"ptx(
+.version 6.0
+.target sm_30
+.entry kernel() {
+  .reg .b32 %b<2>;
+  .reg .pred %p<2>;
+  shfl.sync.up.b32 %b0, %b1, 1, 31, 0xffffffff;
+  shfl.sync.bfly.b32 %b0|%p0, %b1, 1, 31, 0xffffffff;
+  vote.sync.uni.pred %p1, !%p0, 0xffffffff;
+}
+)ptx";
+
 /** Complete-context fixture for a generated public `cvta` variant. */
 constexpr std::string_view k_cvta_member_identity_module_fixture = R"ptx(
 .version 7.7
@@ -530,6 +543,64 @@ TEST(OwnedModuleHandoff, ValidatesCompleteContextWithoutAst) {
       << (validation.has_value() || validation.error().empty()
               ? "Owned fixture did not validate."
               : validation.error().front().message);
+}
+
+/** Warp mode, destination layout, and source negation survive source teardown. */
+TEST(OwnedModuleHandoff, RetainsSynchronizedWarpFormsAfterInputDies) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source{k_warp_sync_module_fixture};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value())
+        << (resolved.has_value() || resolved.error().empty()
+                ? "Warp fixture did not resolve."
+                : resolved.error().front().message);
+    owned.emplace(std::move(*resolved));
+  }
+
+  ASSERT_TRUE(owned.has_value());
+  ResolvedModule& module = *owned;
+  ASSERT_EQ(module.functions.size(), 1u);
+  auto& kernel = module.functions.front();
+  ASSERT_EQ(kernel.body.size(), 3u);
+  ASSERT_EQ(kernel.instruction_ranges.size(), 3u);
+  auto& up = std::get<Shfl>(kernel.body[0]);
+  auto& bfly = std::get<Shfl>(kernel.body[1]);
+  auto& vote = std::get<Vote>(kernel.body[2]);
+  auto& up_mode = std::get<Shfl::SyncUpB32>(up.variant);
+  auto& bfly_mode = std::get<Shfl::SyncBflyB32>(bfly.variant);
+  auto& uni_mode = std::get<Vote::SyncUniPred>(vote.variant);
+  ASSERT_TRUE(std::holds_alternative<Shfl::SyncUpB32::WithoutPredicateOperands>(
+      up_mode.operands));
+  ASSERT_TRUE(std::holds_alternative<Shfl::SyncBflyB32::WithPredicateOperands>(
+      bfly_mode.operands));
+  EXPECT_TRUE(uni_mode.predicate.value.negated);
+
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = kernel.instruction_ranges.front(),
+  };
+  EXPECT_TRUE(checker::check(up, context));
+  EXPECT_TRUE(checker::check(bfly, context));
+  EXPECT_TRUE(checker::check(vote, context));
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
+
+  auto& paired =
+      std::get<Shfl::SyncBflyB32::WithPredicateOperands>(bfly_mode.operands);
+  ASSERT_TRUE(paired.dst.value.predicate.has_value());
+  auto& predicate_type =
+      paired.dst.value.predicate->value.register_ref.declared_type;
+  ASSERT_EQ(predicate_type, base::ScalarType::Pred);
+  predicate_type = base::ScalarType::B32;
+  expect_owned_validation_kind(
+      module, ModuleValidationPolicy::RequireCompleteContext,
+      checker::CheckDiagnosticKind::OperandTypeMismatch);
+  predicate_type = base::ScalarType::Pred;
+  expect_owned_validation_success(
+      module, ModuleValidationPolicy::RequireCompleteContext);
 }
 
 /** Generated operand members retain checked group identities after AST destruction. */

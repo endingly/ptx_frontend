@@ -297,8 +297,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         variant = self.shfl_descriptor.variants[0]
         self.assertEqual(variant.variant_id, "shfl_sync_idx_b32")
         self.assertEqual(
-            variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
+            variant.operand_layouts[1].slots[0].allowed_syntax_shapes,
             OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
         )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:

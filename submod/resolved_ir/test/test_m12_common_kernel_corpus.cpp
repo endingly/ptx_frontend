@@ -8,8 +8,8 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -51,19 +51,15 @@ void expectM12CorpusModule(const CorpusCase& corpus_case) {
                 .bit_width.text,
             "64");
 
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved =
+      test_support::resolveAndCheckAvailableModuleSnapshot(*parsed);
   ASSERT_TRUE(resolved.has_value())
       << (resolved.error().empty() ? "resolution failed"
                                    : resolved.error().front().message);
   ASSERT_EQ(resolved->functions.size(), corpus_case.function_count);
 
-  const auto availability = checkModuleAvailability(*parsed, *resolved);
-  ASSERT_TRUE(availability.has_value())
-      << (availability.error().empty() ? "availability check failed"
-                                       : availability.error().front().message);
-
   for (const auto& function : resolved->functions)
-    ASSERT_FALSE(function.body.empty()) << function.name << file;
+    ASSERT_GT(function.instruction_count, 0u) << function.name << file;
 }
 
 TEST(ResolvedModule, ResolvesAndChecksEveryM12CommonKernelCorpusModule) {

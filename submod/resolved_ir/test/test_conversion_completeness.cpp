@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include "test_module_snapshot.hpp"
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -16,26 +16,25 @@ using test_helpers::parseModule;
 void expectModuleAccepted(std::string_view source) {
   const auto ast = parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  const auto module = resolveModuleOnly(*ast);
-  ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  const auto validation = validateModule(*module);
-  ASSERT_TRUE(validation.has_value()) << validation.error().front().message;
+  const auto result = test_support::resolveOnlyAndCheckModule(*ast);
+  ASSERT_TRUE(result.has_value()) << result.error().front().message;
+  ASSERT_TRUE(result->has_value()) << result->error().front().message;
 }
 
 /** Parse a complete module whose conversion form must fail variant selection. */
 void expectModuleResolutionRejected(std::string_view source) {
   const auto ast = parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  EXPECT_FALSE(resolveModuleOnly(*ast).has_value());
+  EXPECT_FALSE(test_support::resolveOnlyAndCheckModule(*ast).has_value());
 }
 
 /** Parse and resolve a module whose selected form must fail target or type checks. */
 void expectModuleValidationRejected(std::string_view source) {
   const auto ast = parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  const auto module = resolveModuleOnly(*ast);
-  ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  EXPECT_FALSE(validateModule(*module).has_value());
+  const auto result = test_support::resolveOnlyAndCheckModule(*ast);
+  ASSERT_TRUE(result.has_value()) << result.error().front().message;
+  EXPECT_FALSE(result->has_value());
 }
 
 /** Check that a complete module fails validation with the selected diagnostic. */
@@ -43,24 +42,22 @@ void expectModuleValidationDiagnostic(
     std::string_view source, checker::CheckDiagnosticKind diagnostic_kind) {
   const auto ast = parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  const auto module = resolveModuleOnly(*ast);
-  ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  const auto validation = validateModule(*module);
-  ASSERT_FALSE(validation.has_value());
-  ASSERT_FALSE(validation.error().empty());
-  EXPECT_EQ(validation.error().front().kind, diagnostic_kind);
+  const auto result = test_support::resolveOnlyAndCheckModule(*ast);
+  ASSERT_TRUE(result.has_value()) << result.error().front().message;
+  ASSERT_FALSE(result->has_value());
+  ASSERT_FALSE(result->error().empty());
+  EXPECT_EQ(result->error().front().kind, diagnostic_kind);
 }
 
 /** Parse and resolve a module whose selected form must violate an instruction rule. */
 void expectModuleRuleViolation(std::string_view source) {
   const auto ast = parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  const auto module = resolveModuleOnly(*ast);
-  ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  const auto validation = validateModule(*module);
-  ASSERT_FALSE(validation.has_value());
-  ASSERT_FALSE(validation.error().empty());
-  EXPECT_EQ(validation.error().front().kind,
+  const auto result = test_support::resolveOnlyAndCheckModule(*ast);
+  ASSERT_TRUE(result.has_value()) << result.error().front().message;
+  ASSERT_FALSE(result->has_value());
+  ASSERT_FALSE(result->error().empty());
+  EXPECT_EQ(result->error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
 }
 

@@ -4,8 +4,11 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -74,7 +77,8 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
     SCOPED_TRACE(body);
     const auto ast = parseCallModule(body);
     ASSERT_TRUE(ast);
-    const auto module = resolveModule(*ast);
+    const auto module = test_support::resolveTypedModule<Call, Ld, St>(
+        *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_TRUE(module) << module.error().front().message;
     ASSERT_EQ(module->functions.size(), 2u);
     const auto& function = module->functions.back();
@@ -132,7 +136,8 @@ TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
           offending_range = instruction->range;
       }
       ASSERT_TRUE(offending_range);
-      const auto module = resolveModule(*ast);
+      const auto module = test_support::resolveTypedModule<Call, Ld, St>(
+          *ast, test_support::ModulePipeline::AvailableContext);
       ASSERT_FALSE(module);
       ASSERT_EQ(module.error().size(), 1u);
       EXPECT_EQ(module.error().front().stage(),
@@ -170,7 +175,8 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
         predicate_range = instruction->predicate->range;
     }
     ASSERT_TRUE(predicate_range);
-    const auto module = resolveModule(*ast);
+    const auto module = test_support::resolveTypedModule<Call, Ld, St>(
+        *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_FALSE(module);
     ASSERT_EQ(module.error().size(), 1u);
     EXPECT_EQ(module.error().front().stage(),
@@ -197,7 +203,8 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   }
 )ptx");
   ASSERT_TRUE(ast);
-  const auto module = resolveModule(*ast);
+  const auto module = test_support::resolveTypedModule<Call, Ld, St>(
+      *ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(module) << module.error().front().message;
   const auto& function = module->functions.back();
   ASSERT_EQ(function.body.size(), 3u);
@@ -224,7 +231,8 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   }
 )ptx");
   ASSERT_TRUE(crossed_ast);
-  const auto crossed = resolveModule(*crossed_ast);
+  const auto crossed = test_support::resolveTypedModule<Call, Ld, St>(
+      *crossed_ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_FALSE(crossed);
   ASSERT_EQ(crossed.error().size(), 1u);
   const auto& crossed_function =

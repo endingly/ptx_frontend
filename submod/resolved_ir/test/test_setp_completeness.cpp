@@ -5,9 +5,11 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
 
+#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -54,7 +56,8 @@ TEST(SetpCompleteness, ResolvesAndChecksEveryPtx93Family) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  const auto resolved = resolveModule(*parsed_module);
+  const auto resolved = test_support::resolveTypedModule<Setp>(
+      *parsed_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 1u);
   ASSERT_EQ(resolved->functions.front().body.size(), 16u);
@@ -126,7 +129,7 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  EXPECT_FALSE(resolveModule(*parsed_module).has_value());
+  EXPECT_FALSE(test_support::resolveModuleSnapshot(*parsed_module).has_value());
 
   const auto valid_module = parseModule(R"ptx(
 .version 9.3
@@ -138,7 +141,8 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(valid_module);
-  auto resolved = resolveModule(*valid_module);
+  auto resolved = test_support::resolveTypedModule<Setp>(
+      *valid_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& packed = std::get<Setp::F16x2>(
       std::get<Setp>(resolved->functions.front().body.front()).variant);
@@ -258,7 +262,7 @@ TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(special);
-  EXPECT_FALSE(resolveModule(*special).has_value());
+  EXPECT_FALSE(test_support::resolveModuleSnapshot(*special).has_value());
 }
 
 /** Half/bfloat SETP cannot receive an immediate in either data-source slot. */

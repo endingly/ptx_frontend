@@ -6,8 +6,14 @@
 #include <stdexcept>
 #include <string>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/matrix.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -21,6 +27,12 @@ syntax_ast::AstModule parseModule(std::string_view source) {
                                  : module.diagnostics.front().message);
   }
   return std::move(*module);
+}
+
+/** Keep the instruction types inspected by the negative corpus cases. */
+auto resolveSelectedModule(const syntax_ast::AstModule& ast) {
+  return test_support::resolveTypedModule<Atom, Cp, Ldmatrix, Mma, Vote>(
+      ast, test_support::ModulePipeline::AvailableContext);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksEveryM10CorpusModule) {
@@ -38,28 +50,22 @@ TEST(ResolvedModule, ResolvesAndChecksEveryM10CorpusModule) {
   const auto parsed = parser.parseModule();
   ASSERT_TRUE(parsed.has_value()) << file;
   EXPECT_TRUE(parsed.diagnostics.empty()) << file;
-  const auto resolved = resolveModule(*parsed);
-  ASSERT_TRUE(resolved.has_value()) << file;
-  ASSERT_EQ(resolved->functions.size(), 1u);
-  const auto& function = resolved->functions.front();
-  ASSERT_FALSE(function.body.empty());
-
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 80},
   };
-  for (const auto& instruction : function.body) {
-    const auto checked = std::visit(
-        [&](const auto& value) { return checker::check(value, context); },
-        instruction);
-    EXPECT_TRUE(checked.has_value()) << file;
-  }
+  const auto resolved =
+      test_support::resolveAndCheckInstructionSnapshot(*parsed, context);
+  ASSERT_TRUE(resolved.has_value()) << file;
+  ASSERT_EQ(resolved->functions.size(), 1u);
+  const auto& function = resolved->functions.front();
+  ASSERT_GT(function.instruction_count, 0u);
 }
 
 TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   const checker::Context current{
       .target = {.ptx_version = {9, 3}, .sm_version = 80},
   };
-  const auto invalid_copy = resolveModule(parseModule(R"ptx(
+  const auto invalid_copy = resolveSelectedModule(parseModule(R"ptx(
 .global .u32 global_value;
 .shared .u32 shared_value;
 .entry kernel() { cp.async.ca.shared.global [shared_value], [global_value], 3; }
@@ -71,7 +77,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   EXPECT_EQ(copy_check.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
 
-  const auto invalid_atom = resolveModule(parseModule(R"ptx(
+  const auto invalid_atom = resolveSelectedModule(parseModule(R"ptx(
 .entry kernel() {
   .local .u32 local_value;
   .reg .u32 %r<2>;
@@ -85,7 +91,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   EXPECT_EQ(atom_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
-  const auto invalid_vote = resolveModule(parseModule(R"ptx(
+  const auto invalid_vote = resolveSelectedModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b0;
   .reg .pred %p0;
@@ -100,7 +106,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   EXPECT_EQ(vote_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 
-  const auto invalid_shfl = resolveModule(parseModule(R"ptx(
+  const auto invalid_shfl = resolveSelectedModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b0;
   .reg .u32 %u0;
@@ -109,7 +115,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_FALSE(invalid_shfl.has_value());
 
-  const auto invalid_ldmatrix = resolveModule(parseModule(R"ptx(
+  const auto invalid_ldmatrix = resolveSelectedModule(parseModule(R"ptx(
 .global .b16 global_matrix;
 .entry kernel() {
   .reg .b32 %m<2>;
@@ -125,7 +131,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   EXPECT_EQ(ldmatrix_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
-  const auto invalid_mma = resolveModule(parseModule(R"ptx(
+  const auto invalid_mma = resolveSelectedModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .f32 %d<3>;
   .reg .f32 %c<4>;
@@ -136,7 +142,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_FALSE(invalid_mma.has_value());
 
-  const auto valid_mma = resolveModule(parseModule(R"ptx(
+  const auto valid_mma = resolveSelectedModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .f32 %d<4>;
   .reg .f32 %c<4>;

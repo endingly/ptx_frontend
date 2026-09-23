@@ -4,8 +4,13 @@
 #include <string_view>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/resolution/data_movement.gen.hpp>
 
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -168,7 +173,7 @@ TEST(StCompleteness, RejectsKnownNonglobalCacheHintAddress) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  EXPECT_FALSE(resolveModule(*ast));
+  EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
 }
 
 /** L2 eviction is confined to the two 256-bit vector shapes and modern target. */
@@ -257,7 +262,7 @@ TEST(StCompleteness, RejectsUnifiedAddressWrites) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  EXPECT_FALSE(resolveModule(*ast));
+  EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
 }
 
 /** MMIO admits store semantics and target gates from the PTX 9.3 extension. */
@@ -301,10 +306,10 @@ TEST(StCompleteness, PreservesParameterPolicyAndRevalidatesMutation) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parameter_ast);
-  const auto parameter_module = resolveModule(*parameter_ast);
+  const auto parameter_module =
+      test_support::resolveAndValidateModuleSnapshot(*parameter_ast);
   ASSERT_TRUE(parameter_module.has_value())
       << parameter_module.error().front().message;
-  EXPECT_TRUE(validateModule(*parameter_module));
 
   const auto mmio_ast =
       parseInstruction("st.global.mmio.release.sys.u32 [%rd0], %r0;");

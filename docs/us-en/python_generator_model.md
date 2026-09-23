@@ -197,6 +197,13 @@ keeps its modification time. Whole-module APIs continue to include the
 aggregate model and complete union; category-local consumers include only their
 category model and resolver/checker declaration headers.
 
+The comparison and selection spec now owns the generated
+`comparison_and_selection` category. Code using `Set`, `Setp`, `Selp`, or `Slct`
+through category-local headers must include
+`model/comparison_and_selection.gen.hpp` and the matching `resolution/` and
+`checker/` headers in place of their former `arithmetic.gen.hpp` paths. The
+installed aggregate headers still expose the complete instruction model.
+
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
 `ptx_frontend::resolved_ir`. Checker specialization declarations share one

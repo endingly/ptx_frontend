@@ -4,8 +4,10 @@
 #include <utility>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -29,7 +31,8 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     const auto ast = parser.parseModule();
     ASSERT_TRUE(ast);
     ASSERT_TRUE(ast.diagnostics.empty());
-    const auto resolved = resolveModule(*ast);
+    const auto resolved = test_support::resolveTypedModule<Brx>(
+        *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_TRUE(resolved) << resolved.error().front().message;
     const auto& function = resolved->functions.front();
     const auto scope = resolved->symbols.symbol(function.symbol_id).owned_scope;
@@ -90,7 +93,8 @@ TEST(BranchTargetRepetition, RejectsMissingAndForeignLabels) {
         std::get<syntax_ast::AstFunction>(ast->items.front());
     const auto& table =
         std::get<syntax_ast::AstBranchTargets>(function.body[1]);
-    const auto resolved = resolveModule(*ast);
+    const auto resolved = test_support::resolveTypedModule<Brx>(
+        *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_FALSE(resolved);
     ASSERT_EQ(resolved.error().size(), 2u);
     for (size_t index = 0; index < 2; ++index) {
@@ -114,7 +118,8 @@ L0: ret;
   const auto ast = parser.parseModule();
   ASSERT_TRUE(ast);
   ASSERT_TRUE(ast.diagnostics.empty());
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveTypedModule<Brx>(
+      *ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_FALSE(resolved);
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().binding_kind,

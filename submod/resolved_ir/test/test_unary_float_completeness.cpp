@@ -1,16 +1,45 @@
 #include <gtest/gtest.h>
 
+#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
 
+#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
+
+/** Resolve the tested unary-float families without the global instruction union. */
+std::expected<std::variant<Rcp, Sqrt, Rsqrt>, ResolveDiagnostic>
+resolveUnaryFloat(const syntax_ast::AstInstruction& ast) {
+  if (ast.opcode.syntax.text == "rcp") {
+    auto resolved = resolve<Rcp>(ast);
+    if (!resolved)
+      return std::unexpected(std::move(resolved.error()));
+    return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Rcp>,
+                                          std::move(*resolved)};
+  }
+  if (ast.opcode.syntax.text == "sqrt") {
+    auto resolved = resolve<Sqrt>(ast);
+    if (!resolved)
+      return std::unexpected(std::move(resolved.error()));
+    return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Sqrt>,
+                                          std::move(*resolved)};
+  }
+  auto resolved = resolve<Rsqrt>(ast);
+  if (!resolved)
+    return std::unexpected(std::move(resolved.error()));
+  return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Rsqrt>,
+                                        std::move(*resolved)};
+}
 
 /** Resolve each typed reciprocal and square-root mode with legal floating operands. */
 TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
@@ -27,7 +56,8 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveAndValidateModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Rcp, Sqrt, Rsqrt>(
+      *parsed, test_support::ModulePipeline::CompleteContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   const auto& rcp_approx =
@@ -127,7 +157,7 @@ TEST(UnaryFloatCompleteness, RejectsInvalidExplicitForms) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveInstruction(*parsed).has_value());
+    EXPECT_FALSE(resolveUnaryFloat(*parsed).has_value());
   }
 }
 
@@ -145,7 +175,8 @@ TEST(UnaryFloatCompleteness, RejectsIntegerAndWrongWidthContainers) {
       }) {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(
+        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
   }
 }
 
@@ -186,7 +217,7 @@ TEST(UnaryFloatCompleteness, ChecksIndependentAvailability) {
     SCOPED_TRACE(item.source);
     const auto parsed = test_helpers::parseInstruction(item.source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolveInstruction(*parsed);
+    const auto resolved = resolveUnaryFloat(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
       return std::visit(
@@ -215,32 +246,22 @@ TEST(UnaryFloatCompleteness, ChecksIndependentAvailability) {
 
 /** Preserve unary owned bindings and reject a valid bound FP64 substitution in FP32 forms. */
 TEST(UnaryFloatCompleteness, OwnsSourcesAndRevalidatesBoundWidth) {
-  std::optional<ResolvedModule> owned;
-  {
-    const std::string source = R"ptx(
+  std::string source = R"ptx(
 .version 9.3
 .target sm_100
 .entry kernel() { .reg .f32 %f<3>; .reg .f64 %d<3>;
   rcp.rn.f32 %f0, %f1; rcp.rn.f64 %d0, %d1; }
 )ptx";
+  {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    auto resolved = resolveModuleOnly(*parsed);
-    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    owned.emplace(std::move(*resolved));
   }
-  ASSERT_TRUE(
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
-          .has_value());
-  auto& f32 = std::get<Rcp::RnF32>(
-      std::get<Rcp>(owned->functions.front().body[0]).variant);
-  f32.src.value = std::get<Rcp::RnF64>(
-                      std::get<Rcp>(owned->functions.front().body[1]).variant)
-                      .src.value;
-  const auto invalid =
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
-  ASSERT_FALSE(invalid.has_value());
-  EXPECT_EQ(invalid.error().front().kind,
+  const auto checked = test_support::checkOwnedModuleMutation(
+      std::move(source), test_support::OwnedMutationScenario::RcpSourceWidth);
+  ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  ASSERT_TRUE(checked->before.has_value());
+  ASSERT_FALSE(checked->after.has_value());
+  EXPECT_EQ(checked->after.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 

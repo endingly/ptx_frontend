@@ -13,10 +13,10 @@
 #include <variant>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 #include "../src/ptx_storage_declarations.hpp"
 
@@ -24,29 +24,29 @@ namespace ptx_frontend::resolved_ir {
 namespace {
 
 /** Resolve a source-owned module while keeping parser diagnostics test-visible. */
-std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveSource(
-    std::string source) {
+std::expected<test_support::ModuleSnapshot, std::vector<ResolveDiagnostic>>
+resolveSource(std::string source) {
   PtxSyntaxParser parser(source);
   const auto ast = parser.parseModule();
   EXPECT_TRUE(ast.has_value());
   EXPECT_TRUE(ast.diagnostics.empty());
   if (!ast || !ast.diagnostics.empty()) {
-    return std::unexpected(ModuleResolveDiagnostics{{
+    return std::unexpected(std::vector<ResolveDiagnostic>{{
         .message = ast.diagnostics.empty() ? "PTX source did not parse."
                                            : ast.diagnostics.front().message,
     }});
   }
-  return resolveModule(*ast);
+  return test_support::resolveModuleSnapshot(*ast);
 }
 
 /** Find the earliest source-projected declaration with a given lexical identifier. */
-const ResolvedStorageDeclaration& storageNamed(const ResolvedModule& module,
-                                               std::string_view name) {
+const ResolvedStorageDeclaration& storageNamed(
+    const test_support::ModuleSnapshot& module, std::string_view name) {
   const auto match = std::ranges::find_if(
-      module.storage_declarations, [&](const auto& declaration) {
+      module.storage_metadata, [&](const auto& declaration) {
         return module.symbols.symbol(declaration.symbol_id).name == name;
       });
-  if (match == module.storage_declarations.end()) {
+  if (match == module.storage_metadata.end()) {
     ADD_FAILURE() << "No storage declaration named '" << name << "'.";
     throw std::runtime_error("Storage declaration lookup failed.");
   }
@@ -55,9 +55,9 @@ const ResolvedStorageDeclaration& storageNamed(const ResolvedModule& module,
 
 /** Return every source declaration occurrence for one bound storage symbol. */
 std::vector<const ResolvedStorageDeclaration*> storageOccurrencesNamed(
-    const ResolvedModule& module, std::string_view name) {
+    const test_support::ModuleSnapshot& module, std::string_view name) {
   std::vector<const ResolvedStorageDeclaration*> occurrences;
-  for (const auto& declaration : module.storage_declarations) {
+  for (const auto& declaration : module.storage_metadata) {
     if (module.symbols.symbol(declaration.symbol_id).name == name)
       occurrences.push_back(&declaration);
   }
@@ -65,7 +65,7 @@ std::vector<const ResolvedStorageDeclaration*> storageOccurrencesNamed(
 }
 
 /** Report whether resolution retained a declaration-stage diagnostic category. */
-bool hasDeclarationKind(const ModuleResolveDiagnostics& diagnostics,
+bool hasDeclarationKind(const std::vector<ResolveDiagnostic>& diagnostics,
                         declaration_semantics::DeclarationDiagnosticKind kind) {
   return std::ranges::any_of(diagnostics, [kind](const auto& diagnostic) {
     return diagnostic.declaration_kind == kind;
@@ -265,7 +265,7 @@ TEST(ResolvedStorageDeclarations, ConvertsIntegerSourcesAtStorageElementWidth) {
 
 /** Metadata owns values needed after both the syntax tree and source disappear. */
 TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
-  std::optional<ResolvedModule> resolved_module;
+  std::optional<test_support::ModuleSnapshot> resolved_module;
   {
     auto resolved = resolveSource(R"ptx(
 .visible .global .u32 initialized[] = {1, 2, 3};
@@ -284,7 +284,7 @@ TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
 
   ASSERT_TRUE(resolved_module.has_value());
   const auto& module = *resolved_module;
-  ASSERT_EQ(module.storage_declarations.size(), 7u);
+  ASSERT_EQ(module.storage_metadata.size(), 7u);
 
   const auto& initialized = storageNamed(module, "initialized");
   EXPECT_EQ(initialized.space, StorageSpace::Global);
@@ -350,7 +350,7 @@ TEST(ResolvedStorageDeclarations, RetainsAddressableDeclarationsWithoutAst) {
   ASSERT_TRUE(local.owner_function);
   EXPECT_EQ(*local.owner_function, module.functions.front().symbol_id);
 
-  const auto& shadowing_local = module.storage_declarations.back();
+  const auto& shadowing_local = module.storage_metadata.back();
   EXPECT_EQ(module.symbols.symbol(shadowing_local.symbol_id).name,
             "initialized");
   EXPECT_EQ(shadowing_local.space, StorageSpace::Local);
@@ -366,7 +366,7 @@ TEST(ResolvedStorageDeclarations, RetainsExternalDynamicSharedAsUnknown) {
 )ptx");
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  ASSERT_EQ(resolved->storage_declarations.size(), 2u);
+  ASSERT_EQ(resolved->storage_metadata.size(), 2u);
   const auto& dynamic = storageNamed(*resolved, "dynamic_shared");
   EXPECT_EQ(dynamic.space, StorageSpace::Shared);
   EXPECT_EQ(dynamic.declaration_kind, StorageDeclarationKind::External);
@@ -393,14 +393,14 @@ TEST(ResolvedStorageDeclarations,
 )ptx");
 
   ASSERT_TRUE(opaque.has_value()) << opaque.error().front().message;
-  ASSERT_EQ(opaque->storage_declarations.size(), 3u);
+  ASSERT_EQ(opaque->storage_metadata.size(), 3u);
   constexpr std::array expected_types{
       StorageOpaqueType::Texture,
       StorageOpaqueType::Sampler,
       StorageOpaqueType::Surface,
   };
   for (size_t index = 0; index < expected_types.size(); ++index) {
-    const auto& declaration = opaque->storage_declarations[index];
+    const auto& declaration = opaque->storage_metadata[index];
     EXPECT_EQ(declaration.space, StorageSpace::Global);
     EXPECT_EQ(declaration.element_type,
               StorageElementType{expected_types[index]});
@@ -492,10 +492,10 @@ TEST(ResolvedStorageDeclarations, PreservesExternalRedeclarationOccurrences) {
 )ptx");
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  ASSERT_EQ(resolved->storage_declarations.size(), 3u);
-  const auto& first_external = resolved->storage_declarations[0];
-  const auto& second_external = resolved->storage_declarations[1];
-  const auto& definition = resolved->storage_declarations[2];
+  ASSERT_EQ(resolved->storage_metadata.size(), 3u);
+  const auto& first_external = resolved->storage_metadata[0];
+  const auto& second_external = resolved->storage_metadata[1];
+  const auto& definition = resolved->storage_metadata[2];
   EXPECT_EQ(first_external.symbol_id, second_external.symbol_id);
   EXPECT_NE(first_external.range, second_external.range);
   EXPECT_EQ(first_external.declaration_kind, StorageDeclarationKind::External);
@@ -886,12 +886,12 @@ TEST(ResolvedStorageDeclarations, RetainsScopedInitializerSymbolIdentity) {
 )ptx");
 
   ASSERT_TRUE(scoped.has_value()) << scoped.error().front().message;
-  ASSERT_EQ(scoped->storage_declarations.size(), 5u);
-  const auto& module_value = scoped->storage_declarations[0];
-  const auto& scoped_value = scoped->storage_declarations[1];
-  const auto& pointer = scoped->storage_declarations[2];
-  const auto& block_value = scoped->storage_declarations[3];
-  const auto& block_pointer = scoped->storage_declarations[4];
+  ASSERT_EQ(scoped->storage_metadata.size(), 5u);
+  const auto& module_value = scoped->storage_metadata[0];
+  const auto& scoped_value = scoped->storage_metadata[1];
+  const auto& pointer = scoped->storage_metadata[2];
+  const auto& block_value = scoped->storage_metadata[3];
+  const auto& block_pointer = scoped->storage_metadata[4];
   EXPECT_EQ(scoped->symbols.symbol(module_value.symbol_id).name, "value");
   EXPECT_EQ(scoped->symbols.symbol(scoped_value.symbol_id).name, "value");
   EXPECT_NE(module_value.symbol_id, scoped_value.symbol_id);

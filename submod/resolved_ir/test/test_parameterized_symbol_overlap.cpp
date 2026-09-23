@@ -6,8 +6,8 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -25,7 +25,7 @@ void expectDisjointDigitPrefixGroupsResolve(bool reverse) {
   const auto parsed = parser.parseModule();
   ASSERT_TRUE(parsed.has_value());
   ASSERT_TRUE(parsed.diagnostics.empty());
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved = test_support::resolveModuleSnapshot(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 1u);
 

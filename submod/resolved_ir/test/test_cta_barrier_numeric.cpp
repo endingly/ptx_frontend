@@ -8,8 +8,13 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -58,7 +63,8 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
                      });
     ASSERT_NE(bar, body.end());
     const auto& syntax_instruction = std::get<syntax_ast::AstInstruction>(*bar);
-    const auto resolved = resolveModule(*ast);
+    const auto resolved = test_support::resolveTypedModule<Bar>(
+        *ast, test_support::ModulePipeline::AvailableContext);
 
     ASSERT_FALSE(resolved.has_value());
     ASSERT_EQ(resolved.error().size(), expected_diagnostic_count);
@@ -122,7 +128,8 @@ TEST(CtaBarrierNumeric, AcceptsStaticBoundariesAndOptionalLayouts) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveTypedModule<Bar>(
+      *ast, test_support::ModulePipeline::AvailableContext);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
@@ -149,7 +156,8 @@ TEST(CtaBarrierNumeric, LeavesRegisterValueContractsDynamic) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveTypedModule<Bar>(
+      *ast, test_support::ModulePipeline::AvailableContext);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
@@ -161,7 +169,8 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 .entry k() { bar.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(legacy_ast.has_value());
-  const auto legacy = resolveModule(*legacy_ast);
+  const auto legacy = test_support::resolveTypedModule<Bar>(
+      *legacy_ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
   const auto& legacy_instruction =
       std::get<Bar>(legacy->functions.front().body.front());
@@ -181,8 +190,9 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 .entry k() { bar.cta.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(cta_before_introduction_ast.has_value());
-  const auto cta_before_introduction =
-      resolveModule(*cta_before_introduction_ast);
+  const auto cta_before_introduction = test_support::resolveTypedModule<Bar>(
+      *cta_before_introduction_ast,
+      test_support::ModulePipeline::AvailableContext);
   ASSERT_FALSE(cta_before_introduction.has_value());
   ASSERT_EQ(cta_before_introduction.error().size(), 1U);
   EXPECT_EQ(cta_before_introduction.error().front().checker_kind,

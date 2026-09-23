@@ -11,7 +11,7 @@ EXPECTED_FILES = {
     "arithmetic.yaml": ("arithmetic", "arithmetic", None),
     "comparison_and_selection.yaml": (
         "comparison_and_selection",
-        "arithmetic",
+        "comparison_and_selection",
         "9.7.6",
     ),
     "logic_and_shift.yaml": ("logic_and_shift", "arithmetic", "9.7.8"),

@@ -4,7 +4,7 @@
 schema: ptx-instr/v1
 ptx_isa: "9.3"
 category: comparison_and_selection
-codegen_category: arithmetic
+codegen_category: comparison_and_selection
 section: "9.7.6"
 
 operand_patterns:

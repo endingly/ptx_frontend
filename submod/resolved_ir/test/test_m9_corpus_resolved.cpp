@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -44,19 +44,13 @@ TEST(ResolvedModule, ResolvesAndChecksEveryM9CorpusModule) {
     ASSERT_TRUE(parsed.has_value()) << file;
     EXPECT_TRUE(parsed.diagnostics.empty()) << file;
 
-    const auto resolved = resolveModule(*parsed);
+    const auto resolved =
+        test_support::resolveAndCheckInstructionSnapshot(*parsed, context);
     ASSERT_TRUE(resolved.has_value()) << file;
     ASSERT_EQ(resolved->functions.size(), 1u);
     const auto& function = resolved->functions.front();
     EXPECT_FALSE(function.is_prototype);
-    ASSERT_FALSE(function.body.empty());
-
-    for (const auto& instruction : function.body) {
-      const auto checked = std::visit(
-          [&](const auto& value) { return checker::check(value, context); },
-          instruction);
-      EXPECT_TRUE(checked.has_value()) << file;
-    }
+    ASSERT_GT(function.instruction_count, 0u);
   }
 }
 

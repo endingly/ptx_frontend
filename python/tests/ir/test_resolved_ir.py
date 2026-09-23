@@ -4409,9 +4409,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
-            output_path = Path(directory) / "resolved_ir_arithmetic.gen.cpp"
+            output_path = Path(directory) / "resolved_ir_comparison_and_selection.gen.cpp"
             generate_resolved_ir_category_source(build_test_generation_context(database),
-                category="arithmetic",
+                category="comparison_and_selection",
                 output_path=output_path,
             )
             source = output_path.read_text(encoding="utf-8")
@@ -4451,6 +4451,38 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     "CacheOperator",
                 )
                 self.assertEqual(cache_binding.default_value.value, "unspecified")
+
+    def test_comparison_models_have_independent_category_header(self) -> None:
+        """Keep comparison models local while the aggregate union remains complete."""
+        context = build_test_generation_context(self.database)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            comparison = root / "comparison_and_selection.gen.hpp"
+            arithmetic = root / "arithmetic.gen.hpp"
+            union = root / "resolved_instruction_union.gen.hpp"
+            generate_resolved_ir_category_header(
+                context, category="comparison_and_selection", output_path=comparison
+            )
+            generate_resolved_ir_category_header(
+                context, category="arithmetic", output_path=arithmetic
+            )
+            generate_resolved_instruction_union_header(context, output_path=union)
+            comparison_source = comparison.read_text(encoding="utf-8")
+            arithmetic_source = arithmetic.read_text(encoding="utf-8")
+            union_source = union.read_text(encoding="utf-8")
+
+        for instruction in ("Set", "Setp", "Selp", "Slct"):
+            self.assertIn(f"struct {instruction} {{", comparison_source)
+            self.assertNotIn(f"struct {instruction} {{", arithmetic_source)
+            self.assertIn(instruction, union_source)
+        self.assertIn(
+            '#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>',
+            union_source,
+        )
+        self.assertIn(
+            "Copysign, Set, Setp, Selp, Slct, Call",
+            " ".join(union_source.split()),
+        )
 
     def test_generate_resolved_ir_header(self) -> None:
         database = self.database

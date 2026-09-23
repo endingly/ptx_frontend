@@ -169,6 +169,11 @@ opcode 类型的 getter，并由 variant selection/resolution 消费；在生成
 output manifest）时保留 modification time。whole-module API 继续包含聚合 model 与完整
 union；category-local consumer 只包含自己的 model 以及 resolver/checker 声明头。
 
+比较与选择规范现在单独生成 `comparison_and_selection` 分区。通过分类头使用 `Set`、
+`Setp`、`Selp` 或 `Slct` 的代码，需要把原来的 `arithmetic.gen.hpp` 路径改为
+`model/comparison_and_selection.gen.hpp` 及对应的 `resolution/`、`checker/` 头。
+已安装的聚合头仍提供完整的指令模型。
+
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker
 specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只

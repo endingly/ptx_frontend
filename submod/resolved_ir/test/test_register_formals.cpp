@@ -6,8 +6,12 @@
 #include <variant>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -69,7 +73,8 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
     const auto bound = binding::bindSymbols(*ast);
     ASSERT_TRUE(bound.diagnostics.empty());
 
-    const auto resolved = resolveModule(*ast);
+    const auto resolved = test_support::resolveTypedModule<Add>(
+        *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     ASSERT_EQ(resolved->functions.size(), 1u);
     ASSERT_EQ(resolved->functions.front().body.size(), 2u);
@@ -123,7 +128,8 @@ TEST(RegisterFormals, ResolvePredicateReadAndWrite) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   ASSERT_TRUE(ast.diagnostics.empty());
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveTypedModule<Bar>(
+      *ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
   const auto& bar = std::get<Bar>(resolved->functions.front().body.front());
@@ -154,7 +160,7 @@ TEST(RegisterFormals, RejectParameterSpaceFormalAsArithmeticRegister) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   ASSERT_TRUE(ast.diagnostics.empty());
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().stage(),
@@ -178,7 +184,7 @@ TEST(RegisterFormals, ReportsProjectedTypeMismatch) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   ASSERT_TRUE(ast.diagnostics.empty());
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().stage(), ResolveDiagnosticStage::Checking);

@@ -2,9 +2,14 @@
 
 #include <array>
 #include <cstdint>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include <string_view>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -16,7 +21,8 @@ TEST(CheckerProjectionSafety, RejectsMutatedVectorRegisterWidths) {
   const auto ast = parser.parseModule();
   ASSERT_TRUE(ast.has_value());
   ASSERT_TRUE(ast.diagnostics.empty());
-  auto module = resolveModule(*ast);
+  auto module = test_support::resolveTypedModule<Mov>(
+      *ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(module.has_value()) << module.error().front().message;
   ASSERT_FALSE(module->functions.empty());
   ASSERT_FALSE(module->functions.front().body.empty());

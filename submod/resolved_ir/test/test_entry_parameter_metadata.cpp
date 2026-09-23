@@ -9,23 +9,24 @@
 #include <utility>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
 /** Resolve owned input, destroying both source and AST before returning metadata. */
-std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveSource(
-    std::string source) {
+std::expected<test_support::ModuleSnapshot, std::vector<ResolveDiagnostic>>
+resolveSource(std::string source) {
   PtxSyntaxParser parser(source);
   const auto ast = parser.parseModule();
   EXPECT_TRUE(ast.has_value());
   EXPECT_TRUE(ast.diagnostics.empty());
   if (!ast || !ast.diagnostics.empty())
-    return std::unexpected(
-        ModuleResolveDiagnostics{{.message = ast.diagnostics.front().message}});
-  return resolveModule(*ast);
+    return std::unexpected(std::vector<ResolveDiagnostic>{
+        {.message = ast.diagnostics.empty() ? "PTX source did not parse."
+                                            : ast.diagnostics.front().message}});
+  return test_support::resolveModuleSnapshot(*ast);
 }
 
 /** Entry declaration metadata remains usable after its source and AST are gone. */

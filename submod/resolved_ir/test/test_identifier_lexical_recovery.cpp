@@ -4,8 +4,8 @@
 #include <string_view>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -37,7 +37,7 @@ TEST(IdentifierLexicalRecovery,
         return symbol.name == "bad" || symbol.name == "%name" ||
                symbol.name == "%tmp";
       }));
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved = test_support::resolveModuleSnapshot(*parsed);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_FALSE(resolved.error().empty());
   EXPECT_EQ(resolved.error().front().range, (SourceRange{{7, 18}, {7, 22}}));

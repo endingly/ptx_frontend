@@ -5,9 +5,14 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
 
+#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -60,7 +65,8 @@ TEST(MulCompleteness, ResolvesAndChecksEveryPtx93FormWithDeclaredOperands) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  const auto resolved = resolveModule(*parsed_module);
+  const auto resolved = test_support::resolveTypedModule<Mul>(
+      *parsed_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 1u);
   ASSERT_EQ(resolved->functions.front().body.size(), 24u);
@@ -115,7 +121,8 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  auto resolved = resolveModule(*parsed_module);
+  auto resolved = test_support::resolveTypedModule<Mul>(
+      *parsed_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& packed = std::get<Mul::F32x2>(
       std::get<Mul>(resolved->functions.front().body.front()).variant);
@@ -137,7 +144,8 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(invalid_module);
-  EXPECT_FALSE(resolveModule(*invalid_module).has_value());
+  EXPECT_FALSE(
+      test_support::resolveModuleSnapshot(*invalid_module).has_value());
 }
 
 TEST(MulCompleteness, RejectsIllegalModesModifiersAndPackedImmediates) {

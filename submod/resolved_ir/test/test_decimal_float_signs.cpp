@@ -7,10 +7,13 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -30,7 +33,7 @@ const syntax_ast::AstImmediate& immediateOperand(
 
 /** Return the immediate source held by a scalar move instruction. */
 const ResolvedImmediate& scalarMovImmediate(
-    const ResolvedInstruction& instruction) {
+    const std::variant<std::monostate, Mov>& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
@@ -132,7 +135,7 @@ TEST(DecimalFloatSigns, ResolvesSourceCallLiteralsAgainstFloatingFormals) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(*module);
+  const auto resolved = test_support::resolveModuleSnapshot(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
@@ -170,7 +173,8 @@ TEST(DecimalFloatSigns, ResolvesSignedDecimalMovesInSourceModule) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(*module);
+  const auto resolved = test_support::resolveTypedModule<Mov>(
+      *module, test_support::ModulePipeline::AvailableContext);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;

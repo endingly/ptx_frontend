@@ -5,10 +5,13 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
-#include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -16,7 +19,7 @@ namespace {
 
 /** Return the immediate source held by a scalar move instruction. */
 const ResolvedImmediate& scalarMovImmediate(
-    const ResolvedInstruction& instruction) {
+    const std::variant<std::monostate, Mov, Add>& instruction) {
   const auto& mov = std::get<Mov>(instruction);
   const auto& scalar = std::get<Mov::Scalar>(mov.variant);
   const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
@@ -41,13 +44,15 @@ TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(*module);
+  const auto resolved = test_support::resolveTypedModule<Mov, Add>(
+      *module, test_support::ModulePipeline::AvailableContext);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->storage_declarations.size(), 1u);
-  const auto& initializer = resolved->storage_declarations.front().initializer;
-  ASSERT_EQ(initializer.size(), 1u);
-  EXPECT_EQ(std::get<StorageConstant>(initializer.front().value).bits, 32u);
+  const auto& initializer = resolved->storage_declarations.front();
+  ASSERT_EQ(initializer.initializer_count, 1u);
+  ASSERT_TRUE(initializer.first_constant_bits.has_value());
+  EXPECT_EQ(*initializer.first_constant_bits, 32u);
 
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 4u);
@@ -124,7 +129,7 @@ TEST(WarpSizeLiteral, PreservesInstructionImmediateLegality) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = resolveModule(*module);
+  const auto resolved = test_support::resolveModuleSnapshot(*module);
 
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);

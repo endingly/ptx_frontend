@@ -5,8 +5,13 @@
 #include <string_view>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/resolution/data_movement.gen.hpp>
 
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -221,7 +226,7 @@ TEST(LdCompleteness, RejectsKnownNonglobalCacheControlAddresses) {
 )ptx");
     const auto ast = parseModule(module_source);
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-    EXPECT_FALSE(resolveModule(*ast));
+    EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
   }
 }
 
@@ -382,13 +387,10 @@ TEST(LdCompleteness, EnforcesUnifiedAddressPolicyWithoutAffectingMov) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module_ast);
-  auto module = resolveModule(*module_ast);
-  ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  EXPECT_TRUE(validateModule(*module));
-
-  auto& load = std::get<Ld>(module->functions.front().body.front());
-  std::get<Ld::ExplicitScalar>(load.variant).address.value.unified = false;
-  EXPECT_FALSE(validateModule(*module));
+  const auto mutation = test_support::checkUnifiedLoadMutation(*module_ast);
+  ASSERT_TRUE(mutation.has_value()) << mutation.error().front().message;
+  EXPECT_TRUE(mutation->before);
+  EXPECT_FALSE(mutation->after);
 
   const auto mov_suffix = parseInstruction("mov.u64 %rd0, [%rd1].unified;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(mov_suffix);
@@ -445,9 +447,8 @@ TEST(LdCompleteness, PreservesParameterPolicy) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-  const auto module = resolveModule(*ast);
+  const auto module = test_support::resolveAndValidateModuleSnapshot(*ast);
   ASSERT_TRUE(module.has_value()) << module.error().front().message;
-  EXPECT_TRUE(validateModule(*module));
 }
 
 }  // namespace

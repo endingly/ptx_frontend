@@ -2,10 +2,14 @@
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
 
+#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -34,7 +38,8 @@ TEST(DivCompleteness, ResolvesExplicitFloatingModesAndOperands) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveAndValidateModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Div>(
+      *parsed, test_support::ModulePipeline::CompleteContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
@@ -86,7 +91,7 @@ TEST(DivCompleteness, RejectsInvalidExplicitForms) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveInstruction(*parsed).has_value());
+    EXPECT_FALSE(resolve<Div>(*parsed).has_value());
   }
 }
 
@@ -134,15 +139,10 @@ TEST(DivCompleteness, ChecksIndependentExplicitAvailability) {
     SCOPED_TRACE(availability.source);
     const auto parsed = test_helpers::parseInstruction(availability.source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolveInstruction(*parsed);
+    const auto resolved = resolve<Div>(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return checker::check(*resolved, checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
                           .sm_version = availability.minimum_sm})
@@ -164,9 +164,7 @@ TEST(DivCompleteness, ChecksIndependentExplicitAvailability) {
 
 /** Preserve owned DIV bindings after source destruction and reject a bound width mismatch. */
 TEST(DivCompleteness, OwnsBoundSourcesAndRevalidatesWrongWidth) {
-  std::optional<ResolvedModule> owned;
-  {
-    const std::string source = R"ptx(
+  std::string source = R"ptx(
 .version 9.3
 .target sm_100
 .entry kernel() {
@@ -176,26 +174,16 @@ TEST(DivCompleteness, OwnsBoundSourcesAndRevalidatesWrongWidth) {
   div.rn.f64 %d0, %d1, %d2;
 }
 )ptx";
+  {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    auto resolved = resolveModuleOnly(*parsed);
-    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    owned.emplace(std::move(*resolved));
   }
-  ASSERT_TRUE(
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
-          .has_value());
-  auto& f32 = std::get<Div::RnF32>(
-      std::get<Div>(owned->functions.front().body[0]).variant);
-  const auto f64_source =
-      std::get<Div::RnF64>(
-          std::get<Div>(owned->functions.front().body[1]).variant)
-          .src2.value;
-  f32.src2.value = f64_source;
-  const auto invalid =
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
-  ASSERT_FALSE(invalid.has_value());
-  EXPECT_EQ(invalid.error().front().kind,
+  const auto checked = test_support::checkOwnedModuleMutation(
+      std::move(source), test_support::OwnedMutationScenario::DivSourceWidth);
+  ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
+  ASSERT_TRUE(checked->before.has_value());
+  ASSERT_FALSE(checked->after.has_value());
+  EXPECT_EQ(checked->after.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
 

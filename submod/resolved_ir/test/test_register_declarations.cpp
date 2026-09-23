@@ -12,9 +12,9 @@
 
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -82,7 +82,7 @@ TEST(RegisterDeclarations, RejectsUnknownTypesAtTheirDeclarationTokens) {
   std::ranges::sort(type_columns);
   EXPECT_EQ(type_columns, (std::vector<uint32_t>{8u, 10u}));
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(std::ranges::count_if(
                 resolved.error(),
@@ -289,7 +289,7 @@ TEST(RegisterDeclarations, AcceptsFundamentalFormsAndRegisterFormals) {
   EXPECT_TRUE(binding.diagnostics.empty());
   EXPECT_TRUE(diagnostics.empty());
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
 

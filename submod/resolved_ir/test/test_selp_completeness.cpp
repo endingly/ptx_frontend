@@ -6,8 +6,11 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
 
+#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -45,7 +48,8 @@ TEST(SelpCompleteness, ResolvesAndChecksEveryOrdinaryType) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveAndValidateModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Selp>(
+      *parsed, test_support::ModulePipeline::CompleteContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 11u);
@@ -124,7 +128,8 @@ TEST(SelpCompleteness, RejectsWrongSourceImmediateAndPredicate) {
   .reg .f32 %f;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(
+        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
   }
 }
 

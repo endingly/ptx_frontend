@@ -7,8 +7,12 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/resolution/data_movement.gen.hpp>
+#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -47,7 +51,8 @@ TEST(MovCompleteness, PreservesPlainAndNegatedPredicateSources) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Mov>(
+      *parsed, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
@@ -117,7 +122,8 @@ TEST(MovCompleteness, ResolvesPredicateConstantsAndNegatedSpecialRegisters) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Mov>(
+      *parsed, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& pred = std::get<Mov::Pred>(
       std::get<Mov>(resolved->functions.front().body.front()).variant);
@@ -167,7 +173,8 @@ TEST(MovCompleteness, SeparatesScalarFromBitPackUnpack) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  const auto resolved = test_support::resolveTypedModule<Mov>(
+      *parsed, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);

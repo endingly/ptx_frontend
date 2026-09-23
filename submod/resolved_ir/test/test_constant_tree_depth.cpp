@@ -5,8 +5,8 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -66,7 +66,7 @@ TEST(ConstantTreeDepth, AcceptsBelowAndAtLimitThroughModuleResolution) {
       const auto ast = parser.parseModule();
       ASSERT_TRUE(ast.has_value());
       ASSERT_TRUE(ast.diagnostics.empty()) << ast.diagnostics.front().message;
-      const auto resolved = resolveModule(*ast);
+      const auto resolved = test_support::resolveModuleSnapshot(*ast);
       // Nested mask calls and chained callees are syntactically supported, but
       // are not materializable storage initializers. Still exercise their checks.
       if (std::string_view{shape} == "call" ||
@@ -99,13 +99,10 @@ TEST(ConstantTreeDepth, RejectsOverLimitAndRecoversThroughLowering) {
       ASSERT_TRUE(ast.has_value());
       ASSERT_EQ(ast.diagnostics.size(), cst.diagnostics.size());
       EXPECT_EQ(ast.diagnostics.front().range, cst.diagnostics.front().range);
-      const auto resolved = resolveModule(*ast);
+      const auto resolved = test_support::resolveModuleSnapshot(*ast);
       ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
       ASSERT_EQ(resolved->storage_declarations.size(), 1u);
-      EXPECT_EQ(
-          resolved->symbols.symbol(resolved->storage_declarations[0].symbol_id)
-              .name,
-          "survivor");
+      EXPECT_EQ(resolved->storage_declarations[0].name, "survivor");
     }
   }
 }
@@ -138,10 +135,10 @@ TEST(ConstantTreeDepth,
   const auto ast = parser.parseModule();
   ASSERT_TRUE(ast.has_value());
   ASSERT_TRUE(ast.diagnostics.empty()) << ast.diagnostics.front().message;
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->storage_declarations.size(), 3u);
-  EXPECT_EQ(resolved->storage_declarations[0].initializer.size(), 1025u);
+  EXPECT_EQ(resolved->storage_declarations[0].initializer_count, 1025u);
 }
 
 }  // namespace

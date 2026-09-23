@@ -6,11 +6,12 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -66,7 +67,7 @@ void expectCheckerProjection(const ResolveDiagnostic& actual,
 }
 
 /** Resolve invalid input in a nested scope so all parser-owned data dies first. */
-ModuleResolveDiagnostics diagnosticsAfterInputDies() {
+std::vector<ResolveDiagnostic> diagnosticsAfterInputDies() {
   std::string source = R"ptx(
 .entry kernel() {
   .reg .u32 %dst;
@@ -81,7 +82,7 @@ ModuleResolveDiagnostics diagnosticsAfterInputDies() {
                           : ast.diagnostics.front().message);
     return {};
   }
-  auto resolved = resolveModule(*ast);
+  auto resolved = test_support::resolveModuleSnapshot(*ast);
   if (resolved) {
     ADD_FAILURE() << "PTX source unexpectedly resolved.";
     return {};
@@ -103,7 +104,7 @@ again:
   const auto binding = binding::bindSymbols(*ast);
   ASSERT_EQ(binding.diagnostics.size(), 2u);
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), binding.diagnostics.size());
   for (size_t index = 0; index < binding.diagnostics.size(); ++index)
@@ -135,7 +136,7 @@ TEST(ModuleDiagnostics, OrdersBindingThenDeclarationSemanticsDiagnostics) {
   ASSERT_EQ(binding.diagnostics.size(), 1u);
   ASSERT_EQ(declarations.size(), 1u);
 
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(),
             binding.diagnostics.size() + declarations.size());
@@ -152,7 +153,7 @@ TEST(ModuleDiagnostics, OrdersBindingThenDeclarationSemanticsDiagnostics) {
 TEST(ModuleDiagnostics, ProjectsStorageOnlyDeclarationDiagnostic) {
   const auto ast = parseModule(".global .bf16 unsupported_storage;");
   ASSERT_TRUE(ast);
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
 
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), 1u);
@@ -191,23 +192,23 @@ TEST(ModuleDiagnostics,
   const auto checked_ast = parseModule(checked_source);
   ASSERT_TRUE(unchecked_ast);
   ASSERT_TRUE(checked_ast);
-  const auto unchecked_module = resolveModule(*unchecked_ast);
+  const auto unchecked_module = test_support::checkRetargetedModuleAvailability(
+      *unchecked_ast, *checked_ast);
   ASSERT_TRUE(unchecked_module.has_value())
       << unchecked_module.error().front().message;
-  const auto expected =
-      checkModuleAvailability(*checked_ast, *unchecked_module);
+  const auto& expected = unchecked_module->checked;
   ASSERT_FALSE(expected.has_value());
   ASSERT_EQ(expected.error().size(), 1u);
   // Retargeting preserves the IR's original instruction location, not AST-B's.
   EXPECT_EQ(expected.error().front().range,
-            unchecked_module->functions.front().instruction_ranges.front());
+            unchecked_module->original_instruction_range);
   auto same_source_expected = expected.error().front();
   const auto& checked_function =
       std::get<syntax_ast::AstFunction>(checked_ast->items.back());
   same_source_expected.range =
       std::get<syntax_ast::AstInstruction>(checked_function.body.back()).range;
 
-  const auto resolved = resolveModule(*checked_ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*checked_ast);
   ASSERT_FALSE(resolved.has_value());
   ASSERT_EQ(resolved.error().size(), expected.error().size());
   expectCheckerProjection(resolved.error().front(), same_source_expected);
@@ -227,7 +228,7 @@ TEST(ModuleDiagnostics, NativeResolutionFailureDefaultsToResolutionStage) {
   const auto& function = std::get<syntax_ast::AstFunction>(ast->items.front());
   const auto& instruction =
       std::get<syntax_ast::AstInstruction>(function.body.back());
-  const auto resolved = resolveModule(*ast);
+  const auto resolved = test_support::resolveModuleSnapshot(*ast);
 
   ASSERT_FALSE(resolved.has_value());
   ASSERT_FALSE(resolved.error().empty());
@@ -242,7 +243,7 @@ TEST(ModuleDiagnostics, NativeResolutionFailureDefaultsToResolutionStage) {
 
 /** Module diagnostics own all data needed after parser, source, and AST destruction. */
 TEST(ModuleDiagnostics, OwnsDiagnosticDataAfterAstAndSourceDestruction) {
-  const ModuleResolveDiagnostics diagnostics = diagnosticsAfterInputDies();
+  const std::vector<ResolveDiagnostic> diagnostics = diagnosticsAfterInputDies();
 
   ASSERT_EQ(diagnostics.size(), 1u);
   EXPECT_EQ(diagnostics.front().stage(), ResolveDiagnosticStage::Binding);

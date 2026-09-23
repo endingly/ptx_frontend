@@ -5,8 +5,14 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -51,7 +57,8 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
 }
 )ptx";
   const auto ast = parse_module(source);
-  const auto resolved = resolveModule(ast);
+  const auto resolved = test_support::resolveTypedModule<Add>(
+      ast, test_support::ModulePipeline::AvailableContext);
   if (!resolved) {
     ADD_FAILURE() << resolved.error().front().message;
     return {};

@@ -15,11 +15,13 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 随后 package 会定义：
 
 - `ptx_frontend_PTX_SPEC_DIR`：已安装的公共 PTX instruction YAML 目录；
-- `ptx_frontend_PTX_SPEC_SCHEMA`：已安装的 `ptx-instr-v1.schema.yaml` 路径。
+- `ptx_frontend_PTX_SPEC_SCHEMA`：已安装的 `ptx-instr-v1.schema.yaml` 路径；
+- `ptx_frontend_PTX_CPP_BACKEND_SPEC`：已安装的 C++ backend 映射 YAML 路径；
+- `ptx_frontend_PTX_CPP_BACKEND_SCHEMA`：已安装的 backend schema 路径。
 
 PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库输入目录。
 
-仓库自身的 C++ backend policy 仍位于 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml`；它不属于公共 `ptx_spec` component，也不会被导出。
+C++ backend 映射以 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 为源码输入，安装至 `share/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml`；schema 安装至 `share/ptx_frontend/ptx-cpp-backend-v2.schema.yaml`。请求 `ptx_spec` 时会检查四项资源，导出路径相对于 package 的安装前缀计算，因此安装目录可整体迁移。
 
 ## Python model 复用
 

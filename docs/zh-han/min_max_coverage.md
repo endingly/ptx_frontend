@@ -33,7 +33,7 @@ const auto& binary_operands = std::get<Min::F32::BinaryOperands>(value.operands)
 const auto& ternary_operands = std::get<Min::F32::TernaryOperands>(value.operands);
 ```
 
-这些 public shape change 在 installed C++ package `0.1.0` 明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。不提供 compatibility shim 或并行的 legacy representation，因此 consumer 需要迁移到重命名后的 cohort 和 operand variant。Python package 仍为 `0.0.1b0`，并独立管理版本。仓库没有专用 migration 或 changelog 文档，因此迁移说明保留在此处。
+这些 public shape change 在 installed C++ package `0.1.0` 明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。不提供 compatibility shim 或并行的 legacy representation，因此 consumer 需要迁移到重命名后的 cohort 和 operand variant。Python wheel 版本为 `0.1.0b0`，属于 beta prerelease；installed C++ package 仍为 `0.1.0`。两者是独立的 package 版本，没有锁步要求。仓库没有专用 migration 或 changelog 文档，因此迁移说明保留在此处。
 
 共享 checker 结构的新增成员一律**追加**而非插入，因此既有 aggregate initializer 仍可编译：`checker::ModifierValueView` 的 `slot` 是最后一个成员，`checker::OperandLayoutDescriptor` 新增 `forbidden_modifiers`，同时新增 `CheckDiagnosticKind::ModifierNotAllowedForLayout`。该 modifier 诊断在 provenance 仍保留时报告 offending modifier 自身的 source range，否则回落到 context range。
 

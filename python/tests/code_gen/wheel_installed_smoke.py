@@ -4,6 +4,7 @@ from importlib.resources import files
 from importlib.util import find_spec
 import os
 
+from ptx_frontend.code_gen.cpp_backend import CppDomain, load_cpp_backend
 from ptx_frontend.code_gen.model import (
     InstructionSpec as CompatibilityInstructionSpec,
 )
@@ -23,11 +24,12 @@ EXPECTED_VERSION = os.environ["PTX_FRONTEND_EXPECTED_VERSION"]
 def check_distribution_metadata() -> None:
     """Verify installed distribution metadata and entry-point policy."""
 
+    installed = distribution("ptx_frontend")
+    assert installed.metadata["Version"] == EXPECTED_VERSION
     assert version("ptx_frontend") == EXPECTED_VERSION
 
     assert not any(
-        entry.name == "ptx-frontend-codegen"
-        for entry in distribution("ptx_frontend").entry_points
+        entry.name == "ptx-frontend-codegen" for entry in installed.entry_points
     )
 
 
@@ -166,11 +168,22 @@ def check_packaged_spec_model() -> None:
     )
 
 
+def check_packaged_backend_model() -> None:
+    """Read and validate the C++ backend YAML and schema from the installed wheel."""
+
+    backend = load_cpp_backend(packaged_backend_spec())
+
+    assert backend.backend_schema == "ptx-cpp-backend/v2"
+    assert CppDomain.SCALAR_TYPES.value in backend.domains
+    assert backend.domains[CppDomain.SCALAR_TYPES.value].values
+
+
 def main() -> None:
     check_distribution_metadata()
     check_packaged_resources()
     check_module_layout()
     check_packaged_spec_model()
+    check_packaged_backend_model()
 
 
 if __name__ == "__main__":

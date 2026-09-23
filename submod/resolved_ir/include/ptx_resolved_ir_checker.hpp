@@ -5,4 +5,4 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
 
 // Generated specializations are public checking API, not model API.
-#include "resolved_ir_checker.gen.hpp"
+#include <ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp>

@@ -157,18 +157,21 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | one category's opcode structs and module-reference visitors |
-| `public/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
-| `public/resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate compatibility header for all category model headers and the union |
-| `public/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | self-contained category specialization declarations |
-| `public/resolved_ir_resolution.gen.hpp` / `public/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | one category's opcode structs and module-reference visitors |
+| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
+| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate compatibility header for all category model headers and the union |
+| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | self-contained category specialization declarations |
+| `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line resolver and checker specialization definitions for one category |
 | `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category-owned descriptor storage and getters |
 
-The generated public headers remain under the `generated/public` include
-root in the `submod/resolved_ir` build tree. `submod/resolved_ir` includes the
+The generated public headers are under
+`generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
+tree and install under the same path relative to `include`. Private generated
+sources and support headers remain under `generated/private` and are not
+installed. `submod/resolved_ir` includes the
 project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
 `gen_all.py` atomically to list and generate all outputs before compiling them
 into `resolved_ir`. The top level only orchestrates submodules and provides the

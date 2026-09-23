@@ -163,7 +163,7 @@ def build_generation_plan(
     for category in categories:
         artifacts.append(
             _category_artifact(
-                path=(output_dir / f"public/resolved_ir/model/{category}.gen.hpp"),
+                path=(output_dir / f"public/ptx_frontend/resolved_ir/model/{category}.gen.hpp"),
                 category=category,
                 emitter=generate_resolved_ir_category_header,
             )
@@ -175,14 +175,14 @@ def build_generation_plan(
 
     artifacts.append(
         GeneratedArtifact(
-            path=(output_dir / "public/resolved_instruction_union.gen.hpp"),
+            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp"),
             emit=generate_resolved_instruction_union_header,
         )
     )
 
     artifacts.append(
         GeneratedArtifact(
-            path=output_dir / "public/resolved_ir.gen.hpp",
+            path=output_dir / "public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp",
             emit=generate_resolved_ir_header,
         )
     )
@@ -195,7 +195,7 @@ def build_generation_plan(
         artifacts.append(
             _category_artifact(
                 path=(
-                    output_dir / "public/resolved_ir/resolution" / f"{category}.gen.hpp"
+                    output_dir / "public/ptx_frontend/resolved_ir/resolution" / f"{category}.gen.hpp"
                 ),
                 category=category,
                 emitter=(generate_resolved_ir_resolution_category_declarations_header),
@@ -205,7 +205,7 @@ def build_generation_plan(
     # Aggregate resolver compatibility header.
     artifacts.append(
         GeneratedArtifact(
-            path=(output_dir / "public/resolved_ir_resolution.gen.hpp"),
+            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp"),
             emit=generate_resolved_ir_resolution_declarations_header,
         )
     )
@@ -218,7 +218,7 @@ def build_generation_plan(
         artifacts.append(
             _category_artifact(
                 path=(
-                    output_dir / "public/resolved_ir/checker" / f"{category}.gen.hpp"
+                    output_dir / "public/ptx_frontend/resolved_ir/checker" / f"{category}.gen.hpp"
                 ),
                 category=category,
                 emitter=(generate_resolved_ir_checker_category_declarations_header),
@@ -228,7 +228,7 @@ def build_generation_plan(
     # Aggregate checker compatibility header.
     artifacts.append(
         GeneratedArtifact(
-            path=(output_dir / "public/resolved_ir_checker.gen.hpp"),
+            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp"),
             emit=generate_resolved_ir_checker_declarations_header,
         )
     )

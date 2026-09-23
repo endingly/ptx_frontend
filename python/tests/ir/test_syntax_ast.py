@@ -1921,7 +1921,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include "resolved_ir/model/arithmetic.gen.hpp"',
+            '#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)

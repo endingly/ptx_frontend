@@ -1,7 +1,9 @@
 # Conversion consumer
 
 This example consumes the installed `ptx_frontend` package through its public
-CMake target `ptx_frontend::resolved_ir`, requesting package version `0.1.0`.
+CMake target `ptx_frontend::resolved_ir` and the `ptx_spec` data component,
+requesting package version `0.1.0`. Configuration checks that the installed PTX
+and C++ backend YAML/schema paths all exist.
 The source covers a targeted module with these representative forms:
 
 - `isspacep.shared::cluster` with a `.u32` address;

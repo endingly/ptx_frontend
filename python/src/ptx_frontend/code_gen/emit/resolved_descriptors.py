@@ -58,7 +58,7 @@ def generate_resolved_descriptor_source(
 {generated_at_comment()}
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
-#include "resolved_ir/model/{category}.gen.hpp"
+#include <ptx_frontend/resolved_ir/model/{category}.gen.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 

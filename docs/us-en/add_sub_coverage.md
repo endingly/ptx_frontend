@@ -37,7 +37,7 @@ std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // after, register 
 std::get<ResolvedImmediate>(mixed.addend.value).bits;        // after, immediate payload
 ```
 
-These public member changes define an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination and the narrow source keep their register payloads. The Python package remains at `0.0.1b0` and is versioned independently.
+These public member changes define an explicit API break in the installed C++ package at version `0.1.0`; its CMake package compatibility is `SameMinorVersion`. Consumers must migrate to the register-or-immediate variant access shown above. No compatibility shim or parallel representation was introduced: the change reuses the same typed register/immediate path that scalar `add`/`sub` and the DIV cohorts already use. The destination and the narrow source keep their register payloads. The Python wheel version is `0.1.0b0`, a beta prerelease; the installed C++ package remains at `0.1.0`. These are independent package versions with no lockstep requirement.
 
 ## Evidence
 

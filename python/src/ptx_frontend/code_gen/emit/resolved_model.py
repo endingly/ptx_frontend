@@ -91,7 +91,7 @@ def generate_resolved_instruction_union_header(
         entry.specification.codegen_category for entry in context.entries
     }))
     includes = "\n".join(
-        f'#include "resolved_ir/model/{category}.gen.hpp"'
+        f'#include <ptx_frontend/resolved_ir/model/{category}.gen.hpp>'
         for category in category_headers
     )
     content = f"""\\
@@ -125,7 +125,7 @@ def generate_resolved_ir_header(
     }))
 
     includes = "\n".join(
-        f'#include "resolved_ir/model/{category}.gen.hpp"'
+        f'#include <ptx_frontend/resolved_ir/model/{category}.gen.hpp>'
         for category in category_headers
     )
     content = f"""\\
@@ -134,7 +134,7 @@ def generate_resolved_ir_header(
 #pragma once
 
 {includes}
-#include "resolved_instruction_union.gen.hpp"
+#include <ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp>
 """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")

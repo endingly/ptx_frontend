@@ -68,4 +68,4 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
 
 }  // namespace ptx_frontend::resolved_ir
 
-#include "resolved_ir_resolution.gen.hpp"
+#include <ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp>

@@ -227,6 +227,10 @@ def remove_obsolete_generated_files(
             "private/resolved_descriptor.gen.cpp",
             "private/resolved_ir_checker_descriptor.gen.cpp",
             "public/ptx_ir/resolved/resolved_ir.gen.hpp",
+            "public/resolved_instruction_union.gen.hpp",
+            "public/resolved_ir.gen.hpp",
+            "public/resolved_ir_resolution.gen.hpp",
+            "public/resolved_ir_checker.gen.hpp",
             "private/syntax_descriptor.gen.hpp",
         }
         - active
@@ -234,6 +238,9 @@ def remove_obsolete_generated_files(
     for pattern in (
         "public/ptx_ir/resolved/resolved_ir.gen.hpp",
         "public/ptx_ir_*.gen.hpp",
+        "public/resolved_ir/model/*.gen.hpp",
+        "public/resolved_ir/resolution/*.gen.hpp",
+        "public/resolved_ir/checker/*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
         "private/resolved_ir_*.gen.cpp",

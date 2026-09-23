@@ -598,8 +598,9 @@ directly. It passes the descriptor to an out-of-line non-template matcher and
 converts the selected variant name to the opcode's `VariantType`. Generated
 model headers, and the explicit-specialization declarations for `resolve<T>`
 and `check<T>`, are emitted by YAML `codegen_category`. The aggregate
-`resolved_ir.gen.hpp`, `resolved_ir_resolution.gen.hpp`, and
-`resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
+`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`,
+`ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp`, and
+`ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
 category-local consumer can include only its model and specialization headers.
 The complete `ResolvedInstruction` union remains in its own aggregate header in
 canonical instruction order. Specialization definitions are non-inline and
@@ -698,7 +699,7 @@ constraints remain outside its ABI.
 
 Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`,
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
-`resolved_ir.gen.hpp`.
+`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`.
 
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered

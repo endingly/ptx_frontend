@@ -105,6 +105,9 @@ CheckResult check_modifier_value_domain(
 /** Check the typed scalar conversion relation selected by a generated `cvt` form. */
 CheckResult check_cvt_rule(std::span<const ModifierValueView>,
                            std::span<const OperandView>, const Context&);
+/** Check typed fractional bounds and statically known createpolicy range sizes. */
+CheckResult check_createpolicy_rule(std::span<const OperandView>,
+                                    const Context&);
 /** Check generated ld/st memory-order and address-space cross constraints. */
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,

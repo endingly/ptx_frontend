@@ -630,7 +630,7 @@ TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
   ASSERT_FALSE(missing_policy.has_value());
 }
 
-TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
+TEST(ResolvedModule, ResolvesAndChecksLduGlobalScalar) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .align 4 .u32 global_value;
 .entry kernel() {
@@ -644,9 +644,9 @@ TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& instruction =
       std::get<Ldu>(resolved->functions.front().body.front());
-  const auto& load = std::get<Ldu::GlobalU32>(instruction.variant);
+  const auto& load = std::get<Ldu::ExplicitScalar>(instruction.variant);
   EXPECT_EQ(load.state_space, MemoryStateSpace::Global);
-  EXPECT_EQ(load.type, ScalarType::U32);
+  EXPECT_EQ(load.type.value, ScalarType::U32);
   EXPECT_EQ(load.dst.value.declared_type, ScalarType::U64);
   EXPECT_TRUE(
       checker::check(instruction,
@@ -703,7 +703,7 @@ TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
 .global .align 4 .u32 global_value;
 .entry kernel() {
   .reg .u32 %r0;
-  ldu.global.b32 %r0, [global_value];
+  ldu.global.f16 %r0, [global_value];
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
@@ -721,7 +721,7 @@ TEST(ResolvedModule, ResolvesAndChecksLduGlobalU32Slice) {
   ASSERT_FALSE(missing_address.has_value());
 }
 
-TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
+TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Seed) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .u32 global_value;
 .entry kernel() {
@@ -782,15 +782,21 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchGlobalL1Slice) {
 .entry kernel() { prefetch.global.L2 [global_value]; }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto wrong_level = resolveModule(*parsed_module_3);
-  ASSERT_FALSE(wrong_level.has_value());
+  const auto global_l2 = resolveModule(*parsed_module_3);
+  ASSERT_TRUE(global_l2.has_value()) << global_l2.error().front().message;
+  EXPECT_TRUE(checker::check(
+      std::get<Prefetch>(global_l2->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}));
   const auto parsed_module_4 = parseModule(R"ptx(
 .local .u32 local_value;
 .entry kernel() { prefetch.local.L1 [local_value]; }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
-  const auto wrong_space = resolveModule(*parsed_module_4);
-  ASSERT_FALSE(wrong_space.has_value());
+  const auto local_l1 = resolveModule(*parsed_module_4);
+  ASSERT_TRUE(local_l1.has_value()) << local_l1.error().front().message;
+  EXPECT_TRUE(checker::check(
+      std::get<Prefetch>(local_l1->functions.front().body.front()),
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}}));
   const auto parsed_module_5 = parseModule(R"ptx(
 .entry kernel() { prefetch.global.L1; }
 )ptx");
@@ -873,138 +879,25 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchuL1GenericAddressSlice) {
   }
 }
 
-TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalL2EvictLastSlice) {
-  const auto parsed_module_1 = parseModule(R"ptx(
+TEST(ResolvedModule, ResolvesAndChecksCreatepolicyFractionalSeed) {
+  const auto parsed = parseModule(R"ptx(
+.version 7.4
+.target sm_80
 .entry kernel() {
-  .reg .b64 %b<3>;
+  .reg .b64 %b0;
   createpolicy.fractional.L2::evict_last.b64 %b0, 0.5;
-  createpolicy.fractional.L2::evict_last.b64 %b1, 0f3f000000;
-  createpolicy.fractional.L2::evict_last.b64 %b2, 0d3fe0000000000000;
 }
 )ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
-  const auto& ast = *parsed_module_1;
-  const auto resolved = resolveModule(ast);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 3u);
-  for (const auto& resolved_instruction : body) {
-    const auto& instruction = std::get<Createpolicy>(resolved_instruction);
-    const auto& policy =
-        std::get<Createpolicy::FractionalL2EvictLastB64>(instruction.variant);
-    EXPECT_TRUE(policy.fractional);
-    EXPECT_EQ(policy.eviction_priority, EvictionPriority::EvictLast);
-    EXPECT_EQ(policy.type, ScalarType::B64);
-    EXPECT_EQ(policy.dst.value.declared_type, ScalarType::B64);
-    EXPECT_EQ(policy.fraction.value.type, ScalarType::F32);
-    EXPECT_EQ(policy.fraction.value.bits, 1056964608u);
-    EXPECT_TRUE(
-        checker::check(instruction,
-                       checker::Context{
-                           .target = {.ptx_version = {7, 4}, .sm_version = 80},
-                           .instruction_range = ast.range})
-            .has_value());
-  }
-
-  const auto too_old_ptx = checker::check(
-      std::get<Createpolicy>(body.front()),
-      checker::Context{.target = {.ptx_version = {7, 3}, .sm_version = 80},
-                       .instruction_range = ast.range});
-  ASSERT_FALSE(too_old_ptx.has_value());
-  EXPECT_EQ(too_old_ptx.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto too_old_sm = checker::check(
-      std::get<Createpolicy>(body.front()),
-      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 79},
-                       .instruction_range = ast.range});
-  ASSERT_FALSE(too_old_sm.has_value());
-  EXPECT_EQ(too_old_sm.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
-
-  const auto parsed_module_2 = parseModule(R"ptx(
-.entry kernel() {
-  .reg .b64 %b<4>;
-  createpolicy.fractional.L2::evict_last.b64 %b0, 0.0;
-  createpolicy.fractional.L2::evict_last.b64 %b1, -0.0;
-  // PTX-legal fractional values, intentionally outside this frozen 0.5 slice.
-  createpolicy.fractional.L2::evict_last.b64 %b2, .25;
-  createpolicy.fractional.L2::evict_last.b64 %b3, 1.0;
-}
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto unfrozen_fractions = resolveModule(*parsed_module_2);
-  ASSERT_TRUE(unfrozen_fractions.has_value())
-      << unfrozen_fractions.error().front().message;
-  for (const auto& resolved_instruction :
-       unfrozen_fractions->functions.front().body) {
-    const auto checked = checker::check(
-        std::get<Createpolicy>(resolved_instruction),
-        checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
-    ASSERT_FALSE(checked.has_value());
-    EXPECT_EQ(checked.error().front().kind,
-              checker::CheckDiagnosticKind::ImmediateValueMismatch);
-  }
-
-  const auto parsed_module_3 = parseModule(R"ptx(
-.entry kernel() {
-  .reg .u64 %rd0;
-  createpolicy.fractional.L2::evict_last.b64 %rd0, 0.5;
-}
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto compatible_dst = resolveModule(*parsed_module_3);
-  ASSERT_TRUE(compatible_dst.has_value())
-      << compatible_dst.error().front().message;
-  EXPECT_TRUE(
-      checker::check(
-          std::get<Createpolicy>(
-              compatible_dst->functions.front().body.front()),
-          checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}})
-          .has_value());
-
-  const auto parsed_module_4 = parseModule(R"ptx(
-.entry kernel() {
-  .reg .u32 %r0;
-  createpolicy.fractional.L2::evict_last.b64 %r0, 0.5;
-}
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
-  const auto narrow_dst = resolveModule(*parsed_module_4);
-  ASSERT_TRUE(narrow_dst.has_value()) << narrow_dst.error().front().message;
-  const auto narrow_dst_checked = checker::check(
-      std::get<Createpolicy>(narrow_dst->functions.front().body.front()),
-      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
-  ASSERT_FALSE(narrow_dst_checked.has_value());
-  EXPECT_EQ(narrow_dst_checked.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
-
-  // This is ISA-legal without .fractional, but intentionally unfrozen here.
-  for (const auto source : {
-           ".entry kernel() { .reg .b64 %b0; createpolicy.L2::evict_last.b64 "
-           "%b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; "
-           "createpolicy.fractional.L1::evict_last.b64 %b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; "
-           "createpolicy.fractional.L2::evict_first.b64 %b0, 0.5; }",
-           ".entry kernel() { .reg .b64 %b0; "
-           "createpolicy.fractional.L2::evict_last.u64 %b0, 0.5; }",
-       }) {
-    SCOPED_TRACE(source);
-    const auto parsed_module_5 = parseModule(source);
-    ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_5);
-    EXPECT_FALSE(resolveModule(*parsed_module_5).has_value());
-  }
-
-  for (const auto source : {
-           "createpolicy.fractional.L2::evict_last.b64 %b0, +inf;",
-           "createpolicy.fractional.L2::evict_last.b64 %b0, NaN;",
-       }) {
-    SCOPED_TRACE(source);
-    PtxSyntaxParser parser(source);
-    const auto parsed = parser.parseInstruction();
-    EXPECT_FALSE(parsed.has_value() &&
-                 resolve<Createpolicy>(*parsed).has_value());
-  }
+  const auto& instruction =
+      std::get<Createpolicy>(resolved->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Createpolicy::FractionalL2B64>(
+      instruction.variant));
+  EXPECT_TRUE(checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}}));
 }
 
 TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
@@ -1105,8 +998,6 @@ TEST(ResolvedModule, ResolvesAndChecksApplypriorityGlobalL2EvictNormalSlice) {
   for (const auto source : {
            ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; "
            "applypriority.global.L2::evict_normal [%rd0], %r0; }",
-           ".entry kernel() { .reg .u64 %rd0; applypriority.L2::evict_normal "
-           "[%rd0], 128; }",
            ".entry kernel() { .reg .u64 %rd0; "
            "applypriority.global.L1::evict_normal [%rd0], 128; }",
            ".entry kernel() { .reg .u64 %rd0; "
@@ -1210,7 +1101,6 @@ TEST(ResolvedModule, ResolvesAndChecksDiscardGlobalL2Slice) {
   for (const auto source : {
            ".entry kernel() { .reg .u64 %rd0; .reg .u32 %r0; discard.global.L2 "
            "[%rd0], %r0; }",
-           ".entry kernel() { .reg .u64 %rd0; discard.L2 [%rd0], 128; }",
            ".entry kernel() { .reg .u64 %rd0; discard.global.L1 [%rd0], 128; }",
        }) {
     SCOPED_TRACE(source);

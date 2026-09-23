@@ -2,7 +2,7 @@
 
 This document records the PTX 9.3 `ld` and `ld.global.nc` forms accepted by
 the frontend. The machine-readable authority is
-`python/code_gen/resources/ptx_spec/data_movement_and_conversion.yaml`; this
+`python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`; this
 document describes its public boundary, not simulator execution or GPU
 conformance.
 

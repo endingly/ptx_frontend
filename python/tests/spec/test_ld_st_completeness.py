@@ -18,6 +18,61 @@ class LdStCompletenessTest(unittest.TestCase):
         """Load the source-tree instruction database once for these checks."""
         cls.database = load_codegen_database(spec_dir=SPEC_DIR)
 
+    def test_ldu_type_and_vector_matrix(self) -> None:
+        """Keep the documented uniform-load forms within 128 vector bits."""
+        ldu = next(
+            instruction
+            for instruction in self.database.instructions
+            if instruction.opcode == "ldu"
+        )
+        variants = {variant.name: variant for variant in ldu.variants}
+        self.assertEqual(
+            set(variants),
+            {
+                "ldu_generic_scalar", "ldu_explicit_scalar",
+                "ldu_generic_v2", "ldu_explicit_v2",
+                "ldu_generic_v4", "ldu_explicit_v4",
+            },
+        )
+        scalar_types = {
+            f"{family}{bits}"
+            for family in ("b", "u", "s")
+            for bits in (8, 16, 32, 64)
+        } | {"b128", "f32", "f64"}
+        v2_types = scalar_types - {"b128"}
+        v4_types = {
+            f"{family}{bits}"
+            for family in ("b", "u", "s")
+            for bits in (8, 16, 32)
+        } | {"f32"}
+        for name, types in (
+            ("ldu_generic_scalar", scalar_types),
+            ("ldu_explicit_scalar", scalar_types),
+            ("ldu_generic_v2", v2_types),
+            ("ldu_explicit_v2", v2_types),
+            ("ldu_generic_v4", v4_types),
+            ("ldu_explicit_v4", v4_types),
+        ):
+            variant = variants[name]
+            type_modifier = next(
+                modifier for modifier in variant.modifiers if modifier.name == "type"
+            )
+            self.assertEqual({value.value for value in type_modifier.values}, types)
+            self.assertEqual(
+                variant.availability,
+                {"ptx": "2.0", "sm": 20 if "generic" in name else 0},
+            )
+            if "b128" in types:
+                b128 = next(
+                    value for value in type_modifier.values if value.value == "b128"
+                )
+                self.assertEqual(b128.availability, {"ptx": "8.3", "sm": 70})
+            if "f64" in types:
+                f64 = next(
+                    value for value in type_modifier.values if value.value == "f64"
+                )
+                self.assertEqual(f64.availability, {"sm": 13})
+
     def test_scalar_memory_forms_admit_b128_at_its_documented_minimum(self) -> None:
         """Keep the `.b128` source/target gate on every scalar LD/ST family."""
         variants = {

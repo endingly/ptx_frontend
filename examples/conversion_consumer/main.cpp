@@ -48,6 +48,13 @@ constexpr std::string_view kFixture = R"ptx(
   add.f32.f16 %f0, %h1, 1.0;
   sub.f32.bf16 %f0, %h1, %f1;
   sub.f32.bf16 %f0, %h1, 2.0;
+  set.nan.xor.f32.f32 %f0, %f1, %f2, !0;
+  selp.s32 %s0, %s1, -1, !%p0;
+  selp.u32 %u0, %u0, 0, 2;
+  set.num.xor.ftz.f16x2.f16x2 %b3, %b1, %b2, !0;
+  set.eq.bf16.f16 %h0, %h1, %h1;
+  slct.u32.s32 %u0, %u0, 0, -1;
+  slct.ftz.u64.f32 %rd0, %rd0, %rd0, -0.0;
   ret;
 }
 )ptx";
@@ -80,7 +87,7 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 21, "all conversion and arithmetic instructions"))
+  if (!require(body.size() == 28, "all conversion and arithmetic instructions"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);
@@ -205,6 +212,88 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "mixed register and floating-immediate values"))
     return false;
 
+  auto* set_instruction = std::get_if<ir::Set>(&body[20]);
+  auto* set_float =
+      set_instruction
+          ? std::get_if<ir::Set::FloatBoolean>(&set_instruction->variant)
+          : nullptr;
+  auto* selp_scalar_instruction = std::get_if<ir::Selp>(&body[21]);
+  auto* selp_scalar =
+      selp_scalar_instruction
+          ? std::get_if<ir::Selp::Scalar>(&selp_scalar_instruction->variant)
+          : nullptr;
+  auto* selp_u32_instruction = std::get_if<ir::Selp>(&body[22]);
+  auto* selp_u32 =
+      selp_u32_instruction
+          ? std::get_if<ir::Selp::U32>(&selp_u32_instruction->variant)
+          : nullptr;
+  if (!require(
+          set_float &&
+              set_float->comparison.value ==
+                  ptx_frontend::base::ComparisonOperator::Nan &&
+              set_float->boolean.value ==
+                  ptx_frontend::base::BooleanOperator::Xor &&
+              std::get<ir::ResolvedPredicateConstant>(set_float->combine.value)
+                  .value &&
+              selp_scalar &&
+              selp_scalar->type.value == ptx_frontend::base::ScalarType::S32 &&
+              std::get<ir::ResolvedPredicate>(selp_scalar->predicate.value)
+                  .negated &&
+              selp_u32 &&
+              std::get<ir::ResolvedPredicateConstant>(selp_u32->predicate.value)
+                  .value,
+          "typed SET and both SELP public alternatives"))
+    return false;
+
+  auto* set_half_instruction = std::get_if<ir::Set>(&body[23]);
+  auto* set_half = set_half_instruction
+                       ? std::get_if<ir::Set::HalfNativeF16x2Boolean>(
+                             &set_half_instruction->variant)
+                       : nullptr;
+  auto* set_bfloat_instruction = std::get_if<ir::Set>(&body[24]);
+  auto* set_bfloat =
+      set_bfloat_instruction
+          ? std::get_if<ir::Set::HalfBf16F16>(&set_bfloat_instruction->variant)
+          : nullptr;
+  if (!require(
+          set_half && set_half->ftz.value &&
+              set_half->comparison.value ==
+                  ptx_frontend::base::ComparisonOperator::Num &&
+              std::get<ir::ResolvedPredicateConstant>(set_half->combine.value)
+                  .value &&
+              set_bfloat &&
+              set_bfloat->comparison.value ==
+                  ptx_frontend::base::ComparisonOperator::Eq &&
+              set_bfloat->dst.value.declared_type ==
+                  ptx_frontend::base::ScalarType::B16,
+          "typed half/bfloat SET alternatives and owned operands"))
+    return false;
+
+  auto* slct_integer_instruction = std::get_if<ir::Slct>(&body[25]);
+  auto* slct_integer =
+      slct_integer_instruction
+          ? std::get_if<ir::Slct::S32>(&slct_integer_instruction->variant)
+          : nullptr;
+  auto* slct_floating_instruction = std::get_if<ir::Slct>(&body[26]);
+  auto* slct_floating =
+      slct_floating_instruction
+          ? std::get_if<ir::Slct::F32>(&slct_floating_instruction->variant)
+          : nullptr;
+  if (!require(slct_integer &&
+                   slct_integer->dtype.value ==
+                       ptx_frontend::base::ScalarType::U32 &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_integer->src_false.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_integer->selector.value) &&
+                   slct_floating && slct_floating->ftz.value &&
+                   slct_floating->dtype.value ==
+                       ptx_frontend::base::ScalarType::U64 &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       slct_floating->selector.value),
+               "typed SLCT selector variants and owned numeric operands"))
+    return false;
+
   min_binary->abs.value = true;
   const bool forbidden_binary_modifier = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
@@ -234,7 +323,35 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
       module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
       "TESTP rejects an invalid typed property");
   property->property.value = ptx_frontend::base::TestProperty::Normal;
-  return invalid_property &&
+  if (!invalid_property)
+    return false;
+  set_float->comparison.value = ptx_frontend::base::ComparisonOperator::Lo;
+  const bool invalid_set_domain = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "SET rejects a comparison outside its floating domain");
+  set_float->comparison.value = ptx_frontend::base::ComparisonOperator::Nan;
+  if (!invalid_set_domain)
+    return false;
+  set_half->comparison.value = ptx_frontend::base::ComparisonOperator::Lo;
+  const bool invalid_half_domain = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "half SET rejects an integer-only comparison");
+  set_half->comparison.value = ptx_frontend::base::ComparisonOperator::Num;
+  if (!invalid_half_domain)
+    return false;
+  slct_floating->dtype.value = ptx_frontend::base::ScalarType::F16;
+  const bool invalid_slct_data_type = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "SLCT rejects an unsupported data type");
+  slct_floating->dtype.value = ptx_frontend::base::ScalarType::U64;
+  if (!invalid_slct_data_type)
+    return false;
+  selp_scalar->type.value = ptx_frontend::base::ScalarType::F16;
+  const bool invalid_selp_domain = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModifierValueDomainMismatch,
+      "SELP rejects a type outside its scalar domain");
+  selp_scalar->type.value = ptx_frontend::base::ScalarType::S32;
+  return invalid_selp_domain &&
          require(ir::validateModule(
                      module, ir::ModuleValidationPolicy::RequireCompleteContext)
                      .has_value(),
@@ -290,7 +407,7 @@ int runOwnedValidation() {
 
 }  // namespace
 
-/** Check the installed public conversion and resolved-IR contract. */
+/** Check the installed public conversion, comparison, and resolved-IR contract. */
 int main() {
   using ptx_frontend::base::RoundingMode;
   using ptx_frontend::base::ScalarType;

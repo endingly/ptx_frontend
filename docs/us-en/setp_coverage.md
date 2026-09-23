@@ -1,6 +1,6 @@
 # SETP Coverage
 
-This document records the complete PTX 9.3 `setp` contract modelled by the frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it does not claim simulator execution or physical-GPU behavior. The canonical machine-readable source is `python/code_gen/resources/ptx_spec/comparison_and_selection.yaml`.
+This document records the complete PTX 9.3 `setp` contract modelled by the frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it does not claim simulator execution or physical-GPU behavior. The canonical machine-readable source is `python/src/ptx_frontend/spec/resources/ptx_spec/comparison_and_selection.yaml`.
 
 The normative sources are NVIDIA's PTX ISA 9.3 archive: [ordinary SETP §9.7.6.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#comparison-and-selection-instructions-setp) and [half/bfloat SETP §9.7.7.2](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#half-precision-comparison-instructions-setp).
 
@@ -30,4 +30,4 @@ As corroborating compiler evidence, CUDA Toolkit 13.1 `ptxas` probes using PTX 8
 
 ## Verification sources
 
-[Dedicated C++ SETP tests](../../submod/resolved_ir/test/test_setp_completeness.cpp) exercise every family through parsing, resolution, declared-operand checking, target minima, modifier/layout negatives, predicate-constant truth values, and mutated-IR sink validation. The [installed consumer SETP test](../../submod/resolved_ir/test/package_consumer/setp_completeness.cpp) uses only installed public headers to check a floating form, an ordinary sink pair, a predicate constant, and checker rejection of a comparison enum outside the selected domain. The focused Python database test verifies variants, comparison domains, availability, sink boundaries, predicate-source kinds, and packed containers. These sources define the frontend boundary; they do not verify simulator or hardware execution.
+[Dedicated C++ SETP tests](../../submod/resolved_ir/test/test_setp_completeness.cpp) exercise every family through parsing, resolution, declared-operand checking, target minima, modifier/layout negatives, predicate-constant truth values, and mutated-IR sink validation. The [focused Python database test](../../python/tests/spec/test_setp_completeness.py) verifies variants, comparison domains, availability, sink boundaries, predicate-source kinds, and packed containers. These sources define the frontend boundary; they do not verify simulator or hardware execution.

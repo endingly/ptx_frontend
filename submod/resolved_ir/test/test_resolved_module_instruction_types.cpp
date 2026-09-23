@@ -393,7 +393,7 @@ TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
       std::get<Set>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Set::LtAndF32S32>(instruction.variant);
+  const auto& variant = std::get<Set::SignedBoolean>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -445,7 +445,7 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   const auto& selector_instruction =
       std::get<Slct>(wrong_selector->functions.front().body.front());
   const auto& selector_variant =
-      std::get<Slct::U32S32>(selector_instruction.variant);
+      std::get<Slct::S32>(selector_instruction.variant);
   const auto bad_selector = checker::check(
       selector_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -488,7 +488,7 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   ASSERT_TRUE(wrong_data.has_value()) << wrong_data.error().front().message;
   const auto& data_instruction =
       std::get<Slct>(wrong_data->functions.front().body.front());
-  const auto& data_variant = std::get<Slct::U32S32>(data_instruction.variant);
+  const auto& data_variant = std::get<Slct::S32>(data_instruction.variant);
   const auto bad_data = checker::check(
       data_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});

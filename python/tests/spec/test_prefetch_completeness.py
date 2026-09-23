@@ -33,6 +33,7 @@ class PrefetchCompletenessTest(unittest.TestCase):
                 "prefetch_local_l1", "prefetch_local_l2",
                 "prefetch_global_l2_evict",
                 "prefetch_const_tensormap", "prefetch_param_tensormap",
+                "prefetch_generic_tensormap",
             },
         )
         for name, variant in variants.items():

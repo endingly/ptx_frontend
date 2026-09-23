@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -297,6 +299,139 @@ TEST(CreatepolicyCompleteness, RevalidatesOwnedImmediateMutation) {
   const auto invalid_range =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   EXPECT_FALSE(invalid_range.has_value());
+}
+
+/** Owned range sizes are bounded independently before dynamic comparison. */
+TEST(CreatepolicyCompleteness, RevalidatesEachOwnedRangeSizeWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .b8 g[512];
+.visible .entry kernel() {
+  .reg .b64 %b0;
+  .reg .u32 %r0;
+  createpolicy.range.L2::evict_last.b64 %b0, [g], 128, 256;
+  createpolicy.range.L2::evict_last.b64 %b0, [g], %r0, 256;
+  createpolicy.range.L2::evict_last.b64 %b0, [g], 128, %r0;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto resolved = resolveModuleOnly(*ast);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  auto& static_range = std::get<Createpolicy::RangeGenericL2B64>(
+      std::get<Createpolicy>(body[0]).variant);
+  const auto& dynamic_primary = std::get<Createpolicy::RangeGenericL2B64>(
+      std::get<Createpolicy>(body[1]).variant);
+  const auto& dynamic_total = std::get<Createpolicy::RangeGenericL2B64>(
+      std::get<Createpolicy>(body[2]).variant);
+  auto& primary = std::get<ResolvedImmediate>(static_range.primary_size.value);
+  auto& total = std::get<ResolvedImmediate>(static_range.total_size.value);
+  const auto original_primary = primary;
+  const auto original_total = total;
+  const auto register_primary = dynamic_primary.primary_size.value;
+  const auto register_total = dynamic_total.total_size.value;
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  const auto check = [&]() {
+    return checker::check(std::get<Createpolicy>(body[0]), context);
+  };
+  const auto expect_rejected_at = [&](const SourceRange& expected) {
+    const auto result = check();
+    ASSERT_FALSE(result.has_value());
+    ASSERT_FALSE(result.error().empty());
+    EXPECT_EQ(result.error().front().range, expected);
+  };
+  ASSERT_FALSE(static_range.primary_size.locs.empty());
+  ASSERT_FALSE(static_range.total_size.locs.empty());
+  const auto primary_range = static_range.primary_size.locs.front();
+  const auto total_range = static_range.total_size.locs.front();
+
+  primary.bits = static_cast<uint64_t>(UINT32_MAX) + 1;
+  expect_rejected_at(primary_range);
+  primary = original_primary;
+  total.bits = static_cast<uint64_t>(UINT32_MAX) + 1;
+  expect_rejected_at(total_range);
+  total = original_total;
+
+  primary.bits = static_cast<uint64_t>(UINT32_MAX) + 1;
+  total.bits = static_cast<uint64_t>(UINT32_MAX) + 2;
+  expect_rejected_at(primary_range);
+  primary = original_primary;
+  total = original_total;
+
+  static_range.primary_size.value = register_primary;
+  std::get<ResolvedImmediate>(static_range.total_size.value).bits =
+      static_cast<uint64_t>(UINT32_MAX) + 1;
+  expect_rejected_at(total_range);
+  static_range.primary_size.value = original_primary;
+  static_range.total_size.value = register_total;
+  std::get<ResolvedImmediate>(static_range.primary_size.value).bits =
+      static_cast<uint64_t>(UINT32_MAX) + 1;
+  expect_rejected_at(primary_range);
+  static_range.total_size.value = original_total;
+  std::get<ResolvedImmediate>(static_range.primary_size.value).type =
+      ScalarType::U64;
+  expect_rejected_at(primary_range);
+  static_range.primary_size.value = original_primary;
+  std::get<ResolvedImmediate>(static_range.total_size.value).type =
+      ScalarType::U64;
+  expect_rejected_at(total_range);
+  static_range.total_size.value = original_total;
+  EXPECT_TRUE(check());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** A malformed projected immediate cannot bypass the range-size rule. */
+TEST(CreatepolicyCompleteness, RejectsMissingProjectedRangeBits) {
+  const SourceRange primary_range{{1, 1}, {1, 4}};
+  const SourceRange total_range{{1, 6}, {1, 9}};
+  const std::array primary_locations{primary_range};
+  const std::array total_locations{total_range};
+  std::array<checker::OperandView, 2> sizes{{
+      {.field_id = "primary_size",
+       .actual_shape = checker::OperandShape::Immediate,
+       .immediate_type = ScalarType::U32,
+       .locations = primary_locations},
+      {.field_id = "total_size",
+       .actual_shape = checker::OperandShape::Register,
+       .locations = total_locations},
+  }};
+  auto checked = checker::check_createpolicy_rule(sizes, {});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().range, primary_range);
+  sizes[0].actual_shape = checker::OperandShape::Register;
+  sizes[1].actual_shape = checker::OperandShape::Immediate;
+  sizes[1].immediate_type = ScalarType::U32;
+  checked = checker::check_createpolicy_rule(sizes, {});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().range, total_range);
+  sizes[1].immediate_bits = 256;
+  EXPECT_TRUE(checker::check_createpolicy_rule(sizes, {}));
+  sizes[1].immediate_bits = static_cast<uint64_t>(UINT32_MAX) + 1;
+  checked = checker::check_createpolicy_rule(sizes, {});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().range, total_range);
+  sizes[1].immediate_bits = 256;
+  sizes[1].immediate_type = ScalarType::U64;
+  checked = checker::check_createpolicy_rule(sizes, {});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().range, total_range);
+  sizes[1].immediate_type = ScalarType::U32;
+  sizes[1].actual_shape = checker::OperandShape::Address;
+  checked = checker::check_createpolicy_rule(sizes, {});
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().range, total_range);
 }
 
 }  // namespace

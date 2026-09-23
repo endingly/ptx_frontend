@@ -3526,7 +3526,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [
                 "GenericL1", "GenericL2", "GlobalL1", "GlobalL2",
                 "LocalL1", "LocalL2", "GlobalL2Evict",
-                "ConstTensormap", "ParamTensormap",
+                "ConstTensormap", "ParamTensormap", "GenericTensormap",
             ],
         )
         variants = {variant.cpp_name: variant for variant in resolved.variants}
@@ -3553,10 +3553,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
             dict(variants["GlobalL2Evict"].availability),
             {"ptx": "7.4", "sm": 80},
         )
-        for name in ("ConstTensormap", "ParamTensormap"):
+        for name in ("ConstTensormap", "ParamTensormap", "GenericTensormap"):
             self.assertEqual(
                 dict(variants[name].availability), {"ptx": "8.0", "sm": 90}
             )
+        generic_tensormap = variants["GenericTensormap"]
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in generic_tensormap.fields],
+            [("tensormap", "bool"), ("address", "WithLocs<ResolvedAddress>")],
+        )
+        generic_address = generic_tensormap.operand_layouts[0].bindings[0]
+        self.assertEqual(
+            [space.value for space in generic_address.allowed_address_state_spaces],
+            ["global"],
+        )
+        self.assertIsNone(generic_address.parameter_constraint)
         param = variants["ParamTensormap"].operand_layouts[0].bindings[0]
         self.assertEqual(param.state_space_modifier_field_id, "state_space")
         self.assertEqual(param.parameter_constraint.direction, "input")

@@ -18,8 +18,10 @@ retains whether the secondary modifier and fraction operand appeared in source.
 An immediate fraction must be finite and in `(0.0, 1.0]`. The frontend accepts
 a dynamic `.f32` register fraction and cannot prove its runtime value. If both
 range sizes are immediate, the primary size must not exceed the total size;
-dynamic sizes retain this runtime precondition. The range form without
-`.global` uses generic addressing, but its runtime address must be global.
+each immediate is independently checked as a 32-bit value even when the other
+size is a register. Dynamic sizes retain the ordering runtime precondition.
+The range form without `.global` uses generic addressing, but its runtime
+address must be global.
 Known non-global symbols are rejected, while an unresolved address register
 is accepted. Source integer literals for each size must fit the 32-bit operand;
 the frontend rejects `4294967296` and `4294967297` instead of adopting

@@ -33,7 +33,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 
 | 冻结的 M10 memory/atomic 子集 | 部分支持 | PTX 7.4 / SM 70 的 L1 eviction 与 PTX 7.4 / SM 80 的 L2 cache-hint `ld`/`st`；历史上的 `ldu.global.u32` 与 `prefetch.global.L1` seed（现已在下文扩展）；以及冻结的 `membar`、`fence` 和 global relaxed-CTA scalar `atom`/`red` form。它们复用既有 memory-consistency/scope domain；其余 qualifier、operation、space 和 type 不在这个冻结子集内。 |
 | PTX 9.3 `ldu` | 支持 | 支持 generic 或显式 `.global` 寻址的标量、v2/v4 uniform global load，以及文档规定的类型集合、目标与操作数检查。参见 [`ldu` 覆盖范围](ldu_coverage.md)。 |
-| PTX 9.3 `prefetch` / `prefetchu` | 支持 | 支持普通的 generic/global/local L1/L2、global L2 eviction priority、const/param tensor-map 形式，以及 uniform-cache L1。参见 [预取覆盖范围](prefetch_coverage.md)。 |
+| PTX 9.3 `prefetch` / `prefetchu` | 支持 | 支持普通的 generic/global/local L1/L2、global L2 eviction priority、generic/const/param tensor-map 形式，以及 uniform-cache L1。参见 [预取覆盖范围](prefetch_coverage.md)。 |
 | PTX 9.3 `applypriority` / `discard` | 支持 | 支持 generic 与显式 global 的 L2 形式，并检查固定的 128 字节范围、对齐及目标条件。参见 [缓存范围覆盖范围](applypriority_discard_coverage.md)。 |
 | PTX 9.3 `createpolicy` | 支持 | 支持 fractional、range 与 access-property 转换形式，并检查类型化 priority、fraction、size 及目标条件。参见 [`createpolicy` 覆盖范围](createpolicy_coverage.md)。 |
 | 冻结的 M10 warp/async/matrix 子集 | 部分支持 | `activemask`（PTX 6.2 / SM 30）、`vote.sync.ballot.b32` 与 `shfl.sync.idx.b32`（PTX 6.0 / SM 30）、`cp.async.ca.shared.global` 及 commit/wait form（PTX 7.0 / SM 80）、`ldmatrix.sync.aligned.m8n8.x2.shared.b16`（PTX 9.3 §9.7.15.5.15；PTX 6.5 / SM 75；destination 2×b32）以及 `mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32`（PTX 9.3 §9.7.15.5.14；PTX 6.5 / SM 75；D/C 4×f32、A 2×f16x2、B 1×f16x2）。只 resolve/check 这些 form；没有 execution semantics 或 simulator support。 |

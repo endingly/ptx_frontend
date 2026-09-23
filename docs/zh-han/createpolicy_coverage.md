@@ -17,7 +17,8 @@ secondary 修饰符与 fraction 操作数是否出现在源码中。
 
 立即数 fraction 必须是有限值，且位于 `(0.0, 1.0]`。前端接受动态 `.f32`
 寄存器 fraction，但无法证明其运行时值。若两个 range size 都是立即数，
-primary size 不得超过 total size；动态 size 保留此运行时前提。省略
+primary size 不得超过 total size；即使另一个 size 为寄存器，每个立即数
+也分别按 32 位值检查。动态 size 的大小关系仍是运行时前提。省略
 `.global` 的 range 形式使用 generic 寻址，但运行时地址必须属于 global。
 前端拒绝已知的非 global 符号，同时接受来源未知的地址寄存器。
 每个 size 的源码整数常量必须可由 32 位操作数表示；前端拒绝

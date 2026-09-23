@@ -525,6 +525,15 @@ operand_patterns:
       # A generic prefetch may address global or local data; shared is a no-op.
       state_space: [global, local, shared]
 
+  prefetch_generic_tensormap:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      # A direct generic tensor-map symbol is global; unknown registers retain
+      # their runtime provenance without claiming a cache effect.
+      state_space: [global]
+
   prefetch_param_tensormap:
     - name: address
       kind: addr
@@ -3688,8 +3697,8 @@ instructions:
 
   - opcode: prefetch
     section: "9.7.9.16"
-    doc: "Ordinary generic/global/local L1 or L2 prefetch, global L2 eviction priority, and const/param tensormap prefetch."
-    syntax: "prefetch{.global|.local}.L1|.L2 [address]; prefetch.global.L2::evict_last|evict_normal [address]; prefetch.const|param.tensormap [address]"
+    doc: "Ordinary generic/global/local L1 or L2 prefetch, global L2 eviction priority, and generic/const/param tensormap prefetch."
+    syntax: "prefetch{.global|.local}.L1|.L2 [address]; prefetch.global.L2::evict_last|evict_normal [address]; prefetch{.const|.param}.tensormap [address]"
 
     variants:
       - name: prefetch_generic_l1
@@ -3760,6 +3769,13 @@ instructions:
           - {name: state_space, kind: state_space, domain: state_spaces, presence: fixed, value: param}
           - *prefetch_tensormap
         operands: $prefetch_param_tensormap
+        rule: data_movement.prefetch
+
+      - name: prefetch_generic_tensormap
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - *prefetch_tensormap
+        operands: $prefetch_generic_tensormap
         rule: data_movement.prefetch
 
   - opcode: prefetchu

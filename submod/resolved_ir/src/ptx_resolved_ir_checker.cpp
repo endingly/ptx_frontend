@@ -2070,18 +2070,31 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
         .message = "createpolicy range requires both size operands.",
     }});
   }
+  for (const OperandView* size : {primary, total}) {
+    if (size->actual_shape == OperandShape::Register)
+      continue;
+    if (size->actual_shape != OperandShape::Immediate ||
+        size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format(
+              "createpolicy {} must be a 32-bit register or immediate.",
+              size->field_id),
+      }});
+    }
+    if (*size->immediate_bits > UINT32_MAX) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format("createpolicy {} immediate exceeds 32 bits.",
+                                 size->field_id),
+      }});
+    }
+  }
   if (primary->actual_shape == OperandShape::Register ||
       total->actual_shape == OperandShape::Register)
     return {};
-  if (primary->actual_shape != OperandShape::Immediate ||
-      total->actual_shape != OperandShape::Immediate ||
-      !primary->immediate_bits || !total->immediate_bits) {
-    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-        .kind = CheckDiagnosticKind::RuleViolation,
-        .range = context.instruction_range,
-        .message = "createpolicy range sizes must be 32-bit operands.",
-    }});
-  }
   if (*primary->immediate_bits <= *total->immediate_bits)
     return {};
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{

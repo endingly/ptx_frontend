@@ -383,19 +383,56 @@ def _emit_modifier_value_domain_descriptor(
 def _emit_variant_layout_descriptors(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     """Emit checker availability metadata for every layout of one variant."""
 
-    entries = ",\n".join(
-        _emit_operand_layout_descriptor(layout) for layout in variant.operand_layouts
+    forbidden_arrays = "\n".join(
+        emitted
+        for emitted in (
+            _emit_operand_layout_forbidden_modifiers(variant, index, layout)
+            for index, layout in enumerate(variant.operand_layouts)
+        )
+        if emitted
     )
-    return f"""  static constexpr std::array<checker::OperandLayoutDescriptor, {len(variant.operand_layouts)}>
+    entries = ",\n".join(
+        _emit_operand_layout_descriptor(variant, index, layout)
+        for index, layout in enumerate(variant.operand_layouts)
+    )
+    prefix = f"{forbidden_arrays}\n" if forbidden_arrays else ""
+    return f"""{prefix}  static constexpr std::array<checker::OperandLayoutDescriptor, {len(variant.operand_layouts)}>
       {variant.cpp_name}_operand_layouts = {{
 {entries}
       }};"""
 
 
-def _emit_operand_layout_descriptor(layout: ResolvedOperandLayout) -> str:
+def _emit_operand_layout_forbidden_modifiers(
+    variant: ResolvedVariant, index: int, layout: ResolvedOperandLayout
+) -> str:
+    """Emit the typed slot-index array a layout rejects, or an empty string."""
+
+    if not layout.forbidden_modifier_slots:
+        return ""
+    values = ", ".join(
+        f"checker::ModifierSlotTag{{{slot}}}" for slot in layout.forbidden_modifier_slots
+    )
+    return (
+        f"  inline static constexpr std::array<checker::ModifierSlotTag, "
+        f"{len(layout.forbidden_modifier_slots)}>\n"
+        f"      {variant.cpp_name}_operand_layout_{index}_forbidden_modifiers = "
+        f"{{{values}}};"
+    )
+
+
+def _emit_operand_layout_descriptor(
+    variant: ResolvedVariant, index: int, layout: ResolvedOperandLayout
+) -> str:
+    if layout.forbidden_modifier_slots:
+        forbidden = (
+            f"{variant.cpp_name}_operand_layout_{index}_forbidden_modifiers"
+        )
+    else:
+        forbidden = "{}"
     return f"""          checker::OperandLayoutDescriptor{{
               .layout_name = "{layout.layout_id}",
               .availability = {emit_availability(dict(layout.availability))},
+              .forbidden_modifiers = {forbidden},
           }}"""
 
 

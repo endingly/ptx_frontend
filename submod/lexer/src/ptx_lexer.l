@@ -227,6 +227,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".b8x16.b6x16_p32"                { TOK(DotIdent); }
 ".b8x16.b4x16_p64"                { TOK(DotIdent); }
 
+".xorsign.abs"                    { TOK(DotIdent); }
+
  /* Generic dot-prefixed token. Does not consume chained suffixes like .sat.s32. */
 {DOT_IDENT}                       { TOK(DotIdent); }
 {IDENT}                 { TOK(Ident); }

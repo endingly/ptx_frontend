@@ -30,8 +30,8 @@ predicate destinations. That assembler cannot target `sm_20`, so the PTX 2.0 /
 target evidence.
 
 [Explicit floating MAD](mad_coverage.md), [DIV](div_coverage.md),
-[reciprocal/square-root forms](unary_float_coverage.md), and
-[floating transcendentals](transcendental_coverage.md) are modelled
-separately. Later Issue 142 work covers MIN/MAX and an audit of the existing
-ADD/SUB and mixed-family contracts; they are intentionally not part of this
-document's implementation scope.
+[reciprocal/square-root forms](unary_float_coverage.md),
+[floating transcendentals](transcendental_coverage.md), and
+[floating MIN/MAX](min_max_coverage.md) are modelled separately. Later Issue 142
+work covers an audit of the existing ADD/SUB and mixed-family contracts; it is
+intentionally not part of this document's implementation scope.

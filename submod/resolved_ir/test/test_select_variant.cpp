@@ -2579,7 +2579,7 @@ TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
   EXPECT_EQ(Rem::U32::type, ScalarType::U32);
 }
 
-TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
+TEST(ResolveMin, SelectsSignedBinaryAndTernaryVariants) {
   const auto s32 = resolve<Min>(parse_instruction("min.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
   ASSERT_NE(std::get_if<Min::S32>(&s32->variant), nullptr);
@@ -2588,25 +2588,43 @@ TEST(ResolveMin, SelectsFrozenSignedAndNaNVariants) {
   const auto nan =
       resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(nan.has_value()) << nan.error().message;
-  ASSERT_NE(std::get_if<Min::NanF32>(&nan->variant), nullptr);
-  EXPECT_TRUE(Min::NanF32::nan);
-  EXPECT_EQ(Min::NanF32::type, ScalarType::F32);
+  ASSERT_NE(std::get_if<Min::F32>(&nan->variant), nullptr);
+  EXPECT_EQ(Min::F32::type, ScalarType::F32);
+  EXPECT_TRUE(std::get<Min::F32>(nan->variant).nan.value);
+  EXPECT_EQ(std::get<Min::F32>(nan->variant).operand_layout,
+            (ResolvedOperandLayoutTag{0}));
+
+  const auto ternary =
+      resolve<Min>(parse_instruction("min.abs.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(ternary.has_value()) << ternary.error().message;
+  ASSERT_NE(std::get_if<Min::F32>(&ternary->variant), nullptr);
+  EXPECT_TRUE(std::get<Min::F32>(ternary->variant).abs.value);
+  EXPECT_EQ(std::get<Min::F32>(ternary->variant).operand_layout,
+            (ResolvedOperandLayoutTag{1}));
 }
 
 TEST(ResolveMin, RejectsIllegalModifiers) {
   for (const auto source :
-       {"min.f32 %f0, %f1, %f2;", "min.ftz.f32 %f0, %f1, %f2;",
-        "min.xorsign.abs.f32 %f0, %f1, %f2;", "min.abs.f32 %f0, %f1, %f2;",
-        "min.nan.f32 %f0, %f1, %f2;"}) {
+       {"min.nan.f32 %f0, %f1, %f2;", "min.xorsign.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Min>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(
-      resolve<Min>(parse_instruction("min.NaN.f32 %f0, %f1, %f2, %f3;"))
-          .has_value());
+  // These spellings select a variant and an arity, then fail because the
+  // selected layout forbids the modifier.
+  for (const auto source : {"min.abs.f32 %f0, %f1, %f2;",
+                            "min.xorsign.abs.f32 %f0, %f1, %f2, %f3;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Min>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    EXPECT_FALSE(
+        checker::check(*resolved,
+                       checker::Context{.target = {.ptx_version = {8, 8},
+                                                   .sm_version = 100}})
+            .has_value());
+  }
 }
 
-TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
+TEST(ResolveMax, SelectsSignedBinaryAndTernaryVariants) {
   const auto s32 = resolve<Max>(parse_instruction("max.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
   ASSERT_NE(std::get_if<Max::S32>(&s32->variant), nullptr);
@@ -2615,22 +2633,38 @@ TEST(ResolveMax, SelectsFrozenSignedAndNaNVariants) {
   const auto nan =
       resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(nan.has_value()) << nan.error().message;
-  ASSERT_NE(std::get_if<Max::NanF32>(&nan->variant), nullptr);
-  EXPECT_TRUE(Max::NanF32::nan);
-  EXPECT_EQ(Max::NanF32::type, ScalarType::F32);
+  ASSERT_NE(std::get_if<Max::F32>(&nan->variant), nullptr);
+  EXPECT_EQ(Max::F32::type, ScalarType::F32);
+  EXPECT_TRUE(std::get<Max::F32>(nan->variant).nan.value);
+  EXPECT_EQ(std::get<Max::F32>(nan->variant).operand_layout,
+            (ResolvedOperandLayoutTag{0}));
+
+  const auto ternary =
+      resolve<Max>(parse_instruction("max.abs.f32 %f0, %f1, %f2, %f3;"));
+  ASSERT_TRUE(ternary.has_value()) << ternary.error().message;
+  ASSERT_NE(std::get_if<Max::F32>(&ternary->variant), nullptr);
+  EXPECT_TRUE(std::get<Max::F32>(ternary->variant).abs.value);
+  EXPECT_EQ(std::get<Max::F32>(ternary->variant).operand_layout,
+            (ResolvedOperandLayoutTag{1}));
 }
 
 TEST(ResolveMax, RejectsIllegalModifiers) {
   for (const auto source :
-       {"max.f32 %f0, %f1, %f2;", "max.ftz.f32 %f0, %f1, %f2;",
-        "max.xorsign.abs.f32 %f0, %f1, %f2;", "max.abs.f32 %f0, %f1, %f2;",
-        "max.nan.f32 %f0, %f1, %f2;"}) {
+       {"max.nan.f32 %f0, %f1, %f2;", "max.xorsign.f32 %f0, %f1, %f2;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(selectVariant<Max>(parse_instruction(source)).has_value());
   }
-  EXPECT_FALSE(
-      resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2, %f3;"))
-          .has_value());
+  for (const auto source : {"max.abs.f32 %f0, %f1, %f2;",
+                            "max.xorsign.abs.f32 %f0, %f1, %f2, %f3;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolve<Max>(parse_instruction(source));
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    EXPECT_FALSE(
+        checker::check(*resolved,
+                       checker::Context{.target = {.ptx_version = {8, 8},
+                                                   .sm_version = 100}})
+            .has_value());
+  }
 }
 
 TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {

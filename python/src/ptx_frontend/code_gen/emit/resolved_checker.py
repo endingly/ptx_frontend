@@ -134,8 +134,8 @@ def _emit_check_variant_lambda(
         for field in modifier_fields
     )
     modifier_value_views = ",\n".join(
-        emit_check_modifier_value_view(instruction, variant, field, backend)
-        for field in modifier_fields
+        emit_check_modifier_value_view(instruction, variant, field, backend, slot_index)
+        for slot_index, field in enumerate(modifier_fields)
     )
     operand_check = _emit_check_operand_dispatch(instruction, variant, variant_index, backend)
     lambda_name = _check_lambda_name(instruction, variant)
@@ -217,6 +217,14 @@ def _emit_check_operand_dispatch(
               diagnostics.insert(diagnostics.end(), availability_check.error().begin(),
                                  availability_check.error().end());
             }}
+            const auto layout_modifier_check = check_operand_layout_modifiers(
+                {checker_variant_expr}, selected.operand_layout.value,
+                modifier_values, context);
+            if (!layout_modifier_check) {{
+              diagnostics.insert(diagnostics.end(),
+                                 layout_modifier_check.error().begin(),
+                                 layout_modifier_check.error().end());
+            }}
             const auto operand_check = check_operands(
                 layouts[selected.operand_layout.value].bindings, fields, operands,
                 {checker_variant_expr}.operand_type_compatibilities, context);
@@ -250,6 +258,14 @@ def _emit_check_operand_dispatch(
             if (!availability_check) {{
               diagnostics.insert(diagnostics.end(), availability_check.error().begin(),
                                  availability_check.error().end());
+            }}
+            const auto layout_modifier_check = check_operand_layout_modifiers(
+                {checker_variant_expr}, selected.operand_layout.value,
+                modifier_values, context);
+            if (!layout_modifier_check) {{
+              diagnostics.insert(diagnostics.end(),
+                                 layout_modifier_check.error().begin(),
+                                 layout_modifier_check.error().end());
             }}
             const auto payload_check = std::visit(
                 detail::Overloaded{{{visitor_lambdas}}}, selected.operands);

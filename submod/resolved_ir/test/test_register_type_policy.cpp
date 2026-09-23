@@ -172,18 +172,20 @@ const check_end::ResolvedVariantDescriptor* findResolvedVariant(
   return &*found;
 }
 
-/** Assert the policy carried by every binding in one generated operand layout. */
+/** Assert the policy carried by every binding in every generated operand layout. */
 void expectBindingPolicy(
     const check_end::ResolvedInstructionDescriptor& descriptor,
     std::string_view variant_name, base::ScalarTypeSizePolicy policy) {
   const auto* variant = findResolvedVariant(descriptor, variant_name);
   ASSERT_NE(variant, nullptr);
-  ASSERT_EQ(variant->operand_layouts.size(), 1u) << variant_name;
-  ASSERT_FALSE(variant->operand_layouts.front().bindings.empty())
-      << variant_name;
-  for (const auto& binding : variant->operand_layouts.front().bindings)
-    EXPECT_EQ(binding.register_width_policy, policy)
-        << variant_name << "." << binding.target_field_id;
+  ASSERT_FALSE(variant->operand_layouts.empty()) << variant_name;
+  for (const auto& layout : variant->operand_layouts) {
+    ASSERT_FALSE(layout.bindings.empty())
+        << variant_name << "." << layout.layout_id;
+    for (const auto& binding : layout.bindings)
+      EXPECT_EQ(binding.register_width_policy, policy)
+          << variant_name << "." << binding.target_field_id;
+  }
 }
 
 /** Base type semantics preserve fundamental compatibility while Exact remains identity. */
@@ -480,8 +482,8 @@ TEST(RegisterTypePolicy, GeneratedDescriptorsExposeTheWidthPolicy) {
   expectBindingPolicy(Bfe::get_resolved_descriptor(), "U32", same_width);
   expectBindingPolicy(Div::get_resolved_descriptor(), "RnF32", same_width);
   expectBindingPolicy(Div::get_resolved_descriptor(), "RnF64", same_width);
-  expectBindingPolicy(Min::get_resolved_descriptor(), "NanF32", same_width);
-  expectBindingPolicy(Max::get_resolved_descriptor(), "NanF32", same_width);
+  expectBindingPolicy(Min::get_resolved_descriptor(), "F32", same_width);
+  expectBindingPolicy(Max::get_resolved_descriptor(), "F32", same_width);
   expectBindingPolicy(Neg::get_resolved_descriptor(), "F16x2",
                       base::ScalarTypeSizePolicy::Exact);
   expectBindingPolicy(Cvt::get_resolved_descriptor(), "RnF16x2F32",

@@ -317,9 +317,16 @@ struct TargetInfo {
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
 };
+/** Variant-local index of one modifier slot in generated descriptor order. */
+struct ModifierSlotTag {
+  uint16_t value = 0;
+  bool operator==(const ModifierSlotTag&) const = default;
+};
 struct OperandLayoutDescriptor {
   std::string_view layout_name;
   AvailabilityDescriptor availability;
+  /** Modifier slots this layout rejects; layout selection is shape-only. */
+  std::span<const ModifierSlotTag> forbidden_modifiers;
 };
 enum class ModifierValueKind : uint8_t {
   Bool,
@@ -408,6 +415,11 @@ struct ModifierValueView {
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
   std::span<const SourceRange> locations;
+  /**
+   * Position of this slot in the variant's generated modifier order. Appended
+   * so that existing positional aggregate initializers keep compiling.
+   */
+  ModifierSlotTag slot;
 };
 struct VariantDescriptor {
   std::string_view variant_name;

@@ -725,46 +725,94 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             self.assertEqual(variant.fields[0].constant_value, scalar_type.lower())
 
-    def test_min_has_complete_integer_and_nan_binary_variants(self) -> None:
+    def test_min_has_complete_integer_and_floating_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.min_instruction.variants],
-            ["S32", "NanF32", "NonReluInteger", "S16x2", "ReluS32", "ReluS16x2", "S8x4", "ReluS8x4"],
+            [
+                "S32",
+                "F32",
+                "F64",
+                "F16",
+                "F16x2",
+                "Bf16",
+                "Bf16x2",
+                "NonReluInteger",
+                "S16x2",
+                "ReluS32",
+                "ReluS16x2",
+                "S8x4",
+                "ReluS8x4",
+            ],
         )
-        s32, nan_f32 = self.min_instruction.variants[:2]
+        s32, f32 = self.min_instruction.variants[:2]
         self.assertEqual(
             [field.name for field in s32.fields], ["type", "dst", "src1", "src2"]
         )
         self.assertEqual(s32.fields[0].constant_value, "s32")
         self.assertEqual(
-            [field.name for field in nan_f32.fields],
-            ["nan", "type", "dst", "src1", "src2"],
+            [field.name for field in f32.modifier_fields],
+            ["ftz", "nan", "xorsign_abs", "abs", "type"],
         )
-        self.assertTrue(nan_f32.fields[0].constant_value)
-        self.assertEqual(nan_f32.fields[1].constant_value, "f32")
+        self.assertEqual(f32.modifier_fields[-1].constant_value, "f32")
+
+    def test_min_keeps_binary_and_ternary_layouts_arity_selected(self) -> None:
+        f32 = self.min_instruction.variants[1]
         self.assertEqual(
-            [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
+            [layout.layout_id for layout in f32.operand_layouts],
+            ["binary", "ternary"],
+        )
+        self.assertEqual(
+            [len(layout.fields) for layout in f32.operand_layouts], [3, 4]
+        )
+        self.assertEqual(
+            [layout.forbidden_modifiers for layout in f32.operand_layouts],
+            [("abs",), ("xorsign_abs",)],
+        )
+        binary, ternary = f32.operand_layouts
+        self.assertEqual(
+            [binding.register_width_policy for binding in binary.bindings],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
         )
+        self.assertEqual(
+            [binding.register_width_policy for binding in ternary.bindings],
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
+        )
+        # The three-source form carries its own PTX 8.8 / SM 100 requirement.
+        self.assertEqual(dict(ternary.availability), {"ptx": "8.8", "sm": 100})
+        self.assertEqual(dict(binary.availability), {})
 
-    def test_max_has_complete_integer_and_nan_binary_variants(self) -> None:
+    def test_max_has_complete_integer_and_floating_variants(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.max_instruction.variants],
-            ["S32", "NanF32", "NonReluInteger", "S16x2", "ReluS32", "ReluS16x2", "S8x4", "ReluS8x4"],
+            [
+                "S32",
+                "F32",
+                "F64",
+                "F16",
+                "F16x2",
+                "Bf16",
+                "Bf16x2",
+                "NonReluInteger",
+                "S16x2",
+                "ReluS32",
+                "ReluS16x2",
+                "S8x4",
+                "ReluS8x4",
+            ],
         )
-        s32, nan_f32 = self.max_instruction.variants[:2]
+        s32, f32 = self.max_instruction.variants[:2]
         self.assertEqual(
             [field.name for field in s32.fields], ["type", "dst", "src1", "src2"]
         )
         self.assertEqual(s32.fields[0].constant_value, "s32")
         self.assertEqual(
-            [field.name for field in nan_f32.fields],
-            ["nan", "type", "dst", "src1", "src2"],
+            [field.name for field in f32.modifier_fields],
+            ["ftz", "nan", "xorsign_abs", "abs", "type"],
         )
-        self.assertTrue(nan_f32.fields[0].constant_value)
-        self.assertEqual(nan_f32.fields[1].constant_value, "f32")
+        self.assertEqual(f32.modifier_fields[-1].constant_value, "f32")
         self.assertEqual(
-            [binding.register_width_policy for binding in nan_f32.operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 3,
+            [layout.forbidden_modifiers for layout in f32.operand_layouts],
+            [("abs",), ("xorsign_abs",)],
         )
 
     def test_abs_has_complete_signed_and_float_unary_variants(self) -> None:

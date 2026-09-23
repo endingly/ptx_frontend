@@ -13,4 +13,4 @@
 
 CUDA 13.3.73 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`。60 个 module 的 matrix 有 39 个预期接受、20 个拒绝，以及一个 permissive assembler acceptance：`rcp.rn.ftz.f64`。该不符合 canonical syntax 的 form 仍由 frontend 拒绝。DIV row 验证四个 rounded direction、两个 source position、literal 与 bit container。PTX 1.0–1.3 的 historical omitted-mode DIV 与 `.target map_f64_to_f32` behavior 刻意排除，因为它们需要这些 explicit form 之外的 target-profile contract。
 
-[explicit reciprocal 与 square-root form](unary_float_coverage.md) 与 [浮点 transcendental](transcendental_coverage.md) 已单独建模。MIN/MAX 以及既有 ADD/SUB 审计仍不属于本文档范围。
+[explicit reciprocal 与 square-root form](unary_float_coverage.md)、[浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。既有 ADD/SUB 审计仍不属于本文档范围。

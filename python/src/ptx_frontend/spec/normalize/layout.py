@@ -99,19 +99,77 @@ def normalize_operand_layouts(
                     f"indirect call operand layout {name!r} must be target plus "
                     "metadata, optionally with input and return groups"
                 )
+        forbidden_modifiers = tuple(raw_layout.get("forbidden_modifiers", ()))
+        _validate_forbidden_modifiers(raw_variant, name, forbidden_modifiers)
         layouts.append(
             OperandLayoutSpec(
                 name=name,
                 operands=operands,
                 kind=kind,
                 availability=normalize_availability(raw_layout.get("availability", {})),
+                forbidden_modifiers=forbidden_modifiers,
             )
         )
     if not layouts:
         raise ValueError(f"variant {raw_variant['name']!r} has no operand layouts")
     normalized_layouts = tuple(layouts)
+    _validate_layout_modifier_reachability(
+        raw_variant["name"], raw_variant, normalized_layouts
+    )
     _validate_flat_operand_layout_ordering(raw_variant["name"], normalized_layouts)
     return normalized_layouts
+
+
+def _declared_modifier_presence(raw_variant: dict[str, Any]) -> dict[str, str]:
+    """Return each declared modifier slot's presence spelling."""
+
+    return {
+        modifier["name"]: modifier["presence"]
+        for modifier in raw_variant.get("modifiers", ())
+    }
+
+
+def _validate_forbidden_modifiers(
+    raw_variant: dict[str, Any], layout_name: str, forbidden: tuple[str, ...]
+) -> None:
+    """Require forbidden slots to be declared and still selectable elsewhere."""
+
+    presence_by_slot = _declared_modifier_presence(raw_variant)
+    unknown = [slot for slot in forbidden if slot not in presence_by_slot]
+    if unknown:
+        raise ValueError(
+            f"operand layout {layout_name!r}: forbidden_modifiers names "
+            f"undeclared modifier slots {sorted(unknown)}"
+        )
+    # Forbidden references name active optional slots. A fixed or required slot
+    # cannot be omitted, so forbidding it would leave the layout unreachable; an
+    # absent slot is redundant and cannot be lowered, because the resolved IR
+    # drops absent modifiers before slot indexing.
+    unsupported = [
+        slot for slot in forbidden if presence_by_slot[slot] != "optional"
+    ]
+    if unsupported:
+        raise ValueError(
+            f"operand layout {layout_name!r}: forbidden_modifiers may only name "
+            f"optional slots, got {sorted(unsupported)}"
+        )
+
+
+def _validate_layout_modifier_reachability(
+    variant_name: str,
+    raw_variant: dict[str, Any],
+    layouts: tuple[OperandLayoutSpec, ...],
+) -> None:
+    """Require every optional slot to stay spellable through some layout."""
+
+    for slot, presence in _declared_modifier_presence(raw_variant).items():
+        if presence != "optional":
+            continue
+        if all(slot in layout.forbidden_modifiers for layout in layouts):
+            raise ValueError(
+                f"variant {variant_name!r}: optional modifier slot {slot!r} is "
+                "forbidden by every operand layout"
+            )
 
 
 def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:

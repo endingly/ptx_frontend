@@ -2066,17 +2066,151 @@ instructions:
 
   - opcode: min
     section: "9.7.3.11"
-    doc: "Frozen NaN-propagating single-precision minimum."
-    syntax: "min.NaN.f32 dst, src1, src2"
-    operands: $binary_float_register
+    doc: "Floating minimum preserving the two-source and three-source topologies."
+    syntax: "min{.ftz}{.NaN}{.xorsign.abs}.f32 d, a, b | min{.ftz}{.NaN}{.abs}.f32 d, a, b, c | min.f64 d, a, b"
     variants:
-      - name: min_nan_f32
+      - name: min_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - false
+              - value: true
+                availability: {ptx: "1.4"}
+          - name: nan
+            kind: flag
+            presence: optional
+            default: false
+            token: ".NaN"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.0", sm: 80}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - name: abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "8.8", sm: 100}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operand_layouts:
+          - name: binary
+            operands: $binary_float_register_or_immediate
+            forbidden_modifiers: [abs]
+          - name: ternary
+            operands: $ternary_arith
+            availability: {ptx: "8.8", sm: 100}
+            forbidden_modifiers: [xorsign_abs]
+        examples:
+          - {ptx: "min.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "min.NaN.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "min.ftz.NaN.xorsign.abs.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "min.abs.f32 %f0, %f1, %f2, %f3;", valid: true}
+      - name: min_f64
+        operands: $binary_float_register_or_immediate
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "min.f64 %d0, %d1, %d2;", valid: true}
+
+  - opcode: min
+    section: "9.7.4.7"
+    doc: "Half- and bfloat-precision floating minimum."
+    syntax: "min{.ftz}{.NaN}{.xorsign.abs}.{f16|f16x2} | min{.NaN}{.xorsign.abs}.{bf16|bf16x2} d, a, b"
+    variants:
+      - name: min_f16
+        operands: $binary_float_register
         availability: {ptx: "7.0", sm: 80}
         modifiers:
-          - {name: nan, kind: flag, presence: fixed, value: true, token: ".NaN"}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
         examples:
-          - {ptx: "min.NaN.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "min.f16 %h0, %h1, %h2;", valid: true}
+          - {ptx: "min.ftz.f16 %h0, %h1, %h2;", valid: true}
+      - name: min_f16x2
+        operands: $binary_float_register
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "min.f16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "min.NaN.f16x2 %r0, %r1, %r2;", valid: true}
+      - name: min_bf16
+        operands: $binary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "min.bf16 %b0, %b1, %b2;", valid: true}
+          - {ptx: "min.xorsign.abs.bf16 %b0, %b1, %b2;", valid: true}
+      - name: min_bf16x2
+        operands: $binary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "min.bf16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "min.NaN.xorsign.abs.bf16x2 %r0, %r1, %r2;", valid: true}
 
   - opcode: max
     section: "9.7.1.14"
@@ -2093,17 +2227,151 @@ instructions:
 
   - opcode: max
     section: "9.7.3.12"
-    doc: "Frozen NaN-propagating single-precision maximum."
-    syntax: "max.NaN.f32 dst, src1, src2"
-    operands: $binary_float_register
+    doc: "Floating maximum preserving the two-source and three-source topologies."
+    syntax: "max{.ftz}{.NaN}{.xorsign.abs}.f32 d, a, b | max{.ftz}{.NaN}{.abs}.f32 d, a, b, c | max.f64 d, a, b"
     variants:
-      - name: max_nan_f32
+      - name: max_f32
+        availability: {ptx: "1.0", sm: 0}
+        modifiers:
+          - name: ftz
+            kind: flag
+            presence: optional
+            default: false
+            token: .ftz
+            values:
+              - false
+              - value: true
+                availability: {ptx: "1.4"}
+          - name: nan
+            kind: flag
+            presence: optional
+            default: false
+            token: ".NaN"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.0", sm: 80}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - name: abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "8.8", sm: 100}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        operand_layouts:
+          - name: binary
+            operands: $binary_float_register_or_immediate
+            forbidden_modifiers: [abs]
+          - name: ternary
+            operands: $ternary_arith
+            availability: {ptx: "8.8", sm: 100}
+            forbidden_modifiers: [xorsign_abs]
+        examples:
+          - {ptx: "max.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "max.NaN.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "max.ftz.NaN.xorsign.abs.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "max.abs.f32 %f0, %f1, %f2, %f3;", valid: true}
+      - name: max_f64
+        operands: $binary_float_register_or_immediate
+        availability: {ptx: "1.0", sm: 13}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+        examples:
+          - {ptx: "max.f64 %d0, %d1, %d2;", valid: true}
+
+  - opcode: max
+    section: "9.7.4.8"
+    doc: "Half- and bfloat-precision floating maximum."
+    syntax: "max{.ftz}{.NaN}{.xorsign.abs}.{f16|f16x2} | max{.NaN}{.xorsign.abs}.{bf16|bf16x2} d, a, b"
+    variants:
+      - name: max_f16
+        operands: $binary_float_register
         availability: {ptx: "7.0", sm: 80}
         modifiers:
-          - {name: nan, kind: flag, presence: fixed, value: true, token: ".NaN"}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16}
         examples:
-          - {ptx: "max.NaN.f32 %f0, %f1, %f2;", valid: true}
+          - {ptx: "max.f16 %h0, %h1, %h2;", valid: true}
+          - {ptx: "max.ftz.f16 %h0, %h1, %h2;", valid: true}
+      - name: max_f16x2
+        operands: $binary_float_register
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
+        examples:
+          - {ptx: "max.f16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "max.NaN.f16x2 %r0, %r1, %r2;", valid: true}
+      - name: max_bf16
+        operands: $binary_b16_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16}
+        examples:
+          - {ptx: "max.bf16 %b0, %b1, %b2;", valid: true}
+          - {ptx: "max.xorsign.abs.bf16 %b0, %b1, %b2;", valid: true}
+      - name: max_bf16x2
+        operands: $binary_b32_register_exact
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - name: xorsign_abs
+            kind: flag
+            presence: optional
+            default: false
+            token: ".xorsign.abs"
+            values:
+              - false
+              - value: true
+                availability: {ptx: "7.2", sm: 86}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: bf16x2}
+        examples:
+          - {ptx: "max.bf16x2 %r0, %r1, %r2;", valid: true}
+          - {ptx: "max.NaN.xorsign.abs.bf16x2 %r0, %r1, %r2;", valid: true}
 
   - opcode: abs
     section: "9.7.1.11"

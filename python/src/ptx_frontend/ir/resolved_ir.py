@@ -413,6 +413,12 @@ class ResolvedOperandLayout:
     fields: tuple[ResolvedField, ...]
     bindings: tuple[ResolvedOperandBinding, ...]
     availability: tuple[tuple[str, Any], ...]
+    # Variant modifier slots this layout rejects, as source names for
+    # diagnostics and as variant-local slot indexes for the generated checker.
+    # The checker reports a spelled slot in this set because layout selection
+    # itself is shape-only.
+    forbidden_modifiers: tuple[str, ...] = ()
+    forbidden_modifier_slots: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -533,6 +539,12 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             layout.operands,
             layout.availability,
             {field.source_name: field.name for field in modifier_fields},
+            layout.forbidden_modifiers,
+            _resolve_forbidden_modifier_slots(
+                layout.name,
+                layout.forbidden_modifiers,
+                {field.source_name: index for index, field in enumerate(modifier_fields)},
+            ),
         )
         for layout in variant.operand_layouts
     )
@@ -896,11 +908,31 @@ def _build_operand_type_compatibility(
     )
 
 
+def _resolve_forbidden_modifier_slots(
+    layout_name: str,
+    forbidden_modifiers: tuple[str, ...],
+    slot_indexes: dict[str, int],
+) -> tuple[int, ...]:
+    """Lower forbidden modifier names to variant-local slot indexes."""
+
+    slots: list[int] = []
+    for name in forbidden_modifiers:
+        if name not in slot_indexes:
+            raise ValueError(
+                f"operand layout {layout_name!r}: forbidden modifier {name!r} is "
+                "not an active modifier slot of its variant"
+            )
+        slots.append(slot_indexes[name])
+    return tuple(slots)
+
+
 def _build_operand_layout(
     layout_id: str,
     operands: tuple[OperandSpec, ...],
     availability: dict[str, Any],
     modifier_field_ids: dict[str, str],
+    forbidden_modifiers: tuple[str, ...] = (),
+    forbidden_modifier_slots: tuple[int, ...] = (),
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -973,6 +1005,8 @@ def _build_operand_layout(
             for operand, field in zip(operands, fields, strict=True)
         ),
         availability=tuple(availability.items()),
+        forbidden_modifiers=forbidden_modifiers,
+        forbidden_modifier_slots=forbidden_modifier_slots,
     )
 
 

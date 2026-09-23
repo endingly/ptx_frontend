@@ -243,6 +243,11 @@ def _variant_modifier_language(
         tuple(modifier.name for modifier in variant.modifiers),
         *variant.modifier_order_aliases,
     )
+    # Variant exclusivity stays conservative over the full syntactic language
+    # the resolver matches against. `operand_layout.forbidden_modifiers` narrows
+    # what a selected layout accepts, but `select_variant_name` does not consult
+    # layout constraints, so excluding those spellings here would admit two
+    # variants that runtime selection still finds ambiguous.
     for order in orders:
         language = _modifier_order_language(
             tuple(modifiers_by_name[slot_name] for slot_name in order)

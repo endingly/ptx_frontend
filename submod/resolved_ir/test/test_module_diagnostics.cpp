@@ -243,7 +243,8 @@ TEST(ModuleDiagnostics, NativeResolutionFailureDefaultsToResolutionStage) {
 
 /** Module diagnostics own all data needed after parser, source, and AST destruction. */
 TEST(ModuleDiagnostics, OwnsDiagnosticDataAfterAstAndSourceDestruction) {
-  const std::vector<ResolveDiagnostic> diagnostics = diagnosticsAfterInputDies();
+  const std::vector<ResolveDiagnostic> diagnostics =
+      diagnosticsAfterInputDies();
 
   ASSERT_EQ(diagnostics.size(), 1u);
   EXPECT_EQ(diagnostics.front().stage(), ResolveDiagnosticStage::Binding);

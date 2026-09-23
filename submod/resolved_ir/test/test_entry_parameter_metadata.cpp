@@ -24,8 +24,9 @@ resolveSource(std::string source) {
   EXPECT_TRUE(ast.diagnostics.empty());
   if (!ast || !ast.diagnostics.empty())
     return std::unexpected(std::vector<ResolveDiagnostic>{
-        {.message = ast.diagnostics.empty() ? "PTX source did not parse."
-                                            : ast.diagnostics.front().message}});
+        {.message = ast.diagnostics.empty()
+                        ? "PTX source did not parse."
+                        : ast.diagnostics.front().message}});
   return test_support::resolveModuleSnapshot(*ast);
 }
 

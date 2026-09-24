@@ -1388,7 +1388,8 @@ instructions:
   - opcode: atom
     section: "9.7.14.5"
     doc: "Synchronous scalar and vector atomic operations."
-    syntax: "atom{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.cas.{b16|b32|b64|b128} dst|_, [address], compare, swap | atom{.sem}{.scope}{.space}.exch{.L2::cache_hint}.{b32|b64|b128} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.v{2|4|8}.{type}.{op}{.noftz}{.L2::cache_hint} {dst}, [address], {src}{, cache_policy}"
+    atomic_address_qualifier: {state_space_modifier: state_space, address_operand: address}
+    syntax: "atom{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.cas.{b16|b32|b64|b128} dst|_, [address], compare, swap | atom{.sem}{.scope}{.space}.exch{.L2::cache_hint}.{b32|b64|b128} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} dst|_, [address], src{, cache_policy} | atom{.sem}{.scope}{.space}.{op}{.noftz}{.L2::cache_hint}.v{2|4|8}.{type} {dst}, [address], {src}{, cache_policy}"
 
     variants:
       - name: atom_global_add_u32
@@ -2111,6 +2112,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_f16}
           - {name: with_policy, operands: $atom_global_vector_f16_cache_policy}
@@ -2133,6 +2136,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_f16}
           - {name: with_policy, operands: $atom_global_vector_f16_cache_policy}
@@ -2155,6 +2160,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_f16}
           - {name: with_policy, operands: $atom_global_vector_f16_cache_policy}
@@ -2177,6 +2184,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_bf16}
           - {name: with_policy, operands: $atom_global_vector_bf16_cache_policy}
@@ -2199,6 +2208,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_bf16}
           - {name: with_policy, operands: $atom_global_vector_bf16_cache_policy}
@@ -2221,6 +2232,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_bf16}
           - {name: with_policy, operands: $atom_global_vector_bf16_cache_policy}
@@ -2243,6 +2256,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2265,6 +2280,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2287,6 +2304,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2309,6 +2328,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2331,6 +2352,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2353,6 +2376,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_packed}
           - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
@@ -2374,6 +2399,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, cache_hint]
+          - [semantics, scope, state_space, add, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $atom_global_vector_f32}
           - {name: with_policy, operands: $atom_global_vector_f32_cache_policy}
@@ -2386,7 +2413,8 @@ instructions:
   - opcode: red
     section: "9.7.14.6"
     doc: "Synchronous scalar/vector reductions and two asynchronous modes."
-    syntax: "red{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.v{2|4|8}.{type}.{op}{.noftz}{.L2::cache_hint} [address], {src}{, cache_policy} | red.async.relaxed.cluster{.shared::cluster}.mbarrier::complete_tx::bytes.{op}.{type} [address], src, [mbarrier] | red.async{.mmio}.release.{gpu|sys}{.global}.add.{type} [address], src"
+    atomic_address_qualifier: {state_space_modifier: state_space, address_operand: address}
+    syntax: "red{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.{op}{.noftz}{.L2::cache_hint}.v{2|4|8}.{type} [address], {src}{, cache_policy} | red.async.relaxed.cluster{.shared::cluster}.mbarrier::complete_tx::bytes.{op}.{type} [address], src, [mbarrier] | red.async{.mmio}.release.{gpu|sys}{.global}.add.{type} [address], src"
 
     variants:
       - name: red_global_add_u32
@@ -2969,6 +2997,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_f16}
           - {name: with_policy, operands: $red_global_vector_f16_cache_policy}
@@ -2991,6 +3021,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_f16}
           - {name: with_policy, operands: $red_global_vector_f16_cache_policy}
@@ -3013,6 +3045,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_f16}
           - {name: with_policy, operands: $red_global_vector_f16_cache_policy}
@@ -3035,6 +3069,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_bf16}
           - {name: with_policy, operands: $red_global_vector_bf16_cache_policy}
@@ -3057,6 +3093,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_bf16}
           - {name: with_policy, operands: $red_global_vector_bf16_cache_policy}
@@ -3079,6 +3117,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_bf16}
           - {name: with_policy, operands: $red_global_vector_bf16_cache_policy}
@@ -3101,6 +3141,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3123,6 +3165,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3145,6 +3189,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3167,6 +3213,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, noftz, cache_hint]
+          - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3189,6 +3237,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, min, noftz, cache_hint]
+          - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3211,6 +3261,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, max, noftz, cache_hint]
+          - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
+          - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_packed}
           - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
@@ -3232,6 +3284,8 @@ instructions:
           - {name: cache_hint, kind: flag, presence: optional, default: false, token: .L2::cache_hint, values: [false, true]}
         modifier_order_aliases:
           - [state_space, semantics, scope, vector, type, add, cache_hint]
+          - [semantics, scope, state_space, add, cache_hint, vector, type]
+          - [state_space, semantics, scope, add, cache_hint, vector, type]
         operand_layouts:
           - {name: no_hint, operands: $red_global_vector_f32}
           - {name: with_policy, operands: $red_global_vector_f32_cache_policy}

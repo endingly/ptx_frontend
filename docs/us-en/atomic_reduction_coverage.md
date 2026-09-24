@@ -46,14 +46,18 @@ subspace, but retains a different written qualifier. Address subspace and
 memory scope are independent; for example `atom.shared::cluster.cta.add.u32`
 is accepted. Known address provenance must match an explicit global/shared
 qualifier, and the checker revalidates owned IR after mutation.
+The checker derives the allowed written qualifiers from each variant's
+state-space modifier: synchronous vectors and async release reductions admit
+generic/global, while shared-completion `red.async` admits generic or
+`.shared::cluster`. Invalid enum values and out-of-domain mutations are rejected.
 All `atom`/`red` bracketed address offsets, including the `red.async` barrier
 address, use the signed 32-bit PTX source domain. The checker revalidates that
 range in owned IR. Wider `mov` address relocations remain separate.
 
 Eligible scalar and vector `atom` and `red` operations also accept
 `.L2::cache_hint`. Scalar forms place it immediately before the type (after
-`.noftz` for half and bfloat add); vector forms place it after the operation
-and any `.noftz`, as in `atom.global.v2.f16.add.noftz.L2::cache_hint`. The suffix requires a final 64-bit `cache_policy` register and
+`.noftz` for half and bfloat add); the ISA vector spelling places it before
+`.vN.type`, as in `atom.global.add.noftz.L2::cache_hint.v2.f16`. The suffix requires a final 64-bit `cache_policy` register and
 PTX 7.4 / SM 80. The owned IR keeps the written hint and selects a separate
 typed operand layout for its policy. Cache hints allow explicit `.global` or
 generic addressing. A known global address is accepted; an unknown-provenance
@@ -85,11 +89,17 @@ known shared address is rejected; an unknown generic register address is
 accepted with the runtime obligation to point to global memory. `atom` has
 brace-enclosed destination and source vectors; `red` has a brace-enclosed
 source vector. Atom destination and source vectors have the same exact arity.
+The PTX syntax places the operation, optional `.noftz`, and optional
+`.L2::cache_hint` before `.vN.type`, for example
+`atom.global.add.noftz.L2::cache_hint.v2.f16`. The existing
+`.vN.type.operation` spelling remains accepted.
 `.f16` lanes accept `.b16`, `.f16`, `.u16`,
 or `.s16` registers; `.f32` lanes accept the corresponding 32-bit register
 types. `.bf16` lanes require `.b16`, and packed `x2` lanes require `.b32`.
 Within each vector, bit-type lanes are neutral, while integer and floating
 lanes cannot mix. The destination and source vectors are checked independently.
+Without declarations, standalone resolution retains unknown lane types;
+declaration-bound module resolution checks the stated register-type domains.
 A destination lane may be `_`, while source lanes must be registers and an
 all-sink destination is invalid. The
 whole access requires vector length times element width alignment: for example

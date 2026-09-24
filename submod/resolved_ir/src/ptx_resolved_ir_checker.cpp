@@ -1066,6 +1066,8 @@ CheckResult check_operands(
           if (operand->vector_element_shapes[index] != OperandShape::Register)
             continue;
           const ScalarType element_type = operand->vector_element_types[index];
+          if (element_type == ScalarType::Invalid)
+            continue;
           const SourceRange& lane_range = index < operand->locations.size()
                                               ? operand->locations[index]
                                               : range;
@@ -1558,11 +1560,25 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
 }
 
 CheckResult check_atomic_qualifiers(
+    const VariantDescriptor::AtomicAddressQualifierDescriptor& descriptor,
     const WithLocs<AtomicAddressQualifier>& qualifier,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     const Context& context) {
-  const FieldView* space_field = find_field(fields, "state_space");
-  const OperandView* address = find_operand(operands, "address");
+  const SourceRange& range = diagnostic_range(qualifier.locs, context);
+  const auto written = qualifier.value;
+  if (std::ranges::find(descriptor.allowed_values, written) ==
+      descriptor.allowed_values.end()) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = range,
+        .message = "Written atomic address qualifier is not admitted by this "
+                   "variant.",
+    }});
+  }
+  const FieldView* space_field =
+      find_field(fields, descriptor.state_space_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_operand_id);
   if (!space_field || !space_field->memory_state_space || !address) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -1572,12 +1588,26 @@ CheckResult check_atomic_qualifiers(
   }
 
   const MemoryStateSpace selected = *space_field->memory_state_space;
-  const auto written = qualifier.value;
-  const MemoryStateSpace expected =
-      written == AtomicAddressQualifier::Generic  ? MemoryStateSpace::Generic
-      : written == AtomicAddressQualifier::Global ? MemoryStateSpace::Global
-                                                  : MemoryStateSpace::Shared;
-  const SourceRange& range = diagnostic_range(qualifier.locs, context);
+  MemoryStateSpace expected;
+  switch (written) {
+    case AtomicAddressQualifier::Generic:
+      expected = MemoryStateSpace::Generic;
+      break;
+    case AtomicAddressQualifier::Global:
+      expected = MemoryStateSpace::Global;
+      break;
+    case AtomicAddressQualifier::Shared:
+    case AtomicAddressQualifier::SharedCta:
+    case AtomicAddressQualifier::SharedCluster:
+      expected = MemoryStateSpace::Shared;
+      break;
+    default:
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = range,
+          .message = "Written atomic address qualifier is invalid.",
+      }});
+  }
   CheckDiagnostics diagnostics;
   if (selected != expected) {
     diagnostics.push_back(CheckDiagnostic{

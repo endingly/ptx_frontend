@@ -42,13 +42,16 @@ SM 20，且已知地址必须指向 global 或 shared。普通 `.shared` 的下�
 `::cta` 不同。地址子空间与 memory scope 相互独立，例如
 `atom.shared::cluster.cta.add.u32` 可被接受。已知地址来源必须与显式
 全局/共享限定符一致，checker 也会重新检查修改后的 owned IR。
+checker 从每个 variant 的 state-space modifier 推导可写地址限定符：同步向量和
+async release 只允许 generic/global；shared-completion `red.async` 只允许
+generic 或 `.shared::cluster`。无效枚举值及超出范围的修改都会被拒绝。
 所有 `atom`/`red` 方括号地址偏移（包括 `red.async` 的 barrier 地址）都使用 PTX
 signed 32-bit 源范围；checker 对修改后的 owned IR 也重新检查该范围。`mov`
 地址重定位仍可使用更宽的偏移。
 
 符合条件的标量与向量 `atom`、`red` 均接受 `.L2::cache_hint`。标量形式将其放在
 类型之前（half/bfloat 加法的 `.noftz` 之后）；向量形式放在操作名及可选 `.noftz`
-之后，例如 `atom.global.v2.f16.add.noftz.L2::cache_hint`。该后缀要求末尾附加一个 64 位
+之后、`.vN.type` 之前，例如 `atom.global.add.noftz.L2::cache_hint.v2.f16`。该后缀要求末尾附加一个 64 位
 `cache_policy` 寄存器，目标下限为 PTX 7.4 / SM 80。owned IR 保留写出的
 hint，并为 policy 选择单独的类型化操作数布局。Cache hint 可用于显式
 `.global` 或 generic 寻址。已知指向 global 的地址可接受；来源未知的 generic
@@ -72,10 +75,14 @@ shared 的 generic 地址均拒绝。`atom.cas` 没有 cache-hint 形式。无�
 向量形式只能访问 global 内存：可显式写 `.global`，或使用 generic 寻址。
 已知 shared 地址会被拒绝；来源未知的 generic 寄存器地址可接受，但运行时必须
 指向 global。`atom` 的目标和源均为花括号向量，`red` 的源为花括号向量；
-`atom` 的目标与源元素数量必须相同。`.f16` lane 可用 `.b16`、`.f16`、`.u16`
+`atom` 的目标与源元素数量必须相同。PTX 语法将操作、可选 `.noftz` 和可选
+`.L2::cache_hint` 放在 `.vN.type` 之前，例如
+`atom.global.add.noftz.L2::cache_hint.v2.f16`；原有的
+`.vN.type.operation` 写法仍被接受。`.f16` lane 可用 `.b16`、`.f16`、`.u16`
 或 `.s16` 寄存器；`.f32` lane 可用相应的 32 位寄存器。`.bf16` lane
 仅接受 `.b16`，打包 `x2` lane 仅接受 `.b32`。每个向量内 bit 类型
 lane 是中性的，整数与浮点寄存器 lane 不可混用；目标和源分别检查。
+单条指令独立解析且无声明时保留未知 lane 类型；带声明的模块解析会检查上述寄存器类型范围。
 目标 lane 可以是 `_`，源 lane 必须是寄存器，目标不能全为 `_`。整个访问须按“向量长度 × 元素字节数”
 对齐，例如 `v8.f16` 需要 16 字节。原子性逐个标量元素成立，不保证整个
 向量作为一个事务具有原子性。Half/bfloat 向量必须写 `.noftz`；

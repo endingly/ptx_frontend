@@ -1343,11 +1343,10 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     auto register_ref = resolve_register(register_operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
-    if (!allowed_register_types.empty() &&
-        (!register_ref->value.declared_type ||
-         std::ranges::find(allowed_register_types,
-                           *register_ref->value.declared_type) ==
-             allowed_register_types.end())) {
+    if (!allowed_register_types.empty() && register_ref->value.declared_type &&
+        std::ranges::find(allowed_register_types,
+                          *register_ref->value.declared_type) ==
+            allowed_register_types.end()) {
       return std::unexpected(ResolveDiagnostic{
           .range = identifier->syntax.range,
           .message = fmt::format(

@@ -113,10 +113,10 @@ CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,
     std::span<const FieldView>, std::span<const OperandView>, const Context&);
 /** Check independent atomic address suffix, provenance, and target floors. */
-CheckResult check_atomic_qualifiers(const WithLocs<AtomicAddressQualifier>&,
-                                    std::span<const FieldView>,
-                                    std::span<const OperandView>,
-                                    const Context&);
+CheckResult check_atomic_qualifiers(
+    const VariantDescriptor::AtomicAddressQualifierDescriptor&,
+    const WithLocs<AtomicAddressQualifier>&, std::span<const FieldView>,
+    std::span<const OperandView>, const Context&);
 /** MMIO release reductions require system scope. */
 CheckResult check_red_async_release_qualifiers(std::span<const FieldView>,
                                                const Context&);

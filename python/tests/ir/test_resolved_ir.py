@@ -4510,6 +4510,131 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertEqual(variant.operand_layouts[1].bindings[-1].target_field_id,
                                  "cache_policy")
 
+    def test_vector_atomic_modifier_orders(self) -> None:
+        """Keep ISA operation-first syntax and supported vector-first examples."""
+        raw_spec = yaml.safe_load((REPO_ROOT / "instructions/ptx_spec" /
+                                   "parallel_synchronization_and_communication.yaml").read_text())
+        for opcode in ("atom", "red"):
+            raw_instruction = next(item for item in raw_spec["instructions"]
+                                   if item["opcode"] == opcode)
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            self.assertIn(
+                f"{opcode}{{.sem}}{{.scope}}{{.space}}.{{op}}{{.noftz}}"
+                "{.L2::cache_hint}.v{2|4|8}.{type}",
+                raw_instruction["syntax"],
+            )
+            variants = [variant for variant in instruction.variants
+                        if variant.name.startswith(f"{opcode}_vector_")]
+            self.assertEqual(len(variants), 13)
+            for variant in variants:
+                operation = next(modifier.name for modifier in variant.modifiers
+                                 if modifier.name in {"add", "min", "max"})
+                noftz = ("noftz",) if any(modifier.name == "noftz"
+                                           for modifier in variant.modifiers) else ()
+                suffix = (operation, *noftz, "cache_hint")
+                self.assertIn(
+                    ("state_space", "semantics", "scope", "vector", "type", *suffix),
+                    variant.modifier_order_aliases,
+                )
+                self.assertIn(
+                    ("semantics", "scope", "state_space", *suffix, "vector", "type"),
+                    variant.modifier_order_aliases,
+                )
+                self.assertIn(
+                    ("state_space", "semantics", "scope", *suffix, "vector", "type"),
+                    variant.modifier_order_aliases,
+                )
+
+    def test_atomic_address_qualifier_policy_drives_generated_contract(self) -> None:
+        """Derive each written qualifier domain from the declared state space."""
+        from ptx_frontend.ir.resolved_ir import AtomicAddressQualifierValue
+        from ptx_frontend.spec.model import AtomicAddressQualifierPolicy
+
+        instructions = {item.opcode: item for item in self.database.instructions}
+        expected_scalar = {
+            AtomicAddressQualifierValue.GENERIC,
+            AtomicAddressQualifierValue.GLOBAL,
+            AtomicAddressQualifierValue.SHARED,
+            AtomicAddressQualifierValue.SHARED_CTA,
+            AtomicAddressQualifierValue.SHARED_CLUSTER,
+        }
+        for opcode in ("atom", "red"):
+            source = instructions[opcode]
+            self.assertEqual(
+                source.atomic_address_qualifier,
+                AtomicAddressQualifierPolicy("state_space", "address"),
+            )
+            resolved = from_instruction_spec(source)
+            self.assertIsNotNone(resolved.atomic_address_qualifier)
+            for variant in resolved.variants:
+                domain = set(variant.atomic_address_qualifier_domain)
+                if variant.cpp_name.startswith("Vector"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.GLOBAL,
+                    })
+                elif variant.cpp_name.startswith("AsyncShared"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.SHARED_CLUSTER,
+                    })
+                elif variant.cpp_name.startswith("AsyncRelease"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.GLOBAL,
+                    })
+                else:
+                    self.assertEqual(domain, expected_scalar)
+
+        self.assertIsNone(instructions["bar"].atomic_address_qualifier)
+        self.assertIsNone(from_instruction_spec(instructions["bar"])
+                          .atomic_address_qualifier)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            context = build_test_generation_context(self.database)
+            generate_resolved_ir_category_header(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "model.hpp",
+            )
+            generate_resolved_ir_category_source(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "logic.cpp",
+            )
+            generate_resolved_checker_descriptor_source(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "descriptors.cpp",
+            )
+            model = (path / "model.hpp").read_text()
+            logic = (path / "logic.cpp").read_text()
+            descriptors = (path / "descriptors.cpp").read_text()
+        self.assertEqual(model.count("WithLocs<AtomicAddressQualifier> address_qualifier;"), 2)
+        self.assertIn(".address_qualifier = atomic_address_qualifier_from_ast(ast)", logic)
+        self.assertIn(".atomic_address_qualifier,", logic)
+        self.assertIn(".state_space_field_id = \"state_space\"", descriptors)
+        self.assertIn(".address_operand_id = \"address\"", descriptors)
+        self.assertIn("AtomicAddressQualifier::SharedCluster", descriptors)
+
+        for bad_policy in (
+            AtomicAddressQualifierPolicy("missing", "address"),
+            AtomicAddressQualifierPolicy("state_space", "missing"),
+        ):
+            with self.assertRaisesRegex(ValueError, "atomic qualifier requires"):
+                from_instruction_spec(replace(instructions["atom"],
+                                              atomic_address_qualifier=bad_policy))
+        atom_variant = instructions["atom"].variants[0]
+        bad_modifiers = tuple(
+            replace(modifier, values=(ModifierValueSpec("local"),))
+            if modifier.name == "state_space" else modifier
+            for modifier in atom_variant.modifiers
+        )
+        with self.assertRaisesRegex(ValueError, "unsupported atomic address qualifier"):
+            from_instruction_spec(replace(
+                instructions["atom"],
+                variants=(replace(atom_variant, modifiers=bad_modifiers),),
+            ))
+
     def test_vector_atomic_register_domain_codegen(self) -> None:
         """Emit lane-type domains and family policy only for opted-in vectors."""
         with tempfile.TemporaryDirectory() as directory:

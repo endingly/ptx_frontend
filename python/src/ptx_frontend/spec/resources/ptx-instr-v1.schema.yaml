@@ -1666,6 +1666,19 @@ $defs:
           - "mul.{mode}.{type} dst, src1, src2"
           - "ld{.weak}{.ss}{.cop}.{type} dst, [addr]"
 
+      atomic_address_qualifier:
+        description: >
+          Preserve a written atomic address suffix independently from address
+          provenance; each variant's state-space modifier defines its domain.
+        type: object
+        additionalProperties: false
+        required: [state_space_modifier, address_operand]
+        properties:
+          state_space_modifier:
+            $ref: "#/$defs/schema_identifier"
+          address_operand:
+            $ref: "#/$defs/schema_identifier"
+
       operands:
         description: >
           Default operands for variants. Either a $name operand-pattern reference or an

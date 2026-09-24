@@ -1,5 +1,6 @@
 from typing import Any
 from ptx_frontend.spec.model import (
+    AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     InstructionSpec,
     SemanticRule,
@@ -118,10 +119,29 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                 ),
                 source_categories=(source_category,),
                 codegen_category=codegen_category,
+                atomic_address_qualifier=_normalize_atomic_address_qualifier(
+                    raw_instruction.get("atomic_address_qualifier")
+                ),
             )
         )
 
     return tuple(instructions)
+
+
+def _normalize_atomic_address_qualifier(
+    raw: object,
+) -> AtomicAddressQualifierPolicy | None:
+    """Normalize the instruction-level written atomic address policy."""
+
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("atomic_address_qualifier must be an object")
+    state_space = raw.get("state_space_modifier")
+    address = raw.get("address_operand")
+    if not isinstance(state_space, str) or not isinstance(address, str):
+        raise ValueError("atomic_address_qualifier requires modifier and operand names")
+    return AtomicAddressQualifierPolicy(state_space, address)
 
 
 def _normalize_semantic_rule(raw_rule: object) -> SemanticRule | None:

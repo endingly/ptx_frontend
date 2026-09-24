@@ -1281,7 +1281,7 @@ TEST(AtomicReductionCoverage, RejectsInvalidScalarCacheHints) {
   }
 }
 
-/** Resolve every legal vector tuple with its width retained in owned IR. */
+/** Resolve legal vector tuples in both supported suffix orders. */
 TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
   std::string source = R"ptx(
 .version 9.3
@@ -1291,6 +1291,7 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
   .reg .b16 %h<16>;
   .reg .b32 %b<16>;
   .reg .f32 %f<16>;
+  .reg .b64 %policy;
 )ptx";
   const auto lanes = [](std::string_view prefix, unsigned start,
                         unsigned count) {
@@ -1315,29 +1316,46 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
         for (unsigned width : {2u, 4u, 8u}) {
           if (width > maximum_width)
             continue;
-          source += std::string(opcode) + ".global.v" + std::to_string(width) +
-                    "." + std::string(type) + "." + std::string(operation);
-          if (type != "f32")
-            source += ".noftz";
-          source += " ";
-          if (opcode == "atom")
-            source += lanes(prefix, 0, width) + ", ";
-          source += "[global_value], " + lanes(prefix, 8, width) + ";\n";
-          ++count;
+          for (bool official_order : {false, true}) {
+            for (bool hinted : {false, true}) {
+              if (hinted && (!official_order || width != 2))
+                continue;
+              source += std::string(opcode) + ".global";
+              if (official_order)
+                source += "." + std::string(operation);
+              if (official_order && type != "f32")
+                source += ".noftz";
+              if (official_order && hinted)
+                source += ".L2::cache_hint";
+              source += ".v" + std::to_string(width) + "." + std::string(type);
+              if (!official_order)
+                source += "." + std::string(operation);
+              if (!official_order && type != "f32")
+                source += ".noftz";
+              source += " ";
+              if (opcode == "atom")
+                source += lanes(prefix, 0, width) + ", ";
+              source += "[global_value], " + lanes(prefix, 8, width);
+              if (hinted)
+                source += ", %policy";
+              source += ";\n";
+              ++count;
+            }
+          }
         }
       }
     }
   }
   source += "}\n";
-  ASSERT_EQ(count, 64u);
+  ASSERT_EQ(count, 154u);
   const auto parsed = test_helpers::parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 64u);
+  ASSERT_EQ(body.size(), 154u);
   for (size_t index = 0; index < body.size(); ++index) {
-    if (index < 32) {
+    if (index < 77) {
       const auto& atom = std::get<Atom>(body[index]);
       EXPECT_EQ(atom.address_qualifier.value, AtomicAddressQualifier::Global);
       EXPECT_GE(atom.variant.index(), 32u);
@@ -1347,6 +1365,111 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
       EXPECT_GE(red.variant.index(), 25u);
     }
   }
+}
+
+/** Preserve unknown lane types through standalone atomic resolution and checking. */
+TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
+  const checker::Context target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  const auto atom_ast = test_helpers::parseInstruction(
+      "atom.global.add.v2.f32 {%f0, %f1}, [%rd0], {%f2, %f3};");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(atom_ast);
+  const auto atom_resolved = resolveInstruction(*atom_ast);
+  ASSERT_TRUE(atom_resolved.has_value()) << atom_resolved.error().message;
+  const auto& atom = std::get<Atom>(*atom_resolved);
+  const auto& atom_operands =
+      std::get<0>(std::get<Atom::VectorAddF32>(atom.variant).operands);
+  for (const auto& lane : atom_operands.dst.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  for (const auto& lane : atom_operands.src.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  EXPECT_TRUE(checker::check(atom, target).has_value());
+
+  const auto red_ast = test_helpers::parseInstruction(
+      "red.global.add.v2.f32 [%rd0], {%f2, %f3};");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(red_ast);
+  const auto red_resolved = resolveInstruction(*red_ast);
+  ASSERT_TRUE(red_resolved.has_value()) << red_resolved.error().message;
+  const auto& red = std::get<Red>(*red_resolved);
+  const auto& red_operands =
+      std::get<0>(std::get<Red::VectorAddF32>(red.variant).operands);
+  for (const auto& lane : red_operands.src.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  EXPECT_TRUE(checker::check(red, target).has_value());
+}
+
+/** Recheck written atomic suffix domains after syntax ownership is released. */
+TEST(AtomicReductionCoverage, RejectsOwnedAtomicQualifierDomainMutations) {
+  std::optional<ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.shared .align 8 .b64 barrier;
+.shared .align 4 .u32 shared_value;
+.global .align 8 .b8 global_value[16];
+.entry kernel() {
+  .reg .u64 %a;
+  .reg .u32 %u;
+  .reg .f32 %f<4>;
+  red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.inc.u32
+      [%a], %u, [barrier];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.inc.u32
+      [%a], %u, [barrier];
+  red.async.release.gpu.global.add.u32 [%a], %u;
+  atom.global.add.v2.f32 {%f0, %f1}, [global_value], {%f2, %f3};
+  atom.shared.add.u32 %u, [shared_value], %u;
+}
+)ptx";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  const checker::Context target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  auto& shared_async = std::get<Red>(body[0]);
+  EXPECT_TRUE(checker::check(shared_async, target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Red>(body[1]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Red>(body[2]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Atom>(body[3]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Atom>(body[4]), target).has_value());
+  EXPECT_EQ(shared_async.address_qualifier.value,
+            AtomicAddressQualifier::SharedCluster);
+  ASSERT_FALSE(shared_async.address_qualifier.locs.empty());
+  for (auto invalid :
+       {AtomicAddressQualifier::Shared, AtomicAddressQualifier::SharedCta,
+        static_cast<AtomicAddressQualifier>(255)}) {
+    shared_async.address_qualifier.value = invalid;
+    const auto result = checker::check(shared_async, target);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().front().kind,
+              checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
+    EXPECT_EQ(result.error().front().range,
+              shared_async.address_qualifier.locs.front());
+  }
+  shared_async.address_qualifier.value = AtomicAddressQualifier::SharedCluster;
+  EXPECT_TRUE(checker::check(shared_async, target).has_value());
+  auto& generic_async = std::get<Red>(body[1]);
+  generic_async.address_qualifier.value = AtomicAddressQualifier::Shared;
+  EXPECT_FALSE(checker::check(generic_async, target).has_value());
+  generic_async.address_qualifier.value = AtomicAddressQualifier::Generic;
+  EXPECT_TRUE(checker::check(generic_async, target).has_value());
+  auto& release = std::get<Red>(body[2]);
+  release.address_qualifier.value = AtomicAddressQualifier::Shared;
+  const auto release_check = checker::check(release, target);
+  ASSERT_FALSE(release_check.has_value());
+  EXPECT_EQ(release_check.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
+  auto& vector = std::get<Atom>(body[3]);
+  vector.address_qualifier.value = AtomicAddressQualifier::SharedCta;
+  const auto vector_check = checker::check(vector, target);
+  ASSERT_FALSE(vector_check.has_value());
+  EXPECT_EQ(vector_check.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
 }
 
 /** Check cache policy, generic addresses, lane sinks, and vector target floors. */
@@ -1431,6 +1554,8 @@ TEST(AtomicReductionCoverage, RejectsInvalidVectorAtomicForms) {
            "%b3};",
            "red.global.v8.f32.add [global_value], {%f0, %f1};",
            "atom.global.v2.f32.min {%f0, %f1}, [global_value], {%f2, %f3};",
+           "atom.global.add.f32.v2 {%f0, %f1}, [global_value], {%f2, %f3};",
+           "red.global.add.v2.noftz.f32 [global_value], {%f0, %f1};",
            "red.global.v2.f16.add [global_value], {%h0, %h1};",
            "atom.global.v2.f16.add.noftz {%h0}, [global_value], {%h1, %h2};",
            "atom.global.v2.f16.add.noftz {%h0, %h1}, [global_value], {%b0, "

@@ -259,7 +259,7 @@ TEST(AtomicReductionCoverage, RejectsInvalidTopologySpaceAndAlignment) {
            "atom.global.cas.b32 %b0, [global_value], %b1;",
            "red.global.cas.b32 [global_value], %b1, %b2;",
            "atom.global.cas.u32 %b0, [global_value], %b1, %b2;",
-           "atom.global.add.u64 %b0, [global_value], %b1;",
+           "atom.global.add.s64 %b0, [global_value], %b1;",
            "atom.add.u32 %b0, [global_value], %b1;",
            "red.acquire.cta.global.add.u32 [global_value], %b1;",
            "atom.global.inc.s32 %b0, [global_value], %b1;",
@@ -390,6 +390,290 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   EXPECT_EQ(invalid_red.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   red_src.declared_type = ScalarType::B32;
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+}
+
+/** Resolve the complete 64-bit matrix in both supported qualifier orders. */
+TEST(AtomicReductionCoverage, Resolves64BitScalarMatrix) {
+  std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.global .align 8 .b64 global_value_64;
+.entry kernel() {
+  .reg .u64 %u<3>;
+  .reg .s64 %s<3>;
+  .reg .b64 %b<3>;
+)ptx";
+  for (std::string_view opcode : {"atom", "red"}) {
+    for (std::string_view operation_type :
+         {"add.u64", "min.u64", "min.s64", "max.u64", "max.s64", "and.b64",
+          "or.b64", "xor.b64", "exch.b64", "cas.b64"}) {
+      if (opcode == "red" &&
+          (operation_type == "exch.b64" || operation_type == "cas.b64"))
+        continue;
+      const std::string_view type =
+          operation_type.substr(operation_type.rfind('.') + 1);
+      const std::string_view reg = type == "u64"   ? "%u"
+                                   : type == "s64" ? "%s"
+                                                   : "%b";
+      for (std::string_view qualifier :
+           {".global", ".relaxed.cta.global", ".global.relaxed.cta"}) {
+        source += std::string(opcode) + std::string(qualifier) + "." +
+                  std::string(operation_type) + " ";
+        if (opcode == "atom")
+          source += std::string(reg) + "0, ";
+        source += "[global_value_64], ";
+        if (operation_type == "cas.b64") {
+          source += qualifier == ".global" ? "%b1, %b2;\n" : "1, 2;\n";
+        } else {
+          source += qualifier == ".global" ? std::string(reg) + "1;\n" : "1;\n";
+        }
+      }
+    }
+  }
+  source += "}\n";
+
+  const auto parsed = test_helpers::parseModule(source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 54u);
+  for (size_t pair = 0; pair != 10; ++pair) {
+    for (size_t cohort = 0; cohort != 3; ++cohort)
+      EXPECT_EQ(std::get<Atom>(body[pair * 3 + cohort]).variant.index(),
+                26 + pair * 2 + (cohort != 0));
+  }
+  for (size_t pair = 0; pair != 8; ++pair) {
+    for (size_t cohort = 0; cohort != 3; ++cohort)
+      EXPECT_EQ(std::get<Red>(body[30 + pair * 3 + cohort]).variant.index(),
+                22 + pair * 2 + (cohort != 0));
+  }
+  const auto& atom_add =
+      std::get<Atom::GlobalAddU64>(std::get<Atom>(body[0]).variant);
+  const auto& atom_cas =
+      std::get<Atom::GlobalRelaxedCtaCasB64>(std::get<Atom>(body[29]).variant);
+  const auto& red_xor =
+      std::get<Red::GlobalRelaxedCtaXorB64>(std::get<Red>(body.back()).variant);
+  EXPECT_EQ(atom_add.type, ScalarType::U64);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(atom_add.src.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(atom_cas.compare.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(atom_cas.swap.value));
+  EXPECT_EQ(red_xor.type, ScalarType::B64);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_xor.src.value));
+}
+
+/** Pin the different legacy availability floors of the 64-bit families. */
+TEST(AtomicReductionCoverage, Enforces64BitTargetFloors) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.global .align 8 .b64 global_value_64;
+.entry kernel() {
+  .reg .u64 %u<3>;
+  .reg .s64 %s<3>;
+  .reg .b64 %b<3>;
+  atom.global.add.u64 %u0, [global_value_64], %u1;
+  atom.global.exch.b64 %b0, [global_value_64], %b1;
+  atom.global.cas.b64 %b0, [global_value_64], %b1, %b2;
+  red.global.add.u64 [global_value_64], %u1;
+  atom.global.min.s64 %s0, [global_value_64], %s1;
+  atom.global.and.b64 %b0, [global_value_64], %b1;
+  red.global.max.u64 [global_value_64], %u1;
+  red.global.xor.b64 [global_value_64], %b1;
+  atom.relaxed.cta.global.max.s64 %s0, [global_value_64], %s1;
+  red.global.relaxed.cta.min.s64 [global_value_64], %s1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 10u);
+  const auto check_at = [&](size_t index, uint16_t major, uint16_t minor,
+                            uint32_t sm) {
+    const checker::Context context{
+        .target = {.ptx_version = {major, minor}, .sm_version = sm}};
+    if (const auto* atom = std::get_if<Atom>(&body[index]))
+      return checker::check(*atom, context);
+    return checker::check(std::get<Red>(body[index]), context);
+  };
+  for (size_t index = 0; index != 4; ++index) {
+    EXPECT_TRUE(check_at(index, 1, 2, 12).has_value());
+    const auto old_ptx = check_at(index, 1, 1, 12);
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check_at(index, 1, 2, 11);
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+  for (size_t index = 4; index != 8; ++index) {
+    EXPECT_TRUE(check_at(index, 3, 1, 32).has_value());
+    const auto old_ptx = check_at(index, 3, 0, 32);
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check_at(index, 3, 1, 31);
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+  for (size_t index = 8; index != 10; ++index) {
+    EXPECT_TRUE(check_at(index, 6, 0, 70).has_value());
+    const auto old_ptx = check_at(index, 5, 9, 70);
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check_at(index, 6, 0, 69);
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+}
+
+/** Reject unsupported 64-bit pairs, malformed operands, and value widths. */
+TEST(AtomicReductionCoverage, RejectsInvalid64BitForms) {
+  for (const std::string_view instruction : {
+           "atom.global.add.s64 %s0, [global_value_64], %s1;",
+           "red.global.add.s64 [global_value_64], %s1;",
+           "atom.global.inc.u64 %u0, [global_value_64], %u1;",
+           "red.global.dec.u64 [global_value_64], %u1;",
+           "atom.global.and.u64 %u0, [global_value_64], %u1;",
+           "red.global.xor.s64 [global_value_64], %s1;",
+           "red.global.exch.b64 [global_value_64], %b1;",
+           "red.global.cas.b64 [global_value_64], %b1, %b2;",
+           "atom.global.cas.b64 %b0, [global_value_64], %b1;",
+           "atom.global.add.u64 %u0, [global_value_64], %u1, %u2;",
+           "red.global.add.u64 %u0, [global_value_64], %u1;",
+           "atom.add.u64 %u0, [global_value_64], %u1;",
+           "atom.shared.add.u64 %u0, [global_value_64], %u1;",
+           "red.acquire.cta.global.add.u64 [global_value_64], %u1;",
+           "atom.global.relaxed.gpu.add.u64 %u0, [global_value_64], %u1;",
+       }) {
+    const std::string source =
+        ".version 9.3\n.target sm_80\n"
+        ".global .align 8 .b64 global_value_64;\n.entry kernel() {\n"
+        ".reg .u64 %u<3>; .reg .s64 %s<3>; .reg .b64 %b<3>;\n" +
+        std::string(instruction) + "\n}\n";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << instruction;
+  }
+
+  for (const std::string_view instruction : {
+           "atom.global.add.u64 %u0, [global_value_64], %r1;",
+           "atom.global.cas.b64 %b0, [global_value_64], %r1, %b2;",
+           "red.global.max.s64 [global_value_64], %r1;",
+       }) {
+    const std::string source =
+        ".version 9.3\n.target sm_80\n"
+        ".global .align 8 .b64 global_value_64;\n.entry kernel() {\n"
+        ".reg .u64 %u<3>; .reg .s64 %s<3>; .reg .b64 %b<3>;"
+        ".reg .u32 %r<3>;\n" +
+        std::string(instruction) + "\n}\n";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_FALSE(resolved.has_value()) << instruction;
+    EXPECT_EQ(resolved.error().front().checker_kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+  }
+}
+
+/** Check eight-byte alignment and known-global provenance. */
+TEST(AtomicReductionCoverage, Checks64BitAddressContracts) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.global .align 8 .b64 global_value_64;
+.local .align 8 .b64 local_value_64;
+.entry kernel() {
+  .reg .u64 %u<2>;
+  .reg .b64 %b<2>;
+  atom.global.add.u64 %u0, [local_value_64], %u1;
+  red.global.xor.b64 [global_value_64+4], %b1;
+  atom.global.cas.b64 %b0, [global_value_64+4], %b1, 2;
+  red.global.add.u64 [local_value_64], %u1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  const auto atom_space = checker::check(std::get<Atom>(body[0]), context);
+  ASSERT_FALSE(atom_space.has_value());
+  EXPECT_EQ(atom_space.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  const auto red_alignment = checker::check(std::get<Red>(body[1]), context);
+  ASSERT_FALSE(red_alignment.has_value());
+  EXPECT_EQ(red_alignment.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  const auto atom_alignment = checker::check(std::get<Atom>(body[2]), context);
+  ASSERT_FALSE(atom_alignment.has_value());
+  EXPECT_EQ(atom_alignment.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  const auto red_space = checker::check(std::get<Red>(body[3]), context);
+  ASSERT_FALSE(red_space.has_value());
+  EXPECT_EQ(red_space.error().front().kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+}
+
+/** Recheck typed 64-bit payloads after releasing their syntax owners. */
+TEST(AtomicReductionCoverage, RechecksOwned64BitValueSources) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.global .align 8 .b64 global_value_64;
+.entry kernel() {
+  .reg .u64 %u<2>;
+  .reg .b64 %b<3>;
+  atom.global.add.u64 %u0, [global_value_64], %u1;
+  atom.global.cas.b64 %b0, [global_value_64], %b1, %b2;
+  red.global.xor.b64 [global_value_64], %b1;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  auto& body = owned->functions.front().body;
+  auto& add = std::get<Atom::GlobalAddU64>(std::get<Atom>(body[0]).variant);
+  auto& cas = std::get<Atom::GlobalCasB64>(std::get<Atom>(body[1]).variant);
+  auto& red = std::get<Red::GlobalXorB64>(std::get<Red>(body[2]).variant);
+  auto& add_src = std::get<ResolvedRegisterRef>(add.src.value);
+  add_src.declared_type = ScalarType::U32;
+  const auto invalid_add =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_add.has_value());
+  EXPECT_EQ(invalid_add.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  add_src.declared_type = ScalarType::U64;
+  auto& compare = std::get<ResolvedRegisterRef>(cas.compare.value);
+  compare.declared_type = ScalarType::B32;
+  const auto invalid_compare =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_compare.has_value());
+  EXPECT_EQ(invalid_compare.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  compare.declared_type = ScalarType::B64;
+  auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
+  red_src.declared_type = ScalarType::B32;
+  const auto invalid_red =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_red.has_value());
+  EXPECT_EQ(invalid_red.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  red_src.declared_type = ScalarType::B64;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());

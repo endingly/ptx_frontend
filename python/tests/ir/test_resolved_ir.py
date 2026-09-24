@@ -4251,6 +4251,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     ("Xor", "B32"), ("Exch", "B32"),
                 )
                 for qualifier in ("", "RelaxedCta")
+            ] + [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation, scalar_type in (
+                    ("Add", "U64"), ("Min", "U64"), ("Min", "S64"),
+                    ("Max", "U64"), ("Max", "S64"),
+                    ("And", "B64"), ("Or", "B64"), ("Xor", "B64"),
+                    ("Exch", "B64"), ("Cas", "B64"),
+                )
+                for qualifier in ("", "RelaxedCta")
             ],
         )
         variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
@@ -4300,6 +4309,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for operation, scalar_type in (
                     ("Inc", "U32"), ("Dec", "U32"),
                     ("And", "B32"), ("Or", "B32"), ("Xor", "B32"),
+                )
+                for qualifier in ("", "RelaxedCta")
+            ] + [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation, scalar_type in (
+                    ("Add", "U64"), ("Min", "U64"), ("Min", "S64"),
+                    ("Max", "U64"), ("Max", "S64"),
+                    ("And", "B64"), ("Or", "B64"), ("Xor", "B64"),
                 )
                 for qualifier in ("", "RelaxedCta")
             ],
@@ -4391,6 +4408,52 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     source.immediate_conversion_policy,
                     ResolvedImmediateConversionPolicy.NARROW,
                 )
+
+        for opcode, single_source_pairs in (
+            ("atom", (("Add", "U64", "1.2", 12),
+                      ("Min", "U64", "3.1", 32), ("Min", "S64", "3.1", 32),
+                      ("Max", "U64", "3.1", 32), ("Max", "S64", "3.1", 32),
+                      ("And", "B64", "3.1", 32), ("Or", "B64", "3.1", 32),
+                      ("Xor", "B64", "3.1", 32), ("Exch", "B64", "1.2", 12))),
+            ("red", (("Add", "U64", "1.2", 12),
+                     ("Min", "U64", "3.1", 32), ("Min", "S64", "3.1", 32),
+                     ("Max", "U64", "3.1", 32), ("Max", "S64", "3.1", 32),
+                     ("And", "B64", "3.1", 32), ("Or", "B64", "3.1", 32),
+                     ("Xor", "B64", "3.1", 32))),
+        ):
+            instruction = next(item for item in self.database.instructions if item.opcode == opcode)
+            variants = {variant.cpp_name: variant for variant in from_instruction_spec(instruction).variants}
+            operand_names = ("dst", "address", "src") if opcode == "atom" else ("address", "src")
+            for operation, scalar_type, ptx_floor, sm_floor in single_source_pairs:
+                for qualifier, availability in (
+                    ("", {"ptx": ptx_floor, "sm": sm_floor}),
+                    ("RelaxedCta", {"ptx": "6.0", "sm": 70}),
+                ):
+                    variant = variants[f"Global{qualifier}{operation}{scalar_type}"]
+                    self.assertEqual(dict(variant.availability), availability)
+                    bindings = variant.operand_layouts[0].bindings
+                    self.assertEqual(tuple(binding.target_field_id for binding in bindings), operand_names)
+                    for binding in (bindings[0], bindings[-1]) if opcode == "atom" else (bindings[-1],):
+                        self.assertEqual(binding.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertEqual(bindings[-1].allowed_shapes, (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                    self.assertEqual(bindings[-1].immediate_conversion_policy, ResolvedImmediateConversionPolicy.NARROW)
+                    self.assertEqual(variant.address_alignments[0].type_field_id, "type")
+
+        atom = next(item for item in self.database.instructions if item.opcode == "atom")
+        variants = {variant.cpp_name: variant for variant in from_instruction_spec(atom).variants}
+        for qualifier, availability in (
+            ("", {"ptx": "1.2", "sm": 12}),
+            ("RelaxedCta", {"ptx": "6.0", "sm": 70}),
+        ):
+            cas = variants[f"Global{qualifier}CasB64"]
+            self.assertEqual(dict(cas.availability), availability)
+            self.assertEqual(tuple(binding.target_field_id for binding in cas.operand_layouts[0].bindings),
+                             ("dst", "address", "compare", "swap"))
+            for binding in (cas.operand_layouts[0].bindings[0], *cas.operand_layouts[0].bindings[-2:]):
+                self.assertEqual(binding.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
+            for binding in cas.operand_layouts[0].bindings[-2:]:
+                self.assertEqual(binding.allowed_shapes, (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+            self.assertEqual(cas.address_alignments[0].type_field_id, "type")
 
     def test_activemask_b32_model(self) -> None:
         database = self.database

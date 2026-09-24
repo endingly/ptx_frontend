@@ -18,6 +18,7 @@ constexpr std::string_view kFixture = R"ptx(
 .address_size 64
 .shared .align 8 .u64 cvta_shared_value;
 .global .align 4 .b32 atomic_value;
+.global .align 8 .b64 atomic_value_64;
 .visible .entry conversion_consumer(
     .param .u64 .ptr .const .align 8 constant_pointer) {
   .reg .pred %p<2>;
@@ -26,6 +27,9 @@ constexpr std::string_view kFixture = R"ptx(
   .reg .u64 %rd0;
   .reg .s32 %s<3>;
   .reg .b32 %b<5>;
+  .reg .u64 %uq<2>;
+  .reg .s64 %sq<2>;
+  .reg .b64 %bq<3>;
   .reg .f32 %f<4>;
   .reg .b16 %h<2>;
 
@@ -63,6 +67,10 @@ constexpr std::string_view kFixture = R"ptx(
   atom.global.inc.u32 %u0, [atomic_value], %u0;
   atom.relaxed.cta.global.exch.b32 %b0, [atomic_value], 1;
   red.global.xor.b32 [atomic_value], %b1;
+  atom.global.add.u64 %uq0, [atomic_value_64], %uq1;
+  atom.global.relaxed.cta.min.s64 %sq0, [atomic_value_64], 1;
+  atom.relaxed.cta.global.cas.b64 %bq0, [atomic_value_64], %bq1, 2;
+  red.global.relaxed.cta.xor.b64 [atomic_value_64], %bq1;
   ret;
 }
 )ptx";
@@ -95,7 +103,7 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 35, "all conversion and atomic instructions"))
+  if (!require(body.size() == 39, "all conversion and atomic instructions"))
     return false;
 
   auto* atom_instruction = std::get_if<ir::Atom>(&body[27]);
@@ -154,6 +162,40 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
               std::holds_alternative<ir::ResolvedRegisterRef>(
                   xor_red->src.value),
           "owned expanded atomic and reduction variants"))
+    return false;
+
+  const auto* add_64_instruction = std::get_if<ir::Atom>(&body[34]);
+  const auto* add_64 =
+      add_64_instruction
+          ? std::get_if<ir::Atom::GlobalAddU64>(&add_64_instruction->variant)
+          : nullptr;
+  const auto* min_64_instruction = std::get_if<ir::Atom>(&body[35]);
+  const auto* min_64 = min_64_instruction
+                           ? std::get_if<ir::Atom::GlobalRelaxedCtaMinS64>(
+                                 &min_64_instruction->variant)
+                           : nullptr;
+  const auto* cas_64_instruction = std::get_if<ir::Atom>(&body[36]);
+  const auto* cas_64 = cas_64_instruction
+                           ? std::get_if<ir::Atom::GlobalRelaxedCtaCasB64>(
+                                 &cas_64_instruction->variant)
+                           : nullptr;
+  const auto* red_64_instruction = std::get_if<ir::Red>(&body[37]);
+  const auto* red_64 = red_64_instruction
+                           ? std::get_if<ir::Red::GlobalRelaxedCtaXorB64>(
+                                 &red_64_instruction->variant)
+                           : nullptr;
+  if (!require(add_64 && min_64 && cas_64 && red_64 &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       add_64->src.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       min_64->src.value) &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       cas_64->compare.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       cas_64->swap.value) &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       red_64->src.value),
+               "owned 64-bit atomic and reduction variants"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);

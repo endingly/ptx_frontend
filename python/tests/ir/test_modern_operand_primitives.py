@@ -21,6 +21,7 @@ from ptx_frontend.code_gen.emit.checker_descriptors import (
 from ptx_frontend.code_gen.emit.resolved_model import (
     generate_resolved_ir_category_header,
     generate_resolved_ir_header,
+    generate_resolved_ir_opcode_header,
 )
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
@@ -377,25 +378,34 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             )
 
             header_path = directory_path / "resolved_ir.gen.hpp"
+            opcode_header_path = directory_path / "modern.gen.hpp"
             descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
             source_path = directory_path / "resolved_ir_test.gen.cpp"
             syntax_path = directory_path / "syntax_descriptor.gen.cpp"
+            context = build_test_generation_context(database)
             generate_resolved_ir_category_header(
-                build_test_generation_context(database),
+                context,
                 category="test", output_path=header_path,
             )
-            generate_resolved_descriptor_source(build_test_generation_context(database), category="test", output_path=descriptor_path)
-            generate_resolved_ir_category_source(build_test_generation_context(database), category="test", output_path=source_path
+            generate_resolved_ir_opcode_header(
+                context, category="test", opcode="modern", output_path=opcode_header_path
             )
-            generate_syntax_descriptor_source(build_test_generation_context(database), category="test", output_path=syntax_path)
+            generate_resolved_descriptor_source(context, category="test", output_path=descriptor_path)
+            generate_resolved_ir_category_source(context, category="test", output_path=source_path
+            )
+            generate_syntax_descriptor_source(context, category="test", output_path=syntax_path)
             header = header_path.read_text(encoding="utf-8")
+            opcode_header = opcode_header_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
             source = source_path.read_text(encoding="utf-8")
             syntax_source = syntax_path.read_text(encoding="utf-8")
 
-        self.assertIn("WithLocs<ResolvedRegisterRef> desc;", header)
-        self.assertIn("WithLocs<ResolvedTensorCoordinate> coordinate;", header)
-        self.assertIn("WithLocs<ResolvedRegisterVector> fragment;", header)
+        self.assertIn(
+            "#include <ptx_frontend/resolved_ir/model/test/modern/model.gen.hpp>", header
+        )
+        self.assertIn("WithLocs<ResolvedRegisterRef> desc;", opcode_header)
+        self.assertIn("WithLocs<ResolvedTensorCoordinate> coordinate;", opcode_header)
+        self.assertIn("WithLocs<ResolvedRegisterVector> fragment;", opcode_header)
         self.assertIn('.type_tag = "tensor_descriptor",', descriptor)
         self.assertIn(".minimum_elements = 1,", descriptor)
         self.assertIn(".maximum_elements = 64,", descriptor)

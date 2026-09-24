@@ -2421,7 +2421,8 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   EXPECT_TRUE(atom.add);
   EXPECT_EQ(atom.type, ScalarType::U32);
   EXPECT_EQ(atom.dst.value.declared_type, ScalarType::U32);
-  EXPECT_EQ(atom.src.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(atom.src.value).declared_type,
+            ScalarType::U32);
   EXPECT_EQ(legacy_atom.state_space, atom.state_space);
   EXPECT_EQ(legacy_atom.semantics, atom.semantics);
   EXPECT_EQ(legacy_atom.scope, atom.scope);
@@ -2557,7 +2558,8 @@ TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
   EXPECT_EQ(red.scope, MemoryScope::Cta);
   EXPECT_TRUE(red.add);
   EXPECT_EQ(red.type, ScalarType::U32);
-  EXPECT_EQ(red.src.value.declared_type, ScalarType::U32);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(red.src.value).declared_type,
+            ScalarType::U32);
   EXPECT_EQ(legacy_red.state_space, red.state_space);
   EXPECT_EQ(legacy_red.semantics, red.semantics);
   EXPECT_EQ(legacy_red.scope, red.scope);

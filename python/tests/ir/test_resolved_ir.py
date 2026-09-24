@@ -4238,9 +4238,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Atom")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["GlobalRelaxedCtaAddU32"],
+            [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation in ("Add", "Min", "Max")
+                for scalar_type in ("U32", "S32")
+                for qualifier in ("", "RelaxedCta")
+            ] + ["GlobalCasB32", "GlobalRelaxedCtaCasB32"],
         )
-        variant = resolved.variants[0]
+        variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
@@ -4252,7 +4257,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("type", "ScalarType"),
                 ("dst", "WithLocs<ResolvedRegisterRef>"),
                 ("address", "WithLocs<ResolvedAddress>"),
-                ("src", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<RegOrImm>"),
             ],
         )
         bindings = variant.operand_layouts[0].bindings
@@ -4277,9 +4282,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Red")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["GlobalRelaxedCtaAddU32"],
+            [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation in ("Add", "Min", "Max")
+                for scalar_type in ("U32", "S32")
+                for qualifier in ("", "RelaxedCta")
+            ],
         )
-        variant = resolved.variants[0]
+        variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
@@ -4290,7 +4300,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 ("add", "bool"),
                 ("type", "ScalarType"),
                 ("address", "WithLocs<ResolvedAddress>"),
-                ("src", "WithLocs<ResolvedRegisterRef>"),
+                ("src", "WithLocs<RegOrImm>"),
             ],
         )
         bindings = variant.operand_layouts[0].bindings
@@ -4299,6 +4309,61 @@ class ResolvedIrBuildTest(unittest.TestCase):
             bindings[1].register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
         )
         self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
+
+    def test_atomic_reduction_tuple_and_qualifier_contract(self) -> None:
+        for opcode, legacy_ptx, operand_names in (
+            ("atom", "1.1", ("dst", "address", "src")),
+            ("red", "1.2", ("address", "src")),
+        ):
+            instruction = next(
+                item for item in self.database.instructions if item.opcode == opcode
+            )
+            variants = {
+                variant.cpp_name: variant
+                for variant in from_instruction_spec(instruction).variants
+            }
+            for operation in ("Add", "Min", "Max"):
+                for scalar_type in ("U32", "S32"):
+                    for qualifier, availability in (
+                        ("", {"ptx": legacy_ptx, "sm": 11}),
+                        ("RelaxedCta", {"ptx": "6.0", "sm": 70}),
+                    ):
+                        variant = variants[f"Global{qualifier}{operation}{scalar_type}"]
+                        self.assertEqual(dict(variant.availability), availability)
+                        self.assertEqual(
+                            tuple(binding.target_field_id for binding in variant.operand_layouts[0].bindings),
+                            operand_names,
+                        )
+                        field_names = {field.name for field in variant.fields}
+                        self.assertEqual("semantics" in field_names, bool(qualifier))
+                        self.assertEqual("scope" in field_names, bool(qualifier))
+                        source = variant.operand_layouts[0].bindings[-1]
+                        self.assertEqual(
+                            source.allowed_shapes,
+                            (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+                        )
+                        self.assertEqual(
+                            source.immediate_conversion_policy,
+                            ResolvedImmediateConversionPolicy.NARROW,
+                        )
+
+        atom = next(item for item in self.database.instructions if item.opcode == "atom")
+        variants = {variant.cpp_name: variant for variant in from_instruction_spec(atom).variants}
+        for qualifier in ("", "RelaxedCta"):
+            cas = variants[f"Global{qualifier}CasB32"]
+            self.assertEqual(
+                tuple(binding.target_field_id for binding in cas.operand_layouts[0].bindings),
+                ("dst", "address", "compare", "swap"),
+            )
+            for source in cas.operand_layouts[0].bindings[-2:]:
+                self.assertEqual(
+                    source.allowed_shapes,
+                    (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
+                )
+                self.assertEqual(
+                    source.immediate_conversion_policy,
+                    ResolvedImmediateConversionPolicy.NARROW,
+                )
 
     def test_activemask_b32_model(self) -> None:
         database = self.database

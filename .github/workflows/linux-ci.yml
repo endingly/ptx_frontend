@@ -146,7 +146,13 @@ jobs:
       - name: Build test support
         id: test-support
         if: success()
-        run: cmake --build --preset "${{ matrix.preset }}"
+        shell: bash
+        run: |
+          if [[ "${{ matrix.preset }}" == "ci-linux-gcc-debug" ]]; then
+            cmake --build --preset "${{ matrix.preset }}" --parallel 2
+          else
+            cmake --build --preset "${{ matrix.preset }}"
+          fi
 
       - name: Test
         id: test

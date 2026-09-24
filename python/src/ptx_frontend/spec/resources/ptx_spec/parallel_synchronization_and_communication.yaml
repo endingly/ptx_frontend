@@ -171,10 +171,10 @@ operand_patterns:
       type:
         expr: modifier(type)
   atom_global_cas_b16:
-    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b16, register_width: exact}
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b16, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
-    - {name: compare, kind: reg_or_imm, role: src1, access: read, type: b16, register_width: exact}
-    - {name: swap, kind: reg_or_imm, role: src2, access: read, type: b16, register_width: exact}
+    - {name: compare, kind: reg_or_imm, role: src1, access: read, type: b16, register_width: same_width}
+    - {name: swap, kind: reg_or_imm, role: src2, access: read, type: b16, register_width: same_width}
   atom_global_cas_b128:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b128, register_width: exact}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
@@ -185,17 +185,31 @@ operand_patterns:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: b128, register_width: exact}
   atom_global_noftz_f16:
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16, register_width: same_width}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+  atom_global_noftz_f16x2:
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16x2, register_width: same_width}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
+    - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
+  red_global_noftz_f16:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
+  red_global_noftz_f16x2:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
+    - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
+  atom_global_noftz_bf16:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b16, register_width: exact}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
-  atom_global_noftz_f16x2:
+  atom_global_noftz_bf16x2:
     - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b32, register_width: exact}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
-  red_global_noftz_f16:
+  red_global_noftz_bf16:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
-  red_global_noftz_f16x2:
+  red_global_noftz_bf16x2:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global, shared]}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
   atom_global_scalar_cache_policy:
@@ -232,15 +246,15 @@ operand_patterns:
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   atom_global_noftz_f16_cache_policy:
-    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b16, register_width: exact}
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   atom_global_noftz_f16x2_cache_policy:
-    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b32, register_width: exact}
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: f16x2, register_width: same_width}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   red_global_scalar_cache_policy:
@@ -265,10 +279,28 @@ operand_patterns:
 
   red_global_noftz_f16_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
-    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+    - {name: src, kind: reg, role: src, access: read, type: f16, register_width: same_width}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   red_global_noftz_f16x2_cache_policy:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg, role: src, access: read, type: f16x2, register_width: same_width}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  atom_global_noftz_bf16_cache_policy:
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b16, register_width: exact}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  atom_global_noftz_bf16x2_cache_policy:
+    - {name: dst, kind: reg_or_sink, role: dst, access: write, type: b32, register_width: exact}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  red_global_noftz_bf16_cache_policy:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: exact}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  red_global_noftz_bf16x2_cache_policy:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
     - {name: src, kind: reg, role: src, access: read, type: b32, register_width: exact}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
@@ -313,6 +345,15 @@ operand_patterns:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
     - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  atom_global_vector_f16x2:
+    - {name: dst, kind: reg_vector, role: dst, access: write, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true, allow_sink: true}}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+  atom_global_vector_f16x2_cache_policy:
+    - {name: dst, kind: reg_vector, role: dst, access: write, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true, allow_sink: true}}
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   atom_global_vector_f32:
     - {name: dst, kind: reg_vector, role: dst, access: write, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true, allow_sink: true}}
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
@@ -343,6 +384,13 @@ operand_patterns:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
     - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32], require_uniform_register_family: true}}
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+  red_global_vector_f16x2:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+  red_global_vector_f16x2_cache_policy:
+    - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
+    - {name: src, kind: reg_vector, role: src, access: read, type: f16x2, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f16x2], require_uniform_register_family: true}}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
   red_global_vector_f32:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global]}
     - {name: src, kind: reg_vector, role: src, access: read, type: b32, register_width: same_width, vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allowed_register_types: [b32, f32, u32, s32], require_uniform_register_family: true}}
@@ -356,7 +404,7 @@ operand_patterns:
   red_async_shared:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared], address_base: register}
     - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}
-    - {name: mbarrier, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared]}
+    - {name: mbarrier, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared], address_base: register}
   red_async_release:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global], address_base: register}
     - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}
@@ -2070,8 +2118,8 @@ instructions:
         modifier_order_aliases:
           - [state_space, semantics, scope, add, noftz, cache_hint, type]
         operand_layouts:
-          - {name: no_hint, operands: $atom_global_noftz_f16}
-          - {name: with_policy, operands: $atom_global_noftz_f16_cache_policy, availability: {ptx: "7.4", sm: 80}}
+          - {name: no_hint, operands: $atom_global_noftz_bf16}
+          - {name: with_policy, operands: $atom_global_noftz_bf16_cache_policy, availability: {ptx: "7.4", sm: 80}}
         rule: parallel_sync_and_communication.atom
         constraints:
           - kind: address_alignment
@@ -2091,8 +2139,8 @@ instructions:
         modifier_order_aliases:
           - [state_space, semantics, scope, add, noftz, cache_hint, type]
         operand_layouts:
-          - {name: no_hint, operands: $atom_global_noftz_f16x2}
-          - {name: with_policy, operands: $atom_global_noftz_f16x2_cache_policy, availability: {ptx: "7.4", sm: 80}}
+          - {name: no_hint, operands: $atom_global_noftz_bf16x2}
+          - {name: with_policy, operands: $atom_global_noftz_bf16x2_cache_policy, availability: {ptx: "7.4", sm: 80}}
         rule: parallel_sync_and_communication.atom
         constraints:
           - kind: address_alignment
@@ -2259,8 +2307,8 @@ instructions:
           - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $atom_global_vector_packed}
-          - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $atom_global_vector_f16x2}
+          - {name: with_policy, operands: $atom_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.atom
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
@@ -2283,8 +2331,8 @@ instructions:
           - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $atom_global_vector_packed}
-          - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $atom_global_vector_f16x2}
+          - {name: with_policy, operands: $atom_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.atom
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
@@ -2307,8 +2355,8 @@ instructions:
           - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $atom_global_vector_packed}
-          - {name: with_policy, operands: $atom_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $atom_global_vector_f16x2}
+          - {name: with_policy, operands: $atom_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.atom
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
@@ -2955,8 +3003,8 @@ instructions:
         modifier_order_aliases:
           - [state_space, semantics, scope, add, noftz, cache_hint, type]
         operand_layouts:
-          - {name: no_hint, operands: $red_global_noftz_f16}
-          - {name: with_policy, operands: $red_global_noftz_f16_cache_policy, availability: {ptx: "7.4", sm: 80}}
+          - {name: no_hint, operands: $red_global_noftz_bf16}
+          - {name: with_policy, operands: $red_global_noftz_bf16_cache_policy, availability: {ptx: "7.4", sm: 80}}
         rule: parallel_sync_and_communication.red
         constraints:
           - kind: address_alignment
@@ -2976,8 +3024,8 @@ instructions:
         modifier_order_aliases:
           - [state_space, semantics, scope, add, noftz, cache_hint, type]
         operand_layouts:
-          - {name: no_hint, operands: $red_global_noftz_f16x2}
-          - {name: with_policy, operands: $red_global_noftz_f16x2_cache_policy, availability: {ptx: "7.4", sm: 80}}
+          - {name: no_hint, operands: $red_global_noftz_bf16x2}
+          - {name: with_policy, operands: $red_global_noftz_bf16x2_cache_policy, availability: {ptx: "7.4", sm: 80}}
         rule: parallel_sync_and_communication.red
         constraints:
           - kind: address_alignment
@@ -3144,8 +3192,8 @@ instructions:
           - [semantics, scope, state_space, add, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, add, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $red_global_vector_packed}
-          - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $red_global_vector_f16x2}
+          - {name: with_policy, operands: $red_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.red
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
@@ -3168,8 +3216,8 @@ instructions:
           - [semantics, scope, state_space, min, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, min, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $red_global_vector_packed}
-          - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $red_global_vector_f16x2}
+          - {name: with_policy, operands: $red_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.red
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}
@@ -3192,8 +3240,8 @@ instructions:
           - [semantics, scope, state_space, max, noftz, cache_hint, vector, type]
           - [state_space, semantics, scope, max, noftz, cache_hint, vector, type]
         operand_layouts:
-          - {name: no_hint, operands: $red_global_vector_packed}
-          - {name: with_policy, operands: $red_global_vector_packed_cache_policy}
+          - {name: no_hint, operands: $red_global_vector_f16x2}
+          - {name: with_policy, operands: $red_global_vector_f16x2_cache_policy}
         rule: parallel_sync_and_communication.red
         constraints:
           - {kind: address_alignment, address_operand: address, type_modifier: type, vector_modifier: vector}

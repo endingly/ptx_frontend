@@ -74,10 +74,11 @@ Sources accept a compatible register or an integer immediate with ordinary
 narrow conversion. `cas` takes compare and swap sources. Float `add` accepts
 native `.f32`/`.f64` or equal-width `.b32`/`.b64` registers, decimal floating
 literals, and `0f`/`0d` bit-pattern literals; integer literals are rejected.
-Half and bfloat `add` require the written `.noftz` suffix. Their scalar operands
-use exact `.b16` registers, and packed `x2` operands use exact `.b32` registers.
-The `.b16` CAS form uses exact `.b16` registers for its destination and register
-sources; `.b128` CAS/exchange use exact `.b128` registers. CAS always has four
+Half and bfloat `add` require the written `.noftz` suffix. Scalar `.f16`
+accepts `.f16` or `.b16` registers, and packed `.f16x2` accepts `.f16x2`
+or `.b32`. The BF16 forms retain exact `.b16`/`.b32` bit containers.
+The `.b16` CAS form accepts compatible same-width registers for its destination
+and register sources; `.b128` CAS/exchange use exact `.b128` registers. CAS always has four
 operands and no cache hint. Addresses require natural two-, four-, eight-, or
 sixteen-byte alignment. Float addition rounds
 to nearest even. Global `.f32` atomics flush subnormal inputs and results to
@@ -95,13 +96,16 @@ The PTX syntax places the operation, optional `.noftz`, and optional
 `.vN.type.operation` spelling remains accepted.
 `.f16` lanes accept `.b16`, `.f16`, `.u16`,
 or `.s16` registers; `.f32` lanes accept the corresponding 32-bit register
-types. `.bf16` lanes require `.b16`, and packed `x2` lanes require `.b32`.
+types. `.bf16` lanes require `.b16`; packed `.f16x2` lanes accept `.f16x2`
+or `.b32`, while `.bf16x2` lanes require `.b32`.
 Within each vector, bit-type lanes are neutral, while integer and floating
 lanes cannot mix. The destination and source vectors are checked independently.
 Without declarations, standalone resolution retains unknown lane types;
 declaration-bound module resolution checks the stated register-type domains.
 A destination lane may be `_`, while source lanes must be registers and an
-all-sink destination is invalid. The
+all-sink destination is invalid. Written lanes in a destination vector must
+name distinct registers, including when parameterized declarations bind them;
+read-only source vectors may repeat lanes. The
 whole access requires vector length times element width alignment: for example
 `v8.f16` needs 16 bytes. Atomicity applies to each scalar element, not to the
 vector as one aggregate transaction. The half/bfloat vectors require `.noftz`;
@@ -119,7 +123,7 @@ The optional address suffix is retained independently as `Red::address_qualifier
 omitted generic or `.shared::cluster` for shared completion, and omitted generic
 or `.global` for global release. The destination `a` must use a register base,
 optionally followed by a signed 32-bit offset. Direct symbol and immediate
-bases are rejected. The mbarrier address may use a symbol or register. Known
+bases are rejected for both the destination and mbarrier addresses. Known
 shared-mode destination and mbarrier addresses must be shared; unknown generic
 register addresses carry a runtime shared-cluster obligation. Known release-mode
 destinations must be global; unknown generic register addresses carry a runtime

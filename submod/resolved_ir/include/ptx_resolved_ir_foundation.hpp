@@ -25,6 +25,8 @@
 
 namespace ptx_frontend::resolved_ir {
 
+struct ResolvedRegisterRef;
+
 /**
  * Implicit CC.CF access for an executed instruction. Predication gates both
  * explicit results and this effect. Incoming CC.CF is not preserved by calls.
@@ -323,6 +325,9 @@ struct OperandView {
       ParameterAddressQualifier::Default;
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
+  /** Borrowed lane references; null for sinks and non-register lanes. */
+  std::array<const ResolvedRegisterRef*, kMaxOperandElements>
+      vector_element_registers{};
   /** Original element count before fixed-size checker projection. */
   size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;

@@ -1231,6 +1231,36 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     const ResolvedOperandBindingDescriptor& binding,
     const ResolvedInstructionFields& fields, const SourceRange& range);
 
+/** Find repeated physical registers among the written lanes of a vector. */
+std::optional<ResolveDiagnostic> duplicate_destination_lane(
+    const ResolvedRegisterVector& vector,
+    const std::vector<SourceRange>& locations) {
+  for (size_t index = 0; index < vector.elements.size(); ++index) {
+    const auto& lane = vector.elements[index];
+    if (!lane)
+      continue;
+    for (size_t previous = 0; previous < index; ++previous) {
+      const auto& earlier = vector.elements[previous];
+      if (!earlier)
+        continue;
+      const bool same_register =
+          (lane->symbol_id && earlier->symbol_id &&
+           lane->symbol_id == earlier->symbol_id &&
+           lane->parameterized_index == earlier->parameterized_index) ||
+          lane->spelling == earlier->spelling;
+      if (same_register) {
+        return ResolveDiagnostic{
+            .range = locations[index],
+            .message = fmt::format(
+                "Destination vector writes register '{}' more than once.",
+                lane->spelling),
+        };
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
 resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    ScalarType instruction_type,
@@ -1240,7 +1270,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    base::ScalarTypeSizePolicy register_width_policy,
                    bool allow_sink, size_t sink_payload_bits,
                    std::span<const ScalarType> allowed_register_types,
-                   bool require_uniform_register_family,
+                   bool require_uniform_register_family, bool is_destination,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -1399,6 +1429,10 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
         .message = "A vector must contain at least one register.",
     });
   }
+  if (is_destination) {
+    if (const auto duplicate = duplicate_destination_lane(result, locations))
+      return std::unexpected(*duplicate);
+  }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
   resolved.locs = std::move(locations);
   return resolved;
@@ -1450,6 +1484,11 @@ resolve_modern_register_vector(
     if (!register_ref)
       return std::unexpected(register_ref.error());
     result.elements.emplace_back(std::move(register_ref->value));
+  }
+  if (binding.access == checker::OperandAccess::Write ||
+      binding.access == checker::OperandAccess::ReadWrite) {
+    if (const auto duplicate = duplicate_destination_lane(result, locations))
+      return std::unexpected(*duplicate);
   }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
   resolved.locs = std::move(locations);
@@ -2009,7 +2048,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           binding.vector_type_policy, binding.register_width_policy,
           binding.allow_vector_sink, binding.vector_sink_payload_bits,
           binding.allowed_register_types,
-          binding.require_uniform_register_family, context);
+          binding.require_uniform_register_family,
+          binding.access == checker::OperandAccess::Write ||
+              binding.access == checker::OperandAccess::ReadWrite,
+          context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

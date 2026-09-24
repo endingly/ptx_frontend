@@ -4297,22 +4297,22 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                  (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
 
     def test_half_bfloat_and_wide_atomic_descriptor_contract(self) -> None:
-        """Pin closed scalar tuples, exact register containers, and target floors."""
+        """Pin scalar register compatibility and target floors by cohort."""
         expected = {
             "atom": {
-                "GlobalCasB16": ("6.3", 70, "b16"),
-                "GlobalCasB128": ("8.3", 90, "b128"),
-                "GlobalExchB128": ("8.3", 90, "b128"),
-                "GlobalAddNoftzF16": ("6.3", 70, "b16"),
-                "GlobalAddNoftzF16x2": ("6.2", 60, "b32"),
-                "GlobalAddNoftzBf16": ("7.8", 90, "b16"),
-                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32"),
+                "GlobalCasB16": ("6.3", 70, "b16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalCasB128": ("8.3", 90, "b128", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalExchB128": ("8.3", 90, "b128", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
             },
             "red": {
-                "GlobalAddNoftzF16": ("6.3", 70, "b16"),
-                "GlobalAddNoftzF16x2": ("6.2", 60, "b32"),
-                "GlobalAddNoftzBf16": ("7.8", 90, "b16"),
-                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32"),
+                "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
             },
         }
         for opcode, tuples in expected.items():
@@ -4320,7 +4320,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                                if item.opcode == opcode)
             variants = {variant.cpp_name: variant
                         for variant in from_instruction_spec(instruction).variants}
-            for name, (ptx, sm, container) in tuples.items():
+            for name, (ptx, sm, container, width_policy) in tuples.items():
                 variant = variants[name]
                 self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": sm})
                 bindings = variant.operand_layouts[0].bindings
@@ -4330,7 +4330,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for binding in source_bindings:
                     self.assertEqual(binding.type_expression.scalar_type, container)
                     self.assertEqual(binding.register_width_policy,
-                                     ResolvedRegisterWidthPolicy.EXACT)
+                                     width_policy)
                 if opcode == "atom":
                     dst = next(field for field in variant.operand_layouts[0].fields
                                if field.name == "dst")
@@ -4417,7 +4417,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 self.assertEqual(variant.address_alignments[0].type_field_id, "type")
                 if cohort is shared:
                     self.assertEqual(bindings[2].address_base_policy,
-                                     OperandAddressBasePolicy.ANY)
+                                     OperandAddressBasePolicy.REGISTER)
                     self.assertEqual(bindings[2].address_offset_domain,
                                      OperandAddressOffsetDomain.SIGNED32)
                     self.assertEqual(variant.address_alignments[1].alignment, 8)
@@ -4498,6 +4498,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                         self.assertEqual(lane_types, {"b16", "f16", "u16", "s16"})
                     elif variant.cpp_name.endswith("F32"):
                         self.assertEqual(lane_types, {"b32", "f32", "u32", "s32"})
+                    elif variant.cpp_name.endswith("F16x2"):
+                        self.assertEqual(lane_types, {"b32", "f16x2"})
                     else:
                         self.assertEqual(lane_types, {"b32"})
                 if opcode == "atom":
@@ -4652,7 +4654,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("red_async_shared_add_u32_operand_layout_0_binding_0_address_state_spaces",
                       generated)
         self.assertEqual(generated.count(
-            ".address_base_policy = checker::AddressBasePolicy::Register"), 16)
+            ".address_base_policy = checker::AddressBasePolicy::Register"), 28)
         self.assertIn(
             ".address_offset_domain = checker::AddressOffsetDomain::Signed32",
             generated,

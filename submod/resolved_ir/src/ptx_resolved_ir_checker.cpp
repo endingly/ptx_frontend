@@ -626,6 +626,41 @@ CheckResult check_operands(
               descriptor.target_field_id),
       });
     }
+    if (operand->actual_shape == OperandShape::Vector &&
+        (descriptor.access == OperandAccess::Write ||
+         descriptor.access == OperandAccess::ReadWrite) &&
+        operand->vector_arity <= kMaxOperandElements) {
+      for (size_t index = 0; index < operand->vector_arity; ++index) {
+        const ResolvedRegisterRef* lane =
+            operand->vector_element_registers[index];
+        if (lane == nullptr)
+          continue;
+        for (size_t previous = 0; previous < index; ++previous) {
+          const ResolvedRegisterRef* earlier =
+              operand->vector_element_registers[previous];
+          if (earlier == nullptr)
+            continue;
+          const bool same_register =
+              (lane->symbol_id && earlier->symbol_id &&
+               lane->symbol_id == earlier->symbol_id &&
+               lane->parameterized_index == earlier->parameterized_index) ||
+              lane->spelling == earlier->spelling;
+          if (!same_register)
+            continue;
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::InvalidVectorOperand,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message =
+                  fmt::format("Destination vector '{}' writes register '{}' "
+                              "more than once.",
+                              descriptor.target_field_id, lane->spelling),
+          });
+          break;
+        }
+      }
+    }
     if (operand->actual_shape == OperandShape::PredicatePair &&
         !operand->predicate_pair_has_destination) {
       diagnostics.push_back(CheckDiagnostic{

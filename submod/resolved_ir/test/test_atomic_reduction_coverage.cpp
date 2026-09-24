@@ -679,5 +679,218 @@ TEST(AtomicReductionCoverage, RechecksOwned64BitValueSources) {
           .has_value());
 }
 
+/** Resolve every float tuple, qualifier order, and supported source spelling. */
+TEST(AtomicReductionCoverage, ResolvesFloatAddMatrix) {
+  std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.global .align 4 .b32 g32;
+.global .align 8 .b64 g64;
+.entry kernel() {
+  .reg .f32 %f<2>;
+  .reg .b32 %b<2>;
+  .reg .f64 %fd<2>;
+  .reg .b64 %bd<2>;
+)ptx";
+  for (std::string_view opcode : {"atom", "red"}) {
+    for (std::string_view type : {"f32", "f64"}) {
+      const bool is_32 = type == "f32";
+      const std::string_view native = is_32 ? "%f" : "%fd";
+      const std::string_view bits = is_32 ? "%b" : "%bd";
+      const std::string_view address = is_32 ? "g32" : "g64";
+      const std::string_view literal =
+          is_32 ? "0f3f800000" : "0d3ff0000000000000";
+      for (std::string_view qualifier :
+           {".global", ".relaxed.cta.global", ".global.relaxed.cta"}) {
+        for (std::string_view value :
+             {native, bits, std::string_view{"1.0"}, literal}) {
+          source += std::string(opcode) + std::string(qualifier) + ".add." +
+                    std::string(type) + " ";
+          if (opcode == "atom")
+            source += std::string(native) + "0, ";
+          source += "[" + std::string(address) + "], " +
+                    (value.starts_with('%') ? std::string(value) + "1"
+                                            : std::string(value)) +
+                    ";\n";
+        }
+      }
+    }
+  }
+  source += "}\n";
+  const auto parsed = test_helpers::parseModule(source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 48u);
+  for (size_t type = 0; type != 2; ++type) {
+    for (size_t order = 0; order != 3; ++order) {
+      for (size_t source_index = 0; source_index != 4; ++source_index) {
+        const size_t local = type * 12 + order * 4 + source_index;
+        const size_t expected = type * 2 + (order != 0);
+        EXPECT_EQ(std::get<Atom>(body[local]).variant.index(), 46 + expected);
+        EXPECT_EQ(std::get<Red>(body[24 + local]).variant.index(),
+                  38 + expected);
+      }
+    }
+  }
+  const auto& atom_bits =
+      std::get<Atom::GlobalAddF32>(std::get<Atom>(body[1]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(atom_bits.src.value));
+  const auto& red_literal =
+      std::get<Red::GlobalAddF64>(std::get<Red>(body[24 + 12 + 3]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_literal.src.value));
+}
+
+/** Pin float legacy and explicit availability at both dimensions. */
+TEST(AtomicReductionCoverage, EnforcesFloatAddTargetFloors) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.global .align 4 .b32 g32;
+.global .align 8 .b64 g64;
+.entry kernel() {
+  .reg .f32 %f<2>; .reg .f64 %fd<2>;
+  atom.global.add.f32 %f0, [g32], %f1;
+  red.global.add.f32 [g32], %f1;
+  atom.global.add.f64 %fd0, [g64], %fd1;
+  red.global.add.f64 [g64], %fd1;
+  atom.global.relaxed.cta.add.f32 %f0, [g32], %f1;
+  red.relaxed.cta.global.add.f64 [g64], %fd1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto check_at = [&](size_t index, uint16_t major, uint16_t minor,
+                            uint32_t sm) {
+    const checker::Context context{
+        .target = {.ptx_version = {major, minor}, .sm_version = sm}};
+    if (const auto* atom = std::get_if<Atom>(&body[index]))
+      return checker::check(*atom, context);
+    return checker::check(std::get<Red>(body[index]), context);
+  };
+  for (size_t index = 0; index != 6; ++index) {
+    const uint16_t major = index < 2 ? 2 : index < 4 ? 5 : 6;
+    const uint32_t sm = index < 2 ? 20 : index < 4 ? 60 : 70;
+    EXPECT_TRUE(check_at(index, major, 0, sm).has_value());
+    const auto old_ptx = check_at(index, major - 1, 9, sm);
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = check_at(index, major, 0, sm - 1);
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+}
+
+/** Reject unsupported float forms and check typed sources and address facts. */
+TEST(AtomicReductionCoverage, RejectsInvalidFloatAddForms) {
+  for (std::string_view instruction : {
+           "atom.global.min.f32 %f0, [g32], %f1;",
+           "red.global.max.f64 [g64], %fd1;",
+           "atom.global.add.f64 %fd0, [g64], %fd1, %fd1;",
+           "red.add.f32 [g32], %f1;",
+           "atom.shared.add.f32 %f0, [g32], %f1;",
+           "red.acquire.cta.global.add.f64 [g64], %fd1;",
+           "atom.global.relaxed.gpu.add.f32 %f0, [g32], %f1;",
+           "atom.global.add.f32 %f0, [g32], 1;",
+           "red.global.add.f64 [g64], 1;",
+           "atom.global.add.f32 %u0, [g32], %f1;",
+           "red.global.add.f64 [g64], %ud1;",
+           "atom.global.add.f32 %f0, [g32], %ud1;",
+           "red.global.add.f32 [g32], %fd1;",
+       }) {
+    const std::string source =
+        ".version 9.3\n.target sm_80\n"
+        ".global .align 4 .b32 g32; .global .align 8 .b64 g64;\n"
+        ".entry kernel() { .reg .f32 %f<2>; .reg .f64 %fd<2>; "
+        ".reg .u32 %u<2>; .reg .u64 %ud<2>; " +
+        std::string(instruction) + " }\n";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << instruction;
+  }
+
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.global .align 4 .b32 g32;
+.global .align 8 .b64 g64;
+.local .align 8 .b64 local64;
+.entry kernel() {
+  .reg .f32 %f<2>; .reg .b32 %b<2>;
+  .reg .f64 %fd<2>; .reg .b64 %bd<2>;
+  atom.global.add.f64 %fd0, [local64], %bd1;
+  red.global.add.f64 [g64+4], %fd1;
+  atom.global.add.f32 %f0, [g32+2], %b1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  for (size_t index = 0; index != 3; ++index) {
+    const auto result =
+        std::holds_alternative<Atom>(body[index])
+            ? checker::check(std::get<Atom>(body[index]), context)
+            : checker::check(std::get<Red>(body[index]), context);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().front().kind,
+              index == 0
+                  ? checker::CheckDiagnosticKind::AddressStateSpaceMismatch
+                  : checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
+
+/** Revalidate float bit-container payloads after syntax storage is released. */
+TEST(AtomicReductionCoverage, RechecksOwnedFloatAddOperands) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.global .align 4 .b32 g32;
+.global .align 8 .b64 g64;
+.entry kernel() {
+  .reg .f32 %f<2>; .reg .b32 %b<2>; .reg .b64 %bd<2>;
+  atom.global.add.f32 %f0, [g32], %b1;
+  red.global.add.f64 [g64], %bd1;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  auto& body = owned->functions.front().body;
+  auto& atom = std::get<Atom::GlobalAddF32>(std::get<Atom>(body[0]).variant);
+  auto& red = std::get<Red::GlobalAddF64>(std::get<Red>(body[1]).variant);
+  auto& atom_src = std::get<ResolvedRegisterRef>(atom.src.value);
+  atom_src.declared_type = ScalarType::U32;
+  const auto invalid_atom =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_atom.has_value());
+  EXPECT_EQ(invalid_atom.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  atom_src.declared_type = ScalarType::B32;
+  auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
+  red_src.declared_type = ScalarType::U64;
+  const auto invalid_red =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_red.has_value());
+  EXPECT_EQ(invalid_red.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  red_src.declared_type = ScalarType::B64;
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

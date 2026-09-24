@@ -4260,6 +4260,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     ("Exch", "B64"), ("Cas", "B64"),
                 )
                 for qualifier in ("", "RelaxedCta")
+            ] + [
+                f"Global{qualifier}Add{scalar_type}"
+                for scalar_type in ("F32", "F64")
+                for qualifier in ("", "RelaxedCta")
             ],
         )
         variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
@@ -4319,6 +4323,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     ("And", "B64"), ("Or", "B64"), ("Xor", "B64"),
                 )
                 for qualifier in ("", "RelaxedCta")
+            ] + [
+                f"Global{qualifier}Add{scalar_type}"
+                for scalar_type in ("F32", "F64")
+                for qualifier in ("", "RelaxedCta")
             ],
         )
         variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
@@ -4341,6 +4349,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
             bindings[1].register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
         )
         self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
+
+    def test_float_atomic_reduction_descriptor_contract(self) -> None:
+        """Float variants retain dedicated equal-width operands and target floors."""
+        for opcode in ("atom", "red"):
+            instruction = next(item for item in self.database.instructions if item.opcode == opcode)
+            variants = {variant.cpp_name: variant for variant in from_instruction_spec(instruction).variants}
+            expected_fields = ("dst", "address", "src") if opcode == "atom" else ("address", "src")
+            for scalar, ptx, sm in (("F32", "2.0", 20), ("F64", "5.0", 60)):
+                for qualifier in ("", "RelaxedCta"):
+                    variant = variants[f"Global{qualifier}Add{scalar}"]
+                    self.assertEqual(dict(variant.availability),
+                                     {"ptx": "6.0" if qualifier else ptx, "sm": 70 if qualifier else sm})
+                    bindings = variant.operand_layouts[0].bindings
+                    self.assertEqual(tuple(binding.target_field_id for binding in bindings), expected_fields)
+                    self.assertEqual(bindings[-1].register_width_policy,
+                                     ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertEqual(bindings[-1].allowed_shapes,
+                                     (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+                    if opcode == "atom":
+                        self.assertEqual(bindings[0].register_width_policy,
+                                         ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertEqual(bindings[-2].state_space_modifier_field_id, "state_space")
 
     def test_atomic_reduction_tuple_and_qualifier_contract(self) -> None:
         for opcode, legacy_ptx, operand_names in (

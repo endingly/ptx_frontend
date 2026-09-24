@@ -2,7 +2,7 @@
 
 This example consumes the installed `ptx_frontend` package through its public
 CMake target `ptx_frontend::resolved_ir` and the `ptx_spec` data component,
-requesting package version `0.5.0`. Configuration checks that the installed PTX
+requesting package version `0.6.0`. Configuration checks that the installed PTX
 and C++ backend YAML/schema paths all exist.
 The source covers a targeted module with these representative forms:
 
@@ -26,6 +26,8 @@ The source covers a targeted module with these representative forms:
   relaxed-CTA forms with register and immediate value sources.
 - 64-bit global `atom.add.u64`, `atom.min.s64`, `atom.cas.b64`, and
   `red.xor.b64`, including both explicit qualifier orders and typed sources.
+- float global `atom`/`red` add at `.f32` and `.f64`, with bit-container
+  registers, decimal and bit-pattern sources, and both qualifier orders.
 
 The module uses PTX 9.3 and `sm_121a`, which supplies the exact target context
 for the scaled `s2f6x2` form. The program also checks the public scalar and

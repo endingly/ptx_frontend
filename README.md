@@ -84,7 +84,7 @@ Point CMake at the installed prefix through `CMAKE_PREFIX_PATH`. Make `fmt` and
 the needed component:
 
 ```cmake
-find_package(ptx_frontend 0.5.0 CONFIG REQUIRED COMPONENTS resolved_ir)
+find_package(ptx_frontend 0.6.0 CONFIG REQUIRED COMPONENTS resolved_ir)
 
 add_executable(example main.cpp)
 target_compile_features(example PRIVATE cxx_std_23)

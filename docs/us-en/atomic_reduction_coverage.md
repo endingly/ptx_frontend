@@ -18,33 +18,46 @@ availability. It does not execute atomic operations.
 | `atom.global` | `.min`, `.max` × `.u64`, `.s64`; `.and`, `.or`, `.xor` × `.b64` | `dst, [address], src` | PTX 3.1 / SM 32 | PTX 6.0 / SM 70 |
 | `red.global` | `.add.u64` | `[address], src` | PTX 1.2 / SM 12 | PTX 6.0 / SM 70 |
 | `red.global` | `.min`, `.max` × `.u64`, `.s64`; `.and`, `.or`, `.xor` × `.b64` | `[address], src` | PTX 3.1 / SM 32 | PTX 6.0 / SM 70 |
+| `atom.global` | `.add.f32` | `dst, [address], src` | PTX 2.0 / SM 20 | PTX 6.0 / SM 70 |
+| `red.global` | `.add.f32` | `[address], src` | PTX 2.0 / SM 20 | PTX 6.0 / SM 70 |
+| `atom.global` | `.add.f64` | `dst, [address], src` | PTX 5.0 / SM 60 | PTX 6.0 / SM 70 |
+| `red.global` | `.add.f64` | `[address], src` | PTX 5.0 / SM 60 | PTX 6.0 / SM 70 |
 
 Legacy forms omit both memory semantics and scope suffixes. Their effective
 ISA defaults are relaxed semantics and GPU scope. Explicit forms require
 `.relaxed.cta`; both `atom.relaxed.cta.global` and
 `atom.global.relaxed.cta` ordering resolve, as do the corresponding `red`
 forms. Separate resolved variants preserve whether qualifiers appeared in source.
-The destination is a register compatible with the instruction's 32- or 64-bit
-type. Each value source accepts a compatible register or an integer immediate
-with ordinary narrow conversion. Addresses must be known global when their
-provenance is available and aligned to four or eight bytes according to type.
+For integer and bitwise forms, the destination is a register compatible with the
+instruction's 32- or 64-bit type, and each value source accepts a compatible
+register or an integer immediate with ordinary narrow conversion. Addresses
+must be known global when their provenance is available and aligned to four or
+eight bytes according to type.
+For float add, destination and register sources accept the native floating type
+or an equal-width bit container (`.f32`/`.b32`, `.f64`/`.b64`). Source immediates
+accept decimal floating literals and `0f`/`0d` bit-pattern literals, but not
+integer literals. Float addition rounds to nearest even. Global `.f32` atomics
+flush subnormal inputs and results to sign-preserving zero; `.f64` atomics do
+not flush subnormals. These are ISA behavior notes, not execution semantics.
 
 The current boundary requires explicit `.global`. Omitted state space means
 generic addressing and is outside this slice. Other operations and type pairs,
 including 64-bit `.add.s64` and `.inc/.dec`, typed 64-bit bitwise suffixes,
-and `red.cas`/`red.exch`, remain unsupported. Other state spaces, memory orders
-and scopes, cache policies, vector and bit-bucket forms, `red.async`, and
+float `.min/.max`, and `red.cas`/`red.exch`, remain unsupported. Other state
+spaces, memory orders and scopes, cache policies, vector and bit-bucket forms, `red.async`, and
 `multimem.red.async` remain unsupported.
 The `.inc` and `.dec` source supplies the operation's runtime bound; the
 frontend preserves its typed operand and does not simulate the update.
 
-The C++ package version is 0.5.0. The added 64-bit named alternatives extend the
-public `Atom::Variant` and `Red::Variant` alternatives, changing their source
-and binary API; rebuild consumers against matching installed headers and library.
+The C++ package version is 0.6.0. Four appended float alternatives per
+instruction extend the public `Atom::Variant` and `Red::Variant`, changing
+their source and binary API while preserving all earlier alternative indices.
+Rebuild consumers against matching installed headers and library.
 The earlier 0.3.0 change made the public
 `Atom::GlobalRelaxedCtaAddU32::src` and `Red::GlobalRelaxedCtaAddU32::src`
 members hold `RegOrImm`. A consumer reading a register uses
 `std::get<ResolvedRegisterRef>(value.src.value)`; an immediate uses
-`std::get<ResolvedImmediate>(value.src.value)`; the new one-source alternatives
-use the same operand representation.
-The Python wheel remains independently versioned at 0.1.0b1.
+`std::get<ResolvedImmediate>(value.src.value)`; the float alternatives use the
+same operand representation.
+The Python wheel is independently versioned at 0.1.0b2 because its packaged
+instruction YAML includes these variants.

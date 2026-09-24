@@ -31,6 +31,7 @@ constexpr std::string_view kFixture = R"ptx(
   .reg .s64 %sq<2>;
   .reg .b64 %bq<3>;
   .reg .f32 %f<4>;
+  .reg .f64 %fd<2>;
   .reg .b16 %h<2>;
 
   isspacep.shared::cluster %p0, %r0;
@@ -71,6 +72,10 @@ constexpr std::string_view kFixture = R"ptx(
   atom.global.relaxed.cta.min.s64 %sq0, [atomic_value_64], 1;
   atom.relaxed.cta.global.cas.b64 %bq0, [atomic_value_64], %bq1, 2;
   red.global.relaxed.cta.xor.b64 [atomic_value_64], %bq1;
+  atom.global.add.f32 %f0, [atomic_value], %b0;
+  red.global.relaxed.cta.add.f32 [atomic_value], 0f3f800000;
+  atom.relaxed.cta.global.add.f64 %fd0, [atomic_value_64], %bq1;
+  red.global.add.f64 [atomic_value_64], 1.0;
   ret;
 }
 )ptx";
@@ -103,7 +108,7 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 39, "all conversion and atomic instructions"))
+  if (!require(body.size() == 43, "all conversion and atomic instructions"))
     return false;
 
   auto* atom_instruction = std::get_if<ir::Atom>(&body[27]);
@@ -196,6 +201,22 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                    std::holds_alternative<ir::ResolvedRegisterRef>(
                        red_64->src.value),
                "owned 64-bit atomic and reduction variants"))
+    return false;
+
+  const auto* float_atom = std::get_if<ir::Atom>(&body[38]);
+  const auto* float_red = std::get_if<ir::Red>(&body[39]);
+  const auto* double_atom = std::get_if<ir::Atom>(&body[40]);
+  const auto* double_red = std::get_if<ir::Red>(&body[41]);
+  if (!require(float_atom && float_red && double_atom && double_red &&
+                   std::holds_alternative<ir::Atom::GlobalAddF32>(
+                       float_atom->variant) &&
+                   std::holds_alternative<ir::Red::GlobalRelaxedCtaAddF32>(
+                       float_red->variant) &&
+                   std::holds_alternative<ir::Atom::GlobalRelaxedCtaAddF64>(
+                       double_atom->variant) &&
+                   std::holds_alternative<ir::Red::GlobalAddF64>(
+                       double_red->variant),
+               "owned float atomic and reduction variants"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);

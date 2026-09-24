@@ -17,27 +17,37 @@
 | `atom.global` | `.min`、`.max` × `.u64`、`.s64`；`.and`、`.or`、`.xor` × `.b64` | `dst, [address], src` | PTX 3.1 / SM 32 | PTX 6.0 / SM 70 |
 | `red.global` | `.add.u64` | `[address], src` | PTX 1.2 / SM 12 | PTX 6.0 / SM 70 |
 | `red.global` | `.min`、`.max` × `.u64`、`.s64`；`.and`、`.or`、`.xor` × `.b64` | `[address], src` | PTX 3.1 / SM 32 | PTX 6.0 / SM 70 |
+| `atom.global` | `.add.f32` | `dst, [address], src` | PTX 2.0 / SM 20 | PTX 6.0 / SM 70 |
+| `red.global` | `.add.f32` | `[address], src` | PTX 2.0 / SM 20 | PTX 6.0 / SM 70 |
+| `atom.global` | `.add.f64` | `dst, [address], src` | PTX 5.0 / SM 60 | PTX 6.0 / SM 70 |
+| `red.global` | `.add.f64` | `[address], src` | PTX 5.0 / SM 60 | PTX 6.0 / SM 70 |
 
 旧式形式省略 memory semantics 和 scope 后缀；ISA 的实际默认值分别为 relaxed
 semantics 和 GPU scope。显式形式要求 `.relaxed.cta`；
 `atom.relaxed.cta.global` 与 `atom.global.relaxed.cta` 两种顺序均可解析，
 `red` 的相应形式亦然。不同的 resolved variant 保留源码中是否写出了限定符。
-目标操作数必须是兼容指令 32 位或 64 位类型的寄存器；每个值来源可为兼容的
-寄存器或使用普通窄化转换的整数立即数。对于来源已知的地址，要求其为 global，
-并按类型满足四字节或八字节对齐。
+对于整数和位操作形式，目标操作数必须是兼容指令 32 位或 64 位类型的寄存器；
+每个值来源可为兼容的寄存器或使用普通窄化转换的整数立即数。对于来源已知的地址，
+要求其为 global，并按类型满足四字节或八字节对齐。
+浮点加法的目标和寄存器源支持原生浮点类型或等宽 bit-container 寄存器
+（`.f32`/`.b32`、`.f64`/`.b64`）。源立即数支持十进制浮点字面量与 `0f`/`0d`
+位模式字面量，不支持整数字面量。浮点加法按最近偶数舍入。global `.f32` 原子
+操作把次正规输入与结果 flush 为保留符号的零；`.f64` 不 flush 次正规数。
+这些是 ISA 行为说明，前端不执行这些操作。
 
 当前边界要求显式 `.global`。省略 state space 表示 generic 寻址，不属于该子集。
 其他操作与类型组合，包括 64 位 `.add.s64`、`.inc/.dec`、带 `.u64/.s64`
-后缀的位操作，以及 `red.cas`、`red.exch`，尚未支持。其他 state space、
+后缀的位操作、浮点 `.min/.max`，以及 `red.cas`、`red.exch`，尚未支持。其他 state space、
 memory order/scope、cache policy、向量形式、bit-bucket、`red.async` 和
 `multimem.red.async` 也不在当前子集内。
 `.inc` 与 `.dec` 的源操作数提供运行时界限；前端保留其类型化操作数，不模拟更新。
 
-C++ 包版本为 0.5.0。新增的 64 位命名分支扩展了公开的 `Atom::Variant` 与
-`Red::Variant`，改变了源码和二进制 API；consumer 需使用匹配的已安装头文件和库
-重新构建。先前 0.3.0 的改动使公开成员
+C++ 包版本为 0.6.0。每条指令末尾新增四个浮点分支，扩展了公开的
+`Atom::Variant` 与 `Red::Variant`，同时保留此前所有分支的索引。
+源码和二进制 API 均有变化；consumer 需使用匹配的已安装头文件和库重新构建。
+先前 0.3.0 的改动使公开成员
 `Atom::GlobalRelaxedCtaAddU32::src` 和 `Red::GlobalRelaxedCtaAddU32::src`
 现在持有 `RegOrImm`。读取寄存器时使用
 `std::get<ResolvedRegisterRef>(value.src.value)`；读取立即数时使用
-`std::get<ResolvedImmediate>(value.src.value)`；新增的一源分支使用相同的操作数
-表示。Python wheel 独立保持 0.1.0b1。
+`std::get<ResolvedImmediate>(value.src.value)`；浮点分支使用相同的操作数
+表示。Python wheel 独立使用 0.1.0b2，因为打包的指令 YAML 包含这些新分支。

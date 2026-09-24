@@ -50,6 +50,14 @@ enum class MemoryStateSpace : uint8_t {
   Parameter,
   Constant
 };
+/** Written address qualifier of an atom or red operation. */
+enum class AtomicAddressQualifier : uint8_t {
+  Generic,
+  Global,
+  Shared,
+  SharedCta,
+  SharedCluster,
+};
 /** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
@@ -200,6 +208,12 @@ struct AddressAlignmentConstraint {
   uint64_t alignment = 0;
 };
 enum class VectorTypePolicy : uint8_t { Aggregate, Element };
+/** Required base shape for one bracketed address operand. */
+enum class AddressBasePolicy : uint8_t { Any, Register };
+/** Owned address base shape projected into checker views. */
+enum class AddressBaseKind : uint8_t { Unknown, Register, Immediate, Symbol };
+/** Permitted signed source range for an address's optional immediate offset. */
+enum class AddressOffsetDomain : uint8_t { Unrestricted, Signed32 };
 enum class MbarrierStateTokenForm : uint8_t { Register, RegisterOrSink, Sink };
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
 inline constexpr size_t kMaxOperandElements = 64;
@@ -217,6 +231,10 @@ struct OperandDescriptor {
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
   size_t vector_sink_payload_bits = 0;
+  /** Optional declared lane-type domain, independent of instruction suffix. */
+  std::span<const base::ScalarType> allowed_register_types;
+  /** Enforce one integer-or-float family per vector; bit lanes are neutral. */
+  bool require_uniform_register_family = false;
   bool allow_destination_sink = false;
   bool allow_predicate_sink = false;
   MbarrierStateTokenForm mbarrier_state_token_form =
@@ -232,6 +250,8 @@ struct OperandDescriptor {
   /** Empty means no static state-space restriction. */
   std::span<const AddressStateSpaceDescriptor> allowed_address_state_spaces;
   std::string_view state_space_modifier_field_id{};
+  AddressBasePolicy address_base_policy = AddressBasePolicy::Any;
+  AddressOffsetDomain address_offset_domain = AddressOffsetDomain::Unrestricted;
   ParameterAddressConstraint parameter_constraint;
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
@@ -289,6 +309,9 @@ struct OperandView {
   std::optional<ScalarType> special_register_type;
   std::optional<base::SpecialRegisterId> special_register_id;
   std::optional<MemoryStateSpace> address_state_space;
+  AddressBaseKind address_base_kind = AddressBaseKind::Unknown;
+  /** True for absent or representable signed-32 address offsets. */
+  bool address_offset_fits_signed32 = true;
   std::optional<uint64_t> address_alignment;
   bool address_unified = false;
   /** Known only for declaration-bound address bases. */
@@ -677,6 +700,24 @@ struct ResolvedAddressOffset {
   ResolvedImmediate value;
   bool operator==(const ResolvedAddressOffset&) const = default;
 };
+/** Check the effective signed offset after combining operator and literal sign. */
+[[nodiscard]] inline bool address_offset_fits_signed32(
+    const ResolvedAddressOffset& offset) {
+  if (offset.operation != ResolvedAddressOffsetOperator::Add &&
+      offset.operation != ResolvedAddressOffsetOperator::Subtract)
+    return false;
+  if (offset.value.type != ScalarType::S64 ||
+      (offset.value.integer_source_bits &&
+       *offset.value.integer_source_bits != offset.value.bits))
+    return false;
+  const uint64_t source_bits = offset.value.bits;
+  const uint64_t magnitude =
+      offset.value.is_negative ? uint64_t{0} - source_bits : source_bits;
+  const bool negative =
+      (offset.operation == ResolvedAddressOffsetOperator::Subtract) !=
+      offset.value.is_negative;
+  return magnitude <= (negative ? uint64_t{1} << 31 : (uint64_t{1} << 31) - 1);
+}
 using ResolvedAddressBase =
     std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedSymbolRef>;
 /** A PTX address expression with resolved base, offset, and function context. */

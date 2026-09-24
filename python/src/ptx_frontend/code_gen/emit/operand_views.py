@@ -520,6 +520,18 @@ def emit_check_operand_view(
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
                   .address_state_space = effective_state_space,
+                  .address_base_kind =
+                      std::holds_alternative<ResolvedRegisterRef>(
+                          {object_name}.{field.name}.value.base)
+                          ? checker::AddressBaseKind::Register
+                          : std::holds_alternative<ResolvedImmediate>(
+                                {object_name}.{field.name}.value.base)
+                                ? checker::AddressBaseKind::Immediate
+                                : checker::AddressBaseKind::Symbol,
+                  .address_offset_fits_signed32 =
+                      !{object_name}.{field.name}.value.offset ||
+                      address_offset_fits_signed32(
+                          *{object_name}.{field.name}.value.offset),
                   .address_alignment = address_alignment,
                   .address_unified = {object_name}.{field.name}.value.unified,
                   .address_declaration_is_unified = declaration_is_unified,
@@ -675,6 +687,15 @@ def emit_check_operand_view(
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
                     .address_state_space = state_space_from_symbol(symbol),
+                    .address_base_kind =
+                        std::holds_alternative<ResolvedRegisterRef>(address.base)
+                            ? checker::AddressBaseKind::Register
+                            : std::holds_alternative<ResolvedImmediate>(address.base)
+                                  ? checker::AddressBaseKind::Immediate
+                                  : checker::AddressBaseKind::Symbol,
+                    .address_offset_fits_signed32 =
+                        !address.offset ||
+                        address_offset_fits_signed32(*address.offset),
                     .enclosing_function_kind = address.enclosing_function_kind,
                     .parameter_direction = parameter_direction_from_symbol(symbol),
                     .parameter_qualifier = address.parameter_qualifier,

@@ -828,6 +828,17 @@ $defs:
                 - $ref: "#/$defs/state_space_with_availability"
           - $ref: "#/$defs/state_space_expr"
 
+      address_base:
+        description: "Required base form for a bracketed address operand."
+        type: string
+        enum: [any, register]
+        default: any
+      address_offset_domain:
+        description: "Allowed signed source domain for a bracketed address offset."
+        type: string
+        enum: [unrestricted, signed32]
+        default: unrestricted
+
       parameter:
         $ref: "#/$defs/parameter_address_constraint"
 
@@ -1041,6 +1052,21 @@ $defs:
 
       allow_sink:
         description: "Whether ``_`` is accepted as a vector element sink."
+        type: boolean
+        default: false
+
+      allowed_register_types:
+        description: "Explicit declared register types accepted in each vector lane."
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+
+      require_uniform_register_family:
+        description: >
+          Reject a vector that mixes integer and floating register families;
+          bit-type lanes and ``_`` destinations are neutral.
         type: boolean
         default: false
 

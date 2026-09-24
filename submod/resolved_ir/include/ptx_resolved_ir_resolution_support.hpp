@@ -75,6 +75,10 @@ struct ResolveContext {
   std::span<const binding::SymbolId> unified_storage_symbols;
 };
 
+/** Preserve the written atomic address suffix after syntax selection. */
+WithLocs<AtomicAddressQualifier> atomic_address_qualifier_from_ast(
+    const syntax_ast::AstInstruction& ast);
+
 /** Constrain generated instruction records to their public descriptor accessors. */
 template <typename T>
 concept PtxOperator = requires(T object) {

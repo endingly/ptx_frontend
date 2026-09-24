@@ -112,6 +112,14 @@ CheckResult check_createpolicy_rule(std::span<const OperandView>,
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,
     std::span<const FieldView>, std::span<const OperandView>, const Context&);
+/** Check independent atomic address suffix, provenance, and target floors. */
+CheckResult check_atomic_qualifiers(const WithLocs<AtomicAddressQualifier>&,
+                                    std::span<const FieldView>,
+                                    std::span<const OperandView>,
+                                    const Context&);
+/** MMIO release reductions require system scope. */
+CheckResult check_red_async_release_qualifiers(std::span<const FieldView>,
+                                               const Context&);
 /** Reject `.unified` address suffixes not explicitly admitted by a variant. */
 CheckResult check_unified_address_suffix(const VariantDescriptor&,
                                          std::span<const FieldView>,

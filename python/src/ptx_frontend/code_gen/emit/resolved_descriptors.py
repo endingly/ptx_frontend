@@ -209,6 +209,14 @@ def _emit_operand_layout_storage(
         for binding_index, binding in enumerate(layout.bindings)
         if binding.allowed_vector_arities
     )
+    register_type_domains = "\n\n".join(
+        f"""  static constexpr std::array<base::ScalarType, {len(binding.allowed_vector_register_types)}>
+      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_register_types = {{{{
+{', '.join(cpp_value(CppDomain.SCALAR_TYPES, value, backend=backend) for value in binding.allowed_vector_register_types)}
+      }}}};"""
+        for binding_index, binding in enumerate(layout.bindings)
+        if binding.allowed_vector_register_types
+    )
     address_state_spaces = "\n\n".join(
         f"""  static constexpr std::array<checker::AddressStateSpaceDescriptor, {len(binding.allowed_address_state_spaces)}>
       {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces = {{{{
@@ -222,10 +230,13 @@ def _emit_operand_layout_storage(
             binding,
             f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities",
             f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces", backend,
+            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_register_types",
         )
         for binding_index, binding in enumerate(layout.bindings)
     )
     return f"""{vector_arities}
+
+{register_type_domains}
 
 {address_state_spaces}
 
@@ -255,7 +266,8 @@ def _emit_address_state_spaces(entries, backend: CodegenUnit) -> str:
 
 
 def _emit_operand_binding_descriptor(
-    binding, vector_arities_name: str, address_state_spaces_name: str, backend: CodegenUnit
+    binding, vector_arities_name: str, address_state_spaces_name: str,
+    backend: CodegenUnit, register_types_name: str = ""
 ) -> str:
     allowed_shapes = " | ".join(
         cpp_value(CppDomain.RESOLVED_OPERAND_SHAPES, shape.value, backend=backend)
@@ -291,6 +303,14 @@ def _emit_operand_binding_descriptor(
         f"{binding.vector_sink_payload_bits},"
         if binding.vector_sink_payload_bits
         else ""
+    )
+    allowed_register_types = (
+        f"\n              .allowed_register_types = {register_types_name},"
+        if binding.allowed_vector_register_types else ""
+    )
+    require_uniform_register_family = (
+        "\n              .require_uniform_register_family = true,"
+        if binding.require_uniform_vector_register_family else ""
     )
     allow_destination_sink = (
         "\n              .allow_destination_sink = true,"
@@ -352,6 +372,14 @@ def _emit_operand_binding_descriptor(
         if binding.state_space_modifier_field_id is not None
         else ""
     )
+    address_base_policy = (
+        "\n              .address_base_policy = checker::AddressBasePolicy::Register,"
+        if binding.address_base_policy.value == "register" else ""
+    )
+    address_offset_domain = (
+        "\n              .address_offset_domain = checker::AddressOffsetDomain::Signed32,"
+        if binding.address_offset_domain.value == "signed32" else ""
+    )
     parameter_constraint = ""
     if binding.parameter_constraint is not None:
         availability = dict(binding.parameter_constraint.function_availability)
@@ -374,8 +402,8 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{parameter_constraint}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 

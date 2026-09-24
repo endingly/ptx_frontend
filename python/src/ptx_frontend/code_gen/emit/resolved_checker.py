@@ -194,7 +194,7 @@ def _emit_check_operand_dispatch(
     checker_variant_expr = (
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
-    cross_rule_checks = _emit_cross_rule_checks(variant, checker_variant_expr)
+    cross_rule_checks = _emit_cross_rule_checks(instruction, variant, checker_variant_expr)
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             emit_check_operand_view(field, "selected", backend)
@@ -298,7 +298,7 @@ def _emit_check_multi_layout_lambda(
                     .operand_type_compatibilities,
                 context);"""
     cross_rule_checks = _emit_cross_rule_checks(
-        variant,
+        instruction, variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
     )
     if cross_rule_checks:
@@ -339,12 +339,21 @@ def _emit_check_multi_layout_lambda(
 
 
 def _emit_cross_rule_checks(
+    instruction: ResolvedInstruction,
     variant: ResolvedVariant,
     checker_variant_expr: str,
 ) -> str:
     """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
+    if instruction.opcode in {"atom", "red"}:
+        checks += """            const auto atomic_check = check_atomic_qualifiers(
+                instruction.address_qualifier, fields, operands, context);
+            if (!atomic_check) {
+              diagnostics.insert(diagnostics.end(), atomic_check.error().begin(),
+                                 atomic_check.error().end());
+            }
+"""
     checks += f"""            const auto unified_address_check = check_unified_address_suffix(
                 {checker_variant_expr}, fields, operands, context);
             if (!unified_address_check) {{
@@ -418,6 +427,14 @@ def _emit_cross_rule_checks(
             if (!createpolicy_rule_check) {
               diagnostics.insert(diagnostics.end(), createpolicy_rule_check.error().begin(),
                                  createpolicy_rule_check.error().end());
+            }
+"""
+    if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
+        checks += """            const auto async_release_check = check_red_async_release_qualifiers(
+                fields, context);
+            if (!async_release_check) {
+              diagnostics.insert(diagnostics.end(), async_release_check.error().begin(),
+                                 async_release_check.error().end());
             }
 """
     return checks

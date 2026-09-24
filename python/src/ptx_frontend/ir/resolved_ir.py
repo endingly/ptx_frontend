@@ -21,6 +21,8 @@ from ptx_frontend.spec.model import (
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
     MbarrierStateTokenForm,
+    OperandAddressBasePolicy,
+    OperandAddressOffsetDomain,
     ModifierKind,
     ModifierPresence,
     ModifierSpec,
@@ -386,12 +388,16 @@ class ResolvedOperandBinding:
     allowed_shapes: tuple[ResolvedOperandShape, ...]
     allowed_address_state_spaces: tuple[ResolvedAddressStateSpace, ...] = ()
     state_space_modifier_field_id: str | None = None
+    address_base_policy: OperandAddressBasePolicy = OperandAddressBasePolicy.ANY
+    address_offset_domain: OperandAddressOffsetDomain = OperandAddressOffsetDomain.UNRESTRICTED
     parameter_constraint: ResolvedParameterAddressConstraint | None = None
     allowed_vector_arities: tuple[int, ...] = ()
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
     vector_sink_payload_bits: int = 0
+    allowed_vector_register_types: tuple[str, ...] = ()
+    require_uniform_vector_register_family: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
@@ -967,6 +973,8 @@ def _build_operand_layout(
                         modifier_field_ids,
                     )
                 ),
+                address_base_policy=operand.address_base_policy,
+                address_offset_domain=operand.address_offset_domain,
                 parameter_constraint=_resolve_parameter_address_constraint(
                     operand.parameter_constraint
                 ),
@@ -982,6 +990,10 @@ def _build_operand_layout(
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
                 vector_sink_payload_bits=operand.vector_sink_payload_bits,
+                allowed_vector_register_types=operand.vector_allowed_register_types,
+                require_uniform_vector_register_family=(
+                    operand.vector_require_uniform_register_family
+                ),
                 allow_destination_sink=operand.allow_destination_sink,
                 allow_predicate_sink=operand.allow_predicate_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,

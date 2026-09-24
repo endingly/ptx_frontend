@@ -71,6 +71,7 @@ class SemanticRule(_SemanticToken):
     PARALLEL_SYNC_AND_COMMUNICATION_FENCE = "parallel_sync_and_communication.fence"
     PARALLEL_SYNC_AND_COMMUNICATION_MEMBAR = "parallel_sync_and_communication.membar"
     PARALLEL_SYNC_AND_COMMUNICATION_RED = "parallel_sync_and_communication.red"
+    PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE = "parallel_sync_and_communication.red_async_release"
     PARALLEL_SYNC_AND_COMMUNICATION_SHFL = "parallel_sync_and_communication.shfl"
     PARALLEL_SYNC_AND_COMMUNICATION_VOTE = "parallel_sync_and_communication.vote"
 
@@ -221,6 +222,20 @@ class OperandRegisterWidthPolicy(_SemanticToken):
     EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
+
+
+class OperandAddressBasePolicy(_SemanticToken):
+    """Allowed base form of a bracketed address operand."""
+
+    ANY = "any"
+    REGISTER = "register"
+
+
+class OperandAddressOffsetDomain(_SemanticToken):
+    """Allowed signed source domain for a bracketed address offset."""
+
+    UNRESTRICTED = "unrestricted"
+    SIGNED32 = "signed32"
 
 
 class OperandImmediateConversionPolicy(_SemanticToken):
@@ -418,11 +433,15 @@ class OperandSpec:
     state_space_values: tuple[OperandStateSpaceValue, ...] = ()
     state_space_expression: OperandStateSpaceExpression | None = None
     parameter_constraint: OperandParameterConstraint | None = None
+    address_base_policy: OperandAddressBasePolicy = OperandAddressBasePolicy.ANY
+    address_offset_domain: OperandAddressOffsetDomain = OperandAddressOffsetDomain.UNRESTRICTED
     vector_arities: tuple[int, ...] = ()
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink: bool = False
     vector_sink_payload_bits: int = 0
+    vector_allowed_register_types: tuple[str, ...] = ()
+    vector_require_uniform_register_family: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER

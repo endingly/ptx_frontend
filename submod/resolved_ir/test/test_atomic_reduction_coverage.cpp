@@ -156,19 +156,35 @@ TEST(AtomicReductionCoverage, ExpandedOperationsHonorTargetFloors) {
     return checker::check(std::get<Red>(body[index]), context);
   };
   EXPECT_TRUE(check_at(0, 1, 1, 11).has_value());
-  EXPECT_EQ(check_at(0, 1, 0, 11).error().front().kind,
+  const auto atom_legacy_ptx = check_at(0, 1, 0, 11);
+  ASSERT_FALSE(atom_legacy_ptx.has_value());
+  ASSERT_FALSE(atom_legacy_ptx.error().empty());
+  EXPECT_EQ(atom_legacy_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(check_at(1, 1, 2, 11).has_value());
-  EXPECT_EQ(check_at(1, 1, 1, 11).error().front().kind,
+  const auto red_legacy_ptx = check_at(1, 1, 1, 11);
+  ASSERT_FALSE(red_legacy_ptx.has_value());
+  ASSERT_FALSE(red_legacy_ptx.error().empty());
+  EXPECT_EQ(red_legacy_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  for (size_t index = 0; index != 2; ++index)
-    EXPECT_EQ(check_at(index, 1, 2, 10).error().front().kind,
+  for (size_t index = 0; index != 2; ++index) {
+    const auto legacy_sm = check_at(index, 1, 2, 10);
+    ASSERT_FALSE(legacy_sm.has_value());
+    ASSERT_FALSE(legacy_sm.error().empty());
+    EXPECT_EQ(legacy_sm.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
   for (size_t index = 2; index != 4; ++index) {
     EXPECT_TRUE(check_at(index, 6, 0, 70).has_value());
-    EXPECT_EQ(check_at(index, 5, 9, 70).error().front().kind,
+    const auto modern_ptx = check_at(index, 5, 9, 70);
+    ASSERT_FALSE(modern_ptx.has_value());
+    ASSERT_FALSE(modern_ptx.error().empty());
+    EXPECT_EQ(modern_ptx.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-    EXPECT_EQ(check_at(index, 6, 0, 69).error().front().kind,
+    const auto modern_sm = check_at(index, 6, 0, 69);
+    ASSERT_FALSE(modern_sm.has_value());
+    ASSERT_FALSE(modern_sm.error().empty());
+    EXPECT_EQ(modern_sm.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedSmVersion);
   }
 }
@@ -203,21 +219,36 @@ TEST(AtomicReductionCoverage, EnforcesLegacyAndModernTargetFloors) {
   };
   for (size_t index : {0u, 2u}) {
     EXPECT_TRUE(check_at(index, 1, 1, 11).has_value());
-    EXPECT_EQ(check_at(index, 1, 0, 11).error().front().kind,
+    const auto legacy_ptx = check_at(index, 1, 0, 11);
+    ASSERT_FALSE(legacy_ptx.has_value());
+    ASSERT_FALSE(legacy_ptx.error().empty());
+    EXPECT_EQ(legacy_ptx.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   }
   EXPECT_TRUE(check_at(1, 1, 2, 11).has_value());
-  EXPECT_EQ(check_at(1, 1, 1, 11).error().front().kind,
+  const auto red_legacy_ptx = check_at(1, 1, 1, 11);
+  ASSERT_FALSE(red_legacy_ptx.has_value());
+  ASSERT_FALSE(red_legacy_ptx.error().empty());
+  EXPECT_EQ(red_legacy_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   for (size_t index = 0; index != 3; ++index) {
-    EXPECT_EQ(check_at(index, 1, 2, 10).error().front().kind,
+    const auto legacy_sm = check_at(index, 1, 2, 10);
+    ASSERT_FALSE(legacy_sm.has_value());
+    ASSERT_FALSE(legacy_sm.error().empty());
+    EXPECT_EQ(legacy_sm.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedSmVersion);
   }
   for (size_t index = 3; index != 6; ++index) {
     EXPECT_TRUE(check_at(index, 6, 0, 70).has_value());
-    EXPECT_EQ(check_at(index, 5, 9, 70).error().front().kind,
+    const auto modern_ptx = check_at(index, 5, 9, 70);
+    ASSERT_FALSE(modern_ptx.has_value());
+    ASSERT_FALSE(modern_ptx.error().empty());
+    EXPECT_EQ(modern_ptx.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-    EXPECT_EQ(check_at(index, 6, 0, 69).error().front().kind,
+    const auto modern_sm = check_at(index, 6, 0, 69);
+    ASSERT_FALSE(modern_sm.has_value());
+    ASSERT_FALSE(modern_sm.error().empty());
+    EXPECT_EQ(modern_sm.error().front().kind,
               checker::CheckDiagnosticKind::UnsupportedSmVersion);
   }
 }

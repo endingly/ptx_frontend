@@ -7,9 +7,9 @@
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/mul/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/mul/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mul/resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/mul/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"

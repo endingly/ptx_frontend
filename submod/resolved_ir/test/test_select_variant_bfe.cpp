@@ -8,9 +8,9 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/bfe/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/bfe/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/bfe/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/bfe/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

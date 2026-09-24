@@ -8,9 +8,9 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

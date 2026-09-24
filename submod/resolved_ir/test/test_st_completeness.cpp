@@ -6,9 +6,9 @@
 
 #include <ptx_frontend/resolved_ir/model/data_movement/st/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/st/resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement/st/resolution.gen.hpp>
 
 #include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"

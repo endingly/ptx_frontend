@@ -2,9 +2,9 @@
 
 #include <string_view>
 
+#include <ptx_frontend/resolved_ir/model/data_movement/prefetch/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/prefetch/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/prefetch/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement/prefetch/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
@@ -110,7 +110,6 @@ TEST(PrefetchCompleteness, ChecksTargetsAndRejectsUnsupportedSyntax) {
     expect_prefetch_rejected(source, target);
   }
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

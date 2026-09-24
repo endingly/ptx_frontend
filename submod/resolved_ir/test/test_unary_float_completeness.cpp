@@ -8,13 +8,13 @@
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/rcp/checker.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/checker.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/rcp/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/rcp/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"

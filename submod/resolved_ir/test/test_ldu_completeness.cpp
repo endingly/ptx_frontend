@@ -16,12 +16,6 @@ namespace {
 
 using test_helpers::parseModule;
 
-
-
-
-
-
-
 /** Bound addresses and declared registers retain space, width, and alignment checks. */
 TEST(LduCompleteness, ChecksModuleAddressAndDestinationContracts) {
   const auto valid_ast = parseModule(R"ptx(
@@ -79,8 +73,6 @@ TEST(LduCompleteness, ChecksModuleAddressAndDestinationContracts) {
       EXPECT_FALSE(validateModule(*resolved));
   }
 }
-
-
 
 /** Retained symbol alignment is rechecked after the source AST is destroyed. */
 TEST(LduCompleteness, RevalidatesOwnedBoundAddressWithoutAst) {

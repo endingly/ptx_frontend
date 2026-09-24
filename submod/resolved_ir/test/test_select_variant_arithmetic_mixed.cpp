@@ -5,18 +5,18 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/model/arithmetic/and/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/and/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/or/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/or/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/xor/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/xor/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/not/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/not/resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/and/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/and/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/not/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/not/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/or/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/or/resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/sub/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/sub/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/xor/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/xor/resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

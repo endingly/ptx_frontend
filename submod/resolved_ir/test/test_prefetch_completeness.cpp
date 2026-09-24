@@ -16,10 +16,6 @@ namespace {
 
 using test_helpers::parseModule;
 
-
-
-
-
 /** Generic prefetch and tensor-map forms enforce their separate provenance. */
 TEST(PrefetchCompleteness, ChecksBoundAddressTopology) {
   const auto valid_ast = parseModule(R"ptx(

@@ -8,10 +8,10 @@
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/abs/checker.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/neg/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/abs/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/neg/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/abs/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/neg/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"

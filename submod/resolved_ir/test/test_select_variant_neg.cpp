@@ -8,9 +8,9 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/neg/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/neg/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/neg/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

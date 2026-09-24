@@ -8,9 +8,9 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

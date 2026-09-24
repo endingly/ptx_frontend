@@ -14,14 +14,6 @@
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-
-
-
-
-
-
-
-
 /** Enforce the independent PTX and SM minima for both scalar widths and opcodes. */
 TEST(TestpCopysignCompleteness, ChecksAvailabilityForBothTypesAndOpcodes) {
   for (const auto source :
@@ -110,10 +102,6 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
   EXPECT_EQ(invalid_copysign.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 }
-
-
-
-
 
 /** Validate both `copysign` source roles against declared containers and literals. */
 TEST(CopysignCompleteness, ChecksDeclaredContainersAndSourceLiterals) {

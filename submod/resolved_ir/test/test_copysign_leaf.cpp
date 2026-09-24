@@ -2,9 +2,9 @@
 
 #include <variant>
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/copysign/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/copysign/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/copysign/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/copysign/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
@@ -48,7 +48,6 @@ TEST(CopysignCompleteness, RejectsWrongTypesAndChecksAvailability) {
                                               .sm_version = 20}})
                   .has_value());
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

@@ -8,9 +8,9 @@
 #include <utility>
 #include <variant>
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/testp/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/testp/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/testp/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic/testp/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
@@ -112,7 +112,6 @@ TEST(TestpCompleteness, ChecksIndependentPtxAndSmBoundariesAndCorruption) {
   property = static_cast<TestProperty>(255);
   EXPECT_FALSE(checker::check(*resolved, current).has_value());
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

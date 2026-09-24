@@ -398,9 +398,6 @@ TEST(ResolvedIrChecker, RejectsDnfAtEveryAvailabilityCheckerEntrypoint) {
       memory_vector, vector_fields, vector_operands, context));
 }
 
-
-
-
 TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
   constexpr VariantDescriptor::ImmediateMultipleOfDescriptor descriptor{
       .operand_field_id = "count",
@@ -496,7 +493,6 @@ TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
                   Context{.instruction_range = kInstructionRange})
                   .has_value());
 }
-
 
 TEST(ResolvedIrChecker, AccumulatesTargetAvailabilityDiagnostics) {
   constexpr std::array<std::string_view, 1> families{"sm_100"};
@@ -1275,7 +1271,6 @@ TEST(ResolvedIrChecker, ChecksReturnParameterAvailabilityWithoutFunctionKind) {
   EXPECT_EQ(wrong_direction.error().front().kind,
             CheckDiagnosticKind::ParameterDirectionMismatch);
 }
-
 
 TEST(ResolvedIrChecker, ChecksGeneratedMemoryConsistencyCrossRules) {
   static constexpr std::array kMmioSemantics{

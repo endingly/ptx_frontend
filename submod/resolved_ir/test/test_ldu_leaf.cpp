@@ -5,9 +5,9 @@
 #include <string_view>
 #include <variant>
 
+#include <ptx_frontend/resolved_ir/model/data_movement/ldu/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ldu/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ldu/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement/ldu/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
@@ -128,7 +128,6 @@ TEST(LduCompleteness, RevalidatesOwnedMutation) {
   vector.address.value.unified = true;
   EXPECT_FALSE(checker::check(*resolved, context));
 }
-
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

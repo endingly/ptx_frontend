@@ -3,9 +3,9 @@
 #include <string_view>
 #include <utility>
 
+#include <ptx_frontend/resolved_ir/model/data_movement/ld/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ld/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ld/resolution.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement/ld/checker.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

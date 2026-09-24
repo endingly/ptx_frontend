@@ -4243,7 +4243,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for operation in ("Add", "Min", "Max")
                 for scalar_type in ("U32", "S32")
                 for qualifier in ("", "RelaxedCta")
-            ] + ["GlobalCasB32", "GlobalRelaxedCtaCasB32"],
+            ] + ["GlobalCasB32", "GlobalRelaxedCtaCasB32"] + [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation, scalar_type in (
+                    ("Inc", "U32"), ("Dec", "U32"),
+                    ("And", "B32"), ("Or", "B32"),
+                    ("Xor", "B32"), ("Exch", "B32"),
+                )
+                for qualifier in ("", "RelaxedCta")
+            ],
         )
         variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
@@ -4287,6 +4295,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 for operation in ("Add", "Min", "Max")
                 for scalar_type in ("U32", "S32")
                 for qualifier in ("", "RelaxedCta")
+            ] + [
+                f"Global{qualifier}{operation}{scalar_type}"
+                for operation, scalar_type in (
+                    ("Inc", "U32"), ("Dec", "U32"),
+                    ("And", "B32"), ("Or", "B32"), ("Xor", "B32"),
+                )
+                for qualifier in ("", "RelaxedCta")
             ],
         )
         variant = next(v for v in resolved.variants if v.cpp_name == "GlobalRelaxedCtaAddU32")
@@ -4322,8 +4337,20 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 variant.cpp_name: variant
                 for variant in from_instruction_spec(instruction).variants
             }
-            for operation in ("Add", "Min", "Max"):
-                for scalar_type in ("U32", "S32"):
+            operation_types = (
+                ("Add", ("U32", "S32")),
+                ("Min", ("U32", "S32")),
+                ("Max", ("U32", "S32")),
+                ("Inc", ("U32",)),
+                ("Dec", ("U32",)),
+                ("And", ("B32",)),
+                ("Or", ("B32",)),
+                ("Xor", ("B32",)),
+            )
+            if opcode == "atom":
+                operation_types += (("Exch", ("B32",)),)
+            for operation, scalar_types in operation_types:
+                for scalar_type in scalar_types:
                     for qualifier, availability in (
                         ("", {"ptx": legacy_ptx, "sm": 11}),
                         ("RelaxedCta", {"ptx": "6.0", "sm": 70}),

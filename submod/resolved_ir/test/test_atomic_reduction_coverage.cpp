@@ -61,11 +61,14 @@ TEST(AtomicReductionCoverage, ResolvesEverySupportedTupleAndQualifierCohort) {
   }
   const auto& legacy_cas =
       std::get<Atom::GlobalCasB32>(std::get<Atom>(body[12]).variant);
-  const auto& modern_cas = std::get<Atom::GlobalRelaxedCtaCasB32>(
-      std::get<Atom>(body[13]).variant);
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(legacy_cas.compare.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(legacy_cas.swap.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(modern_cas.compare.value));
+  const auto& modern_cas =
+      std::get<Atom::GlobalRelaxedCtaCasB32>(std::get<Atom>(body[13]).variant);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(legacy_cas.compare.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(legacy_cas.swap.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(modern_cas.compare.value));
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(modern_cas.swap.value));
   const auto& atom_source =
       std::get<Atom::GlobalAddU32>(std::get<Atom>(body[0]).variant).src.value;
@@ -73,6 +76,101 @@ TEST(AtomicReductionCoverage, ResolvesEverySupportedTupleAndQualifierCohort) {
       std::get<Red::GlobalAddU32>(std::get<Red>(body[14]).variant).src.value;
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(atom_source));
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_source));
+}
+
+/** Exercise all added one-source variants and preserve their public ordering. */
+TEST(AtomicReductionCoverage, ResolvesExpandedScalarMatrix) {
+  std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.global .align 4 .b32 global_value;
+.entry kernel() {
+  .reg .u32 %u<3>;
+  .reg .b32 %b<3>;
+)ptx";
+  for (std::string_view opcode : {"atom", "red"}) {
+    for (std::string_view operation :
+         {"inc", "dec", "and", "or", "xor", "exch"}) {
+      if (opcode == "red" && operation == "exch")
+        continue;
+      const std::string_view type =
+          operation == "inc" || operation == "dec" ? "u32" : "b32";
+      for (std::string_view qualifier : {"", ".relaxed.cta"}) {
+        source += std::string(opcode) + ".global" + std::string(qualifier) +
+                  "." + std::string(operation) + "." + std::string(type) + " ";
+        if (opcode == "atom")
+          source += type == "u32" ? "%u0, " : "%b0, ";
+        source += "[global_value], ";
+        source +=
+            qualifier.empty() ? (type == "u32" ? "%u1;\n" : "%b1;\n") : "1;\n";
+      }
+    }
+  }
+  source += "}\n";
+  const auto parsed = test_helpers::parseModule(source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 22u);
+  for (size_t index = 0; index != 12; ++index)
+    EXPECT_EQ(std::get<Atom>(body[index]).variant.index(), index + 14);
+  for (size_t index = 0; index != 10; ++index)
+    EXPECT_EQ(std::get<Red>(body[index + 12]).variant.index(), index + 12);
+  const auto& inc =
+      std::get<Atom::GlobalIncU32>(std::get<Atom>(body[0]).variant);
+  const auto& exch =
+      std::get<Atom::GlobalRelaxedCtaExchB32>(std::get<Atom>(body[11]).variant);
+  const auto& red =
+      std::get<Red::GlobalRelaxedCtaXorB32>(std::get<Red>(body.back()).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(inc.src.value));
+  EXPECT_EQ(inc.type, ScalarType::U32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(exch.src.value));
+  EXPECT_EQ(exch.type, ScalarType::B32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red.src.value));
+  EXPECT_EQ(red.type, ScalarType::B32);
+}
+
+/** Pin legacy and explicit target floors for the added operation families. */
+TEST(AtomicReductionCoverage, ExpandedOperationsHonorTargetFloors) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.global .align 4 .b32 global_value;
+.entry kernel() {
+  .reg .b32 %b<2>;
+  atom.global.inc.u32 %b0, [global_value], %b1;
+  red.global.and.b32 [global_value], %b1;
+  atom.relaxed.cta.global.exch.b32 %b0, [global_value], %b1;
+  red.relaxed.cta.global.dec.u32 [global_value], %b1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  const auto check_at = [&](size_t index, uint16_t major, uint16_t minor,
+                            uint32_t sm) {
+    const checker::Context context{
+        .target = {.ptx_version = {major, minor}, .sm_version = sm}};
+    if (const auto* atom = std::get_if<Atom>(&body[index]))
+      return checker::check(*atom, context);
+    return checker::check(std::get<Red>(body[index]), context);
+  };
+  EXPECT_TRUE(check_at(0, 1, 1, 11).has_value());
+  EXPECT_EQ(check_at(0, 1, 0, 11).error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  EXPECT_TRUE(check_at(1, 1, 2, 11).has_value());
+  EXPECT_EQ(check_at(1, 1, 1, 11).error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  for (size_t index = 0; index != 2; ++index)
+    EXPECT_EQ(check_at(index, 1, 2, 10).error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  for (size_t index = 2; index != 4; ++index) {
+    EXPECT_TRUE(check_at(index, 6, 0, 70).has_value());
+    EXPECT_EQ(check_at(index, 5, 9, 70).error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_EQ(check_at(index, 6, 0, 69).error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  }
 }
 
 /** Pin the distinct target floors of omitted and explicit qualifiers. */
@@ -133,6 +231,14 @@ TEST(AtomicReductionCoverage, RejectsInvalidTopologySpaceAndAlignment) {
            "atom.global.add.u64 %b0, [global_value], %b1;",
            "atom.add.u32 %b0, [global_value], %b1;",
            "red.acquire.cta.global.add.u32 [global_value], %b1;",
+           "atom.global.inc.s32 %b0, [global_value], %b1;",
+           "red.global.dec.s32 [global_value], %b1;",
+           "atom.global.and.u32 %b0, [global_value], %b1;",
+           "red.global.or.u32 [global_value], %b1;",
+           "atom.global.exch.u32 %b0, [global_value], %b1;",
+           "red.global.exch.b32 [global_value], %b1;",
+           "atom.global.exch.b32 %b0, [global_value], %b1, %b2;",
+           "red.global.inc.u32 %b0, [global_value], %b1;",
        }) {
     const std::string source =
         ".global .align 4 .b32 global_value;\n.entry kernel() {\n"
@@ -166,6 +272,30 @@ TEST(AtomicReductionCoverage, RejectsInvalidTopologySpaceAndAlignment) {
   ASSERT_FALSE(red.has_value());
   EXPECT_EQ(red.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+
+  const auto expanded = test_helpers::parseModule(R"ptx(
+.global .align 4 .b32 global_value;
+.local .align 4 .b32 local_value;
+.entry kernel() {
+  .reg .b32 %b<2>;
+  atom.global.exch.b32 %b0, [local_value], %b1;
+  red.global.xor.b32 [global_value+2], %b1;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(expanded);
+  const auto expanded_ir = resolveModule(*expanded);
+  ASSERT_TRUE(expanded_ir.has_value()) << expanded_ir.error().front().message;
+  const auto& expanded_body = expanded_ir->functions.front().body;
+  EXPECT_EQ(checker::check(std::get<Atom>(expanded_body[0]), context)
+                .error()
+                .front()
+                .kind,
+            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  EXPECT_EQ(checker::check(std::get<Red>(expanded_body[1]), context)
+                .error()
+                .front()
+                .kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
 }
 
 /** Revalidate register payloads after the syntax owners have been released. */
@@ -180,6 +310,8 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   .reg .b32 %b<3>;
   atom.global.add.u32 %b0, [global_value], %b1;
   atom.global.cas.b32 %b0, [global_value], %b1, 2;
+  atom.global.xor.b32 %b0, [global_value], %b1;
+  red.global.dec.u32 [global_value], %b1;
 }
 )ptx");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
@@ -187,9 +319,9 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     owned.emplace(std::move(*resolved));
   }
-  ASSERT_TRUE(validateModule(*owned,
-                             ModuleValidationPolicy::RequireCompleteContext)
-                  .has_value());
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
   auto& body = owned->functions.front().body;
   auto& add = std::get<Atom::GlobalAddU32>(std::get<Atom>(body[0]).variant);
   auto& cas = std::get<Atom::GlobalCasB32>(std::get<Atom>(body[1]).variant);
@@ -209,9 +341,27 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   EXPECT_EQ(invalid_compare.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   compare.declared_type = ScalarType::B32;
-  EXPECT_TRUE(validateModule(*owned,
-                             ModuleValidationPolicy::RequireCompleteContext)
-                  .has_value());
+  auto& xor_src = std::get<ResolvedRegisterRef>(
+      std::get<Atom::GlobalXorB32>(std::get<Atom>(body[2]).variant).src.value);
+  xor_src.declared_type = ScalarType::U64;
+  const auto invalid_xor =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_xor.has_value());
+  EXPECT_EQ(invalid_xor.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  xor_src.declared_type = ScalarType::B32;
+  auto& red_src = std::get<ResolvedRegisterRef>(
+      std::get<Red::GlobalDecU32>(std::get<Red>(body[3]).variant).src.value);
+  red_src.declared_type = ScalarType::U64;
+  const auto invalid_red =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid_red.has_value());
+  EXPECT_EQ(invalid_red.error().front().kind,
+            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  red_src.declared_type = ScalarType::B32;
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
 }
 
 }  // namespace

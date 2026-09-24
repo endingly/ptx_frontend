@@ -60,6 +60,9 @@ constexpr std::string_view kFixture = R"ptx(
   red.relaxed.cta.global.add.u32 [atomic_value], 1;
   atom.global.cas.b32 %b0, [atomic_value], 1, %b1;
   atom.relaxed.cta.global.cas.b32 %b0, [atomic_value], %b1, 2;
+  atom.global.inc.u32 %u0, [atomic_value], %u0;
+  atom.relaxed.cta.global.exch.b32 %b0, [atomic_value], 1;
+  red.global.xor.b32 [atomic_value], %b1;
   ret;
 }
 )ptx";
@@ -92,19 +95,17 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 32, "all conversion and atomic instructions"))
+  if (!require(body.size() == 35, "all conversion and atomic instructions"))
     return false;
 
   auto* atom_instruction = std::get_if<ir::Atom>(&body[27]);
-  auto* atom = atom_instruction
-                   ? std::get_if<ir::Atom::GlobalRelaxedCtaAddU32>(
-                         &atom_instruction->variant)
-                   : nullptr;
+  auto* atom = atom_instruction ? std::get_if<ir::Atom::GlobalRelaxedCtaAddU32>(
+                                      &atom_instruction->variant)
+                                : nullptr;
   auto* red_instruction = std::get_if<ir::Red>(&body[28]);
-  auto* red = red_instruction
-                  ? std::get_if<ir::Red::GlobalRelaxedCtaAddU32>(
-                        &red_instruction->variant)
-                  : nullptr;
+  auto* red = red_instruction ? std::get_if<ir::Red::GlobalRelaxedCtaAddU32>(
+                                    &red_instruction->variant)
+                              : nullptr;
   auto* legacy_cas_instruction = std::get_if<ir::Atom>(&body[29]);
   auto* legacy_cas = legacy_cas_instruction
                          ? std::get_if<ir::Atom::GlobalCasB32>(
@@ -115,14 +116,44 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                          ? std::get_if<ir::Atom::GlobalRelaxedCtaCasB32>(
                                &modern_cas_instruction->variant)
                          : nullptr;
-  if (!require(atom && red && legacy_cas && modern_cas &&
-                   std::holds_alternative<ir::ResolvedRegisterRef>(atom->src.value) &&
-                   std::holds_alternative<ir::ResolvedImmediate>(red->src.value) &&
-                   std::holds_alternative<ir::ResolvedImmediate>(legacy_cas->compare.value) &&
-                   std::holds_alternative<ir::ResolvedRegisterRef>(legacy_cas->swap.value) &&
-                   std::holds_alternative<ir::ResolvedRegisterRef>(modern_cas->compare.value) &&
-                   std::holds_alternative<ir::ResolvedImmediate>(modern_cas->swap.value),
-               "owned atomic register and immediate sources"))
+  if (!require(
+          atom && red && legacy_cas && modern_cas &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  atom->src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(red->src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(
+                  legacy_cas->compare.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  legacy_cas->swap.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  modern_cas->compare.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(
+                  modern_cas->swap.value),
+          "owned atomic register and immediate sources"))
+    return false;
+
+  const auto* inc_instruction = std::get_if<ir::Atom>(&body[31]);
+  const auto* inc =
+      inc_instruction
+          ? std::get_if<ir::Atom::GlobalIncU32>(&inc_instruction->variant)
+          : nullptr;
+  const auto* exch_instruction = std::get_if<ir::Atom>(&body[32]);
+  const auto* exch = exch_instruction
+                         ? std::get_if<ir::Atom::GlobalRelaxedCtaExchB32>(
+                               &exch_instruction->variant)
+                         : nullptr;
+  const auto* xor_instruction = std::get_if<ir::Red>(&body[33]);
+  const auto* xor_red =
+      xor_instruction
+          ? std::get_if<ir::Red::GlobalXorB32>(&xor_instruction->variant)
+          : nullptr;
+  if (!require(
+          inc && exch && xor_red &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(inc->src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(exch->src.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  xor_red->src.value),
+          "owned expanded atomic and reduction variants"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);

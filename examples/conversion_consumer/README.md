@@ -2,7 +2,7 @@
 
 This example consumes the installed `ptx_frontend` package through its public
 CMake target `ptx_frontend::resolved_ir` and the `ptx_spec` data component,
-requesting package version `0.3.0`. Configuration checks that the installed PTX
+requesting package version `0.4.0`. Configuration checks that the installed PTX
 and C++ backend YAML/schema paths all exist.
 The source covers a targeted module with these representative forms:
 
@@ -21,8 +21,9 @@ The source covers a targeted module with these representative forms:
   selector immediates, and typed `.ftz`;
 - ordinary `selp.s32` and the retained `selp.u32` alternative, including
   complemented register and integer predicate sources.
-- synchronous global `atom`/`red` add and `atom.cas.b32`, including legacy and
-  explicit relaxed-CTA forms with register and immediate value sources.
+- synchronous global `atom`/`red` add, `atom.cas.b32`, and the 32-bit
+  increment, exchange, and bitwise cohorts, including legacy and explicit
+  relaxed-CTA forms with register and immediate value sources.
 
 The module uses PTX 9.3 and `sm_121a`, which supplies the exact target context
 for the scaled `s2f6x2` form. The program also checks the public scalar and

@@ -8,8 +8,8 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/checker/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>

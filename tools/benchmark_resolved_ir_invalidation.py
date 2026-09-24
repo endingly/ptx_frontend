@@ -3,7 +3,8 @@
 
 Build the selected Debug or Release test target once before running this script.
 The probe temporarily adds a condition-code annotation to the SELP U32 variant,
-which changes its category model header without changing C++ names or layouts.
+which changes its opcode model leaf (or the category header in older builds)
+without changing C++ names or layouts.
 The original spec and generated files are restored even if compilation fails.
 Run this script separately against a baseline checkout and the candidate tree.
 """
@@ -104,10 +105,15 @@ def main() -> None:
     if not match:
         raise RuntimeError("Spec codegen category is missing")
     category = match.group(1)
-    generated = (
+    opcode_header = (
+        build_dir
+        / f"submod/resolved_ir/generated/public/ptx_frontend/resolved_ir/model/{category}/selp/model.gen.hpp"
+    )
+    category_header = (
         build_dir
         / f"submod/resolved_ir/generated/public/ptx_frontend/resolved_ir/model/{category}.gen.hpp"
     )
+    generated = opcode_header if opcode_header.is_file() else category_header
     if original.count(PROBE_OLD) != 1 or PROBE_NEW in original:
         raise RuntimeError("SELP U32 probe anchor is missing or already modified")
     if not generated.is_file():

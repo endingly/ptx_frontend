@@ -31,6 +31,9 @@ from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import (
     GeneratedArtifact,
     GenerationPlan,
+    GROUPED_SOURCE_CATEGORIES,
+    _source_groups,
+    _stable_opcode_bucket,
     build_generation_plan,
 )
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
@@ -190,6 +193,137 @@ class GenerationPlanTests(unittest.TestCase):
                 },
             )
 
+    def test_large_category_sources_use_fixed_groups_and_narrow_headers(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            plan = build_generation_plan(context, output)
+            expected_names = {
+                "arithmetic": ("bucket_0", "bucket_1", "bucket_2"),
+                "data_movement": ("cvt", "ld", "bucket_0", "bucket_1"),
+                "parallel_synchronization_and_communication": (
+                    "mbarrier", "atom", "red", "residual"
+                ),
+            }
+            self.assertEqual(set(expected_names), GROUPED_SOURCE_CATEGORIES)
+            cpp_names = {
+                entry.specification.opcode: entry.cpp_name for entry in context.entries
+            }
+            for category, names in expected_names.items():
+                opcodes = tuple(
+                    entry.specification.opcode
+                    for entry in context.entries
+                    if entry.specification.codegen_category == category
+                )
+                groups = _source_groups(category, opcodes)
+                self.assertEqual(tuple(name for name, _ in groups), names)
+                self.assertEqual(
+                    sorted(opcode for _, members in groups for opcode in members),
+                    sorted(opcodes),
+                )
+                source_artifacts = {
+                    artifact.path.name: artifact
+                    for artifact in plan.artifacts_for_category(category)
+                    if artifact.path.suffix == ".cpp"
+                    and artifact.path.name.startswith(f"resolved_ir_{category}_")
+                }
+                self.assertEqual(
+                    set(source_artifacts),
+                    {
+                        f"resolved_ir_{category}_{name}.gen.cpp"
+                        for name in names
+                    },
+                )
+                self.assertNotIn(
+                    output / f"private/resolved_ir_{category}.gen.cpp", plan.paths
+                )
+                for name, members in groups:
+                    artifact = source_artifacts[
+                        f"resolved_ir_{category}_{name}.gen.cpp"
+                    ]
+                    artifact.emit(context, output_path=artifact.path)
+                    source = artifact.path.read_text(encoding="utf-8")
+                    includes = [line for line in source.splitlines()
+                                if line.startswith("#include <ptx_frontend/resolved_ir/model/")]
+                    self.assertEqual(includes, [
+                        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/{kind}.gen.hpp>"
+                        for opcode in members for kind in ("checker", "resolution")
+                    ])
+                    for opcode in members:
+                        self.assertIn(f"resolve<{cpp_names[opcode]}>", source)
+                        self.assertIn(
+                            f"CheckResult check<{cpp_names[opcode]}>", source
+                        )
+                    self.assertNotIn(
+                        f"checker/{category}.gen.hpp", source
+                    )
+            self.assertEqual(_stable_opcode_bucket("add", 3), 2)
+            self.assertEqual(_stable_opcode_bucket("sub", 3), 0)
+            self.assertEqual(_stable_opcode_bucket("mul", 3), 1)
+            self.assertEqual(_stable_opcode_bucket("mov", 2), 1)
+            self.assertEqual(_stable_opcode_bucket("st", 2), 0)
+
+    def test_opcode_headers_and_category_wrappers_have_stable_ownership(self) -> None:
+        context = build_generation_context(self.database, self.backend)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            plan = build_generation_plan(context, output)
+            public = output / "public/ptx_frontend/resolved_ir"
+            categories = {
+                entry.specification.codegen_category for entry in context.entries
+            }
+            self.assertEqual(len(context.entries), 92)
+            for kind in ("model", "resolution", "checker"):
+                leaves = [
+                    path for path in plan.paths
+                    if path.is_relative_to(public)
+                    if path.relative_to(public).parts[-1] == f"{kind}.gen.hpp"
+                    and len(path.relative_to(public).parts) == 4
+                ]
+                self.assertEqual(len(leaves), len(context.entries))
+
+            for category in sorted(categories):
+                opcodes = tuple(
+                    entry.specification.opcode for entry in context.entries
+                    if entry.specification.codegen_category == category
+                )
+                for kind in ("model", "resolution", "checker"):
+                    wrapper_path = public / kind / f"{category}.gen.hpp"
+                    wrapper = next(
+                        artifact for artifact in plan.artifacts
+                        if artifact.path == wrapper_path
+                    )
+                    wrapper.emit(context, output_path=wrapper.path)
+                    includes = [line for line in wrapper.path.read_text().splitlines()
+                                if line.startswith("#include")]
+                    self.assertEqual(includes, [
+                        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/{kind}.gen.hpp>"
+                        for opcode in opcodes
+                    ])
+
+            for category, opcode, cpp_name in (
+                ("arithmetic", "add", "Add"),
+                ("data_movement", "cvt", "Cvt"),
+                ("parallel_synchronization_and_communication", "mbarrier", "Mbarrier"),
+                ("comparison_and_selection", "setp", "Setp"),
+            ):
+                for kind in ("model", "resolution", "checker"):
+                    path = public / f"model/{category}/{opcode}/{kind}.gen.hpp"
+                    artifact = next(item for item in plan.artifacts if item.path == path)
+                    artifact.emit(context, output_path=path)
+                    source = path.read_text()
+                    self.assertIn("#pragma once", source)
+                    if kind == "model":
+                        self.assertIn(f"struct {cpp_name} {{", source)
+                        self.assertIn(
+                            f"visit_instruction_references(const {cpp_name}&", source
+                        )
+                    else:
+                        self.assertIn(
+                            f"model/{category}/{opcode}/model.gen.hpp", source
+                        )
+                        self.assertIn(f"<{cpp_name}>", source)
+
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
         from ptx_frontend.code_gen import cli
 
@@ -302,28 +436,52 @@ class GenerationPlanTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "generated"
-            active = output / "private/resolved_ir_arithmetic.gen.cpp"
+            active = output / "private/resolved_ir_arithmetic_bucket_2.gen.cpp"
+            retired_opcode = output / "private/resolved_ir_arithmetic_add.gen.cpp"
+            active_leaf = output / "public/ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp"
+            retired_category = output / "private/resolved_ir_arithmetic.gen.cpp"
             stale = output / "private/resolved_ir_legacy.gen.cpp"
             stale_nested = output / "public/ptx_frontend/resolved_ir/model/retired.gen.hpp"
+            retired_leaf = output / "public/ptx_frontend/resolved_ir/model/arithmetic/retired/model.gen.hpp"
+            retired_resolution = retired_leaf.with_name("resolution.gen.hpp")
+            retired_checker = retired_leaf.with_name("checker.gen.hpp")
+            unrelated = retired_leaf.with_name("notes.txt")
             old_public = output / "public/resolved_ir.gen.hpp"
             old_category = output / "public/resolved_ir/model/arithmetic.gen.hpp"
             active.parent.mkdir(parents=True)
             active.write_text("active", encoding="utf-8")
+            retired_opcode.write_text("retired", encoding="utf-8")
+            active_leaf.parent.mkdir(parents=True)
+            active_leaf.write_text("active leaf", encoding="utf-8")
+            retired_category.write_text("retired", encoding="utf-8")
             stale.write_text("stale", encoding="utf-8")
-            stale_nested.parent.mkdir(parents=True)
+            stale_nested.parent.mkdir(parents=True, exist_ok=True)
             stale_nested.write_text("stale", encoding="utf-8")
+            retired_leaf.parent.mkdir(parents=True)
+            retired_leaf.write_text("retired", encoding="utf-8")
+            retired_resolution.write_text("retired", encoding="utf-8")
+            retired_checker.write_text("retired", encoding="utf-8")
+            unrelated.write_text("preserve", encoding="utf-8")
             old_public.write_text("old layout", encoding="utf-8")
             old_category.parent.mkdir(parents=True)
             old_category.write_text("old layout", encoding="utf-8")
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
                 "private/resolved_ir_arithmetic.gen.cpp\n"
-                "public/ptx_frontend/resolved_ir/model/retired.gen.hpp\n",
+                "private/resolved_ir_arithmetic_bucket_2.gen.cpp\n"
+                "public/ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp\n",
                 encoding="utf-8",
             )
-            cli.remove_obsolete_generated_files(output, (active,))
+            cli.remove_obsolete_generated_files(output, (active, active_leaf))
             self.assertTrue(active.exists())
+            self.assertTrue(active_leaf.exists())
+            self.assertFalse(retired_category.exists())
+            self.assertFalse(retired_opcode.exists())
             self.assertFalse(stale.exists())
             self.assertFalse(stale_nested.exists())
+            self.assertFalse(retired_leaf.exists())
+            self.assertFalse(retired_resolution.exists())
+            self.assertFalse(retired_checker.exists())
+            self.assertEqual(unrelated.read_text(encoding="utf-8"), "preserve")
             self.assertFalse(old_public.exists())
             self.assertFalse(old_category.exists())
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
@@ -344,7 +502,7 @@ class GenerationPlanTests(unittest.TestCase):
             output = root / "generated"
             spec_dir.mkdir()
             backend_spec.write_text("backend\n", encoding="utf-8")
-            active = output / "public/ptx_frontend/resolved_ir/model/arithmetic.gen.hpp"
+            active = output / "public/ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp"
 
             def emit(_context, *, output_path: Path) -> None:
                 output_path.write_text("model\n", encoding="utf-8")
@@ -563,9 +721,18 @@ class GenerationPlanTests(unittest.TestCase):
             third_path = root / "third.hpp"
             first_plan = build_generation_plan(first, root / "one")
             second_plan = build_generation_plan(second, root / "two")
-            first_plan.artifacts[1].emit(first, output_path=first_path)
-            second_plan.artifacts[1].emit(second, output_path=second_path)
-            first_plan.artifacts[1].emit(first, output_path=third_path)
+            leaf = Path("public/ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp")
+            first_artifact = next(
+                artifact for artifact in first_plan.artifacts
+                if artifact.path.relative_to(root / "one") == leaf
+            )
+            second_artifact = next(
+                artifact for artifact in second_plan.artifacts
+                if artifact.path.relative_to(root / "two") == leaf
+            )
+            first_artifact.emit(first, output_path=first_path)
+            second_artifact.emit(second, output_path=second_path)
+            first_artifact.emit(first, output_path=third_path)
             self.assertNotIn("saturate_for_second_backend", first_path.read_text())
             self.assertIn("saturate_for_second_backend", second_path.read_text())
             self.assertNotIn("AlternateBackendBool", first_path.read_text())
@@ -612,68 +779,50 @@ class GenerationPlanTests(unittest.TestCase):
             for group in discover_codegen_category_inputs(spec_dir=SPEC_DIR)
         }
 
-        group = category_inputs["arithmetic"]
-
-        category_database = load_codegen_database_from_files(
-            spec_files=group.spec_files,
-            category="arithmetic",
-        )
-
-        category_context = build_generation_context(
-            category_database,
-            self.backend,
-        )
-
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-
             full_plan = build_generation_plan(
                 full_context,
                 root / "full",
             )
-
-            category_plan = build_generation_plan(
-                category_context,
-                root / "category",
-            )
-
-            full_artifacts = full_plan.artifacts_for_category("arithmetic")
-
-            category_artifacts = category_plan.artifacts_for_category("arithmetic")
-
-            full_by_name = {
-                artifact.path.relative_to(root / "full"): artifact
-                for artifact in full_artifacts
-            }
-
-            category_by_name = {
-                artifact.path.relative_to(root / "category"): artifact
-                for artifact in category_artifacts
-            }
-
-            self.assertEqual(
-                full_by_name.keys(),
-                category_by_name.keys(),
-            )
-
-            for relative_path in full_by_name:
-                full_artifact = full_by_name[relative_path]
-                category_artifact = category_by_name[relative_path]
-
-                full_artifact.emit(
-                    full_context,
-                    output_path=full_artifact.path,
+            for category in sorted(category_inputs):
+                group = category_inputs[category]
+                category_database = load_codegen_database_from_files(
+                    spec_files=group.spec_files,
+                    category=category,
                 )
-
-                category_artifact.emit(
+                category_context = build_generation_context(
+                    category_database,
+                    self.backend,
+                )
+                category_plan = build_generation_plan(
                     category_context,
-                    output_path=category_artifact.path,
+                    root / "category",
                 )
+                full_by_name = {
+                    artifact.path.relative_to(root / "full"): artifact
+                    for artifact in full_plan.artifacts_for_category(category)
+                }
+                category_by_name = {
+                    artifact.path.relative_to(root / "category"): artifact
+                    for artifact in category_plan.artifacts_for_category(category)
+                }
+                self.assertEqual(full_by_name.keys(), category_by_name.keys())
 
-                self.assertEqual(
-                    full_artifact.path.read_bytes(),
-                    category_artifact.path.read_bytes(),
-                )
+                for relative_path, full_artifact in full_by_name.items():
+                    category_artifact = category_by_name[relative_path]
+                    full_artifact.emit(
+                        full_context,
+                        output_path=full_artifact.path,
+                    )
+                    category_artifact.emit(
+                        category_context,
+                        output_path=category_artifact.path,
+                    )
+                    self.assertEqual(
+                        full_artifact.path.read_bytes(),
+                        category_artifact.path.read_bytes(),
+                    )
 
     def test_describe_build_is_read_only(self) -> None:
 

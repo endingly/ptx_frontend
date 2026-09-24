@@ -138,14 +138,17 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 一个 category 的 opcode struct 与 module-reference visitor |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 struct 与 module-reference visitor |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/{resolution,checker}.gen.hpp` | resolver / checker emitter | 包含对应 model leaf 的独立特化声明头 |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 按既有顺序包含 model leaf 的 category 兼容 wrapper |
 | `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
 | `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合所有 category model header 与 union 的兼容头 |
-| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 可独立包含的 category 特化声明 |
+| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 按既有顺序包含声明 leaf 的 category 兼容 wrapper |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 一个 category 的 out-of-line resolver 与 checker 特化定义 |
+| `private/resolved_ir_<category>_<group>.gen.cpp` | `emit.category_source` | arithmetic、data movement、parallel synchronization and communication 共 11 个稳定实现源文件；每个文件只包含组内 opcode 的声明 leaf |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 其余较小 category 的 out-of-line 特化定义 |
 | `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category 所有的 descriptor storage 与 getter |
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
@@ -159,15 +162,25 @@ target。顶层只提供 submodule 编排与 facade target。
 opcode 类型的 getter，并由 variant selection/resolution 消费；在生成器依赖边界改变前，
 它仍与其他 `gen_all.py` 输出一起归属 `resolved_ir`，不按文件名拆入 `syntax` submodule。
 
-公共头不包含生成函数体。生成分片使用归一化后的 `codegen_category`；它与记录 PTX
+resolver 与 checker 的特化函数体仍位于生成的私有源文件；model leaf 保留内联的引用访问器。
+每个 canonical opcode 均使用
+`model/<category>/<opcode>/` 下相同的三个 leaf 布局；原 category 头路径仍是按原顺序
+包含 leaf 的兼容 wrapper。consumer 可只包含一个 opcode 的 model、resolution 或 checker
+声明，而无需包含同 category 的其他 opcode。三个最大 category 的实现文件只包含
+组内 opcode 的声明 leaf。arithmetic 使用三个固定 SHA-256 bucket；data movement 为
+`cvt`、`ld` 分别保留独立文件，其余 opcode 哈希到两个 bucket；parallel synchronization
+and communication 为 `mbarrier`、`atom`、`red` 分别保留独立文件，其余 opcode 合并
+到一个文件。bucket 使用 canonical opcode 的 digest 对固定 bucket 数取模，因此新增
+opcode 不会重新分配已有成员。
+
+生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
-`codegen_category`，生成脚本据此产生稳定的 category 源文件，
-并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
-但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
+`codegen_category`。CMake 将 plan 中的 private source 编译进 `resolved_ir` library；
+复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
 生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
 output manifest）时保留 modification time。whole-module API 继续包含聚合 model 与完整
-union；category-local consumer 只包含自己的 model 以及 resolver/checker 声明头。
+union；category-local consumer 可继续使用原 category model 及 resolver/checker 头路径。
 
 比较与选择规范现在单独生成 `comparison_and_selection` 分区。通过分类头使用 `Set`、
 `Setp`、`Selp` 或 `Slct` 的代码，需要把原来的 `arithmetic.gen.hpp` 路径改为

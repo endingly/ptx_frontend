@@ -602,10 +602,18 @@ and `check<T>`, are emitted by YAML `codegen_category`. The aggregate
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp`, and
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
 category-local consumer can include only its model and specialization headers.
+Each opcode also has independent model, resolver, and checker leaves under
+`model/<category>/<opcode>/`; the category paths are ordered include-only
+compatibility wrappers.
 The complete `ResolvedInstruction` union remains in its own aggregate header in
 canonical instruction order. Specialization definitions are non-inline and
-emitted into `resolved_ir_<category>.gen.cpp`, which is compiled into the
-library. This boundary keeps only the small type adapter as a template while
+emitted into category-owned private sources, which are compiled into the
+library. Arithmetic has three fixed SHA-256 opcode buckets; data movement has
+dedicated `cvt` and `ld` sources plus two fixed buckets; parallel synchronization
+and communication has dedicated `mbarrier`, `atom`, and `red` sources plus one
+residual source. Each of these eleven sources includes only its member opcode
+leaves. Smaller categories retain one `resolved_ir_<category>.gen.cpp` source.
+This boundary keeps only the small type adapter as a template while
 preventing every consumer translation unit from reparsing the matcher or
 instantiating large resolve builders and checker visits/lambdas.
 

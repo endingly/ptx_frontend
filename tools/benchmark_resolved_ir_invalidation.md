@@ -2,7 +2,8 @@
 
 The companion script temporarily adds `condition_code_effect: carry_out` to
 `selp_u32` in `comparison_and_selection.yaml`. This changes the generated
-category model header without changing C++ type names or layouts. It checks
+SELP model leaf, or the category model header in older builds, without changing
+C++ type names or layouts. It checks
 that the header changed, builds the production library and then
 `test_resolved_ir`, restores the spec and code generation, and writes JSON and
 phase logs next to the requested output path.

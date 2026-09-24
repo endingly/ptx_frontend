@@ -157,14 +157,17 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | one category's opcode structs and module-reference visitors |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | one opcode struct and its module-reference visitor |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/{resolution,checker}.gen.hpp` | resolver / checker emitters | self-contained specialization declarations that include the matching model leaf |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | ordered include-only category compatibility wrapper |
 | `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
 | `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate compatibility header for all category model headers and the union |
-| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | self-contained category specialization declarations |
+| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | ordered include-only category compatibility wrappers |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line resolver and checker specialization definitions for one category |
+| `private/resolved_ir_<category>_<group>.gen.cpp` | `emit.category_source` | eleven stable implementation sources across arithmetic, data movement, and parallel synchronization and communication; each includes only its member opcode declaration leaves |
+| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line specializations for each remaining, smaller category |
 | `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category-owned descriptor storage and getters |
 
 The generated public headers are under
@@ -183,19 +186,32 @@ selection and resolution. Until that generator dependency boundary changes, it
 belongs to `resolved_ir` with the other atomic `gen_all.py` outputs rather than
 to the `syntax` submodule by filename alone.
 
-The public header contains no generated function bodies. Generation uses the
+Resolver and checker specialization bodies remain in private generated sources;
+model leaves retain their inline reference visitors. Every canonical opcode
+has the same three-leaf layout under `model/<category>/<opcode>/`; category
+header paths remain available as ordered include-only wrappers. A consumer can
+include one opcode's model, resolution, or checker declarations without
+including the other opcodes in its category. Implementation sources for the
+three largest categories include only the declaration leaves of their member
+opcodes. Arithmetic uses three fixed SHA-256 buckets. Data movement gives
+`cvt` and `ld` dedicated sources and hashes the rest into two buckets. Parallel
+synchronization and communication gives `mbarrier`, `atom`, and `red` dedicated
+sources and places the rest together. Bucket membership uses the canonical
+opcode digest modulo the fixed bucket count, so adding an opcode does not
+rebalance existing members.
+
+Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
-`codegen_category`. The generator uses that value to create stable category
-sources, which CMake compiles into the `resolved_ir` library. Consumers retain
-one include entry point, while the complex `std::visit` code, lambdas, and
-resolve builders are compiled only once inside the library.
+`codegen_category`. CMake compiles the planned private sources into the
+`resolved_ir` library. The complex `std::visit` code, lambdas, and resolve
+builders are compiled only once inside the library.
 
 The generator formats a sibling candidate before comparing bytes with an
 existing artifact. Identical formatted output, including the output manifest,
 keeps its modification time. Whole-module APIs continue to include the
-aggregate model and complete union; category-local consumers include only their
-category model and resolver/checker declaration headers.
+aggregate model and complete union; category-local consumers may keep their
+category model and resolver/checker header paths.
 
 The comparison and selection spec now owns the generated
 `comparison_and_selection` category. Code using `Set`, `Setp`, `Selp`, or `Slct`

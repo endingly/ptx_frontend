@@ -470,9 +470,15 @@ concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line �
 聚合 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`、
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` 与
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
-可以只包含所属 category 的 model 与特化声明头。完整 `ResolvedInstruction` union
+可以只包含所属 category 的 model 与特化声明头。每个 opcode 还在
+`model/<category>/<opcode>/` 下拥有独立的 model、resolver、checker leaf；原 category
+路径是按既有顺序包含 leaf 的兼容 wrapper。完整 `ResolvedInstruction` union
 仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
-生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
+生成到 category 所属的私有源文件并编译进库。arithmetic 使用三个固定 SHA-256 opcode
+bucket；data movement 为 `cvt`、`ld` 分别保留独立文件，其余分到两个固定 bucket；
+parallel synchronization and communication 为 `mbarrier`、`atom`、`red` 分别保留
+独立文件，其余合并到一个源文件。这 11 个源文件各自只包含组内 opcode 的 leaf；
+较小的 category 仍使用单个 `resolved_ir_<category>.gen.cpp`。这一边界把体积小且通用的类型适配
 留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、大型
 resolve builder 与 checker visit/lambda。
 

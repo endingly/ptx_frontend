@@ -39,6 +39,7 @@ from ptx_frontend.code_gen.emit.resolved_model import (
     generate_resolved_instruction_union_header,
     generate_resolved_ir_category_header,
     generate_resolved_ir_header,
+    generate_resolved_ir_opcode_header,
 )
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
 from ptx_frontend.code_gen.emit.references import emit_reference_visitor
@@ -4743,9 +4744,28 @@ class ResolvedIrBuildTest(unittest.TestCase):
             generate_resolved_ir_category_header(
                 context, category="arithmetic", output_path=arithmetic
             )
+            comparison_leaves = []
+            arithmetic_leaves = []
+            for entry in context.entries:
+                category = entry.specification.codegen_category
+                if category not in {"comparison_and_selection", "arithmetic"}:
+                    continue
+                path = root / f"{category}_{entry.specification.opcode}.gen.hpp"
+                generate_resolved_ir_opcode_header(
+                    context,
+                    category=category,
+                    opcode=entry.specification.opcode,
+                    output_path=path,
+                )
+                (comparison_leaves if category == "comparison_and_selection" else arithmetic_leaves).append(path)
             generate_resolved_instruction_union_header(context, output_path=union)
-            comparison_source = comparison.read_text(encoding="utf-8")
-            arithmetic_source = arithmetic.read_text(encoding="utf-8")
+            comparison_source = "\n".join(
+                path.read_text(encoding="utf-8") for path in comparison_leaves
+            )
+            arithmetic_source = "\n".join(
+                path.read_text(encoding="utf-8") for path in arithmetic_leaves
+            )
+            self.assertNotIn("struct Set {", comparison.read_text(encoding="utf-8"))
             union_source = union.read_text(encoding="utf-8")
 
         for instruction in ("Set", "Setp", "Selp", "Slct"):
@@ -4778,6 +4798,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     context, category=category, output_path=category_path
                 )
                 category_paths.append(category_path)
+                for entry in context.entries:
+                    if entry.specification.codegen_category != category:
+                        continue
+                    leaf_path = Path(directory) / f"{category}_{entry.specification.opcode}.gen.hpp"
+                    generate_resolved_ir_opcode_header(
+                        context,
+                        category=category,
+                        opcode=entry.specification.opcode,
+                        output_path=leaf_path,
+                    )
+                    category_paths.append(leaf_path)
             union_path = Path(directory) / "resolved_instruction_union.gen.hpp"
             generate_resolved_instruction_union_header(
                 context, output_path=union_path
@@ -5958,9 +5989,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             header_path = Path(directory) / "uncategorized.gen.hpp"
             source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
-            generate_resolved_ir_category_header(
+            generate_resolved_ir_opcode_header(
                 build_test_generation_context(database),
-                category="uncategorized", output_path=header_path,
+                category="uncategorized", opcode="sample", output_path=header_path,
             )
             generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="uncategorized",

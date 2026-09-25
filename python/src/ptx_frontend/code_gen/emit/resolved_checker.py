@@ -372,9 +372,11 @@ def _emit_cross_rule_checks(
     """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
-    if instruction.opcode in {"atom", "red"}:
-        checks += """            const auto atomic_check = check_atomic_qualifiers(
+    if instruction.atomic_address_qualifier is not None:
+        checks += f"""            const auto atomic_check = check_atomic_qualifiers(
+                {checker_variant_expr}.atomic_address_qualifier,
                 instruction.address_qualifier, fields, operands, context);
+""" + """\
             if (!atomic_check) {
               diagnostics.insert(diagnostics.end(), atomic_check.error().begin(),
                                  atomic_check.error().end());

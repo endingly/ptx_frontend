@@ -205,6 +205,7 @@ def emit_check_operand_view(
                         {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
                     view.vector_element_types[index] =
                         element->declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
+                    view.vector_element_registers[index] = &*element;
                   }} else {{
                     ++view.vector_sink_count;
                   }}

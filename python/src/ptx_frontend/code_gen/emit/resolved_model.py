@@ -186,7 +186,7 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backe
     atomic_qualifier = (
         "  /** Written address suffix, distinct from address provenance. */\n"
         "  WithLocs<AtomicAddressQualifier> address_qualifier;\n"
-        if instruction.opcode in {"atom", "red"} else ""
+        if instruction.atomic_address_qualifier is not None else ""
     )
     definition = f"""\
 struct {instruction.cpp_name} {{

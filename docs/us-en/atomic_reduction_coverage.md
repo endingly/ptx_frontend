@@ -46,14 +46,18 @@ subspace, but retains a different written qualifier. Address subspace and
 memory scope are independent; for example `atom.shared::cluster.cta.add.u32`
 is accepted. Known address provenance must match an explicit global/shared
 qualifier, and the checker revalidates owned IR after mutation.
+The checker derives the allowed written qualifiers from each variant's
+state-space modifier: synchronous vectors and async release reductions admit
+generic/global, while shared-completion `red.async` admits generic or
+`.shared::cluster`. Invalid enum values and out-of-domain mutations are rejected.
 All `atom`/`red` bracketed address offsets, including the `red.async` barrier
 address, use the signed 32-bit PTX source domain. The checker revalidates that
 range in owned IR. Wider `mov` address relocations remain separate.
 
 Eligible scalar and vector `atom` and `red` operations also accept
 `.L2::cache_hint`. Scalar forms place it immediately before the type (after
-`.noftz` for half and bfloat add); vector forms place it after the operation
-and any `.noftz`, as in `atom.global.v2.f16.add.noftz.L2::cache_hint`. The suffix requires a final 64-bit `cache_policy` register and
+`.noftz` for half and bfloat add); the ISA vector spelling places it before
+`.vN.type`, as in `atom.global.add.noftz.L2::cache_hint.v2.f16`. The suffix requires a final 64-bit `cache_policy` register and
 PTX 7.4 / SM 80. The owned IR keeps the written hint and selects a separate
 typed operand layout for its policy. Cache hints allow explicit `.global` or
 generic addressing. A known global address is accepted; an unknown-provenance
@@ -70,10 +74,11 @@ Sources accept a compatible register or an integer immediate with ordinary
 narrow conversion. `cas` takes compare and swap sources. Float `add` accepts
 native `.f32`/`.f64` or equal-width `.b32`/`.b64` registers, decimal floating
 literals, and `0f`/`0d` bit-pattern literals; integer literals are rejected.
-Half and bfloat `add` require the written `.noftz` suffix. Their scalar operands
-use exact `.b16` registers, and packed `x2` operands use exact `.b32` registers.
-The `.b16` CAS form uses exact `.b16` registers for its destination and register
-sources; `.b128` CAS/exchange use exact `.b128` registers. CAS always has four
+Half and bfloat `add` require the written `.noftz` suffix. Scalar `.f16`
+accepts `.f16` or `.b16` registers, and packed `.f16x2` accepts `.f16x2`
+or `.b32`. The BF16 forms retain exact `.b16`/`.b32` bit containers.
+The `.b16` CAS form accepts compatible same-width registers for its destination
+and register sources; `.b128` CAS/exchange use exact `.b128` registers. CAS always has four
 operands and no cache hint. Addresses require natural two-, four-, eight-, or
 sixteen-byte alignment. Float addition rounds
 to nearest even. Global `.f32` atomics flush subnormal inputs and results to
@@ -85,13 +90,30 @@ known shared address is rejected; an unknown generic register address is
 accepted with the runtime obligation to point to global memory. `atom` has
 brace-enclosed destination and source vectors; `red` has a brace-enclosed
 source vector. Atom destination and source vectors have the same exact arity.
+The PTX syntax places the operation, optional `.noftz`, and optional
+`.L2::cache_hint` before `.vN.type`, for example
+`atom.global.add.noftz.L2::cache_hint.v2.f16`. The existing
+`.vN.type.operation` spelling remains accepted.
 `.f16` lanes accept `.b16`, `.f16`, `.u16`,
 or `.s16` registers; `.f32` lanes accept the corresponding 32-bit register
-types. `.bf16` lanes require `.b16`, and packed `x2` lanes require `.b32`.
+types. `.bf16` lanes require `.b16`; packed `.f16x2` lanes accept `.f16x2`
+or `.b32`, while `.bf16x2` lanes require `.b32`.
+The [PTX ISA 9.3 fundamental-type rule](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fundamental-types)
+is narrower for floating scalar operands; the vector `atom`/`red` sections do
+not explicitly define lane declaration types. The integer-lane allowance here
+is scoped to vector `.f16`/`.f32`: CUDA 13.3 `ptxas` V13.3.73 with
+`-O0 -arch=sm_90` assembled all eight `atom`/`red` combinations of `.f16`
+with `.u16`/`.s16` and `.f32` with `.u32`/`.s32` in the
+[reproducible PTX source](../../examples/atomic_vector_register_types.ptx).
+This establishes assembler acceptance, not GPU execution behavior.
 Within each vector, bit-type lanes are neutral, while integer and floating
 lanes cannot mix. The destination and source vectors are checked independently.
+Without declarations, standalone resolution retains unknown lane types;
+declaration-bound module resolution checks the stated register-type domains.
 A destination lane may be `_`, while source lanes must be registers and an
-all-sink destination is invalid. The
+all-sink destination is invalid. Written lanes in a destination vector must
+name distinct registers, including when parameterized declarations bind them;
+read-only source vectors may repeat lanes. The
 whole access requires vector length times element width alignment: for example
 `v8.f16` needs 16 bytes. Atomicity applies to each scalar element, not to the
 vector as one aggregate transaction. The half/bfloat vectors require `.noftz`;
@@ -109,7 +131,7 @@ The optional address suffix is retained independently as `Red::address_qualifier
 omitted generic or `.shared::cluster` for shared completion, and omitted generic
 or `.global` for global release. The destination `a` must use a register base,
 optionally followed by a signed 32-bit offset. Direct symbol and immediate
-bases are rejected. The mbarrier address may use a symbol or register. Known
+bases are rejected for both the destination and mbarrier addresses. Known
 shared-mode destination and mbarrier addresses must be shared; unknown generic
 register addresses carry a runtime shared-cluster obligation. Known release-mode
 destinations must be global; unknown generic register addresses carry a runtime

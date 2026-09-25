@@ -506,6 +506,14 @@ class VariantSpec:
 
 
 @dataclass(frozen=True)
+class AtomicAddressQualifierPolicy:
+    """Source slots defining a written atomic address qualifier."""
+
+    state_space_modifier: str
+    address_operand: str
+
+
+@dataclass(frozen=True)
 class InstructionSpec:
     """All merged YAML definitions and variants for one opcode."""
 
@@ -514,6 +522,7 @@ class InstructionSpec:
     syntax_forms: tuple[str, ...] = ()
     source_categories: tuple[str, ...] = ()
     codegen_category: str = "uncategorized"
+    atomic_address_qualifier: AtomicAddressQualifierPolicy | None = None
 
 
 # -----------------------------------------------------------------------------

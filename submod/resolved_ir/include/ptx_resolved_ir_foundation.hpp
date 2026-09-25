@@ -25,6 +25,8 @@
 
 namespace ptx_frontend::resolved_ir {
 
+struct ResolvedRegisterRef;
+
 /**
  * Implicit CC.CF access for an executed instruction. Predication gates both
  * explicit results and this effect. Incoming CC.CF is not preserved by calls.
@@ -323,6 +325,9 @@ struct OperandView {
       ParameterAddressQualifier::Default;
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
+  /** Borrowed lane references; null for sinks and non-register lanes. */
+  std::array<const ResolvedRegisterRef*, kMaxOperandElements>
+      vector_element_registers{};
   /** Original element count before fixed-size checker projection. */
   size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -459,6 +464,15 @@ struct VariantDescriptor {
   /** Operation contract applied to known `.unified` declaration addresses. */
   enum class UnifiedAddressAccess : uint8_t { None, Read, Write };
   UnifiedAddressAccess unified_address_access = UnifiedAddressAccess::None;
+  /** Written atomic suffix domain and its selected state-space/address slots. */
+  struct AtomicAddressQualifierDescriptor {
+    /** Resolved state-space modifier field selected by the variant. */
+    std::string_view state_space_field_id;
+    /** Resolved address operand used for provenance validation. */
+    std::string_view address_operand_id;
+    /** Exact written qualifier values admitted by this variant. */
+    std::span<const AtomicAddressQualifier> allowed_values;
+  } atomic_address_qualifier;
   /** One MMIO semantic alternative and its target requirement. */
   struct MmioSemanticDescriptor {
     MemoryConsistency semantics = MemoryConsistency::Omitted;

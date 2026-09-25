@@ -42,13 +42,16 @@ SM 20，且已知地址必须指向 global 或 shared。普通 `.shared` 的下�
 `::cta` 不同。地址子空间与 memory scope 相互独立，例如
 `atom.shared::cluster.cta.add.u32` 可被接受。已知地址来源必须与显式
 全局/共享限定符一致，checker 也会重新检查修改后的 owned IR。
+checker 从每个 variant 的 state-space modifier 推导可写地址限定符：同步向量和
+async release 只允许 generic/global；shared-completion `red.async` 只允许
+generic 或 `.shared::cluster`。无效枚举值及超出范围的修改都会被拒绝。
 所有 `atom`/`red` 方括号地址偏移（包括 `red.async` 的 barrier 地址）都使用 PTX
 signed 32-bit 源范围；checker 对修改后的 owned IR 也重新检查该范围。`mov`
 地址重定位仍可使用更宽的偏移。
 
 符合条件的标量与向量 `atom`、`red` 均接受 `.L2::cache_hint`。标量形式将其放在
 类型之前（half/bfloat 加法的 `.noftz` 之后）；向量形式放在操作名及可选 `.noftz`
-之后，例如 `atom.global.v2.f16.add.noftz.L2::cache_hint`。该后缀要求末尾附加一个 64 位
+之后、`.vN.type` 之前，例如 `atom.global.add.noftz.L2::cache_hint.v2.f16`。该后缀要求末尾附加一个 64 位
 `cache_policy` 寄存器，目标下限为 PTX 7.4 / SM 80。owned IR 保留写出的
 hint，并为 policy 选择单独的类型化操作数布局。Cache hint 可用于显式
 `.global` 或 generic 寻址。已知指向 global 的地址可接受；来源未知的 generic
@@ -62,8 +65,9 @@ shared 的 generic 地址均拒绝。`atom.cas` 没有 cache-hint 形式。无�
 普通窄化转换的整数立即数；`cas` 接受比较值与交换值。浮点 `add` 接受原生
 `.f32`/`.f64` 或等宽 `.b32`/`.b64` 寄存器、十进制浮点字面量及 `0f`/`0d`
 位模式字面量，不接受整数立即数。Half 和 bfloat 的 `add` 必须写 `.noftz`；
-标量操作数使用精确 `.b16` 寄存器，打包 `x2` 使用精确 `.b32` 寄存器。
-`.b16` CAS 的目标及寄存器源使用精确 `.b16`，`.b128` CAS/交换使用精确
+标量 `.f16` 可用 `.f16` 或 `.b16` 寄存器，打包 `.f16x2` 可用 `.f16x2` 或
+`.b32`；BF16 形式仍要求精确 `.b16`/`.b32` bit container。
+`.b16` CAS 的目标及寄存器源接受兼容的同宽寄存器，`.b128` CAS/交换使用精确
 `.b128` 寄存器。CAS 始终有四个操作数，不带 cache hint。地址必须按二、四、
 八或十六字节自然对齐。浮点加法
 按最近偶数舍入。Global `.f32` 原子操作把次正规输入和结果 flush 为保留符号
@@ -72,11 +76,24 @@ shared 的 generic 地址均拒绝。`atom.cas` 没有 cache-hint 形式。无�
 向量形式只能访问 global 内存：可显式写 `.global`，或使用 generic 寻址。
 已知 shared 地址会被拒绝；来源未知的 generic 寄存器地址可接受，但运行时必须
 指向 global。`atom` 的目标和源均为花括号向量，`red` 的源为花括号向量；
-`atom` 的目标与源元素数量必须相同。`.f16` lane 可用 `.b16`、`.f16`、`.u16`
+`atom` 的目标与源元素数量必须相同。PTX 语法将操作、可选 `.noftz` 和可选
+`.L2::cache_hint` 放在 `.vN.type` 之前，例如
+`atom.global.add.noftz.L2::cache_hint.v2.f16`；原有的
+`.vN.type.operation` 写法仍被接受。`.f16` lane 可用 `.b16`、`.f16`、`.u16`
 或 `.s16` 寄存器；`.f32` lane 可用相应的 32 位寄存器。`.bf16` lane
-仅接受 `.b16`，打包 `x2` lane 仅接受 `.b32`。每个向量内 bit 类型
+仅接受 `.b16`；打包 `.f16x2` lane 可用 `.f16x2` 或 `.b32`，`.bf16x2`
+lane 仅接受 `.b32`。[PTX ISA 9.3 的基本类型规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fundamental-types)
+对浮点标量操作数更严格，而向量 `atom`/`red` 章节没有明确规定 lane 的声明类型。
+这里的整数 lane 支持仅限向量 `.f16`/`.f32`：CUDA 13.3 `ptxas` V13.3.73
+使用 `-O0 -arch=sm_90` 成功汇编了 `.f16` 搭配 `.u16`/`.s16`、`.f32`
+搭配 `.u32`/`.s32` 的全部八种 `atom`/`red` 组合，见
+[可复现的 PTX 源文件](../../examples/atomic_vector_register_types.ptx)。
+这只证明汇编器接受，不代表已验证 GPU 执行语义。每个向量内 bit 类型
 lane 是中性的，整数与浮点寄存器 lane 不可混用；目标和源分别检查。
-目标 lane 可以是 `_`，源 lane 必须是寄存器，目标不能全为 `_`。整个访问须按“向量长度 × 元素字节数”
+单条指令独立解析且无声明时保留未知 lane 类型；带声明的模块解析会检查上述寄存器类型范围。
+目标 lane 可以是 `_`，源 lane 必须是寄存器，目标不能全为 `_`。目标向量中
+各个实际写入的 lane 必须指向不同寄存器；参数化声明绑定后的 lane 同样受检，
+只读源向量则允许重复 lane。整个访问须按“向量长度 × 元素字节数”
 对齐，例如 `v8.f16` 需要 16 字节。原子性逐个标量元素成立，不保证整个
 向量作为一个事务具有原子性。Half/bfloat 向量必须写 `.noftz`；
 `v2/v4.f32.add` 不接受该后缀。打包类型及 `.f32` 均无 `v8` 形式。
@@ -92,7 +109,7 @@ Cache hint 仍使用末尾的 64 位 policy 布局，并遵循相同 global 地�
 可选地址后缀在 `Red::address_qualifier` 中独立保留：shared completion 可省略为
 generic 或写 `.shared::cluster`；global release 可省略为 generic 或写 `.global`。
 目标地址 `a` 必须以寄存器为基址，可附带 signed 32-bit 偏移；直接符号或立即数
-基址均拒绝。mbarrier 地址可以使用符号或寄存器。Shared 模式中已知的目标与
+基址均拒绝；目标与 mbarrier 地址都要求寄存器基址。Shared 模式中已知的目标与
 mbarrier 地址必须指向 shared；来源未知的 generic 寄存器地址在运行时必须指向
 shared-cluster。Release 模式中已知目标必须指向 global；来源未知的 generic
 寄存器地址在运行时必须指向 global。目标要求自然 4 或 8 字节对齐，mbarrier

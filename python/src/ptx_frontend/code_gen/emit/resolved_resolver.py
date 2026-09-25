@@ -149,7 +149,7 @@ def _emit_resolve_variant_case(
 ) -> str:
     atomic_qualifier = (
         ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n        "
-        if instruction.opcode in {"atom", "red"} else ""
+        if instruction.atomic_address_qualifier is not None else ""
     )
     if len(variant.operand_layouts) == 1:
         fields = "\n".join(
@@ -193,7 +193,7 @@ def _emit_resolve_multi_layout_case(
     layout = variant.operand_layouts[layout_index]
     atomic_qualifier = (
         ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n          "
-        if instruction.opcode in {"atom", "red"} else ""
+        if instruction.atomic_address_qualifier is not None else ""
     )
     modifier_fields = "\n".join(
         "              " + _emit_resolve_field_initializer(field, backend)

@@ -1281,7 +1281,7 @@ TEST(AtomicReductionCoverage, RejectsInvalidScalarCacheHints) {
   }
 }
 
-/** Resolve every legal vector tuple with its width retained in owned IR. */
+/** Resolve legal vector tuples in both supported suffix orders. */
 TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
   std::string source = R"ptx(
 .version 9.3
@@ -1291,6 +1291,7 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
   .reg .b16 %h<16>;
   .reg .b32 %b<16>;
   .reg .f32 %f<16>;
+  .reg .b64 %policy;
 )ptx";
   const auto lanes = [](std::string_view prefix, unsigned start,
                         unsigned count) {
@@ -1315,29 +1316,46 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
         for (unsigned width : {2u, 4u, 8u}) {
           if (width > maximum_width)
             continue;
-          source += std::string(opcode) + ".global.v" + std::to_string(width) +
-                    "." + std::string(type) + "." + std::string(operation);
-          if (type != "f32")
-            source += ".noftz";
-          source += " ";
-          if (opcode == "atom")
-            source += lanes(prefix, 0, width) + ", ";
-          source += "[global_value], " + lanes(prefix, 8, width) + ";\n";
-          ++count;
+          for (bool official_order : {false, true}) {
+            for (bool hinted : {false, true}) {
+              if (hinted && (!official_order || width != 2))
+                continue;
+              source += std::string(opcode) + ".global";
+              if (official_order)
+                source += "." + std::string(operation);
+              if (official_order && type != "f32")
+                source += ".noftz";
+              if (official_order && hinted)
+                source += ".L2::cache_hint";
+              source += ".v" + std::to_string(width) + "." + std::string(type);
+              if (!official_order)
+                source += "." + std::string(operation);
+              if (!official_order && type != "f32")
+                source += ".noftz";
+              source += " ";
+              if (opcode == "atom")
+                source += lanes(prefix, 0, width) + ", ";
+              source += "[global_value], " + lanes(prefix, 8, width);
+              if (hinted)
+                source += ", %policy";
+              source += ";\n";
+              ++count;
+            }
+          }
         }
       }
     }
   }
   source += "}\n";
-  ASSERT_EQ(count, 64u);
+  ASSERT_EQ(count, 154u);
   const auto parsed = test_helpers::parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 64u);
+  ASSERT_EQ(body.size(), 154u);
   for (size_t index = 0; index < body.size(); ++index) {
-    if (index < 32) {
+    if (index < 77) {
       const auto& atom = std::get<Atom>(body[index]);
       EXPECT_EQ(atom.address_qualifier.value, AtomicAddressQualifier::Global);
       EXPECT_GE(atom.variant.index(), 32u);
@@ -1347,6 +1365,111 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
       EXPECT_GE(red.variant.index(), 25u);
     }
   }
+}
+
+/** Preserve unknown lane types through standalone atomic resolution and checking. */
+TEST(AtomicReductionCoverage, KeepsStandaloneVectorLaneTypesUnknown) {
+  const checker::Context target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  const auto atom_ast = test_helpers::parseInstruction(
+      "atom.global.add.v2.f32 {%f0, %f1}, [%rd0], {%f2, %f3};");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(atom_ast);
+  const auto atom_resolved = resolveInstruction(*atom_ast);
+  ASSERT_TRUE(atom_resolved.has_value()) << atom_resolved.error().message;
+  const auto& atom = std::get<Atom>(*atom_resolved);
+  const auto& atom_operands =
+      std::get<0>(std::get<Atom::VectorAddF32>(atom.variant).operands);
+  for (const auto& lane : atom_operands.dst.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  for (const auto& lane : atom_operands.src.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  EXPECT_TRUE(checker::check(atom, target).has_value());
+
+  const auto red_ast = test_helpers::parseInstruction(
+      "red.global.add.v2.f32 [%rd0], {%f2, %f3};");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(red_ast);
+  const auto red_resolved = resolveInstruction(*red_ast);
+  ASSERT_TRUE(red_resolved.has_value()) << red_resolved.error().message;
+  const auto& red = std::get<Red>(*red_resolved);
+  const auto& red_operands =
+      std::get<0>(std::get<Red::VectorAddF32>(red.variant).operands);
+  for (const auto& lane : red_operands.src.value.elements)
+    ASSERT_FALSE(lane->declared_type.has_value());
+  EXPECT_TRUE(checker::check(red, target).has_value());
+}
+
+/** Recheck written atomic suffix domains after syntax ownership is released. */
+TEST(AtomicReductionCoverage, RejectsOwnedAtomicQualifierDomainMutations) {
+  std::optional<ResolvedModule> owned;
+  {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.shared .align 8 .b64 barrier;
+.shared .align 4 .u32 shared_value;
+.global .align 8 .b8 global_value[16];
+.entry kernel() {
+  .reg .u64 %a;
+  .reg .u32 %u;
+  .reg .f32 %f<4>;
+  red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.inc.u32
+      [%a], %u, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.inc.u32
+      [%a], %u, [%a];
+  red.async.release.gpu.global.add.u32 [%a], %u;
+  atom.global.add.v2.f32 {%f0, %f1}, [global_value], {%f2, %f3};
+  atom.shared.add.u32 %u, [shared_value], %u;
+}
+)ptx";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 5u);
+  const checker::Context target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  auto& shared_async = std::get<Red>(body[0]);
+  EXPECT_TRUE(checker::check(shared_async, target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Red>(body[1]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Red>(body[2]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Atom>(body[3]), target).has_value());
+  EXPECT_TRUE(checker::check(std::get<Atom>(body[4]), target).has_value());
+  EXPECT_EQ(shared_async.address_qualifier.value,
+            AtomicAddressQualifier::SharedCluster);
+  ASSERT_FALSE(shared_async.address_qualifier.locs.empty());
+  for (auto invalid :
+       {AtomicAddressQualifier::Shared, AtomicAddressQualifier::SharedCta,
+        static_cast<AtomicAddressQualifier>(255)}) {
+    shared_async.address_qualifier.value = invalid;
+    const auto result = checker::check(shared_async, target);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().front().kind,
+              checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
+    EXPECT_EQ(result.error().front().range,
+              shared_async.address_qualifier.locs.front());
+  }
+  shared_async.address_qualifier.value = AtomicAddressQualifier::SharedCluster;
+  EXPECT_TRUE(checker::check(shared_async, target).has_value());
+  auto& generic_async = std::get<Red>(body[1]);
+  generic_async.address_qualifier.value = AtomicAddressQualifier::Shared;
+  EXPECT_FALSE(checker::check(generic_async, target).has_value());
+  generic_async.address_qualifier.value = AtomicAddressQualifier::Generic;
+  EXPECT_TRUE(checker::check(generic_async, target).has_value());
+  auto& release = std::get<Red>(body[2]);
+  release.address_qualifier.value = AtomicAddressQualifier::Shared;
+  const auto release_check = checker::check(release, target);
+  ASSERT_FALSE(release_check.has_value());
+  EXPECT_EQ(release_check.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
+  auto& vector = std::get<Atom>(body[3]);
+  vector.address_qualifier.value = AtomicAddressQualifier::SharedCta;
+  const auto vector_check = checker::check(vector, target);
+  ASSERT_FALSE(vector_check.has_value());
+  EXPECT_EQ(vector_check.error().front().kind,
+            checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
 }
 
 /** Check cache policy, generic addresses, lane sinks, and vector target floors. */
@@ -1424,6 +1547,197 @@ TEST(AtomicReductionCoverage, ChecksVectorAtomicOwnedContracts) {
   EXPECT_FALSE(checker::check(std::get<Atom>(body[4]), supported).has_value());
 }
 
+/** Accept native half storage while keeping unrelated 16/32-bit types out. */
+TEST(AtomicReductionCoverage, ChecksNativeHalfAtomicRegisters) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.global .align 4 .b32 value[4];
+.entry kernel() {
+  .reg .f16 %h<3>; .reg .b16 %b16<3>; .reg .f16x2 %p<3>;
+  .reg .b32 %b32<3>; .reg .u16 %u16; .reg .u32 %u32;
+  .reg .b64 %policy;
+  atom.global.cas.b16 %h0, [value], %h1, %b160;
+  atom.global.add.noftz.f16 %h0, [value], %h1;
+  red.global.add.noftz.f16 [value], %h2;
+  atom.global.add.noftz.f16x2 %p0, [value], %p1;
+  red.global.add.noftz.f16x2 [value], %p2;
+  atom.global.add.noftz.L2::cache_hint.f16 %h0, [value], %h1, %policy;
+  red.global.add.noftz.L2::cache_hint.f16 [value], %h2, %policy;
+  atom.global.add.noftz.L2::cache_hint.f16x2 %p0, [value], %p1, %policy;
+  red.global.add.noftz.L2::cache_hint.f16x2 [value], %p2, %policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto valid = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+
+  for (std::string_view instruction : {
+           "atom.global.add.noftz.f16 %u16, [value], %h1;",
+           "red.global.add.noftz.f16 [value], %u16;",
+           "atom.global.add.noftz.f16x2 %u32, [value], %p1;",
+           "red.global.add.noftz.f16x2 [value], %u32;",
+           "atom.global.add.noftz.bf16 %h0, [value], %h1;",
+           "red.global.add.noftz.bf16x2 [value], %p1;",
+       }) {
+    const std::string source =
+        ".version 9.3\n.target sm_90\n"
+        ".global .align 4 .b32 value[4];\n"
+        ".entry kernel() { .reg .f16 %h<3>; .reg .f16x2 %p<3>; "
+        ".reg .u16 %u16; .reg .u32 %u32;\n" +
+        std::string(instruction) + "\n}\n";
+    const auto candidate = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(candidate);
+    EXPECT_FALSE(resolveAndValidateModule(*candidate).has_value())
+        << instruction;
+  }
+}
+
+/** Keep packed half lanes native or bit-typed, including hinted layouts. */
+TEST(AtomicReductionCoverage, ChecksNativePackedHalfVectorLanes) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.global .align 16 .b8 value[16];
+.entry kernel() {
+  .reg .f16x2 %p<4>; .reg .b32 %b<4>; .reg .b64 %policy;
+  atom.global.v2.f16x2.add.noftz {%p0, %p1}, [value], {%b0, %b1};
+  red.global.v2.f16x2.add.noftz [value], {%p2, %p3};
+  atom.global.add.noftz.L2::cache_hint.v2.f16x2
+      {%b0, %b1}, [value], {%p0, %p1}, %policy;
+  red.global.add.noftz.L2::cache_hint.v2.f16x2
+      [value], {%p2, %p3}, %policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto valid = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
+
+  for (std::string_view instruction : {
+           "atom.global.v2.f16x2.add.noftz {%u0, %u1}, [value], {%p0, %p1};",
+           "red.global.v2.f16x2.add.noftz [value], {%u0, %u1};",
+           "atom.global.v2.bf16x2.add.noftz {%p0, %p1}, [value], {%b0, %b1};",
+           "red.global.v2.bf16x2.add.noftz [value], {%p0, %p1};",
+       }) {
+    const std::string source =
+        ".version 9.3\n.target sm_90\n"
+        ".global .align 16 .b8 value[16];\n"
+        ".entry kernel() { .reg .f16x2 %p<4>; .reg .u32 %u<2>; "
+        ".reg .b32 %b<2>;\n" +
+        std::string(instruction) + "\n}\n";
+    const auto candidate = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(candidate);
+    EXPECT_FALSE(resolveAndValidateModule(*candidate).has_value())
+        << instruction;
+  }
+}
+
+/** Reject repeated written lanes in both vector resolver paths and owned IR. */
+TEST(AtomicReductionCoverage, ChecksDistinctDestinationVectorLanes) {
+  for (std::string_view instruction : {
+           "atom.global.v2.f32.add {%r0, %r0}, [%rd0], {%r1, %r1};",
+           "ld.global.v2.u32 {%r0, %r0}, [%rd0];",
+           "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r0}, [%rd0];",
+       }) {
+    const auto parsed = test_helpers::parseInstruction(instruction);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveInstruction(*parsed).has_value()) << instruction;
+  }
+  const auto standalone = test_helpers::parseInstruction(
+      "atom.global.v4.f32.add {_, _, %r0, %r1}, [%rd0], "
+      "{%r2, %r2, %r2, %r2};");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(standalone);
+  const auto standalone_resolved = resolveInstruction(*standalone);
+  ASSERT_TRUE(standalone_resolved.has_value())
+      << standalone_resolved.error().message;
+  const checker::Context target{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  EXPECT_TRUE(
+      checker::check(std::get<Atom>(*standalone_resolved), target).has_value());
+
+  const auto bound = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.global .align 8 .b8 value[8];
+.entry kernel() {
+  .reg .f32 %f<4>;
+  atom.global.v2.f32.add {%f0, %f1}, [value], {%f2, %f2};
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(bound);
+  auto owned = resolveAndValidateModule(*bound);
+  ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
+  auto& atom = std::get<Atom>(owned->functions.front().body.front());
+  auto& destination =
+      std::get<0>(std::get<Atom::VectorAddF32>(atom.variant).operands)
+          .dst.value.elements;
+  destination[1] = destination[0];
+  const auto invalid_owned = checker::check(atom, target);
+  ASSERT_FALSE(invalid_owned.has_value());
+  EXPECT_EQ(invalid_owned.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidVectorOperand);
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  ASSERT_TRUE(destination[0]->symbol_id.has_value());
+  destination[1]->symbol_id.reset();
+  const auto missing_identity = checker::check(atom, target);
+  ASSERT_FALSE(missing_identity.has_value());
+  EXPECT_EQ(missing_identity.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidVectorOperand);
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  destination[1]->symbol_id = destination[0]->symbol_id;
+  destination[1]->parameterized_index =
+      destination[0]->parameterized_index.value_or(0) + 1;
+  const auto changed_index = checker::check(atom, target);
+  ASSERT_FALSE(changed_index.has_value());
+  EXPECT_EQ(changed_index.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidVectorOperand);
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  const auto duplicate_bound = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.global .align 8 .b8 value[8];
+.entry kernel() {
+  .reg .f32 %f<4>;
+  atom.global.v2.f32.add {%f0, %f0}, [value], {%f2, %f2};
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(duplicate_bound);
+  EXPECT_FALSE(resolveAndValidateModule(*duplicate_bound).has_value());
+
+  const auto modern_bound = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.shared .align 16 .b16 shared_value[16];
+.entry kernel() {
+  .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(modern_bound);
+  auto modern_owned = resolveAndValidateModule(*modern_bound);
+  ASSERT_TRUE(modern_owned.has_value()) << modern_owned.error().front().message;
+  auto& matrix =
+      std::get<Ldmatrix>(modern_owned->functions.front().body.front());
+  auto& modern_destination =
+      std::get<Ldmatrix::SyncAlignedM8n8X2SharedB16>(matrix.variant)
+          .dst.value.elements;
+  modern_destination[1] = modern_destination[0];
+  const auto invalid_matrix = checker::check(matrix, target);
+  ASSERT_FALSE(invalid_matrix.has_value());
+  EXPECT_EQ(invalid_matrix.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidVectorOperand);
+  EXPECT_FALSE(validateModule(*modern_owned,
+                              ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value());
+}
+
 /** Reject invalid vector widths, lanes, address spaces, and policy layouts. */
 TEST(AtomicReductionCoverage, RejectsInvalidVectorAtomicForms) {
   for (std::string_view instruction : {
@@ -1431,6 +1745,8 @@ TEST(AtomicReductionCoverage, RejectsInvalidVectorAtomicForms) {
            "%b3};",
            "red.global.v8.f32.add [global_value], {%f0, %f1};",
            "atom.global.v2.f32.min {%f0, %f1}, [global_value], {%f2, %f3};",
+           "atom.global.add.f32.v2 {%f0, %f1}, [global_value], {%f2, %f3};",
+           "red.global.add.v2.noftz.f32 [global_value], {%f0, %f1};",
            "red.global.v2.f16.add [global_value], {%h0, %h1};",
            "atom.global.v2.f16.add.noftz {%h0}, [global_value], {%h1, %h2};",
            "atom.global.v2.f16.add.noftz {%h0, %h1}, [global_value], {%b0, "
@@ -1480,18 +1796,18 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
   .reg .b32 %b;
   .reg .u64 %ud;
   .reg .s64 %sd;
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.inc.u32 [%a], %u, [barrier];
-  red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.dec.u32 [%a+4], %u, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.u32 [%a], %u, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.s32 [%a], %s, [barrier];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.inc.u32 [%a], %u, [%a];
+  red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.dec.u32 [%a+4], %u, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.u32 [%a], %u, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.s32 [%a], %s, [%a];
   red.async.relaxed.cluster.mbarrier::complete_tx::bytes.max.u32 [%a], %u, [%a];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.max.s32 [%a], %s, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.and.b32 [%a], %b, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.or.b32 [%a], %b, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.xor.b32 [%a], %b, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 [%a], 1, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.s32 [%a], %s, [barrier];
-  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u64 [%a+8], %ud, [barrier];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.max.s32 [%a], %s, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.and.b32 [%a], %b, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.or.b32 [%a], %b, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.xor.b32 [%a], %b, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 [%a], 1, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.s32 [%a], %s, [%a];
+  red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u64 [%a+8], %ud, [%a];
   red.async.release.gpu.add.u32 [%a], 1;
   red.async.release.sys.global.add.s32 [%a], %s;
   red.async.mmio.release.sys.global.add.u64 [%a+8], %ud;
@@ -1548,15 +1864,19 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
       checker::check(std::get<Red>(body[1]), release_target).has_value());
   auto& shared =
       std::get<Red::AsyncSharedIncU32>(std::get<Red>(body[0]).variant);
-  shared.address.value.base =
-      std::get<ResolvedSymbolRef>(shared.mbarrier.value.base);
+  shared.address.value.base = ResolvedSymbolRef{
+      .spelling = "barrier",
+      .address_state_space = base::DeclarationStateSpace::Shared,
+  };
   EXPECT_FALSE(
       checker::check(std::get<Red>(body[0]), shared_target).has_value());
   auto& mbarrier =
       std::get<Red::AsyncSharedMinU32>(std::get<Red>(body[2]).variant)
           .mbarrier.value;
-  std::get<ResolvedSymbolRef>(mbarrier.base).address_state_space =
-      base::DeclarationStateSpace::Global;
+  mbarrier.base = ResolvedSymbolRef{
+      .spelling = "barrier",
+      .address_state_space = base::DeclarationStateSpace::Shared,
+  };
   EXPECT_FALSE(
       checker::check(std::get<Red>(body[2]), shared_target).has_value());
 }
@@ -1591,6 +1911,8 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [global_value];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
+           "[%a], %u, [barrier];",
+           "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [barrier+4];",
            "red.async.release.sys.add.u32 [%a], %u, [barrier];",
        }) {
@@ -1618,7 +1940,7 @@ TEST(AtomicReductionCoverage, RechecksAsyncAddressOffsetDomain) {
   .reg .u64 %a;
   .reg .u32 %u;
   red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32
-      [%a+2147483647], %u, [barrier-2147483648];
+      [%a+2147483647], %u, [%a-2147483648];
   red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32
       [%a-2147483648], %u, [%a+2147483647];
   red.async.release.sys.add.u32 [%a+2147483647], %u;
@@ -1672,13 +1994,13 @@ TEST(AtomicReductionCoverage, RechecksAsyncAddressOffsetDomain) {
 
   for (std::string_view instruction : {
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a+2147483648], %u, [barrier];",
+           "[%a+2147483648], %u, [%a];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a-2147483649], %u, [barrier];",
+           "[%a-2147483649], %u, [%a];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a], %u, [barrier+2147483648];",
+           "[%a], %u, [%a+2147483648];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a], %u, [barrier-2147483649];",
+           "[%a], %u, [%a-2147483649];",
            "red.async.release.sys.add.u32 [%a+2147483648], %u;",
            "red.async.release.sys.add.u32 [%a-2147483649], %u;",
        }) {

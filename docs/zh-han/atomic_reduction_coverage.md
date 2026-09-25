@@ -82,7 +82,13 @@ shared 的 generic 地址均拒绝。`atom.cas` 没有 cache-hint 形式。无�
 `.vN.type.operation` 写法仍被接受。`.f16` lane 可用 `.b16`、`.f16`、`.u16`
 或 `.s16` 寄存器；`.f32` lane 可用相应的 32 位寄存器。`.bf16` lane
 仅接受 `.b16`；打包 `.f16x2` lane 可用 `.f16x2` 或 `.b32`，`.bf16x2`
-lane 仅接受 `.b32`。每个向量内 bit 类型
+lane 仅接受 `.b32`。[PTX ISA 9.3 的基本类型规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fundamental-types)
+对浮点标量操作数更严格，而向量 `atom`/`red` 章节没有明确规定 lane 的声明类型。
+这里的整数 lane 支持仅限向量 `.f16`/`.f32`：CUDA 13.3 `ptxas` V13.3.73
+使用 `-O0 -arch=sm_90` 成功汇编了 `.f16` 搭配 `.u16`/`.s16`、`.f32`
+搭配 `.u32`/`.s32` 的全部八种 `atom`/`red` 组合，见
+[可复现的 PTX 源文件](../../examples/atomic_vector_register_types.ptx)。
+这只证明汇编器接受，不代表已验证 GPU 执行语义。每个向量内 bit 类型
 lane 是中性的，整数与浮点寄存器 lane 不可混用；目标和源分别检查。
 单条指令独立解析且无声明时保留未知 lane 类型；带声明的模块解析会检查上述寄存器类型范围。
 目标 lane 可以是 `_`，源 lane 必须是寄存器，目标不能全为 `_`。目标向量中

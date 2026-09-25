@@ -17,7 +17,6 @@ constexpr std::string_view kFixture = R"ptx(
 .target sm_121a
 .address_size 64
 .shared .align 8 .u64 cvta_shared_value;
-.shared .align 8 .b64 red_async_barrier;
 .global .align 4 .b32 atomic_value;
 .global .align 8 .b64 atomic_value_64;
 .global .align 16 .b8 atomic_vector_value[16];
@@ -27,6 +26,7 @@ constexpr std::string_view kFixture = R"ptx(
   .reg .u32 %r<2>;
   .reg .u32 %u0;
   .reg .u64 %rd0;
+  .reg .u64 %mbar_addr;
   .reg .s32 %s<3>;
   .reg .b32 %b<5>;
   .reg .u64 %uq<2>;
@@ -84,7 +84,7 @@ constexpr std::string_view kFixture = R"ptx(
   red.global.v2.f16.add.noftz.L2::cache_hint
       [atomic_vector_value], {%h0, %h1}, %policy;
   red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.add.u32
-      [%rd0], %r0, [red_async_barrier];
+      [%rd0], %r0, [%mbar_addr];
   red.async.mmio.release.sys.global.add.u64 [%rd0], %uq0;
   ret;
 }

@@ -98,6 +98,14 @@ The PTX syntax places the operation, optional `.noftz`, and optional
 or `.s16` registers; `.f32` lanes accept the corresponding 32-bit register
 types. `.bf16` lanes require `.b16`; packed `.f16x2` lanes accept `.f16x2`
 or `.b32`, while `.bf16x2` lanes require `.b32`.
+The [PTX ISA 9.3 fundamental-type rule](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#fundamental-types)
+is narrower for floating scalar operands; the vector `atom`/`red` sections do
+not explicitly define lane declaration types. The integer-lane allowance here
+is scoped to vector `.f16`/`.f32`: CUDA 13.3 `ptxas` V13.3.73 with
+`-O0 -arch=sm_90` assembled all eight `atom`/`red` combinations of `.f16`
+with `.u16`/`.s16` and `.f32` with `.u32`/`.s32` in the
+[reproducible PTX source](../../examples/atomic_vector_register_types.ptx).
+This establishes assembler acceptance, not GPU execution behavior.
 Within each vector, bit-type lanes are neutral, while integer and floating
 lanes cannot mix. The destination and source vectors are checked independently.
 Without declarations, standalone resolution retains unknown lane types;

@@ -1771,15 +1771,23 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   EXPECT_TRUE(immediate.sync);
   EXPECT_TRUE(immediate.idx);
   EXPECT_EQ(immediate.type, ScalarType::B32);
-  ASSERT_TRUE(immediate.dst.value.data.has_value());
-  ASSERT_TRUE(immediate.dst.value.predicate.has_value());
-  EXPECT_EQ(immediate.dst.value.data->value.declared_type, ScalarType::B32);
-  EXPECT_EQ(immediate.dst.value.predicate->value.register_ref.declared_type,
-            ScalarType::Pred);
-  EXPECT_FALSE(immediate.dst.locs.empty());
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(immediate.lane.value));
+  const auto& immediate_operands =
+      std::get<Shfl::SyncIdxB32::WithPredicateOperands>(immediate.operands);
+  const auto& register_operands_fields =
+      std::get<Shfl::SyncIdxB32::WithPredicateOperands>(
+          register_operands.operands);
+  ASSERT_TRUE(immediate_operands.dst.value.data.has_value());
+  ASSERT_TRUE(immediate_operands.dst.value.predicate.has_value());
+  EXPECT_EQ(immediate_operands.dst.value.data->value.declared_type,
+            ScalarType::B32);
+  EXPECT_EQ(
+      immediate_operands.dst.value.predicate->value.register_ref.declared_type,
+      ScalarType::Pred);
+  EXPECT_FALSE(immediate_operands.dst.locs.empty());
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(immediate_operands.lane.value));
   EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      register_operands.lane.value));
+      register_operands_fields.lane.value));
   const checker::Context context{
       .target = {.ptx_version = {6, 0}, .sm_version = 30},
       .instruction_range = ast.range,
@@ -1856,8 +1864,10 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_5);
-  const auto wrong_mode = resolveModule(*parsed_module_5);
-  ASSERT_FALSE(wrong_mode.has_value());
+  const auto up_mode = resolveModule(*parsed_module_5);
+  ASSERT_TRUE(up_mode.has_value()) << up_mode.error().front().message;
+  ASSERT_TRUE(std::holds_alternative<Shfl::SyncUpB32>(
+      std::get<Shfl>(up_mode->functions.front().body.front()).variant));
   const auto parsed_module_6 = parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b<2>;
@@ -1878,6 +1888,107 @@ TEST(ResolvedModule, ResolvesAndChecksShflSyncIdxB32Slice) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_7);
   const auto missing_membermask = resolveModule(*parsed_module_7);
   ASSERT_FALSE(missing_membermask.has_value());
+}
+
+TEST(ResolvedModule, PreservesEveryShflSyncModeAndDestinationLayout) {
+  const auto parsed = parseModule(R"ptx(
+.version 6.0
+.target sm_30
+.entry kernel() {
+  .reg .b32 %b<4>;
+  .reg .pred %p<2>;
+  .reg .u32 %control;
+  shfl.sync.up.b32 %b0, %b1, 1, 31, 0xffffffff;
+  shfl.sync.up.b32 %b0|%p0, %b1, %control, 31, 0xffffffff;
+  shfl.sync.down.b32 %b0, %b1, 1, 31, 0xffffffff;
+  shfl.sync.down.b32 %b0|%p0, %b1, %control, 31, 0xffffffff;
+  shfl.sync.bfly.b32 %b0, %b1, 1, 31, 0xffffffff;
+  shfl.sync.bfly.b32 %b0|%p0, %b1, %control, 31, 0xffffffff;
+  shfl.sync.idx.b32 %b0, %b1, 1, 31, 0xffffffff;
+  shfl.sync.idx.b32 %b0|%p0, %b1, %control, 31, 0xffffffff;
+}
+
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = parsed->range,
+  };
+  for (const auto& candidate : body) {
+    ASSERT_TRUE(checker::check(std::get<Shfl>(candidate), context).has_value());
+  }
+  EXPECT_TRUE(
+      std::holds_alternative<Shfl::SyncUpB32>(std::get<Shfl>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Shfl::SyncDownB32>(
+      std::get<Shfl>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<Shfl::SyncBflyB32>(
+      std::get<Shfl>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Shfl::SyncIdxB32>(
+      std::get<Shfl>(body[6]).variant));
+  const auto& up = std::get<Shfl::SyncUpB32>(std::get<Shfl>(body[0]).variant);
+  EXPECT_TRUE(std::holds_alternative<Shfl::SyncUpB32::WithoutPredicateOperands>(
+      up.operands));
+  const auto& paired =
+      std::get<Shfl::SyncUpB32>(std::get<Shfl>(body[1]).variant);
+  EXPECT_TRUE(std::holds_alternative<Shfl::SyncUpB32::WithPredicateOperands>(
+      paired.operands));
+
+  for (const auto source : {
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p; "
+           "shfl.sync.up.b32 %b0|_, %b1, 1, 31, 0xffffffff; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p; "
+           "shfl.sync.down.b32 _|%p, %b1, 1, 31, 0xffffffff; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p; "
+           "shfl.sync.bfly.b32 %b0|!%p, %b1, 1, 31, 0xffffffff; }",
+           ".entry kernel() { .reg .b32 %b<2>; .reg .pred %p; "
+           "shfl.sync.up.b64 %b0, %b1, 1, 31, 0xffffffff; }",
+       }) {
+    const auto invalid_ast = parseModule(source);
+    if (invalid_ast.diagnostics.empty()) {
+      EXPECT_FALSE(resolveModule(*invalid_ast).has_value());
+    }
+  }
+}
+
+TEST(ResolvedModule, RejectsNewWarpFormsOutsideModuleTargetAvailability) {
+  for (const auto source : {
+           R"ptx(.version 5.9
+.target sm_30
+.entry kernel() {
+  .reg .b32 %b<2>;
+  shfl.sync.down.b32 %b0, %b1, 1, 31, 0xffffffff;
+})ptx",
+           R"ptx(.version 6.0
+.target sm_20
+.entry kernel() {
+  .reg .pred %p<2>;
+  vote.sync.uni.pred %p0, !%p1, 0xffffffff;
+})ptx",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto validated = resolveAndValidateModule(*parsed);
+    ASSERT_FALSE(validated.has_value());
+    ASSERT_FALSE(validated.error().empty());
+  }
+}
+
+TEST(ResolvedModule, RejectsReorderedSynchronizedWarpModifiers) {
+  for (const auto source : {
+           ".entry kernel() { .reg .b32 %b<2>; "
+           "shfl.up.sync.b32 %b0, %b1, 1, 31, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.all.sync.pred %p0, %p1, 0xffffffff; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModule(*parsed);
+    EXPECT_FALSE(resolved.has_value());
+  }
 }
 
 }  // namespace

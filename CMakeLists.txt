@@ -8,7 +8,7 @@ if(PTX_FRONTEND_BUILD_BENCHMARKS)
     list(REMOVE_DUPLICATES VCPKG_MANIFEST_FEATURES)
 endif()
 
-project(ptx_frontend VERSION 0.2.0 LANGUAGES C CXX)
+project(ptx_frontend VERSION 0.7.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 

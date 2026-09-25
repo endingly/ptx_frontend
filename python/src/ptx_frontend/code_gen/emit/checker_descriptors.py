@@ -107,8 +107,14 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction, backe
         for variant in instruction.variants
         if variant.memory_consistency is not None
     )
+    atomic_address_definitions = "\n\n".join(
+        _emit_atomic_address_qualifier_domain(variant)
+        for variant in instruction.variants
+        if instruction.atomic_address_qualifier is not None
+    )
     variants = ",\n".join(
-        _emit_variant_descriptor(variant, backend) for variant in instruction.variants
+        _emit_variant_descriptor(instruction, variant, backend)
+        for variant in instruction.variants
     )
     return f"""struct {storage_name} {{
 {modifier_value_definitions}
@@ -126,6 +132,8 @@ def _emit_instruction_descriptor_storage(instruction: ResolvedInstruction, backe
 {address_alignment_definitions}
 
 {mmio_semantic_definitions}
+
+{atomic_address_definitions}
 
   static constexpr std::array<checker::VariantDescriptor, {len(instruction.variants)}>
       variants = {{
@@ -151,7 +159,20 @@ const checker::InstructionDescriptor&
 }}"""
 
 
-def _emit_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
+def _emit_atomic_address_qualifier_domain(variant: ResolvedVariant) -> str:
+    """Emit a variant's exact written atomic address suffix domain."""
+
+    values = ", ".join(
+        f"AtomicAddressQualifier::{value.name.title().replace('_', '')}"
+        for value in variant.atomic_address_qualifier_domain
+    )
+    return f"""  static constexpr std::array<AtomicAddressQualifier, {len(variant.atomic_address_qualifier_domain)}>
+      {variant.cpp_name}_atomic_address_qualifiers = {{{values}}};"""
+
+
+def _emit_variant_descriptor(
+    instruction: ResolvedInstruction, variant: ResolvedVariant, backend: CodegenUnit
+) -> str:
     rule_id = variant.rule.value if variant.rule is not None else ""
     consistency = variant.memory_consistency
     memory_consistency = ""
@@ -197,6 +218,15 @@ def _emit_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> 
                   .operand_field_id = "{variant.immediate_multiple_of.operand_field_id}",
                   .divisor = {_cpp_uint64(variant.immediate_multiple_of.divisor)},
               }},"""
+    atomic_address = ""
+    if instruction.atomic_address_qualifier is not None:
+        policy = instruction.atomic_address_qualifier
+        atomic_address = f"""
+              .atomic_address_qualifier = {{
+                  .state_space_field_id = "{policy.state_space_field_id}",
+                  .address_operand_id = "{policy.address_operand_id}",
+                  .allowed_values = {variant.cpp_name}_atomic_address_qualifiers,
+              }},"""
     return f"""          checker::VariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .availability = {emit_availability(dict(variant.availability))},
@@ -209,6 +239,7 @@ def _emit_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> 
               .rule_id = "{rule_id}",
               .permits_unified_address = {str(variant.permits_unified_address).lower()},
               .unified_address_access = checker::VariantDescriptor::UnifiedAddressAccess::{variant.unified_address_access.title()},
+{atomic_address}
 {memory_consistency}
 {_emit_address_alignment_descriptor(variant)}
 {memory_vector}

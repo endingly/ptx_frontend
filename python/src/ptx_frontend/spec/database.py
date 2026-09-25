@@ -131,6 +131,9 @@ def _merge_instruction_definitions(
                 for category in definition.source_categories
             ),
             codegen_category=opcode_definitions[0].codegen_category,
+            atomic_address_qualifier=(
+                opcode_definitions[0].atomic_address_qualifier
+            ),
         )
         _validate_merged_instruction(instruction)
         merged.append(instruction)
@@ -144,6 +147,11 @@ def _validate_merge_contract(opcode: str, definitions: list[InstructionSpec]) ->
         raise ValueError(
             f"opcode {opcode!r} definitions disagree on codegen_category: "
             f"{sorted(categories)}"
+        )
+    policies = {definition.atomic_address_qualifier for definition in definitions}
+    if len(policies) != 1:
+        raise ValueError(
+            f"opcode {opcode!r} definitions disagree on atomic address policy"
         )
 
 

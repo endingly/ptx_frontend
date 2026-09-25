@@ -2394,7 +2394,7 @@ TEST(ResolvedModule, ResolvesAndChecksClusterlaunchcontrolQueryCancelSlices) {
   EXPECT_FALSE(wrong_status.has_value());
 }
 
-TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
+TEST(ResolvedModule, ResolvesAndChecksAtomGlobalAddU32Slice) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .align 4 .u32 global_value;
 .entry kernel() {
@@ -2411,20 +2411,23 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   ASSERT_EQ(body.size(), 2U);
   const auto& instruction = std::get<Atom>(body.front());
   const auto& legacy_instruction = std::get<Atom>(body.back());
-  const auto& atom =
-      std::get<Atom::GlobalRelaxedCtaAddU32>(instruction.variant);
+  const auto& atom = std::get<Atom::GlobalAddU32>(instruction.variant);
   const auto& legacy_atom =
-      std::get<Atom::GlobalRelaxedCtaAddU32>(legacy_instruction.variant);
+      std::get<Atom::GlobalAddU32>(legacy_instruction.variant);
   EXPECT_EQ(atom.state_space, MemoryStateSpace::Global);
   EXPECT_EQ(atom.semantics, MemoryConsistency::Relaxed);
   EXPECT_EQ(atom.scope, MemoryScope::Cta);
   EXPECT_TRUE(atom.add);
   EXPECT_EQ(atom.type, ScalarType::U32);
-  EXPECT_EQ(atom.dst.value.declared_type, ScalarType::U32);
-  EXPECT_EQ(atom.src.value.declared_type, ScalarType::U32);
-  EXPECT_EQ(legacy_atom.state_space, atom.state_space);
-  EXPECT_EQ(legacy_atom.semantics, atom.semantics);
-  EXPECT_EQ(legacy_atom.scope, atom.scope);
+  ASSERT_TRUE(std::get<0>(atom.operands).dst.value.register_ref.has_value());
+  EXPECT_EQ(std::get<0>(atom.operands).dst.value.register_ref->declared_type,
+            ScalarType::U32);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(std::get<0>(atom.operands).src.value)
+                .declared_type,
+            ScalarType::U32);
+  EXPECT_EQ(legacy_atom.state_space.value, atom.state_space.value);
+  EXPECT_EQ(legacy_atom.semantics.value, atom.semantics.value);
+  EXPECT_EQ(legacy_atom.scope.value, atom.scope.value);
   EXPECT_EQ(legacy_atom.add, atom.add);
   EXPECT_EQ(legacy_atom.type, atom.type);
   EXPECT_TRUE(
@@ -2518,8 +2521,8 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_5);
-  const auto wrong_ordering = resolveModule(*parsed_module_5);
-  ASSERT_FALSE(wrong_ordering.has_value());
+  const auto acquire_ordering = resolveModule(*parsed_module_5);
+  ASSERT_TRUE(acquire_ordering.has_value());
   const auto parsed_module_6 = parseModule(R"ptx(
 .global .u32 global_value;
 .entry kernel() {
@@ -2532,7 +2535,7 @@ TEST(ResolvedModule, ResolvesAndChecksAtomGlobalRelaxedCtaAddU32Slice) {
   ASSERT_FALSE(missing_operand.has_value());
 }
 
-TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
+TEST(ResolvedModule, ResolvesAndChecksRedGlobalAddU32Slice) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .align 4 .u32 global_value;
 .entry kernel() {
@@ -2549,18 +2552,20 @@ TEST(ResolvedModule, ResolvesAndChecksRedGlobalRelaxedCtaAddU32Slice) {
   ASSERT_EQ(body.size(), 2U);
   const auto& instruction = std::get<Red>(body.front());
   const auto& legacy_instruction = std::get<Red>(body.back());
-  const auto& red = std::get<Red::GlobalRelaxedCtaAddU32>(instruction.variant);
+  const auto& red = std::get<Red::GlobalAddU32>(instruction.variant);
   const auto& legacy_red =
-      std::get<Red::GlobalRelaxedCtaAddU32>(legacy_instruction.variant);
+      std::get<Red::GlobalAddU32>(legacy_instruction.variant);
   EXPECT_EQ(red.state_space, MemoryStateSpace::Global);
   EXPECT_EQ(red.semantics, MemoryConsistency::Relaxed);
   EXPECT_EQ(red.scope, MemoryScope::Cta);
   EXPECT_TRUE(red.add);
   EXPECT_EQ(red.type, ScalarType::U32);
-  EXPECT_EQ(red.src.value.declared_type, ScalarType::U32);
-  EXPECT_EQ(legacy_red.state_space, red.state_space);
-  EXPECT_EQ(legacy_red.semantics, red.semantics);
-  EXPECT_EQ(legacy_red.scope, red.scope);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(std::get<0>(red.operands).src.value)
+                .declared_type,
+            ScalarType::U32);
+  EXPECT_EQ(legacy_red.state_space.value, red.state_space.value);
+  EXPECT_EQ(legacy_red.semantics.value, red.semantics.value);
+  EXPECT_EQ(legacy_red.scope.value, red.scope.value);
   EXPECT_EQ(legacy_red.add, red.add);
   EXPECT_EQ(legacy_red.type, red.type);
   EXPECT_TRUE(
@@ -2881,6 +2886,81 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_8);
   const auto missing_mask = resolveModule(*parsed_module_8);
   ASSERT_FALSE(missing_mask.has_value());
+}
+
+TEST(ResolvedModule, PreservesVoteSyncModesAndSourceNegation) {
+  const auto parsed = parseModule(R"ptx(
+.version 6.0
+.target sm_30
+.entry kernel() {
+  .reg .pred %p<3>;
+  .reg .b32 %b;
+  .reg .u32 %mask;
+  vote.sync.all.pred %p1, %p0, 0xffffffff;
+  vote.sync.all.pred %p1, !%p0, %mask;
+  vote.sync.any.pred %p1, %p0, 0xffffffff;
+  vote.sync.any.pred %p1, !%p0, %mask;
+  vote.sync.uni.pred %p1, %p0, 0xffffffff;
+  vote.sync.uni.pred %p1, !%p0, %mask;
+  vote.sync.ballot.b32 %b, %p0, 0xffffffff;
+  vote.sync.ballot.b32 %b, !%p0, %mask;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 8u);
+  const checker::Context context{
+      .target = {.ptx_version = {6, 0}, .sm_version = 30},
+      .instruction_range = parsed->range,
+  };
+  for (const auto& candidate : body) {
+    ASSERT_TRUE(checker::check(std::get<Vote>(candidate), context).has_value());
+  }
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncAllPred>(
+      std::get<Vote>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncAnyPred>(
+      std::get<Vote>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncUniPred>(
+      std::get<Vote>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Vote::SyncBallotB32>(
+      std::get<Vote>(body[6]).variant));
+  EXPECT_FALSE(std::get<Vote::SyncAllPred>(std::get<Vote>(body[0]).variant)
+                   .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncAllPred>(std::get<Vote>(body[1]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncAnyPred>(std::get<Vote>(body[3]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncUniPred>(std::get<Vote>(body[5]).variant)
+                  .predicate.value.negated);
+  EXPECT_TRUE(std::get<Vote::SyncBallotB32>(std::get<Vote>(body[7]).variant)
+                  .predicate.value.negated);
+
+  for (const auto source : {
+           ".entry kernel() { .reg .pred %p<2>; .reg .b32 %b; "
+           "vote.sync.all.pred %b, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; .reg .b32 %b; "
+           "vote.sync.ballot.b32 %p1, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.sync.uni.pred %p1, %p0; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.sync.all.pred !%p1, %p0, 0xffffffff; }",
+           ".entry kernel() { .reg .pred %p<2>; "
+           "vote.uni.pred %p1, %p0; }",
+       }) {
+    const auto invalid_ast = parseModule(source);
+    if (invalid_ast.diagnostics.empty()) {
+      const auto invalid = resolveModule(*invalid_ast);
+      if (invalid.has_value()) {
+        EXPECT_FALSE(
+            checker::check(
+                std::get<Vote>(invalid->functions.front().body.front()),
+                context)
+                .has_value());
+      }
+    }
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksBarWarpSyncSlice) {

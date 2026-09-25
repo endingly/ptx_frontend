@@ -17,16 +17,25 @@ constexpr std::string_view kFixture = R"ptx(
 .target sm_121a
 .address_size 64
 .shared .align 8 .u64 cvta_shared_value;
+.global .align 4 .b32 atomic_value;
+.global .align 8 .b64 atomic_value_64;
+.global .align 16 .b8 atomic_vector_value[16];
 .visible .entry conversion_consumer(
     .param .u64 .ptr .const .align 8 constant_pointer) {
   .reg .pred %p<2>;
   .reg .u32 %r<2>;
   .reg .u32 %u0;
   .reg .u64 %rd0;
+  .reg .u64 %mbar_addr;
   .reg .s32 %s<3>;
   .reg .b32 %b<5>;
+  .reg .u64 %uq<2>;
+  .reg .s64 %sq<2>;
+  .reg .b64 %bq<3>;
   .reg .f32 %f<4>;
+  .reg .f64 %fd<2>;
   .reg .b16 %h<2>;
+  .reg .b64 %policy;
 
   isspacep.shared::cluster %p0, %r0;
   cvta.shared::cluster.u64 %rd0, cvta_shared_value+8;
@@ -55,6 +64,28 @@ constexpr std::string_view kFixture = R"ptx(
   set.eq.bf16.f16 %h0, %h1, %h1;
   slct.u32.s32 %u0, %u0, 0, -1;
   slct.ftz.u64.f32 %rd0, %rd0, %rd0, -0.0;
+  atom.relaxed.cta.global.add.u32 %u0, [atomic_value], %u0;
+  red.relaxed.cta.global.add.u32 [atomic_value], 1;
+  atom.global.cas.b32 %b0, [atomic_value], 1, %b1;
+  atom.relaxed.cta.global.cas.b32 %b0, [atomic_value], %b1, 2;
+  atom.global.inc.u32 %u0, [atomic_value], %u0;
+  atom.relaxed.cta.global.exch.b32 %b0, [atomic_value], 1;
+  red.global.xor.b32 [atomic_value], %b1;
+  atom.global.add.u64 %uq0, [atomic_value_64], %uq1;
+  atom.global.relaxed.cta.min.s64 %sq0, [atomic_value_64], 1;
+  atom.relaxed.cta.global.cas.b64 %bq0, [atomic_value_64], %bq1, 2;
+  red.global.relaxed.cta.xor.b64 [atomic_value_64], %bq1;
+  atom.global.add.f32 %f0, [atomic_value], %b0;
+  red.global.relaxed.cta.add.f32 [atomic_value], 0f3f800000;
+  atom.relaxed.cta.global.add.f64 %fd0, [atomic_value_64], %bq1;
+  red.global.add.f64 [atomic_value_64], 1.0;
+  atom.global.v2.f16.add.noftz.L2::cache_hint {_, %h1},
+      [atomic_vector_value], {%h0, %h1}, %policy;
+  red.global.v2.f16.add.noftz.L2::cache_hint
+      [atomic_vector_value], {%h0, %h1}, %policy;
+  red.async.relaxed.cluster.shared::cluster.mbarrier::complete_tx::bytes.add.u32
+      [%rd0], %r0, [%mbar_addr];
+  red.async.mmio.release.sys.global.add.u64 [%rd0], %uq0;
   ret;
 }
 )ptx";
@@ -87,7 +118,162 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
     return false;
   auto& body = module.functions.front().body;
-  if (!require(body.size() == 28, "all conversion and arithmetic instructions"))
+  if (!require(body.size() == 47, "all conversion and atomic instructions"))
+    return false;
+
+  auto* atom_instruction = std::get_if<ir::Atom>(&body[27]);
+  auto* atom =
+      atom_instruction
+          ? std::get_if<ir::Atom::GlobalAddU32>(&atom_instruction->variant)
+          : nullptr;
+  auto* red_instruction = std::get_if<ir::Red>(&body[28]);
+  auto* red =
+      red_instruction
+          ? std::get_if<ir::Red::GlobalAddU32>(&red_instruction->variant)
+          : nullptr;
+  auto* legacy_cas_instruction = std::get_if<ir::Atom>(&body[29]);
+  auto* legacy_cas = legacy_cas_instruction
+                         ? std::get_if<ir::Atom::GlobalCasB32>(
+                               &legacy_cas_instruction->variant)
+                         : nullptr;
+  auto* modern_cas_instruction = std::get_if<ir::Atom>(&body[30]);
+  auto* modern_cas = modern_cas_instruction
+                         ? std::get_if<ir::Atom::GlobalCasB32>(
+                               &modern_cas_instruction->variant)
+                         : nullptr;
+  if (!require(
+          atom && red && legacy_cas && modern_cas &&
+              std::get<0>(atom->operands).dst.value.register_ref.has_value() &&
+              legacy_cas->dst.value.register_ref.has_value() &&
+              modern_cas->dst.value.register_ref.has_value() &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  std::get<0>(atom->operands).src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(
+                  std::get<0>(red->operands).src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(
+                  legacy_cas->compare.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  legacy_cas->swap.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  modern_cas->compare.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(
+                  modern_cas->swap.value),
+          "owned atomic register and immediate sources"))
+    return false;
+
+  const auto* inc_instruction = std::get_if<ir::Atom>(&body[31]);
+  const auto* inc =
+      inc_instruction
+          ? std::get_if<ir::Atom::GlobalIncU32>(&inc_instruction->variant)
+          : nullptr;
+  const auto* exch_instruction = std::get_if<ir::Atom>(&body[32]);
+  const auto* exch =
+      exch_instruction
+          ? std::get_if<ir::Atom::GlobalExchB32>(&exch_instruction->variant)
+          : nullptr;
+  const auto* xor_instruction = std::get_if<ir::Red>(&body[33]);
+  const auto* xor_red =
+      xor_instruction
+          ? std::get_if<ir::Red::GlobalXorB32>(&xor_instruction->variant)
+          : nullptr;
+  if (!require(inc && exch && xor_red &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       std::get<0>(inc->operands).src.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       std::get<0>(exch->operands).src.value) &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       std::get<0>(xor_red->operands).src.value),
+               "owned expanded atomic and reduction variants"))
+    return false;
+
+  const auto* add_64_instruction = std::get_if<ir::Atom>(&body[34]);
+  const auto* add_64 =
+      add_64_instruction
+          ? std::get_if<ir::Atom::GlobalAddU64>(&add_64_instruction->variant)
+          : nullptr;
+  const auto* min_64_instruction = std::get_if<ir::Atom>(&body[35]);
+  const auto* min_64 =
+      min_64_instruction
+          ? std::get_if<ir::Atom::GlobalMinS64>(&min_64_instruction->variant)
+          : nullptr;
+  const auto* cas_64_instruction = std::get_if<ir::Atom>(&body[36]);
+  const auto* cas_64 =
+      cas_64_instruction
+          ? std::get_if<ir::Atom::GlobalCasB64>(&cas_64_instruction->variant)
+          : nullptr;
+  const auto* red_64_instruction = std::get_if<ir::Red>(&body[37]);
+  const auto* red_64 =
+      red_64_instruction
+          ? std::get_if<ir::Red::GlobalXorB64>(&red_64_instruction->variant)
+          : nullptr;
+  if (!require(add_64 && min_64 && cas_64 && red_64 &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       std::get<0>(add_64->operands).src.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       std::get<0>(min_64->operands).src.value) &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       cas_64->compare.value) &&
+                   std::holds_alternative<ir::ResolvedImmediate>(
+                       cas_64->swap.value) &&
+                   std::holds_alternative<ir::ResolvedRegisterRef>(
+                       std::get<0>(red_64->operands).src.value),
+               "owned 64-bit atomic and reduction variants"))
+    return false;
+
+  const auto* float_atom = std::get_if<ir::Atom>(&body[38]);
+  const auto* float_red = std::get_if<ir::Red>(&body[39]);
+  const auto* double_atom = std::get_if<ir::Atom>(&body[40]);
+  const auto* double_red = std::get_if<ir::Red>(&body[41]);
+  if (!require(float_atom && float_red && double_atom && double_red &&
+                   std::holds_alternative<ir::Atom::GlobalAddF32>(
+                       float_atom->variant) &&
+                   std::holds_alternative<ir::Red::GlobalAddF32>(
+                       float_red->variant) &&
+                   std::holds_alternative<ir::Atom::GlobalAddF64>(
+                       double_atom->variant) &&
+                   std::holds_alternative<ir::Red::GlobalAddF64>(
+                       double_red->variant),
+               "owned float atomic and reduction variants"))
+    return false;
+
+  const auto* vector_atom_instruction = std::get_if<ir::Atom>(&body[42]);
+  const auto* vector_atom = vector_atom_instruction
+                                ? std::get_if<ir::Atom::VectorAddNoftzF16>(
+                                      &vector_atom_instruction->variant)
+                                : nullptr;
+  const auto* vector_red_instruction = std::get_if<ir::Red>(&body[43]);
+  const auto* vector_red = vector_red_instruction
+                               ? std::get_if<ir::Red::VectorAddNoftzF16>(
+                                     &vector_red_instruction->variant)
+                               : nullptr;
+  if (!require(vector_atom && vector_red &&
+                   vector_atom->vector.value == ir::VectorArity::V2 &&
+                   vector_red->vector.value == ir::VectorArity::V2 &&
+                   vector_atom->cache_hint.value &&
+                   vector_red->cache_hint.value &&
+                   !std::get<1>(vector_atom->operands)
+                        .dst.value.elements.front()
+                        .has_value() &&
+                   std::get<1>(vector_atom->operands)
+                           .cache_policy.value.declared_type ==
+                       ptx_frontend::base::ScalarType::B64,
+               "owned vector atomic and reduction policy layout"))
+    return false;
+
+  const auto* shared_async = std::get_if<ir::Red>(&body[44]);
+  const auto* release_async = std::get_if<ir::Red>(&body[45]);
+  if (!require(shared_async && release_async &&
+                   std::holds_alternative<ir::Red::AsyncSharedAddU32>(
+                       shared_async->variant) &&
+                   std::holds_alternative<ir::Red::AsyncReleaseAddU64>(
+                       release_async->variant) &&
+                   shared_async->address_qualifier.value ==
+                       ir::AtomicAddressQualifier::SharedCluster &&
+                   release_async->address_qualifier.value ==
+                       ir::AtomicAddressQualifier::Global &&
+                   std::get<ir::Red::AsyncReleaseAddU64>(release_async->variant)
+                       .mmio.value,
+               "owned asynchronous reduction modes"))
     return false;
 
   auto* testp = std::get_if<ir::Testp>(&body[8]);

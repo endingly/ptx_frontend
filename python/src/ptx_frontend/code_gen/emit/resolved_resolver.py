@@ -121,6 +121,10 @@ def _emit_resolve_variant_case(
     variant: ResolvedVariant,
     backend: CodegenUnit,
 ) -> str:
+    atomic_qualifier = (
+        ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n        "
+        if instruction.atomic_address_qualifier is not None else ""
+    )
     if len(variant.operand_layouts) == 1:
         fields = "\n".join(
             "          " + _emit_resolve_field_initializer(field, backend)
@@ -131,6 +135,7 @@ def _emit_resolve_variant_case(
   if (fields->variant_name == "{variant.cpp_name}") {{
     return {instruction.cpp_name}{{
         .execution_predicate = std::move(fields->execution_predicate),
+        {atomic_qualifier}\
         .variant = {instruction.cpp_name}::{variant.cpp_name}{{
                    .operand_layout = fields->operand_layout,
 {fields}
@@ -160,6 +165,10 @@ def _emit_resolve_multi_layout_case(
     backend: CodegenUnit,
 ) -> str:
     layout = variant.operand_layouts[layout_index]
+    atomic_qualifier = (
+        ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n          "
+        if instruction.atomic_address_qualifier is not None else ""
+    )
     modifier_fields = "\n".join(
         "              " + _emit_resolve_field_initializer(field, backend)
         for field in variant.modifier_fields
@@ -173,6 +182,7 @@ def _emit_resolve_multi_layout_case(
     return f"""    if (fields->operand_layout.value == {layout_index}) {{
       return {instruction.cpp_name}{{
           .execution_predicate = std::move(fields->execution_predicate),
+          {atomic_qualifier}\
           .variant = {instruction.cpp_name}::{variant.cpp_name}{{
               .operand_layout = fields->operand_layout,
 {modifier_fields}

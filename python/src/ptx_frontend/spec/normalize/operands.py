@@ -6,6 +6,8 @@ from typing import Any
 
 from ptx_frontend.spec.model import (
     MbarrierStateTokenForm,
+    OperandAddressBasePolicy,
+    OperandAddressOffsetDomain,
     OperandAccess,
     OperandImmediateConversionPolicy,
     OperandKind,
@@ -63,6 +65,8 @@ class _VectorOptions:
     type_policy: OperandVectorTypePolicy
     allow_sink: bool
     sink_payload_bits: int
+    allowed_register_types: tuple[str, ...]
+    require_uniform_register_family: bool
 
 
 @dataclass(frozen=True)
@@ -72,6 +76,8 @@ class _AddressOptions:
     state_space_values: tuple[OperandStateSpaceValue, ...]
     state_space_expression: OperandStateSpaceExpression | None
     parameter_constraint: OperandParameterConstraint | None
+    base_policy: OperandAddressBasePolicy
+    offset_domain: OperandAddressOffsetDomain
 
 
 def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
@@ -111,11 +117,15 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         state_space_values=address.state_space_values,
         state_space_expression=address.state_space_expression,
         parameter_constraint=address.parameter_constraint,
+        address_base_policy=address.base_policy,
+        address_offset_domain=address.offset_domain,
         vector_arities=vector.arities,
         vector_arity_expression=vector.arity_expression,
         vector_type_policy=vector.type_policy,
         vector_allow_sink=vector.allow_sink,
         vector_sink_payload_bits=vector.sink_payload_bits,
+        vector_allowed_register_types=vector.allowed_register_types,
+        vector_require_uniform_register_family=vector.require_uniform_register_family,
         allow_destination_sink=shfl_sink.allow_destination,
         allow_predicate_sink=shfl_sink.allow_predicate,
         mbarrier_state_token_form=mbarrier.form,
@@ -283,6 +293,8 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
     vector_sink_payload_bits = 0
+    vector_allowed_register_types: tuple[str, ...] = ()
+    vector_require_uniform_register_family = False
     if raw["kind"] in {
         OperandKind.REGISTER_VECTOR,
         OperandKind.VECTOR_REGISTER,
@@ -319,6 +331,31 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
             )
+        allowed = vector.get("allowed_register_types", [])
+        if (not isinstance(allowed, list) or
+                any(not isinstance(value, str) for value in allowed) or
+                len(set(allowed)) != len(allowed)):
+            raise TypeError(
+                f"{raw['kind']} vector.allowed_register_types must be a unique string list."
+            )
+        for value in allowed:
+            _normalize_operand_type_expression(value)
+        vector_allowed_register_types = tuple(allowed)
+        vector_require_uniform_register_family = vector.get(
+            "require_uniform_register_family", False
+        )
+        if not isinstance(vector_require_uniform_register_family, bool):
+            raise TypeError(
+                f"{raw['kind']} vector.require_uniform_register_family must be boolean."
+            )
+        if vector_require_uniform_register_family and not allowed:
+            raise ValueError(
+                f"{raw['kind']} uniform register family requires allowed_register_types."
+            )
+        if allowed and vector_type_policy is not OperandVectorTypePolicy.ELEMENT:
+            raise ValueError(
+                f"{raw['kind']} allowed_register_types requires element type policy."
+            )
         if "sink_payload_bits" in vector:
             vector_sink_payload_bits = vector["sink_payload_bits"]
             if (
@@ -341,6 +378,8 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         type_policy=vector_type_policy,
         allow_sink=vector_allow_sink,
         sink_payload_bits=vector_sink_payload_bits,
+        allowed_register_types=vector_allowed_register_types,
+        require_uniform_register_family=vector_require_uniform_register_family,
     )
 
 
@@ -417,10 +456,26 @@ def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
         raw.get("state_space")
     )
     parameter_constraint = _normalize_operand_parameter_constraint(raw.get("parameter"))
+    try:
+        base_policy = OperandAddressBasePolicy(raw.get("address_base", "any"))
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw['name']!r}: unsupported address_base policy"
+        ) from error
+    try:
+        offset_domain = OperandAddressOffsetDomain(
+            raw.get("address_offset_domain", "unrestricted")
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"operand {raw['name']!r}: unsupported address_offset_domain"
+        ) from error
     has_address_constraint = (
         bool(state_space_values)
         or state_space_expression is not None
         or parameter_constraint is not None
+        or base_policy is not OperandAddressBasePolicy.ANY
+        or offset_domain is not OperandAddressOffsetDomain.UNRESTRICTED
     )
     if has_address_constraint and raw["kind"] not in {
         OperandKind.ADDRESS,
@@ -440,6 +495,8 @@ def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
         state_space_values=state_space_values,
         state_space_expression=state_space_expression,
         parameter_constraint=parameter_constraint,
+        base_policy=base_policy,
+        offset_domain=offset_domain,
     )
 
 

@@ -8,6 +8,22 @@
 #include "resolved_value_domains.gen.hpp"
 
 namespace ptx_frontend::resolved_ir {
+WithLocs<AtomicAddressQualifier> atomic_address_qualifier_from_ast(
+    const syntax_ast::AstInstruction& ast) {
+  for (const auto& modifier : ast.modifiers) {
+    const std::string_view spelling = modifier.syntax.text;
+    if (spelling == ".global")
+      return {AtomicAddressQualifier::Global, modifier.syntax.range};
+    if (spelling == ".shared")
+      return {AtomicAddressQualifier::Shared, modifier.syntax.range};
+    if (spelling == ".shared::cta")
+      return {AtomicAddressQualifier::SharedCta, modifier.syntax.range};
+    if (spelling == ".shared::cluster")
+      return {AtomicAddressQualifier::SharedCluster, modifier.syntax.range};
+  }
+  return {AtomicAddressQualifier::Generic};
+}
+
 using check_end::OperandPresence;
 using check_end::OperandSyntaxShape;
 using check_end::ResolvedFieldDescriptor;

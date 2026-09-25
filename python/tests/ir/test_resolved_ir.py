@@ -83,6 +83,8 @@ from ptx_frontend.spec.model import (
     ModifierKind,
     ModifierPresence,
     OperandAccess,
+    OperandAddressBasePolicy,
+    OperandAddressOffsetDomain,
     OperandKind,
     OperandRole,
     SemanticRule,
@@ -4226,79 +4228,448 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertEqual(release_sync.operand_layouts[0].bindings, ())
 
-    def test_atom_global_relaxed_cta_add_u32_model(self) -> None:
-        database = self.database
-        atom = next(
-            instruction
-            for instruction in database.instructions
-            if instruction.opcode == "atom"
-        )
-        resolved = from_instruction_spec(atom)
+    def test_atomic_reduction_scalar_model(self) -> None:
+        """One operation/type variant owns independent typed qualifier slots."""
+        for opcode, count, base_ptx in (("atom", 45, "1.1"), ("red", 38, "1.2")):
+            instruction = next(
+                item for item in self.database.instructions if item.opcode == opcode
+            )
+            resolved = from_instruction_spec(instruction)
+            variants = [variant for variant in resolved.variants
+                        if not variant.cpp_name.startswith("Async")]
+            self.assertEqual(len(variants), count)
+            self.assertEqual(len({variant.cpp_name for variant in variants}), count)
+            for variant in variants:
+                self.assertEqual(
+                    tuple(field.name for field in variant.modifier_fields[:3]),
+                    ("semantics", "scope", "state_space"),
+                )
+            add = next(v for v in resolved.variants if v.cpp_name == "GlobalAddU32")
+            self.assertEqual(dict(add.availability), {"ptx": base_ptx, "sm": 11})
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in add.modifier_fields[:3]],
+                [
+                    ("semantics", "WithLocs<MemoryConsistency>"),
+                    ("scope", "WithLocs<MemoryScope>"),
+                    ("state_space", "WithLocs<MemoryStateSpace>"),
+                ],
+            )
+            self.assertEqual(
+                tuple(binding.target_field_id for binding in add.operand_layouts[0].bindings),
+                ("dst", "address", "src") if opcode == "atom" else ("address", "src"),
+            )
+            address = next(binding for binding in add.operand_layouts[0].bindings
+                           if binding.target_field_id == "address")
+            self.assertIsNone(address.state_space_modifier_field_id)
+            self.assertEqual({entry.value for entry in address.allowed_address_state_spaces},
+                             {"global", "shared"})
+            source = add.operand_layouts[0].bindings[-1]
+            self.assertEqual(source.allowed_shapes,
+                             (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
+            self.assertEqual(source.immediate_conversion_policy,
+                             ResolvedImmediateConversionPolicy.NARROW)
+            self.assertEqual(add.address_alignments[0].type_field_id, "type")
 
-        self.assertEqual(resolved.cpp_name, "Atom")
-        self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants],
-            ["GlobalRelaxedCtaAddU32"],
-        )
-        variant = resolved.variants[0]
-        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [
-                ("semantics", "MemoryConsistency"),
-                ("scope", "MemoryScope"),
-                ("state_space", "MemoryStateSpace"),
-                ("add", "bool"),
-                ("type", "ScalarType"),
-                ("dst", "WithLocs<ResolvedRegisterRef>"),
-                ("address", "WithLocs<ResolvedAddress>"),
-                ("src", "WithLocs<ResolvedRegisterRef>"),
-            ],
-        )
-        bindings = variant.operand_layouts[0].bindings
-        self.assertEqual(
-            (bindings[0].register_width_policy, bindings[2].register_width_policy),
-            (
-                ResolvedRegisterWidthPolicy.SAME_WIDTH,
-                ResolvedRegisterWidthPolicy.SAME_WIDTH,
-            ),
-        )
-        self.assertEqual(bindings[1].state_space_modifier_field_id, "state_space")
+        atom = next(item for item in self.database.instructions if item.opcode == "atom")
+        cas = next(v for v in from_instruction_spec(atom).variants
+                   if v.cpp_name == "GlobalCasB64")
+        self.assertEqual(dict(cas.availability), {"ptx": "1.2", "sm": 12})
+        self.assertEqual(tuple(binding.target_field_id for binding in cas.operand_layouts[0].bindings),
+                         ("dst", "address", "compare", "swap"))
+        for binding in cas.operand_layouts[0].bindings[-2:]:
+            self.assertEqual(binding.allowed_shapes,
+                             (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
 
-    def test_red_global_relaxed_cta_add_u32_model(self) -> None:
-        database = self.database
-        red = next(
-            instruction
-            for instruction in database.instructions
-            if instruction.opcode == "red"
-        )
-        resolved = from_instruction_spec(red)
+    def test_float_atomic_reduction_descriptor_contract(self) -> None:
+        """Float variants retain equal-width operand and base target floors."""
+        for opcode in ("atom", "red"):
+            instruction = next(item for item in self.database.instructions if item.opcode == opcode)
+            variants = {variant.cpp_name: variant for variant in from_instruction_spec(instruction).variants}
+            expected_fields = ("dst", "address", "src") if opcode == "atom" else ("address", "src")
+            for scalar, ptx, sm in (("F32", "2.0", 20), ("F64", "5.0", 60)):
+                variant = variants[f"GlobalAdd{scalar}"]
+                self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": sm})
+                bindings = variant.operand_layouts[0].bindings
+                self.assertEqual(tuple(binding.target_field_id for binding in bindings), expected_fields)
+                self.assertEqual(bindings[-1].register_width_policy,
+                                 ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                self.assertEqual(bindings[-1].allowed_shapes,
+                                 (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE))
 
-        self.assertEqual(resolved.cpp_name, "Red")
-        self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants],
-            ["GlobalRelaxedCtaAddU32"],
+    def test_half_bfloat_and_wide_atomic_descriptor_contract(self) -> None:
+        """Pin scalar register compatibility and target floors by cohort."""
+        expected = {
+            "atom": {
+                "GlobalCasB16": ("6.3", 70, "b16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalCasB128": ("8.3", 90, "b128", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalExchB128": ("8.3", 90, "b128", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
+            },
+            "red": {
+                "GlobalAddNoftzF16": ("6.3", 70, "f16", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzF16x2": ("6.2", 60, "f16x2", ResolvedRegisterWidthPolicy.SAME_WIDTH),
+                "GlobalAddNoftzBf16": ("7.8", 90, "b16", ResolvedRegisterWidthPolicy.EXACT),
+                "GlobalAddNoftzBf16x2": ("7.8", 90, "b32", ResolvedRegisterWidthPolicy.EXACT),
+            },
+        }
+        for opcode, tuples in expected.items():
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            variants = {variant.cpp_name: variant
+                        for variant in from_instruction_spec(instruction).variants}
+            for name, (ptx, sm, container, width_policy) in tuples.items():
+                variant = variants[name]
+                self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": sm})
+                bindings = variant.operand_layouts[0].bindings
+                source_bindings = tuple(binding for binding in bindings
+                                        if binding.target_field_id not in ("dst", "address"))
+                self.assertTrue(source_bindings)
+                for binding in source_bindings:
+                    self.assertEqual(binding.type_expression.scalar_type, container)
+                    self.assertEqual(binding.register_width_policy,
+                                     width_policy)
+                if opcode == "atom":
+                    dst = next(field for field in variant.operand_layouts[0].fields
+                               if field.name == "dst")
+                    self.assertEqual(field_cpp_type(dst),
+                                     "WithLocs<ResolvedRegisterOrSink>")
+                if "Noftz" in name:
+                    self.assertIn("noftz", (field.name for field in variant.modifier_fields))
+                if name in ("GlobalCasB128", "GlobalExchB128"):
+                    sys = next(value for value in variant.modifier_value_availabilities
+                               if value.source_kind_id == "scope" and value.value == "sys")
+                    self.assertEqual(dict(sys.availability), {"ptx": "8.4", "sm": 90})
+
+    def test_scalar_atomic_cache_hint_layout_contract(self) -> None:
+        """Use one typed policy layout per eligible scalar tuple, without a suffix matrix."""
+        for opcode, count, hinted in (("atom", 32, 28), ("red", 25, 25)):
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            variants = [variant for variant in from_instruction_spec(instruction).variants
+                        if not variant.cpp_name.startswith(("Vector", "Async"))]
+            self.assertEqual(len(variants), count)
+            self.assertEqual(sum(len(v.operand_layouts) == 2 for v in variants), hinted)
+            for variant in variants:
+                if "Cas" in variant.cpp_name:
+                    self.assertEqual(len(variant.operand_layouts), 1)
+                    self.assertNotIn("cache_hint", (field.name for field in variant.modifier_fields))
+                    continue
+                self.assertEqual(tuple(layout.layout_id for layout in variant.operand_layouts),
+                                 ("no_hint", "with_policy"))
+                self.assertIn("cache_hint", (field.name for field in variant.modifier_fields))
+                policy_layout = variant.operand_layouts[1]
+                self.assertEqual(dict(policy_layout.availability), {"ptx": "7.4", "sm": 80})
+                policy = policy_layout.bindings[-1]
+                self.assertEqual(policy.target_field_id, "cache_policy")
+                self.assertEqual(policy.type_expression.scalar_type, "b64")
+                self.assertEqual(policy.allowed_shapes, (ResolvedOperandShape.REGISTER,))
+                address = next(binding for binding in policy_layout.bindings
+                               if binding.target_field_id == "address")
+                self.assertEqual(tuple(space.value for space in address.allowed_address_state_spaces),
+                                 ("global",))
+                hint = next(value for value in variant.modifier_value_availabilities
+                            if value.source_kind_id == "cache_hint" and value.value is True)
+                self.assertEqual(dict(hint.availability), {"ptx": "7.4", "sm": 80})
+
+    def test_red_async_mode_contract(self) -> None:
+        """Pin disjoint asynchronous layouts, closed tuples, and address bases."""
+        instruction = next(item for item in self.database.instructions
+                           if item.opcode == "red")
+        variants = {variant.cpp_name: variant
+                    for variant in from_instruction_spec(instruction).variants
+                    if variant.cpp_name.startswith("Async")}
+        shared = {name: variant for name, variant in variants.items()
+                  if name.startswith("AsyncShared")}
+        release = {name: variant for name, variant in variants.items()
+                   if name.startswith("AsyncRelease")}
+        self.assertEqual(set(shared), {
+            "AsyncSharedIncU32", "AsyncSharedDecU32", "AsyncSharedMinU32",
+            "AsyncSharedMinS32", "AsyncSharedMaxU32", "AsyncSharedMaxS32",
+            "AsyncSharedAndB32", "AsyncSharedOrB32", "AsyncSharedXorB32",
+            "AsyncSharedAddU32", "AsyncSharedAddS32", "AsyncSharedAddU64",
+        })
+        self.assertEqual(set(release), {
+            "AsyncReleaseAddU32", "AsyncReleaseAddS32",
+            "AsyncReleaseAddU64", "AsyncReleaseAddS64",
+        })
+        for cohort, floor, fields, spaces in (
+            (shared, {"ptx": "8.1", "sm": 90},
+             ("address", "src", "mbarrier"), ("shared",)),
+            (release, {"ptx": "8.7", "sm": 100},
+             ("address", "src"), ("global",)),
+        ):
+            for variant in cohort.values():
+                self.assertEqual(dict(variant.availability), floor)
+                self.assertEqual(len(variant.operand_layouts), 1)
+                bindings = variant.operand_layouts[0].bindings
+                self.assertEqual(tuple(binding.target_field_id for binding in bindings),
+                                 fields)
+                address = bindings[0]
+                self.assertEqual(address.address_base_policy,
+                                 OperandAddressBasePolicy.REGISTER)
+                self.assertEqual(address.address_offset_domain,
+                                 OperandAddressOffsetDomain.SIGNED32)
+                self.assertEqual(tuple(space.value for space in
+                                       address.allowed_address_state_spaces), spaces)
+                self.assertEqual(variant.address_alignments[0].type_field_id, "type")
+                if cohort is shared:
+                    self.assertEqual(bindings[2].address_base_policy,
+                                     OperandAddressBasePolicy.REGISTER)
+                    self.assertEqual(bindings[2].address_offset_domain,
+                                     OperandAddressOffsetDomain.SIGNED32)
+                    self.assertEqual(variant.address_alignments[1].alignment, 8)
+        self.assertTrue(all("completion" in
+                            (field.name for field in variant.modifier_fields)
+                            for variant in shared.values()))
+        self.assertTrue(all("mmio" in
+                            (field.name for field in variant.modifier_fields)
+                            for variant in release.values()))
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "red_async.gen.cpp"
+            generate_resolved_ir_category_source(
+                build_test_generation_context(self.database),
+                category="parallel_synchronization_and_communication",
+                output_path=output,
+            )
+            generated = output.read_text()
+        self.assertIn("checker::AddressBaseKind::Register", generated)
+        self.assertGreaterEqual(generated.count(".address_base_kind ="), 16)
+
+    def test_atomic_address_offset_domain_is_scoped(self) -> None:
+        """Every atom/red address uses signed32; unrelated addresses keep defaults."""
+        for opcode in ("atom", "red"):
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            for variant in from_instruction_spec(instruction).variants:
+                for layout in variant.operand_layouts:
+                    for binding in layout.bindings:
+                        if binding.target_field_id in ("address", "mbarrier"):
+                            self.assertEqual(binding.address_offset_domain,
+                                             OperandAddressOffsetDomain.SIGNED32)
+        mov = next(item for item in self.database.instructions if item.opcode == "mov")
+        for variant in from_instruction_spec(mov).variants:
+            for layout in variant.operand_layouts:
+                for binding in layout.bindings:
+                    self.assertEqual(binding.address_offset_domain,
+                                     OperandAddressOffsetDomain.UNRESTRICTED)
+
+    def test_vector_atomic_reduction_model(self) -> None:
+        """Typed arity domains cover every legal tuple without suffix expansion."""
+        for opcode in ("atom", "red"):
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            raw = [variant for variant in instruction.variants
+                   if variant.name.startswith(f"{opcode}_vector_")]
+            resolved = [variant for variant in from_instruction_spec(instruction).variants
+                        if variant.cpp_name.startswith("Vector")]
+            self.assertEqual(len(raw), 13)
+            self.assertEqual(len(resolved), 13)
+            self.assertEqual(sum(len(next(modifier for modifier in variant.modifiers
+                                          if modifier.name == "vector").values)
+                                 for variant in raw), 32)
+            for variant in resolved:
+                self.assertEqual(dict(variant.availability), {"ptx": "8.1", "sm": 90})
+                self.assertEqual(variant.address_alignments[0].vector_field_id, "vector")
+                self.assertEqual(tuple(layout.layout_id for layout in variant.operand_layouts),
+                                 ("no_hint", "with_policy"))
+                for layout in variant.operand_layouts:
+                    names = tuple(binding.target_field_id for binding in layout.bindings)
+                    self.assertEqual(names[:3] if opcode == "atom" else names[:2],
+                                     ("dst", "address", "src") if opcode == "atom"
+                                     else ("address", "src"))
+                    address = next(binding for binding in layout.bindings
+                                   if binding.target_field_id == "address")
+                    self.assertEqual(tuple(space.value for space in
+                                           address.allowed_address_state_spaces), ("global",))
+                    source = next(binding for binding in layout.bindings
+                                  if binding.target_field_id == "src")
+                    self.assertEqual(source.allowed_shapes, (ResolvedOperandShape.VECTOR,))
+                    self.assertEqual(source.register_width_policy,
+                                     ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertFalse(source.allow_vector_sink)
+                    self.assertTrue(source.require_uniform_vector_register_family)
+                    lane_types = set(source.allowed_vector_register_types)
+                    if variant.cpp_name.endswith("Bf16"):
+                        self.assertEqual(lane_types, {"b16"})
+                    elif variant.cpp_name.endswith("F16"):
+                        self.assertEqual(lane_types, {"b16", "f16", "u16", "s16"})
+                    elif variant.cpp_name.endswith("F32"):
+                        self.assertEqual(lane_types, {"b32", "f32", "u32", "s32"})
+                    elif variant.cpp_name.endswith("F16x2"):
+                        self.assertEqual(lane_types, {"b32", "f16x2"})
+                    else:
+                        self.assertEqual(lane_types, {"b32"})
+                if opcode == "atom":
+                    destination = variant.operand_layouts[0].bindings[0]
+                    self.assertEqual(destination.register_width_policy,
+                                     ResolvedRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertTrue(destination.allow_vector_sink)
+                    self.assertEqual(destination.allowed_vector_register_types,
+                                     source.allowed_vector_register_types)
+                self.assertEqual(variant.operand_layouts[1].bindings[-1].target_field_id,
+                                 "cache_policy")
+
+    def test_vector_atomic_modifier_orders(self) -> None:
+        """Keep ISA operation-first syntax and supported vector-first examples."""
+        raw_spec = yaml.safe_load((REPO_ROOT / "instructions/ptx_spec" /
+                                   "parallel_synchronization_and_communication.yaml").read_text())
+        for opcode in ("atom", "red"):
+            raw_instruction = next(item for item in raw_spec["instructions"]
+                                   if item["opcode"] == opcode)
+            instruction = next(item for item in self.database.instructions
+                               if item.opcode == opcode)
+            self.assertIn(
+                f"{opcode}{{.sem}}{{.scope}}{{.space}}.{{op}}{{.noftz}}"
+                "{.L2::cache_hint}.v{2|4|8}.{type}",
+                raw_instruction["syntax"],
+            )
+            variants = [variant for variant in instruction.variants
+                        if variant.name.startswith(f"{opcode}_vector_")]
+            self.assertEqual(len(variants), 13)
+            for variant in variants:
+                operation = next(modifier.name for modifier in variant.modifiers
+                                 if modifier.name in {"add", "min", "max"})
+                noftz = ("noftz",) if any(modifier.name == "noftz"
+                                           for modifier in variant.modifiers) else ()
+                suffix = (operation, *noftz, "cache_hint")
+                self.assertIn(
+                    ("state_space", "semantics", "scope", "vector", "type", *suffix),
+                    variant.modifier_order_aliases,
+                )
+                self.assertIn(
+                    ("semantics", "scope", "state_space", *suffix, "vector", "type"),
+                    variant.modifier_order_aliases,
+                )
+                self.assertIn(
+                    ("state_space", "semantics", "scope", *suffix, "vector", "type"),
+                    variant.modifier_order_aliases,
+                )
+
+    def test_atomic_address_qualifier_policy_drives_generated_contract(self) -> None:
+        """Derive each written qualifier domain from the declared state space."""
+        from ptx_frontend.ir.resolved_ir import AtomicAddressQualifierValue
+        from ptx_frontend.spec.model import AtomicAddressQualifierPolicy
+
+        instructions = {item.opcode: item for item in self.database.instructions}
+        expected_scalar = {
+            AtomicAddressQualifierValue.GENERIC,
+            AtomicAddressQualifierValue.GLOBAL,
+            AtomicAddressQualifierValue.SHARED,
+            AtomicAddressQualifierValue.SHARED_CTA,
+            AtomicAddressQualifierValue.SHARED_CLUSTER,
+        }
+        for opcode in ("atom", "red"):
+            source = instructions[opcode]
+            self.assertEqual(
+                source.atomic_address_qualifier,
+                AtomicAddressQualifierPolicy("state_space", "address"),
+            )
+            resolved = from_instruction_spec(source)
+            self.assertIsNotNone(resolved.atomic_address_qualifier)
+            for variant in resolved.variants:
+                domain = set(variant.atomic_address_qualifier_domain)
+                if variant.cpp_name.startswith("Vector"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.GLOBAL,
+                    })
+                elif variant.cpp_name.startswith("AsyncShared"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.SHARED_CLUSTER,
+                    })
+                elif variant.cpp_name.startswith("AsyncRelease"):
+                    self.assertEqual(domain, {
+                        AtomicAddressQualifierValue.GENERIC,
+                        AtomicAddressQualifierValue.GLOBAL,
+                    })
+                else:
+                    self.assertEqual(domain, expected_scalar)
+
+        self.assertIsNone(instructions["bar"].atomic_address_qualifier)
+        self.assertIsNone(from_instruction_spec(instructions["bar"])
+                          .atomic_address_qualifier)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            context = build_test_generation_context(self.database)
+            generate_resolved_ir_category_header(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "model.hpp",
+            )
+            generate_resolved_ir_category_source(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "logic.cpp",
+            )
+            generate_resolved_checker_descriptor_source(
+                context, category="parallel_synchronization_and_communication",
+                output_path=path / "descriptors.cpp",
+            )
+            model = (path / "model.hpp").read_text()
+            logic = (path / "logic.cpp").read_text()
+            descriptors = (path / "descriptors.cpp").read_text()
+        self.assertEqual(model.count("WithLocs<AtomicAddressQualifier> address_qualifier;"), 2)
+        self.assertIn(".address_qualifier = atomic_address_qualifier_from_ast(ast)", logic)
+        self.assertIn(".atomic_address_qualifier,", logic)
+        self.assertIn(".state_space_field_id = \"state_space\"", descriptors)
+        self.assertIn(".address_operand_id = \"address\"", descriptors)
+        self.assertIn("AtomicAddressQualifier::SharedCluster", descriptors)
+
+        for bad_policy in (
+            AtomicAddressQualifierPolicy("missing", "address"),
+            AtomicAddressQualifierPolicy("state_space", "missing"),
+        ):
+            with self.assertRaisesRegex(ValueError, "atomic qualifier requires"):
+                from_instruction_spec(replace(instructions["atom"],
+                                              atomic_address_qualifier=bad_policy))
+        atom_variant = instructions["atom"].variants[0]
+        bad_modifiers = tuple(
+            replace(modifier, values=(ModifierValueSpec("local"),))
+            if modifier.name == "state_space" else modifier
+            for modifier in atom_variant.modifiers
         )
-        variant = resolved.variants[0]
-        self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [
-                ("semantics", "MemoryConsistency"),
-                ("scope", "MemoryScope"),
-                ("state_space", "MemoryStateSpace"),
-                ("add", "bool"),
-                ("type", "ScalarType"),
-                ("address", "WithLocs<ResolvedAddress>"),
-                ("src", "WithLocs<ResolvedRegisterRef>"),
-            ],
+        with self.assertRaisesRegex(ValueError, "unsupported atomic address qualifier"):
+            from_instruction_spec(replace(
+                instructions["atom"],
+                variants=(replace(atom_variant, modifiers=bad_modifiers),),
+            ))
+
+    def test_vector_atomic_register_domain_codegen(self) -> None:
+        """Emit lane-type domains and family policy only for opted-in vectors."""
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "atomic_descriptor.cpp"
+            generate_resolved_descriptor_source(
+                build_test_generation_context(self.database),
+                category="parallel_synchronization_and_communication",
+                output_path=output,
+            )
+            generated = output.read_text()
+        self.assertIn("atom_vector_add_noftz_f16_operand_layout_0_binding_0_register_types",
+                      generated)
+        self.assertIn(".allowed_register_types =", generated)
+        self.assertIn(".require_uniform_register_family = true", generated)
+        self.assertIn("red_async_shared_add_u32_operand_layout_0_binding_0_address_state_spaces",
+                      generated)
+        self.assertEqual(generated.count(
+            ".address_base_policy = checker::AddressBasePolicy::Register"), 28)
+        self.assertIn(
+            ".address_offset_domain = checker::AddressOffsetDomain::Signed32",
+            generated,
         )
-        bindings = variant.operand_layouts[0].bindings
-        self.assertEqual(len(bindings), 2)
-        self.assertEqual(
-            bindings[1].register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH
-        )
-        self.assertEqual(bindings[0].state_space_modifier_field_id, "state_space")
+        self.assertIn("ScalarType::F16", generated)
+        self.assertIn("ScalarType::S16", generated)
+        load = next(item for item in self.database.instructions if item.opcode == "ld")
+        ordinary_vectors = [binding for variant in from_instruction_spec(load).variants
+                            for layout in variant.operand_layouts
+                            for binding in layout.bindings
+                            if binding.allowed_shapes == (ResolvedOperandShape.VECTOR,)]
+        self.assertTrue(ordinary_vectors)
+        self.assertTrue(all(not binding.allowed_vector_register_types and
+                            not binding.require_uniform_vector_register_family
+                            for binding in ordinary_vectors))
 
     def test_activemask_b32_model(self) -> None:
         database = self.database
@@ -4335,7 +4706,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Vote")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["SyncBallotB32"]
+            [variant.cpp_name for variant in resolved.variants],
+            ["SyncBallotB32", "SyncAllPred", "SyncAnyPred", "SyncUniPred"],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
@@ -4354,6 +4726,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
+        for predicate_vote in resolved.variants[1:]:
+            self.assertEqual(
+                dict(predicate_vote.availability), {"ptx": "6.0", "sm": 30}
+            )
+            self.assertEqual(
+                [
+                    (field.name, field_cpp_type(field))
+                    for field in predicate_vote.operand_layouts[0].fields
+                ],
+                [
+                    ("dst", "WithLocs<ResolvedPredicate>"),
+                    ("predicate", "WithLocs<ResolvedPredicate>"),
+                    ("membermask", "WithLocs<RegOrImm>"),
+                ],
+            )
 
     def test_shfl_sync_idx_b32_model(self) -> None:
         database = self.database
@@ -4365,15 +4752,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         resolved = from_instruction_spec(shfl)
 
         self.assertEqual(resolved.cpp_name, "Shfl")
+        self.assertEqual(
+            [variant.cpp_name for variant in resolved.variants],
+            ["SyncIdxB32", "SyncUpB32", "SyncDownB32", "SyncBflyB32"],
+        )
         variant = resolved.variants[0]
         self.assertEqual(variant.cpp_name, "SyncIdxB32")
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
         self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
             [
-                ("sync", "bool"),
-                ("idx", "bool"),
-                ("type", "ScalarType"),
+                (field.name, field_cpp_type(field))
+                for field in variant.operand_layouts[1].fields
+            ],
+            [
                 ("dst", "WithLocs<ResolvedShflSyncDestination>"),
                 ("src", "WithLocs<ResolvedRegisterRef>"),
                 ("lane", "WithLocs<RegOrImm>"),
@@ -4382,13 +4773,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[0].allowed_shapes,
+            variant.operand_layouts[1].bindings[0].allowed_shapes,
             (ResolvedOperandShape.SHFL_DESTINATION,),
         )
         self.assertEqual(
-            variant.operand_layouts[0].bindings[0].register_width_policy,
+            variant.operand_layouts[1].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
+        self.assertEqual(
+            field_cpp_type(variant.operand_layouts[0].fields[0]),
+            "WithLocs<ResolvedRegisterRef>",
+        )
+        for mode in resolved.variants:
+            self.assertEqual(dict(mode.availability), {"ptx": "6.0", "sm": 30})
+            self.assertEqual(
+                [layout.cpp_name for layout in mode.operand_layouts],
+                ["WithoutPredicate", "WithPredicate"],
+            )
 
     def test_shfl_generator_emits_pair_operand_view(self) -> None:
         database = self.database
@@ -4404,7 +4805,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn(
             ".actual_shape = check_end::OperandShape::ShflDestination,", source
         )
-        self.assertIn("selected.dst.value.data\n                      ?", source)
+        self.assertGreaterEqual(
+            source.count(".actual_shape = check_end::OperandShape::ShflDestination,"),
+            4,
+        )
 
     def test_setp_generator_emits_predicate_pair_operand_view(self) -> None:
         database = self.database

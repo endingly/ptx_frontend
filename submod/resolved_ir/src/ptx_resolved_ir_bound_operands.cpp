@@ -963,32 +963,22 @@ resolve_address_offset(
     return std::unexpected(value.error());
   const bool subtract = address.offset->operation ==
                         syntax_ast::AstAddressOffset::Operator::Subtract;
-  if (memory_operand) {
-    const uint64_t source_bits =
-        value->integer_source_bits.value_or(value->bits);
-    const uint64_t magnitude =
-        value->is_negative ? uint64_t{0} - source_bits : source_bits;
-    const bool effective_negative = subtract != value->is_negative;
-    const uint64_t maximum_magnitude =
-        effective_negative ? uint64_t{1} << 31 : (uint64_t{1} << 31) - 1;
-    if (magnitude > maximum_magnitude) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = address.offset->magnitude.syntax.range,
-          .message = fmt::format(
-              "Address offset magnitude '{}' is outside the signed 32-bit "
-              "range for its '{}' operator.",
-              address.offset->magnitude.syntax.text,
-              effective_negative ? "-" : "+"),
-      });
-    }
-    // ResolvedAddressOffset retains the spelling's operation separately, so
-    // retain its magnitude representation while validating the signed PTX domain.
-  }
-  return ResolvedAddressOffset{
+  ResolvedAddressOffset resolved{
       .operation = subtract ? ResolvedAddressOffsetOperator::Subtract
                             : ResolvedAddressOffsetOperator::Add,
       .value = std::move(*value),
   };
+  if (memory_operand && !address_offset_fits_signed32(resolved)) {
+    const bool negative = subtract != resolved.value.is_negative;
+    return std::unexpected(ResolveDiagnostic{
+        .range = address.offset->magnitude.syntax.range,
+        .message = fmt::format(
+            "Address offset magnitude '{}' is outside the signed 32-bit "
+            "range for its '{}' operator.",
+            address.offset->magnitude.syntax.text, negative ? "-" : "+"),
+    });
+  }
+  return resolved;
 }
 
 /** Return whether a declared register can hold a PTX address value. */
@@ -1241,6 +1231,36 @@ std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     const ResolvedOperandBindingDescriptor& binding,
     const ResolvedInstructionFields& fields, const SourceRange& range);
 
+/** Find repeated physical registers among the written lanes of a vector. */
+std::optional<ResolveDiagnostic> duplicate_destination_lane(
+    const ResolvedRegisterVector& vector,
+    const std::vector<SourceRange>& locations) {
+  for (size_t index = 0; index < vector.elements.size(); ++index) {
+    const auto& lane = vector.elements[index];
+    if (!lane)
+      continue;
+    for (size_t previous = 0; previous < index; ++previous) {
+      const auto& earlier = vector.elements[previous];
+      if (!earlier)
+        continue;
+      const bool same_register =
+          (lane->symbol_id && earlier->symbol_id &&
+           lane->symbol_id == earlier->symbol_id &&
+           lane->parameterized_index == earlier->parameterized_index) ||
+          lane->spelling == earlier->spelling;
+      if (same_register) {
+        return ResolveDiagnostic{
+            .range = locations[index],
+            .message = fmt::format(
+                "Destination vector writes register '{}' more than once.",
+                lane->spelling),
+        };
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::expected<WithLocs<ResolvedRegisterVector>, ResolveDiagnostic>
 resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    ScalarType instruction_type,
@@ -1249,6 +1269,8 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    checker::VectorTypePolicy vector_type_policy,
                    base::ScalarTypeSizePolicy register_width_policy,
                    bool allow_sink, size_t sink_payload_bits,
+                   std::span<const ScalarType> allowed_register_types,
+                   bool require_uniform_register_family, bool is_destination,
                    const ResolveContext* context) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   if (vector == nullptr) {
@@ -1315,6 +1337,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   std::vector<SourceRange> locations;
   locations.reserve(arity);
   size_t sink_count = 0;
+  std::optional<bool> floating_register_family;
   for (const auto& element : vector->elements) {
     const auto* identifier =
         std::get_if<syntax_ast::AstIdentifierRef>(&element);
@@ -1350,13 +1373,44 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     auto register_ref = resolve_register(register_operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
+    if (!allowed_register_types.empty() && register_ref->value.declared_type &&
+        std::ranges::find(allowed_register_types,
+                          *register_ref->value.declared_type) ==
+            allowed_register_types.end()) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = identifier->syntax.range,
+          .message = fmt::format(
+              "Vector element '{}' has a register type outside this operand's "
+              "allowed lane types.",
+              identifier->syntax.text),
+      });
+    }
     if (register_ref->value.declared_type) {
       const auto declared_type = *register_ref->value.declared_type;
+      if (require_uniform_register_family) {
+        const auto kind = scalar_kind(declared_type);
+        if (kind != base::ScalarKind::Bit) {
+          const bool floating = kind == base::ScalarKind::Float;
+          if ((kind != base::ScalarKind::Float &&
+               kind != base::ScalarKind::Signed &&
+               kind != base::ScalarKind::Unsigned) ||
+              (floating_register_family &&
+               *floating_register_family != floating)) {
+            return std::unexpected(ResolveDiagnostic{
+                .range = identifier->syntax.range,
+                .message = "A vector cannot mix integer and floating "
+                           "register lanes.",
+            });
+          }
+          floating_register_family = floating;
+        }
+      }
       const bool type_mismatch =
           vector_type_policy == checker::VectorTypePolicy::Aggregate
               ? scalar_size_of(declared_type) != element_bytes
-              : !scalar_types_compatible(declared_type, instruction_type,
-                                         register_width_policy);
+              : allowed_register_types.empty() &&
+                    !scalar_types_compatible(declared_type, instruction_type,
+                                             register_width_policy);
       if (type_mismatch) {
         return std::unexpected(ResolveDiagnostic{
             .range = identifier->syntax.range,
@@ -1374,6 +1428,10 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
         .range = vector->range,
         .message = "A vector must contain at least one register.",
     });
+  }
+  if (is_destination) {
+    if (const auto duplicate = duplicate_destination_lane(result, locations))
+      return std::unexpected(*duplicate);
   }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
   resolved.locs = std::move(locations);
@@ -1426,6 +1484,11 @@ resolve_modern_register_vector(
     if (!register_ref)
       return std::unexpected(register_ref.error());
     result.elements.emplace_back(std::move(register_ref->value));
+  }
+  if (binding.access == checker::OperandAccess::Write ||
+      binding.access == checker::OperandAccess::ReadWrite) {
+    if (const auto duplicate = duplicate_destination_lane(result, locations))
+      return std::unexpected(*duplicate);
   }
   WithLocs<ResolvedRegisterVector> resolved{std::move(result)};
   resolved.locs = std::move(locations);
@@ -1947,6 +2010,22 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_address(operand, context);
       if (!value)
         return std::unexpected(value.error());
+      if (binding.address_base_policy == checker::AddressBasePolicy::Register &&
+          !std::holds_alternative<ResolvedRegisterRef>(value->value.base)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "This address requires a register base.",
+        });
+      }
+      if (binding.address_offset_domain ==
+              checker::AddressOffsetDomain::Signed32 &&
+          value->value.offset &&
+          !address_offset_fits_signed32(*value->value.offset)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "This address requires a signed 32-bit offset.",
+        });
+      }
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::RegisterVector: {
@@ -1967,7 +2046,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_reg_vector(
           operand, *type, binding.allowed_vector_arities, *arity,
           binding.vector_type_policy, binding.register_width_policy,
-          binding.allow_vector_sink, binding.vector_sink_payload_bits, context);
+          binding.allow_vector_sink, binding.vector_sink_payload_bits,
+          binding.allowed_register_types,
+          binding.require_uniform_register_family,
+          binding.access == checker::OperandAccess::Write ||
+              binding.access == checker::OperandAccess::ReadWrite,
+          context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

@@ -162,6 +162,11 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backe
         _emit_resolved_variant_definition(variant, backend) for variant in instruction.variants
     )
 
+    atomic_qualifier = (
+        "  /** Written address suffix, distinct from address provenance. */\n"
+        "  WithLocs<AtomicAddressQualifier> address_qualifier;\n"
+        if instruction.atomic_address_qualifier is not None else ""
+    )
     definition = f"""\
 struct {instruction.cpp_name} {{
   enum class VariantType {{
@@ -172,6 +177,7 @@ struct {instruction.cpp_name} {{
 
   using Variant = std::variant<{variant_names}>;
   std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
+{atomic_qualifier}\
   Variant variant;
 
   static const check_end::SyntaxInstructionDescriptor&

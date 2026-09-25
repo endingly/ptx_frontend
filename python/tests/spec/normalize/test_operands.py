@@ -13,6 +13,8 @@ import unittest
 
 from ptx_frontend.spec.model import (
     MbarrierStateTokenForm,
+    OperandAddressBasePolicy,
+    OperandAddressOffsetDomain,
     OperandImmediateConversionPolicy,
     OperandAccess,
     OperandKind,
@@ -76,11 +78,15 @@ class OperandNormalizationTests(unittest.TestCase):
                 "state_space_values": (),
                 "state_space_expression": None,
                 "parameter_constraint": None,
+                "address_base_policy": OperandAddressBasePolicy.ANY,
+                "address_offset_domain": OperandAddressOffsetDomain.UNRESTRICTED,
                 "vector_arities": (),
                 "vector_arity_expression": None,
                 "vector_type_policy": OperandVectorTypePolicy.AGGREGATE,
                 "vector_allow_sink": False,
                 "vector_sink_payload_bits": 0,
+                "vector_allowed_register_types": (),
+                "vector_require_uniform_register_family": False,
                 "allow_destination_sink": False,
                 "allow_predicate_sink": False,
                 "mbarrier_state_token_form": MbarrierStateTokenForm.REGISTER,
@@ -100,6 +106,23 @@ class OperandNormalizationTests(unittest.TestCase):
         self.assertIs(operand.vector_type_policy, OperandVectorTypePolicy.AGGREGATE)
         self.assertIs(
             operand.mbarrier_state_token_form, MbarrierStateTokenForm.REGISTER
+        )
+
+    def test_address_base_policy_is_scoped_to_addresses(self) -> None:
+        """Retain the typed register-base requirement only for address operands."""
+        address = normalize_operand(_operand("addr", address_base="register"))
+        self.assertIs(address.address_base_policy, OperandAddressBasePolicy.REGISTER)
+        offset = normalize_operand(_operand("addr", address_offset_domain="signed32"))
+        self.assertIs(offset.address_offset_domain, OperandAddressOffsetDomain.SIGNED32)
+        self.assert_rejected(
+            _operand(address_base="register"),
+            ValueError,
+            "operand 'x': address constraints are only valid for kind 'addr' or 'cluster_address'",
+        )
+        self.assert_rejected(
+            _operand(address_offset_domain="signed32"),
+            ValueError,
+            "operand 'x': address constraints are only valid for kind 'addr' or 'cluster_address'",
         )
 
     def test_identity_role_access_and_fixed_type_are_preserved(self) -> None:

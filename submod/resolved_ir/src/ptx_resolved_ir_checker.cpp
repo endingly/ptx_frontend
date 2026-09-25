@@ -626,6 +626,41 @@ CheckResult check_operands(
               descriptor.target_field_id),
       });
     }
+    if (operand->actual_shape == OperandShape::Vector &&
+        (descriptor.access == OperandAccess::Write ||
+         descriptor.access == OperandAccess::ReadWrite) &&
+        operand->vector_arity <= kMaxOperandElements) {
+      for (size_t index = 0; index < operand->vector_arity; ++index) {
+        const ResolvedRegisterRef* lane =
+            operand->vector_element_registers[index];
+        if (lane == nullptr)
+          continue;
+        for (size_t previous = 0; previous < index; ++previous) {
+          const ResolvedRegisterRef* earlier =
+              operand->vector_element_registers[previous];
+          if (earlier == nullptr)
+            continue;
+          const bool same_register =
+              (lane->symbol_id && earlier->symbol_id &&
+               lane->symbol_id == earlier->symbol_id &&
+               lane->parameterized_index == earlier->parameterized_index) ||
+              lane->spelling == earlier->spelling;
+          if (!same_register)
+            continue;
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::InvalidVectorOperand,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message =
+                  fmt::format("Destination vector '{}' writes register '{}' "
+                              "more than once.",
+                              descriptor.target_field_id, lane->spelling),
+          });
+          break;
+        }
+      }
+    }
     if (operand->actual_shape == OperandShape::PredicatePair &&
         !operand->predicate_pair_has_destination) {
       diagnostics.push_back(CheckDiagnostic{
@@ -729,6 +764,27 @@ CheckResult check_operands(
           });
         }
       }
+    }
+
+    if (descriptor.address_base_policy == AddressBasePolicy::Register &&
+        operand->address_base_kind != AddressBaseKind::Register) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("Address operand '{}' requires a register base.",
+                          descriptor.target_field_id),
+      });
+    }
+    if (descriptor.address_offset_domain == AddressOffsetDomain::Signed32 &&
+        !operand->address_offset_fits_signed32) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Address operand '{}' requires a signed 32-bit offset.",
+              descriptor.target_field_id),
+      });
     }
 
     std::optional<MemoryStateSpace> selected_state_space;
@@ -1038,6 +1094,53 @@ CheckResult check_operands(
                   descriptor.target_field_id, to_string(*mismatched),
                   element_bytes * 8),
           });
+        }
+      } else if (!descriptor.allowed_register_types.empty()) {
+        std::optional<bool> floating_register_family;
+        for (size_t index = 0; index < operand->vector_arity; ++index) {
+          if (operand->vector_element_shapes[index] != OperandShape::Register)
+            continue;
+          const ScalarType element_type = operand->vector_element_types[index];
+          if (element_type == ScalarType::Invalid)
+            continue;
+          const SourceRange& lane_range = index < operand->locations.size()
+                                              ? operand->locations[index]
+                                              : range;
+          if (std::ranges::find(descriptor.allowed_register_types,
+                                element_type) ==
+              descriptor.allowed_register_types.end()) {
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                .range = lane_range,
+                .message = fmt::format("Vector operand '{}' has disallowed "
+                                       "register lane type '{}'.",
+                                       descriptor.target_field_id,
+                                       to_string(element_type)),
+            });
+            continue;
+          }
+          if (!descriptor.require_uniform_register_family)
+            continue;
+          const auto kind = scalar_kind(element_type);
+          if (kind == base::ScalarKind::Bit)
+            continue;
+          const bool floating = kind == base::ScalarKind::Float;
+          if ((kind != base::ScalarKind::Float &&
+               kind != base::ScalarKind::Signed &&
+               kind != base::ScalarKind::Unsigned) ||
+              (floating_register_family &&
+               *floating_register_family != floating)) {
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                .range = lane_range,
+                .message = fmt::format(
+                    "Vector operand '{}' mixes integer and floating register "
+                    "lanes.",
+                    descriptor.target_field_id),
+            });
+          } else {
+            floating_register_family = floating;
+          }
         }
       } else {
         const auto mismatched = std::ranges::find_if(
@@ -1487,6 +1590,166 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
   } else if (rounding_mode != RoundingMode::Invalid) {
     return cvt_rule_violation(
         context, "non-lossy floating cvt does not admit rounding.");
+  }
+  return {};
+}
+
+CheckResult check_atomic_qualifiers(
+    const VariantDescriptor::AtomicAddressQualifierDescriptor& descriptor,
+    const WithLocs<AtomicAddressQualifier>& qualifier,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context) {
+  const SourceRange& range = diagnostic_range(qualifier.locs, context);
+  const auto written = qualifier.value;
+  if (std::ranges::find(descriptor.allowed_values, written) ==
+      descriptor.allowed_values.end()) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = range,
+        .message = "Written atomic address qualifier is not admitted by this "
+                   "variant.",
+    }});
+  }
+  const FieldView* space_field =
+      find_field(fields, descriptor.state_space_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_operand_id);
+  if (!space_field || !space_field->memory_state_space || !address) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Atomic qualifier fields or address are missing.",
+    }});
+  }
+
+  const MemoryStateSpace selected = *space_field->memory_state_space;
+  MemoryStateSpace expected;
+  switch (written) {
+    case AtomicAddressQualifier::Generic:
+      expected = MemoryStateSpace::Generic;
+      break;
+    case AtomicAddressQualifier::Global:
+      expected = MemoryStateSpace::Global;
+      break;
+    case AtomicAddressQualifier::Shared:
+    case AtomicAddressQualifier::SharedCta:
+    case AtomicAddressQualifier::SharedCluster:
+      expected = MemoryStateSpace::Shared;
+      break;
+    default:
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = range,
+          .message = "Written atomic address qualifier is invalid.",
+      }});
+  }
+  CheckDiagnostics diagnostics;
+  if (selected != expected) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = range,
+        .message = "Written atomic address qualifier disagrees with the "
+                   "selected state-space modifier.",
+    });
+  }
+  if (address->address_state_space &&
+      *address->address_state_space != MemoryStateSpace::Global &&
+      *address->address_state_space != MemoryStateSpace::Shared) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+        .range = diagnostic_range(address->locations, context),
+        .message = "Atomic address must refer to global or shared memory.",
+    });
+  } else if (address->address_state_space &&
+             written != AtomicAddressQualifier::Generic &&
+             *address->address_state_space != expected) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+        .range = diagnostic_range(address->locations, context),
+        .message = "Atomic address provenance conflicts with the written "
+                   "state-space qualifier.",
+    });
+  }
+
+  if (const FieldView* cache_hint = find_field(fields, "cache_hint")) {
+    const bool written_hint = cache_hint->bool_value.value_or(false);
+    const bool has_policy = find_operand(operands, "cache_policy") != nullptr;
+    if (written_hint != has_policy) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(cache_hint->locations, context),
+          .message = "Atomic cache hint requires exactly one trailing "
+                     "cache-policy register.",
+      });
+    }
+    if (written_hint && written != AtomicAddressQualifier::Generic &&
+        written != AtomicAddressQualifier::Global) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = range,
+          .message = "Atomic cache hint requires global addressing.",
+      });
+    }
+    if (written_hint && address->address_state_space &&
+        *address->address_state_space != MemoryStateSpace::Global) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = diagnostic_range(address->locations, context),
+          .message = "Atomic cache hint requires a global address.",
+      });
+    }
+  }
+
+  PtxVersion minimum_ptx{};
+  int minimum_sm = 0;
+  if (written == AtomicAddressQualifier::Generic) {
+    minimum_ptx = {2, 0};
+    minimum_sm = 20;
+  } else if (written == AtomicAddressQualifier::SharedCta) {
+    minimum_ptx = {7, 8};
+    minimum_sm = 30;
+  } else if (written == AtomicAddressQualifier::SharedCluster) {
+    minimum_ptx = {7, 8};
+    minimum_sm = 90;
+  }
+  if (context.target.ptx_version < minimum_ptx) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = range,
+        .message = "Atomic address qualifier is unavailable for the target PTX "
+                   "version.",
+    });
+  }
+  if (context.target.sm_version < minimum_sm) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+        .range = range,
+        .message = "Atomic address qualifier is unavailable for the target SM "
+                   "version.",
+    });
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_red_async_release_qualifiers(
+    std::span<const FieldView> fields, const Context& context) {
+  const FieldView* mmio = find_field(fields, "mmio");
+  const FieldView* scope = find_field(fields, "scope");
+  if (!mmio || !mmio->bool_value || !scope || !scope->memory_scope) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Async release reduction has missing qualifier fields.",
+    }});
+  }
+  if (*mmio->bool_value && *scope->memory_scope != MemoryScope::Sys) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(mmio->locations, context),
+        .message = "Async MMIO release reduction requires system scope.",
+    }});
   }
   return {};
 }

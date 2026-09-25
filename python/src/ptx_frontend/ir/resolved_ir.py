@@ -12,6 +12,7 @@ from typing import overload
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
+    AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     AddressAlignmentConstraint,
     ImmediateMultipleOfConstraint,
@@ -21,6 +22,8 @@ from ptx_frontend.spec.model import (
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
     MbarrierStateTokenForm,
+    OperandAddressBasePolicy,
+    OperandAddressOffsetDomain,
     ModifierKind,
     ModifierPresence,
     ModifierSpec,
@@ -61,6 +64,24 @@ class ResolvedFieldOrigin(Enum):
 
     MODIFIER = "modifier"
     OPERAND = "operand"
+
+
+class AtomicAddressQualifierValue(Enum):
+    """Written atomic suffix values supported by the owned IR enum."""
+
+    GENERIC = "generic"
+    GLOBAL = "global"
+    SHARED = "shared"
+    SHARED_CTA = "shared::cta"
+    SHARED_CLUSTER = "shared::cluster"
+
+
+@dataclass(frozen=True)
+class ResolvedAtomicAddressQualifierPolicy:
+    """Resolved field identities shared by an instruction's atomic variants."""
+
+    state_space_field_id: str
+    address_operand_id: str
 
 
 _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
@@ -304,6 +325,7 @@ class ResolvedVariant:
     rule: SemanticRule | None
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
+    atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -386,12 +408,16 @@ class ResolvedOperandBinding:
     allowed_shapes: tuple[ResolvedOperandShape, ...]
     allowed_address_state_spaces: tuple[ResolvedAddressStateSpace, ...] = ()
     state_space_modifier_field_id: str | None = None
+    address_base_policy: OperandAddressBasePolicy = OperandAddressBasePolicy.ANY
+    address_offset_domain: OperandAddressOffsetDomain = OperandAddressOffsetDomain.UNRESTRICTED
     parameter_constraint: ResolvedParameterAddressConstraint | None = None
     allowed_vector_arities: tuple[int, ...] = ()
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
     vector_sink_payload_bits: int = 0
+    allowed_vector_register_types: tuple[str, ...] = ()
+    require_uniform_vector_register_family: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
@@ -428,6 +454,7 @@ class ResolvedInstruction:
     opcode: str
     cpp_name: str
     variants: tuple[ResolvedVariant, ...]
+    atomic_address_qualifier: ResolvedAtomicAddressQualifierPolicy | None = None
 
 
 _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
@@ -515,16 +542,65 @@ def from_instruction_spec(spec: InstructionSpec) -> ResolvedInstruction:
                 f"variant {variant.name!r} has a non-normalized semantic rule"
             )
 
+    atomic_policy = spec.atomic_address_qualifier
     return ResolvedInstruction(
         opcode=spec.opcode,
         cpp_name=file_stem_to_pascal_case(spec.opcode),
         variants=tuple(
-            _build_variant(spec.opcode, variant) for variant in spec.variants
+            _build_variant(spec.opcode, variant, atomic_policy)
+            for variant in spec.variants
+        ),
+        atomic_address_qualifier=(
+            ResolvedAtomicAddressQualifierPolicy(
+                state_space_field_id=atomic_policy.state_space_modifier,
+                address_operand_id=atomic_policy.address_operand,
+            )
+            if atomic_policy is not None else None
         ),
     )
 
 
-def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
+def _build_atomic_address_qualifier_domain(
+    policy: AtomicAddressQualifierPolicy | None, variant: VariantSpec
+) -> tuple[AtomicAddressQualifierValue, ...]:
+    """Derive written suffixes from one variant's state-space modifier."""
+
+    if policy is None:
+        return ()
+    modifier = next((item for item in variant.modifiers
+                     if item.name == policy.state_space_modifier), None)
+    if (modifier is None or modifier.kind is not ModifierKind.STATE_SPACE
+            or modifier.presence is ModifierPresence.ABSENT):
+        raise ValueError(
+            f"variant {variant.name!r}: atomic qualifier requires an active "
+            f"state-space modifier {policy.state_space_modifier!r}"
+        )
+    for layout in variant.operand_layouts:
+        address = next((operand for operand in layout.operands
+                        if operand.name == policy.address_operand), None)
+        if address is None or address.kind is not OperandKind.ADDRESS:
+            raise ValueError(
+                f"variant {variant.name!r} layout {layout.name!r}: atomic "
+                f"qualifier requires address operand {policy.address_operand!r}"
+            )
+    domain: list[AtomicAddressQualifierValue] = []
+    for value in _modifier_domain_values(modifier):
+        try:
+            qualifier = AtomicAddressQualifierValue(value.value)
+        except ValueError as error:
+            raise ValueError(
+                f"variant {variant.name!r}: unsupported atomic address "
+                f"qualifier {value.value!r}"
+            ) from error
+        if qualifier not in domain:
+            domain.append(qualifier)
+    return tuple(domain)
+
+
+def _build_variant(
+    opcode: str, variant: VariantSpec,
+    atomic_policy: AtomicAddressQualifierPolicy | None,
+) -> ResolvedVariant:
     active_modifiers = tuple(
         modifier
         for modifier in variant.modifiers
@@ -563,6 +639,9 @@ def _build_variant(opcode: str, variant: VariantSpec) -> ResolvedVariant:
             for modifier, field in zip(active_modifiers, modifier_fields, strict=True)
         ),
         operand_layouts=operand_layouts,
+        atomic_address_qualifier_domain=(
+            _build_atomic_address_qualifier_domain(atomic_policy, variant)
+        ),
         modifier_value_domains=tuple(
             _build_modifier_value_domain(modifier, value)
             for modifier in active_modifiers
@@ -967,6 +1046,8 @@ def _build_operand_layout(
                         modifier_field_ids,
                     )
                 ),
+                address_base_policy=operand.address_base_policy,
+                address_offset_domain=operand.address_offset_domain,
                 parameter_constraint=_resolve_parameter_address_constraint(
                     operand.parameter_constraint
                 ),
@@ -982,6 +1063,10 @@ def _build_operand_layout(
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
                 vector_sink_payload_bits=operand.vector_sink_payload_bits,
+                allowed_vector_register_types=operand.vector_allowed_register_types,
+                require_uniform_vector_register_family=(
+                    operand.vector_require_uniform_register_family
+                ),
                 allow_destination_sink=operand.allow_destination_sink,
                 allow_predicate_sink=operand.allow_predicate_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,

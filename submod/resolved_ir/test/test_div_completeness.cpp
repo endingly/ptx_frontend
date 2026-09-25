@@ -5,9 +5,9 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/div/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/div/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/div/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"

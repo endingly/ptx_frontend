@@ -7,7 +7,7 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>

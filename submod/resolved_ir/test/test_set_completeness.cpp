@@ -5,9 +5,9 @@
 #include <string_view>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"

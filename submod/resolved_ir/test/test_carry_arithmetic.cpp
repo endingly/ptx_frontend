@@ -8,9 +8,24 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/addc/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/addc/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/addc/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mad/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mad/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mad/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/madc/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/madc/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/madc/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sub/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sub/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sub/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/subc/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/subc/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/subc/resolution.gen.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 

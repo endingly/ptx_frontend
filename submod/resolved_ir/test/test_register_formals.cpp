@@ -6,9 +6,9 @@
 #include <variant>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar/model.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "test_module_projection.hpp"

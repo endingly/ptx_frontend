@@ -2,8 +2,8 @@
 
 #include <array>
 #include <cstdint>
-#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov/model.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>

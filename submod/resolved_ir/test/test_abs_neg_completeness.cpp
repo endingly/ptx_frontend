@@ -7,9 +7,12 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs/resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/checker.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/resolution.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"

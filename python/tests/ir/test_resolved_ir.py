@@ -4597,22 +4597,40 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             context = build_test_generation_context(self.database)
+            category = "parallel_synchronization_and_communication"
             generate_resolved_ir_category_header(
-                context, category="parallel_synchronization_and_communication",
+                context, category=category,
                 output_path=path / "model.hpp",
             )
+            opcode_models = {}
+            for opcode in ("atom", "red"):
+                opcode_path = path / f"{opcode}.hpp"
+                generate_resolved_ir_opcode_header(
+                    context, category=category, opcode=opcode, output_path=opcode_path,
+                )
+                opcode_models[opcode] = opcode_path.read_text()
             generate_resolved_ir_category_source(
-                context, category="parallel_synchronization_and_communication",
+                context, category=category,
                 output_path=path / "logic.cpp",
             )
             generate_resolved_checker_descriptor_source(
-                context, category="parallel_synchronization_and_communication",
+                context, category=category,
                 output_path=path / "descriptors.cpp",
             )
             model = (path / "model.hpp").read_text()
             logic = (path / "logic.cpp").read_text()
             descriptors = (path / "descriptors.cpp").read_text()
-        self.assertEqual(model.count("WithLocs<AtomicAddressQualifier> address_qualifier;"), 2)
+        for opcode in ("atom", "red"):
+            self.assertIn(
+                f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp>",
+                model,
+            )
+            self.assertEqual(
+                opcode_models[opcode].count(
+                    "WithLocs<AtomicAddressQualifier> address_qualifier;"
+                ),
+                1,
+            )
         self.assertIn(".address_qualifier = atomic_address_qualifier_from_ast(ast)", logic)
         self.assertIn(".atomic_address_qualifier,", logic)
         self.assertIn(".state_space_field_id = \"state_space\"", descriptors)

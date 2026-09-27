@@ -31,8 +31,10 @@ from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import (
     GeneratedArtifact,
     GenerationPlan,
-    GROUPED_SOURCE_CATEGORIES,
+    _SourceGroupId,
+    _SourcePartitionKind,
     _source_groups,
+    _source_partition_policy,
     _stable_opcode_bucket,
     build_generation_plan,
 )
@@ -205,7 +207,14 @@ class GenerationPlanTests(unittest.TestCase):
                     "mbarrier", "atom", "red", "residual"
                 ),
             }
-            self.assertEqual(set(expected_names), GROUPED_SOURCE_CATEGORIES)
+            self.assertEqual(
+                {
+                    category for category in plan.categories
+                    if _source_partition_policy(category).kind
+                    is not _SourcePartitionKind.CATEGORY
+                },
+                set(expected_names),
+            )
             cpp_names = {
                 entry.specification.opcode: entry.cpp_name for entry in context.entries
             }
@@ -215,8 +224,8 @@ class GenerationPlanTests(unittest.TestCase):
                     for entry in context.entries
                     if entry.specification.codegen_category == category
                 )
-                groups = _source_groups(category, opcodes)
-                self.assertEqual(tuple(name for name, _ in groups), names)
+                groups = _source_groups(_source_partition_policy(category), opcodes)
+                self.assertEqual(tuple(group.value for group, _ in groups), names)
                 self.assertEqual(
                     sorted(opcode for _, members in groups for opcode in members),
                     sorted(opcodes),
@@ -237,9 +246,9 @@ class GenerationPlanTests(unittest.TestCase):
                 self.assertNotIn(
                     output / f"private/resolved_ir_{category}.gen.cpp", plan.paths
                 )
-                for name, members in groups:
+                for group, members in groups:
                     artifact = source_artifacts[
-                        f"resolved_ir_{category}_{name}.gen.cpp"
+                        f"resolved_ir_{category}_{group.value}.gen.cpp"
                     ]
                     artifact.emit(context, output_path=artifact.path)
                     source = artifact.path.read_text(encoding="utf-8")
@@ -262,6 +271,146 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(_stable_opcode_bucket("mul", 3), 1)
             self.assertEqual(_stable_opcode_bucket("mov", 2), 1)
             self.assertEqual(_stable_opcode_bucket("st", 2), 0)
+
+    def test_source_partition_identities_do_not_equal_raw_spellings(self) -> None:
+        """Physical policy identities remain distinct from their output spellings."""
+
+        policy = _source_partition_policy("data_movement")
+        self.assertIs(policy.kind, _SourcePartitionKind.HASH_BUCKETS)
+        self.assertNotIsInstance(policy.kind, str)
+        self.assertNotEqual(policy.kind, "hash_buckets")
+        groups = _source_groups(policy, ("ld", "cvt", "mov"))
+        self.assertEqual(groups[0], (_SourceGroupId.CVT, ("cvt",)))
+        self.assertEqual(groups[1], (_SourceGroupId.LD, ("ld",)))
+        for group, _ in groups:
+            self.assertIsInstance(group, _SourceGroupId)
+            self.assertNotIsInstance(group, str)
+            self.assertNotEqual(group, group.value)
+
+    def test_custom_category_keeps_a_single_implementation_source(self) -> None:
+        """New category spellings need no physical policy or schema registration."""
+
+        context = build_generation_context(self.database, self.backend)
+        entry = context.entries[0]
+        for category in ("control_flow", "custom_codegen_category"):
+            with (
+                self.subTest(category=category),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                policy = _source_partition_policy(category)
+                self.assertIs(policy.kind, _SourcePartitionKind.CATEGORY)
+                custom_entry = replace(
+                    entry,
+                    specification=replace(entry.specification, codegen_category=category),
+                )
+                custom_context = GenerationContext(
+                    backend=self.backend, entries=(custom_entry,)
+                )
+                output = Path(directory)
+                plan = build_generation_plan(custom_context, output)
+                sources = [
+                    artifact for artifact in plan.artifacts_for_category(category)
+                    if artifact.path.name.startswith(f"resolved_ir_{category}")
+                    and artifact.path.suffix == ".cpp"
+                ]
+                self.assertEqual(
+                    [artifact.path.relative_to(output) for artifact in sources],
+                    [Path(f"private/resolved_ir_{category}.gen.cpp")],
+                )
+                artifact = sources[0]
+                artifact.emit(custom_context, output_path=artifact.path)
+                self.assertIn(
+                    f"resolve<{custom_entry.cpp_name}>", artifact.path.read_text()
+                )
+
+    def test_source_groups_keep_membership_and_declaration_order_when_extended(self) -> None:
+        """Appending an opcode cannot move or reorder existing group members."""
+
+        context = build_generation_context(self.database, self.backend)
+        for category in (
+            "arithmetic", "data_movement", "parallel_synchronization_and_communication"
+        ):
+            with self.subTest(category=category):
+                policy = _source_partition_policy(category)
+                # Reverse declarations to detect accidental lexical group sorting.
+                opcodes = tuple(
+                    entry.specification.opcode for entry in reversed(context.entries)
+                    if entry.specification.codegen_category == category
+                )
+                before = _source_groups(policy, opcodes)
+                after = _source_groups(policy, (*opcodes, "future_opcode"))
+                self.assertEqual(
+                    tuple(group for group, _ in before),
+                    tuple(group for group, _ in after),
+                )
+                self.assertEqual(
+                    before,
+                    tuple(
+                        (
+                            group,
+                            tuple(opcode for opcode in members if opcode != "future_opcode"),
+                        )
+                        for group, members in after
+                    ),
+                )
+                self.assertEqual(
+                    sorted(opcode for _, members in after for opcode in members),
+                    sorted((*opcodes, "future_opcode")),
+                )
+                for _, members in before:
+                    self.assertEqual(
+                        members,
+                        tuple(opcode for opcode in opcodes if opcode in members),
+                    )
+
+    def test_partial_context_keeps_empty_dedicated_and_bucket_sources(self) -> None:
+        """Fixed groups still emit sources when their selected membership is empty."""
+
+        full_context = build_generation_context(self.database, self.backend)
+        categories = (
+            "arithmetic", "data_movement", "parallel_synchronization_and_communication"
+        )
+        entries = tuple(
+            next(
+                entry for entry in full_context.entries
+                if entry.specification.codegen_category == category
+                and entry.specification.opcode not in {
+                    opcode for _, opcode in _source_partition_policy(category).dedicated_groups
+                }
+            )
+            for category in categories
+        )
+        partial_context = GenerationContext(backend=self.backend, entries=entries)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            plan = build_generation_plan(partial_context, output)
+            sources = {
+                artifact.path.name: artifact for artifact in plan.artifacts
+                if artifact.path.name.startswith("resolved_ir_")
+                and artifact.category in categories
+                and artifact.path.suffix == ".cpp"
+                and "_checker_descriptor_" not in artifact.path.name
+            }
+            self.assertEqual(len(sources), 11)
+            empty_count = 0
+            for entry in entries:
+                category = entry.specification.codegen_category
+                groups = _source_groups(
+                    _source_partition_policy(category), (entry.specification.opcode,)
+                )
+                for group, members in groups:
+                    artifact = sources[f"resolved_ir_{category}_{group.value}.gen.cpp"]
+                    self.assertEqual(artifact.category, category)
+                    artifact.emit(partial_context, output_path=artifact.path)
+                    source = artifact.path.read_text()
+                    if members:
+                        self.assertIn(f"resolve<{entry.cpp_name}>", source)
+                    else:
+                        empty_count += 1
+                        self.assertNotIn("resolve<", source)
+                        self.assertNotIn("CheckResult check<", source)
+                        self.assertNotIn("#include <ptx_frontend/resolved_ir/model/", source)
+            self.assertEqual(empty_count, 8)
 
     def test_opcode_headers_and_category_wrappers_have_stable_ownership(self) -> None:
         context = build_generation_context(self.database, self.backend)

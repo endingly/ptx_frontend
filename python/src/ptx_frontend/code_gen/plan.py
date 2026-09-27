@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum, auto
 import hashlib
 from pathlib import Path
-from typing import Protocol
+from types import MappingProxyType
+from typing import Mapping, Protocol
 
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.emit.checker_descriptors import (
@@ -169,10 +171,74 @@ def instruction_categories(context: GenerationContext) -> tuple[str, ...]:
     )
 
 
-# These categories contain the largest resolver/checker implementation sources.
-GROUPED_SOURCE_CATEGORIES = frozenset(
-    {"arithmetic", "data_movement", "parallel_synchronization_and_communication"}
+class _SourcePartitionKind(Enum):
+    """Internal topology for category-owned implementation sources."""
+
+    CATEGORY = auto()
+    HASH_BUCKETS = auto()
+    RESIDUAL = auto()
+
+
+class _SourceGroupId(Enum):
+    """Fixed physical group identities; values are output filename suffixes."""
+
+    BUCKET_0 = "bucket_0"
+    BUCKET_1 = "bucket_1"
+    BUCKET_2 = "bucket_2"
+    CVT = "cvt"
+    LD = "ld"
+    MBARRIER = "mbarrier"
+    ATOM = "atom"
+    RED = "red"
+    RESIDUAL = "residual"
+
+
+@dataclass(frozen=True)
+class _SourcePartitionPolicy:
+    """Immutable physical partitioning independent of external category spellings."""
+
+    kind: _SourcePartitionKind
+    # Ordered group identities paired with canonical opcode input spellings.
+    dedicated_groups: tuple[tuple[_SourceGroupId, str], ...] = ()
+    # Ordered hash buckets, or the single residual group for remaining opcodes.
+    remainder_groups: tuple[_SourceGroupId, ...] = ()
+
+
+_CATEGORY_SOURCE_POLICY = _SourcePartitionPolicy(_SourcePartitionKind.CATEGORY)
+
+# Category spellings are adapted here once; they do not drive partition dispatch.
+_SOURCE_PARTITION_POLICIES: Mapping[str, _SourcePartitionPolicy] = MappingProxyType(
+    {
+        "arithmetic": _SourcePartitionPolicy(
+            kind=_SourcePartitionKind.HASH_BUCKETS,
+            remainder_groups=(
+                _SourceGroupId.BUCKET_0,
+                _SourceGroupId.BUCKET_1,
+                _SourceGroupId.BUCKET_2,
+            ),
+        ),
+        "data_movement": _SourcePartitionPolicy(
+            kind=_SourcePartitionKind.HASH_BUCKETS,
+            dedicated_groups=((_SourceGroupId.CVT, "cvt"), (_SourceGroupId.LD, "ld")),
+            remainder_groups=(_SourceGroupId.BUCKET_0, _SourceGroupId.BUCKET_1),
+        ),
+        "parallel_synchronization_and_communication": _SourcePartitionPolicy(
+            kind=_SourcePartitionKind.RESIDUAL,
+            dedicated_groups=(
+                (_SourceGroupId.MBARRIER, "mbarrier"),
+                (_SourceGroupId.ATOM, "atom"),
+                (_SourceGroupId.RED, "red"),
+            ),
+            remainder_groups=(_SourceGroupId.RESIDUAL,),
+        ),
+    }
 )
+
+
+def _source_partition_policy(category: str) -> _SourcePartitionPolicy:
+    """Adapt an extensible category spelling to its internal physical policy."""
+
+    return _SOURCE_PARTITION_POLICIES.get(category, _CATEGORY_SOURCE_POLICY)
 
 
 def build_generation_plan(
@@ -324,19 +390,20 @@ def build_generation_plan(
     # ------------------------------------------------------------------
 
     for category in categories:
-        if category in GROUPED_SOURCE_CATEGORIES:
+        policy = _source_partition_policy(category)
+        if policy.kind is not _SourcePartitionKind.CATEGORY:
             artifacts.extend(
                 _group_artifact(
                     path=(
                         output_dir
-                        / f"private/resolved_ir_{category}_{group}.gen.cpp"
+                        / f"private/resolved_ir_{category}_{group.value}.gen.cpp"
                     ),
                     category=category,
                     opcodes=members,
                     emitter=generate_resolved_ir_group_source,
                 )
                 for group, members in _source_groups(
-                    category, _category_opcodes(context, category)
+                    policy, _category_opcodes(context, category)
                 )
             )
         else:
@@ -472,44 +539,30 @@ def _stable_opcode_bucket(opcode: str, bucket_count: int) -> int:
 
 
 def _source_groups(
-    category: str, opcodes: tuple[str, ...]
-) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Return fixed source names and category-order opcode memberships."""
+    policy: _SourcePartitionPolicy, opcodes: tuple[str, ...]
+) -> tuple[tuple[_SourceGroupId, tuple[str, ...]], ...]:
+    """Apply typed topology while preserving fixed groups and opcode order."""
 
-    if category == "arithmetic":
-        return tuple(
+    dedicated_opcodes = tuple(opcode for _, opcode in policy.dedicated_groups)
+    remaining = tuple(opcode for opcode in opcodes if opcode not in dedicated_opcodes)
+    dedicated = tuple(
+        (group, (opcode,) if opcode in opcodes else ())
+        for group, opcode in policy.dedicated_groups
+    )
+    if policy.kind is _SourcePartitionKind.HASH_BUCKETS:
+        return dedicated + tuple(
             (
-                f"bucket_{index}",
+                group,
                 tuple(
-                    opcode for opcode in opcodes
-                    if _stable_opcode_bucket(opcode, 3) == index
+                    opcode for opcode in remaining
+                    if _stable_opcode_bucket(opcode, len(policy.remainder_groups)) == index
                 ),
             )
-            for index in range(3)
+            for index, group in enumerate(policy.remainder_groups)
         )
-    if category == "data_movement":
-        dedicated = ("cvt", "ld")
-        remaining = tuple(opcode for opcode in opcodes if opcode not in dedicated)
-        return (
-            *((opcode, (opcode,) if opcode in opcodes else ()) for opcode in dedicated),
-            *(
-                (
-                    f"bucket_{index}",
-                    tuple(
-                        opcode for opcode in remaining
-                        if _stable_opcode_bucket(opcode, 2) == index
-                    ),
-                )
-                for index in range(2)
-            ),
-        )
-    if category == "parallel_synchronization_and_communication":
-        dedicated = ("mbarrier", "atom", "red")
-        return (
-            *((opcode, (opcode,) if opcode in opcodes else ()) for opcode in dedicated),
-            ("residual", tuple(opcode for opcode in opcodes if opcode not in dedicated)),
-        )
-    raise ValueError(f"instruction category {category!r} has no source groups")
+    if policy.kind is _SourcePartitionKind.RESIDUAL:
+        return dedicated + ((policy.remainder_groups[0], remaining),)
+    raise ValueError("monolithic source partition has no source groups")
 
 
 def _group_artifact(

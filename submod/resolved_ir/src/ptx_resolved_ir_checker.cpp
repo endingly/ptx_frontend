@@ -1754,6 +1754,7 @@ CheckResult check_red_async_release_qualifiers(
   return {};
 }
 
+/** Gate a 32-bit bulk-store size register while retaining legacy immediates. */
 CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
                                      const Context& context) {
   const OperandView* size = find_operand(operands, "size");

@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -213,6 +215,36 @@ TEST(BulkAsync, ReductionScopeAndCachePolicy) {
   EXPECT_FALSE(checker::check(std::get<Cp>(body[0]), old).has_value());
   EXPECT_FALSE(checker::check(std::get<Cp>(body[1]), old).has_value());
   EXPECT_TRUE(checker::check(std::get<Cp>(body[2]), old).has_value());
+}
+
+/** Rechecking owned IR catches altered static byte-count metadata. */
+TEST(BulkAsync, OwnedMetadataTamperIsRejected) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 16 .b8 g[64];
+.shared .align 16 .b8 s[64];
+.shared .align 8 .b64 bar;
+.entry kernel() {
+  cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [s], [g], 16, [bar];
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto& copy = std::get<Cp::AsyncBulkGlobalSharedCta>(
+      std::get<Cp>(owned->functions.front().body.front()).variant);
+  const checker::Context context{.target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  EXPECT_TRUE(checker::check(std::get<Cp>(owned->functions.front().body.front()),
+                             context).has_value());
+  std::get<ResolvedImmediate>(copy.size.value).bits = 15;
+  EXPECT_FALSE(checker::check(std::get<Cp>(owned->functions.front().body.front()),
+                              context).has_value());
 }
 
 /** Invalid modifier/operand pairings fail before they enter owned IR. */

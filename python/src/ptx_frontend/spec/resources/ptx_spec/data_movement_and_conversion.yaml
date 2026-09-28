@@ -693,6 +693,15 @@ operand_patterns:
     - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
 
+  bulk_prefetch:
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+
+  bulk_prefetch_policy:
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
   isspacep_generic_address:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     # PTX deliberately omits a size suffix: the generic address source is
@@ -4644,6 +4653,40 @@ instructions:
         operands: $bulk_reduce_group
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+  - opcode: cp
+    section: "9.7.9.26.4.3"
+    doc: "Asynchronous L2 prefetch hint for aligned global byte ranges."
+    syntax: "cp.async.bulk.prefetch.L2.global{.L2::cache_hint} [src], size{, cache_policy}"
+    variants:
+      - name: cp_async_bulk_prefetch_global
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $bulk_prefetch
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.L2.global [src], 16;", valid: true}
+
+      - name: cp_async_bulk_prefetch_global_cache_hint
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+        operands: $bulk_prefetch_policy
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
 
   - opcode: st

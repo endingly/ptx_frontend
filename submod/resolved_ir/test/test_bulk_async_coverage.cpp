@@ -152,7 +152,7 @@ TEST(BulkAsync, CopyQualifierMatrix) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 6u);
@@ -183,6 +183,12 @@ TEST(BulkAsync, CopyQualifierMatrix) {
     EXPECT_EQ(checker::check(std::get<Cp>(body[5]), context).has_value(),
               target == "sm_100f");
   }
+  auto& bounded = std::get<Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob>(
+      std::get<Cp>(resolved->functions.front().body[3]).variant);
+  std::get<ResolvedImmediate>(bounded.ignore_bytes_left.value).bits = 16;
+  const checker::Context base_context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  EXPECT_FALSE(checker::check(std::get<Cp>(body[3]), base_context).has_value());
 }
 
 /** Reduction scopes use the base SM gate and a separate PTX 9.3 gate. */

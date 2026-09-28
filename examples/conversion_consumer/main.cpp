@@ -1164,25 +1164,25 @@ bool checkBulkAsyncContract() {
   if (!require(body.size() == 5, "bulk async forms retained"))
     return false;
   const auto* copy = std::get_if<ir::Cp>(&body[0]);
-  const auto* mbar = copy ? std::get_if<ir::Cp::AsyncBulkGlobalSharedCta>(
-                                &copy->variant)
-                          : nullptr;
+  const auto* mbar =
+      copy ? std::get_if<ir::Cp::AsyncBulkGlobalSharedCta>(&copy->variant)
+           : nullptr;
   const auto* group = std::get_if<ir::Cp>(&body[1]);
   const auto* bulk_group =
       group ? std::get_if<ir::Cp::AsyncBulkSharedCtaGlobal>(&group->variant)
             : nullptr;
-  return require(
-      mbar && bulk_group &&
-          ir::Cp::AsyncBulkGlobalSharedCta::completion_kind ==
-              ptx_frontend::base::AsyncCompletionKind::MbarrierCompleteTxBytes &&
-          ir::Cp::AsyncBulkSharedCtaGlobal::completion_kind ==
-              ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
-          std::holds_alternative<ir::Cp::AsyncBulkCommitGroup>(
-              std::get<ir::Cp>(body[2]).variant) &&
-          std::get<ir::Cp::AsyncBulkWaitGroup>(
-              std::get<ir::Cp>(body[3]).variant)
-              .read.value,
-      "public bulk async completion and group controls");
+  return require(mbar && bulk_group &&
+                     ir::Cp::AsyncBulkGlobalSharedCta::completion_kind ==
+                         ptx_frontend::base::AsyncCompletionKind::
+                             MbarrierCompleteTxBytes &&
+                     ir::Cp::AsyncBulkSharedCtaGlobal::completion_kind ==
+                         ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
+                     std::holds_alternative<ir::Cp::AsyncBulkCommitGroup>(
+                         std::get<ir::Cp>(body[2]).variant) &&
+                     std::get<ir::Cp::AsyncBulkWaitGroup>(
+                         std::get<ir::Cp>(body[3]).variant)
+                         .read.value,
+                 "public bulk async completion and group controls");
 }
 
 }  // namespace

@@ -1764,8 +1764,7 @@ CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
         .range = context.instruction_range,
         .message = "Bulk store has no size operand.",
     }});
-  if (size->register_type &&
-      base::scalar_size_of(*size->register_type) == 4 &&
+  if (size->register_type && base::scalar_size_of(*size->register_type) == 4 &&
       context.target.ptx_version < PtxVersion{9, 0}) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,

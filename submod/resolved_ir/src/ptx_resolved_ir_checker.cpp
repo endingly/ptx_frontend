@@ -2403,6 +2403,24 @@ CheckResult check_cp_async_rule(std::span<const OperandView> operands,
       (!control->register_type ||
        *control->register_type == ScalarType::U32))
     return {};
+  if (control->actual_shape == OperandShape::Predicate) {
+    if (control->register_type &&
+        *control->register_type != ScalarType::Pred) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async ignore-source control requires a predicate register.",
+      }});
+    }
+    if (context.target.ptx_version < PtxVersion{7, 5}) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async ignore-source control requires PTX 7.5.",
+      }});
+    }
+    return {};
+  }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
       .range = diagnostic_range(control->locations, context),

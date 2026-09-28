@@ -1386,6 +1386,24 @@ TEST(ResolvedModule, ChecksCpAsyncDynamicAddressAlignment) {
   cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+8], 8;
   cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+4], 16;
 }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
+  const auto resolved = resolveModule(*parsed_module_1);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const checker::Context context{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+  };
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  for (size_t index = 0; index < 3; ++index)
+    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), context).has_value());
+  for (size_t index = 3; index < body.size(); ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), context);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+  }
+}
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncCgSharedGlobal) {
   const auto parsed = parseModule(R"ptx(
@@ -1395,6 +1413,24 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCgSharedGlobal) {
   cp.async.cg.shared.global [shared_value], [global_value], 16;
   cp.async.cg.shared.global [shared_value], [global_value], 8;
 }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& copy = std::get<Cp::AsyncCgSharedGlobal>(
+      std::get<Cp>(body.front()).variant);
+  EXPECT_TRUE(copy.cg);
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+  };
+  EXPECT_TRUE(checker::check(std::get<Cp>(body[0]), supported).has_value());
+  const auto wrong_size = checker::check(std::get<Cp>(body[1]), supported);
+  ASSERT_FALSE(wrong_size.has_value());
+  EXPECT_EQ(wrong_size.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+}
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncSharedCtaCopies) {
   const auto parsed = parseModule(R"ptx(
@@ -1403,6 +1439,28 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSharedCtaCopies) {
 .entry kernel() {
   cp.async.ca.shared::cta.global [shared_value], [global_value], 4;
   cp.async.cg.shared::cta.global [shared_value], [global_value], 16;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCaSharedCtaGlobal>(
+      std::get<Cp>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCgSharedCtaGlobal>(
+      std::get<Cp>(body[1]).variant));
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+  const auto old_ptx = checker::check(
+      std::get<Cp>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80}});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
@@ -1440,16 +1498,26 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
   EXPECT_EQ(equal_size.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
 }
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  .reg .pred %p;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %p;
+  cp.async.cg.shared::cta.global [shared_value], [global_value], 16, %p;
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 2u);
-  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCaSharedCtaGlobal>(
-      std::get<Cp>(body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCgSharedCtaGlobal>(
-      std::get<Cp>(body[1]).variant));
+  const auto& first = std::get<Cp::AsyncCaSharedGlobalControl>(
+      std::get<Cp>(body[0]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedPredicate>(
+      first.source_control.value));
   const checker::Context supported{
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
@@ -1457,46 +1525,38 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
     EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
   const auto old_ptx = checker::check(
       std::get<Cp>(body[0]),
-      checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80}});
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  auto tampered = std::get<Cp>(body[0]);
+  auto& control = std::get<Cp::AsyncCaSharedGlobalControl>(tampered.variant)
+                      .source_control.value;
+  std::get<ResolvedPredicate>(control).register_ref.declared_type =
+      ScalarType::U32;
+  const auto checked = checker::check(tampered, supported);
+  ASSERT_FALSE(checked.has_value());
+  EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+
+  const auto invalid = parseModule(R"ptx(
+.global .align 16 .b8 global_value[16];
+.shared .align 16 .b8 shared_value[16];
+.entry invalid_kernel() {
+  .reg .f32 %f;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %f;
 }
 )ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 2u);
-  const auto& copy = std::get<Cp::AsyncCgSharedGlobal>(
-      std::get<Cp>(body.front()).variant);
-  EXPECT_TRUE(copy.cg);
-  const checker::Context supported{
-      .target = {.ptx_version = {7, 0}, .sm_version = 80},
-  };
-  EXPECT_TRUE(checker::check(std::get<Cp>(body[0]), supported).has_value());
-  const auto wrong_size = checker::check(std::get<Cp>(body[1]), supported);
-  ASSERT_FALSE(wrong_size.has_value());
-  EXPECT_EQ(wrong_size.error().front().kind,
-            checker::CheckDiagnosticKind::ImmediateValueMismatch);
-}
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
-  const auto resolved = resolveModule(*parsed_module_1);
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const checker::Context context{
-      .target = {.ptx_version = {7, 0}, .sm_version = 80},
-  };
-  const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 6u);
-  for (size_t index = 0; index < 3; ++index)
-    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), context).has_value());
-  for (size_t index = 3; index < body.size(); ++index) {
-    const auto checked = checker::check(std::get<Cp>(body[index]), context);
-    ASSERT_FALSE(checked.has_value());
-    EXPECT_EQ(checked.error().front().kind,
-              checker::CheckDiagnosticKind::AddressAlignmentMismatch);
-  }
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid);
+  const auto invalid_resolved = resolveModule(*invalid);
+  ASSERT_TRUE(invalid_resolved.has_value())
+      << invalid_resolved.error().front().message;
+  const auto invalid_checked = checker::check(
+      std::get<Cp>(invalid_resolved->functions.front().body.front()), supported);
+  ASSERT_FALSE(invalid_checked.has_value());
+  EXPECT_EQ(invalid_checked.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncMbarrierArriveSlice) {

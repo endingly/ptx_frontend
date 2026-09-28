@@ -1395,6 +1395,37 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCgSharedGlobal) {
   cp.async.cg.shared.global [shared_value], [global_value], 16;
   cp.async.cg.shared.global [shared_value], [global_value], 8;
 }
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncSharedCtaCopies) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  cp.async.ca.shared::cta.global [shared_value], [global_value], 4;
+  cp.async.cg.shared::cta.global [shared_value], [global_value], 16;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCaSharedCtaGlobal>(
+      std::get<Cp>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncCgSharedCtaGlobal>(
+      std::get<Cp>(body[1]).variant));
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+  const auto old_ptx = checker::check(
+      std::get<Cp>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80}});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);

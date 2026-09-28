@@ -184,6 +184,7 @@ domains:
     values:
       none: MemoryScope::None
       cta: MemoryScope::Cta
+      gl: MemoryScope::Gpu
       cluster: MemoryScope::Cluster
       gpu: MemoryScope::Gpu
       sys: MemoryScope::Sys

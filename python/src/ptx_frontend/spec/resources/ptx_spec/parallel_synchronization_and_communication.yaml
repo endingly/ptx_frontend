@@ -1493,8 +1493,8 @@ instructions:
 
   - opcode: membar
     section: "9.7.14.4"
-    doc: "Memory barrier, limited to CTA scope."
-    syntax: "membar.cta"
+    doc: "Memory barrier at CTA, GPU, or system level."
+    syntax: "membar.{cta,gl,sys}"
 
     variants:
       - name: membar_cta
@@ -1510,6 +1510,36 @@ instructions:
 
         examples:
           - ptx: "membar.cta;"
+            valid: true
+
+      - name: membar_gl
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: gl
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.gl;"
+            valid: true
+
+      - name: membar_sys
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: sys
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.sys;"
             valid: true
 
   - opcode: fence

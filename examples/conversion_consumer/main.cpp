@@ -194,6 +194,44 @@ bool checkBarrierSyncContract() {
       "public CTA barrier variant and aligned metadata");
 }
 
+/** Verify all memory-barrier levels survive loss of the source AST. */
+bool checkMembarLevelsContract() {
+  constexpr std::string_view source = R"ptx(
+.version 2.0
+.target sm_20
+.entry k() { membar.cta; membar.gl; membar.sys; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar levels fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar levels fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar levels module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 4, "all membar levels retained"))
+    return false;
+  const auto* cta = std::get_if<ir::Membar>(&body[0]);
+  const auto* gl = std::get_if<ir::Membar>(&body[1]);
+  const auto* sys = std::get_if<ir::Membar>(&body[2]);
+  return require(
+      cta && gl && sys &&
+          std::holds_alternative<ir::Membar::Cta>(cta->variant) &&
+          std::holds_alternative<ir::Membar::Gl>(gl->variant) &&
+          std::holds_alternative<ir::Membar::Sys>(sys->variant) &&
+          std::get<ir::Membar::Gl>(gl->variant).scope == ir::MemoryScope::Gpu,
+      "public membar levels and typed GPU scope");
+}
+
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
 bool checkMbarrierTestWaitContract() {
   constexpr std::string_view source = R"ptx(
@@ -834,6 +872,8 @@ int main() {
     return 7;
   if (!checkMbarrierTryWaitContract())
     return 8;
+  if (!checkMembarLevelsContract())
+    return 9;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

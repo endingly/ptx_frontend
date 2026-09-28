@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -1909,52 +1910,69 @@ TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
   }
 }
 
-TEST(ResolvedModule, ResolvesAndChecksMembarCtaSlice) {
-  const auto parsed_module_1 = parseModule(R"ptx(
-.entry kernel() { membar.cta; }
+TEST(ResolvedModule, ResolvesAndChecksMembarLevels) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.entry kernel() { membar.cta; membar.gl; membar.sys; }
 )ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
-  const auto& ast = *parsed_module_1;
-  const auto resolved = resolveModule(ast);
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& instruction =
-      std::get<Membar>(resolved->functions.front().body.front());
-  const auto& membar = std::get<Membar::Cta>(instruction.variant);
-  EXPECT_EQ(membar.scope, MemoryScope::Cta);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  const auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 3U);
+  const auto& cta = std::get<Membar>(body[0]);
+  const auto& gl = std::get<Membar>(body[1]);
+  const auto& sys = std::get<Membar>(body[2]);
+  EXPECT_TRUE(std::holds_alternative<Membar::Cta>(cta.variant));
+  EXPECT_TRUE(std::holds_alternative<Membar::Gl>(gl.variant));
+  EXPECT_TRUE(std::holds_alternative<Membar::Sys>(sys.variant));
+  EXPECT_EQ(std::get<Membar::Cta>(cta.variant).scope, MemoryScope::Cta);
+  EXPECT_EQ(std::get<Membar::Gl>(gl.variant).scope, MemoryScope::Gpu);
+  EXPECT_EQ(std::get<Membar::Sys>(sys.variant).scope, MemoryScope::Sys);
+  for (const auto* instruction : {&cta, &gl}) {
+    EXPECT_TRUE(
+        checker::check(*instruction,
+                       checker::Context{
+                           .target = {.ptx_version = {1, 4}, .sm_version = 0}})
+            .has_value());
+    const auto old_ptx = checker::check(
+        *instruction,
+        checker::Context{.target = {.ptx_version = {1, 3}, .sm_version = 0}});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  }
   EXPECT_TRUE(
-      checker::check(instruction,
-                     checker::Context{
-                         .target = {.ptx_version = {1, 4}, .sm_version = 0},
-                         .instruction_range = ast.range,
-                     })
+      checker::check(sys, checker::Context{.target = {.ptx_version = {2, 0},
+                                                      .sm_version = 20}})
           .has_value());
-
-  const auto too_old = checker::check(
-      instruction,
-      checker::Context{.target = {.ptx_version = {1, 3}, .sm_version = 0},
-                       .instruction_range = ast.range});
-  ASSERT_FALSE(too_old.has_value());
-  EXPECT_EQ(too_old.error().front().kind,
+  const auto old_ptx = checker::check(
+      sys,
+      checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 20}});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      sys,
+      checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 19}});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
-  const auto parsed_module_2 = parseModule(R"ptx(
-.entry kernel() { membar.gl; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto wrong_gl = resolveModule(*parsed_module_2);
-  ASSERT_FALSE(wrong_gl.has_value());
-  const auto parsed_module_3 = parseModule(R"ptx(
-.entry kernel() { membar.sys; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto wrong_sys = resolveModule(*parsed_module_3);
-  ASSERT_FALSE(wrong_sys.has_value());
-  const auto parsed_module_4 = parseModule(R"ptx(
-.entry kernel() { membar.cta 0; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
-  const auto extra_operand = resolveModule(*parsed_module_4);
-  ASSERT_FALSE(extra_operand.has_value());
+  for (const std::string_view source : {
+           ".entry kernel() { membar; }",
+           ".entry kernel() { membar.gpu; }",
+           ".entry kernel() { membar.cluster; }",
+           ".entry kernel() { membar.gl.cta; }",
+           ".entry kernel() { membar.sys 0; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << source;
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {

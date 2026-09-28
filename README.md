@@ -60,6 +60,9 @@ supported surface and its exclusions.
 - [`mbarrier.try_wait` qualifier coverage](docs/us-en/mbarrier_try_wait_coverage.md) and its
   [简体中文版本](docs/zh-han/mbarrier_try_wait_coverage.md) describe the paired
   qualifiers, optional time hint, and target limits.
+- [`membar` level coverage](docs/us-en/membar_coverage.md) and its
+  [简体中文版本](docs/zh-han/membar_coverage.md) describe CTA, GPU, and system
+  barrier forms and their target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

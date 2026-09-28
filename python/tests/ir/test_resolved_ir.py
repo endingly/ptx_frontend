@@ -4324,7 +4324,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.has_maximum = false,', descriptor)
         self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
-    def test_membar_cta_model(self) -> None:
+    def test_membar_levels_model(self) -> None:
         database = self.database
         membar = next(
             instruction
@@ -4335,15 +4335,26 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Membar")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["Cta"]
+            [variant.cpp_name for variant in resolved.variants],
+            ["Cta", "Gl", "Sys"],
         )
-        variant = resolved.variants[0]
-        self.assertEqual(dict(variant.availability), {"ptx": "1.4", "sm": 0})
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [("scope", "MemoryScope")],
-        )
-        self.assertEqual(variant.operand_layouts[0].bindings, ())
+        for variant, floor, scope in zip(
+            resolved.variants,
+            (
+                {"ptx": "1.4", "sm": 0},
+                {"ptx": "1.4", "sm": 0},
+                {"ptx": "2.0", "sm": 20},
+            ),
+            ("MemoryScope::Cta", "MemoryScope::Gpu", "MemoryScope::Sys"),
+            strict=True,
+        ):
+            self.assertEqual(dict(variant.availability), floor)
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.fields],
+                [("scope", "MemoryScope")],
+            )
+            self.assertEqual(field_cpp_constant_expr(variant.fields[0]), scope)
+            self.assertEqual(variant.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
         database = self.database

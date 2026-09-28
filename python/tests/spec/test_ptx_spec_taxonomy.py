@@ -251,6 +251,34 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
                              waits[base].get("operand_layouts"))
             self.assertEqual(variant["constraints"], waits[base]["constraints"])
 
+    def test_membar_levels_are_distinct_and_target_qualified(self) -> None:
+        """Keep source `.gl` distinct from the backend GPU scope spelling."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        membar = next(item for item in spec["instructions"]
+                      if item["opcode"] == "membar")
+        variants = {item["name"]: item for item in membar["variants"]}
+        self.assertEqual(set(variants),
+                         {"membar_cta", "membar_gl", "membar_sys"})
+        for name, floor, value in (
+            ("membar_cta", {"ptx": "1.4", "sm": 0}, "cta"),
+            ("membar_gl", {"ptx": "1.4", "sm": 0}, "gl"),
+            ("membar_sys", {"ptx": "2.0", "sm": 20}, "sys"),
+        ):
+            variant = variants[name]
+            self.assertEqual(variant["availability"], floor)
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifiers"][0]["value"], value)
+            self.assertEqual(variant["modifiers"][0]["presence"], "fixed")
+        backend = load_yaml(
+            SPEC_DIR.parent / "ptx_cpp_backend_spec/ptx_frontend.yaml"
+        )
+        self.assertEqual(
+            backend["domains"]["memory_scopes"]["values"]["gl"],
+            "MemoryScope::Gpu",
+        )
+
     def test_try_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:
         """Keep explicit qualifiers paired across all try-wait layouts."""
         spec = load_yaml(

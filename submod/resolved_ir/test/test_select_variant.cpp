@@ -97,6 +97,30 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   return std::move(*ast);
 }
 
+/** Distinguish the three source-level memory-barrier scope spellings. */
+TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
+  for (const auto [source, expected] :
+       std::array<std::pair<std::string_view, Membar::VariantType>, 3>{{
+           {"membar.cta;", Membar::VariantType::Cta},
+           {"membar.gl;", Membar::VariantType::Gl},
+           {"membar.sys;", Membar::VariantType::Sys},
+       }}) {
+    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "membar;",
+           "membar.gpu;",
+           "membar.cluster;",
+           "membar.cta.sys;",
+           "membar.gl 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
   const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
                                      std::string(literal) + ";");

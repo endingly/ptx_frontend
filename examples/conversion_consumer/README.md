@@ -40,8 +40,9 @@ The source covers a targeted module with these representative forms:
   The consumer checks each copy's static completion identity after destroying
   the parser and AST.
 
-The module uses PTX 9.3 and `sm_121a`, which supplies the exact target context
-for the scaled `s2f6x2` form. The program also checks the public scalar and
+The main module uses PTX 9.3 and `sm_121a`, which supplies the exact target
+context for the scaled `s2f6x2` form; the bulk fixture uses `sm_100f`. The
+program also checks the public scalar and
 rounding enum values at compile time. It resolves the syntax while parser state
 is alive, moves the result into an owned resolved module, and validates that
 owned model after the source, parser, and AST have left scope. Runtime checks

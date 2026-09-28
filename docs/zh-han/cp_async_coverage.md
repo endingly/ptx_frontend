@@ -22,3 +22,10 @@
 
 `.ca`、`.cg` 缓存模式及 L2 限定符是源码控制和性能提示。前端检查形式与
 可用性，不验证缓存效果。`cp.async.bulk` 及其完成模型另行覆盖。
+
+PTX 9.3 语法允许 `.L2::cache_hint` 不带 `cache_policy` 操作数；仅在提供策略
+操作数时要求该限定符。但 `ptxas` 13.3.73 对
+`cp.async.ca.shared.global.L2::cache_hint [dst], [src], 4;` 报出
+`Arguments mismatch for instruction 'cp.async'`。加上 b64 策略操作数后，
+同一版本的汇编器接受该形式。前端遵循已发布的语法；使用此版本汇编器时，
+仅带提示的代码可能需要补充策略操作数。

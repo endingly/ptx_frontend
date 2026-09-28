@@ -2389,7 +2389,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = diagnostic_range(policy->locations, context),
-        .message = "cp.async cache policy requires an L2 cache hint and a b64 register.",
+        .message = "cp.async cache policy requires an L2 cache hint and a b64 "
+                   "register.",
     }});
   }
   const OperandView* control = find_operand(operands, "source_control");
@@ -2403,7 +2404,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = diagnostic_range(control->locations, context),
-        .message = "cp.async fourth-operand cache policy requires an L2 cache hint and no fifth operand.",
+        .message = "cp.async fourth-operand cache policy requires an L2 cache "
+                   "hint and no fifth operand.",
     }});
   }
   if (control->actual_shape == OperandShape::Immediate) {
@@ -2433,7 +2435,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
       return std::unexpected(CheckDiagnostics{CheckDiagnostic{
           .kind = CheckDiagnosticKind::RuleViolation,
           .range = diagnostic_range(control->locations, context),
-          .message = "cp.async ignore-source control requires a predicate register.",
+          .message =
+              "cp.async ignore-source control requires a predicate register.",
       }});
     }
     if (context.target.ptx_version < PtxVersion{7, 5}) {
@@ -2448,7 +2451,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
       .range = diagnostic_range(control->locations, context),
-      .message = "cp.async source size must be a 32-bit unsigned register or immediate.",
+      .message = "cp.async source size must be a 32-bit unsigned register or "
+                 "immediate.",
   }});
 }
 

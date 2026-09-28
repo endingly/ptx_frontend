@@ -1425,8 +1425,8 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCgSharedGlobal) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 2u);
-  const auto& copy = std::get<Cp::AsyncCgSharedGlobal>(
-      std::get<Cp>(body.front()).variant);
+  const auto& copy =
+      std::get<Cp::AsyncCgSharedGlobal>(std::get<Cp>(body.front()).variant);
   EXPECT_TRUE(copy.cg);
   const checker::Context supported{
       .target = {.ptx_version = {7, 0}, .sm_version = 80},
@@ -1460,7 +1460,8 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSharedCtaCopies) {
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Cp>(instruction), supported).has_value());
   const auto old_ptx = checker::check(
       std::get<Cp>(body[0]),
       checker::Context{.target = {.ptx_version = {7, 7}, .sm_version = 80}});
@@ -1486,14 +1487,14 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 4u);
-  const auto& first = std::get<Cp::AsyncCaSharedGlobalControl>(
-      std::get<Cp>(body[0]).variant);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      first.source_control.value));
-  const auto& second = std::get<Cp::AsyncCgSharedGlobalControl>(
-      std::get<Cp>(body[1]).variant);
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      second.source_control.value));
+  const auto& first =
+      std::get<Cp::AsyncCaSharedGlobalControl>(std::get<Cp>(body[0]).variant);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(first.source_control.value));
+  const auto& second =
+      std::get<Cp::AsyncCgSharedGlobalControl>(std::get<Cp>(body[1]).variant);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(second.source_control.value));
   const checker::Context supported{
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
@@ -1510,9 +1511,9 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
       << equal_size.error().front().message;
 
   auto missing_size_type = std::get<Cp>(body[1]);
-  auto& source_size = std::get<Cp::AsyncCgSharedGlobalControl>(
-                          missing_size_type.variant)
-                          .source_control.value;
+  auto& source_size =
+      std::get<Cp::AsyncCgSharedGlobalControl>(missing_size_type.variant)
+          .source_control.value;
   std::get<ResolvedRegisterRef>(source_size).declared_type = std::nullopt;
   const auto invalid_size_type = checker::check(missing_size_type, supported);
   ASSERT_FALSE(invalid_size_type.has_value());
@@ -1535,15 +1536,16 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 2u);
-  const auto& first = std::get<Cp::AsyncCaSharedGlobalControl>(
-      std::get<Cp>(body[0]).variant);
-  EXPECT_TRUE(std::holds_alternative<ResolvedPredicate>(
-      first.source_control.value));
+  const auto& first =
+      std::get<Cp::AsyncCaSharedGlobalControl>(std::get<Cp>(body[0]).variant);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedPredicate>(first.source_control.value));
   const checker::Context supported{
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Cp>(instruction), supported).has_value());
   const auto old_ptx = checker::check(
       std::get<Cp>(body[0]),
       checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
@@ -1581,7 +1583,8 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
   ASSERT_TRUE(invalid_resolved.has_value())
       << invalid_resolved.error().front().message;
   const auto invalid_checked = checker::check(
-      std::get<Cp>(invalid_resolved->functions.front().body.front()), supported);
+      std::get<Cp>(invalid_resolved->functions.front().body.front()),
+      supported);
   ASSERT_FALSE(invalid_checked.has_value());
   EXPECT_EQ(invalid_checked.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
@@ -1620,7 +1623,8 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncL2Controls) {
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Cp>(instruction), supported).has_value());
   const auto old_l2 = checker::check(
       std::get<Cp>(body[0]),
       checker::Context{.target = {.ptx_version = {7, 3}, .sm_version = 80}});
@@ -1629,11 +1633,11 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncL2Controls) {
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
 
   auto malformed = std::get<Cp>(body[3]);
-  auto& fourth = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
-                     malformed.variant)
-                     .source_control.value;
-  std::get<ResolvedCpAsyncCachePolicy>(fourth)
-      .register_ref.declared_type = ScalarType::U32;
+  auto& fourth =
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(malformed.variant)
+          .source_control.value;
+  std::get<ResolvedCpAsyncCachePolicy>(fourth).register_ref.declared_type =
+      ScalarType::U32;
   const auto invalid_policy = checker::check(malformed, supported);
   ASSERT_FALSE(invalid_policy.has_value());
   EXPECT_EQ(invalid_policy.error().front().kind,

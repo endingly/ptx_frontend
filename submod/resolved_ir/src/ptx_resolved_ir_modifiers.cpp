@@ -830,9 +830,9 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
       if (selected) {
         return std::unexpected(ResolveDiagnostic{
             .range = ast.range,
-            .message = fmt::format(
-                "Ambiguous modifier and operand-count combination for instruction '{}'.",
-                ast.opcode.syntax.text),
+            .message = fmt::format("Ambiguous modifier and operand-count "
+                                   "combination for instruction '{}'.",
+                                   ast.opcode.syntax.text),
         });
       }
       selected = variant->variant_name;

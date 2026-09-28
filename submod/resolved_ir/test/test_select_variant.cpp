@@ -935,17 +935,18 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
 }
 
 TEST(SelectVariantCp, SeparatesOriginalAndSourceControlledCopyByArity) {
-  const auto original = selectVariant<Cp>(parse_instruction(
-      "cp.async.ca.shared.global [dst], [src], 4;"));
+  const auto original = selectVariant<Cp>(
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4;"));
   ASSERT_TRUE(original.has_value());
   EXPECT_EQ(*original, Cp::VariantType::AsyncCaSharedGlobal);
-  const auto extended = selectVariant<Cp>(parse_instruction(
-      "cp.async.ca.shared.global [dst], [src], 4, 2;"));
+  const auto extended = selectVariant<Cp>(
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2;"));
   ASSERT_TRUE(extended.has_value());
   EXPECT_EQ(*extended, Cp::VariantType::AsyncCaSharedGlobalControl);
-  EXPECT_FALSE(selectVariant<Cp>(parse_instruction(
-      "cp.async.ca.shared.global [dst], [src], 4, 2, 1;"))
-                   .has_value());
+  EXPECT_FALSE(
+      selectVariant<Cp>(
+          parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2, 1;"))
+          .has_value());
 }
 
 /** Keep ordinary fence order aliases on disjoint semantic/scope variants. */

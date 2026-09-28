@@ -26,3 +26,11 @@ retains its `dst`, `src`, and `cp_size` fields.
 The `.ca` and `.cg` cache modes and L2 qualifiers are source controls and
 performance hints. The frontend checks their shape and availability, not cache
 behavior. `cp.async.bulk` and its completion model are separate coverage.
+
+The PTX 9.3 syntax permits `.L2::cache_hint` without a `cache_policy` operand:
+it only requires the qualifier when a policy is supplied. `ptxas` 13.3.73
+nevertheless rejects
+`cp.async.ca.shared.global.L2::cache_hint [dst], [src], 4;` with
+`Arguments mismatch for instruction 'cp.async'`. The same assembler accepts
+the form with a b64 policy operand. The frontend follows the published syntax;
+bare-hint code may need a policy operand for this assembler version.

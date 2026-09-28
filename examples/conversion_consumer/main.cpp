@@ -1174,14 +1174,15 @@ bool checkCpAsyncContract() {
                "original three-operand public copy fields remain available"))
     return false;
   const auto* policy_instruction = std::get_if<ir::Cp>(&body[1]);
-  const auto* policy = policy_instruction
-                           ? std::get_if<ir::Cp::AsyncCaSharedGlobalCacheHintControl>(
-                                 &policy_instruction->variant)
-                           : nullptr;
-  return require(policy &&
-                     std::holds_alternative<ir::ResolvedCpAsyncCachePolicy>(
-                         policy->source_control.value),
-                 "typed cache-policy fourth operand survives AST destruction");
+  const auto* policy =
+      policy_instruction
+          ? std::get_if<ir::Cp::AsyncCaSharedGlobalCacheHintControl>(
+                &policy_instruction->variant)
+          : nullptr;
+  return require(
+      policy && std::holds_alternative<ir::ResolvedCpAsyncCachePolicy>(
+                    policy->source_control.value),
+      "typed cache-policy fourth operand survives AST destruction");
 }
 
 }  // namespace

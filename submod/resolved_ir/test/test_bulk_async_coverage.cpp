@@ -185,7 +185,10 @@ TEST(BulkAsync, CopyQualifierMatrix) {
   }
   auto& bounded = std::get<Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob>(
       std::get<Cp>(resolved->functions.front().body[3]).variant);
-  std::get<ResolvedImmediate>(bounded.ignore_bytes_left.value).bits = 16;
+  auto& ignore_left =
+      std::get<ResolvedImmediate>(bounded.ignore_bytes_left.value);
+  ignore_left.bits = 16;
+  ignore_left.integer_source_bits = 16;
   const checker::Context base_context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   EXPECT_FALSE(checker::check(std::get<Cp>(body[3]), base_context).has_value());
@@ -250,7 +253,9 @@ TEST(BulkAsync, OwnedMetadataTamperIsRejected) {
   const checker::Context context{.target = {.ptx_version = {9, 3}, .sm_version = 90}};
   EXPECT_TRUE(checker::check(std::get<Cp>(owned->functions.front().body.front()),
                              context).has_value());
-  std::get<ResolvedImmediate>(copy.size.value).bits = 15;
+  auto& size = std::get<ResolvedImmediate>(copy.size.value);
+  size.bits = 15;
+  size.integer_source_bits = 15;
   EXPECT_FALSE(checker::check(std::get<Cp>(owned->functions.front().body.front()),
                               context).has_value());
 }

@@ -109,17 +109,19 @@ TEST(BulkAsync, StoreTopologiesAndSizeVersion) {
   st.bulk.weak.shared::cta [s], 64, 0;
   st.bulk [s], %count32, 0;
   st.bulk [s], %count64, 0;
+  st.async.weak.shared::cluster.mbarrier::complete_tx::bytes.u32 [s], %r0, [bar];
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 7u);
+  ASSERT_EQ(body.size(), 8u);
   EXPECT_TRUE(std::holds_alternative<St::AsyncSharedClusterScalar>(std::get<St>(body[0]).variant));
   EXPECT_TRUE(std::holds_alternative<St::AsyncSharedClusterV2>(std::get<St>(body[1]).variant));
   EXPECT_TRUE(std::holds_alternative<St::AsyncGlobalRelease>(std::get<St>(body[2]).variant));
   EXPECT_TRUE(std::holds_alternative<St::AsyncGlobalMmioRelease>(std::get<St>(body[3]).variant));
+  EXPECT_TRUE(std::holds_alternative<St::AsyncSharedScalar>(std::get<St>(body[7]).variant));
   const checker::Context current{.target = {.ptx_version = {9, 3}, .sm_version = 100}};
   for (const auto& item : body)
     EXPECT_TRUE(checker::check(std::get<St>(item), current).has_value());

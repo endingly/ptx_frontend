@@ -1127,6 +1127,64 @@ int runOwnedValidation() {
   return 0;
 }
 
+/** Check installed bulk-copy completion identity after syntax storage expires. */
+bool checkBulkAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_100f
+.address_size 64
+.global .align 16 .b8 g[64];
+.shared .align 16 .b8 s[64];
+.shared .align 8 .b64 bar;
+.entry k() {
+  cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [s], [g], 16, [bar];
+  cp.async.bulk.global.shared::cta.bulk_group [g], [s], 16;
+  cp.async.bulk.commit_group;
+  cp.async.bulk.wait_group.read 0;
+  st.bulk.shared::cta [s], 16, 0;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "bulk async fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "bulk async fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned bulk async module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 5, "bulk async forms retained"))
+    return false;
+  const auto* copy = std::get_if<ir::Cp>(&body[0]);
+  const auto* mbar = copy ? std::get_if<ir::Cp::AsyncBulkGlobalSharedCta>(
+                                &copy->variant)
+                          : nullptr;
+  const auto* group = std::get_if<ir::Cp>(&body[1]);
+  const auto* bulk_group =
+      group ? std::get_if<ir::Cp::AsyncBulkSharedCtaGlobal>(&group->variant)
+            : nullptr;
+  return require(
+      mbar && bulk_group &&
+          ir::Cp::AsyncBulkGlobalSharedCta::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::MbarrierCompleteTxBytes &&
+          ir::Cp::AsyncBulkSharedCtaGlobal::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
+          std::holds_alternative<ir::Cp::AsyncBulkCommitGroup>(
+              std::get<ir::Cp>(body[2]).variant) &&
+          std::get<ir::Cp::AsyncBulkWaitGroup>(
+              std::get<ir::Cp>(body[3]).variant)
+              .read.value,
+      "public bulk async completion and group controls");
+}
+
 }  // namespace
 
 /** Check the installed public conversion, comparison, and resolved-IR contract. */
@@ -1178,6 +1236,8 @@ int main() {
     return 14;
   if (!checkFenceProxyAliasContract())
     return 15;
+  if (!checkBulkAsyncContract())
+    return 16;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

@@ -4019,6 +4019,47 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["global"],
         )
 
+    def test_non_tensor_bulk_copy_completion_and_qualifier_matrix(self) -> None:
+        cp = next(item for item in self.database.instructions if item.opcode == "cp")
+        variants = {item.cpp_name: item for item in from_instruction_spec(cp).variants}
+        mbar = variants["AsyncBulkGlobalSharedCluster"]
+        group = variants["AsyncBulkSharedCtaGlobal"]
+        self.assertEqual(mbar.completion_kind, AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
+        self.assertEqual(group.completion_kind, AsyncCompletionKind.BULK_GROUP)
+        self.assertEqual(field_cpp_type(next(field for field in mbar.fields if field.name == "mbar")),
+                         "WithLocs<ResolvedAddress>")
+        self.assertEqual([binding.target_field_id for binding in variants[
+            "AsyncBulkGlobalSharedCtaCacheHintIgnoreOob"].operand_layouts[0].bindings],
+                         ["dst", "src", "size", "ignore_bytes_left", "ignore_bytes_right",
+                          "mbar", "cache_policy"])
+        self.assertEqual([binding.target_field_id for binding in variants[
+            "AsyncBulkSharedCtaGlobalCacheHintCpMask"].operand_layouts[0].bindings],
+                         ["dst", "src", "size", "cache_policy", "byte_mask"])
+        relaxed = variants["AsyncBulkGlobalSharedCtaRelaxed"]
+        self.assertEqual(relaxed.completion_kind, AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
+        relaxed_availability = dict(relaxed.availability)
+        self.assertEqual(len(relaxed_availability["any_of"]), 3)
+        self.assertEqual(dict(relaxed_availability["any_of"][0]),
+                         {"ptx": "9.3", "sm": 90, "target": "sm_90a"})
+
+    def test_bulk_reduction_scope_and_store_layouts(self) -> None:
+        cp = next(item for item in self.database.instructions if item.opcode == "cp")
+        cp_variants = {item.cpp_name: item for item in from_instruction_spec(cp).variants}
+        shared = cp_variants["ReduceAsyncBulkSharedAddRelaxed"]
+        global_policy = cp_variants["ReduceAsyncBulkGlobalAddNoftzCacheHintRelaxed"]
+        self.assertEqual(dict(shared.availability), {"ptx": "9.3", "sm": 90})
+        self.assertEqual(shared.completion_kind, AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
+        self.assertEqual(global_policy.completion_kind, AsyncCompletionKind.BULK_GROUP)
+        self.assertEqual(global_policy.operand_layouts[0].bindings[-1].target_field_id, "cache_policy")
+        st = next(item for item in self.database.instructions if item.opcode == "st")
+        st_variants = {item.cpp_name: item for item in from_instruction_spec(st).variants}
+        self.assertEqual(st_variants["AsyncSharedClusterScalar"].completion_kind,
+                         AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
+        self.assertEqual(st_variants["AsyncGlobalRelease"].completion_kind,
+                         AsyncCompletionKind.NONE)
+        self.assertEqual([binding.target_field_id for binding in st_variants["BulkZero"].operand_layouts[0].bindings],
+                         ["dst", "size", "initval"])
+
     def test_cp_async_mbarrier_arrive_model(self) -> None:
         database = self.database
         cp = next(instruction for instruction in database.instructions if instruction.opcode == "cp")

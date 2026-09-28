@@ -682,6 +682,71 @@ operand_patterns:
     - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
 
+  bulk_copy_cluster_cache_hint:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
+  bulk_copy_cluster_multicast:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+    - {name: cta_mask, kind: reg_or_imm, role: src, access: read, type: u16, immediate_conversion: require_target_range}
+
+  bulk_copy_cluster_multicast_cache_hint:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+    - {name: cta_mask, kind: reg_or_imm, role: src, access: read, type: u16, immediate_conversion: require_target_range}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
+  bulk_copy_cta_cache_hint:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
+  bulk_copy_cta_ignore_oob:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: ignore_bytes_left, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: ignore_bytes_right, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+
+  bulk_copy_cta_cache_hint_ignore_oob:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: ignore_bytes_left, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: ignore_bytes_right, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
+  bulk_copy_group_cache_hint:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+
+  bulk_copy_group_cp_mask:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: byte_mask, kind: reg_or_imm, role: src, access: read, type: u16, immediate_conversion: require_target_range}
+
+  bulk_copy_group_cache_hint_cp_mask:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+    - {name: byte_mask, kind: reg_or_imm, role: src, access: read, type: u16, immediate_conversion: require_target_range}
+
   bulk_reduce_mbarrier:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
     - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
@@ -692,6 +757,12 @@ operand_patterns:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
     - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
     - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+
+  bulk_reduce_group_policy:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   bulk_prefetch:
     - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
@@ -4286,6 +4357,7 @@ instructions:
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
           - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
@@ -4303,6 +4375,7 @@ instructions:
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
           - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
@@ -4318,6 +4391,7 @@ instructions:
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
           - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
@@ -4333,10 +4407,414 @@ instructions:
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
           - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands: $bulk_copy_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_cache_hint
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+        operands: $bulk_copy_cluster_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_multicast
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
+        operands: $bulk_copy_cluster_multicast
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_multicast_cache_hint
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+        operands: $bulk_copy_cluster_multicast_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cta_cache_hint
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+        operands: $bulk_copy_cta_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cta_ignore_oob
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.2", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
+        operands: $bulk_copy_cta_ignore_oob
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_range, operand: ignore_bytes_left, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: ignore_bytes_right, minimum: 0, maximum: 15}
+
+      - name: cp_async_bulk_global_shared_cta_cache_hint_ignore_oob
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.2", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
+        operands: $bulk_copy_cta_cache_hint_ignore_oob
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_range, operand: ignore_bytes_left, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: ignore_bytes_right, minimum: 0, maximum: 15}
+
+      - name: cp_async_bulk_shared_cta_global_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+        operands: $bulk_copy_group_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global_cp_mask
+        completion_kind: bulk_group
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+        operands: $bulk_copy_group_cp_mask
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global_cache_hint_cp_mask
+        completion_kind: bulk_group
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: optional, values: [{value: weak, availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}}], default: omitted}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+        operands: $bulk_copy_group_cache_hint_cp_mask
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cta_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_shared_cluster_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_shared_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global_relaxed
+        completion_kind: bulk_group
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_cache_hint_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cluster_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_multicast_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cluster_multicast
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cluster_multicast_cache_hint_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cluster_multicast_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cta_cache_hint_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cta_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_global_shared_cta_ignore_oob_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cta_ignore_oob
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_range, operand: ignore_bytes_left, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: ignore_bytes_right, minimum: 0, maximum: 15}
+
+      - name: cp_async_bulk_global_shared_cta_cache_hint_ignore_oob_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_cta_cache_hint_ignore_oob
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_range, operand: ignore_bytes_left, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: ignore_bytes_right, minimum: 0, maximum: 15}
+
+      - name: cp_async_bulk_shared_cta_global_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_group_cache_hint
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global_cp_mask_relaxed
+        completion_kind: bulk_group
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_group_cp_mask
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global_cache_hint_cp_mask_relaxed
+        completion_kind: bulk_group
+        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands: $bulk_copy_group_cache_hint_cp_mask
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -4676,6 +5154,682 @@ instructions:
           - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
         operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_add_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, f32, f64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_min_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_max_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_inc_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_dec_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_and_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_or_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_xor_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_add_noftz_cache_hint
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_shared_add_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_min_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_max_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_inc_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_dec_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_and_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_or_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_shared_xor_relaxed
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32]}
+        operands: $bulk_reduce_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: cp_reduce_async_bulk_global_add_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, f32, f64]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_min_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_max_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_inc_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_dec_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_and_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_or_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_xor_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_add_noftz_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
+        operands: $bulk_reduce_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_add_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, f32, f64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_min_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_max_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_inc_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_dec_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_and_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_or_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_xor_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands: $bulk_reduce_group_policy
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_reduce_async_bulk_global_add_noftz_cache_hint_relaxed
+        completion_kind: bulk_group
+        availability: {ptx: "9.3", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [cta, cluster, gpu, sys]}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
+        operands: $bulk_reduce_group_policy
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5257,6 +6411,44 @@ instructions:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: weak, kind: flag, presence: optional, default: false, token: .weak}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: vector, kind: vector, domain: vector_arities, presence: fixed, value: v4}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, u32, s32, f32]}
+        operands: $async_store_shared_vector
+        constraints:
+          - {kind: address_alignment, address_operand: dst, type_modifier: type, vector_modifier: vector}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: st_async_shared_cluster_scalar
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: async_shared_cluster, kind: flag, presence: fixed, value: true, token: .async.shared::cluster}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64, {value: b128, availability: {ptx: "9.2", sm: 90}}, u32, u64, s32, s64, f32, f64]}
+        operands: $async_store_shared_scalar
+        constraints:
+          - {kind: address_alignment, address_operand: dst, type_modifier: type}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: st_async_shared_cluster_v2
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: async_shared_cluster, kind: flag, presence: fixed, value: true, token: .async.shared::cluster}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: vector, kind: vector, domain: vector_arities, presence: fixed, value: v2}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64, u32, u64, s32, s64, f32, f64]}
+        operands: $async_store_shared_vector
+        constraints:
+          - {kind: address_alignment, address_operand: dst, type_modifier: type, vector_modifier: vector}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: st_async_shared_cluster_v4
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.1", sm: 90}
+        modifiers:
+          - {name: async_shared_cluster, kind: flag, presence: fixed, value: true, token: .async.shared::cluster}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: vector, kind: vector, domain: vector_arities, presence: fixed, value: v4}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, u32, s32, f32]}

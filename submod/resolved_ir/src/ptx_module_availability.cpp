@@ -506,6 +506,8 @@ void collect_operand_references(
       collect_register(*register_ref);
     if (const auto* predicate = std::get_if<ResolvedPredicate>(&value))
       collect_register(predicate->register_ref, true);
+    if (const auto* policy = std::get_if<ResolvedCpAsyncCachePolicy>(&value))
+      collect_register(policy->register_ref);
   } else if constexpr (std::same_as<Value, ResolvedPredicatePair>) {
     collect_register(value.first.register_ref, true);
     collect_register(value.second.register_ref, true);

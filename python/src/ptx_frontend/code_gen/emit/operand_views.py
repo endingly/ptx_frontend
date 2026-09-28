@@ -590,6 +590,14 @@ def emit_check_operand_view(
                       .destination_predicate_negated = predicate->negated,
                       .locations = {object_name}.{field.name}.locs,
                   }};
+                if (const auto* policy = std::get_if<ResolvedCpAsyncCachePolicy>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                      .register_type = policy->register_ref.declared_type,
+                      .cp_async_cache_policy = true,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
                 const auto& register_ref = std::get<ResolvedRegisterRef>(control);
                 return OperandView{{
                     .field_id = "{field.name}",

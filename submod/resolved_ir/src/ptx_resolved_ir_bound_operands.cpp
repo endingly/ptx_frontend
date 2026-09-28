@@ -1966,6 +1966,11 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
             ResolvedCpAsyncSourceControl{std::move(predicate->value)}, range}};
       }
+      if (value->value.declared_type == ScalarType::B64) {
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{ResolvedCpAsyncCachePolicy{
+                .register_ref = std::move(value->value)}}, range}};
+      }
       return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
           ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
     }

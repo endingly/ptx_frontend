@@ -2367,7 +2367,8 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
   }});
 }
 
-CheckResult check_cp_async_rule(std::span<const OperandView> operands,
+CheckResult check_cp_async_rule(std::span<const FieldView> fields,
+                                std::span<const OperandView> operands,
                                 const Context& context) {
   const OperandView* size = find_operand(operands, "cp_size");
   if (size == nullptr || size->actual_shape != OperandShape::Immediate ||
@@ -2378,9 +2379,33 @@ CheckResult check_cp_async_rule(std::span<const OperandView> operands,
         .message = "cp.async requires a typed immediate copy size.",
     }});
   }
+  const FieldView* hint_field = find_field(fields, "cache_hint");
+  const bool has_hint =
+      hint_field != nullptr && hint_field->bool_value.value_or(false);
+  const OperandView* policy = find_operand(operands, "cache_policy");
+  if (policy != nullptr &&
+      (!has_hint || policy->actual_shape != OperandShape::Register ||
+       policy->register_type != ScalarType::B64)) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(policy->locations, context),
+        .message = "cp.async cache policy requires an L2 cache hint and a b64 register.",
+    }});
+  }
   const OperandView* control = find_operand(operands, "source_control");
   if (control == nullptr)
     return {};
+  if (control->cp_async_cache_policy) {
+    if (has_hint && policy == nullptr &&
+        control->actual_shape == OperandShape::Register &&
+        control->register_type == ScalarType::B64)
+      return {};
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(control->locations, context),
+        .message = "cp.async fourth-operand cache policy requires an L2 cache hint and no fifth operand.",
+    }});
+  }
   if (control->actual_shape == OperandShape::Immediate) {
     if (control->immediate_type != ScalarType::U32 ||
         !control->immediate_bits || control->immediate_is_negative) {

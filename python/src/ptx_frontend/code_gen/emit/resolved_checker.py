@@ -433,7 +433,7 @@ def _emit_cross_rule_checks(
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_CP_ASYNC:
         checks += """            const auto cp_async_rule_check = check_cp_async_rule(
-                operands, context);
+                fields, operands, context);
             if (!cp_async_rule_check) {
               diagnostics.insert(diagnostics.end(), cp_async_rule_check.error().begin(),
                                  cp_async_rule_check.error().end());

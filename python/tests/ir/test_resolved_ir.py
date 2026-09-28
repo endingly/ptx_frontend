@@ -3982,7 +3982,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "AsyncMbarrierArriveNoincSharedCta", "AsyncCgSharedGlobal",
              "AsyncCaSharedCtaGlobal", "AsyncCgSharedCtaGlobal",
              "AsyncCaSharedGlobalControl", "AsyncCgSharedGlobalControl",
-             "AsyncCaSharedCtaGlobalControl", "AsyncCgSharedCtaGlobalControl"],
+             "AsyncCaSharedCtaGlobalControl", "AsyncCgSharedCtaGlobalControl",
+             "AsyncCaSharedGlobalPrefetchBase", "AsyncCaSharedGlobalPrefetchControl", "AsyncCaSharedGlobalCacheHintBase",
+             "AsyncCaSharedGlobalCacheHintControl", "AsyncCaSharedGlobalCacheHintControlPolicy", "AsyncCaSharedCtaGlobalPrefetchBase",
+             "AsyncCaSharedCtaGlobalPrefetchControl", "AsyncCaSharedCtaGlobalCacheHintBase", "AsyncCaSharedCtaGlobalCacheHintControl",
+             "AsyncCaSharedCtaGlobalCacheHintControlPolicy", "AsyncCgSharedGlobalPrefetchBase", "AsyncCgSharedGlobalPrefetchControl",
+             "AsyncCgSharedGlobalCacheHintBase", "AsyncCgSharedGlobalCacheHintControl", "AsyncCgSharedGlobalCacheHintControlPolicy",
+             "AsyncCgSharedCtaGlobalPrefetchBase", "AsyncCgSharedCtaGlobalPrefetchControl", "AsyncCgSharedCtaGlobalCacheHintBase",
+             "AsyncCgSharedCtaGlobalCacheHintControl", "AsyncCgSharedCtaGlobalCacheHintControlPolicy"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})

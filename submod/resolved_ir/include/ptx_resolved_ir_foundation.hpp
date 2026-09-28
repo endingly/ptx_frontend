@@ -296,6 +296,8 @@ struct OperandView {
   /** Numerical negativity of the evaluated signed integer source. */
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  /** A cp.async fourth operand is an explicit cache policy, not source size. */
+  bool cp_async_cache_policy = false;
   bool is_sink = false;
   /** Whether a predicate-pair value retains at least one destination lane. */
   bool predicate_pair_has_destination = true;
@@ -786,7 +788,14 @@ using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
                  ResolvedSpecialRegisterRef, ResolvedFunctionRef,
                  ResolvedSymbolRef, ResolvedAddress>;
-/** Source-controlled non-bulk copy: byte count or source-ignore predicate. */
+/** Cache-policy register distinguished from a source-size register. */
+struct ResolvedCpAsyncCachePolicy {
+  /** Bound 64-bit register that carries the L2 eviction policy. */
+  ResolvedRegisterRef register_ref;
+  bool operator==(const ResolvedCpAsyncCachePolicy&) const = default;
+};
+/** Fourth non-bulk copy operand: byte count, ignore predicate, or L2 policy. */
 using ResolvedCpAsyncSourceControl =
-    std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedPredicate>;
+    std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedPredicate,
+                 ResolvedCpAsyncCachePolicy>;
 }  // namespace ptx_frontend::resolved_ir

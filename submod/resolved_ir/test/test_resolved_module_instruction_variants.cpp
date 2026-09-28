@@ -1559,6 +1559,79 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
             checker::CheckDiagnosticKind::RuleViolation);
 }
 
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncL2Controls) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[64];
+.shared .align 16 .b8 shared_value[64];
+.entry kernel() {
+  .reg .u32 %bytes;
+  .reg .pred %ignore;
+  .reg .b64 %policy;
+  cp.async.ca.shared.global.L2::64B [shared_value], [global_value], 4;
+  cp.async.cg.shared::cta.global.L2::256B [shared_value], [global_value], 16, %bytes;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %bytes;
+  cp.async.cg.shared::cta.global.L2::cache_hint.L2::128B [shared_value], [global_value], 16, %ignore, %policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const auto& policy = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+      std::get<Cp>(body[3]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedCpAsyncCachePolicy>(
+      policy.source_control.value));
+  const auto& zero_fill = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+      std::get<Cp>(body[4]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      zero_fill.source_control.value));
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (const auto& instruction : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(instruction), supported).has_value());
+  const auto old_l2 = checker::check(
+      std::get<Cp>(body[0]),
+      checker::Context{.target = {.ptx_version = {7, 3}, .sm_version = 80}});
+  ASSERT_FALSE(old_l2.has_value());
+  EXPECT_EQ(old_l2.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+
+  auto malformed = std::get<Cp>(body[3]);
+  auto& fourth = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+                     malformed.variant)
+                     .source_control.value;
+  std::get<ResolvedCpAsyncCachePolicy>(fourth)
+      .register_ref.declared_type = ScalarType::U32;
+  const auto invalid_policy = checker::check(malformed, supported);
+  ASSERT_FALSE(invalid_policy.has_value());
+  EXPECT_EQ(invalid_policy.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+
+  const auto invalid = parseModule(R"ptx(
+.global .align 16 .b8 global_value[16];
+.shared .align 16 .b8 shared_value[16];
+.entry invalid_kernel() {
+  .reg .b64 %policy;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %policy, %policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid);
+  const auto invalid_resolved = resolveModule(*invalid);
+  ASSERT_TRUE(invalid_resolved.has_value())
+      << invalid_resolved.error().front().message;
+  for (const auto& instruction : invalid_resolved->functions.front().body) {
+    const auto checked = checker::check(std::get<Cp>(instruction), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::RuleViolation);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncMbarrierArriveSlice) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .align 8 .b64 global_value[2];

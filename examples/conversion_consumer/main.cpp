@@ -113,6 +113,51 @@ bool rejectsMutation(const ir::ResolvedModule& module,
   return require(matched, description);
 }
 
+/** Exercise the installed CTA barrier model after parser and AST destruction. */
+bool checkBarrierSyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 7.8
+.target sm_80
+.address_size 64
+.entry k() {
+  barrier.sync.aligned 0;
+  barrier.cta.sync 1, 32;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "CTA barrier fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "CTA barrier fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned CTA barrier module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "CTA barrier instructions retained"))
+    return false;
+  const auto* ordinary = std::get_if<ir::Barrier>(&body[0]);
+  const auto* qualified = std::get_if<ir::Barrier>(&body[1]);
+  const auto* sync =
+      ordinary ? std::get_if<ir::Barrier::Sync>(&ordinary->variant) : nullptr;
+  const auto* cta_sync =
+      qualified ? std::get_if<ir::Barrier::CtaSync>(&qualified->variant)
+                : nullptr;
+  return require(sync && cta_sync && sync->aligned.value &&
+                     !sync->aligned.locs.empty() && !cta_sync->aligned.value &&
+                     cta_sync->aligned.locs.empty(),
+                 "public CTA barrier variant and aligned metadata");
+}
+
 /** Inspect the typed instruction contract after all syntax owners are gone. */
 bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
@@ -587,7 +632,6 @@ int runOwnedValidation() {
   }
   if (!checkExtendedContract(*owned))
     return 5;
-  std::cout << "conversion consumer passed\n";
   return 0;
 }
 
@@ -620,5 +664,10 @@ int main() {
   static_assert(RoundingMode::Rna != RoundingMode::Invalid);
   static_assert(RoundingMode::Rs != RoundingMode::Invalid);
 
-  return runOwnedValidation();
+  if (const int result = runOwnedValidation(); result != 0)
+    return result;
+  if (!checkBarrierSyncContract())
+    return 6;
+  std::cout << "conversion consumer passed\n";
+  return 0;
 }

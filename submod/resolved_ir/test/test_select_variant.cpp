@@ -622,7 +622,8 @@ TEST(SelectVariantBar, SelectsEveryGeneratedVariant) {
   }
 }
 
-TEST(SelectVariantBarrier, SelectsClusterArriveAndWaitForms) {
+/** Select CTA sync and cluster barrier variants without aliasing either family. */
+TEST(SelectVariantBarrier, SelectsCtaSyncAndClusterForms) {
   const auto expect_variant = [](std::string_view source,
                                  Barrier::VariantType expected) {
     const auto selected = selectVariant<Barrier>(parse_instruction(source));
@@ -630,6 +631,18 @@ TEST(SelectVariantBarrier, SelectsClusterArriveAndWaitForms) {
     EXPECT_EQ(*selected, expected);
   };
 
+  for (const std::string_view source : {
+           "barrier.sync 0;",
+           "barrier.sync.aligned %r0, 32;",
+       }) {
+    expect_variant(source, Barrier::VariantType::Sync);
+  }
+  for (const std::string_view source : {
+           "barrier.cta.sync 0;",
+           "barrier.cta.sync.aligned %r0, %r1;",
+       }) {
+    expect_variant(source, Barrier::VariantType::CtaSync);
+  }
   for (const std::string_view source : {
            "barrier.cluster.arrive;",
            "barrier.cluster.arrive.aligned;",
@@ -647,6 +660,9 @@ TEST(SelectVariantBarrier, SelectsClusterArriveAndWaitForms) {
   }
 
   for (const std::string_view source : {
+           "barrier.sync.aligned.sync 0;",
+           "barrier.sync.aligned.aligned 0;",
+           "barrier.cta.sync.sync 0;",
            "barrier.cluster.arrive.acquire;",
            "barrier.cluster.wait.release;",
            "barrier.cluster.arrive.aligned.release;",

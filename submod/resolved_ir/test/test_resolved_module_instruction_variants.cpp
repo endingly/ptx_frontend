@@ -1497,6 +1497,16 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
   ASSERT_FALSE(equal_size.has_value());
   EXPECT_EQ(equal_size.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
+
+  auto missing_size_type = std::get<Cp>(body[1]);
+  auto& source_size = std::get<Cp::AsyncCgSharedGlobalControl>(
+                          missing_size_type.variant)
+                          .source_control.value;
+  std::get<ResolvedRegisterRef>(source_size).declared_type = std::nullopt;
+  const auto invalid_size_type = checker::check(missing_size_type, supported);
+  ASSERT_FALSE(invalid_size_type.has_value());
+  EXPECT_EQ(invalid_size_type.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
@@ -1538,6 +1548,13 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
   const auto checked = checker::check(tampered, supported);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+
+  std::get<ResolvedPredicate>(control).register_ref.declared_type =
+      std::nullopt;
+  const auto missing_predicate_type = checker::check(tampered, supported);
+  ASSERT_FALSE(missing_predicate_type.has_value());
+  EXPECT_EQ(missing_predicate_type.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
 
   const auto invalid = parseModule(R"ptx(

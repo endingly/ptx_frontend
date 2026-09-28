@@ -194,9 +194,14 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
         for right_index in range(left_index + 1, len(instruction.variants)):
             right = instruction.variants[right_index]
             if languages[left_index] & languages[right_index]:
+                left_arities = {len(layout.operands) for layout in left.operand_layouts}
+                right_arities = {len(layout.operands) for layout in right.operand_layouts}
+                if left_arities.isdisjoint(right_arities):
+                    continue
                 raise ValueError(
                     f"opcode {instruction.opcode!r} variants {left.name!r} and "
-                    f"{right.name!r} accept an overlapping modifier combination"
+                    f"{right.name!r} accept an overlapping modifier combination "
+                    "at the same operand count"
                 )
 
 
@@ -251,11 +256,8 @@ def _variant_modifier_language(
         tuple(modifier.name for modifier in variant.modifiers),
         *variant.modifier_order_aliases,
     )
-    # Variant exclusivity stays conservative over the full syntactic language
-    # the resolver matches against. `operand_layout.forbidden_modifiers` narrows
-    # what a selected layout accepts, but `select_variant_name` does not consult
-    # layout constraints, so excluding those spellings here would admit two
-    # variants that runtime selection still finds ambiguous.
+    # Selection may distinguish variants by operand count, but does not consult
+    # layout-level forbidden modifiers. Keep the full modifier language here.
     for order in orders:
         language = _modifier_order_language(
             tuple(modifiers_by_name[slot_name] for slot_name in order)

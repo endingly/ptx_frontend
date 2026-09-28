@@ -1039,6 +1039,69 @@ TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
           .has_value());
 }
 
+/** Keep explicit wait qualifier pairs separate from unqualified wait forms. */
+TEST(SelectVariantMbarrier, SelectsPairedTestWaitForms) {
+  const std::array<std::pair<std::string_view, Mbarrier::VariantType>, 10>
+      forms{{
+          {"mbarrier.test_wait.acquire.cta.b64 %p0, [%rd0], %state;",
+           Mbarrier::VariantType::TestWaitTokenSemanticsGenericOrShared},
+          {"mbarrier.test_wait.relaxed.cluster.shared::cta.b64 %p0, "
+           "[shared_value], %state;",
+           Mbarrier::VariantType::TestWaitTokenSemanticsSharedCta},
+          {"mbarrier.test_wait.parity.acquire.cluster.shared.b64 %p0, "
+           "[shared_value], 1;",
+           Mbarrier::VariantType::TestWaitParitySemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.relaxed.cta.shared::cta.b64 %p0, "
+           "[shared_value], %phase;",
+           Mbarrier::VariantType::TestWaitParitySemanticsSharedCta},
+          {"mbarrier.test_wait.phase_type::primary.acquire.cta.b64 %p0|%p1, "
+           "%b0, [%rd0], %state;",
+           Mbarrier::VariantType::TestWaitTokenPrimarySemanticsGenericOrShared},
+          {"mbarrier.test_wait.phase_type::primary.relaxed.cluster.shared::cta."
+           "b64 %p0, [shared_value], %state;",
+           Mbarrier::VariantType::TestWaitTokenPrimarySemanticsSharedCta},
+          {"mbarrier.test_wait.parity.phase_type::primary.acquire.cluster.b64 "
+           "%p0|%p1, %b0, [%rd0], 1;",
+           Mbarrier::VariantType::
+               TestWaitParityPrimarySemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.phase_type::primary.relaxed.cta.shared::"
+           "cta.b64 %p0, [shared_value], 0;",
+           Mbarrier::VariantType::TestWaitParityPrimarySemanticsSharedCta},
+          {"mbarrier.test_wait.parity.phase_type::conditional.acquire.cta.b64 "
+           "%p0, [%rd0], 1;",
+           Mbarrier::VariantType::
+               TestWaitParityConditionalSemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.phase_type::conditional.relaxed.cluster."
+           "shared::cta.b64 %p0, [shared_value], %phase;",
+           Mbarrier::VariantType::TestWaitParityConditionalSemanticsSharedCta},
+      }};
+  for (const auto& [source, expected] : forms) {
+    SCOPED_TRACE(source);
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "mbarrier.test_wait.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cta.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.relaxed.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cluster.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cta.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.acquire.cta.shared::cluster.b64 %p0, "
+           "[shared_value], %state;",
+           "mbarrier.test_wait.parity.phase_type::conditional.acquire.cta.b64 "
+           "%p0|%p1, [shared_value], 1;",
+           "mbarrier.test_wait.phase_type::conditional.acquire.cta.b64 %p0, "
+           "[%rd0], %state;",
+       }) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto parsed = parser.parseInstruction();
+    if (parsed)
+      EXPECT_FALSE(selectVariant<Mbarrier>(*parsed).has_value());
+  }
+}
+
 TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mbarrier::VariantType expected) {

@@ -54,6 +54,9 @@ supported surface and its exclusions.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled
   synchronization and reduction slice and its static/runtime boundary.
+- [`mbarrier.test_wait` qualifier coverage](docs/us-en/mbarrier_test_wait_coverage.md) and its
+  [简体中文版本](docs/zh-han/mbarrier_test_wait_coverage.md) describe the paired
+  semantics and scope qualifiers and their target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

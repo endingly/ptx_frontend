@@ -4132,9 +4132,11 @@ instructions:
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
       mbarrier.arrive_drop.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
-      mbarrier.test_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
-      mbarrier.test_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
-      mbarrier.test_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.test_wait{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], state |
+      mbarrier.test_wait.parity{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.test_wait.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
+      mbarrier.test_wait.parity.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
+      mbarrier.test_wait.parity.phase_type::conditional{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
       mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
       mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
       mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
@@ -5037,6 +5039,69 @@ instructions:
         modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
       - name: mbarrier_pending_count
         section: "9.7.14.16.20"
         availability: {ptx: "7.0", sm: 80}

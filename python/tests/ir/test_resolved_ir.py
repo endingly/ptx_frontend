@@ -2651,6 +2651,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
              "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
              "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta",
+             "TestWaitTokenSemanticsGenericOrShared", "TestWaitTokenSemanticsSharedCta",
+             "TestWaitParitySemanticsGenericOrShared", "TestWaitParitySemanticsSharedCta",
+             "TestWaitTokenPrimarySemanticsGenericOrShared",
+             "TestWaitTokenPrimarySemanticsSharedCta",
+             "TestWaitParityPrimarySemanticsGenericOrShared",
+             "TestWaitParityPrimarySemanticsSharedCta",
+             "TestWaitParityConditionalSemanticsGenericOrShared",
+             "TestWaitParityConditionalSemanticsSharedCta",
              "PendingCount", "CheckLayoutGenericV0", "CheckLayoutGenericV1",
              "CheckLayoutSharedCtaV0", "CheckLayoutSharedCtaV1"],
         )
@@ -2684,8 +2692,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
         test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
         try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
-        pending_count = instruction.variants[79]
-        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
+        paired_waits = instruction.variants[79:89]
+        pending_count = instruction.variants[89]
+        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[90:94]
         arrival_count_variants = [
             variant
             for variant in instruction.variants[27:59]
@@ -2720,13 +2729,52 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for entry in variant.modifier_value_availabilities
             if entry.source_kind_id == "scope" and entry.value == "cluster"
         ]
-        self.assertEqual(len(cluster_scope_values), 12)
+        self.assertEqual(len(cluster_scope_values), 22)
         self.assertTrue(all(dict(entry.availability) == cluster_availability
                             for entry in cluster_scope_values))
         self.assertEqual(dict(test_wait_token.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(test_wait_token_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(test_wait_parity.availability), {"ptx": "7.1", "sm": 80})
         self.assertEqual(dict(test_wait_parity_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(len(paired_waits), 10)
+        for index, variant in enumerate(paired_waits):
+            self.assertEqual(
+                dict(variant.availability),
+                {"ptx": "8.0", "sm": 80} if index < 4 else {"ptx": "9.3", "sm": 90},
+            )
+            modifiers = [(field.name, field_cpp_type(field))
+                         for field in variant.modifier_fields]
+            self.assertIn(("semantics", "WithLocs<MemoryConsistency>"), modifiers)
+            self.assertIn(("scope", "WithLocs<MemoryScope>"), modifiers)
+            names = [name for name, _ in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "semantics"],
+                ["acquire", "relaxed"],
+            )
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "scope"],
+                ["cta", "cluster"],
+            )
+            self.assertEqual(variant.address_alignments[0].alignment, 8)
+            if "Parity" in variant.cpp_name:
+                self.assertEqual(
+                    [(item.operand_field_id, item.minimum, item.maximum)
+                     for item in variant.immediate_ranges],
+                    [("phase_parity", 0, 1)],
+                )
+            if "Primary" in variant.cpp_name:
+                self.assertEqual(
+                    [layout.layout_id for layout in variant.operand_layouts],
+                    ["default", "report_predicate", "report_predicate_value"],
+                )
+            if "Conditional" in variant.cpp_name:
+                self.assertEqual(
+                    [layout.layout_id for layout in variant.operand_layouts],
+                    ["default"],
+                )
         self.assertEqual(
             [dict(variant.availability) for variant in
              (try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta)],

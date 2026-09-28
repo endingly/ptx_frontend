@@ -222,6 +222,35 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             )
         self.assertEqual(instructions["bar"]["section"], "9.7.14.1")
 
+    def test_test_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:
+        """Require one explicit semantic/scope row per existing wait shape."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        mbarrier = next(item for item in spec["instructions"]
+                        if item["opcode"] == "mbarrier")
+        waits = {item["name"]: item for item in mbarrier["variants"]
+                 if item["name"].startswith("mbarrier_test_wait_")}
+        paired = {name: item for name, item in waits.items()
+                  if "_semantics_" in name}
+        self.assertEqual(len(waits), 20)
+        self.assertEqual(len(paired), 10)
+        for name, variant in paired.items():
+            base = name.replace("_semantics_", "_")
+            self.assertIn(base, waits)
+            self.assertEqual(variant["section"], "9.7.14.16.19")
+            modifiers = variant["modifiers"]
+            names = [modifier["name"] for modifier in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(modifiers[names.index("semantics")]["presence"],
+                             "required")
+            self.assertEqual(modifiers[names.index("scope")]["presence"],
+                             "required")
+            self.assertEqual(variant.get("operands"), waits[base].get("operands"))
+            self.assertEqual(variant.get("operand_layouts"),
+                             waits[base].get("operand_layouts"))
+            self.assertEqual(variant["constraints"], waits[base]["constraints"])
+
 
 if __name__ == "__main__":
     unittest.main()

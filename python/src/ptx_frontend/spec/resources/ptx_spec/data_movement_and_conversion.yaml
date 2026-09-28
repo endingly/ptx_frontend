@@ -4296,6 +4296,42 @@ instructions:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
 
+  - opcode: cp
+    section: "9.7.9.26.6.1"
+    doc: "Commit prior bulk-group async operations for the issuing thread."
+    syntax: "cp.async.bulk.commit_group"
+    variants:
+      - name: cp_async_bulk_commit_group
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: commit_group, kind: flag, presence: fixed, value: true, token: .commit_group}
+        operands: []
+        examples:
+          - {ptx: "cp.async.bulk.commit_group;", valid: true}
+
+  - opcode: cp
+    section: "9.7.9.26.6.2"
+    doc: "Wait for whole bulk groups or only their source reads."
+    syntax: "cp.async.bulk.wait_group{.read} N"
+    variants:
+      - name: cp_async_bulk_wait_group
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: wait_group, kind: flag, presence: fixed, value: true, token: .wait_group}
+          - {name: read, kind: flag, presence: optional, default: false, token: .read}
+        operands:
+          - {name: n, kind: imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+        constraints:
+          - {kind: immediate_range, operand: n, minimum: 0}
+        examples:
+          - {ptx: "cp.async.bulk.wait_group.read 0;", valid: true}
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

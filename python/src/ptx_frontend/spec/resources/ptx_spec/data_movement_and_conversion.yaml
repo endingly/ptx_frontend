@@ -4784,7 +4784,7 @@ instructions:
 
       - name: cp_async_bulk_shared_cta_global_cp_mask_relaxed
         completion_kind: bulk_group
-        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -4802,7 +4802,7 @@ instructions:
 
       - name: cp_async_bulk_shared_cta_global_cache_hint_cp_mask_relaxed
         completion_kind: bulk_group
-        availability: {any_of: [{ptx: "9.3", sm: 90, target: sm_90a}, {ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "9.3", sm: 100, family: sm_100f}, {ptx: "9.3", sm: 110, family: sm_110f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}

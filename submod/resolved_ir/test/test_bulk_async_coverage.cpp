@@ -144,6 +144,41 @@ TEST(BulkAsync, CopyQualifierMatrix) {
   cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes.multicast::cluster.L2::cache_hint [s], [g], 16, [bar], %mask, %policy;
   cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes.L2::cache_hint.ignore_oob [s], [g], 16, 1, 2, [bar], %policy;
   cp.async.bulk.global.shared::cta.bulk_group.L2::cache_hint.cp_mask [g], [s], 16, %policy, %mask;
+  cp.async.bulk.relaxed.cta.global.shared::cta.bulk_group.cp_mask.b128 [g], [s], 16, %mask;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob>(
+      std::get<Cp>(body[3]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkSharedCtaGlobalCacheHintCpMask>(
+      std::get<Cp>(body[4]).variant));
+  EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkSharedCtaGlobalCpMaskRelaxed>(
+      std::get<Cp>(body[5]).variant));
+  for (const std::string_view target : {"sm_100f", "sm_100", "sm_90a"}) {
+    const auto profile = base::find_target_profile(target);
+    ASSERT_TRUE(profile.has_value());
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3},
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+    };
+    EXPECT_EQ(checker::check(std::get<Cp>(body[0]), context).has_value(),
+              target != "sm_100");
+    EXPECT_EQ(checker::check(std::get<Cp>(body[1]), context).has_value(),
+              target != "sm_100");
+    for (size_t i = 2; i < 4; ++i)
+      EXPECT_TRUE(checker::check(std::get<Cp>(body[i]), context).has_value());
+    EXPECT_EQ(checker::check(std::get<Cp>(body[4]), context).has_value(),
+              target != "sm_90a");
+    EXPECT_EQ(checker::check(std::get<Cp>(body[5]), context).has_value(),
+              target == "sm_100f");
+  }
 }
 
 /** Reduction scopes use the base SM gate and a separate PTX 9.3 gate. */
@@ -205,34 +240,6 @@ TEST(BulkAsync, RejectsInvalidQualifierPairings) {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
     EXPECT_FALSE(resolveModule(*parsed).has_value()) << invalid;
-  }
-}
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& body = resolved->functions.front().body;
-  ASSERT_EQ(body.size(), 5u);
-  EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob>(
-      std::get<Cp>(body[3]).variant));
-  EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkSharedCtaGlobalCacheHintCpMask>(
-      std::get<Cp>(body[4]).variant));
-  for (const std::string_view target : {"sm_100f", "sm_100"}) {
-    const auto profile = base::find_target_profile(target);
-    ASSERT_TRUE(profile.has_value());
-    const checker::Context context{
-        .target = {.ptx_version = {9, 3},
-                   .sm_version = profile->identity.architecture.number,
-                   .enabled_family_features = profile->enabled_family_features,
-                   .identity = profile->identity,
-                   .capabilities = profile->capabilities},
-    };
-    EXPECT_EQ(checker::check(std::get<Cp>(body[0]), context).has_value(),
-              target == "sm_100f");
-    EXPECT_EQ(checker::check(std::get<Cp>(body[1]), context).has_value(),
-              target == "sm_100f");
-    for (size_t i = 2; i < body.size(); ++i)
-      EXPECT_TRUE(checker::check(std::get<Cp>(body[i]), context).has_value());
   }
 }
 

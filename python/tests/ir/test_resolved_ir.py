@@ -4041,6 +4041,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(len(relaxed_availability["any_of"]), 3)
         self.assertEqual(dict(relaxed_availability["any_of"][0]),
                          {"ptx": "9.3", "sm": 90, "target": "sm_90a"})
+        masked_relaxed = variants["AsyncBulkSharedCtaGlobalCpMaskRelaxed"]
+        self.assertEqual([dict(item) for item in dict(masked_relaxed.availability)["any_of"]],
+                         [{"ptx": "9.3", "sm": 100, "family": "sm_100f"},
+                          {"ptx": "9.3", "sm": 110, "family": "sm_110f"}])
 
     def test_bulk_reduction_scope_and_store_layouts(self) -> None:
         cp = next(item for item in self.database.instructions if item.opcode == "cp")

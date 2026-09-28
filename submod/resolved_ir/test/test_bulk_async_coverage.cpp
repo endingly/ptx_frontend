@@ -65,6 +65,43 @@ TEST(BulkAsync, PrefetchPolicyTopology) {
   cp.async.bulk.prefetch.L2.global [g], 16;
   cp.async.bulk.prefetch.L2.global.L2::cache_hint [g], 32, %policy;
 }
+
+/** Shared stores use a barrier while global release stores use scope alone. */
+TEST(BulkAsync, AsyncStoreTopologies) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_100
+.address_size 64
+.global .align 16 .b8 g[64];
+.shared .align 16 .b8 s[64];
+.shared .align 8 .b64 bar;
+.entry kernel() {
+  .reg .u32 %r<4>;
+  st.async.shared::cluster.mbarrier::complete_tx::bytes.u32 [s], %r0, [bar];
+  st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 [s], {%r0, %r1}, [bar];
+  st.async.release.gpu.global.u32 [g], %r2;
+  st.async.mmio.release.sys.global.u32 [g], %r3;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  EXPECT_TRUE(std::holds_alternative<St::AsyncSharedScalar>(
+      std::get<St>(body[0]).variant));
+  EXPECT_TRUE(std::holds_alternative<St::AsyncSharedV2>(
+      std::get<St>(body[1]).variant));
+  EXPECT_TRUE(std::holds_alternative<St::AsyncGlobalRelease>(
+      std::get<St>(body[2]).variant));
+  EXPECT_TRUE(std::holds_alternative<St::AsyncGlobalMmioRelease>(
+      std::get<St>(body[3]).variant));
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100},
+  };
+  for (const auto& item : body)
+    EXPECT_TRUE(checker::check(std::get<St>(item), context).has_value());
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);

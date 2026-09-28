@@ -1493,8 +1493,8 @@ instructions:
 
   - opcode: membar
     section: "9.7.14.4"
-    doc: "Memory barriers at CTA, GPU, or system level, and alias-proxy ordering."
-    syntax: "membar.{cta,gl,sys} | membar.proxy.alias"
+    doc: "Memory barriers at CTA, GPU, or system level, and proxy ordering."
+    syntax: "membar.{cta,gl,sys} | membar.proxy.alias | membar.proxy.async{.global|.shared::cta|.shared::cluster}"
 
     variants:
       - name: membar_cta
@@ -1552,6 +1552,35 @@ instructions:
 
         examples:
           - ptx: "membar.proxy.alias;"
+            valid: true
+
+      - name: membar_proxy_async
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async, async.global, async.shared::cta]}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.async;"
+            valid: true
+          - ptx: "membar.proxy.async.global;"
+            valid: true
+          - ptx: "membar.proxy.async.shared::cta;"
+            valid: true
+
+      - name: membar_proxy_async_shared_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async.shared::cluster]}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.async.shared::cluster;"
             valid: true
 
   - opcode: fence

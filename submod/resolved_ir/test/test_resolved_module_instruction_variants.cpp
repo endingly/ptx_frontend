@@ -2018,9 +2018,93 @@ TEST(ResolvedModule, ResolvesAndChecksMembarProxyAlias) {
 
   for (const std::string_view source : {
            ".entry kernel() { membar.proxy; }",
-           ".entry kernel() { membar.proxy.async; }",
            ".entry kernel() { membar.proxy.alias.cta; }",
            ".entry kernel() { membar.proxy.alias 0; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << source;
+  }
+}
+
+/** Preserve async-proxy suffixes and check their source and target limits. */
+TEST(ResolvedModule, ResolvesAndChecksMembarProxyAsyncSpaces) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 8.0
+.target sm_90a
+.entry kernel() {
+  membar.proxy.async;
+  membar.proxy.async.global;
+  membar.proxy.async.shared::cta;
+  membar.proxy.async.shared::cluster;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  const auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 4U);
+  constexpr std::array expected_proxy_kinds{AsyncProxyKind::Async,
+                                            AsyncProxyKind::AsyncGlobal,
+                                            AsyncProxyKind::AsyncSharedCta};
+  for (size_t i = 0; i < 3; ++i) {
+    const auto& instruction = std::get<Membar>(body[i]);
+    ASSERT_TRUE(
+        std::holds_alternative<Membar::ProxyAsync>(instruction.variant));
+    const auto& async = std::get<Membar::ProxyAsync>(instruction.variant);
+    EXPECT_FALSE(async.proxy_kind.locs.empty());
+    EXPECT_EQ(async.proxy_kind.value, expected_proxy_kinds[i]);
+  }
+  const auto& cluster_instruction = std::get<Membar>(body[3]);
+  ASSERT_TRUE(std::holds_alternative<Membar::ProxyAsyncSharedCluster>(
+      cluster_instruction.variant));
+  const auto& cluster =
+      std::get<Membar::ProxyAsyncSharedCluster>(cluster_instruction.variant);
+  EXPECT_EQ(cluster.proxy_kind.value, AsyncProxyKind::AsyncSharedCluster);
+  EXPECT_FALSE(cluster.proxy_kind.locs.empty());
+
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  const checker::Context supported{
+      .target = {.ptx_version = {8, 0},
+                 .sm_version = 90,
+                 .capabilities = cluster_capabilities}};
+  for (const auto& item : body)
+    EXPECT_TRUE(checker::check(std::get<Membar>(item), supported).has_value());
+  const auto& generic = std::get<Membar>(body[0]);
+  const auto old_ptx = checker::check(
+      generic,
+      checker::Context{.target = {.ptx_version = {7, 8}, .sm_version = 90}});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      generic,
+      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 89}});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto no_cluster = checker::check(
+      cluster_instruction,
+      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}});
+  ASSERT_FALSE(no_cluster.has_value());
+  EXPECT_EQ(no_cluster.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+  auto wrong_space = generic;
+  std::get<Membar::ProxyAsync>(wrong_space.variant).proxy_kind.value =
+      AsyncProxyKind::AsyncSharedCluster;
+  EXPECT_FALSE(checker::check(wrong_space, supported).has_value());
+
+  for (const std::string_view source : {
+           ".entry kernel() { membar.proxy.async.shared; }",
+           ".entry kernel() { membar.proxy.async.shared::cluster.global; }",
+           ".entry kernel() { membar.proxy.async 0; }",
        }) {
     const auto parsed = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);

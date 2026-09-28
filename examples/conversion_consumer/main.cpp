@@ -1,3 +1,4 @@
+#include <array>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -262,6 +263,63 @@ bool checkMembarProxyAliasContract() {
   return require(instruction && std::holds_alternative<ir::Membar::ProxyAlias>(
                                     instruction->variant),
                  "public membar proxy-alias variant");
+}
+
+/** Check installed async-proxy source spaces in an owned resolved module. */
+bool checkMembarProxyAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_90a
+.entry k() {
+  membar.proxy.async;
+  membar.proxy.async.global;
+  membar.proxy.async.shared::cta;
+  membar.proxy.async.shared::cluster;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar async-proxy fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar async-proxy fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar async-proxy module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 5, "membar async-proxy forms retained"))
+    return false;
+  constexpr std::array expected{ir::AsyncProxyKind::Async,
+                                ir::AsyncProxyKind::AsyncGlobal,
+                                ir::AsyncProxyKind::AsyncSharedCta};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto* instruction = std::get_if<ir::Membar>(&body[i]);
+    const auto* async =
+        instruction ? std::get_if<ir::Membar::ProxyAsync>(&instruction->variant)
+                    : nullptr;
+    if (!require(async && async->proxy_kind.value == expected[i] &&
+                     !async->proxy_kind.locs.empty(),
+                 "public membar async-proxy space"))
+      return false;
+  }
+  const auto* instruction = std::get_if<ir::Membar>(&body[3]);
+  const auto* cluster = instruction
+                            ? std::get_if<ir::Membar::ProxyAsyncSharedCluster>(
+                                  &instruction->variant)
+                            : nullptr;
+  return require(
+      cluster &&
+          cluster->proxy_kind.value == ir::AsyncProxyKind::AsyncSharedCluster &&
+          !cluster->proxy_kind.locs.empty(),
+      "public membar async-proxy cluster space");
 }
 
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
@@ -908,6 +966,8 @@ int main() {
     return 9;
   if (!checkMembarProxyAliasContract())
     return 10;
+  if (!checkMembarProxyAsyncContract())
+    return 11;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

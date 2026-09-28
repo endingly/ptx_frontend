@@ -261,7 +261,8 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
         variants = {item["name"]: item for item in membar["variants"]}
         self.assertEqual(set(variants),
                          {"membar_cta", "membar_gl", "membar_sys",
-                          "membar_proxy_alias"})
+                          "membar_proxy_alias", "membar_proxy_async",
+                          "membar_proxy_async_shared_cluster"})
         for name, floor, value in (
             ("membar_cta", {"ptx": "1.4", "sm": 0}, "cta"),
             ("membar_gl", {"ptx": "1.4", "sm": 0}, "gl"),
@@ -289,6 +290,23 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             [("proxy", "flag", "fixed", True, ".proxy"),
              ("alias", "flag", "fixed", True, ".alias")],
         )
+        for name, values, floor in (
+            ("membar_proxy_async",
+             ["async", "async.global", "async.shared::cta"],
+             {"ptx": "8.0", "sm": 90}),
+            ("membar_proxy_async_shared_cluster",
+             ["async.shared::cluster"],
+             {"any_of": [{"ptx": "8.0", "sm": 90,
+                          "capabilities": ["cluster"]}]}),
+        ):
+            variant = variants[name]
+            self.assertEqual(variant["availability"], floor)
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifiers"][0]["token"], ".proxy")
+            self.assertEqual(variant["modifiers"][1]["kind"], "proxy")
+            self.assertEqual(variant["modifiers"][1]["domain"],
+                             "async_proxy_kinds")
+            self.assertEqual(variant["modifiers"][1]["values"], values)
 
     def test_try_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:
         """Keep explicit qualifiers paired across all try-wait layouts."""

@@ -4336,7 +4336,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Membar")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["Cta", "Gl", "Sys", "ProxyAlias"],
+            ["Cta", "Gl", "Sys", "ProxyAlias", "ProxyAsync",
+             "ProxyAsyncSharedCluster"],
         )
         for variant, floor, scope in zip(
             resolved.variants[:3],
@@ -4365,6 +4366,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [("proxy", "bool", "true"), ("alias", "bool", "true")],
         )
         self.assertEqual(proxy_alias.operand_layouts[0].bindings, ())
+
+        proxy_async, async_cluster = resolved.variants[4:]
+        self.assertEqual(dict(proxy_async.availability),
+                         {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in proxy_async.fields],
+            [("proxy", "bool"),
+             ("proxy_kind", "WithLocs<AsyncProxyKind>")],
+        )
+        self.assertEqual(
+            dict(async_cluster.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(proxy_async.operand_layouts[0].bindings, ())
+        self.assertEqual(async_cluster.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
         database = self.database

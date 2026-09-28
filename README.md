@@ -62,7 +62,7 @@ supported surface and its exclusions.
   qualifiers, optional time hint, and target limits.
 - [`membar` level coverage](docs/us-en/membar_coverage.md) and its
   [简体中文版本](docs/zh-han/membar_coverage.md) describe CTA, GPU, system,
-  and alias-proxy barrier forms and their target limits.
+  alias-proxy, and async-proxy barrier forms and their target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

@@ -121,7 +121,7 @@ TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
   }
 }
 
-/** Select alias-proxy ordering without admitting the async-proxy spelling. */
+/** Select alias-proxy ordering without accepting incomplete suffixes. */
 TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
   const auto selected =
       selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
@@ -130,9 +130,34 @@ TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
   for (const std::string_view source : {
            "membar.proxy;",
            "membar.alias;",
-           "membar.proxy.async;",
            "membar.proxy.alias.cta;",
            "membar.proxy.alias 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Preserve the written async proxy's state-space selection. */
+TEST(SelectVariantMembar, SelectsAsyncProxySpaces) {
+  for (const std::string_view source : {
+           "membar.proxy.async;",
+           "membar.proxy.async.global;",
+           "membar.proxy.async.shared::cta;",
+       }) {
+    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, Membar::VariantType::ProxyAsync);
+  }
+  const auto cluster = selectVariant<Membar>(
+      parse_instruction("membar.proxy.async.shared::cluster;"));
+  ASSERT_TRUE(cluster.has_value()) << cluster.error().message;
+  EXPECT_EQ(*cluster, Membar::VariantType::ProxyAsyncSharedCluster);
+  for (const std::string_view source : {
+           "membar.proxy.async.shared;",
+           "membar.proxy.async.shared::cluster.global;",
+           "membar.proxy.global;",
+           "membar.proxy.async 0;",
        }) {
     EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
         << source;

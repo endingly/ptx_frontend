@@ -1968,7 +1968,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_register(operand, context);
       if (!value)
         return std::unexpected(value.error());
-      if (value->value.declared_type == ScalarType::B64) {
+      if (value->value.declared_type == ScalarType::B64 ||
+          value->value.declared_type == ScalarType::U64 ||
+          value->value.declared_type == ScalarType::S64) {
         return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
             ResolvedCpAsyncSourceControl{ResolvedCpAsyncCachePolicy{
                 .register_ref = std::move(value->value)}},

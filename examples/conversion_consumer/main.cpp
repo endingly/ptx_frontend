@@ -1136,7 +1136,7 @@ bool checkCpAsyncContract() {
 .global .align 16 .b8 global_value[32];
 .shared .align 16 .b8 shared_value[32];
 .entry k() {
-  .reg .b64 %policy;
+  .reg .u64 %policy;
   cp.async.ca.shared.global [shared_value], [global_value], 4;
   cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %policy;
   cp.async.ca.shared.global.L2::128B [shared_value], [global_value], 4, 0;
@@ -1180,8 +1180,12 @@ bool checkCpAsyncContract() {
                 &policy_instruction->variant)
           : nullptr;
   return require(
-      policy && std::holds_alternative<ir::ResolvedCpAsyncCachePolicy>(
-                    policy->source_control.value),
+      policy &&
+          std::holds_alternative<ir::ResolvedCpAsyncCachePolicy>(
+              policy->source_control.value) &&
+          std::get<ir::ResolvedCpAsyncCachePolicy>(policy->source_control.value)
+                  .register_ref.declared_type ==
+              ptx_frontend::base::ScalarType::U64,
       "typed cache-policy fourth operand survives AST destruction");
 }
 

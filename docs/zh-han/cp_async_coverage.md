@@ -7,10 +7,10 @@
 | --- | --- | --- |
 | `cp.async.ca.shared{::cta}.global` | `cp-size` 为 4、8 或 16 字节 | PTX 7.0 / SM 80；`::cta` 为 PTX 7.8 |
 | `cp.async.cg.shared{::cta}.global` | `cp-size` 固定为 16 字节 | PTX 7.0 / SM 80；`::cta` 为 PTX 7.8 |
-| 任一复制形式加 `src-size` | 32 位寄存器或立即数；已知立即数须小于 `cp-size`；目标剩余字节补零 | 基础复制形式的可用性 |
+| 任一复制形式加 `src-size` | `.u32`、`.s32` 或 `.b32` 寄存器，或无符号立即数；已知立即数须小于 `cp-size`；目标剩余字节补零 | 基础复制形式的可用性 |
 | 任一复制形式加 `ignore-src` | 谓词寄存器控制全部补零 | PTX 7.5 / SM 80 |
 | 任一复制形式加 `.L2::64B/128B/256B` | 有类型的预取大小提示 | PTX 7.4 / SM 80 |
-| 任一复制形式加 `.L2::cache_hint` | 可附带 64 位缓存策略寄存器；出现策略操作数时必须带该限定符 | PTX 7.4 / SM 80 |
+| 任一复制形式加 `.L2::cache_hint` | 可附带 `.b64`、`.u64` 或 `.s64` 缓存策略寄存器；出现策略操作数时必须带该限定符 | PTX 7.4 / SM 80 |
 | `cp.async.commit_group`、`cp.async.wait_group`、`cp.async.wait_all` | 已有的逐线程分组完成语法 | PTX 7.0 / SM 80 |
 | `cp.async.mbarrier.arrive{.noinc}{.shared{::cta}}.b64` | 已有的 CTA shared mbarrier 地址及 pending count 形式 | PTX 7.0 / SM 80；`::cta` 为 PTX 7.8 |
 

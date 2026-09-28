@@ -669,7 +669,7 @@ operand_patterns:
     - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
     - {name: cp_size, kind: imm, role: src, access: read, type: u32}
     - {name: source_control, kind: cp_async_source_control, role: src, access: read}
-    - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64, register_width: same_width}
 
   cp_async_mbarrier_arrive_address:
     - name: address

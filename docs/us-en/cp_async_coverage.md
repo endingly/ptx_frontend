@@ -8,10 +8,10 @@ does not execute asynchronous copies or prove thread scheduling.
 | --- | --- | --- |
 | `cp.async.ca.shared{::cta}.global` | `cp-size` is 4, 8, or 16 bytes | PTX 7.0 / SM 80; `::cta` PTX 7.8 |
 | `cp.async.cg.shared{::cta}.global` | `cp-size` is 16 bytes | PTX 7.0 / SM 80; `::cta` PTX 7.8 |
-| Either copy form with `src-size` | 32-bit register or immediate; known immediate must be less than `cp-size`; remaining destination bytes are zero-filled | Base copy availability |
+| Either copy form with `src-size` | `.u32`, `.s32`, or `.b32` register, or unsigned immediate; known immediate must be less than `cp-size`; remaining destination bytes are zero-filled | Base copy availability |
 | Either copy form with `ignore-src` | Predicate register selects full zero fill | PTX 7.5 / SM 80 |
 | Either copy form with `.L2::64B/128B/256B` | Typed prefetch-size hint | PTX 7.4 / SM 80 |
-| Either copy form with `.L2::cache_hint` | Optional 64-bit cache-policy register; a supplied policy requires the qualifier | PTX 7.4 / SM 80 |
+| Either copy form with `.L2::cache_hint` | Optional `.b64`, `.u64`, or `.s64` cache-policy register; a supplied policy requires the qualifier | PTX 7.4 / SM 80 |
 | `cp.async.commit_group`, `cp.async.wait_group`, `cp.async.wait_all` | Existing per-thread group completion syntax | PTX 7.0 / SM 80 |
 | `cp.async.mbarrier.arrive{.noinc}{.shared{::cta}}.b64` | Existing CTA-shared mbarrier address and pending-count form | PTX 7.0 / SM 80; `::cta` PTX 7.8 |
 

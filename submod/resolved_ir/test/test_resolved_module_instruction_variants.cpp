@@ -1521,6 +1521,52 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
             checker::CheckDiagnosticKind::RuleViolation);
 }
 
+TEST(ResolvedModule, ChecksCpAsyncSourceSizeRegisterFamilies) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  .reg .s32 %signed_size;
+  .reg .b32 %bit_size;
+  .reg .f32 %float_size;
+  .reg .u16 %narrow_size;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %signed_size;
+  cp.async.cg.shared.global [shared_value], [global_value], 16, %bit_size;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %float_size;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %narrow_size;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (size_t index = 0; index < 2; ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), supported);
+    EXPECT_TRUE(checked.has_value())
+        << (checked ? "" : checked.error().front().message);
+  }
+  const auto& signed_size =
+      std::get<Cp::AsyncCaSharedGlobalControl>(std::get<Cp>(body[0]).variant);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(signed_size.source_control.value)
+                .declared_type,
+            ScalarType::S32);
+  const auto& bit_size =
+      std::get<Cp::AsyncCgSharedGlobalControl>(std::get<Cp>(body[1]).variant);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(bit_size.source_control.value)
+                .declared_type,
+            ScalarType::B32);
+  for (size_t index = 2; index < body.size(); ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), supported);
+    ASSERT_FALSE(checked.has_value());
+    EXPECT_EQ(checked.error().front().kind,
+              checker::CheckDiagnosticKind::RuleViolation);
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
   const auto parsed = parseModule(R"ptx(
 .global .align 16 .b8 global_value[32];
@@ -1661,6 +1707,56 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncL2Controls) {
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::RuleViolation);
+  }
+}
+
+TEST(ResolvedModule, ChecksCpAsyncCachePolicyRegisterFamilies) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  .reg .u64 %unsigned_policy;
+  .reg .s64 %signed_policy;
+  .reg .f64 %float_policy;
+  .reg .u32 %narrow_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %unsigned_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %signed_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, 0, %unsigned_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, 0, %signed_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %float_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, 0, %float_policy;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, 0, %narrow_policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 7u);
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (size_t index = 0; index < 4; ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), supported);
+    EXPECT_TRUE(checked.has_value())
+        << (checked ? "" : checked.error().front().message);
+  }
+  for (size_t index = 0; index < 2; ++index) {
+    const auto& copy = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+        std::get<Cp>(body[index]).variant);
+    EXPECT_EQ(std::get<ResolvedCpAsyncCachePolicy>(copy.source_control.value)
+                  .register_ref.declared_type,
+              index == 0 ? ScalarType::U64 : ScalarType::S64);
+  }
+  for (size_t index = 2; index < 4; ++index) {
+    const auto& copy = std::get<Cp::AsyncCaSharedGlobalCacheHintControlPolicy>(
+        std::get<Cp>(body[index]).variant);
+    EXPECT_EQ(copy.cache_policy.value.declared_type,
+              index == 2 ? ScalarType::U64 : ScalarType::S64);
+  }
+  for (size_t index = 4; index < body.size(); ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), supported);
+    EXPECT_FALSE(checked.has_value());
   }
 }
 

@@ -2383,14 +2383,19 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   const bool has_hint =
       hint_field != nullptr && hint_field->bool_value.value_or(false);
   const OperandView* policy = find_operand(operands, "cache_policy");
+  /** Preserve the declared integer/bit register family for cache policies. */
+  const auto is_policy_type = [](std::optional<ScalarType> type) {
+    return type == ScalarType::B64 || type == ScalarType::U64 ||
+           type == ScalarType::S64;
+  };
   if (policy != nullptr &&
       (!has_hint || policy->actual_shape != OperandShape::Register ||
-       policy->register_type != ScalarType::B64)) {
+       !is_policy_type(policy->register_type))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = diagnostic_range(policy->locations, context),
-        .message = "cp.async cache policy requires an L2 cache hint and a b64 "
-                   "register.",
+        .message = "cp.async cache policy requires an L2 cache hint and a "
+                   "64-bit integer or bit register.",
     }});
   }
   const OperandView* control = find_operand(operands, "source_control");
@@ -2399,7 +2404,7 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   if (control->cp_async_cache_policy) {
     if (has_hint && policy == nullptr &&
         control->actual_shape == OperandShape::Register &&
-        control->register_type == ScalarType::B64)
+        is_policy_type(control->register_type))
       return {};
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -2428,7 +2433,9 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
     return {};
   }
   if (control->actual_shape == OperandShape::Register &&
-      control->register_type == ScalarType::U32)
+      (control->register_type == ScalarType::U32 ||
+       control->register_type == ScalarType::S32 ||
+       control->register_type == ScalarType::B32))
     return {};
   if (control->actual_shape == OperandShape::Predicate) {
     if (control->register_type != ScalarType::Pred) {
@@ -2451,8 +2458,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
       .range = diagnostic_range(control->locations, context),
-      .message = "cp.async source size must be a 32-bit unsigned register or "
-                 "immediate.",
+      .message = "cp.async source size must be a 32-bit integer or bit "
+                 "register, or an unsigned immediate.",
   }});
 }
 

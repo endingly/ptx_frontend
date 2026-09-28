@@ -1493,8 +1493,8 @@ instructions:
 
   - opcode: membar
     section: "9.7.14.4"
-    doc: "Memory barrier at CTA, GPU, or system level."
-    syntax: "membar.{cta,gl,sys}"
+    doc: "Memory barriers at CTA, GPU, or system level, and alias-proxy ordering."
+    syntax: "membar.{cta,gl,sys} | membar.proxy.alias"
 
     variants:
       - name: membar_cta
@@ -1540,6 +1540,18 @@ instructions:
 
         examples:
           - ptx: "membar.sys;"
+            valid: true
+
+      - name: membar_proxy_alias
+        availability: {ptx: "7.5", sm: 60}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: ".alias"}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.alias;"
             valid: true
 
   - opcode: fence

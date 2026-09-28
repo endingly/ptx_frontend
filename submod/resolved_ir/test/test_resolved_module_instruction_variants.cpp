@@ -1975,6 +1975,59 @@ TEST(ResolvedModule, ResolvesAndChecksMembarLevels) {
   }
 }
 
+/** Keep the alias-proxy barrier owned and independently target qualified. */
+TEST(ResolvedModule, ResolvesAndChecksMembarProxyAlias) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 7.5
+.target sm_60
+.entry kernel() { membar.proxy.alias; }
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  const auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 1U);
+  const auto& instruction = std::get<Membar>(body.front());
+  ASSERT_TRUE(std::holds_alternative<Membar::ProxyAlias>(instruction.variant));
+  const auto& alias = std::get<Membar::ProxyAlias>(instruction.variant);
+  EXPECT_TRUE(alias.proxy);
+  EXPECT_TRUE(alias.alias);
+  EXPECT_TRUE(checker::check(instruction,
+                             checker::Context{.target = {.ptx_version = {7, 5},
+                                                         .sm_version = 60}})
+                  .has_value());
+  const auto old_ptx = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 60}});
+  ASSERT_FALSE(old_ptx.has_value());
+  EXPECT_EQ(old_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_sm = checker::check(
+      instruction,
+      checker::Context{.target = {.ptx_version = {7, 5}, .sm_version = 59}});
+  ASSERT_FALSE(old_sm.has_value());
+  EXPECT_EQ(old_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+
+  for (const std::string_view source : {
+           ".entry kernel() { membar.proxy; }",
+           ".entry kernel() { membar.proxy.async; }",
+           ".entry kernel() { membar.proxy.alias.cta; }",
+           ".entry kernel() { membar.proxy.alias 0; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << source;
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .entry kernel() { fence.acq_rel.cta; }

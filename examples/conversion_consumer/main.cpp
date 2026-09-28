@@ -232,6 +232,38 @@ bool checkMembarLevelsContract() {
       "public membar levels and typed GPU scope");
 }
 
+/** Check the installed alias-proxy barrier after the syntax AST is released. */
+bool checkMembarProxyAliasContract() {
+  constexpr std::string_view source = R"ptx(
+.version 7.5
+.target sm_60
+.entry k() { membar.proxy.alias; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar proxy-alias fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar proxy-alias fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar proxy-alias module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "membar proxy-alias retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Membar>(&body.front());
+  return require(instruction && std::holds_alternative<ir::Membar::ProxyAlias>(
+                                    instruction->variant),
+                 "public membar proxy-alias variant");
+}
+
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
 bool checkMbarrierTestWaitContract() {
   constexpr std::string_view source = R"ptx(
@@ -874,6 +906,8 @@ int main() {
     return 8;
   if (!checkMembarLevelsContract())
     return 9;
+  if (!checkMembarProxyAliasContract())
+    return 10;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

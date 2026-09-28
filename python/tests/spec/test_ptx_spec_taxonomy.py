@@ -260,7 +260,8 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
                       if item["opcode"] == "membar")
         variants = {item["name"]: item for item in membar["variants"]}
         self.assertEqual(set(variants),
-                         {"membar_cta", "membar_gl", "membar_sys"})
+                         {"membar_cta", "membar_gl", "membar_sys",
+                          "membar_proxy_alias"})
         for name, floor, value in (
             ("membar_cta", {"ptx": "1.4", "sm": 0}, "cta"),
             ("membar_gl", {"ptx": "1.4", "sm": 0}, "gl"),
@@ -277,6 +278,16 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
         self.assertEqual(
             backend["domains"]["memory_scopes"]["values"]["gl"],
             "MemoryScope::Gpu",
+        )
+        alias = variants["membar_proxy_alias"]
+        self.assertEqual(alias["availability"], {"ptx": "7.5", "sm": 60})
+        self.assertEqual(alias["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"], modifier["token"])
+             for modifier in alias["modifiers"]],
+            [("proxy", "flag", "fixed", True, ".proxy"),
+             ("alias", "flag", "fixed", True, ".alias")],
         )
 
     def test_try_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:

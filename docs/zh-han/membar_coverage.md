@@ -9,7 +9,11 @@
 | `membar.gl;` | 1.4 | 任意 | `MemoryScope::Gpu` |
 | `membar.sys;` | 2.0 | `sm_20` | `MemoryScope::Sys` |
 
-每种写法对应独立的 `Membar` variant，且没有操作数。源码中的 `.gl` 映射为
+此外，`membar.proxy.alias;` 是独立且无操作数的 variant，要求 PTX 7.5 和
+`sm_60`。它在 generic proxy 与虚拟别名 proxy 之间建立双向顺序。固定的
+`.proxy.alias` 写法由两个固定 flag 保留；`membar.proxy.async` 不在此覆盖范围内。
+
+每种受支持的写法对应独立的 `Membar` variant，且没有操作数。源码中的 `.gl` 映射为
 类型化的 GPU scope；`.gpu` 是另一种写法，不适用于 `membar`。Checker 对
-owned IR 检查 PTX 与目标架构下限。其他后缀、操作数和 `membar.proxy` 形式
-不在此覆盖范围内。前端不执行内存屏障。
+owned IR 检查 PTX 与目标架构下限。其他后缀和操作数不在此覆盖范围内。
+前端不执行内存屏障。

@@ -121,6 +121,24 @@ TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
   }
 }
 
+/** Select alias-proxy ordering without admitting the async-proxy spelling. */
+TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
+  const auto selected =
+      selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Membar::VariantType::ProxyAlias);
+  for (const std::string_view source : {
+           "membar.proxy;",
+           "membar.alias;",
+           "membar.proxy.async;",
+           "membar.proxy.alias.cta;",
+           "membar.proxy.alias 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
   const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
                                      std::string(literal) + ";");

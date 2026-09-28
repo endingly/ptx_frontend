@@ -4336,10 +4336,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Membar")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["Cta", "Gl", "Sys"],
+            ["Cta", "Gl", "Sys", "ProxyAlias"],
         )
         for variant, floor, scope in zip(
-            resolved.variants,
+            resolved.variants[:3],
             (
                 {"ptx": "1.4", "sm": 0},
                 {"ptx": "1.4", "sm": 0},
@@ -4355,6 +4355,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
             )
             self.assertEqual(field_cpp_constant_expr(variant.fields[0]), scope)
             self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+        proxy_alias = resolved.variants[3]
+        self.assertEqual(dict(proxy_alias.availability),
+                         {"ptx": "7.5", "sm": 60})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in proxy_alias.fields],
+            [("proxy", "bool", "true"), ("alias", "bool", "true")],
+        )
+        self.assertEqual(proxy_alias.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
         database = self.database

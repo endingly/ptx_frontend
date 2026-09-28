@@ -322,6 +322,187 @@ TEST(CtaBarrierNumeric, RejectsStandaloneSyncInvalidForms) {
   reject("8.0", "sm_20", "barrier.cta.sync.aligned 0;");
 }
 
+/** Keep CTA arrival operands and expressed alignment after AST release. */
+TEST(CtaBarrierNumeric, ResolvesStandaloneArriveWithOwnedAlignedMetadata) {
+  auto ast = parse_module(R"ptx(
+.version 7.8
+.target sm_80
+.address_size 64
+.entry k() {
+  .reg .u32 %r<2>;
+  barrier.arrive 0, 32;
+  barrier.arrive.aligned 15, 64;
+  barrier.arrive %r0, %r1;
+  barrier.arrive.aligned %r0, %r1;
+  barrier.cta.arrive 0, 32;
+  barrier.cta.arrive.aligned 15, 64;
+  barrier.cta.arrive %r0, %r1;
+  barrier.cta.arrive.aligned %r0, %r1;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast.has_value());
+  auto resolved = test_support::resolveTypedModule<Barrier>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  ast.reset();
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  auto& function = resolved->functions.front();
+  ASSERT_EQ(function.body.size(), 9U);
+
+  for (std::size_t index = 0; index < 8; ++index) {
+    const auto& barrier = std::get<Barrier>(function.body[index]);
+    const auto context = checker::Context{
+        .target = {.ptx_version = {7, 8}, .sm_version = 80},
+        .instruction_range = function.instruction_ranges[index],
+    };
+    EXPECT_TRUE(checker::check(barrier, context).has_value()) << index;
+    if (index < 4) {
+      const auto& arrive = std::get<Barrier::Arrive>(barrier.variant);
+      EXPECT_EQ(arrive.aligned.value, index % 2 == 1);
+      EXPECT_EQ(arrive.aligned.locs.empty(), index % 2 == 0);
+    } else {
+      const auto& arrive = std::get<Barrier::CtaArrive>(barrier.variant);
+      EXPECT_EQ(arrive.aligned.value, index % 2 == 1);
+      EXPECT_EQ(arrive.aligned.locs.empty(), index % 2 == 0);
+    }
+  }
+
+  auto& first = std::get<Barrier::Arrive>(
+      std::get<Barrier>(function.body.front()).variant);
+  const auto original_layout = first.operand_layout;
+  first.operand_layout = ResolvedOperandLayoutTag{99};
+  const auto corrupted = checker::check(
+      std::get<Barrier>(function.body.front()),
+      checker::Context{
+          .target = {.ptx_version = {7, 8}, .sm_version = 80},
+          .instruction_range = function.instruction_ranges.front(),
+      });
+  ASSERT_FALSE(corrupted.has_value());
+  EXPECT_EQ(corrupted.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+  first.operand_layout = original_layout;
+}
+
+/** Check introduction targets and static numeric constraints for CTA arrival. */
+TEST(CtaBarrierNumeric, ChecksStandaloneArriveTargetsAndOperands) {
+  /** Resolve one arrival with directive-supplied PTX and SM context. */
+  const auto resolve_one = [](std::string_view version, std::string_view target,
+                              std::string_view instruction) {
+    const std::string source = ".version " + std::string(version) +
+                               "\n.target " + std::string(target) +
+                               R"ptx(
+.address_size 64
+.entry k() {
+  .reg .u32 %r<2>;
+  .reg .u64 %rd;
+  )ptx" + std::string(instruction) +
+                               R"ptx(
+  ret;
+}
+)ptx";
+    const auto ast = parse_module(source);
+    if (!ast)
+      return false;
+    return test_support::resolveTypedModule<Barrier>(
+               *ast, test_support::ModulePipeline::AvailableContext)
+        .has_value();
+  };
+
+  EXPECT_TRUE(resolve_one("6.0", "sm_30", "barrier.arrive 0, 32;"));
+  EXPECT_TRUE(resolve_one("7.8", "sm_30", "barrier.cta.arrive 15, 32;"));
+  for (const std::string_view instruction : {
+           "barrier.arrive 16, 32;",
+           "barrier.arrive -1, 32;",
+           "barrier.arrive 0, 0;",
+           "barrier.arrive 0, -1;",
+           "barrier.arrive 0, 33;",
+           "barrier.arrive %rd, 32;",
+           "barrier.arrive 0, %rd;",
+           "barrier.cta.arrive 16, 32;",
+           "barrier.cta.arrive 0, 0;",
+           "barrier.cta.arrive 0, 33;",
+           "barrier.arrive 0;",
+           "barrier.arrive 0, 32, 64;",
+           "barrier.arrive.aligned.arrive 0, 32;",
+           "barrier.arrive.aligned.aligned 0, 32;",
+           "barrier.cta.arrive.arrive 0, 32;",
+       }) {
+    EXPECT_FALSE(resolve_one("8.0", "sm_80", instruction)) << instruction;
+  }
+  EXPECT_FALSE(resolve_one("5.9", "sm_80", "barrier.arrive 0, 32;"));
+  EXPECT_FALSE(resolve_one("7.7", "sm_80", "barrier.cta.arrive 0, 32;"));
+  EXPECT_FALSE(resolve_one("8.0", "sm_20", "barrier.arrive 0, 32;"));
+  EXPECT_FALSE(resolve_one("8.0", "sm_20", "barrier.cta.arrive 0, 32;"));
+}
+
+/** Attribute known arrival-value failures to the offending source operand. */
+TEST(CtaBarrierNumeric, RejectsStandaloneArriveImmediateAtOperand) {
+  /** Compare the checker diagnostic with the parsed immediate source range. */
+  const auto reject = [](std::string_view instruction,
+                         std::size_t operand_index) {
+    const std::string source = R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.entry k() {
+  )ptx" + std::string(instruction) +
+                               R"ptx(
+  ret;
+}
+)ptx";
+    const auto ast = parse_module(source);
+    ASSERT_TRUE(ast.has_value());
+    const auto& body =
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body;
+    const auto& syntax_instruction =
+        std::get<syntax_ast::AstInstruction>(body.front());
+    const auto resolved = test_support::resolveTypedModule<Barrier>(
+        *ast, test_support::ModulePipeline::AvailableContext);
+    ASSERT_FALSE(resolved.has_value());
+    ASSERT_EQ(resolved.error().size(), 1U);
+    EXPECT_EQ(resolved.error().front().checker_kind,
+              checker::CheckDiagnosticKind::ImmediateValueMismatch);
+    EXPECT_EQ(
+        resolved.error().front().range,
+        syntax_ast::sourceRange(syntax_instruction.operands[operand_index]));
+  };
+
+  reject("barrier.arrive 16, 32;", 0);
+  reject("barrier.arrive 0, 0;", 1);
+  reject("barrier.arrive 0, 33;", 1);
+  reject("barrier.cta.arrive 16, 32;", 0);
+  reject("barrier.cta.arrive 0, 0;", 1);
+  reject("barrier.cta.arrive 0, 33;", 1);
+}
+
+/** Keep legacy bar arrival and standalone barrier arrival in separate types. */
+TEST(CtaBarrierNumeric, DistinguishesBarAndBarrierArriveOpcodes) {
+  const auto ast = parse_module(R"ptx(
+.version 7.8
+.target sm_80
+.address_size 64
+.entry k() {
+  bar.arrive 0, 32;
+  barrier.arrive.aligned 0, 32;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast.has_value());
+  const auto legacy = test_support::resolveTypedModule<Bar>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto standalone = test_support::resolveTypedModule<Barrier>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
+  ASSERT_TRUE(standalone.has_value()) << standalone.error().front().message;
+  EXPECT_TRUE(std::holds_alternative<Bar>(legacy->functions.front().body[0]));
+  EXPECT_TRUE(std::holds_alternative<std::monostate>(
+      legacy->functions.front().body[1]));
+  EXPECT_TRUE(std::holds_alternative<std::monostate>(
+      standalone->functions.front().body[0]));
+  EXPECT_TRUE(
+      std::holds_alternative<Barrier>(standalone->functions.front().body[1]));
+}
+
 TEST(CtaBarrierNumeric, RejectsMalformedDivisibilityDescriptorForRegister) {
   constexpr checker::VariantDescriptor::ImmediateMultipleOfDescriptor
       descriptor{

@@ -122,6 +122,8 @@ bool checkBarrierSyncContract() {
 .entry k() {
   barrier.sync.aligned 0;
   barrier.cta.sync 1, 32;
+  barrier.arrive 2, 32;
+  barrier.cta.arrive.aligned 3, 64;
   ret;
 }
 )ptx";
@@ -143,7 +145,7 @@ bool checkBarrierSyncContract() {
                "owned CTA barrier module validates"))
     return false;
   const auto& body = owned->functions.front().body;
-  if (!require(body.size() == 3, "CTA barrier instructions retained"))
+  if (!require(body.size() == 5, "CTA barrier instructions retained"))
     return false;
   const auto* ordinary = std::get_if<ir::Barrier>(&body[0]);
   const auto* qualified = std::get_if<ir::Barrier>(&body[1]);
@@ -152,9 +154,22 @@ bool checkBarrierSyncContract() {
   const auto* cta_sync =
       qualified ? std::get_if<ir::Barrier::CtaSync>(&qualified->variant)
                 : nullptr;
+  const auto* ordinary_arrive = std::get_if<ir::Barrier>(&body[2]);
+  const auto* qualified_arrive = std::get_if<ir::Barrier>(&body[3]);
+  const auto* arrive =
+      ordinary_arrive
+          ? std::get_if<ir::Barrier::Arrive>(&ordinary_arrive->variant)
+          : nullptr;
+  const auto* cta_arrive =
+      qualified_arrive
+          ? std::get_if<ir::Barrier::CtaArrive>(&qualified_arrive->variant)
+          : nullptr;
   return require(sync && cta_sync && sync->aligned.value &&
                      !sync->aligned.locs.empty() && !cta_sync->aligned.value &&
-                     cta_sync->aligned.locs.empty(),
+                     cta_sync->aligned.locs.empty() && arrive && cta_arrive &&
+                     !arrive->aligned.value && arrive->aligned.locs.empty() &&
+                     cta_arrive->aligned.value &&
+                     !cta_arrive->aligned.locs.empty(),
                  "public CTA barrier variant and aligned metadata");
 }
 

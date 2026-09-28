@@ -190,8 +190,8 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
 
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 
-    def test_standalone_cta_arrive_uses_barrier_taxonomy(self) -> None:
-        """Keep standalone CTA arrival separate from legacy and cluster forms."""
+    def test_standalone_cta_forms_use_barrier_taxonomy(self) -> None:
+        """Keep standalone CTA forms separate from legacy and cluster forms."""
         spec = load_yaml(
             SPEC_DIR / "parallel_synchronization_and_communication.yaml"
         )
@@ -207,9 +207,15 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             set(variants),
             {"barrier_sync", "barrier_cta_sync", "barrier_arrive",
              "barrier_cta_arrive", "barrier_cluster_arrive",
-             "barrier_cluster_wait"},
+             "barrier_cluster_wait", "barrier_red_popc_u32",
+             "barrier_cta_red_popc_u32", "barrier_red_and_pred",
+             "barrier_cta_red_and_pred", "barrier_red_or_pred",
+             "barrier_cta_red_or_pred"},
         )
-        for name in ("barrier_arrive", "barrier_cta_arrive"):
+        for name in ("barrier_arrive", "barrier_cta_arrive",
+                     "barrier_red_popc_u32", "barrier_cta_red_popc_u32",
+                     "barrier_red_and_pred", "barrier_cta_red_and_pred",
+                     "barrier_red_or_pred", "barrier_cta_red_or_pred"):
             self.assertEqual(
                 variants[name].get("section", instructions["barrier"]["section"]),
                 "9.7.14.1",

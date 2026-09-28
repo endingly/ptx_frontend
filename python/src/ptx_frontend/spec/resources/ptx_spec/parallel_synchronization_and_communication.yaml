@@ -1213,12 +1213,14 @@ instructions:
   - opcode: barrier
     section: "9.7.14.1"
     doc: >
-      CTA barrier synchronization/arrival and cluster barrier arrival/wait. Aligned
+      CTA barrier synchronization/arrival/reduction and cluster barrier arrival/wait. Aligned
       records the expressed convergence contract; the frontend does not
       simulate runtime barrier participation or phase behavior.
     syntax: >-
       barrier{.cta}.sync{.aligned} a{, b} |
       barrier{.cta}.arrive{.aligned} a, b |
+      barrier{.cta}.red.popc{.aligned}.u32 d, a{, b}, {!}c |
+      barrier{.cta}.red.{and|or}{.aligned}.pred p, a{, b}, {!}c |
       barrier.cluster.arrive{.release|.relaxed}{.aligned} |
       barrier.cluster.wait{.acquire}{.aligned}
 
@@ -1292,6 +1294,126 @@ instructions:
         examples:
           - {ptx: "barrier.cta.arrive 15, 64;", valid: true}
           - {ptx: "barrier.cta.arrive.aligned %r0, %r1;", valid: true}
+
+      - name: barrier_red_popc_u32
+        description: "CTA predicate population count with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".popc"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_popc_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_popc_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_popc
+        examples:
+          - {ptx: "barrier.red.popc.u32 %r0, 0, %p0;", valid: true}
+          - {ptx: "barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;", valid: true}
+
+      - name: barrier_cta_red_popc_u32
+        description: "Explicit CTA-qualified predicate population count."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".popc"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_popc_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_popc_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_popc
+        examples:
+          - {ptx: "barrier.cta.red.popc.u32 %r0, 0, %p0;", valid: true}
+          - {ptx: "barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;", valid: true}
+
+      - name: barrier_red_and_pred
+        description: "CTA predicate conjunction with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".and"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_and
+        examples:
+          - {ptx: "barrier.red.and.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.red.and.aligned.pred %p0, 15, 64, !%p1;", valid: true}
+
+      - name: barrier_cta_red_and_pred
+        description: "Explicit CTA-qualified predicate conjunction."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".and"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_and
+        examples:
+          - {ptx: "barrier.cta.red.and.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;", valid: true}
+
+      - name: barrier_red_or_pred
+        description: "CTA predicate disjunction with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".or"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_or
+        examples:
+          - {ptx: "barrier.red.or.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.red.or.aligned.pred %p0, 15, 64, !%p1;", valid: true}
+
+      - name: barrier_cta_red_or_pred
+        description: "Explicit CTA-qualified predicate disjunction."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".or"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_or
+        examples:
+          - {ptx: "barrier.cta.red.or.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;", valid: true}
 
       - name: barrier_cluster_arrive
         section: "9.7.14.3"

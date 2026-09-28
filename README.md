@@ -51,9 +51,9 @@ supported surface and its exclusions.
   [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
   types, numeric selectors, `.ftz`, operand containers, and target limits.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
-- [CTA `barrier.sync`/`barrier.arrive` coverage](docs/us-en/barrier_sync_coverage.md) and its
+- [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled
-  synchronization slice and its static/runtime boundary.
+  synchronization and reduction slice and its static/runtime boundary.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

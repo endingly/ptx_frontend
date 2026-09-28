@@ -1530,7 +1530,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         }
         self.assertEqual(
             set(variants), {"Sync", "CtaSync", "Arrive", "CtaArrive",
-                            "ClusterArrive", "ClusterWait"}
+                            "ClusterArrive", "ClusterWait", "RedPopcU32",
+                            "CtaRedPopcU32", "RedAndPred", "CtaRedAndPred",
+                            "RedOrPred", "CtaRedOrPred"}
         )
         for name, ptx in (("Sync", "6.0"), ("CtaSync", "7.8")):
             variant = variants[name]
@@ -1570,6 +1572,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ]
             self.assertIn(("barrier", 0, 15), ranges)
             self.assertIn(("thread_count", 1, None), ranges)
+            self.assertEqual(
+                (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
+                 variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]
+                ("thread_count", 32),
+            )
+        for name in ("RedPopcU32", "CtaRedPopcU32", "RedAndPred",
+                     "CtaRedAndPred", "RedOrPred", "CtaRedOrPred"):
+            variant = variants[name]
+            self.assertEqual(
+                dict(variant.availability),
+                {"ptx": "7.8" if name.startswith("Cta") else "6.0", "sm": 30},
+            )
+            self.assertEqual(
+                [layout.layout_id for layout in variant.operand_layouts],
+                ["without_thread_count", "with_thread_count"],
+            )
+            self.assertEqual(
+                [[field.name for field in layout.fields]
+                 for layout in variant.operand_layouts],
+                [["dst", "barrier", "predicate"],
+                 ["dst", "barrier", "thread_count", "predicate"]],
+            )
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
+                ([("cta", "bool")] if name.startswith("Cta") else [])
+                + [("red", "bool"), ("reduction", "bool"),
+                   ("aligned", "WithLocs<bool>"), ("result_type", "ScalarType")],
+            )
+            ranges = [
+                (item.operand_field_id, item.minimum, item.maximum)
+                for item in variant.immediate_ranges
+            ]
+            self.assertIn(("barrier", 0, 15), ranges)
             self.assertEqual(
                 (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
                  variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]

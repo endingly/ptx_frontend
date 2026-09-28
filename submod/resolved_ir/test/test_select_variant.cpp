@@ -655,6 +655,35 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
        }) {
     expect_variant(source, Barrier::VariantType::CtaArrive);
   }
+  for (const auto& [source, expected] :
+       std::array<std::pair<std::string_view, Barrier::VariantType>, 12>{{
+           {"barrier.red.popc.u32 %r0, 0, %p0;",
+            Barrier::VariantType::RedPopcU32},
+           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;",
+            Barrier::VariantType::RedPopcU32},
+           {"barrier.cta.red.popc.u32 %r0, 0, %p0;",
+            Barrier::VariantType::CtaRedPopcU32},
+           {"barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;",
+            Barrier::VariantType::CtaRedPopcU32},
+           {"barrier.red.and.pred %p0, 0, %p1;",
+            Barrier::VariantType::RedAndPred},
+           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;",
+            Barrier::VariantType::RedAndPred},
+           {"barrier.cta.red.and.pred %p0, 0, %p1;",
+            Barrier::VariantType::CtaRedAndPred},
+           {"barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;",
+            Barrier::VariantType::CtaRedAndPred},
+           {"barrier.red.or.pred %p0, 0, %p1;",
+            Barrier::VariantType::RedOrPred},
+           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;",
+            Barrier::VariantType::RedOrPred},
+           {"barrier.cta.red.or.pred %p0, 0, %p1;",
+            Barrier::VariantType::CtaRedOrPred},
+           {"barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;",
+            Barrier::VariantType::CtaRedOrPred},
+       }}) {
+    expect_variant(source, expected);
+  }
   for (const std::string_view source : {
            "barrier.cluster.arrive;",
            "barrier.cluster.arrive.aligned;",
@@ -678,6 +707,11 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.arrive.aligned.arrive 0, 32;",
            "barrier.arrive.aligned.aligned 0, 32;",
            "barrier.cta.arrive.arrive 0, 32;",
+           "barrier.red.popc.u32.aligned %r0, 0, %p0;",
+           "barrier.red.and.pred.aligned %p0, 0, %p1;",
+           "barrier.red.or.or.pred %p0, 0, %p1;",
+           "barrier.cta.red.popc.aligned.aligned.u32 %r0, 0, %p0;",
+           "barrier.cluster.red.popc.u32 %r0, 0, %p0;",
            "barrier.cluster.arrive.acquire;",
            "barrier.cluster.wait.release;",
            "barrier.cluster.arrive.aligned.release;",

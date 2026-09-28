@@ -120,10 +120,14 @@ bool checkBarrierSyncContract() {
 .target sm_80
 .address_size 64
 .entry k() {
+  .reg .u32 %r;
+  .reg .pred %p<2>;
   barrier.sync.aligned 0;
   barrier.cta.sync 1, 32;
   barrier.arrive 2, 32;
   barrier.cta.arrive.aligned 3, 64;
+  barrier.red.popc.aligned.u32 %r, 4, 32, !%p0;
+  barrier.cta.red.and.pred %p0, 5, %p1;
   ret;
 }
 )ptx";
@@ -145,7 +149,7 @@ bool checkBarrierSyncContract() {
                "owned CTA barrier module validates"))
     return false;
   const auto& body = owned->functions.front().body;
-  if (!require(body.size() == 5, "CTA barrier instructions retained"))
+  if (!require(body.size() == 7, "CTA barrier instructions retained"))
     return false;
   const auto* ordinary = std::get_if<ir::Barrier>(&body[0]);
   const auto* qualified = std::get_if<ir::Barrier>(&body[1]);
@@ -164,13 +168,30 @@ bool checkBarrierSyncContract() {
       qualified_arrive
           ? std::get_if<ir::Barrier::CtaArrive>(&qualified_arrive->variant)
           : nullptr;
-  return require(sync && cta_sync && sync->aligned.value &&
-                     !sync->aligned.locs.empty() && !cta_sync->aligned.value &&
-                     cta_sync->aligned.locs.empty() && arrive && cta_arrive &&
-                     !arrive->aligned.value && arrive->aligned.locs.empty() &&
-                     cta_arrive->aligned.value &&
-                     !cta_arrive->aligned.locs.empty(),
-                 "public CTA barrier variant and aligned metadata");
+  const auto* popc_instruction = std::get_if<ir::Barrier>(&body[4]);
+  const auto* popc =
+      popc_instruction
+          ? std::get_if<ir::Barrier::RedPopcU32>(&popc_instruction->variant)
+          : nullptr;
+  const auto* and_instruction = std::get_if<ir::Barrier>(&body[5]);
+  const auto* and_reduction =
+      and_instruction
+          ? std::get_if<ir::Barrier::CtaRedAndPred>(&and_instruction->variant)
+          : nullptr;
+  const auto* popc_operands =
+      popc ? std::get_if<ir::Barrier::RedPopcU32::WithThreadCountOperands>(
+                 &popc->operands)
+           : nullptr;
+  return require(
+      sync && cta_sync && sync->aligned.value && !sync->aligned.locs.empty() &&
+          !cta_sync->aligned.value && cta_sync->aligned.locs.empty() &&
+          arrive && cta_arrive && !arrive->aligned.value &&
+          arrive->aligned.locs.empty() && cta_arrive->aligned.value &&
+          !cta_arrive->aligned.locs.empty() && popc && popc->aligned.value &&
+          !popc->aligned.locs.empty() && popc_operands &&
+          popc_operands->predicate.value.negated && and_reduction &&
+          !and_reduction->aligned.value && and_reduction->aligned.locs.empty(),
+      "public CTA barrier variant and aligned metadata");
 }
 
 /** Inspect the typed instruction contract after all syntax owners are gone. */

@@ -199,6 +199,129 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
 }
 
+/** Keep standalone CTA barrier identity and expressed convergence after AST release. */
+TEST(CtaBarrierNumeric, ResolvesStandaloneSyncWithOwnedAlignedMetadata) {
+  auto ast = parse_module(R"ptx(
+.version 7.8
+.target sm_80
+.address_size 64
+.entry k() {
+  .reg .u32 %r<2>;
+  barrier.sync 0;
+  barrier.sync.aligned 15, 32;
+  barrier.sync %r0, %r1;
+  barrier.sync.aligned %r0;
+  barrier.cta.sync 0;
+  barrier.cta.sync.aligned 15, 32;
+  barrier.cta.sync %r0, %r1;
+  barrier.cta.sync.aligned %r0;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast.has_value());
+  auto resolved = test_support::resolveTypedModule<Barrier>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  ast.reset();
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  auto& function = resolved->functions.front();
+  ASSERT_EQ(function.body.size(), 9U);
+
+  for (std::size_t index = 0; index < 8; ++index) {
+    const auto& barrier = std::get<Barrier>(function.body[index]);
+    const auto context = checker::Context{
+        .target = {.ptx_version = {7, 8}, .sm_version = 80},
+        .instruction_range = function.instruction_ranges[index],
+    };
+    EXPECT_TRUE(checker::check(barrier, context).has_value()) << index;
+    if (index < 4) {
+      const auto& sync = std::get<Barrier::Sync>(barrier.variant);
+      EXPECT_EQ(sync.aligned.value, index % 2 == 1);
+      EXPECT_EQ(sync.aligned.locs.empty(), index % 2 == 0);
+    } else {
+      const auto& sync = std::get<Barrier::CtaSync>(barrier.variant);
+      EXPECT_EQ(sync.aligned.value, index % 2 == 1);
+      EXPECT_EQ(sync.aligned.locs.empty(), index % 2 == 0);
+    }
+  }
+
+  auto& first =
+      std::get<Barrier::Sync>(std::get<Barrier>(function.body.front()).variant);
+  const auto original_layout = first.operand_layout;
+  first.operand_layout = ResolvedOperandLayoutTag{99};
+  const auto corrupted = checker::check(
+      std::get<Barrier>(function.body.front()),
+      checker::Context{
+          .target = {.ptx_version = {7, 8}, .sm_version = 80},
+          .instruction_range = function.instruction_ranges.front(),
+      });
+  ASSERT_FALSE(corrupted.has_value());
+  EXPECT_EQ(corrupted.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+  first.operand_layout = original_layout;
+}
+
+/** Accept the first PTX and SM combination that exposes standalone CTA sync. */
+TEST(CtaBarrierNumeric, AcceptsStandaloneSyncAtMinimumTarget) {
+  const auto ast = parse_module(R"ptx(
+.version 6.0
+.target sm_30
+.address_size 64
+.entry k() {
+  barrier.sync 0;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast.has_value());
+  const auto resolved = test_support::resolveTypedModule<Barrier>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& barrier =
+      std::get<Barrier>(resolved->functions.front().body.front());
+  EXPECT_TRUE(std::holds_alternative<Barrier::Sync>(barrier.variant));
+}
+
+/** Reject unsupported standalone CTA barriers and statically known bad operands. */
+TEST(CtaBarrierNumeric, RejectsStandaloneSyncInvalidForms) {
+  /** Resolve one complete module so version and target checks use directive context. */
+  const auto reject = [](std::string_view version, std::string_view target,
+                         std::string_view instruction) {
+    const std::string source = ".version " + std::string(version) +
+                               "\n.target " + std::string(target) +
+                               R"ptx(
+.address_size 64
+.entry k() {
+  .reg .u32 %r<2>;
+  )ptx" + std::string(instruction) +
+                               R"ptx(
+  ret;
+}
+)ptx";
+    const auto ast = parse_module(source);
+    ASSERT_TRUE(ast.has_value());
+    const auto resolved = test_support::resolveTypedModule<Barrier>(
+        *ast, test_support::ModulePipeline::AvailableContext);
+    EXPECT_FALSE(resolved.has_value()) << instruction;
+  };
+
+  for (const std::string_view instruction : {
+           "barrier.sync 16;",
+           "barrier.sync -1;",
+           "barrier.sync 0, 33;",
+           "barrier.cta.sync 0, -1;",
+           "barrier.sync;",
+           "barrier.sync 0, 32, 64;",
+           "barrier.sync.aligned.sync 0;",
+           "barrier.sync.aligned.aligned 0;",
+           "barrier.cta.sync.sync 0;",
+       }) {
+    reject("8.0", "sm_80", instruction);
+  }
+  reject("5.9", "sm_80", "barrier.sync 0;");
+  reject("7.7", "sm_80", "barrier.cta.sync 0;");
+  reject("8.0", "sm_20", "barrier.sync 0;");
+  reject("8.0", "sm_20", "barrier.cta.sync.aligned 0;");
+}
+
 TEST(CtaBarrierNumeric, RejectsMalformedDivisibilityDescriptorForRegister) {
   constexpr checker::VariantDescriptor::ImmediateMultipleOfDescriptor
       descriptor{

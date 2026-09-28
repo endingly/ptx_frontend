@@ -237,6 +237,9 @@ template std::expected<TypedModuleSnapshot<St>, std::vector<ResolveDiagnostic>>
 resolveTypedModule<St>(const syntax_ast::AstModule&, ModulePipeline);
 template std::expected<TypedModuleSnapshot<Bar>, std::vector<ResolveDiagnostic>>
 resolveTypedModule<Bar>(const syntax_ast::AstModule&, ModulePipeline);
+template std::expected<TypedModuleSnapshot<Barrier>,
+                       std::vector<ResolveDiagnostic>>
+resolveTypedModule<Barrier>(const syntax_ast::AstModule&, ModulePipeline);
 template std::expected<TypedModuleSnapshot<Brx>, std::vector<ResolveDiagnostic>>
 resolveTypedModule<Brx>(const syntax_ast::AstModule&, ModulePipeline);
 template std::expected<TypedModuleSnapshot<Mul>, std::vector<ResolveDiagnostic>>

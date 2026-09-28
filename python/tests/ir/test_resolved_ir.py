@@ -1528,7 +1528,23 @@ class ResolvedIrBuildTest(unittest.TestCase):
             variant.cpp_name: variant
             for variant in from_instruction_spec(barrier).variants
         }
-        self.assertEqual(set(variants), {"ClusterArrive", "ClusterWait"})
+        self.assertEqual(
+            set(variants), {"Sync", "CtaSync", "ClusterArrive", "ClusterWait"}
+        )
+        for name, ptx in (("Sync", "6.0"), ("CtaSync", "7.8")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": 30})
+            self.assertEqual(
+                [layout.layout_id for layout in variant.operand_layouts],
+                ["barrier", "barrier_and_thread_count"],
+            )
+            expected_fields = [("sync", "bool"), ("aligned", "WithLocs<bool>")]
+            if name == "CtaSync":
+                expected_fields.insert(0, ("cta", "bool"))
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
+                expected_fields,
+            )
         expected_availability = {
             "any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}],
         }

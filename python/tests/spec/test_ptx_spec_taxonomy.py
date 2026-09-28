@@ -121,7 +121,7 @@ EXPECTED_SECTIONS = {
     },
     "parallel_synchronization_and_communication.yaml": {
         "bar": {"9.7.14.1", "9.7.14.2"},
-        "barrier": {"9.7.14.3"},
+        "barrier": {"9.7.14.1", "9.7.14.3"},
         "membar": {"9.7.14.4"},
         "fence": {"9.7.14.4"},
         "atom": {"9.7.14.5"},

@@ -3979,7 +3979,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
              "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
              "AsyncMbarrierArriveNoincGenericOrShared",
-             "AsyncMbarrierArriveNoincSharedCta"],
+             "AsyncMbarrierArriveNoincSharedCta", "AsyncCgSharedGlobal"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})

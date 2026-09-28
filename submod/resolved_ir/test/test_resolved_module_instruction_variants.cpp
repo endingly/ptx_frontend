@@ -1386,6 +1386,33 @@ TEST(ResolvedModule, ChecksCpAsyncDynamicAddressAlignment) {
   cp.async.ca.shared.global [shared_copy_dst+4], [global_copy_src+8], 8;
   cp.async.ca.shared.global [shared_copy_dst+16], [global_copy_src+4], 16;
 }
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncCgSharedGlobal) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  cp.async.cg.shared.global [shared_value], [global_value], 16;
+  cp.async.cg.shared.global [shared_value], [global_value], 8;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 2u);
+  const auto& copy = std::get<Cp::AsyncCgSharedGlobal>(
+      std::get<Cp>(body.front()).variant);
+  EXPECT_TRUE(copy.cg);
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 0}, .sm_version = 80},
+  };
+  EXPECT_TRUE(checker::check(std::get<Cp>(body[0]), supported).has_value());
+  const auto wrong_size = checker::check(std::get<Cp>(body[1]), supported);
+  ASSERT_FALSE(wrong_size.has_value());
+  EXPECT_EQ(wrong_size.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto resolved = resolveModule(*parsed_module_1);

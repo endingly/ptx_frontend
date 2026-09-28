@@ -190,6 +190,32 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
 
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 
+    def test_standalone_cta_arrive_uses_barrier_taxonomy(self) -> None:
+        """Keep standalone CTA arrival separate from legacy and cluster forms."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        instructions = {
+            instruction["opcode"]: instruction
+            for instruction in spec["instructions"]
+        }
+        variants = {
+            variant["name"]: variant
+            for variant in instructions["barrier"]["variants"]
+        }
+        self.assertEqual(
+            set(variants),
+            {"barrier_sync", "barrier_cta_sync", "barrier_arrive",
+             "barrier_cta_arrive", "barrier_cluster_arrive",
+             "barrier_cluster_wait"},
+        )
+        for name in ("barrier_arrive", "barrier_cta_arrive"):
+            self.assertEqual(
+                variants[name].get("section", instructions["barrier"]["section"]),
+                "9.7.14.1",
+            )
+        self.assertEqual(instructions["bar"]["section"], "9.7.14.1")
+
 
 if __name__ == "__main__":
     unittest.main()

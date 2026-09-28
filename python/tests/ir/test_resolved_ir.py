@@ -1517,7 +1517,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ResolvedImmediateConversionPolicy.REQUIRE_TARGET_RANGE,
         )
 
-    def test_barrier_cluster_model_defaults_and_availability(self) -> None:
+    def test_barrier_cta_and_cluster_model_defaults_and_availability(self) -> None:
         database = self.database
         barrier = next(
             instruction
@@ -1529,7 +1529,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for variant in from_instruction_spec(barrier).variants
         }
         self.assertEqual(
-            set(variants), {"Sync", "CtaSync", "ClusterArrive", "ClusterWait"}
+            set(variants), {"Sync", "CtaSync", "Arrive", "CtaArrive",
+                            "ClusterArrive", "ClusterWait"}
         )
         for name, ptx in (("Sync", "6.0"), ("CtaSync", "7.8")):
             variant = variants[name]
@@ -1544,6 +1545,35 @@ class ResolvedIrBuildTest(unittest.TestCase):
             self.assertEqual(
                 [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
                 expected_fields,
+            )
+        for name, ptx in (("Arrive", "6.0"), ("CtaArrive", "7.8")):
+            variant = variants[name]
+            self.assertEqual(dict(variant.availability), {"ptx": ptx, "sm": 30})
+            self.assertEqual(
+                [layout.layout_id for layout in variant.operand_layouts],
+                ["default"],
+            )
+            self.assertEqual(
+                [field.name for field in variant.operand_layouts[0].fields],
+                ["barrier", "thread_count"],
+            )
+            expected_fields = [("arrive", "bool"), ("aligned", "WithLocs<bool>")]
+            if name == "CtaArrive":
+                expected_fields.insert(0, ("cta", "bool"))
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
+                expected_fields,
+            )
+            ranges = [
+                (item.operand_field_id, item.minimum, item.maximum)
+                for item in variant.immediate_ranges
+            ]
+            self.assertIn(("barrier", 0, 15), ranges)
+            self.assertIn(("thread_count", 1, None), ranges)
+            self.assertEqual(
+                (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
+                 variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]
+                ("thread_count", 32),
             )
         expected_availability = {
             "any_of": [{"ptx": "7.8", "sm": 90, "capabilities": ["cluster"]}],

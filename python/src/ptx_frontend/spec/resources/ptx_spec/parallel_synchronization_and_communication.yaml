@@ -1213,11 +1213,12 @@ instructions:
   - opcode: barrier
     section: "9.7.14.1"
     doc: >
-      CTA barrier synchronization and cluster barrier arrival/wait. Aligned
+      CTA barrier synchronization/arrival and cluster barrier arrival/wait. Aligned
       records the expressed convergence contract; the frontend does not
       simulate runtime barrier participation or phase behavior.
     syntax: >-
       barrier{.cta}.sync{.aligned} a{, b} |
+      barrier{.cta}.arrive{.aligned} a, b |
       barrier.cluster.arrive{.release|.relaxed}{.aligned} |
       barrier.cluster.wait{.acquire}{.aligned}
 
@@ -1257,6 +1258,40 @@ instructions:
         examples:
           - {ptx: "barrier.cta.sync 0;", valid: true}
           - {ptx: "barrier.cta.sync.aligned %r0, 32;", valid: true}
+
+      - name: barrier_arrive
+        description: "CTA barrier arrival with required participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: ".arrive"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+        operands: $bar_sync_barrier_and_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: thread_count, minimum: 1}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_arrive
+        examples:
+          - {ptx: "barrier.arrive 0, 32;", valid: true}
+          - {ptx: "barrier.arrive.aligned %r0, %r1;", valid: true}
+
+      - name: barrier_cta_arrive
+        description: "Explicit CTA-qualified barrier arrival."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: arrive, kind: flag, presence: fixed, value: true, token: ".arrive"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+        operands: $bar_sync_barrier_and_thread_count
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_range, operand: thread_count, minimum: 1}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_arrive
+        examples:
+          - {ptx: "barrier.cta.arrive 15, 64;", valid: true}
+          - {ptx: "barrier.cta.arrive.aligned %r0, %r1;", valid: true}
 
       - name: barrier_cluster_arrive
         section: "9.7.14.3"

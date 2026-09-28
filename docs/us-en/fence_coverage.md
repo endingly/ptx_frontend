@@ -1,0 +1,24 @@
+# Ordinary `fence` coverage
+
+The frontend models the thread-fence syntax in
+[PTX ISA 9.3 §9.7.14.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-membar-fence):
+`fence{.sem}.scope;`. A scope is required. The supported scopes are `.cta`,
+`.gpu`, `.sys`, and `.cluster`; the supported explicit semantics are `.sc`,
+`.acq_rel`, `.acquire`, and `.release`. The frontend also accepts
+`fence.scope.sem;`, as used in the ISA's cluster example and accepted by CUDA
+13.3 `ptxas`. Both modifier orders resolve to the same typed variant and values.
+
+| Form | Minimum PTX | Minimum target | Extra capability |
+| --- | --- | --- | --- |
+| Omitted semantics, `.sc`, or `.acq_rel` with CTA/GPU/SYS scope | 6.0 | `sm_70` | None |
+| Omitted semantics, `.sc`, or `.acq_rel` with cluster scope | 7.8 | `sm_90` | `cluster` |
+| `.acquire` or `.release` with CTA/GPU/SYS scope | 8.6 | `sm_90` | None |
+| `.acquire` or `.release` with cluster scope | 8.6 | `sm_90` | `cluster` |
+
+When `.sem` is omitted, owned IR retains `MemoryConsistency::Omitted` with no
+semantic-qualifier source location; its effective ISA behavior is `.acq_rel`.
+Explicit `.sc` uses `MemoryConsistency::Sc`. Explicit `fence.acq_rel.cta` and
+`fence.cta.acq_rel` retain the existing `Fence::AcqRelCta` variant. Other
+ordinary forms use disjoint CTA, GPU/SYS, and cluster variants. No form has
+operands. The checker enforces the target and capability limits on owned IR;
+the frontend does not execute fences.

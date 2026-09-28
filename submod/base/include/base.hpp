@@ -198,9 +198,8 @@ enum class PrefetchSize : uint8_t {
   Bytes256,
 };
 
-/** Source-level memory-consistency qualifier for ld/st.  Omitted is kept
- * distinct from explicit .weak so target availability and source provenance
- * remain observable in Resolved IR. */
+/** Source-level memory-consistency qualifier. Omitted remains distinct from
+ * explicit qualifiers so source provenance is observable in Resolved IR. */
 enum class MemoryConsistency : uint8_t {
   Omitted = 0,
   Weak,
@@ -209,6 +208,7 @@ enum class MemoryConsistency : uint8_t {
   Acquire,
   Release,
   AcqRel,
+  Sc,
 };
 
 /** Scope carried by memory-consistency operations; None represents omission. */

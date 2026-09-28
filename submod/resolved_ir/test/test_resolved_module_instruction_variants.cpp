@@ -2149,23 +2149,167 @@ TEST(ResolvedModule, ResolvesAndChecksFenceAcqRelCtaSlice) {
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
   const auto parsed_module_2 = parseModule(R"ptx(
-.entry kernel() { fence.acquire.cta; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto wrong_semantics = resolveModule(*parsed_module_2);
-  ASSERT_FALSE(wrong_semantics.has_value());
-  const auto parsed_module_3 = parseModule(R"ptx(
-.entry kernel() { fence.acq_rel.sys; }
-)ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_3);
-  const auto wrong_scope = resolveModule(*parsed_module_3);
-  ASSERT_FALSE(wrong_scope.has_value());
-  const auto parsed_module_4 = parseModule(R"ptx(
 .entry kernel() { fence.acq_rel.cta 0; }
 )ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_4);
-  const auto extra_operand = resolveModule(*parsed_module_4);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
+  const auto extra_operand = resolveModule(*parsed_module_2);
   ASSERT_FALSE(extra_operand.has_value());
+}
+
+/** Preserve written ordinary-fence qualifiers through owned IR validation. */
+TEST(ResolvedModule, ResolvesAndChecksOrdinaryFenceForms) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 8.6
+.target sm_90a
+.entry kernel() {
+  fence.cta;
+  fence.sc.cta;
+  fence.cta.sc;
+  fence.acq_rel.cta;
+  fence.cta.acq_rel;
+  fence.acquire.cta;
+  fence.cta.acquire;
+  fence.gpu;
+  fence.acq_rel.gpu;
+  fence.gpu.acq_rel;
+  fence.release.sys;
+  fence.sys.release;
+  fence.cluster;
+  fence.sc.cluster;
+  fence.cluster.sc;
+  fence.acquire.cluster;
+  fence.cluster.acquire;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  const auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 17U);
+  const auto& omitted_cta =
+      std::get<Fence::OrdinaryCta>(std::get<Fence>(body[0]).variant);
+  EXPECT_EQ(omitted_cta.semantics.value, MemoryConsistency::Omitted);
+  EXPECT_TRUE(omitted_cta.semantics.locs.empty());
+  for (size_t i : {1U, 2U}) {
+    const auto& sc =
+        std::get<Fence::OrdinaryCta>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(sc.semantics.value, MemoryConsistency::Sc);
+    EXPECT_FALSE(sc.semantics.locs.empty());
+  }
+  for (size_t i : {3U, 4U}) {
+    const auto& legacy = std::get<Fence>(body[i]);
+    EXPECT_TRUE(std::holds_alternative<Fence::AcqRelCta>(legacy.variant));
+  }
+  for (size_t i : {5U, 6U}) {
+    const auto& acquire =
+        std::get<Fence::OrdinaryCta>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(acquire.semantics.value, MemoryConsistency::Acquire);
+  }
+  const auto& gpu_omitted =
+      std::get<Fence::OrdinaryGpuSys>(std::get<Fence>(body[7]).variant);
+  EXPECT_EQ(gpu_omitted.semantics.value, MemoryConsistency::Omitted);
+  EXPECT_TRUE(gpu_omitted.semantics.locs.empty());
+  EXPECT_EQ(gpu_omitted.scope.value, MemoryScope::Gpu);
+  EXPECT_FALSE(gpu_omitted.scope.locs.empty());
+  for (size_t i : {8U, 9U}) {
+    const auto& explicit_gpu =
+        std::get<Fence::OrdinaryGpuSys>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(explicit_gpu.semantics.value, MemoryConsistency::AcqRel);
+    EXPECT_FALSE(explicit_gpu.semantics.locs.empty());
+  }
+  for (size_t i : {10U, 11U}) {
+    const auto& release =
+        std::get<Fence::OrdinaryGpuSys>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(release.semantics.value, MemoryConsistency::Release);
+    EXPECT_EQ(release.scope.value, MemoryScope::Sys);
+  }
+  const auto& cluster_omitted =
+      std::get<Fence::OrdinaryCluster>(std::get<Fence>(body[12]).variant);
+  EXPECT_EQ(cluster_omitted.semantics.value, MemoryConsistency::Omitted);
+  for (size_t i : {13U, 14U}) {
+    const auto& sc =
+        std::get<Fence::OrdinaryCluster>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(sc.semantics.value, MemoryConsistency::Sc);
+  }
+  for (size_t i : {15U, 16U}) {
+    const auto& acquire =
+        std::get<Fence::OrdinaryCluster>(std::get<Fence>(body[i]).variant);
+    EXPECT_EQ(acquire.semantics.value, MemoryConsistency::Acquire);
+  }
+
+  const auto check_at = [&](size_t index, checker::TargetInfo target) {
+    return checker::check(std::get<Fence>(body[index]),
+                          checker::Context{.target = target});
+  };
+  EXPECT_TRUE(
+      check_at(0, {.ptx_version = {6, 0}, .sm_version = 70}).has_value());
+  EXPECT_TRUE(
+      check_at(1, {.ptx_version = {6, 0}, .sm_version = 70}).has_value());
+  EXPECT_TRUE(
+      check_at(7, {.ptx_version = {6, 0}, .sm_version = 70}).has_value());
+  const auto old_base_ptx =
+      check_at(0, {.ptx_version = {5, 9}, .sm_version = 70});
+  ASSERT_FALSE(old_base_ptx.has_value());
+  EXPECT_EQ(old_base_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_base_sm =
+      check_at(0, {.ptx_version = {6, 0}, .sm_version = 69});
+  ASSERT_FALSE(old_base_sm.has_value());
+  EXPECT_EQ(old_base_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto old_acquire_ptx =
+      check_at(5, {.ptx_version = {8, 5}, .sm_version = 90});
+  ASSERT_FALSE(old_acquire_ptx.has_value());
+  EXPECT_EQ(old_acquire_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_acquire_sm =
+      check_at(5, {.ptx_version = {8, 6}, .sm_version = 89});
+  ASSERT_FALSE(old_acquire_sm.has_value());
+  EXPECT_EQ(old_acquire_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  EXPECT_TRUE(check_at(12, {.ptx_version = {7, 8},
+                            .sm_version = 90,
+                            .capabilities = cluster_capabilities})
+                  .has_value());
+  const auto old_cluster_ptx =
+      check_at(12, {.ptx_version = {7, 7},
+                    .sm_version = 90,
+                    .capabilities = cluster_capabilities});
+  ASSERT_FALSE(old_cluster_ptx.has_value());
+  EXPECT_EQ(old_cluster_ptx.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  const auto old_cluster_sm =
+      check_at(12, {.ptx_version = {7, 8},
+                    .sm_version = 89,
+                    .capabilities = cluster_capabilities});
+  ASSERT_FALSE(old_cluster_sm.has_value());
+  EXPECT_EQ(old_cluster_sm.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+  const auto no_cluster =
+      check_at(12, {.ptx_version = {7, 8}, .sm_version = 90});
+  ASSERT_FALSE(no_cluster.has_value());
+  EXPECT_EQ(no_cluster.error().front().kind,
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
+
+  for (const std::string_view source : {
+           ".entry kernel() { fence; }",
+           ".entry kernel() { fence.gl; }",
+           ".entry kernel() { fence.relaxed.cta; }",
+           ".entry kernel() { fence.weak.gpu; }",
+           ".entry kernel() { fence.sc.cta 0; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << source;
+  }
 }
 
 TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {

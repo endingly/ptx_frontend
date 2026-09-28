@@ -1585,9 +1585,11 @@ instructions:
 
   - opcode: fence
     section: "9.7.14.4"
-    doc: "Memory fence slices for acquire-release CTA and modern async/tensormap proxy ordering."
+    doc: "Ordinary memory fences and modern async/tensormap proxy ordering."
     syntax: >-
-      fence.acq_rel.cta | fence.proxy.async{.global|.shared::cta|.shared::cluster} |
+      fence{.sc|.acq_rel|.acquire|.release}.{cta|cluster|gpu|sys} |
+      fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
+      fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
       fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
 
@@ -1605,11 +1607,88 @@ instructions:
             domain: memory_scopes
             presence: fixed
             value: cta
+        modifier_order_aliases:
+          - [scope, semantics]
         operands: []
         rule: parallel_sync_and_communication.fence
 
         examples:
           - ptx: "fence.acq_rel.cta;"
+            valid: true
+
+      - name: fence_ordinary_cta
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.cta;"
+            valid: true
+          - ptx: "fence.sc.cta;"
+            valid: true
+
+      - name: fence_ordinary_gpu_sys
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - acq_rel
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [gpu, sys]}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.gpu;"
+            valid: true
+          - ptx: "fence.acq_rel.sys;"
+            valid: true
+
+      - name: fence_ordinary_cluster
+        availability:
+          any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - acq_rel
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.cluster;"
+            valid: true
+          - ptx: "fence.cluster.acq_rel;"
             valid: true
 
       - name: fence_proxy_async

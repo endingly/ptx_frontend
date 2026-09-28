@@ -322,6 +322,85 @@ bool checkMembarProxyAsyncContract() {
       "public membar async-proxy cluster space");
 }
 
+/** Check installed ordinary-fence variants after the syntax AST is released. */
+bool checkOrdinaryFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.6
+.target sm_90a
+.entry k() {
+  fence.cta;
+  fence.sc.cta;
+  fence.cta.sc;
+  fence.acq_rel.cta;
+  fence.cta.acq_rel;
+  fence.acq_rel.gpu;
+  fence.cluster.acq_rel;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "ordinary fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "ordinary fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned ordinary fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 8, "ordinary fence forms retained"))
+    return false;
+  const auto* omitted_instruction = std::get_if<ir::Fence>(&body[0]);
+  const auto* omitted =
+      omitted_instruction
+          ? std::get_if<ir::Fence::OrdinaryCta>(&omitted_instruction->variant)
+          : nullptr;
+  if (!require(omitted &&
+                   omitted->semantics.value == ir::MemoryConsistency::Omitted &&
+                   omitted->semantics.locs.empty(),
+               "public omitted ordinary fence semantics"))
+    return false;
+  for (size_t i : {1U, 2U}) {
+    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    const auto* sc =
+        instruction ? std::get_if<ir::Fence::OrdinaryCta>(&instruction->variant)
+                    : nullptr;
+    if (!require(sc && sc->semantics.value == ir::MemoryConsistency::Sc &&
+                     !sc->semantics.locs.empty(),
+                 "public SC ordinary fence orders"))
+      return false;
+  }
+  for (size_t i : {3U, 4U}) {
+    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    if (!require(instruction && std::holds_alternative<ir::Fence::AcqRelCta>(
+                                    instruction->variant),
+                 "public legacy acquire-release CTA variant"))
+      return false;
+  }
+  const auto* gpu_instruction = std::get_if<ir::Fence>(&body[5]);
+  const auto* gpu =
+      gpu_instruction
+          ? std::get_if<ir::Fence::OrdinaryGpuSys>(&gpu_instruction->variant)
+          : nullptr;
+  const auto* cluster_instruction = std::get_if<ir::Fence>(&body[6]);
+  const auto* cluster = cluster_instruction
+                            ? std::get_if<ir::Fence::OrdinaryCluster>(
+                                  &cluster_instruction->variant)
+                            : nullptr;
+  return require(gpu && cluster &&
+                     gpu->semantics.value == ir::MemoryConsistency::AcqRel &&
+                     gpu->scope.value == ir::MemoryScope::Gpu &&
+                     cluster->semantics.value == ir::MemoryConsistency::AcqRel,
+                 "public ordinary fence scope and semantics");
+}
+
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
 bool checkMbarrierTestWaitContract() {
   constexpr std::string_view source = R"ptx(
@@ -968,6 +1047,8 @@ int main() {
     return 10;
   if (!checkMembarProxyAsyncContract())
     return 11;
+  if (!checkOrdinaryFenceContract())
+    return 12;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

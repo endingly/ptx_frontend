@@ -176,6 +176,7 @@ domains:
       acquire: MemoryConsistency::Acquire
       release: MemoryConsistency::Release
       acq_rel: MemoryConsistency::AcqRel
+      sc: MemoryConsistency::Sc
 
   memory_scopes:
     cpp_type: MemoryScope

@@ -937,6 +937,46 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
           .has_value());
 }
 
+/** Keep ordinary fence order aliases on disjoint semantic/scope variants. */
+TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
+  const auto expect_variant = [](std::string_view source,
+                                 Fence::VariantType expected) {
+    const auto selected = selectVariant<Fence>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, expected);
+  };
+  for (const std::string_view scope : {"cta", "gpu", "sys", "cluster"}) {
+    const auto variant = scope == "cta" ? Fence::VariantType::OrdinaryCta
+                         : scope == "cluster"
+                             ? Fence::VariantType::OrdinaryCluster
+                             : Fence::VariantType::OrdinaryGpuSys;
+    expect_variant(std::string("fence.") + std::string(scope) + ";", variant);
+    for (const std::string_view semantics :
+         {"sc", "acq_rel", "acquire", "release"}) {
+      const auto expected = scope == "cta" && semantics == "acq_rel"
+                                ? Fence::VariantType::AcqRelCta
+                                : variant;
+      expect_variant(std::string("fence.") + std::string(semantics) + "." +
+                         std::string(scope) + ";",
+                     expected);
+      expect_variant(std::string("fence.") + std::string(scope) + "." +
+                         std::string(semantics) + ";",
+                     expected);
+    }
+  }
+  for (const std::string_view source : {
+           "fence;",
+           "fence.gl;",
+           "fence.relaxed.cta;",
+           "fence.weak.gpu;",
+           "fence.cta.acquire.release;",
+           "fence.sc.cta 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
                                  Fence::VariantType expected) {

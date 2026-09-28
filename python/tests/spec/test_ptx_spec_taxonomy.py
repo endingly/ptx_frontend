@@ -251,6 +251,58 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
                              waits[base].get("operand_layouts"))
             self.assertEqual(variant["constraints"], waits[base]["constraints"])
 
+    def test_ordinary_fence_rows_partition_semantics_and_scopes(self) -> None:
+        """Keep the legacy CTA variant and both qualifier orders unambiguous."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        fence = next(item for item in spec["instructions"]
+                     if item["opcode"] == "fence")
+        variants = {item["name"]: item for item in fence["variants"]}
+        expected = {
+            "fence_acq_rel_cta": ("fixed", ["acq_rel"], ["cta"]),
+            "fence_ordinary_cta":
+                ("optional", ["sc", "acquire", "release"], ["cta"]),
+            "fence_ordinary_gpu_sys":
+                ("optional", ["sc", "acq_rel", "acquire", "release"],
+                 ["gpu", "sys"]),
+            "fence_ordinary_cluster":
+                ("optional", ["sc", "acq_rel", "acquire", "release"],
+                 ["cluster"]),
+        }
+        for name, (presence, semantics, scopes) in expected.items():
+            variant = variants[name]
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifier_order_aliases"],
+                             [["scope", "semantics"]])
+            sem, scope = variant["modifiers"]
+            self.assertEqual(sem["presence"], presence)
+            if presence == "fixed":
+                self.assertEqual([sem["value"]], semantics)
+            else:
+                self.assertEqual(sem["default"], "omitted")
+                self.assertEqual([value if isinstance(value, str)
+                                  else value["value"]
+                                  for value in sem["values"]], semantics)
+                for value in sem["values"]:
+                    if isinstance(value, dict):
+                        self.assertEqual(value["availability"],
+                                         {"ptx": "8.6", "sm": 90})
+            self.assertEqual(
+                [scope["value"]] if scope["presence"] == "fixed"
+                else scope["values"], scopes,
+            )
+        self.assertEqual(variants["fence_ordinary_cluster"]["availability"],
+                         {"any_of": [{"ptx": "7.8", "sm": 90,
+                                      "capabilities": ["cluster"]}]})
+        backend = load_yaml(
+            SPEC_DIR.parent / "ptx_cpp_backend_spec/ptx_frontend.yaml"
+        )
+        self.assertEqual(
+            backend["domains"]["memory_consistencies"]["values"]["sc"],
+            "MemoryConsistency::Sc",
+        )
+
     def test_membar_levels_are_distinct_and_target_qualified(self) -> None:
         """Keep source `.gl` distinct from the backend GPU scope spelling."""
         spec = load_yaml(

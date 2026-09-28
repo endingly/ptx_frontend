@@ -4398,6 +4398,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [variant.cpp_name for variant in resolved.variants],
             [
                 "AcqRelCta",
+                "OrdinaryCta",
+                "OrdinaryGpuSys",
+                "OrdinaryCluster",
                 "ProxyAsync",
                 "ProxyAsyncSharedCluster",
                 "ProxyTensormapGenericRelease",
@@ -4408,13 +4411,36 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "ProxyAsyncGenericReleaseSyncRestrictSharedCta",
             ],
         )
-        variant, async_proxy, async_cluster, release, _, acquire, _, acquire_sync, release_sync = resolved.variants
+        (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
+         async_proxy, async_cluster, release, _, acquire, _,
+         acquire_sync, release_sync) = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
+        for ordinary in (ordinary_cta, ordinary_gpu_sys, ordinary_cluster):
+            self.assertEqual(ordinary.operand_layouts[0].bindings, ())
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in ordinary_cta.fields],
+            [("semantics", "WithLocs<MemoryConsistency>"),
+             ("scope", "MemoryScope")],
+        )
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in ordinary_gpu_sys.fields],
+            [("semantics", "WithLocs<MemoryConsistency>"),
+             ("scope", "WithLocs<MemoryScope>")],
+        )
+        self.assertEqual(dict(ordinary_cluster.availability),
+                         {"any_of": [{"ptx": "7.8", "sm": 90,
+                                      "capabilities": ["cluster"]}]})
+        self.assertEqual(
+            BACKEND.domains["memory_consistencies"].values["sc"],
+            "MemoryConsistency::Sc",
+        )
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in async_proxy.fields],
             [("proxy", "bool"), ("proxy_kind", "WithLocs<AsyncProxyKind>")],

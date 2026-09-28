@@ -220,6 +220,15 @@ enum class MemoryScope : uint8_t {
   Sys,
 };
 
+/** Completion mechanism of an asynchronous instruction variant. Group values
+ * describe per-thread instruction classes, not runtime group instances. */
+enum class AsyncCompletionKind : uint8_t {
+  None,
+  AsyncGroup,
+  BulkGroup,
+  MbarrierCompleteTxBytes,
+};
+
 /** Semantic value of a PTX mbarrier .phase_type qualifier. */
 enum class MbarrierPhaseType : uint8_t {
   Primary,

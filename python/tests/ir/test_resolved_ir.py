@@ -80,6 +80,7 @@ from ptx_frontend.code_gen.model import (
     VariantSpec,
 )
 from ptx_frontend.spec.model import (
+    AsyncCompletionKind,
     ModifierKind,
     ModifierPresence,
     OperandAccess,
@@ -3982,6 +3983,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "AsyncMbarrierArriveNoincSharedCta"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
+        self.assertEqual(variant.completion_kind, AsyncCompletionKind.ASYNC_GROUP)
+        self.assertTrue(all(
+            candidate.completion_kind is AsyncCompletionKind.ASYNC_GROUP
+            for candidate in resolved.variants[1:4]
+        ))
+        self.assertTrue(all(
+            candidate.completion_kind is AsyncCompletionKind.NONE
+            for candidate in resolved.variants[4:]
+        ))
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],

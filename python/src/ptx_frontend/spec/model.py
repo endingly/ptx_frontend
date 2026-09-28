@@ -17,6 +17,15 @@ class ConditionCodeEffect(Enum):
     BORROW_IN_OUT = "borrow_in_out"
 
 
+class AsyncCompletionKind(Enum):
+    """Instruction-local completion identity shared by async instruction families."""
+
+    NONE = "none"
+    ASYNC_GROUP = "async_group"
+    BULK_GROUP = "bulk_group"
+    MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
+
+
 class _SemanticToken(Enum):
     """Strict semantic enum with stable YAML-facing formatting."""
 
@@ -489,6 +498,7 @@ class VariantSpec:
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
+    completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None

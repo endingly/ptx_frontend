@@ -4041,6 +4041,7 @@ instructions:
 
     variants:
       - name: cp_async_ca_shared_global
+        completion_kind: async_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
           - name: async
@@ -4083,6 +4084,7 @@ instructions:
     syntax: "cp.async.commit_group"
     variants:
       - name: cp_async_commit_group
+        completion_kind: async_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
           - name: async
@@ -4108,6 +4110,7 @@ instructions:
     syntax: "cp.async.wait_group n | cp.async.wait_all"
     variants:
       - name: cp_async_wait_group
+        completion_kind: async_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
           - name: async
@@ -4138,6 +4141,7 @@ instructions:
             valid: true
 
       - name: cp_async_wait_all
+        completion_kind: async_group
         availability: {ptx: "7.0", sm: 80}
         modifiers:
           - name: async

@@ -149,7 +149,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ matrix.preset }}" == "ci-linux-gcc-debug" ]]; then
-            cmake --build --preset "${{ matrix.preset }}" --parallel 2
+            cmake --build --preset "${{ matrix.preset }}" --parallel 1
           else
             cmake --build --preset "${{ matrix.preset }}"
           fi

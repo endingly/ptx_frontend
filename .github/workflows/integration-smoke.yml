@@ -148,9 +148,11 @@ jobs:
         if: success()
         shell: bash
         run: |
-          cmake --build \
-            --preset "${{ matrix.preset }}" \
-            --target test_resolved_ir
+          if [[ "${{ matrix.preset }}" == "ci-linux-gcc-debug" ]]; then
+            cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir --parallel 1
+          else
+            cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
+          fi
 
       - name: Run normal resolved-IR tests
         id: test

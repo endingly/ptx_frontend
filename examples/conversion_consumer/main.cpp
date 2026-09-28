@@ -254,6 +254,72 @@ bool checkMbarrierTestWaitContract() {
       "public paired mbarrier wait qualifiers and locations");
 }
 
+/** Exercise installed paired try-wait qualifiers and hint ownership. */
+bool checkMbarrierTryWaitContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90a
+.address_size 64
+.shared .align 8 .b64 shared_value;
+.entry k() {
+  .reg .pred %p0;
+  .reg .b64 %state;
+  .reg .u64 %rd0;
+  mbarrier.try_wait.acquire.cta.b64 %p0, [%rd0], %state, 16;
+  mbarrier.try_wait.parity.phase_type::conditional.relaxed.cluster.shared::cta.b64
+      %p0, [shared_value], 1;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "paired mbarrier try-wait fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(),
+                 "paired mbarrier try-wait fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned paired mbarrier try-wait module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "paired mbarrier try-wait forms retained"))
+    return false;
+  const auto* first_instruction = std::get_if<ir::Mbarrier>(&body[0]);
+  const auto* second_instruction = std::get_if<ir::Mbarrier>(&body[1]);
+  const auto* first =
+      first_instruction
+          ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared>(
+                &first_instruction->variant)
+          : nullptr;
+  const auto* second =
+      second_instruction
+          ? std::get_if<
+                ir::Mbarrier::TryWaitParityConditionalSemanticsSharedCta>(
+                &second_instruction->variant)
+          : nullptr;
+  const auto* hint =
+      first ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared::
+                              WithHintOperands>(&first->operands)
+            : nullptr;
+  return require(
+      first && second && hint &&
+          first->semantics.value == ir::MemoryConsistency::Acquire &&
+          first->scope.value == ir::MemoryScope::Cta &&
+          !first->semantics.locs.empty() && !first->scope.locs.empty() &&
+          std::get<ir::ResolvedImmediate>(hint->time_hint.value).bits == 16U &&
+          second->semantics.value == ir::MemoryConsistency::Relaxed &&
+          second->scope.value == ir::MemoryScope::Cluster &&
+          !second->semantics.locs.empty() && !second->scope.locs.empty(),
+      "public paired mbarrier try-wait qualifiers and hint");
+}
+
 /** Inspect the typed instruction contract after all syntax owners are gone. */
 bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(module.functions.size() == 1, "one owned function"))
@@ -766,6 +832,8 @@ int main() {
     return 6;
   if (!checkMbarrierTestWaitContract())
     return 7;
+  if (!checkMbarrierTryWaitContract())
+    return 8;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

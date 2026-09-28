@@ -1955,17 +1955,18 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
             ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
       }
+      if (const auto* identifier =
+              std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+        auto predicate = resolve_predicate_identifier(
+            *identifier, false, identifier->syntax.range, context);
+        if (predicate) {
+          return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+              ResolvedCpAsyncSourceControl{std::move(predicate->value)}, range}};
+        }
+      }
       auto value = resolve_register(operand, context);
       if (!value)
         return std::unexpected(value.error());
-      if (value->value.register_class == ResolvedRegisterClass::Predicate ||
-          value->value.declared_type == ScalarType::Pred) {
-        auto predicate = resolve_predicate(operand, context);
-        if (!predicate)
-          return std::unexpected(predicate.error());
-        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
-            ResolvedCpAsyncSourceControl{std::move(predicate->value)}, range}};
-      }
       if (value->value.declared_type == ScalarType::B64) {
         return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
             ResolvedCpAsyncSourceControl{ResolvedCpAsyncCachePolicy{

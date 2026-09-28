@@ -2408,7 +2408,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   }
   if (control->actual_shape == OperandShape::Immediate) {
     if (control->immediate_type != ScalarType::U32 ||
-        !control->immediate_bits || control->immediate_is_negative) {
+        !control->immediate_bits ||
+        control->immediate_is_negative.value_or(false)) {
       return std::unexpected(CheckDiagnostics{CheckDiagnostic{
           .kind = CheckDiagnosticKind::RuleViolation,
           .range = diagnostic_range(control->locations, context),

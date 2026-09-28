@@ -1362,8 +1362,14 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncCaSharedGlobalSlice) {
 .entry kernel() { cp.async.cg.shared.global [shared_value], [global_value], 4; }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_6);
-  const auto wrong_modifier = resolveModule(*parsed_module_6);
-  ASSERT_FALSE(wrong_modifier.has_value());
+  const auto cg_wrong_size = resolveModule(*parsed_module_6);
+  ASSERT_TRUE(cg_wrong_size.has_value())
+      << cg_wrong_size.error().front().message;
+  const auto cg_checked = checker::check(
+      std::get<Cp>(cg_wrong_size->functions.front().body.front()), context);
+  ASSERT_FALSE(cg_checked.has_value());
+  EXPECT_EQ(cg_checked.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
   const auto parsed_module_7 = parseModule(R"ptx(
 .global .u32 global_value;
 .shared .u32 shared_value;
@@ -1491,12 +1497,17 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
   const checker::Context supported{
       .target = {.ptx_version = {7, 8}, .sm_version = 80},
   };
-  for (size_t index = 0; index < 3; ++index)
-    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), supported).has_value());
+  for (size_t index = 0; index < 3; ++index) {
+    const auto checked = checker::check(std::get<Cp>(body[index]), supported);
+    EXPECT_TRUE(checked.has_value())
+        << "instruction " << index << ": "
+        << (checked ? "" : checked.error().front().message);
+  }
   const auto equal_size = checker::check(std::get<Cp>(body[3]), supported);
   ASSERT_FALSE(equal_size.has_value());
   EXPECT_EQ(equal_size.error().front().kind,
-            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+            checker::CheckDiagnosticKind::ImmediateValueMismatch)
+      << equal_size.error().front().message;
 
   auto missing_size_type = std::get<Cp>(body[1]);
   auto& source_size = std::get<Cp::AsyncCgSharedGlobalControl>(

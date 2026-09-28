@@ -183,6 +183,7 @@ class ResolvedRegisterWidthPolicy(Enum):
     EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
+    WORD_OR_DOUBLEWORD = "word_or_doubleword"
 
 
 class ResolvedImmediateConversionPolicy(Enum):

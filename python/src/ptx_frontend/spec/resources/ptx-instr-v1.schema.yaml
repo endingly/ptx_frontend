@@ -783,6 +783,7 @@ $defs:
           - exact
           - same_width
           - equal_or_wider
+          - word_or_doubleword
         default: same_width
 
       immediate_conversion:

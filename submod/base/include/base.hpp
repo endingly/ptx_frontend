@@ -109,6 +109,7 @@ enum class ScalarTypeSizePolicy : uint8_t {
   Exact,
   SameWidth,
   EqualOrWider,
+  WordOrDoubleword,
 };
 
 /** Semantic value of a PTX floating-point rounding modifier. */

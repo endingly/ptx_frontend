@@ -722,6 +722,11 @@ operand_patterns:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
     - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
 
+  bulk_store_zero:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u64, register_width: word_or_doubleword, immediate_conversion: require_target_range}
+    - {name: initval, kind: imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+
   isspacep_generic_address:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     # PTX deliberately omits a size suffix: the generic address source is
@@ -5284,6 +5289,26 @@ instructions:
         operands: $async_store_global
         constraints:
           - {kind: address_alignment, address_operand: dst, type_modifier: type}
+
+  - opcode: st
+    section: "9.7.9.14"
+    doc: "Initialize a shared-memory byte range with zero."
+    syntax: "st.bulk{.weak}{.shared::cta} [dst], size, 0"
+    variants:
+      - name: st_bulk_zero
+        availability: {ptx: "8.6", sm: 100}
+        modifiers:
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: weak, kind: flag, presence: optional, default: false, token: .weak}
+          - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cta]}
+        operands: $bulk_store_zero
+        rule: data_movement.st_bulk
+        constraints:
+          - {kind: immediate_range, operand: size, minimum: 0, maximum: 16777216}
+          - {kind: immediate_multiple_of, operand: size, divisor: 8}
+          - {kind: immediate_value, operand: initval, values: [0]}
+        examples:
+          - {ptx: "st.bulk.weak.shared::cta [dst], 64, 0;", valid: true}
 
   - opcode: prmt
     section: "9.7.9.7"

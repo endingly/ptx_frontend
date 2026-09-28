@@ -1,3 +1,4 @@
+#include <array>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -120,10 +121,14 @@ bool checkBarrierSyncContract() {
 .target sm_80
 .address_size 64
 .entry k() {
+  .reg .u32 %r;
+  .reg .pred %p<2>;
   barrier.sync.aligned 0;
   barrier.cta.sync 1, 32;
   barrier.arrive 2, 32;
   barrier.cta.arrive.aligned 3, 64;
+  barrier.red.popc.aligned.u32 %r, 4, 32, !%p0;
+  barrier.cta.red.and.pred %p0, 5, %p1;
   ret;
 }
 )ptx";
@@ -145,7 +150,7 @@ bool checkBarrierSyncContract() {
                "owned CTA barrier module validates"))
     return false;
   const auto& body = owned->functions.front().body;
-  if (!require(body.size() == 5, "CTA barrier instructions retained"))
+  if (!require(body.size() == 7, "CTA barrier instructions retained"))
     return false;
   const auto* ordinary = std::get_if<ir::Barrier>(&body[0]);
   const auto* qualified = std::get_if<ir::Barrier>(&body[1]);
@@ -164,13 +169,485 @@ bool checkBarrierSyncContract() {
       qualified_arrive
           ? std::get_if<ir::Barrier::CtaArrive>(&qualified_arrive->variant)
           : nullptr;
-  return require(sync && cta_sync && sync->aligned.value &&
-                     !sync->aligned.locs.empty() && !cta_sync->aligned.value &&
-                     cta_sync->aligned.locs.empty() && arrive && cta_arrive &&
-                     !arrive->aligned.value && arrive->aligned.locs.empty() &&
-                     cta_arrive->aligned.value &&
-                     !cta_arrive->aligned.locs.empty(),
-                 "public CTA barrier variant and aligned metadata");
+  const auto* popc_instruction = std::get_if<ir::Barrier>(&body[4]);
+  const auto* popc =
+      popc_instruction
+          ? std::get_if<ir::Barrier::RedPopcU32>(&popc_instruction->variant)
+          : nullptr;
+  const auto* and_instruction = std::get_if<ir::Barrier>(&body[5]);
+  const auto* and_reduction =
+      and_instruction
+          ? std::get_if<ir::Barrier::CtaRedAndPred>(&and_instruction->variant)
+          : nullptr;
+  const auto* popc_operands =
+      popc ? std::get_if<ir::Barrier::RedPopcU32::WithThreadCountOperands>(
+                 &popc->operands)
+           : nullptr;
+  return require(
+      sync && cta_sync && sync->aligned.value && !sync->aligned.locs.empty() &&
+          !cta_sync->aligned.value && cta_sync->aligned.locs.empty() &&
+          arrive && cta_arrive && !arrive->aligned.value &&
+          arrive->aligned.locs.empty() && cta_arrive->aligned.value &&
+          !cta_arrive->aligned.locs.empty() && popc && popc->aligned.value &&
+          !popc->aligned.locs.empty() && popc_operands &&
+          popc_operands->predicate.value.negated && and_reduction &&
+          !and_reduction->aligned.value && and_reduction->aligned.locs.empty(),
+      "public CTA barrier variant and aligned metadata");
+}
+
+/** Verify all memory-barrier levels survive loss of the source AST. */
+bool checkMembarLevelsContract() {
+  constexpr std::string_view source = R"ptx(
+.version 2.0
+.target sm_20
+.entry k() { membar.cta; membar.gl; membar.sys; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar levels fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar levels fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar levels module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 4, "all membar levels retained"))
+    return false;
+  const auto* cta = std::get_if<ir::Membar>(&body[0]);
+  const auto* gl = std::get_if<ir::Membar>(&body[1]);
+  const auto* sys = std::get_if<ir::Membar>(&body[2]);
+  return require(
+      cta && gl && sys &&
+          std::holds_alternative<ir::Membar::Cta>(cta->variant) &&
+          std::holds_alternative<ir::Membar::Gl>(gl->variant) &&
+          std::holds_alternative<ir::Membar::Sys>(sys->variant) &&
+          std::get<ir::Membar::Gl>(gl->variant).scope == ir::MemoryScope::Gpu,
+      "public membar levels and typed GPU scope");
+}
+
+/** Check the installed alias-proxy barrier after the syntax AST is released. */
+bool checkMembarProxyAliasContract() {
+  constexpr std::string_view source = R"ptx(
+.version 7.5
+.target sm_70
+.entry k() { membar.proxy.alias; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar proxy-alias fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar proxy-alias fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar proxy-alias module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "membar proxy-alias retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Membar>(&body.front());
+  return require(instruction && std::holds_alternative<ir::Membar::ProxyAlias>(
+                                    instruction->variant),
+                 "public membar proxy-alias variant");
+}
+
+/** Check the installed alias proxy fence after the syntax AST is released. */
+bool checkFenceProxyAliasContract() {
+  constexpr std::string_view source = R"ptx(
+.version 7.5
+.target sm_70
+.entry k() { fence.proxy.alias; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "fence proxy-alias fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "fence proxy-alias fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned fence proxy-alias module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "fence proxy-alias retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* alias =
+      instruction ? std::get_if<ir::Fence::ProxyAlias>(&instruction->variant)
+                  : nullptr;
+  return require(alias && alias->proxy && alias->alias,
+                 "public fence proxy-alias variant and controls");
+}
+
+/** Check installed async-proxy source spaces in an owned resolved module. */
+bool checkMembarProxyAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_90a
+.entry k() {
+  membar.proxy.async;
+  membar.proxy.async.global;
+  membar.proxy.async.shared::cta;
+  membar.proxy.async.shared::cluster;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "membar async-proxy fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "membar async-proxy fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned membar async-proxy module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 5, "membar async-proxy forms retained"))
+    return false;
+  constexpr std::array expected{ir::AsyncProxyKind::Async,
+                                ir::AsyncProxyKind::AsyncGlobal,
+                                ir::AsyncProxyKind::AsyncSharedCta};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto* instruction = std::get_if<ir::Membar>(&body[i]);
+    const auto* async =
+        instruction ? std::get_if<ir::Membar::ProxyAsync>(&instruction->variant)
+                    : nullptr;
+    if (!require(async && async->proxy_kind.value == expected[i] &&
+                     !async->proxy_kind.locs.empty(),
+                 "public membar async-proxy space"))
+      return false;
+  }
+  const auto* instruction = std::get_if<ir::Membar>(&body[3]);
+  const auto* cluster = instruction
+                            ? std::get_if<ir::Membar::ProxyAsyncSharedCluster>(
+                                  &instruction->variant)
+                            : nullptr;
+  return require(
+      cluster &&
+          cluster->proxy_kind.value == ir::AsyncProxyKind::AsyncSharedCluster &&
+          !cluster->proxy_kind.locs.empty(),
+      "public membar async-proxy cluster space");
+}
+
+/** Check installed ordinary-fence variants after the syntax AST is released. */
+bool checkOrdinaryFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.6
+.target sm_90a
+.entry k() {
+  fence.cta;
+  fence.sc.cta;
+  fence.cta.sc;
+  fence.acq_rel.cta;
+  fence.cta.acq_rel;
+  fence.acq_rel.gpu;
+  fence.cluster.acq_rel;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "ordinary fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "ordinary fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned ordinary fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 8, "ordinary fence forms retained"))
+    return false;
+  const auto* omitted_instruction = std::get_if<ir::Fence>(&body[0]);
+  const auto* omitted =
+      omitted_instruction
+          ? std::get_if<ir::Fence::OrdinaryCta>(&omitted_instruction->variant)
+          : nullptr;
+  if (!require(omitted &&
+                   omitted->semantics.value == ir::MemoryConsistency::Omitted &&
+                   omitted->semantics.locs.empty(),
+               "public omitted ordinary fence semantics"))
+    return false;
+  for (size_t i : {1U, 2U}) {
+    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    const auto* sc =
+        instruction ? std::get_if<ir::Fence::OrdinaryCta>(&instruction->variant)
+                    : nullptr;
+    if (!require(sc && sc->semantics.value == ir::MemoryConsistency::Sc &&
+                     !sc->semantics.locs.empty(),
+                 "public SC ordinary fence orders"))
+      return false;
+  }
+  for (size_t i : {3U, 4U}) {
+    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    if (!require(instruction && std::holds_alternative<ir::Fence::AcqRelCta>(
+                                    instruction->variant),
+                 "public legacy acquire-release CTA variant"))
+      return false;
+  }
+  const auto* gpu_instruction = std::get_if<ir::Fence>(&body[5]);
+  const auto* gpu =
+      gpu_instruction
+          ? std::get_if<ir::Fence::OrdinaryGpuSys>(&gpu_instruction->variant)
+          : nullptr;
+  const auto* cluster_instruction = std::get_if<ir::Fence>(&body[6]);
+  const auto* cluster = cluster_instruction
+                            ? std::get_if<ir::Fence::OrdinaryCluster>(
+                                  &cluster_instruction->variant)
+                            : nullptr;
+  return require(gpu && cluster &&
+                     gpu->semantics.value == ir::MemoryConsistency::AcqRel &&
+                     gpu->scope.value == ir::MemoryScope::Gpu &&
+                     cluster->semantics.value == ir::MemoryConsistency::AcqRel,
+                 "public ordinary fence scope and semantics");
+}
+
+/** Check the installed restricted mbarrier-init fence after AST release. */
+bool checkMbarrierInitFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_90a
+.entry k() { fence.mbarrier_init.release.cluster; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "mbarrier-init fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "mbarrier-init fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned mbarrier-init fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "mbarrier-init fence retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* restricted =
+      instruction ? std::get_if<ir::Fence::MbarrierInitReleaseCluster>(
+                        &instruction->variant)
+                  : nullptr;
+  return require(restricted && restricted->op_restrict &&
+                     restricted->semantics == ir::MemoryConsistency::Release &&
+                     restricted->scope == ir::MemoryScope::Cluster,
+                 "public mbarrier-init fence variant and controls");
+}
+
+/** Check fixed shared-memory fence restrictions through the installed IR. */
+bool checkSharedSyncRestrictedFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.6
+.target sm_90a
+.entry k() {
+  fence.acquire.sync_restrict::shared::cluster.cluster;
+  fence.release.sync_restrict::shared::cta.cluster;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "shared restricted fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(),
+                 "shared restricted fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned shared restricted fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "shared restricted fences retained"))
+    return false;
+  const auto* acquire_instruction = std::get_if<ir::Fence>(&body[0]);
+  const auto* release_instruction = std::get_if<ir::Fence>(&body[1]);
+  const auto* acquire =
+      acquire_instruction
+          ? std::get_if<ir::Fence::AcquireSyncRestrictSharedCluster>(
+                &acquire_instruction->variant)
+          : nullptr;
+  const auto* release =
+      release_instruction
+          ? std::get_if<ir::Fence::ReleaseSyncRestrictSharedCta>(
+                &release_instruction->variant)
+          : nullptr;
+  return require(acquire && release &&
+                     acquire->semantics == ir::MemoryConsistency::Acquire &&
+                     acquire->sync_restrict_shared_cluster &&
+                     acquire->scope == ir::MemoryScope::Cluster &&
+                     release->semantics == ir::MemoryConsistency::Release &&
+                     release->sync_restrict_shared_cta &&
+                     release->scope == ir::MemoryScope::Cluster,
+                 "public shared restricted fence variants and controls");
+}
+
+/** Exercise installed paired mbarrier wait qualifiers through the public IR. */
+bool checkMbarrierTestWaitContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90a
+.address_size 64
+.shared .align 8 .b64 shared_value;
+.entry k() {
+  .reg .pred %p0;
+  .reg .b64 %state;
+  .reg .u64 %rd0;
+  mbarrier.test_wait.acquire.cta.b64 %p0, [%rd0], %state;
+  mbarrier.test_wait.parity.phase_type::conditional.relaxed.cluster.shared::cta.b64
+      %p0, [shared_value], 1;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "paired mbarrier wait fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "paired mbarrier wait fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned paired mbarrier wait module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "paired mbarrier wait forms retained"))
+    return false;
+  const auto* first_instruction = std::get_if<ir::Mbarrier>(&body[0]);
+  const auto* second_instruction = std::get_if<ir::Mbarrier>(&body[1]);
+  const auto* first =
+      first_instruction
+          ? std::get_if<ir::Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
+                &first_instruction->variant)
+          : nullptr;
+  const auto* second =
+      second_instruction
+          ? std::get_if<
+                ir::Mbarrier::TestWaitParityConditionalSemanticsSharedCta>(
+                &second_instruction->variant)
+          : nullptr;
+  return require(
+      first && second &&
+          first->semantics.value == ir::MemoryConsistency::Acquire &&
+          first->scope.value == ir::MemoryScope::Cta &&
+          !first->semantics.locs.empty() && !first->scope.locs.empty() &&
+          second->semantics.value == ir::MemoryConsistency::Relaxed &&
+          second->scope.value == ir::MemoryScope::Cluster &&
+          !second->semantics.locs.empty() && !second->scope.locs.empty(),
+      "public paired mbarrier wait qualifiers and locations");
+}
+
+/** Exercise installed paired try-wait qualifiers and hint ownership. */
+bool checkMbarrierTryWaitContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90a
+.address_size 64
+.shared .align 8 .b64 shared_value;
+.entry k() {
+  .reg .pred %p0;
+  .reg .b64 %state;
+  .reg .u64 %rd0;
+  mbarrier.try_wait.acquire.cta.b64 %p0, [%rd0], %state, 16;
+  mbarrier.try_wait.parity.phase_type::conditional.relaxed.cluster.shared::cta.b64
+      %p0, [shared_value], 1;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "paired mbarrier try-wait fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(),
+                 "paired mbarrier try-wait fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned paired mbarrier try-wait module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "paired mbarrier try-wait forms retained"))
+    return false;
+  const auto* first_instruction = std::get_if<ir::Mbarrier>(&body[0]);
+  const auto* second_instruction = std::get_if<ir::Mbarrier>(&body[1]);
+  const auto* first =
+      first_instruction
+          ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared>(
+                &first_instruction->variant)
+          : nullptr;
+  const auto* second =
+      second_instruction
+          ? std::get_if<
+                ir::Mbarrier::TryWaitParityConditionalSemanticsSharedCta>(
+                &second_instruction->variant)
+          : nullptr;
+  const auto* hint =
+      first ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared::
+                              WithHintOperands>(&first->operands)
+            : nullptr;
+  return require(
+      first && second && hint &&
+          first->semantics.value == ir::MemoryConsistency::Acquire &&
+          first->scope.value == ir::MemoryScope::Cta &&
+          !first->semantics.locs.empty() && !first->scope.locs.empty() &&
+          std::get<ir::ResolvedImmediate>(hint->time_hint.value).bits == 16U &&
+          second->semantics.value == ir::MemoryConsistency::Relaxed &&
+          second->scope.value == ir::MemoryScope::Cluster &&
+          !second->semantics.locs.empty() && !second->scope.locs.empty(),
+      "public paired mbarrier try-wait qualifiers and hint");
 }
 
 /** Inspect the typed instruction contract after all syntax owners are gone. */
@@ -683,6 +1160,24 @@ int main() {
     return result;
   if (!checkBarrierSyncContract())
     return 6;
+  if (!checkMbarrierTestWaitContract())
+    return 7;
+  if (!checkMbarrierTryWaitContract())
+    return 8;
+  if (!checkMembarLevelsContract())
+    return 9;
+  if (!checkMembarProxyAliasContract())
+    return 10;
+  if (!checkMembarProxyAsyncContract())
+    return 11;
+  if (!checkOrdinaryFenceContract())
+    return 12;
+  if (!checkMbarrierInitFenceContract())
+    return 13;
+  if (!checkSharedSyncRestrictedFenceContract())
+    return 14;
+  if (!checkFenceProxyAliasContract())
+    return 15;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

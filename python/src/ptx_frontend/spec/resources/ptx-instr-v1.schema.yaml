@@ -341,6 +341,7 @@ $defs:
     enum:
       - cta
       - cluster
+      - gl
       - gpu
       - sys
 

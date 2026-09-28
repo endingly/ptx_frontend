@@ -1530,7 +1530,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         }
         self.assertEqual(
             set(variants), {"Sync", "CtaSync", "Arrive", "CtaArrive",
-                            "ClusterArrive", "ClusterWait"}
+                            "ClusterArrive", "ClusterWait", "RedPopcU32",
+                            "CtaRedPopcU32", "RedAndPred", "CtaRedAndPred",
+                            "RedOrPred", "CtaRedOrPred"}
         )
         for name, ptx in (("Sync", "6.0"), ("CtaSync", "7.8")):
             variant = variants[name]
@@ -1570,6 +1572,39 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ]
             self.assertIn(("barrier", 0, 15), ranges)
             self.assertIn(("thread_count", 1, None), ranges)
+            self.assertEqual(
+                (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
+                 variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]
+                ("thread_count", 32),
+            )
+        for name in ("RedPopcU32", "CtaRedPopcU32", "RedAndPred",
+                     "CtaRedAndPred", "RedOrPred", "CtaRedOrPred"):
+            variant = variants[name]
+            self.assertEqual(
+                dict(variant.availability),
+                {"ptx": "7.8" if name.startswith("Cta") else "6.0", "sm": 30},
+            )
+            self.assertEqual(
+                [layout.layout_id for layout in variant.operand_layouts],
+                ["without_thread_count", "with_thread_count"],
+            )
+            self.assertEqual(
+                [[field.name for field in layout.fields]
+                 for layout in variant.operand_layouts],
+                [["dst", "barrier", "predicate"],
+                 ["dst", "barrier", "thread_count", "predicate"]],
+            )
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.modifier_fields],
+                ([("cta", "bool")] if name.startswith("Cta") else [])
+                + [("red", "bool"), ("reduction", "bool"),
+                   ("aligned", "WithLocs<bool>"), ("result_type", "ScalarType")],
+            )
+            ranges = [
+                (item.operand_field_id, item.minimum, item.maximum)
+                for item in variant.immediate_ranges
+            ]
+            self.assertIn(("barrier", 0, 15), ranges)
             self.assertEqual(
                 (variant.immediate_multiple_of.operand_field_id, # pyright: ignore[reportOptionalMemberAccess]
                  variant.immediate_multiple_of.divisor), # pyright: ignore[reportOptionalMemberAccess]
@@ -2616,6 +2651,22 @@ class ResolvedIrBuildTest(unittest.TestCase):
              "TryWaitTokenPrimaryGenericOrShared", "TryWaitTokenPrimarySharedCta",
              "TryWaitParityPrimaryGenericOrShared", "TryWaitParityPrimarySharedCta",
              "TryWaitParityConditionalGenericOrShared", "TryWaitParityConditionalSharedCta",
+             "TestWaitTokenSemanticsGenericOrShared", "TestWaitTokenSemanticsSharedCta",
+             "TestWaitParitySemanticsGenericOrShared", "TestWaitParitySemanticsSharedCta",
+             "TestWaitTokenPrimarySemanticsGenericOrShared",
+             "TestWaitTokenPrimarySemanticsSharedCta",
+             "TestWaitParityPrimarySemanticsGenericOrShared",
+             "TestWaitParityPrimarySemanticsSharedCta",
+             "TestWaitParityConditionalSemanticsGenericOrShared",
+             "TestWaitParityConditionalSemanticsSharedCta",
+             "TryWaitTokenSemanticsGenericOrShared", "TryWaitTokenSemanticsSharedCta",
+             "TryWaitParitySemanticsGenericOrShared", "TryWaitParitySemanticsSharedCta",
+             "TryWaitTokenPrimarySemanticsGenericOrShared",
+             "TryWaitTokenPrimarySemanticsSharedCta",
+             "TryWaitParityPrimarySemanticsGenericOrShared",
+             "TryWaitParityPrimarySemanticsSharedCta",
+             "TryWaitParityConditionalSemanticsGenericOrShared",
+             "TryWaitParityConditionalSemanticsSharedCta",
              "PendingCount", "CheckLayoutGenericV0", "CheckLayoutGenericV1",
              "CheckLayoutSharedCtaV0", "CheckLayoutSharedCtaV1"],
         )
@@ -2649,8 +2700,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta = instruction.variants[63:67]
         test_wait_primary_token, _, test_wait_primary_parity, _, test_wait_conditional, _ = instruction.variants[67:73]
         try_wait_primary_token, _, try_wait_primary_parity, _, try_wait_conditional, _ = instruction.variants[73:79]
-        pending_count = instruction.variants[79]
-        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[80:84]
+        paired_waits = instruction.variants[79:89]
+        paired_try_waits = instruction.variants[89:99]
+        pending_count = instruction.variants[99]
+        check_layout_generic_v0, check_layout_generic_v1, check_layout_shared_cta_v0, check_layout_shared_cta_v1 = instruction.variants[100:104]
         arrival_count_variants = [
             variant
             for variant in instruction.variants[27:59]
@@ -2685,13 +2738,92 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for entry in variant.modifier_value_availabilities
             if entry.source_kind_id == "scope" and entry.value == "cluster"
         ]
-        self.assertEqual(len(cluster_scope_values), 12)
+        self.assertEqual(len(cluster_scope_values), 32)
         self.assertTrue(all(dict(entry.availability) == cluster_availability
                             for entry in cluster_scope_values))
         self.assertEqual(dict(test_wait_token.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(dict(test_wait_token_cta.availability), {"ptx": "7.8", "sm": 80})
         self.assertEqual(dict(test_wait_parity.availability), {"ptx": "7.1", "sm": 80})
         self.assertEqual(dict(test_wait_parity_cta.availability), {"ptx": "7.8", "sm": 80})
+        self.assertEqual(len(paired_waits), 10)
+        for index, variant in enumerate(paired_waits):
+            self.assertEqual(
+                dict(variant.availability),
+                {"ptx": "8.0", "sm": 80} if index < 4 else {"ptx": "9.3", "sm": 90},
+            )
+            modifiers = [(field.name, field_cpp_type(field))
+                         for field in variant.modifier_fields]
+            self.assertIn(("semantics", "WithLocs<MemoryConsistency>"), modifiers)
+            self.assertIn(("scope", "WithLocs<MemoryScope>"), modifiers)
+            names = [name for name, _ in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "semantics"],
+                ["acquire", "relaxed"],
+            )
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "scope"],
+                ["cta", "cluster"],
+            )
+            self.assertEqual(variant.address_alignments[0].alignment, 8)
+            if "Parity" in variant.cpp_name:
+                self.assertEqual(
+                    [(item.operand_field_id, item.minimum, item.maximum)
+                     for item in variant.immediate_ranges],
+                    [("phase_parity", 0, 1)],
+                )
+            if "Primary" in variant.cpp_name:
+                self.assertEqual(
+                    [layout.layout_id for layout in variant.operand_layouts],
+                    ["default", "report_predicate", "report_predicate_value"],
+                )
+            if "Conditional" in variant.cpp_name:
+                self.assertEqual(
+                    [layout.layout_id for layout in variant.operand_layouts],
+                    ["default"],
+                )
+        self.assertEqual(len(paired_try_waits), 10)
+        for index, variant in enumerate(paired_try_waits):
+            self.assertEqual(
+                dict(variant.availability),
+                {"ptx": "8.0", "sm": 90} if index < 4 else {"ptx": "9.3", "sm": 90},
+            )
+            modifiers = [(field.name, field_cpp_type(field))
+                         for field in variant.modifier_fields]
+            self.assertIn(("semantics", "WithLocs<MemoryConsistency>"), modifiers)
+            self.assertIn(("scope", "WithLocs<MemoryScope>"), modifiers)
+            names = [name for name, _ in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "semantics"],
+                ["acquire", "relaxed"],
+            )
+            self.assertEqual(
+                [entry.value for entry in variant.modifier_value_availabilities
+                 if entry.source_kind_id == "scope"],
+                ["cta", "cluster"],
+            )
+            self.assertEqual(variant.address_alignments[0].alignment, 8)
+            if "Parity" in variant.cpp_name:
+                self.assertEqual(
+                    [(item.operand_field_id, item.minimum, item.maximum)
+                     for item in variant.immediate_ranges],
+                    [("phase_parity", 0, 1)],
+                )
+            layouts = [layout.layout_id for layout in variant.operand_layouts]
+            if "Primary" in variant.cpp_name:
+                self.assertEqual(layouts, ["no_hint", "with_hint",
+                                           "report_predicate_no_hint",
+                                           "report_predicate_with_hint",
+                                           "report_predicate_value_no_hint",
+                                           "report_predicate_value_with_hint"])
+            else:
+                self.assertEqual(layouts, ["no_hint", "with_hint"])
+            hint = variant.operand_layouts[1].bindings[-1]
+            self.assertEqual(hint.type_expression.scalar_type, "u32")
         self.assertEqual(
             [dict(variant.availability) for variant in
              (try_wait_token, try_wait_token_cta, try_wait_parity, try_wait_parity_cta)],
@@ -4192,7 +4324,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn('.has_maximum = false,', descriptor)
         self.assertIn('.maximum = ~uint64_t{0},', descriptor)
 
-    def test_membar_cta_model(self) -> None:
+    def test_membar_levels_model(self) -> None:
         database = self.database
         membar = next(
             instruction
@@ -4203,15 +4335,54 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Membar")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants], ["Cta"]
+            [variant.cpp_name for variant in resolved.variants],
+            ["Cta", "Gl", "Sys", "ProxyAlias", "ProxyAsync",
+             "ProxyAsyncSharedCluster"],
         )
-        variant = resolved.variants[0]
-        self.assertEqual(dict(variant.availability), {"ptx": "1.4", "sm": 0})
+        for variant, floor, scope in zip(
+            resolved.variants[:3],
+            (
+                {"ptx": "1.4", "sm": 0},
+                {"ptx": "1.4", "sm": 0},
+                {"ptx": "2.0", "sm": 20},
+            ),
+            ("MemoryScope::Cta", "MemoryScope::Gpu", "MemoryScope::Sys"),
+            strict=True,
+        ):
+            self.assertEqual(dict(variant.availability), floor)
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.fields],
+                [("scope", "MemoryScope")],
+            )
+            self.assertEqual(field_cpp_constant_expr(variant.fields[0]), scope)
+            self.assertEqual(variant.operand_layouts[0].bindings, ())
+
+        proxy_alias = resolved.variants[3]
+        self.assertEqual(dict(proxy_alias.availability),
+                         {"ptx": "7.5", "sm": 60})
         self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [("scope", "MemoryScope")],
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in proxy_alias.fields],
+            [("proxy", "bool", "true"), ("alias", "bool", "true")],
         )
-        self.assertEqual(variant.operand_layouts[0].bindings, ())
+        self.assertEqual(proxy_alias.operand_layouts[0].bindings, ())
+
+        proxy_async, async_cluster = resolved.variants[4:]
+        self.assertEqual(dict(proxy_async.availability),
+                         {"ptx": "8.0", "sm": 90})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in proxy_async.fields],
+            [("proxy", "bool"),
+             ("proxy_kind", "WithLocs<AsyncProxyKind>")],
+        )
+        self.assertEqual(
+            dict(async_cluster.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(proxy_async.operand_layouts[0].bindings, ())
+        self.assertEqual(async_cluster.operand_layouts[0].bindings, ())
 
     def test_fence_acq_rel_cta_model(self) -> None:
         database = self.database
@@ -4227,6 +4398,13 @@ class ResolvedIrBuildTest(unittest.TestCase):
             [variant.cpp_name for variant in resolved.variants],
             [
                 "AcqRelCta",
+                "OrdinaryCta",
+                "OrdinaryGpuSys",
+                "OrdinaryCluster",
+                "MbarrierInitReleaseCluster",
+                "AcquireSyncRestrictSharedCluster",
+                "ReleaseSyncRestrictSharedCta",
+                "ProxyAlias",
                 "ProxyAsync",
                 "ProxyAsyncSharedCluster",
                 "ProxyTensormapGenericRelease",
@@ -4237,13 +4415,76 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "ProxyAsyncGenericReleaseSyncRestrictSharedCta",
             ],
         )
-        variant, async_proxy, async_cluster, release, _, acquire, _, acquire_sync, release_sync = resolved.variants
+        (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
+         mbarrier_init, acquire_restrict, release_restrict, proxy_alias, async_proxy,
+         async_cluster, release, _, acquire, _, acquire_sync,
+         release_sync) = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
             [("semantics", "MemoryConsistency"), ("scope", "MemoryScope")],
         )
         self.assertEqual(variant.operand_layouts[0].bindings, ())
+        for ordinary in (ordinary_cta, ordinary_gpu_sys, ordinary_cluster):
+            self.assertEqual(ordinary.operand_layouts[0].bindings, ())
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in ordinary_cta.fields],
+            [("semantics", "WithLocs<MemoryConsistency>"),
+             ("scope", "MemoryScope")],
+        )
+        self.assertEqual(
+            [(field.name, field_cpp_type(field))
+             for field in ordinary_gpu_sys.fields],
+            [("semantics", "WithLocs<MemoryConsistency>"),
+             ("scope", "WithLocs<MemoryScope>")],
+        )
+        self.assertEqual(dict(ordinary_cluster.availability),
+                         {"any_of": [{"ptx": "7.8", "sm": 90,
+                                      "capabilities": ["cluster"]}]})
+        self.assertEqual(
+            dict(mbarrier_init.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in mbarrier_init.fields],
+            [("op_restrict", "bool", "true"),
+             ("semantics", "MemoryConsistency", "MemoryConsistency::Release"),
+             ("scope", "MemoryScope", "MemoryScope::Cluster")],
+        )
+        self.assertEqual(mbarrier_init.operand_layouts[0].bindings, ())
+        self.assertEqual(dict(proxy_alias.availability),
+                         {"ptx": "7.5", "sm": 70})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in proxy_alias.fields],
+            [("proxy", "bool", "true"), ("alias", "bool", "true")],
+        )
+        self.assertEqual(proxy_alias.operand_layouts[0].bindings, ())
+        for restricted, semantics, flag in (
+            (acquire_restrict, "Acquire", "sync_restrict_shared_cluster"),
+            (release_restrict, "Release", "sync_restrict_shared_cta"),
+        ):
+            self.assertEqual(
+                dict(restricted.availability),
+                {"any_of": [{"ptx": "8.6", "sm": 90,
+                             "capabilities": ["cluster"]}]},
+            )
+            self.assertEqual(
+                [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+                 for field in restricted.fields],
+                [("semantics", "MemoryConsistency",
+                  f"MemoryConsistency::{semantics}"),
+                 (flag, "bool", "true"),
+                 ("scope", "MemoryScope", "MemoryScope::Cluster")],
+            )
+            self.assertEqual(restricted.operand_layouts[0].bindings, ())
+        self.assertEqual(
+            BACKEND.domains["memory_consistencies"].values["sc"],
+            "MemoryConsistency::Sc",
+        )
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in async_proxy.fields],
             [("proxy", "bool"), ("proxy_kind", "WithLocs<AsyncProxyKind>")],

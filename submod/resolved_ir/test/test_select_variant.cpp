@@ -97,6 +97,70 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   return std::move(*ast);
 }
 
+/** Distinguish the three source-level memory-barrier scope spellings. */
+TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
+  for (const auto [source, expected] :
+       std::array<std::pair<std::string_view, Membar::VariantType>, 3>{{
+           {"membar.cta;", Membar::VariantType::Cta},
+           {"membar.gl;", Membar::VariantType::Gl},
+           {"membar.sys;", Membar::VariantType::Sys},
+       }}) {
+    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "membar;",
+           "membar.gpu;",
+           "membar.cluster;",
+           "membar.cta.sys;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Select alias-proxy ordering without accepting incomplete suffixes. */
+TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
+  const auto selected =
+      selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Membar::VariantType::ProxyAlias);
+  for (const std::string_view source : {
+           "membar.proxy;",
+           "membar.alias;",
+           "membar.proxy.alias.cta;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Preserve the written async proxy's state-space selection. */
+TEST(SelectVariantMembar, SelectsAsyncProxySpaces) {
+  for (const std::string_view source : {
+           "membar.proxy.async;",
+           "membar.proxy.async.global;",
+           "membar.proxy.async.shared::cta;",
+       }) {
+    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, Membar::VariantType::ProxyAsync);
+  }
+  const auto cluster = selectVariant<Membar>(
+      parse_instruction("membar.proxy.async.shared::cluster;"));
+  ASSERT_TRUE(cluster.has_value()) << cluster.error().message;
+  EXPECT_EQ(*cluster, Membar::VariantType::ProxyAsyncSharedCluster);
+  for (const std::string_view source : {
+           "membar.proxy.async.shared;",
+           "membar.proxy.async.shared::cluster.global;",
+           "membar.proxy.global;",
+       }) {
+    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
   const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
                                      std::string(literal) + ";");
@@ -655,6 +719,35 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
        }) {
     expect_variant(source, Barrier::VariantType::CtaArrive);
   }
+  for (const auto& [source, expected] :
+       std::array<std::pair<std::string_view, Barrier::VariantType>, 12>{{
+           {"barrier.red.popc.u32 %r0, 0, %p0;",
+            Barrier::VariantType::RedPopcU32},
+           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;",
+            Barrier::VariantType::RedPopcU32},
+           {"barrier.cta.red.popc.u32 %r0, 0, %p0;",
+            Barrier::VariantType::CtaRedPopcU32},
+           {"barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;",
+            Barrier::VariantType::CtaRedPopcU32},
+           {"barrier.red.and.pred %p0, 0, %p1;",
+            Barrier::VariantType::RedAndPred},
+           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;",
+            Barrier::VariantType::RedAndPred},
+           {"barrier.cta.red.and.pred %p0, 0, %p1;",
+            Barrier::VariantType::CtaRedAndPred},
+           {"barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;",
+            Barrier::VariantType::CtaRedAndPred},
+           {"barrier.red.or.pred %p0, 0, %p1;",
+            Barrier::VariantType::RedOrPred},
+           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;",
+            Barrier::VariantType::RedOrPred},
+           {"barrier.cta.red.or.pred %p0, 0, %p1;",
+            Barrier::VariantType::CtaRedOrPred},
+           {"barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;",
+            Barrier::VariantType::CtaRedOrPred},
+       }}) {
+    expect_variant(source, expected);
+  }
   for (const std::string_view source : {
            "barrier.cluster.arrive;",
            "barrier.cluster.arrive.aligned;",
@@ -678,6 +771,11 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.arrive.aligned.arrive 0, 32;",
            "barrier.arrive.aligned.aligned 0, 32;",
            "barrier.cta.arrive.arrive 0, 32;",
+           "barrier.red.popc.u32.aligned %r0, 0, %p0;",
+           "barrier.red.and.pred.aligned %p0, 0, %p1;",
+           "barrier.red.or.or.pred %p0, 0, %p1;",
+           "barrier.cta.red.popc.aligned.aligned.u32 %r0, 0, %p0;",
+           "barrier.cluster.red.popc.u32 %r0, 0, %p0;",
            "barrier.cluster.arrive.acquire;",
            "barrier.cluster.wait.release;",
            "barrier.cluster.arrive.aligned.release;",
@@ -836,6 +934,111 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
           .has_value());
 }
 
+/** Keep ordinary fence order aliases on disjoint semantic/scope variants. */
+TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
+  const auto expect_variant = [](std::string_view source,
+                                 Fence::VariantType expected) {
+    const auto selected = selectVariant<Fence>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << source;
+    EXPECT_EQ(*selected, expected);
+  };
+  for (const std::string_view scope : {"cta", "gpu", "sys", "cluster"}) {
+    const auto variant = scope == "cta" ? Fence::VariantType::OrdinaryCta
+                         : scope == "cluster"
+                             ? Fence::VariantType::OrdinaryCluster
+                             : Fence::VariantType::OrdinaryGpuSys;
+    expect_variant(std::string("fence.") + std::string(scope) + ";", variant);
+    for (const std::string_view semantics :
+         {"sc", "acq_rel", "acquire", "release"}) {
+      const auto expected = scope == "cta" && semantics == "acq_rel"
+                                ? Fence::VariantType::AcqRelCta
+                                : variant;
+      expect_variant(std::string("fence.") + std::string(semantics) + "." +
+                         std::string(scope) + ";",
+                     expected);
+      expect_variant(std::string("fence.") + std::string(scope) + "." +
+                         std::string(semantics) + ";",
+                     expected);
+    }
+  }
+  for (const std::string_view source : {
+           "fence;",
+           "fence.gl;",
+           "fence.relaxed.cta;",
+           "fence.weak.gpu;",
+           "fence.cta.acquire.release;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Keep the restricted mbarrier-init fence separate from ordinary fences. */
+TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
+  const auto selected = selectVariant<Fence>(
+      parse_instruction("fence.mbarrier_init.release.cluster;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Fence::VariantType::MbarrierInitReleaseCluster);
+  const auto ordinary =
+      selectVariant<Fence>(parse_instruction("fence.release.cluster;"));
+  ASSERT_TRUE(ordinary.has_value()) << ordinary.error().message;
+  EXPECT_EQ(*ordinary, Fence::VariantType::OrdinaryCluster);
+  for (const std::string_view source : {
+           "fence.mbarrier_init.cluster;",
+           "fence.mbarrier_init.acquire.cluster;",
+           "fence.mbarrier_init.release.cta;",
+           "fence.release.mbarrier_init.cluster;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Keep restricted shared-memory fences distinct from proxy fences. */
+TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
+  for (const auto& [source, expected] :
+       {std::pair{"fence.acquire.sync_restrict::shared::cluster.cluster;",
+                  Fence::VariantType::AcquireSyncRestrictSharedCluster},
+        std::pair{"fence.release.sync_restrict::shared::cta.cluster;",
+                  Fence::VariantType::ReleaseSyncRestrictSharedCta}}) {
+    const auto selected = selectVariant<Fence>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "fence.acquire.sync_restrict::shared::cta.cluster;",
+           "fence.release.sync_restrict::shared::cluster.cluster;",
+           "fence.acquire.sync_restrict::shared::cluster.cta;",
+           "fence.release.sync_restrict::shared::cta.cta;",
+           "fence.sync_restrict::shared::cluster.acquire.cluster;",
+           "fence.acquire.cluster.sync_restrict::shared::cluster;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
+/** Keep the alias proxy fence distinct from membar and newer proxy forms. */
+TEST(SelectVariantFence, SelectsFixedProxyAlias) {
+  const auto selected =
+      selectVariant<Fence>(parse_instruction("fence.proxy.alias;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Fence::VariantType::ProxyAlias);
+  const auto membar =
+      selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
+  ASSERT_TRUE(membar.has_value()) << membar.error().message;
+  EXPECT_EQ(*membar, Membar::VariantType::ProxyAlias);
+  for (const std::string_view source : {
+           "fence.proxy;",
+           "fence.alias;",
+           "fence.proxy.alias.cta;",
+           "fence.alias.proxy;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
                                  Fence::VariantType expected) {
@@ -875,7 +1078,6 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
       Fence::VariantType::ProxyAsyncGenericReleaseSyncRestrictSharedCta);
 
   for (const std::string_view source : {
-           "fence.proxy.alias;",
            "fence.proxy.generic::tensormap.release.gpu;",
            "fence.proxy.async::generic.acquire.cluster.sync_restrict::shared::"
            "cluster;",
@@ -1005,6 +1207,67 @@ TEST(SelectVariantMbarrier, SelectsBasicTestWaitForms) {
           .has_value());
 }
 
+/** Keep explicit wait qualifier pairs separate from unqualified wait forms. */
+TEST(SelectVariantMbarrier, SelectsPairedTestWaitForms) {
+  const std::array<std::pair<std::string_view, Mbarrier::VariantType>, 10>
+      forms{{
+          {"mbarrier.test_wait.acquire.cta.b64 %p0, [%rd0], %state;",
+           Mbarrier::VariantType::TestWaitTokenSemanticsGenericOrShared},
+          {"mbarrier.test_wait.relaxed.cluster.shared::cta.b64 %p0, "
+           "[shared_value], %state;",
+           Mbarrier::VariantType::TestWaitTokenSemanticsSharedCta},
+          {"mbarrier.test_wait.parity.acquire.cluster.shared.b64 %p0, "
+           "[shared_value], 1;",
+           Mbarrier::VariantType::TestWaitParitySemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.relaxed.cta.shared::cta.b64 %p0, "
+           "[shared_value], %phase;",
+           Mbarrier::VariantType::TestWaitParitySemanticsSharedCta},
+          {"mbarrier.test_wait.phase_type::primary.acquire.cta.b64 %p0|%p1, "
+           "%b0, [%rd0], %state;",
+           Mbarrier::VariantType::TestWaitTokenPrimarySemanticsGenericOrShared},
+          {"mbarrier.test_wait.phase_type::primary.relaxed.cluster.shared::cta."
+           "b64 %p0, [shared_value], %state;",
+           Mbarrier::VariantType::TestWaitTokenPrimarySemanticsSharedCta},
+          {"mbarrier.test_wait.parity.phase_type::primary.acquire.cluster.b64 "
+           "%p0|%p1, %b0, [%rd0], 1;",
+           Mbarrier::VariantType::
+               TestWaitParityPrimarySemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.phase_type::primary.relaxed.cta.shared::"
+           "cta.b64 %p0, [shared_value], 0;",
+           Mbarrier::VariantType::TestWaitParityPrimarySemanticsSharedCta},
+          {"mbarrier.test_wait.parity.phase_type::conditional.acquire.cta.b64 "
+           "%p0, [%rd0], 1;",
+           Mbarrier::VariantType::
+               TestWaitParityConditionalSemanticsGenericOrShared},
+          {"mbarrier.test_wait.parity.phase_type::conditional.relaxed.cluster."
+           "shared::cta.b64 %p0, [shared_value], %phase;",
+           Mbarrier::VariantType::TestWaitParityConditionalSemanticsSharedCta},
+      }};
+  for (const auto& [source, expected] : forms) {
+    SCOPED_TRACE(source);
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "mbarrier.test_wait.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cta.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.relaxed.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cluster.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.cta.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.test_wait.acquire.cta.shared::cluster.b64 %p0, "
+           "[shared_value], %state;",
+           "mbarrier.test_wait.phase_type::conditional.acquire.cta.b64 %p0, "
+           "[%rd0], %state;",
+       }) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto parsed = parser.parseInstruction();
+    if (parsed)
+      EXPECT_FALSE(selectVariant<Mbarrier>(*parsed).has_value());
+  }
+}
+
 TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
   const auto expect_variant = [](std::string_view source,
                                  Mbarrier::VariantType expected) {
@@ -1035,6 +1298,67 @@ TEST(SelectVariantMbarrier, SelectsBasicTryWaitForms) {
       resolve<Mbarrier>(
           parse_instruction("mbarrier.try_wait.b64 %p0, [%rd0], %state, 1, 2;"))
           .has_value());
+}
+
+/** Select explicit try-wait qualifier pairs across all structural layouts. */
+TEST(SelectVariantMbarrier, SelectsPairedTryWaitForms) {
+  const std::array<std::pair<std::string_view, Mbarrier::VariantType>, 10>
+      forms{{
+          {"mbarrier.try_wait.acquire.cta.b64 %p0, [%rd0], %state;",
+           Mbarrier::VariantType::TryWaitTokenSemanticsGenericOrShared},
+          {"mbarrier.try_wait.relaxed.cluster.shared::cta.b64 %p0, "
+           "[shared_value], %state, 12;",
+           Mbarrier::VariantType::TryWaitTokenSemanticsSharedCta},
+          {"mbarrier.try_wait.parity.acquire.cluster.shared.b64 %p0, "
+           "[shared_value], 1;",
+           Mbarrier::VariantType::TryWaitParitySemanticsGenericOrShared},
+          {"mbarrier.try_wait.parity.relaxed.cta.shared::cta.b64 %p0, "
+           "[shared_value], %phase, %hint;",
+           Mbarrier::VariantType::TryWaitParitySemanticsSharedCta},
+          {"mbarrier.try_wait.phase_type::primary.acquire.cta.b64 %p0|%p1, "
+           "%b0, [%rd0], %state, 20;",
+           Mbarrier::VariantType::TryWaitTokenPrimarySemanticsGenericOrShared},
+          {"mbarrier.try_wait.phase_type::primary.relaxed.cluster.shared::cta."
+           "b64 %p0, [shared_value], %state;",
+           Mbarrier::VariantType::TryWaitTokenPrimarySemanticsSharedCta},
+          {"mbarrier.try_wait.parity.phase_type::primary.acquire.cluster.b64 "
+           "%p0|%p1, %b0, [%rd0], 1, %hint;",
+           Mbarrier::VariantType::TryWaitParityPrimarySemanticsGenericOrShared},
+          {"mbarrier.try_wait.parity.phase_type::primary.relaxed.cta.shared::"
+           "cta.b64 %p0, [shared_value], 0;",
+           Mbarrier::VariantType::TryWaitParityPrimarySemanticsSharedCta},
+          {"mbarrier.try_wait.parity.phase_type::conditional.acquire.cta.b64 "
+           "%p0, [%rd0], 1, 8;",
+           Mbarrier::VariantType::
+               TryWaitParityConditionalSemanticsGenericOrShared},
+          {"mbarrier.try_wait.parity.phase_type::conditional.relaxed.cluster."
+           "shared::cta.b64 %p0, [shared_value], %phase;",
+           Mbarrier::VariantType::TryWaitParityConditionalSemanticsSharedCta},
+      }};
+  for (const auto& [source, expected] : forms) {
+    SCOPED_TRACE(source);
+    const auto selected = selectVariant<Mbarrier>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "mbarrier.try_wait.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.try_wait.cta.b64 %p0, [%rd0], %state;",
+           "mbarrier.try_wait.relaxed.b64 %p0, [%rd0], %state;",
+           "mbarrier.try_wait.cluster.b64 %p0, [%rd0], %state;",
+           "mbarrier.try_wait.cta.acquire.b64 %p0, [%rd0], %state;",
+           "mbarrier.try_wait.acquire.cta.shared::cluster.b64 %p0, "
+           "[shared_value], %state;",
+           "mbarrier.try_wait.phase_type::conditional.acquire.cta.b64 %p0, "
+           "[%rd0], %state;",
+           "mbarrier.try_wait.acquire.cta.acquire.cta.b64 %p0, [%rd0], %state;",
+       }) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto parsed = parser.parseInstruction();
+    if (parsed)
+      EXPECT_FALSE(selectVariant<Mbarrier>(*parsed).has_value());
+  }
 }
 
 TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
@@ -1096,11 +1420,15 @@ TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
           "mbarrier.test_wait.phase_type::conditional.b64 %p0, [%rd0], %state;",
           "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, "
           "[%rd0], 1;",
+          "mbarrier.test_wait.parity.phase_type::conditional.acquire.cta."
+          "b64 %p0|%p1, [shared_value], 1;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0, %b0, [%rd0], %state;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, _, [%rd0], "
           "%state;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, 1, [%rd0], "
           "%state;",
+          "mbarrier.try_wait.parity.phase_type::conditional.acquire.cta.b64 "
+          "%p0|%p1, [shared_value], 1;",
       }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());

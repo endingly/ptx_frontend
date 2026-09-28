@@ -176,6 +176,7 @@ domains:
       acquire: MemoryConsistency::Acquire
       release: MemoryConsistency::Release
       acq_rel: MemoryConsistency::AcqRel
+      sc: MemoryConsistency::Sc
 
   memory_scopes:
     cpp_type: MemoryScope
@@ -184,6 +185,7 @@ domains:
     values:
       none: MemoryScope::None
       cta: MemoryScope::Cta
+      gl: MemoryScope::Gpu
       cluster: MemoryScope::Cluster
       gpu: MemoryScope::Gpu
       sys: MemoryScope::Sys

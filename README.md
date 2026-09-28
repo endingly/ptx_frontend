@@ -51,9 +51,21 @@ supported surface and its exclusions.
   [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
   types, numeric selectors, `.ftz`, operand containers, and target limits.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
-- [CTA `barrier.sync`/`barrier.arrive` coverage](docs/us-en/barrier_sync_coverage.md) and its
+- [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled
-  synchronization slice and its static/runtime boundary.
+  synchronization and reduction slice and its static/runtime boundary.
+- [`mbarrier.test_wait` qualifier coverage](docs/us-en/mbarrier_test_wait_coverage.md) and its
+  [简体中文版本](docs/zh-han/mbarrier_test_wait_coverage.md) describe the paired
+  semantics and scope qualifiers and their target limits.
+- [`mbarrier.try_wait` qualifier coverage](docs/us-en/mbarrier_try_wait_coverage.md) and its
+  [简体中文版本](docs/zh-han/mbarrier_try_wait_coverage.md) describe the paired
+  qualifiers, optional time hint, and target limits.
+- [`membar` level coverage](docs/us-en/membar_coverage.md) and its
+  [简体中文版本](docs/zh-han/membar_coverage.md) describe CTA, GPU, system,
+  alias-proxy, and async-proxy barrier forms and their target limits.
+- [Ordinary `fence` coverage](docs/us-en/fence_coverage.md) and its
+  [简体中文版本](docs/zh-han/fence_coverage.md) describe ordinary semantics,
+  scope, restricted forms, alias-proxy ordering, and target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

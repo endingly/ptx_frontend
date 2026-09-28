@@ -1213,12 +1213,14 @@ instructions:
   - opcode: barrier
     section: "9.7.14.1"
     doc: >
-      CTA barrier synchronization/arrival and cluster barrier arrival/wait. Aligned
+      CTA barrier synchronization/arrival/reduction and cluster barrier arrival/wait. Aligned
       records the expressed convergence contract; the frontend does not
       simulate runtime barrier participation or phase behavior.
     syntax: >-
       barrier{.cta}.sync{.aligned} a{, b} |
       barrier{.cta}.arrive{.aligned} a, b |
+      barrier{.cta}.red.popc{.aligned}.u32 d, a{, b}, {!}c |
+      barrier{.cta}.red.{and|or}{.aligned}.pred p, a{, b}, {!}c |
       barrier.cluster.arrive{.release|.relaxed}{.aligned} |
       barrier.cluster.wait{.acquire}{.aligned}
 
@@ -1292,6 +1294,126 @@ instructions:
         examples:
           - {ptx: "barrier.cta.arrive 15, 64;", valid: true}
           - {ptx: "barrier.cta.arrive.aligned %r0, %r1;", valid: true}
+
+      - name: barrier_red_popc_u32
+        description: "CTA predicate population count with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".popc"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_popc_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_popc_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_popc
+        examples:
+          - {ptx: "barrier.red.popc.u32 %r0, 0, %p0;", valid: true}
+          - {ptx: "barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;", valid: true}
+
+      - name: barrier_cta_red_popc_u32
+        description: "Explicit CTA-qualified predicate population count."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".popc"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_popc_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_popc_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_popc
+        examples:
+          - {ptx: "barrier.cta.red.popc.u32 %r0, 0, %p0;", valid: true}
+          - {ptx: "barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;", valid: true}
+
+      - name: barrier_red_and_pred
+        description: "CTA predicate conjunction with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".and"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_and
+        examples:
+          - {ptx: "barrier.red.and.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.red.and.aligned.pred %p0, 15, 64, !%p1;", valid: true}
+
+      - name: barrier_cta_red_and_pred
+        description: "Explicit CTA-qualified predicate conjunction."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".and"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_and
+        examples:
+          - {ptx: "barrier.cta.red.and.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;", valid: true}
+
+      - name: barrier_red_or_pred
+        description: "CTA predicate disjunction with optional participant count."
+        availability: {ptx: "6.0", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: absent, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".or"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_or
+        examples:
+          - {ptx: "barrier.red.or.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.red.or.aligned.pred %p0, 15, 64, !%p1;", valid: true}
+
+      - name: barrier_cta_red_or_pred
+        description: "Explicit CTA-qualified predicate disjunction."
+        availability: {ptx: "7.8", sm: 30}
+        modifiers:
+          - {name: cta, kind: flag, presence: fixed, value: true, token: ".cta"}
+          - {name: red, kind: flag, presence: fixed, value: true, token: ".red"}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: ".or"}
+          - {name: aligned, kind: flag, presence: optional, default: false, token: ".aligned"}
+          - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operand_layouts:
+          - {name: without_thread_count, operands: $bar_red_pred_without_thread_count}
+          - {name: with_thread_count, operands: $bar_red_pred_with_thread_count}
+        constraints:
+          - {kind: immediate_range, operand: barrier, minimum: 0, maximum: 15}
+          - {kind: immediate_multiple_of, operand: thread_count, divisor: 32}
+        rule: parallel_sync_and_communication.bar_red_or
+        examples:
+          - {ptx: "barrier.cta.red.or.pred %p0, 0, %p1;", valid: true}
+          - {ptx: "barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;", valid: true}
 
       - name: barrier_cluster_arrive
         section: "9.7.14.3"
@@ -1371,8 +1493,8 @@ instructions:
 
   - opcode: membar
     section: "9.7.14.4"
-    doc: "Memory barrier, limited to CTA scope."
-    syntax: "membar.cta"
+    doc: "Memory barriers at CTA, GPU, or system level, and proxy ordering."
+    syntax: "membar.{cta,gl,sys} | membar.proxy.alias | membar.proxy.async{.global|.shared::cta|.shared::cluster}"
 
     variants:
       - name: membar_cta
@@ -1390,11 +1512,87 @@ instructions:
           - ptx: "membar.cta;"
             valid: true
 
+      - name: membar_gl
+        availability: {ptx: "1.4", sm: 0}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: gl
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.gl;"
+            valid: true
+
+      - name: membar_sys
+        availability: {ptx: "2.0", sm: 20}
+        modifiers:
+          - name: scope
+            kind: scope
+            domain: memory_scopes
+            presence: fixed
+            value: sys
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.sys;"
+            valid: true
+
+      - name: membar_proxy_alias
+        availability: {ptx: "7.5", sm: 60}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: ".alias"}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.alias;"
+            valid: true
+
+      - name: membar_proxy_async
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async, async.global, async.shared::cta]}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.async;"
+            valid: true
+          - ptx: "membar.proxy.async.global;"
+            valid: true
+          - ptx: "membar.proxy.async.shared::cta;"
+            valid: true
+
+      - name: membar_proxy_async_shared_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: proxy_kind, kind: proxy, domain: async_proxy_kinds, presence: required, values: [async.shared::cluster]}
+        operands: []
+        rule: parallel_sync_and_communication.membar
+
+        examples:
+          - ptx: "membar.proxy.async.shared::cluster;"
+            valid: true
+
   - opcode: fence
     section: "9.7.14.4"
-    doc: "Memory fence slices for acquire-release CTA and modern async/tensormap proxy ordering."
+    doc: "Ordinary memory fences and modern async/tensormap proxy ordering."
     syntax: >-
-      fence.acq_rel.cta | fence.proxy.async{.global|.shared::cta|.shared::cluster} |
+      fence{.sc|.acq_rel|.acquire|.release}.{cta|cluster|gpu|sys} |
+      fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
+      fence.mbarrier_init.release.cluster |
+      fence.{acquire.sync_restrict::shared::cluster|release.sync_restrict::shared::cta}.cluster |
+      fence.proxy.alias |
+      fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
       fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
 
@@ -1412,11 +1610,142 @@ instructions:
             domain: memory_scopes
             presence: fixed
             value: cta
+        modifier_order_aliases:
+          - [scope, semantics]
         operands: []
         rule: parallel_sync_and_communication.fence
 
         examples:
           - ptx: "fence.acq_rel.cta;"
+            valid: true
+
+      - name: fence_ordinary_cta
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cta}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.cta;"
+            valid: true
+          - ptx: "fence.sc.cta;"
+            valid: true
+
+      - name: fence_ordinary_gpu_sys
+        availability: {ptx: "6.0", sm: 70}
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - acq_rel
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [gpu, sys]}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.gpu;"
+            valid: true
+          - ptx: "fence.acq_rel.sys;"
+            valid: true
+
+      - name: fence_ordinary_cluster
+        availability:
+          any_of: [{ptx: "7.8", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - name: semantics
+            kind: semantics
+            domain: memory_consistencies
+            presence: optional
+            default: omitted
+            values:
+              - sc
+              - acq_rel
+              - {value: acquire, availability: {ptx: "8.6", sm: 90}}
+              - {value: release, availability: {ptx: "8.6", sm: 90}}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        modifier_order_aliases:
+          - [scope, semantics]
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.cluster;"
+            valid: true
+          - ptx: "fence.cluster.acq_rel;"
+            valid: true
+
+      - name: fence_mbarrier_init_release_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: op_restrict, kind: flag, presence: fixed, value: true, token: ".mbarrier_init"}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.mbarrier_init.release.cluster;"
+            valid: true
+
+      - name: fence_acquire_sync_restrict_shared_cluster
+        availability:
+          any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: sync_restrict_shared_cluster, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cluster}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.acquire.sync_restrict::shared::cluster.cluster;"
+            valid: true
+
+      - name: fence_release_sync_restrict_shared_cta
+        availability:
+          any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: sync_restrict_shared_cta, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cta}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.release.sync_restrict::shared::cta.cluster;"
+            valid: true
+
+      - name: fence_proxy_alias
+        availability: {ptx: "7.5", sm: 70}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: ".alias"}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.proxy.alias;"
             valid: true
 
       - name: fence_proxy_async
@@ -4010,12 +4339,16 @@ instructions:
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 state, [addr], txCount |
       mbarrier.arrive_drop.expect_tx{.{release|relaxed}.{cta|cluster}}.shared::cluster.b64 _, [addr], txCount |
       mbarrier.arrive_drop.noComplete{.release.cta}{.shared{::cta}}.b64 state, [addr], count |
-      mbarrier.test_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
-      mbarrier.test_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
-      mbarrier.test_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
-      mbarrier.try_wait.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
-      mbarrier.try_wait.parity.phase_type::primary{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
-      mbarrier.try_wait.parity.phase_type::conditional{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
+      mbarrier.test_wait{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], state |
+      mbarrier.test_wait.parity{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.test_wait.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state |
+      mbarrier.test_wait.parity.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity |
+      mbarrier.test_wait.parity.phase_type::conditional{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity |
+      mbarrier.try_wait{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], state{, timeHint} |
+      mbarrier.try_wait.parity{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
+      mbarrier.try_wait.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], state{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::primary{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete[|reportPredicate{, reportValue}], [addr], phaseParity{, timeHint} |
+      mbarrier.try_wait.parity.phase_type::conditional{.{acquire|relaxed}.{cta|cluster}}{.shared{::cta}}.b64 waitComplete, [addr], phaseParity{, timeHint} |
       mbarrier.pending_count{.layout::v0}.b64 count, state |
       mbarrier.check_layout.layout::{v0|v1}{.shared::cta}.b64 p, [addr]
 
@@ -4915,6 +5248,139 @@ instructions:
         modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
         operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_token
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 80}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_test_wait_token_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_token_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_token}, {name: report_predicate, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_token_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_test_wait_parity_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: default, operands: $mbarrier_test_wait_parity}, {name: report_predicate, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_value, operands: $mbarrier_wait_parity_report_predicate_value}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_test_wait_parity_conditional_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: test_wait, kind: flag, presence: fixed, value: true, token: .test_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 80}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 80}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operands: $mbarrier_test_wait_parity
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_try_wait_token_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_token}
+          - {name: with_hint, operands: $mbarrier_try_wait_token_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_token_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_token}
+          - {name: with_hint, operands: $mbarrier_try_wait_token_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_parity_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_parity}
+          - {name: with_hint, operands: $mbarrier_try_wait_parity_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "8.0", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts:
+          - {name: no_hint, operands: $mbarrier_test_wait_parity}
+          - {name: with_hint, operands: $mbarrier_try_wait_parity_hint}
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
+      - name: mbarrier_try_wait_token_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_token_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_token}, {name: with_hint, operands: $mbarrier_try_wait_token_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_token_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_token_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_token_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_token_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+      - name: mbarrier_try_wait_parity_primary_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_primary_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::primary}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}, {name: report_predicate_no_hint, operands: $mbarrier_wait_parity_report_predicate}, {name: report_predicate_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_hint}, {name: report_predicate_value_no_hint, operands: $mbarrier_wait_parity_report_predicate_value}, {name: report_predicate_value_with_hint, operands: $mbarrier_try_wait_parity_report_predicate_value_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_semantics_generic_or_shared
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, values: [shared], default: generic}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+      - name: mbarrier_try_wait_parity_conditional_semantics_shared_cta
+        section: "9.7.14.16.19"
+        availability: {ptx: "9.3", sm: 90}
+        modifiers: [{name: try_wait, kind: flag, presence: fixed, value: true, token: .try_wait}, {name: parity, kind: flag, presence: fixed, value: true, token: .parity}, {name: phase_type, kind: phase_type, domain: mbarrier_phase_types, presence: fixed, value: phase_type::conditional}, {name: semantics, kind: semantics, domain: memory_consistencies, presence: required, values: [{value: acquire, availability: {ptx: "8.0", sm: 90}}, {value: relaxed, availability: {ptx: "8.6", sm: 90}}]}, {name: scope, kind: scope, domain: memory_scopes, presence: required, values: [{value: cta, availability: {ptx: "8.0", sm: 90}}, {value: cluster, availability: {any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]}}]}, {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}, {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}]
+        operand_layouts: [{name: no_hint, operands: $mbarrier_test_wait_parity}, {name: with_hint, operands: $mbarrier_try_wait_parity_hint}]
+        constraints: [{kind: address_alignment, address_operand: address, alignment: 8}, {kind: immediate_range, operand: phase_parity, minimum: 0, maximum: 1}]
+
       - name: mbarrier_pending_count
         section: "9.7.14.16.20"
         availability: {ptx: "7.0", sm: 80}

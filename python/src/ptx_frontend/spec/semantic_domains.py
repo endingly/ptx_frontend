@@ -86,7 +86,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     SemanticDomain.MEMORY_CONSISTENCY: frozenset({
         "weak", "volatile", "relaxed", "acquire", "release", "acq_rel", "sc",
     }),
-    SemanticDomain.MEMORY_SCOPE: frozenset({"cta", "cluster", "gpu", "sys"}),
+    SemanticDomain.MEMORY_SCOPE: frozenset({"cta", "cluster", "gl", "gpu", "sys"}),
     SemanticDomain.VECTOR_ARITY: frozenset({"v2", "v4", "v8"}),
     # These source-level PTX spaces include forms the C++ mapper does not yet
     # represent, including register and texture spaces.

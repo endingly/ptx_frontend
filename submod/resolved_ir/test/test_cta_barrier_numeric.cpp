@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -501,6 +502,164 @@ TEST(CtaBarrierNumeric, DistinguishesBarAndBarrierArriveOpcodes) {
       standalone->functions.front().body[0]));
   EXPECT_TRUE(
       std::holds_alternative<Barrier>(standalone->functions.front().body[1]));
+}
+
+/** Retain six standalone reduction forms, their layouts, and source metadata. */
+TEST(CtaBarrierNumeric, ResolvesStandaloneReductionsAfterAstRelease) {
+  auto ast = parse_module(R"ptx(
+.version 7.8
+.target sm_80
+.address_size 64
+.entry k() {
+  .reg .u32 %r<3>;
+  .reg .pred %p<2>;
+  barrier.red.popc.u32 %r2, 0, %p1;
+  barrier.red.popc.aligned.u32 %r2, 15, 32, !%p1;
+  barrier.cta.red.popc.u32 %r2, %r0, %r1, %p1;
+  barrier.cta.red.popc.aligned.u32 %r2, 1, !%p1;
+  barrier.red.and.pred %p0, 0, %p1;
+  barrier.red.and.aligned.pred %p0, 15, 64, !%p1;
+  barrier.cta.red.and.pred %p0, %r0, %r1, %p1;
+  barrier.cta.red.and.aligned.pred %p0, 1, !%p1;
+  barrier.red.or.pred %p0, 0, %p1;
+  barrier.red.or.aligned.pred %p0, 15, 64, !%p1;
+  barrier.cta.red.or.pred %p0, %r0, %r1, %p1;
+  barrier.cta.red.or.aligned.pred %p0, 1, !%p1;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast.has_value());
+  auto resolved = test_support::resolveTypedModule<Barrier>(
+      *ast, test_support::ModulePipeline::AvailableContext);
+  ast.reset();
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  auto& function = resolved->functions.front();
+  ASSERT_EQ(function.body.size(), 13U);
+  const std::array<Barrier::VariantType, 12> expected{
+      Barrier::VariantType::RedPopcU32,    Barrier::VariantType::RedPopcU32,
+      Barrier::VariantType::CtaRedPopcU32, Barrier::VariantType::CtaRedPopcU32,
+      Barrier::VariantType::RedAndPred,    Barrier::VariantType::RedAndPred,
+      Barrier::VariantType::CtaRedAndPred, Barrier::VariantType::CtaRedAndPred,
+      Barrier::VariantType::RedOrPred,     Barrier::VariantType::RedOrPred,
+      Barrier::VariantType::CtaRedOrPred,  Barrier::VariantType::CtaRedOrPred,
+  };
+  for (std::size_t index = 0; index < expected.size(); ++index) {
+    const auto& barrier = std::get<Barrier>(function.body[index]);
+    EXPECT_EQ(barrier.variant.index(),
+              static_cast<std::size_t>(expected[index]))
+        << index;
+    const auto checked = checker::check(
+        barrier, checker::Context{
+                     .target = {.ptx_version = {7, 8}, .sm_version = 80},
+                     .instruction_range = function.instruction_ranges[index],
+                 });
+    EXPECT_TRUE(checked.has_value()) << index;
+    std::visit(
+        [index](const auto& reduction) {
+          if constexpr (requires { reduction.reduction; }) {
+            EXPECT_EQ(reduction.aligned.value, index % 2 == 1);
+            EXPECT_EQ(reduction.aligned.locs.empty(), index % 2 == 0);
+            EXPECT_EQ(reduction.operand_layout.value,
+                      index % 4 == 1 || index % 4 == 2 ? 1U : 0U);
+          }
+        },
+        barrier.variant);
+  }
+  const auto& and_reduction = std::get<Barrier::RedAndPred>(
+      std::get<Barrier>(function.body[5]).variant);
+  const auto& and_operands =
+      std::get<Barrier::RedAndPred::WithThreadCountOperands>(
+          and_reduction.operands);
+  EXPECT_EQ(and_operands.dst.value.register_ref.register_class,
+            ResolvedRegisterClass::Predicate);
+  EXPECT_FALSE(and_operands.dst.value.negated);
+  EXPECT_TRUE(and_operands.predicate.value.negated);
+  EXPECT_EQ(and_operands.predicate.value.register_ref.spelling, "%p1");
+  EXPECT_FALSE(and_operands.predicate.locs.empty());
+  EXPECT_EQ(std::get<ResolvedImmediate>(and_operands.barrier.value).bits, 15U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(and_operands.thread_count.value).bits,
+            64U);
+
+  auto& first = std::get<Barrier::RedPopcU32>(
+      std::get<Barrier>(function.body.front()).variant);
+  first.operand_layout = ResolvedOperandLayoutTag{99};
+  const auto corrupted = checker::check(
+      std::get<Barrier>(function.body.front()),
+      checker::Context{
+          .target = {.ptx_version = {7, 8}, .sm_version = 80},
+          .instruction_range = function.instruction_ranges.front(),
+      });
+  ASSERT_FALSE(corrupted.has_value());
+  EXPECT_EQ(corrupted.error().front().kind,
+            checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
+}
+
+/** Check introduction targets and reject malformed standalone reduction operands. */
+TEST(CtaBarrierNumeric, ChecksStandaloneReductionTargetsAndOperands) {
+  /** Resolve one reduction with directive-supplied target and typed registers. */
+  const auto resolve_one = [](std::string_view version, std::string_view target,
+                              std::string_view instruction) {
+    const std::string source = ".version " + std::string(version) +
+                               "\n.target " + std::string(target) +
+                               R"ptx(
+.address_size 64
+.entry k() {
+  .reg .u32 %r<3>;
+  .reg .u64 %rd;
+  .reg .pred %p<2>;
+  )ptx" + std::string(instruction) +
+                               R"ptx(
+  ret;
+}
+)ptx";
+    PtxSyntaxParser parser(source);
+    auto ast = parser.parseModule();
+    if (!ast)
+      return false;
+    return test_support::resolveTypedModule<Barrier>(
+               *ast, test_support::ModulePipeline::AvailableContext)
+        .has_value();
+  };
+
+  for (const std::string_view instruction : {
+           "barrier.red.popc.u32 %r0, 0, %p0;",
+           "barrier.red.and.aligned.pred %p0, 15, 32, !%p1;",
+           "barrier.red.or.pred %p0, %r0, %r1, %p1;",
+       }) {
+    EXPECT_TRUE(resolve_one("6.0", "sm_30", instruction)) << instruction;
+    EXPECT_FALSE(resolve_one("5.9", "sm_80", instruction)) << instruction;
+    EXPECT_FALSE(resolve_one("8.0", "sm_20", instruction)) << instruction;
+  }
+  for (const std::string_view instruction : {
+           "barrier.cta.red.popc.aligned.u32 %r0, 0, !%p0;",
+           "barrier.cta.red.and.pred %p0, 15, 32, %p1;",
+           "barrier.cta.red.or.aligned.pred %p0, %r0, %r1, !%p1;",
+       }) {
+    EXPECT_TRUE(resolve_one("7.8", "sm_30", instruction)) << instruction;
+    EXPECT_FALSE(resolve_one("7.7", "sm_80", instruction)) << instruction;
+    EXPECT_FALSE(resolve_one("8.0", "sm_20", instruction)) << instruction;
+  }
+  for (const std::string_view instruction : {
+           "barrier.red.popc.u32 %r0, 16, %p0;",
+           "barrier.cta.red.popc.u32 %r0, 0, 33, %p0;",
+           "barrier.red.and.pred %p0, 16, %p1;",
+           "barrier.cta.red.and.pred %p0, 0, 33, %p1;",
+           "barrier.red.or.pred %p0, 16, %p1;",
+           "barrier.cta.red.or.pred %p0, 0, 33, %p1;",
+           "barrier.red.popc.u32 %p0, 0, %p1;",
+           "barrier.red.and.pred %r0, 0, %p1;",
+           "barrier.red.or.pred %p0, 0, %r0;",
+           "barrier.red.and.pred !%p0, 0, %p1;",
+           "barrier.red.popc.u32 %r0, %rd, %p0;",
+           "barrier.red.or.pred %p0, 0, %rd, %p1;",
+           "barrier.red.popc.u32 %r0, 0;",
+           "barrier.red.and.pred %p0, 0, 32, 64, %p1;",
+           "barrier.red.or.aligned.aligned.pred %p0, 0, %p1;",
+           "barrier.red.popc.u32.aligned %r0, 0, %p0;",
+           "barrier.cluster.red.or.pred %p0, 0, %p1;",
+       }) {
+    EXPECT_FALSE(resolve_one("8.0", "sm_80", instruction)) << instruction;
+  }
 }
 
 TEST(CtaBarrierNumeric, RejectsMalformedDivisibilityDescriptorForRegister) {

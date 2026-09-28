@@ -190,8 +190,8 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
 
             self.assertEqual(actual, EXPECTED_SECTIONS[name])
 
-    def test_standalone_cta_arrive_uses_barrier_taxonomy(self) -> None:
-        """Keep standalone CTA arrival separate from legacy and cluster forms."""
+    def test_standalone_cta_forms_use_barrier_taxonomy(self) -> None:
+        """Keep standalone CTA forms separate from legacy and cluster forms."""
         spec = load_yaml(
             SPEC_DIR / "parallel_synchronization_and_communication.yaml"
         )
@@ -207,14 +207,235 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             set(variants),
             {"barrier_sync", "barrier_cta_sync", "barrier_arrive",
              "barrier_cta_arrive", "barrier_cluster_arrive",
-             "barrier_cluster_wait"},
+             "barrier_cluster_wait", "barrier_red_popc_u32",
+             "barrier_cta_red_popc_u32", "barrier_red_and_pred",
+             "barrier_cta_red_and_pred", "barrier_red_or_pred",
+             "barrier_cta_red_or_pred"},
         )
-        for name in ("barrier_arrive", "barrier_cta_arrive"):
+        for name in ("barrier_arrive", "barrier_cta_arrive",
+                     "barrier_red_popc_u32", "barrier_cta_red_popc_u32",
+                     "barrier_red_and_pred", "barrier_cta_red_and_pred",
+                     "barrier_red_or_pred", "barrier_cta_red_or_pred"):
             self.assertEqual(
                 variants[name].get("section", instructions["barrier"]["section"]),
                 "9.7.14.1",
             )
         self.assertEqual(instructions["bar"]["section"], "9.7.14.1")
+
+    def test_test_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:
+        """Require one explicit semantic/scope row per existing wait shape."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        mbarrier = next(item for item in spec["instructions"]
+                        if item["opcode"] == "mbarrier")
+        waits = {item["name"]: item for item in mbarrier["variants"]
+                 if item["name"].startswith("mbarrier_test_wait_")}
+        paired = {name: item for name, item in waits.items()
+                  if "_semantics_" in name}
+        self.assertEqual(len(waits), 20)
+        self.assertEqual(len(paired), 10)
+        for name, variant in paired.items():
+            base = name.replace("_semantics_", "_")
+            self.assertIn(base, waits)
+            self.assertEqual(variant["section"], "9.7.14.16.19")
+            modifiers = variant["modifiers"]
+            names = [modifier["name"] for modifier in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(modifiers[names.index("semantics")]["presence"],
+                             "required")
+            self.assertEqual(modifiers[names.index("scope")]["presence"],
+                             "required")
+            self.assertEqual(variant.get("operands"), waits[base].get("operands"))
+            self.assertEqual(variant.get("operand_layouts"),
+                             waits[base].get("operand_layouts"))
+            self.assertEqual(variant["constraints"], waits[base]["constraints"])
+
+    def test_ordinary_fence_rows_partition_semantics_and_scopes(self) -> None:
+        """Keep the legacy CTA variant and both qualifier orders unambiguous."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        fence = next(item for item in spec["instructions"]
+                     if item["opcode"] == "fence")
+        variants = {item["name"]: item for item in fence["variants"]}
+        expected = {
+            "fence_acq_rel_cta": ("fixed", ["acq_rel"], ["cta"]),
+            "fence_ordinary_cta":
+                ("optional", ["sc", "acquire", "release"], ["cta"]),
+            "fence_ordinary_gpu_sys":
+                ("optional", ["sc", "acq_rel", "acquire", "release"],
+                 ["gpu", "sys"]),
+            "fence_ordinary_cluster":
+                ("optional", ["sc", "acq_rel", "acquire", "release"],
+                 ["cluster"]),
+        }
+        for name, (presence, semantics, scopes) in expected.items():
+            variant = variants[name]
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifier_order_aliases"],
+                             [["scope", "semantics"]])
+            sem, scope = variant["modifiers"]
+            self.assertEqual(sem["presence"], presence)
+            if presence == "fixed":
+                self.assertEqual([sem["value"]], semantics)
+            else:
+                self.assertEqual(sem["default"], "omitted")
+                self.assertEqual([value if isinstance(value, str)
+                                  else value["value"]
+                                  for value in sem["values"]], semantics)
+                for value in sem["values"]:
+                    if isinstance(value, dict):
+                        self.assertEqual(value["availability"],
+                                         {"ptx": "8.6", "sm": 90})
+            self.assertEqual(
+                [scope["value"]] if scope["presence"] == "fixed"
+                else scope["values"], scopes,
+            )
+        self.assertEqual(variants["fence_ordinary_cluster"]["availability"],
+                         {"any_of": [{"ptx": "7.8", "sm": 90,
+                                      "capabilities": ["cluster"]}]})
+        backend = load_yaml(
+            SPEC_DIR.parent / "ptx_cpp_backend_spec/ptx_frontend.yaml"
+        )
+        self.assertEqual(
+            backend["domains"]["memory_consistencies"]["values"]["sc"],
+            "MemoryConsistency::Sc",
+        )
+        restricted = variants["fence_mbarrier_init_release_cluster"]
+        self.assertEqual(
+            restricted["availability"],
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(restricted["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"])
+             for modifier in restricted["modifiers"]],
+            [("op_restrict", "flag", "fixed", True),
+             ("semantics", "semantics", "fixed", "release"),
+             ("scope", "scope", "fixed", "cluster")],
+        )
+        self.assertEqual(restricted["modifiers"][0]["token"],
+                         ".mbarrier_init")
+        alias = variants["fence_proxy_alias"]
+        self.assertEqual(alias["availability"], {"ptx": "7.5", "sm": 70})
+        self.assertEqual(alias["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"], modifier["token"])
+             for modifier in alias["modifiers"]],
+            [("proxy", "flag", "fixed", True, ".proxy"),
+             ("alias", "flag", "fixed", True, ".alias")],
+        )
+        for name, semantics, flag, token in (
+            ("fence_acquire_sync_restrict_shared_cluster", "acquire",
+             "sync_restrict_shared_cluster", ".sync_restrict::shared::cluster"),
+            ("fence_release_sync_restrict_shared_cta", "release",
+             "sync_restrict_shared_cta", ".sync_restrict::shared::cta"),
+        ):
+            row = variants[name]
+            self.assertEqual(
+                row["availability"],
+                {"any_of": [{"ptx": "8.6", "sm": 90,
+                             "capabilities": ["cluster"]}]},
+            )
+            self.assertEqual(row["operands"], [])
+            self.assertEqual(
+                [(modifier["name"], modifier["kind"],
+                  modifier["presence"], modifier["value"])
+                 for modifier in row["modifiers"]],
+                [("semantics", "semantics", "fixed", semantics),
+                 (flag, "flag", "fixed", True),
+                 ("scope", "scope", "fixed", "cluster")],
+            )
+            self.assertEqual(row["modifiers"][1]["token"], token)
+
+    def test_membar_levels_are_distinct_and_target_qualified(self) -> None:
+        """Keep source `.gl` distinct from the backend GPU scope spelling."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        membar = next(item for item in spec["instructions"]
+                      if item["opcode"] == "membar")
+        variants = {item["name"]: item for item in membar["variants"]}
+        self.assertEqual(set(variants),
+                         {"membar_cta", "membar_gl", "membar_sys",
+                          "membar_proxy_alias", "membar_proxy_async",
+                          "membar_proxy_async_shared_cluster"})
+        for name, floor, value in (
+            ("membar_cta", {"ptx": "1.4", "sm": 0}, "cta"),
+            ("membar_gl", {"ptx": "1.4", "sm": 0}, "gl"),
+            ("membar_sys", {"ptx": "2.0", "sm": 20}, "sys"),
+        ):
+            variant = variants[name]
+            self.assertEqual(variant["availability"], floor)
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifiers"][0]["value"], value)
+            self.assertEqual(variant["modifiers"][0]["presence"], "fixed")
+        backend = load_yaml(
+            SPEC_DIR.parent / "ptx_cpp_backend_spec/ptx_frontend.yaml"
+        )
+        self.assertEqual(
+            backend["domains"]["memory_scopes"]["values"]["gl"],
+            "MemoryScope::Gpu",
+        )
+        alias = variants["membar_proxy_alias"]
+        self.assertEqual(alias["availability"], {"ptx": "7.5", "sm": 60})
+        self.assertEqual(alias["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"], modifier["token"])
+             for modifier in alias["modifiers"]],
+            [("proxy", "flag", "fixed", True, ".proxy"),
+             ("alias", "flag", "fixed", True, ".alias")],
+        )
+        for name, values, floor in (
+            ("membar_proxy_async",
+             ["async", "async.global", "async.shared::cta"],
+             {"ptx": "8.0", "sm": 90}),
+            ("membar_proxy_async_shared_cluster",
+             ["async.shared::cluster"],
+             {"any_of": [{"ptx": "8.0", "sm": 90,
+                          "capabilities": ["cluster"]}]}),
+        ):
+            variant = variants[name]
+            self.assertEqual(variant["availability"], floor)
+            self.assertEqual(variant["operands"], [])
+            self.assertEqual(variant["modifiers"][0]["token"], ".proxy")
+            self.assertEqual(variant["modifiers"][1]["kind"], "proxy")
+            self.assertEqual(variant["modifiers"][1]["domain"],
+                             "async_proxy_kinds")
+            self.assertEqual(variant["modifiers"][1]["values"], values)
+
+    def test_try_wait_qualifiers_are_paired_for_each_structural_form(self) -> None:
+        """Keep explicit qualifiers paired across all try-wait layouts."""
+        spec = load_yaml(
+            SPEC_DIR / "parallel_synchronization_and_communication.yaml"
+        )
+        mbarrier = next(item for item in spec["instructions"]
+                        if item["opcode"] == "mbarrier")
+        waits = {item["name"]: item for item in mbarrier["variants"]
+                 if item["name"].startswith("mbarrier_try_wait_")}
+        paired = {name: item for name, item in waits.items()
+                  if "_semantics_" in name}
+        self.assertEqual(len(waits), 20)
+        self.assertEqual(len(paired), 10)
+        for name, variant in paired.items():
+            base = name.replace("_semantics_", "_")
+            self.assertIn(base, waits)
+            self.assertEqual(variant["section"], "9.7.14.16.19")
+            modifiers = variant["modifiers"]
+            names = [modifier["name"] for modifier in modifiers]
+            self.assertEqual(names.index("scope"), names.index("semantics") + 1)
+            self.assertEqual(modifiers[names.index("semantics")]["presence"],
+                             "required")
+            self.assertEqual(modifiers[names.index("scope")]["presence"],
+                             "required")
+            self.assertEqual(variant["operand_layouts"],
+                             waits[base]["operand_layouts"])
+            self.assertEqual(variant["constraints"], waits[base]["constraints"])
 
 
 if __name__ == "__main__":

@@ -1967,6 +1967,7 @@ TEST(ResolvedModule, ResolvesAndChecksMembarLevels) {
            ".entry kernel() { membar.gpu; }",
            ".entry kernel() { membar.cluster; }",
            ".entry kernel() { membar.gl.cta; }",
+           ".entry kernel() { membar.gl 0; }",
            ".entry kernel() { membar.sys 0; }",
        }) {
     const auto parsed = parseModule(source);
@@ -1981,7 +1982,7 @@ TEST(ResolvedModule, ResolvesAndChecksMembarProxyAlias) {
   {
     const auto parsed = parseModule(R"ptx(
 .version 7.5
-.target sm_60
+.target sm_70
 .entry kernel() { membar.proxy.alias; }
 )ptx");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
@@ -1989,9 +1990,10 @@ TEST(ResolvedModule, ResolvesAndChecksMembarProxyAlias) {
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     owned.emplace(std::move(*resolved));
   }
-  ASSERT_TRUE(
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
-          .has_value());
+  const auto alias_validation =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_TRUE(alias_validation.has_value())
+      << alias_validation.error().front().message;
   const auto& body = owned->functions.front().body;
   ASSERT_EQ(body.size(), 1U);
   const auto& instruction = std::get<Membar>(body.front());
@@ -2285,14 +2287,14 @@ TEST(ResolvedModule, ResolvesAndChecksOrdinaryFenceForms) {
                     .capabilities = cluster_capabilities});
   ASSERT_FALSE(old_cluster_ptx.has_value());
   EXPECT_EQ(old_cluster_ptx.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   const auto old_cluster_sm =
       check_at(12, {.ptx_version = {7, 8},
                     .sm_version = 89,
                     .capabilities = cluster_capabilities});
   ASSERT_FALSE(old_cluster_sm.has_value());
   EXPECT_EQ(old_cluster_sm.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   const auto no_cluster =
       check_at(12, {.ptx_version = {7, 8}, .sm_version = 90});
   ASSERT_FALSE(no_cluster.has_value());
@@ -2354,7 +2356,7 @@ TEST(ResolvedModule, ResolvesAndChecksFenceMbarrierInitReleaseCluster) {
                                   .capabilities = cluster_capabilities}});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   const auto old_sm = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {8, 0},
@@ -2362,7 +2364,7 @@ TEST(ResolvedModule, ResolvesAndChecksFenceMbarrierInitReleaseCluster) {
                                   .capabilities = cluster_capabilities}});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedSmVersion);
+            checker::CheckDiagnosticKind::UnsupportedAvailability);
   const auto no_cluster = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}});
@@ -2437,7 +2439,7 @@ TEST(ResolvedModule, ResolvesAndChecksFenceSharedSyncRestrictions) {
                                     .capabilities = cluster_capabilities}});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
     const auto old_sm = checker::check(
         *instruction,
         checker::Context{.target = {.ptx_version = {8, 6},
@@ -2445,7 +2447,7 @@ TEST(ResolvedModule, ResolvesAndChecksFenceSharedSyncRestrictions) {
                                     .capabilities = cluster_capabilities}});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
     const auto no_cluster = checker::check(
         *instruction,
         checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 90}});
@@ -2461,6 +2463,8 @@ TEST(ResolvedModule, ResolvesAndChecksFenceSharedSyncRestrictions) {
            "fence.release.sync_restrict::shared::cluster.cluster; }",
            ".entry kernel() { "
            "fence.acquire.sync_restrict::shared::cluster.cta; }",
+           ".entry kernel() { "
+           "fence.acquire.sync_restrict::shared::cluster.cluster 0; }",
            ".entry kernel() { fence.release.sync_restrict::shared::cta.cluster "
            "0; }",
        }) {

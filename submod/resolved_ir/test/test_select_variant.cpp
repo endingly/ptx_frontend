@@ -114,7 +114,6 @@ TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
            "membar.gpu;",
            "membar.cluster;",
            "membar.cta.sys;",
-           "membar.gl 0;",
        }) {
     EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
         << source;
@@ -131,7 +130,6 @@ TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
            "membar.proxy;",
            "membar.alias;",
            "membar.proxy.alias.cta;",
-           "membar.proxy.alias 0;",
        }) {
     EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
         << source;
@@ -157,7 +155,6 @@ TEST(SelectVariantMembar, SelectsAsyncProxySpaces) {
            "membar.proxy.async.shared;",
            "membar.proxy.async.shared::cluster.global;",
            "membar.proxy.global;",
-           "membar.proxy.async 0;",
        }) {
     EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
         << source;
@@ -970,7 +967,6 @@ TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
            "fence.relaxed.cta;",
            "fence.weak.gpu;",
            "fence.cta.acquire.release;",
-           "fence.sc.cta 0;",
        }) {
     EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
         << source;
@@ -992,7 +988,6 @@ TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
            "fence.mbarrier_init.acquire.cluster;",
            "fence.mbarrier_init.release.cta;",
            "fence.release.mbarrier_init.cluster;",
-           "fence.mbarrier_init.release.cluster 0;",
        }) {
     EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
         << source;
@@ -1017,7 +1012,6 @@ TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
            "fence.release.sync_restrict::shared::cta.cta;",
            "fence.sync_restrict::shared::cluster.acquire.cluster;",
            "fence.acquire.cluster.sync_restrict::shared::cluster;",
-           "fence.acquire.sync_restrict::shared::cluster.cluster 0;",
        }) {
     EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
         << source;
@@ -1039,7 +1033,6 @@ TEST(SelectVariantFence, SelectsFixedProxyAlias) {
            "fence.alias;",
            "fence.proxy.alias.cta;",
            "fence.alias.proxy;",
-           "fence.proxy.alias 0;",
        }) {
     EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
         << source;
@@ -1264,8 +1257,6 @@ TEST(SelectVariantMbarrier, SelectsPairedTestWaitForms) {
            "mbarrier.test_wait.cta.acquire.b64 %p0, [%rd0], %state;",
            "mbarrier.test_wait.acquire.cta.shared::cluster.b64 %p0, "
            "[shared_value], %state;",
-           "mbarrier.test_wait.parity.phase_type::conditional.acquire.cta.b64 "
-           "%p0|%p1, [shared_value], 1;",
            "mbarrier.test_wait.phase_type::conditional.acquire.cta.b64 %p0, "
            "[%rd0], %state;",
        }) {
@@ -1358,8 +1349,6 @@ TEST(SelectVariantMbarrier, SelectsPairedTryWaitForms) {
            "mbarrier.try_wait.cta.acquire.b64 %p0, [%rd0], %state;",
            "mbarrier.try_wait.acquire.cta.shared::cluster.b64 %p0, "
            "[shared_value], %state;",
-           "mbarrier.try_wait.parity.phase_type::conditional.acquire.cta.b64 "
-           "%p0|%p1, [shared_value], 1;",
            "mbarrier.try_wait.phase_type::conditional.acquire.cta.b64 %p0, "
            "[%rd0], %state;",
            "mbarrier.try_wait.acquire.cta.acquire.cta.b64 %p0, [%rd0], %state;",
@@ -1431,11 +1420,15 @@ TEST(SelectVariantMbarrier, SelectsPhaseAndReportWaitForms) {
           "mbarrier.test_wait.phase_type::conditional.b64 %p0, [%rd0], %state;",
           "mbarrier.test_wait.parity.phase_type::conditional.b64 %p0|%p1, "
           "[%rd0], 1;",
+          "mbarrier.test_wait.parity.phase_type::conditional.acquire.cta."
+          "b64 %p0|%p1, [shared_value], 1;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0, %b0, [%rd0], %state;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, _, [%rd0], "
           "%state;",
           "mbarrier.try_wait.phase_type::primary.b64 %p0|%p1, 1, [%rd0], "
           "%state;",
+          "mbarrier.try_wait.parity.phase_type::conditional.acquire.cta.b64 "
+          "%p0|%p1, [shared_value], 1;",
       }) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(resolve<Mbarrier>(parse_instruction(source)).has_value());

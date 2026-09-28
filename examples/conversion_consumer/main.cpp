@@ -237,7 +237,7 @@ bool checkMembarLevelsContract() {
 bool checkMembarProxyAliasContract() {
   constexpr std::string_view source = R"ptx(
 .version 7.5
-.target sm_60
+.target sm_70
 .entry k() { membar.proxy.alias; ret; }
 )ptx";
   std::optional<ir::ResolvedModule> owned;

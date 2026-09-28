@@ -401,6 +401,43 @@ bool checkOrdinaryFenceContract() {
                  "public ordinary fence scope and semantics");
 }
 
+/** Check the installed restricted mbarrier-init fence after AST release. */
+bool checkMbarrierInitFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.0
+.target sm_90a
+.entry k() { fence.mbarrier_init.release.cluster; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "mbarrier-init fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "mbarrier-init fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned mbarrier-init fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "mbarrier-init fence retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* restricted =
+      instruction ? std::get_if<ir::Fence::MbarrierInitReleaseCluster>(
+                        &instruction->variant)
+                  : nullptr;
+  return require(restricted && restricted->op_restrict &&
+                     restricted->semantics == ir::MemoryConsistency::Release &&
+                     restricted->scope == ir::MemoryScope::Cluster,
+                 "public mbarrier-init fence variant and controls");
+}
+
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
 bool checkMbarrierTestWaitContract() {
   constexpr std::string_view source = R"ptx(
@@ -1049,6 +1086,8 @@ int main() {
     return 11;
   if (!checkOrdinaryFenceContract())
     return 12;
+  if (!checkMbarrierInitFenceContract())
+    return 13;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

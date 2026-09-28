@@ -19,3 +19,10 @@
 `fence.cta.acq_rel` 保留既有的 `Fence::AcqRelCta` variant。其他普通形式
 分别使用互不重叠的 CTA、GPU/SYS 和 cluster variant。所有形式均无操作数。
 Checker 对 owned IR 检查目标和 capability 限制；前端不执行 fence。
+
+独立的无操作数 variant `fence.mbarrier_init.release.cluster;` 要求 PTX 8.0、
+`sm_90` 和 `cluster` capability。按照 ISA 规定，它把 fence 的 release 效果
+限制在同一线程先前对 `.shared::cta` 内对象执行的 `mbarrier.init` 操作。
+Owned IR 以固定类型字段保存 `.mbarrier_init`、`.release` 与 `.cluster`
+控制。省略或重排这些限定符、改变语义或 scope、添加操作数都会被拒绝。
+普通的 `fence.release.cluster;` 仍是另一种 variant，其 PTX 下限为 8.6。

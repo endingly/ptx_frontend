@@ -4401,6 +4401,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "OrdinaryCta",
                 "OrdinaryGpuSys",
                 "OrdinaryCluster",
+                "MbarrierInitReleaseCluster",
                 "ProxyAsync",
                 "ProxyAsyncSharedCluster",
                 "ProxyTensormapGenericRelease",
@@ -4412,7 +4413,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
-         async_proxy, async_cluster, release, _, acquire, _,
+         mbarrier_init, async_proxy, async_cluster, release, _, acquire, _,
          acquire_sync, release_sync) = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
@@ -4437,6 +4438,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(ordinary_cluster.availability),
                          {"any_of": [{"ptx": "7.8", "sm": 90,
                                       "capabilities": ["cluster"]}]})
+        self.assertEqual(
+            dict(mbarrier_init.availability),
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in mbarrier_init.fields],
+            [("op_restrict", "bool", "true"),
+             ("semantics", "MemoryConsistency", "MemoryConsistency::Release"),
+             ("scope", "MemoryScope", "MemoryScope::Cluster")],
+        )
+        self.assertEqual(mbarrier_init.operand_layouts[0].bindings, ())
         self.assertEqual(
             BACKEND.domains["memory_consistencies"].values["sc"],
             "MemoryConsistency::Sc",

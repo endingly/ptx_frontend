@@ -977,6 +977,28 @@ TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
   }
 }
 
+/** Keep the restricted mbarrier-init fence separate from ordinary fences. */
+TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
+  const auto selected = selectVariant<Fence>(
+      parse_instruction("fence.mbarrier_init.release.cluster;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Fence::VariantType::MbarrierInitReleaseCluster);
+  const auto ordinary =
+      selectVariant<Fence>(parse_instruction("fence.release.cluster;"));
+  ASSERT_TRUE(ordinary.has_value()) << ordinary.error().message;
+  EXPECT_EQ(*ordinary, Fence::VariantType::OrdinaryCluster);
+  for (const std::string_view source : {
+           "fence.mbarrier_init.cluster;",
+           "fence.mbarrier_init.acquire.cluster;",
+           "fence.mbarrier_init.release.cta;",
+           "fence.release.mbarrier_init.cluster;",
+           "fence.mbarrier_init.release.cluster 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
                                  Fence::VariantType expected) {

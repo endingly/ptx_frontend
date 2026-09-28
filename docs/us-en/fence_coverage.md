@@ -22,3 +22,12 @@ Explicit `.sc` uses `MemoryConsistency::Sc`. Explicit `fence.acq_rel.cta` and
 ordinary forms use disjoint CTA, GPU/SYS, and cluster variants. No form has
 operands. The checker enforces the target and capability limits on owned IR;
 the frontend does not execute fences.
+
+The separate, operand-free `fence.mbarrier_init.release.cluster;` variant
+requires PTX 8.0, `sm_90`, and the `cluster` capability. It restricts the
+fence's release effect to prior `mbarrier.init` operations on objects in
+`.shared::cta` state space, as specified by the ISA. Its `.mbarrier_init`,
+`.release`, and `.cluster` controls are fixed typed fields in owned IR.
+Omitting or reordering them, changing the semantics or scope, or supplying an
+operand is rejected. The ordinary `fence.release.cluster;` form remains a
+different variant with a PTX 8.6 floor.

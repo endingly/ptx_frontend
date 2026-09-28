@@ -302,6 +302,23 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             backend["domains"]["memory_consistencies"]["values"]["sc"],
             "MemoryConsistency::Sc",
         )
+        restricted = variants["fence_mbarrier_init_release_cluster"]
+        self.assertEqual(
+            restricted["availability"],
+            {"any_of": [{"ptx": "8.0", "sm": 90,
+                         "capabilities": ["cluster"]}]},
+        )
+        self.assertEqual(restricted["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"])
+             for modifier in restricted["modifiers"]],
+            [("op_restrict", "flag", "fixed", True),
+             ("semantics", "semantics", "fixed", "release"),
+             ("scope", "scope", "fixed", "cluster")],
+        )
+        self.assertEqual(restricted["modifiers"][0]["token"],
+                         ".mbarrier_init")
 
     def test_membar_levels_are_distinct_and_target_qualified(self) -> None:
         """Keep source `.gl` distinct from the backend GPU scope spelling."""

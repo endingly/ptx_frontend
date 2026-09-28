@@ -1589,6 +1589,7 @@ instructions:
     syntax: >-
       fence{.sc|.acq_rel|.acquire|.release}.{cta|cluster|gpu|sys} |
       fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
+      fence.mbarrier_init.release.cluster |
       fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
       fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
@@ -1689,6 +1690,20 @@ instructions:
           - ptx: "fence.cluster;"
             valid: true
           - ptx: "fence.cluster.acq_rel;"
+            valid: true
+
+      - name: fence_mbarrier_init_release_cluster
+        availability:
+          any_of: [{ptx: "8.0", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: op_restrict, kind: flag, presence: fixed, value: true, token: ".mbarrier_init"}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.mbarrier_init.release.cluster;"
             valid: true
 
       - name: fence_proxy_async

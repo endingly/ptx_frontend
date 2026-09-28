@@ -1024,6 +1024,28 @@ TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
   }
 }
 
+/** Keep the alias proxy fence distinct from membar and newer proxy forms. */
+TEST(SelectVariantFence, SelectsFixedProxyAlias) {
+  const auto selected =
+      selectVariant<Fence>(parse_instruction("fence.proxy.alias;"));
+  ASSERT_TRUE(selected.has_value()) << selected.error().message;
+  EXPECT_EQ(*selected, Fence::VariantType::ProxyAlias);
+  const auto membar =
+      selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
+  ASSERT_TRUE(membar.has_value()) << membar.error().message;
+  EXPECT_EQ(*membar, Membar::VariantType::ProxyAlias);
+  for (const std::string_view source : {
+           "fence.proxy;",
+           "fence.alias;",
+           "fence.proxy.alias.cta;",
+           "fence.alias.proxy;",
+           "fence.proxy.alias 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
                                  Fence::VariantType expected) {
@@ -1063,7 +1085,6 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
       Fence::VariantType::ProxyAsyncGenericReleaseSyncRestrictSharedCta);
 
   for (const std::string_view source : {
-           "fence.proxy.alias;",
            "fence.proxy.generic::tensormap.release.gpu;",
            "fence.proxy.async::generic.acquire.cluster.sync_restrict::shared::"
            "cluster;",

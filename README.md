@@ -65,7 +65,7 @@ supported surface and its exclusions.
   alias-proxy, and async-proxy barrier forms and their target limits.
 - [Ordinary `fence` coverage](docs/us-en/fence_coverage.md) and its
   [简体中文版本](docs/zh-han/fence_coverage.md) describe ordinary semantics,
-  scope, the restricted mbarrier-init and shared-memory forms, and target limits.
+  scope, restricted forms, alias-proxy ordering, and target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

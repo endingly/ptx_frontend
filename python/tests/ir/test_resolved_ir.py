@@ -4404,6 +4404,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "MbarrierInitReleaseCluster",
                 "AcquireSyncRestrictSharedCluster",
                 "ReleaseSyncRestrictSharedCta",
+                "ProxyAlias",
                 "ProxyAsync",
                 "ProxyAsyncSharedCluster",
                 "ProxyTensormapGenericRelease",
@@ -4415,7 +4416,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
-         mbarrier_init, acquire_restrict, release_restrict, async_proxy,
+         mbarrier_init, acquire_restrict, release_restrict, proxy_alias, async_proxy,
          async_cluster, release, _, acquire, _, acquire_sync,
          release_sync) = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
@@ -4454,6 +4455,14 @@ class ResolvedIrBuildTest(unittest.TestCase):
              ("scope", "MemoryScope", "MemoryScope::Cluster")],
         )
         self.assertEqual(mbarrier_init.operand_layouts[0].bindings, ())
+        self.assertEqual(dict(proxy_alias.availability),
+                         {"ptx": "7.5", "sm": 70})
+        self.assertEqual(
+            [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+             for field in proxy_alias.fields],
+            [("proxy", "bool", "true"), ("alias", "bool", "true")],
+        )
+        self.assertEqual(proxy_alias.operand_layouts[0].bindings, ())
         for restricted, semantics, flag in (
             (acquire_restrict, "Acquire", "sync_restrict_shared_cluster"),
             (release_restrict, "Release", "sync_restrict_shared_cta"),

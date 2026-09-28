@@ -265,6 +265,40 @@ bool checkMembarProxyAliasContract() {
                  "public membar proxy-alias variant");
 }
 
+/** Check the installed alias proxy fence after the syntax AST is released. */
+bool checkFenceProxyAliasContract() {
+  constexpr std::string_view source = R"ptx(
+.version 7.5
+.target sm_70
+.entry k() { fence.proxy.alias; ret; }
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "fence proxy-alias fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "fence proxy-alias fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned fence proxy-alias module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "fence proxy-alias retained"))
+    return false;
+  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* alias =
+      instruction ? std::get_if<ir::Fence::ProxyAlias>(&instruction->variant)
+                  : nullptr;
+  return require(alias && alias->proxy && alias->alias,
+                 "public fence proxy-alias variant and controls");
+}
+
 /** Check installed async-proxy source spaces in an owned resolved module. */
 bool checkMembarProxyAsyncContract() {
   constexpr std::string_view source = R"ptx(
@@ -1142,6 +1176,8 @@ int main() {
     return 13;
   if (!checkSharedSyncRestrictedFenceContract())
     return 14;
+  if (!checkFenceProxyAliasContract())
+    return 15;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

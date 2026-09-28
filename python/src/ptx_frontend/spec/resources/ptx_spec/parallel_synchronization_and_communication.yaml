@@ -1591,6 +1591,7 @@ instructions:
       fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
       fence.mbarrier_init.release.cluster |
       fence.{acquire.sync_restrict::shared::cluster|release.sync_restrict::shared::cta}.cluster |
+      fence.proxy.alias |
       fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
       fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
@@ -1733,6 +1734,18 @@ instructions:
 
         examples:
           - ptx: "fence.release.sync_restrict::shared::cta.cluster;"
+            valid: true
+
+      - name: fence_proxy_alias
+        availability: {ptx: "7.5", sm: 70}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: ".proxy"}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: ".alias"}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.proxy.alias;"
             valid: true
 
       - name: fence_proxy_async

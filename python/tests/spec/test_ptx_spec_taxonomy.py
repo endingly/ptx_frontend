@@ -319,6 +319,16 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
         )
         self.assertEqual(restricted["modifiers"][0]["token"],
                          ".mbarrier_init")
+        alias = variants["fence_proxy_alias"]
+        self.assertEqual(alias["availability"], {"ptx": "7.5", "sm": 70})
+        self.assertEqual(alias["operands"], [])
+        self.assertEqual(
+            [(modifier["name"], modifier["kind"], modifier["presence"],
+              modifier["value"], modifier["token"])
+             for modifier in alias["modifiers"]],
+            [("proxy", "flag", "fixed", True, ".proxy"),
+             ("alias", "flag", "fixed", True, ".alias")],
+        )
         for name, semantics, flag, token in (
             ("fence_acquire_sync_restrict_shared_cluster", "acquire",
              "sync_restrict_shared_cluster", ".sync_restrict::shared::cluster"),

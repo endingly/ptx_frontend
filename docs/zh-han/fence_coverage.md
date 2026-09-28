@@ -35,3 +35,9 @@ capability：`fence.acquire.sync_restrict::shared::cluster.cluster;` 和
 类型化语义、限制符和 cluster scope。交换语义或受限 state space、修改
 scope、重排限定符或添加操作数都会被拒绝。这些 variant 与既有的
 `fence.proxy.async::generic.*.sync_restrict` 形式分别建模。
+
+无操作数的 `fence.proxy.alias;` 是独立的固定 variant，从 PTX 7.5 和
+`sm_70` 开始支持。它在 generic proxy 与虚拟别名 proxy 之间提供双向顺序
+保证。Owned IR 保留固定的 `.proxy` 与 `.alias` 控制；添加 scope 或操作数、
+调换限定符顺序都会被拒绝。它与目标下限为 `sm_60` 的
+`membar.proxy.alias;` 以及 async、tensormap proxy fence variant 分别建模。

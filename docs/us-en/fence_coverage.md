@@ -41,3 +41,10 @@ and cluster scope in owned IR. Swapping the semantics or restricted state space,
 changing the scope, reordering qualifiers, or adding an operand is rejected.
 These variants are distinct from the existing
 `fence.proxy.async::generic.*.sync_restrict` forms.
+
+The operand-free `fence.proxy.alias;` form is a separate fixed variant available
+from PTX 7.5 on `sm_70` and later. It orders accesses through the generic and
+virtual-alias proxies in both directions. Owned IR retains fixed `.proxy` and
+`.alias` controls; an added scope, operand, or reordered modifier is rejected.
+It is distinct from `membar.proxy.alias;`, whose target floor is `sm_60`, and
+from the async and tensormap proxy fence variants.

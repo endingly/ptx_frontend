@@ -665,6 +665,23 @@ operand_patterns:
       access: read
       state_space: [shared]
 
+  bulk_copy_mbarrier:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+
+  bulk_copy_shared_mbarrier:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+    - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+
+  bulk_copy_group:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+    - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+
   isspacep_generic_address:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     # PTX deliberately omits a size suffix: the generic address source is
@@ -4212,6 +4229,72 @@ instructions:
         operands: $cp_async_mbarrier_arrive_address
         rule: data_movement.cp_async_mbarrier_arrive
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+  - opcode: cp
+    section: "9.7.9.26.4.1"
+    doc: "Non-tensor asynchronous bulk copies with direction-specific completion."
+    syntax: "cp.async.bulk.dst.src.completion [dst], [src], size, [mbar]"
+    variants:
+      - name: cp_async_bulk_global_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands: $bulk_copy_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+        examples:
+          - {ptx: "cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [src], 16, [mbar];", valid: true}
+
+      - name: cp_async_bulk_global_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands: $bulk_copy_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands: $bulk_copy_shared_mbarrier
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: cp_async_bulk_shared_cta_global
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands: $bulk_copy_group
+        constraints:
+          - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
 
   - opcode: st
     section: "9.7.9.11"

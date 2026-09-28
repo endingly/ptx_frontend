@@ -3976,7 +3976,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Cp")
         self.assertEqual(
-            [candidate.cpp_name for candidate in resolved.variants],
+            [candidate.cpp_name for candidate in resolved.variants[:8]],
             ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
              "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
              "AsyncMbarrierArriveNoincGenericOrShared",
@@ -3990,7 +3990,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         ))
         self.assertTrue(all(
             candidate.completion_kind is AsyncCompletionKind.NONE
-            for candidate in resolved.variants[4:]
+            for candidate in resolved.variants[4:8]
         ))
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(

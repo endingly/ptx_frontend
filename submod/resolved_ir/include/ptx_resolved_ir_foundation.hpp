@@ -786,4 +786,7 @@ using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
                  ResolvedSpecialRegisterRef, ResolvedFunctionRef,
                  ResolvedSymbolRef, ResolvedAddress>;
+/** Source-controlled non-bulk copy: byte count or source-ignore predicate. */
+using ResolvedCpAsyncSourceControl =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedPredicate>;
 }  // namespace ptx_frontend::resolved_ir

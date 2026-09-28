@@ -1938,6 +1938,37 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::CpAsyncSourceControl: {
+      const auto range = syntax_ast::sourceRange(operand);
+      if (const auto* immediate =
+              std::get_if<syntax_ast::AstImmediate>(&operand)) {
+        auto value = resolve_immediate_value(*immediate, ScalarType::U32, true);
+        if (!value)
+          return std::unexpected(value.error());
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{std::move(*value)}, range}};
+      }
+      if (std::holds_alternative<syntax_ast::AstPredicateOperand>(operand)) {
+        auto value = resolve_predicate(operand, context);
+        if (!value)
+          return std::unexpected(value.error());
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
+      }
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      if (value->value.register_class == ResolvedRegisterClass::Predicate ||
+          value->value.declared_type == ScalarType::Pred) {
+        auto predicate = resolve_predicate(operand, context);
+        if (!predicate)
+          return std::unexpected(predicate.error());
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{std::move(predicate->value)}, range}};
+      }
+      return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+          ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
+    }
     case ResolvedValueKind::ShflDestination: {
       auto value =
           resolve_shfl_destination(operand, binding.allow_destination_sink,

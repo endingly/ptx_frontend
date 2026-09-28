@@ -796,7 +796,7 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
     }
   }
 
-  std::optional<std::string_view> selected;
+  std::vector<const check_end::SyntaxVariantDescriptor*> modifier_matches;
   const syntax_ast::AstModifier* duplicate = nullptr;
   std::string_view duplicate_slot;
   for (const auto& variant : instruction.variants) {
@@ -809,19 +809,43 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
       continue;
     }
 
-    if (selected) {
-      return std::unexpected(ResolveDiagnostic{
-          .range = ast.range,
-          .message = fmt::format(
-              "Ambiguous modifier combination for instruction '{}'.",
-              ast.opcode.syntax.text),
-      });
-    }
-    selected = variant.variant_name;
+    modifier_matches.push_back(&variant);
   }
 
-  if (selected)
-    return *selected;
+  if (modifier_matches.size() == 1)
+    return modifier_matches.front()->variant_name;
+  if (modifier_matches.size() > 1) {
+    // Distinct public variants may share modifiers while separating an
+    // existing operand arity from an extended form.  Only use arity when the
+    // modifier match itself is ambiguous; ordinary operand diagnostics remain
+    // with the selected variant's layout checker.
+    std::optional<std::string_view> selected;
+    for (const auto* variant : modifier_matches) {
+      const bool matches_arity = std::ranges::any_of(
+          variant->operand_layouts, [&](const auto& layout) {
+            return layout.slots.size() == ast.operands.size();
+          });
+      if (!matches_arity)
+        continue;
+      if (selected) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = ast.range,
+            .message = fmt::format(
+                "Ambiguous modifier and operand-count combination for instruction '{}'.",
+                ast.opcode.syntax.text),
+        });
+      }
+      selected = variant->variant_name;
+    }
+    if (selected)
+      return *selected;
+    return std::unexpected(ResolveDiagnostic{
+        .range = ast.range,
+        .message = fmt::format(
+            "No operand-count variant of instruction '{}' accepts {} operands.",
+            ast.opcode.syntax.text, ast.operands.size()),
+    });
+  }
   if (duplicate != nullptr) {
     return std::unexpected(ResolveDiagnostic{
         .range = duplicate->syntax.range,

@@ -2367,4 +2367,47 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
   }});
 }
 
+CheckResult check_cp_async_rule(std::span<const OperandView> operands,
+                                const Context& context) {
+  const OperandView* size = find_operand(operands, "cp_size");
+  if (size == nullptr || size->actual_shape != OperandShape::Immediate ||
+      size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "cp.async requires a typed immediate copy size.",
+    }});
+  }
+  const OperandView* control = find_operand(operands, "source_control");
+  if (control == nullptr)
+    return {};
+  if (control->actual_shape == OperandShape::Immediate) {
+    if (control->immediate_type != ScalarType::U32 ||
+        !control->immediate_bits || control->immediate_is_negative) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be a 32-bit unsigned integer.",
+      }});
+    }
+    if (*control->immediate_bits >= *size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be smaller than copy size.",
+      }});
+    }
+    return {};
+  }
+  if (control->actual_shape == OperandShape::Register &&
+      (!control->register_type ||
+       *control->register_type == ScalarType::U32))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(control->locations, context),
+      .message = "cp.async source size must be a 32-bit unsigned register or immediate.",
+  }});
+}
+
 }  // namespace ptx_frontend::resolved_ir::checker

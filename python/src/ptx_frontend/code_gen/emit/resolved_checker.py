@@ -431,6 +431,14 @@ def _emit_cross_rule_checks(
                                  createpolicy_rule_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_CP_ASYNC:
+        checks += """            const auto cp_async_rule_check = check_cp_async_rule(
+                operands, context);
+            if (!cp_async_rule_check) {
+              diagnostics.insert(diagnostics.end(), cp_async_rule_check.error().begin(),
+                                 cp_async_rule_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

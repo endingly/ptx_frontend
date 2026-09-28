@@ -439,6 +439,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePairOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicateOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMovSource> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedCpAsyncSourceControl> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicateSource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedBranchTarget> ||
@@ -500,6 +501,11 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, RegOrImm>) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedCpAsyncSourceControl>) {
+    if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
+      collect_register(*register_ref);
+    if (const auto* predicate = std::get_if<ResolvedPredicate>(&value))
+      collect_register(predicate->register_ref, true);
   } else if constexpr (std::same_as<Value, ResolvedPredicatePair>) {
     collect_register(value.first.register_ref, true);
     collect_register(value.second.register_ref, true);

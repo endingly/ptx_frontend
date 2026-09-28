@@ -569,6 +569,35 @@ def emit_check_operand_view(
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
+    if field.value_kind is ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL:
+        return f"""              [&]() -> OperandView {{
+                const auto& control = {object_name}.{field.name}.value;
+                if (const auto* immediate = std::get_if<ResolvedImmediate>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                      .immediate_type = immediate->type,
+                      .immediate_bits = immediate->bits,
+                      .immediate_is_negative = immediate->is_negative,
+                      .locations = {object_name}.{field.name}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
+                  }};
+                if (const auto* predicate = std::get_if<ResolvedPredicate>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
+                      .register_type = predicate->register_ref.declared_type,
+                      .destination_predicate_negated = predicate->negated,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                const auto& register_ref = std::get<ResolvedRegisterRef>(control);
+                return OperandView{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                    .register_type = register_ref.declared_type,
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
     if field.value_kind is ResolvedValueKind.MOV_SOURCE:
         return f"""              [&]() -> OperandView {{
                 const auto state_space_from_symbol =

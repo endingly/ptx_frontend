@@ -108,6 +108,8 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView>,
 /** Check typed fractional bounds and statically known createpolicy range sizes. */
 CheckResult check_createpolicy_rule(std::span<const OperandView>,
                                     const Context&);
+/** Check typed non-bulk copy source control and statically known zero-fill size. */
+CheckResult check_cp_async_rule(std::span<const OperandView>, const Context&);
 /** Check generated ld/st memory-order and address-space cross constraints. */
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor&,

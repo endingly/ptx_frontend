@@ -1404,6 +1404,42 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncSharedCtaCopies) {
   cp.async.ca.shared::cta.global [shared_value], [global_value], 4;
   cp.async.cg.shared::cta.global [shared_value], [global_value], 16;
 }
+
+TEST(ResolvedModule, ResolvesAndChecksCpAsyncSourceSize) {
+  const auto parsed = parseModule(R"ptx(
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  .reg .u32 %bytes;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, 0;
+  cp.async.cg.shared.global [shared_value], [global_value], 16, %bytes;
+  cp.async.ca.shared::cta.global [shared_value], [global_value], 8, 7;
+  cp.async.cg.shared::cta.global [shared_value], [global_value], 16, 16;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+  const auto& first = std::get<Cp::AsyncCaSharedGlobalControl>(
+      std::get<Cp>(body[0]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
+      first.source_control.value));
+  const auto& second = std::get<Cp::AsyncCgSharedGlobalControl>(
+      std::get<Cp>(body[1]).variant);
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      second.source_control.value));
+  const checker::Context supported{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+  };
+  for (size_t index = 0; index < 3; ++index)
+    EXPECT_TRUE(checker::check(std::get<Cp>(body[index]), supported).has_value());
+  const auto equal_size = checker::check(std::get<Cp>(body[3]), supported);
+  ASSERT_FALSE(equal_size.has_value());
+  EXPECT_EQ(equal_size.error().front().kind,
+            checker::CheckDiagnosticKind::ImmediateValueMismatch);
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);

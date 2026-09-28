@@ -35,6 +35,10 @@ OPERAND_SYNTAX_SHAPES = {
         | OperandSyntaxShape.ADDRESS
         | OperandSyntaxShape.VECTOR_MEMBER
     ),
+    OperandKind.CP_ASYNC_SOURCE_CONTROL: (
+        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
+        | OperandSyntaxShape.PREDICATE
+    ),
     OperandKind.CLUSTER_ADDRESS: (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS),
     OperandKind.VECTOR_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.VECTOR_SPECIAL_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,

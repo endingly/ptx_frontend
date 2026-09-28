@@ -16,6 +16,7 @@ REFERENCE_VALUE_KINDS = frozenset({
     ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
     ResolvedValueKind.PREDICATE_OR_SINK,
     ResolvedValueKind.MOV_SOURCE,
+    ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL,
     ResolvedValueKind.PREDICATE,
     ResolvedValueKind.PREDICATE_SOURCE,
     ResolvedValueKind.BRANCH_TARGET,

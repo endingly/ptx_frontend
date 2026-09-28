@@ -34,6 +34,7 @@ using ResolvedFieldValue = std::variant<
     WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
     WithLocs<ResolvedPredicatePair>, WithLocs<ResolvedPredicatePairOrSink>,
     WithLocs<ResolvedPredicateOrSink>, WithLocs<ResolvedMovSource>,
+    WithLocs<ResolvedCpAsyncSourceControl>,
     WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
     WithLocs<ResolvedBranchTargetSet>, WithLocs<ResolvedSpecialRegisterRef>,
     WithLocs<ResolvedPredicateSource>, WithLocs<ResolvedVectorRegisterRef>,

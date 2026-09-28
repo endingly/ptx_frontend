@@ -1,5 +1,86 @@
 # Resolved IR compilation granularity benchmark
 
+## Rebased comparison against the current PR base
+
+On 2026-09-28, the same host compared `main@ad5f99f` with #204 at `6b982ee`.
+The later removal of a Python-only fixed opcode-count assertion does not affect
+these C++ build inputs. Each tree used a fresh build directory, GCC 15.2.0, the
+`ci-linux-gcc-debug` preset, four Ninja jobs, `CCACHE_DISABLE=1`, and the same
+preinstalled vcpkg dependencies. Generation, production compilation, and the
+`test_resolved_ir` target were timed as sequential commands; configure and
+CTest runtime were excluded. The trees were built one after the other to avoid
+competition from these benchmark builds.
+
+| Tree | Generation | Production | Test target | Total |
+| --- | ---: | ---: | ---: | ---: |
+| `main@ad5f99f` | 40.080 s | 146.472 s | 436.484 s | 623.036 s |
+| #204 at `6b982ee` | 46.492 s | 145.403 s | 537.206 s | 729.101 s |
+
+In this run the candidate's test build was 23.1% slower and the three measured
+phases together were 17.0% slower. The production-library phase was 1.069 s
+faster, while generation took 6.412 s longer. The candidate compiled 138
+Resolved IR test translation units versus 76 on the base. These are one-run
+local wall times, not a CI timing gate; they do not support the earlier claim
+of a clean-build speedup on the current base.
+
+To check whether the test-build direction repeated, both warm production builds
+were left intact and only their `test_resolved_ir.dir/test/*.cpp.o` files were
+removed. A second `test_resolved_ir -j4` build compiled only test objects and
+linked the executable. Ninja's recorded completion times were 426.777 s for
+the base's 76 test objects and 474.311 s for the candidate's 138 test objects.
+The candidate was 11.1% slower in this repeat. The two observations agree on
+the direction, but not the precise size, of the local test-build regression.
+
+For an atom-local invalidation probe, both warm builds temporarily renamed the
+`atom_global_add_u32` variant in the parallel-synchronization spec. The probe
+built `ptx_frontend_resolved_ir`, compared generated source bytes before and
+after, recorded actual C++ object compiles, then restored the spec and rebuilt
+the library. Both probe and restoration builds succeeded.
+
+| Tree | Probe production build | C++ objects rebuilt | Changed implementation source | Unchanged implementation sources |
+| --- | ---: | ---: | --- | --- |
+| `main@ad5f99f` | 178.215 s | 9 | whole parallel-synchronization category | — |
+| #204 at `6b982ee` | 161.221 s | 9 | `atom` shard | `mbarrier`, `red`, `residual` shards |
+
+Only the candidate's atom implementation shard recompiled: the other three
+shard sources remained byte-identical and their objects did not recompile.
+The variant rename also changed shared generated declarations and descriptors,
+so unrelated non-shard objects rebuilt in both trees. The probe demonstrates
+shard-local implementation invalidation, while its 9.5% shorter wall time is
+one local observation rather than a guaranteed speedup.
+
+To reproduce the clean measurements, configure separate worktrees at the two
+revisions with the same preset, compiler, four-job limit, disabled ccache, and
+preinstalled vcpkg tree. Time these targets in order in each fresh build:
+
+```sh
+PYTHONPATH="$SOURCE_ROOT/python/src" cmake --preset ci-linux-gcc-debug \
+  -S "$SOURCE_ROOT" -B "$BUILD_DIR" -DVCPKG_MANIFEST_MODE=OFF \
+  -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR"
+CCACHE_DISABLE=1 PYTHONPATH="$SOURCE_ROOT/python/src" \
+  cmake --build "$BUILD_DIR" --target resolved_ir_codegen -j4
+CCACHE_DISABLE=1 PYTHONPATH="$SOURCE_ROOT/python/src" \
+  cmake --build "$BUILD_DIR" --target ptx_frontend_resolved_ir -j4
+CCACHE_DISABLE=1 PYTHONPATH="$SOURCE_ROOT/python/src" \
+  cmake --build "$BUILD_DIR" --target test_resolved_ir -j4
+```
+
+Then run the atom probe separately in each warm build. The script is taken from
+the candidate worktree, but generation uses the selected tree's Python package:
+
+```sh
+CCACHE_DISABLE=1 PYTHONPATH="$SOURCE_ROOT/python/src" \
+  python "$CANDIDATE_ROOT/tools/benchmark_issue203_atom_invalidation.py" \
+  --source-root "$SOURCE_ROOT" --build-dir "$BUILD_DIR" \
+  --output /tmp/issue203-atom-probe.json --jobs 4
+```
+
+## Historical pre-rebase comparison
+
+The measurements below compare the original `8e9eebf` tree with intermediate
+and final candidates before #202 was merged. They remain useful for that
+earlier tree, but are not a before/after comparison for the current PR base.
+
 This benchmark compares the original tree with generated source/header sharding
 and narrower Resolved IR test translation units. Each clean build used a fresh
 build directory, GCC 15.2.0, the `ci-linux-gcc-debug` preset, four Ninja jobs,

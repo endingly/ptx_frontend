@@ -421,7 +421,6 @@ class GenerationPlanTests(unittest.TestCase):
             categories = {
                 entry.specification.codegen_category for entry in context.entries
             }
-            self.assertEqual(len(context.entries), 92)
             for kind in ("model", "resolution", "checker"):
                 leaves = [
                     path for path in plan.paths

@@ -95,6 +95,11 @@ jobs:
           date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
+      - name: Limit main Debug build parallelism
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.preset == 'ci-linux-gcc-debug'
+        shell: bash
+        run: echo "CMAKE_BUILD_PARALLEL_LEVEL=4" >> "$GITHUB_ENV"
+
       - name: Build production target
         id: production-build
         shell: bash

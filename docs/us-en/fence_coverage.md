@@ -31,3 +31,13 @@ fence's release effect to prior `mbarrier.init` operations on objects in
 Omitting or reordering them, changing the semantics or scope, or supplying an
 operand is rejected. The ordinary `fence.release.cluster;` form remains a
 different variant with a PTX 8.6 floor.
+
+Two further operand-free, non-proxy forms require PTX 8.6, `sm_90`, and the
+`cluster` capability: `fence.acquire.sync_restrict::shared::cluster.cluster;`
+and `fence.release.sync_restrict::shared::cta.cluster;`. The acquire form
+restricts ordering to operations on objects in `.shared::cluster`; the release
+form restricts it to `.shared::cta`. Each has fixed typed semantics, restriction,
+and cluster scope in owned IR. Swapping the semantics or restricted state space,
+changing the scope, reordering qualifiers, or adding an operand is rejected.
+These variants are distinct from the existing
+`fence.proxy.async::generic.*.sync_restrict` forms.

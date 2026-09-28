@@ -26,3 +26,12 @@ Checker 对 owned IR 检查目标和 capability 限制；前端不执行 fence�
 Owned IR 以固定类型字段保存 `.mbarrier_init`、`.release` 与 `.cluster`
 控制。省略或重排这些限定符、改变语义或 scope、添加操作数都会被拒绝。
 普通的 `fence.release.cluster;` 仍是另一种 variant，其 PTX 下限为 8.6。
+
+另有两种无操作数、非 proxy 的形式要求 PTX 8.6、`sm_90` 与 `cluster`
+capability：`fence.acquire.sync_restrict::shared::cluster.cluster;` 和
+`fence.release.sync_restrict::shared::cta.cluster;`。acquire 形式只对
+`.shared::cluster` 中对象的操作提供顺序保证；release 形式只对
+`.shared::cta` 中对象的操作提供顺序保证。Owned IR 为每种形式保存固定的
+类型化语义、限制符和 cluster scope。交换语义或受限 state space、修改
+scope、重排限定符或添加操作数都会被拒绝。这些 variant 与既有的
+`fence.proxy.async::generic.*.sync_restrict` 形式分别建模。

@@ -319,6 +319,28 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
         )
         self.assertEqual(restricted["modifiers"][0]["token"],
                          ".mbarrier_init")
+        for name, semantics, flag, token in (
+            ("fence_acquire_sync_restrict_shared_cluster", "acquire",
+             "sync_restrict_shared_cluster", ".sync_restrict::shared::cluster"),
+            ("fence_release_sync_restrict_shared_cta", "release",
+             "sync_restrict_shared_cta", ".sync_restrict::shared::cta"),
+        ):
+            row = variants[name]
+            self.assertEqual(
+                row["availability"],
+                {"any_of": [{"ptx": "8.6", "sm": 90,
+                             "capabilities": ["cluster"]}]},
+            )
+            self.assertEqual(row["operands"], [])
+            self.assertEqual(
+                [(modifier["name"], modifier["kind"],
+                  modifier["presence"], modifier["value"])
+                 for modifier in row["modifiers"]],
+                [("semantics", "semantics", "fixed", semantics),
+                 (flag, "flag", "fixed", True),
+                 ("scope", "scope", "fixed", "cluster")],
+            )
+            self.assertEqual(row["modifiers"][1]["token"], token)
 
     def test_membar_levels_are_distinct_and_target_qualified(self) -> None:
         """Keep source `.gl` distinct from the backend GPU scope spelling."""

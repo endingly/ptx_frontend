@@ -999,6 +999,31 @@ TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
   }
 }
 
+/** Keep restricted shared-memory fences distinct from proxy fences. */
+TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
+  for (const auto& [source, expected] :
+       {std::pair{"fence.acquire.sync_restrict::shared::cluster.cluster;",
+                  Fence::VariantType::AcquireSyncRestrictSharedCluster},
+        std::pair{"fence.release.sync_restrict::shared::cta.cluster;",
+                  Fence::VariantType::ReleaseSyncRestrictSharedCta}}) {
+    const auto selected = selectVariant<Fence>(parse_instruction(source));
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+  }
+  for (const std::string_view source : {
+           "fence.acquire.sync_restrict::shared::cta.cluster;",
+           "fence.release.sync_restrict::shared::cluster.cluster;",
+           "fence.acquire.sync_restrict::shared::cluster.cta;",
+           "fence.release.sync_restrict::shared::cta.cta;",
+           "fence.sync_restrict::shared::cluster.acquire.cluster;",
+           "fence.acquire.cluster.sync_restrict::shared::cluster;",
+           "fence.acquire.sync_restrict::shared::cluster.cluster 0;",
+       }) {
+    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+        << source;
+  }
+}
+
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
                                  Fence::VariantType expected) {

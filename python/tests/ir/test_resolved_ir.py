@@ -4402,6 +4402,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "OrdinaryGpuSys",
                 "OrdinaryCluster",
                 "MbarrierInitReleaseCluster",
+                "AcquireSyncRestrictSharedCluster",
+                "ReleaseSyncRestrictSharedCta",
                 "ProxyAsync",
                 "ProxyAsyncSharedCluster",
                 "ProxyTensormapGenericRelease",
@@ -4413,8 +4415,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
         (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
-         mbarrier_init, async_proxy, async_cluster, release, _, acquire, _,
-         acquire_sync, release_sync) = resolved.variants
+         mbarrier_init, acquire_restrict, release_restrict, async_proxy,
+         async_cluster, release, _, acquire, _, acquire_sync,
+         release_sync) = resolved.variants
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
@@ -4451,6 +4454,24 @@ class ResolvedIrBuildTest(unittest.TestCase):
              ("scope", "MemoryScope", "MemoryScope::Cluster")],
         )
         self.assertEqual(mbarrier_init.operand_layouts[0].bindings, ())
+        for restricted, semantics, flag in (
+            (acquire_restrict, "Acquire", "sync_restrict_shared_cluster"),
+            (release_restrict, "Release", "sync_restrict_shared_cta"),
+        ):
+            self.assertEqual(
+                dict(restricted.availability),
+                {"any_of": [{"ptx": "8.6", "sm": 90,
+                             "capabilities": ["cluster"]}]},
+            )
+            self.assertEqual(
+                [(field.name, field_cpp_type(field), field_cpp_constant_expr(field))
+                 for field in restricted.fields],
+                [("semantics", "MemoryConsistency",
+                  f"MemoryConsistency::{semantics}"),
+                 (flag, "bool", "true"),
+                 ("scope", "MemoryScope", "MemoryScope::Cluster")],
+            )
+            self.assertEqual(restricted.operand_layouts[0].bindings, ())
         self.assertEqual(
             BACKEND.domains["memory_consistencies"].values["sc"],
             "MemoryConsistency::Sc",

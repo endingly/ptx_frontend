@@ -1590,6 +1590,7 @@ instructions:
       fence{.sc|.acq_rel|.acquire|.release}.{cta|cluster|gpu|sys} |
       fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
       fence.mbarrier_init.release.cluster |
+      fence.{acquire.sync_restrict::shared::cluster|release.sync_restrict::shared::cta}.cluster |
       fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
       fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
@@ -1704,6 +1705,34 @@ instructions:
 
         examples:
           - ptx: "fence.mbarrier_init.release.cluster;"
+            valid: true
+
+      - name: fence_acquire_sync_restrict_shared_cluster
+        availability:
+          any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: sync_restrict_shared_cluster, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cluster}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.acquire.sync_restrict::shared::cluster.cluster;"
+            valid: true
+
+      - name: fence_release_sync_restrict_shared_cta
+        availability:
+          any_of: [{ptx: "8.6", sm: 90, capabilities: [cluster]}]
+        modifiers:
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: sync_restrict_shared_cta, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cta}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+        rule: parallel_sync_and_communication.fence
+
+        examples:
+          - ptx: "fence.release.sync_restrict::shared::cta.cluster;"
             valid: true
 
       - name: fence_proxy_async

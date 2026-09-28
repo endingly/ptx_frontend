@@ -2382,6 +2382,94 @@ TEST(ResolvedModule, ResolvesAndChecksFenceMbarrierInitReleaseCluster) {
   }
 }
 
+/** Verify fixed shared-memory restrictions survive AST release and target checks. */
+TEST(ResolvedModule, ResolvesAndChecksFenceSharedSyncRestrictions) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 8.6
+.target sm_90a
+.entry kernel() {
+  fence.acquire.sync_restrict::shared::cluster.cluster;
+  fence.release.sync_restrict::shared::cta.cluster;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  const auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 2U);
+  const auto& acquire = std::get<Fence>(body[0]);
+  const auto& release = std::get<Fence>(body[1]);
+  ASSERT_TRUE(std::holds_alternative<Fence::AcquireSyncRestrictSharedCluster>(
+      acquire.variant));
+  ASSERT_TRUE(std::holds_alternative<Fence::ReleaseSyncRestrictSharedCta>(
+      release.variant));
+  const auto& acquire_restrict =
+      std::get<Fence::AcquireSyncRestrictSharedCluster>(acquire.variant);
+  const auto& release_restrict =
+      std::get<Fence::ReleaseSyncRestrictSharedCta>(release.variant);
+  EXPECT_EQ(acquire_restrict.semantics, MemoryConsistency::Acquire);
+  EXPECT_TRUE(acquire_restrict.sync_restrict_shared_cluster);
+  EXPECT_EQ(acquire_restrict.scope, MemoryScope::Cluster);
+  EXPECT_EQ(release_restrict.semantics, MemoryConsistency::Release);
+  EXPECT_TRUE(release_restrict.sync_restrict_shared_cta);
+  EXPECT_EQ(release_restrict.scope, MemoryScope::Cluster);
+
+  constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
+  for (const Fence* instruction : {&acquire, &release}) {
+    EXPECT_TRUE(
+        checker::check(
+            *instruction,
+            checker::Context{.target = {.ptx_version = {8, 6},
+                                        .sm_version = 90,
+                                        .capabilities = cluster_capabilities}})
+            .has_value());
+    const auto old_ptx = checker::check(
+        *instruction,
+        checker::Context{.target = {.ptx_version = {8, 5},
+                                    .sm_version = 90,
+                                    .capabilities = cluster_capabilities}});
+    ASSERT_FALSE(old_ptx.has_value());
+    EXPECT_EQ(old_ptx.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    const auto old_sm = checker::check(
+        *instruction,
+        checker::Context{.target = {.ptx_version = {8, 6},
+                                    .sm_version = 89,
+                                    .capabilities = cluster_capabilities}});
+    ASSERT_FALSE(old_sm.has_value());
+    EXPECT_EQ(old_sm.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedSmVersion);
+    const auto no_cluster = checker::check(
+        *instruction,
+        checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 90}});
+    ASSERT_FALSE(no_cluster.has_value());
+    EXPECT_EQ(no_cluster.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+
+  for (const std::string_view source : {
+           ".entry kernel() { "
+           "fence.acquire.sync_restrict::shared::cta.cluster; }",
+           ".entry kernel() { "
+           "fence.release.sync_restrict::shared::cluster.cluster; }",
+           ".entry kernel() { "
+           "fence.acquire.sync_restrict::shared::cluster.cta; }",
+           ".entry kernel() { fence.release.sync_restrict::shared::cta.cluster "
+           "0; }",
+       }) {
+    const auto parsed = parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << source;
+  }
+}
+
 TEST(ResolvedModule, ResolvesAndChecksModernFenceProxySlices) {
   const auto parsed_module_1 = parseModule(R"ptx(
 .global .align 16 .b8 global_value[128];

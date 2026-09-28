@@ -438,6 +438,58 @@ bool checkMbarrierInitFenceContract() {
                  "public mbarrier-init fence variant and controls");
 }
 
+/** Check fixed shared-memory fence restrictions through the installed IR. */
+bool checkSharedSyncRestrictedFenceContract() {
+  constexpr std::string_view source = R"ptx(
+.version 8.6
+.target sm_90a
+.entry k() {
+  fence.acquire.sync_restrict::shared::cluster.cluster;
+  fence.release.sync_restrict::shared::cta.cluster;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "shared restricted fence fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(),
+                 "shared restricted fence fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned shared restricted fence module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "shared restricted fences retained"))
+    return false;
+  const auto* acquire_instruction = std::get_if<ir::Fence>(&body[0]);
+  const auto* release_instruction = std::get_if<ir::Fence>(&body[1]);
+  const auto* acquire =
+      acquire_instruction
+          ? std::get_if<ir::Fence::AcquireSyncRestrictSharedCluster>(
+                &acquire_instruction->variant)
+          : nullptr;
+  const auto* release =
+      release_instruction
+          ? std::get_if<ir::Fence::ReleaseSyncRestrictSharedCta>(
+                &release_instruction->variant)
+          : nullptr;
+  return require(acquire && release &&
+                     acquire->semantics == ir::MemoryConsistency::Acquire &&
+                     acquire->sync_restrict_shared_cluster &&
+                     acquire->scope == ir::MemoryScope::Cluster &&
+                     release->semantics == ir::MemoryConsistency::Release &&
+                     release->sync_restrict_shared_cta &&
+                     release->scope == ir::MemoryScope::Cluster,
+                 "public shared restricted fence variants and controls");
+}
+
 /** Exercise installed paired mbarrier wait qualifiers through the public IR. */
 bool checkMbarrierTestWaitContract() {
   constexpr std::string_view source = R"ptx(
@@ -1088,6 +1140,8 @@ int main() {
     return 12;
   if (!checkMbarrierInitFenceContract())
     return 13;
+  if (!checkSharedSyncRestrictedFenceContract())
+    return 14;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

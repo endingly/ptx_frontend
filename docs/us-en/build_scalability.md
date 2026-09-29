@@ -232,6 +232,7 @@ excluded from the build times. No other build ran concurrently.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Main baseline | 450 s | 123 | 4.7 GiB | 15,632 MiB | 6,397 MiB |
 | Per-op candidate | 530 s | 251 | 5.3 GiB | 15,645 MiB | 6,280 MiB |
+| Per-op candidate with targeted module-test shards | 494 s | 261 | 5.4 GiB | 10,964 MiB | 10,849 MiB |
 
 The candidate is 80 seconds (17.8%) slower and shows no meaningful memory
 headroom improvement in this clean-build comparison. Its generated objects
@@ -249,7 +250,23 @@ mark. These local measurements do not establish safety on a smaller CI runner.
 The historical table above used a different test scope and must not be
 compared directly with these test-target build times.
 
-A follow-up tried a **test-only**, opt-in PCH for 29 source files that include
+The third row is one additional fresh build with the same flags, compiler,
+toolchain, and six-job limit. It applies the test-only partition from PR #209
+to two measured hotspots: typed-projection instantiations in
+`test_module_snapshot.cpp` and source-association cases in
+`test_module_source_associations.cpp`. The latter also avoids copying the
+complete `ResolvedInstruction` union when creating an extra known `Ret`.
+Test objects increase from 138 to 148, but the longest of these newly
+partitioned objects is 66.5 seconds, compared with 144.0 and 146.5 seconds
+for the original two files. The whole target improves by 36 seconds relative
+to the unsplit candidate, while remaining 44 seconds slower than main.
+The sampled compiler RSS sum falls by 4,681 MiB relative to the unsplit
+candidate. All 887 tests across 130 suites pass. This single local result
+supports retaining the targeted test split for further review; it does not
+meet the issue's clean-build speed objective or prove safe uncapped CI builds.
+
+Before the targeted test split, a separate trial used a **test-only**, opt-in
+PCH for 29 source files that include
 the aggregate Resolved IR header. It did not apply the aggregate PCH to the
 whole target. With the same `-g0` and six-job settings, the clean build was
 stopped after approximately 400 seconds at step 170 of 269: the sampled

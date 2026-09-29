@@ -949,6 +949,67 @@ TEST(SelectVariantCp, SeparatesOriginalAndSourceControlledCopyByArity) {
           .has_value());
 }
 
+TEST(ResolveCpAsyncStandalone, DefersUnambiguousControlRegisterTypes) {
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+  };
+  const auto size = resolveInstruction(
+      parse_instruction("cp.async.ca.shared.global [%r0], [%rd0], 4, %r1;"));
+  ASSERT_TRUE(size.has_value()) << size.error().message;
+  const auto& size_copy = std::get<Cp>(*size);
+  const auto& size_control =
+      std::get<Cp::AsyncCaSharedGlobalControl>(size_copy.variant)
+          .source_control.value;
+  const auto& size_register = std::get<ResolvedRegisterRef>(size_control);
+  EXPECT_FALSE(size_register.declared_type.has_value());
+  EXPECT_FALSE(size_register.symbol_id.has_value());
+  EXPECT_TRUE(checker::check(size_copy, context).has_value());
+
+  const auto predicate = resolveInstruction(
+      parse_instruction("cp.async.ca.shared.global [%r0], [%rd0], 4, %p0;"));
+  ASSERT_TRUE(predicate.has_value()) << predicate.error().message;
+  const auto& predicate_copy = std::get<Cp>(*predicate);
+  const auto& predicate_control =
+      std::get<Cp::AsyncCaSharedGlobalControl>(predicate_copy.variant)
+          .source_control.value;
+  const auto& ignore = std::get<ResolvedPredicate>(predicate_control);
+  EXPECT_FALSE(ignore.register_ref.declared_type.has_value());
+  EXPECT_FALSE(ignore.register_ref.symbol_id.has_value());
+  EXPECT_TRUE(checker::check(predicate_copy, context).has_value());
+  EXPECT_FALSE(checker::check(predicate_copy,
+                              checker::Context{.target = {.ptx_version = {7, 4},
+                                                          .sm_version = 80}})
+                   .has_value());
+
+  const auto policy = resolveInstruction(parse_instruction(
+      "cp.async.ca.shared.global.L2::cache_hint [%r0], [%rd0], 4, 0, %rd1;"));
+  ASSERT_TRUE(policy.has_value()) << policy.error().message;
+  const auto& policy_copy = std::get<Cp>(*policy);
+  const auto& policy_register =
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControlPolicy>(
+          policy_copy.variant)
+          .cache_policy.value;
+  EXPECT_FALSE(policy_register.declared_type.has_value());
+  EXPECT_FALSE(policy_register.symbol_id.has_value());
+  EXPECT_TRUE(checker::check(policy_copy, context).has_value());
+  EXPECT_FALSE(checker::check(policy_copy,
+                              checker::Context{.target = {.ptx_version = {7, 3},
+                                                          .sm_version = 80}})
+                   .has_value());
+  EXPECT_FALSE(checker::check(policy_copy,
+                              checker::Context{.target = {.ptx_version = {9, 3},
+                                                          .sm_version = 75}})
+                   .has_value());
+}
+
+TEST(ResolveCpAsyncStandalone, RequiresBindingForAmbiguousFourthRegister) {
+  const auto ambiguous = resolveInstruction(parse_instruction(
+      "cp.async.ca.shared.global.L2::cache_hint [%r0], [%rd0], 4, %r2;"));
+  ASSERT_FALSE(ambiguous.has_value());
+  EXPECT_NE(ambiguous.error().message.find("requires a declaration"),
+            std::string::npos);
+}
+
 /** Keep ordinary fence order aliases on disjoint semantic/scope variants. */
 TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
   const auto expect_variant = [](std::string_view source,

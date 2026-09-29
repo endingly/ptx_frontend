@@ -49,6 +49,8 @@ using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 struct ResolvedInstructionFields {
   std::string_view variant_name;
   ResolvedOperandLayoutTag operand_layout;
+  /** Original operand count, retained until role-sensitive operands resolve. */
+  size_t operand_count{};
   std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   ResolvedFieldMap modifiers;
   ResolvedFieldMap operands;

@@ -2388,9 +2388,15 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
     return type == ScalarType::B64 || type == ScalarType::U64 ||
            type == ScalarType::S64;
   };
+  /** Defer type checking only when no declaration was bound to the operand. */
+  const auto unbound_unknown_type = [](const OperandView& operand) {
+    return !operand.register_type && !operand.register_symbol_id;
+  };
   if (policy != nullptr &&
       (!has_hint || policy->actual_shape != OperandShape::Register ||
-       !is_policy_type(policy->register_type))) {
+       policy->register_class != ResolvedRegisterClass::General ||
+       (!is_policy_type(policy->register_type) &&
+        !unbound_unknown_type(*policy)))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = diagnostic_range(policy->locations, context),
@@ -2404,7 +2410,9 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   if (control->cp_async_cache_policy) {
     if (has_hint && policy == nullptr &&
         control->actual_shape == OperandShape::Register &&
-        is_policy_type(control->register_type))
+        control->register_class == ResolvedRegisterClass::General &&
+        (is_policy_type(control->register_type) ||
+         unbound_unknown_type(*control)))
       return {};
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -2433,12 +2441,16 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
     return {};
   }
   if (control->actual_shape == OperandShape::Register &&
+      control->register_class == ResolvedRegisterClass::General &&
       (control->register_type == ScalarType::U32 ||
        control->register_type == ScalarType::S32 ||
-       control->register_type == ScalarType::B32))
+       control->register_type == ScalarType::B32 ||
+       unbound_unknown_type(*control)))
     return {};
   if (control->actual_shape == OperandShape::Predicate) {
-    if (control->register_type != ScalarType::Pred) {
+    if (control->register_class != ResolvedRegisterClass::Predicate ||
+        (control->register_type != ScalarType::Pred &&
+         !unbound_unknown_type(*control))) {
       return std::unexpected(CheckDiagnostics{CheckDiagnostic{
           .kind = CheckDiagnosticKind::RuleViolation,
           .range = diagnostic_range(control->locations, context),

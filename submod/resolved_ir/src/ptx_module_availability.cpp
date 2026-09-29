@@ -1,6 +1,7 @@
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include "ptx_module_source_context.hpp"
+#include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
 
 #include <algorithm>
@@ -727,6 +728,68 @@ void check_module_references(const ResolvedModule& module,
           "Resolved module operand has an invalid parameterized member index.");
     }
     check_address_symbol_binding(*symbol, use, function, diagnostics);
+  }
+}
+
+/** Compare a copy-control register's cached type with its owned declaration. */
+void check_cp_async_register_binding(const ResolvedModule& module,
+                                     const ResolvedRegisterRef& register_ref,
+                                     std::span<const SourceRange> locations,
+                                     SourceRange fallback,
+                                     checker::CheckDiagnostics& diagnostics) {
+  if (!register_ref.symbol_id)
+    return;  // The general reference validator reports missing identities.
+  const auto* symbol = owned_symbol(module, *register_ref.symbol_id);
+  if (!symbol)
+    return;  // The general reference validator reports invalid identities.
+  const auto declared = symbol->type
+                            ? detail::scalar_type_from_ptx_name(*symbol->type)
+                            : std::nullopt;
+  if (!declared || register_ref.declared_type != declared) {
+    append_model_mismatch(
+        diagnostics, reference_range(locations, fallback),
+        "cp.async control register type disagrees with its owned declaration.");
+  }
+}
+
+/** Revalidate copy-control types and width-selected roles without source AST. */
+void check_cp_async_control_bindings(const ResolvedModule& module,
+                                     const ResolvedFunction& function,
+                                     checker::CheckDiagnostics& diagnostics) {
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    const auto* copy = std::get_if<Cp>(&function.body[index]);
+    if (!copy)
+      continue;
+    const SourceRange fallback = function.instruction_ranges[index];
+    std::visit(
+        [&](const auto& selected) {
+          if constexpr (requires { selected.source_control; }) {
+            std::visit(
+                [&](const auto& control) {
+                  using Control = std::remove_cvref_t<decltype(control)>;
+                  if constexpr (std::same_as<Control, ResolvedRegisterRef>) {
+                    check_cp_async_register_binding(
+                        module, control, selected.source_control.locs, fallback,
+                        diagnostics);
+                  } else if constexpr (std::same_as<Control,
+                                                    ResolvedPredicate> ||
+                                       std::same_as<
+                                           Control,
+                                           ResolvedCpAsyncCachePolicy>) {
+                    check_cp_async_register_binding(
+                        module, control.register_ref,
+                        selected.source_control.locs, fallback, diagnostics);
+                  }
+                },
+                selected.source_control.value);
+          }
+          if constexpr (requires { selected.cache_policy; }) {
+            check_cp_async_register_binding(module, selected.cache_policy.value,
+                                            selected.cache_policy.locs,
+                                            fallback, diagnostics);
+          }
+        },
+        copy->variant);
   }
 }
 
@@ -1605,6 +1668,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
+      check_cp_async_control_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
     }

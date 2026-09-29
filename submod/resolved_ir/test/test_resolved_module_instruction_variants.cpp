@@ -1616,6 +1616,15 @@ TEST(ResolvedModule, ResolvesAndChecksCpAsyncIgnoreSource) {
   EXPECT_EQ(missing_predicate_type.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
 
+  std::get<ResolvedPredicate>(control).register_ref.declared_type =
+      ScalarType::Pred;
+  std::get<ResolvedPredicate>(control).register_ref.register_class =
+      ResolvedRegisterClass::General;
+  const auto invalid_predicate_class = checker::check(tampered, supported);
+  ASSERT_FALSE(invalid_predicate_class.has_value());
+  EXPECT_EQ(invalid_predicate_class.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+
   const auto invalid = parseModule(R"ptx(
 .global .align 16 .b8 global_value[16];
 .shared .align 16 .b8 shared_value[16];
@@ -1758,6 +1767,134 @@ TEST(ResolvedModule, ChecksCpAsyncCachePolicyRegisterFamilies) {
     const auto checked = checker::check(std::get<Cp>(body[index]), supported);
     EXPECT_FALSE(checked.has_value());
   }
+}
+
+TEST(ResolvedModule, RevalidatesCpAsyncBoundControlRolesWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry kernel() {
+  .reg .u32 %size32;
+  .reg .u64 %policy64;
+  .reg .pred %ignore;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %size32;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %policy64;
+  cp.async.ca.shared.global [shared_value], [global_value], 4, %ignore;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, 0, %policy64;
+  cp.async.wait_all;
+  ret;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+  };
+  const auto& body = owned->functions.front().body;
+  ASSERT_GE(body.size(), 4u);
+  const auto& source_size = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+                                std::get<Cp>(body[0]).variant)
+                                .source_control.value;
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(source_size));
+  const auto& fourth_policy = std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+                                  std::get<Cp>(body[1]).variant)
+                                  .source_control.value;
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedCpAsyncCachePolicy>(fourth_policy));
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  auto missing_type = *owned;
+  auto& missing_source = std::get<ResolvedRegisterRef>(
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+          std::get<Cp>(missing_type.functions.front().body[0]).variant)
+          .source_control.value);
+  missing_source.declared_type.reset();
+  EXPECT_FALSE(
+      checker::check(std::get<Cp>(missing_type.functions.front().body[0]),
+                     supported)
+          .has_value());
+  EXPECT_FALSE(validateModule(missing_type,
+                              ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value());
+
+  auto missing_policy_type = *owned;
+  auto& fifth_policy =
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControlPolicy>(
+          std::get<Cp>(missing_policy_type.functions.front().body[3]).variant)
+          .cache_policy.value;
+  fifth_policy.declared_type.reset();
+  EXPECT_FALSE(checker::check(
+                   std::get<Cp>(missing_policy_type.functions.front().body[3]),
+                   supported)
+                   .has_value());
+  EXPECT_FALSE(validateModule(missing_policy_type,
+                              ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value());
+
+  auto missing_id = *owned;
+  auto& missing_identity = std::get<ResolvedRegisterRef>(
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+          std::get<Cp>(missing_id.functions.front().body[0]).variant)
+          .source_control.value);
+  missing_identity.symbol_id.reset();
+  EXPECT_TRUE(checker::check(std::get<Cp>(missing_id.functions.front().body[0]),
+                             supported)
+                  .has_value());
+  EXPECT_FALSE(
+      validateModule(missing_id, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  auto forged_policy = *owned;
+  auto& forged_control =
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+          std::get<Cp>(forged_policy.functions.front().body[0]).variant)
+          .source_control.value;
+  auto forged_register = std::get<ResolvedRegisterRef>(forged_control);
+  forged_register.declared_type = ScalarType::U64;
+  forged_control = ResolvedCpAsyncCachePolicy{.register_ref = forged_register};
+  EXPECT_TRUE(
+      checker::check(std::get<Cp>(forged_policy.functions.front().body[0]),
+                     supported)
+          .has_value());
+  const auto forged_policy_check = validateModule(
+      forged_policy, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(forged_policy_check.has_value());
+  EXPECT_TRUE(std::ranges::any_of(
+      forged_policy_check.error(), [](const checker::CheckDiagnostic& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+      }));
+
+  auto forged_size = *owned;
+  auto& forged_size_control =
+      std::get<Cp::AsyncCaSharedGlobalCacheHintControl>(
+          std::get<Cp>(forged_size.functions.front().body[1]).variant)
+          .source_control.value;
+  auto forged_size_register =
+      std::get<ResolvedCpAsyncCachePolicy>(forged_size_control).register_ref;
+  forged_size_register.declared_type = ScalarType::U32;
+  forged_size_control = forged_size_register;
+  EXPECT_TRUE(
+      checker::check(std::get<Cp>(forged_size.functions.front().body[1]),
+                     supported)
+          .has_value());
+  const auto forged_size_check = validateModule(
+      forged_size, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(forged_size_check.has_value());
+  EXPECT_TRUE(std::ranges::any_of(
+      forged_size_check.error(), [](const checker::CheckDiagnostic& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::ModuleSourceMismatch;
+      }));
 }
 
 TEST(ResolvedModule, ResolvesAndChecksCpAsyncMbarrierArriveSlice) {

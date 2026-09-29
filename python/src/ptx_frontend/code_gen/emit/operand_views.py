@@ -287,6 +287,8 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.declared_type,
+                  .register_symbol_id = {object_name}.{field.name}.value.symbol_id,
+                  .register_class = {object_name}.{field.name}.value.register_class,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_kind is ResolvedValueKind.MBARRIER_STATE_TOKEN:
@@ -587,6 +589,8 @@ def emit_check_operand_view(
                       .field_id = "{field.name}",
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                       .register_type = predicate->register_ref.declared_type,
+                      .register_symbol_id = predicate->register_ref.symbol_id,
+                      .register_class = predicate->register_ref.register_class,
                       .destination_predicate_negated = predicate->negated,
                       .locations = {object_name}.{field.name}.locs,
                   }};
@@ -595,6 +599,8 @@ def emit_check_operand_view(
                       .field_id = "{field.name}",
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                       .register_type = policy->register_ref.declared_type,
+                      .register_symbol_id = policy->register_ref.symbol_id,
+                      .register_class = policy->register_ref.register_class,
                       .cp_async_cache_policy = true,
                       .locations = {object_name}.{field.name}.locs,
                   }};
@@ -603,6 +609,8 @@ def emit_check_operand_view(
                     .field_id = "{field.name}",
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .register_type = register_ref.declared_type,
+                    .register_symbol_id = register_ref.symbol_id,
+                    .register_class = register_ref.register_class,
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

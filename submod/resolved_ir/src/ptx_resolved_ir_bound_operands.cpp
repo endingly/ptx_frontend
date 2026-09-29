@@ -1968,6 +1968,19 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_register(operand, context);
       if (!value)
         return std::unexpected(value.error());
+      const auto hint = fields.modifiers.find("cache_hint");
+      const auto* hint_value = hint == fields.modifiers.end()
+                                   ? nullptr
+                                   : std::get_if<WithLocs<bool>>(&hint->second);
+      if (context == nullptr && !value->value.declared_type &&
+          fields.operand_count == 4 && hint_value && hint_value->value) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = range,
+            .message = "cp.async fourth register with .L2::cache_hint "
+                       "requires a declaration to distinguish source size "
+                       "from cache policy.",
+        });
+      }
       if (value->value.declared_type == ScalarType::B64 ||
           value->value.declared_type == ScalarType::U64 ||
           value->value.declared_type == ScalarType::S64) {

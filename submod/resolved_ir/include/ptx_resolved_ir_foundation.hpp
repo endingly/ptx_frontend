@@ -26,6 +26,7 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+enum class ResolvedRegisterClass : uint8_t;
 
 /**
  * Implicit CC.CF access for an executed instruction. Predication gates both
@@ -296,6 +297,10 @@ struct OperandView {
   /** Numerical negativity of the evaluated signed integer source. */
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  /** Declaration identity; absent for declaration-free standalone operands. */
+  std::optional<binding::SymbolId> register_symbol_id;
+  /** Resolved register category, independent of an unknown declaration type. */
+  std::optional<ResolvedRegisterClass> register_class;
   /** A cp.async fourth operand is an explicit cache policy, not source size. */
   bool cp_async_cache_policy = false;
   bool is_sink = false;

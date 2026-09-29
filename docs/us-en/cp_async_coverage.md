@@ -23,6 +23,14 @@ predicate, or cache policy; a cache policy may also follow source control as a
 fifth operand. The original three-operand `.ca.shared.global` public variant
 retains its `dst`, `src`, and `cp_size` fields.
 
+Without declarations, standalone resolution keeps an ordinary fourth register
+without a cache hint as source size, a fourth predicate as `ignore-src`, and a
+fifth register after `.L2::cache_hint` as cache policy. Their declaration types
+remain unknown until binding. A fourth ordinary register with
+`.L2::cache_hint` requires a declaration: it could be either a 32-bit source
+size or a 64-bit policy. Owned-module validation compares the cached control
+type and selected role with the bound register declaration.
+
 The `.ca` and `.cg` cache modes and L2 qualifiers are source controls and
 performance hints. The frontend checks their shape and availability, not cache
 behavior. `cp.async.bulk` and its completion model are separate coverage.

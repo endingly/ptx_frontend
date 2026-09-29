@@ -14,18 +14,18 @@ from .operand_views import emit_check_modifier_view, emit_check_modifier_value_v
 def generate_resolved_ir_checker_category_declarations_header(
     context: GenerationContext, *, category: str, output_path: Path
 ) -> None:
-    """Generate an ordered, include-only checker category wrapper."""
+    """Generate checker declarations without resolver or syntax dependencies."""
 
-    opcodes = tuple(
-        entry.specification.opcode
+    instructions = tuple(
+        entry.resolved
         for entry in context.entries
         if entry.specification.codegen_category == category
     )
-    if not opcodes:
+    if not instructions:
         raise ValueError(f"instruction category {category!r} is empty")
-    includes = "\n".join(
-        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp>"
-        for opcode in opcodes
+    declarations = "\n\n".join(
+        emit_check_specialization_declaration(instruction)
+        for instruction in instructions
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -34,7 +34,14 @@ def generate_resolved_ir_checker_category_declarations_header(
 {generated_at_comment()}
 #pragma once
 
-{includes}
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/model/{category}/model.gen.hpp>
+
+namespace ptx_frontend::resolved_ir::checker {{
+
+{declarations}
+
+}}  // namespace ptx_frontend::resolved_ir::checker
 """,
         encoding="utf-8",
     )

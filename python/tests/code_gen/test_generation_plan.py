@@ -268,7 +268,7 @@ class GenerationPlanTests(unittest.TestCase):
                     f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp>"
                     for opcode in opcodes
                 ])
-                for kind in ("model", "resolution", "checker"):
+                for kind in ("model", "resolution"):
                     wrapper_path = public / kind / f"{category}.gen.hpp"
                     wrapper = next(
                         artifact for artifact in plan.artifacts
@@ -281,6 +281,28 @@ class GenerationPlanTests(unittest.TestCase):
                         f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp>"
                         for opcode in opcodes
                     ])
+                checker_path = public / f"checker/{category}.gen.hpp"
+                checker_artifact = next(
+                    artifact for artifact in plan.artifacts
+                    if artifact.path == checker_path
+                )
+                checker_artifact.emit(context, output_path=checker_path)
+                checker_source = checker_path.read_text(encoding="utf-8")
+                self.assertEqual(
+                    [line for line in checker_source.splitlines()
+                     if line.startswith("#include")],
+                    [
+                        "#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>",
+                        f"#include <ptx_frontend/resolved_ir/model/{category}/model.gen.hpp>",
+                    ],
+                )
+                self.assertNotIn("ptx_resolved_ir_selection.hpp", checker_source)
+                self.assertNotIn("ptx_syntax_ast.hpp", checker_source)
+                for entry in context.entries:
+                    if entry.specification.codegen_category == category:
+                        self.assertIn(
+                            f"CheckResult check<{entry.cpp_name}>(", checker_source
+                        )
 
             for name in ("resolved_ir.gen.hpp", "resolved_instruction_union.gen.hpp"):
                 path = public / name
@@ -327,13 +349,27 @@ class GenerationPlanTests(unittest.TestCase):
             output = Path(directory)
             first_plan = build_generation_plan(first, output)
             expanded_plan = build_generation_plan(expanded, output)
+            opcode = selected[0].specification.opcode
+            local_paths = (
+                output / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
+                output / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp",
+                output / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp",
+            )
+            first_category_artifacts = {
+                artifact.path: artifact
+                for artifact in first_plan.artifacts_for_category(category)
+            }
+            expanded_category_artifacts = {
+                artifact.path: artifact
+                for artifact in expanded_plan.artifacts_for_category(category)
+            }
+            self.assertTrue(set(local_paths) <= first_category_artifacts.keys())
+            self.assertTrue(set(local_paths) <= expanded_category_artifacts.keys())
             first_local = {
-                artifact.path: artifact for artifact in first_plan.artifacts_for_category(category)
-                if selected[0].specification.opcode in artifact.path.name
+                path: first_category_artifacts[path] for path in local_paths
             }
             expanded_local = {
-                artifact.path: artifact for artifact in expanded_plan.artifacts_for_category(category)
-                if artifact.path in first_local
+                path: expanded_category_artifacts[path] for path in local_paths
             }
             self.assertEqual(set(first_local), set(expanded_local))
             for path, artifact in first_local.items():

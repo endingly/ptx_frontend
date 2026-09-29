@@ -287,6 +287,8 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.declared_type,
+                  .register_symbol_id = {object_name}.{field.name}.value.symbol_id,
+                  .register_class = {object_name}.{field.name}.value.register_class,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_kind is ResolvedValueKind.MBARRIER_STATE_TOKEN:
@@ -566,6 +568,49 @@ def emit_check_operand_view(
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .immediate_type = std::nullopt,
                     .register_type = register_ref.declared_type,
+                    .locations = {object_name}.{field.name}.locs,
+                }};
+              }}()"""
+    if field.value_kind is ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL:
+        return f"""              [&]() -> OperandView {{
+                const auto& control = {object_name}.{field.name}.value;
+                if (const auto* immediate = std::get_if<ResolvedImmediate>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                      .immediate_type = immediate->type,
+                      .immediate_bits = immediate->bits,
+                      .immediate_is_negative = immediate->is_negative,
+                      .locations = {object_name}.{field.name}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
+                  }};
+                if (const auto* predicate = std::get_if<ResolvedPredicate>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
+                      .register_type = predicate->register_ref.declared_type,
+                      .register_symbol_id = predicate->register_ref.symbol_id,
+                      .register_class = predicate->register_ref.register_class,
+                      .destination_predicate_negated = predicate->negated,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                if (const auto* policy = std::get_if<ResolvedCpAsyncCachePolicy>(&control))
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                      .register_type = policy->register_ref.declared_type,
+                      .register_symbol_id = policy->register_ref.symbol_id,
+                      .register_class = policy->register_ref.register_class,
+                      .cp_async_cache_policy = true,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                const auto& register_ref = std::get<ResolvedRegisterRef>(control);
+                return OperandView{{
+                    .field_id = "{field.name}",
+                    .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                    .register_type = register_ref.declared_type,
+                    .register_symbol_id = register_ref.symbol_id,
+                    .register_class = register_ref.register_class,
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

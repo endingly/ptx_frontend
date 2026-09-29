@@ -3980,7 +3980,17 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
              "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
              "AsyncMbarrierArriveNoincGenericOrShared",
-             "AsyncMbarrierArriveNoincSharedCta"],
+             "AsyncMbarrierArriveNoincSharedCta", "AsyncCgSharedGlobal",
+             "AsyncCaSharedCtaGlobal", "AsyncCgSharedCtaGlobal",
+             "AsyncCaSharedGlobalControl", "AsyncCgSharedGlobalControl",
+             "AsyncCaSharedCtaGlobalControl", "AsyncCgSharedCtaGlobalControl",
+             "AsyncCaSharedGlobalPrefetchBase", "AsyncCaSharedGlobalPrefetchControl", "AsyncCaSharedGlobalCacheHintBase",
+             "AsyncCaSharedGlobalCacheHintControl", "AsyncCaSharedGlobalCacheHintControlPolicy", "AsyncCaSharedCtaGlobalPrefetchBase",
+             "AsyncCaSharedCtaGlobalPrefetchControl", "AsyncCaSharedCtaGlobalCacheHintBase", "AsyncCaSharedCtaGlobalCacheHintControl",
+             "AsyncCaSharedCtaGlobalCacheHintControlPolicy", "AsyncCgSharedGlobalPrefetchBase", "AsyncCgSharedGlobalPrefetchControl",
+             "AsyncCgSharedGlobalCacheHintBase", "AsyncCgSharedGlobalCacheHintControl", "AsyncCgSharedGlobalCacheHintControlPolicy",
+             "AsyncCgSharedCtaGlobalPrefetchBase", "AsyncCgSharedCtaGlobalPrefetchControl", "AsyncCgSharedCtaGlobalCacheHintBase",
+             "AsyncCgSharedCtaGlobalCacheHintControl", "AsyncCgSharedCtaGlobalCacheHintControlPolicy"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})

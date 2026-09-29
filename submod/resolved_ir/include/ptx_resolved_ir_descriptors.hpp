@@ -65,6 +65,7 @@ enum class ResolvedValueKind : uint8_t {
   PredicatePair,
   PredicatePairOrSink,
   MovSource,
+  CpAsyncSourceControl,
   VectorRegister,
   VectorSpecialRegister,
   BranchTarget,

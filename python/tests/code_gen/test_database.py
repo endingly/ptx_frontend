@@ -308,6 +308,28 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
                 ),
             )
 
+    def test_allows_overlapping_modifiers_at_distinct_operand_counts(self) -> None:
+        first = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="u32",
+        )
+        second = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_second",
+            type_value="u32",
+        )
+        instructions = cast(list[dict[str, Any]], second["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["operands"] = [
+            {"name": "dst", "kind": "reg", "role": "dst", "access": "write"}
+        ]
+
+        database = self._load(first, second)
+        self.assertEqual(len(database.instructions[0].variants), 2)
+
     def test_allows_one_spelling_to_bind_different_slots_across_variants(
         self,
     ) -> None:

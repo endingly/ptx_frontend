@@ -1127,6 +1127,68 @@ int runOwnedValidation() {
   return 0;
 }
 
+/** Exercise the installed non-bulk copy variants after AST destruction. */
+bool checkCpAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .align 16 .b8 global_value[32];
+.shared .align 16 .b8 shared_value[32];
+.entry k() {
+  .reg .u64 %policy;
+  cp.async.ca.shared.global [shared_value], [global_value], 4;
+  cp.async.ca.shared.global.L2::cache_hint [shared_value], [global_value], 4, %policy;
+  cp.async.ca.shared.global.L2::128B [shared_value], [global_value], 4, 0;
+  cp.async.wait_all;
+  ret;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "non-bulk copy fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "non-bulk copy fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned non-bulk copies validate"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() >= 3, "non-bulk copy forms retained"))
+    return false;
+  const auto* original_instruction = std::get_if<ir::Cp>(&body[0]);
+  const auto* original = original_instruction
+                             ? std::get_if<ir::Cp::AsyncCaSharedGlobal>(
+                                   &original_instruction->variant)
+                             : nullptr;
+  if (!require(original && !original->dst.locs.empty() &&
+                   !original->src.locs.empty() &&
+                   original->cp_size.value.bits == 4,
+               "original three-operand public copy fields remain available"))
+    return false;
+  const auto* policy_instruction = std::get_if<ir::Cp>(&body[1]);
+  const auto* policy =
+      policy_instruction
+          ? std::get_if<ir::Cp::AsyncCaSharedGlobalCacheHintControl>(
+                &policy_instruction->variant)
+          : nullptr;
+  return require(
+      policy &&
+          std::holds_alternative<ir::ResolvedCpAsyncCachePolicy>(
+              policy->source_control.value) &&
+          std::get<ir::ResolvedCpAsyncCachePolicy>(policy->source_control.value)
+                  .register_ref.declared_type ==
+              ptx_frontend::base::ScalarType::U64,
+      "typed cache-policy fourth operand survives AST destruction");
+}
+
 }  // namespace
 
 /** Check the installed public conversion, comparison, and resolved-IR contract. */
@@ -1178,6 +1240,8 @@ int main() {
     return 14;
   if (!checkFenceProxyAliasContract())
     return 15;
+  if (!checkCpAsyncContract())
+    return 16;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

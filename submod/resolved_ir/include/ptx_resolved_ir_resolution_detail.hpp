@@ -35,9 +35,10 @@ using ResolvedFieldValue = std::variant<
     WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
     WithLocs<ResolvedPredicatePair>, WithLocs<ResolvedPredicatePairOrSink>,
     WithLocs<ResolvedPredicateOrSink>, WithLocs<ResolvedMovSource>,
-    WithLocs<ResolvedPredicate>, WithLocs<ResolvedBranchTarget>,
-    WithLocs<ResolvedBranchTargetSet>, WithLocs<ResolvedSpecialRegisterRef>,
-    WithLocs<ResolvedPredicateSource>, WithLocs<ResolvedVectorRegisterRef>,
+    WithLocs<ResolvedCpAsyncSourceControl>, WithLocs<ResolvedPredicate>,
+    WithLocs<ResolvedBranchTarget>, WithLocs<ResolvedBranchTargetSet>,
+    WithLocs<ResolvedSpecialRegisterRef>, WithLocs<ResolvedPredicateSource>,
+    WithLocs<ResolvedVectorRegisterRef>,
     WithLocs<ResolvedVectorSpecialRegisterRef>, WithLocs<ResolvedSymbolRef>,
     WithLocs<ResolvedAddress>, WithLocs<ResolvedRegisterVector>,
     WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedFunctionRef>,
@@ -49,6 +50,8 @@ using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 struct ResolvedInstructionFields {
   std::string_view variant_name;
   ResolvedOperandLayoutTag operand_layout;
+  /** Original operand count, retained until role-sensitive operands resolve. */
+  size_t operand_count{};
   std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
   ResolvedFieldMap modifiers;
   ResolvedFieldMap operands;

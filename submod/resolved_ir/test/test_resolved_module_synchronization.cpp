@@ -842,7 +842,8 @@ TEST(ResolvedModule, ChecksMbarrierArrivalCountRangesInEveryCountForm) {
       "mbarrier.arrive_drop.noComplete.release.cta.shared::cta.b64 _, "
       "[barrier], $count;",
   };
-  constexpr std::array counts{"0", "1", "1048575", "%count", "1048576"};
+  constexpr std::array<std::string_view, 5> counts{"0", "1", "1048575",
+                                                   "%count", "1048576"};
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   for (const auto form : forms) {
     for (const auto count : counts) {

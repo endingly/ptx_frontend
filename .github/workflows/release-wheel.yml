@@ -9,12 +9,12 @@ permissions:
 
 jobs:
   consumer-integration:
-    name: Consumer and integration validation
+    name: Clang consumer and unit validation
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
-      CC: /usr/bin/gcc
-      CXX: /usr/bin/g++
+      CC: /usr/bin/clang-21
+      CXX: /usr/bin/clang++-21
       VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
       VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
       VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
@@ -33,18 +33,32 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-clang-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
           restore-keys: |
-            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-gcc-debug-${{ steps.setup.outputs.compiler-identity }}-
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-clang-debug-${{ steps.setup.outputs.compiler-identity }}-
 
-      - name: Configure consumer and integration coverage
-        run: cmake --preset ci-consumer-integration -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+      - name: Configure Clang Debug coverage
+        run: cmake --preset ci-linux-clang-debug -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
-      - name: Build consumer and integration coverage
-        run: cmake --build --preset ci-consumer-integration
+      - name: Build Clang Debug coverage
+        run: cmake --build --preset ci-linux-clang-debug
 
-      - name: Run labeled consumer and integration coverage
-        run: ctest --preset ci-consumer-integration --output-on-failure
+      - name: Run Clang Debug tests
+        run: ctest --preset ci-linux-clang-debug --output-on-failure
+
+      - name: Test installed public API consumer
+        shell: bash
+        run: |
+          install_prefix="$RUNNER_TEMP/ptx-frontend-consumer-install"
+          consumer_build="$RUNNER_TEMP/ptx-frontend-consumer-build"
+          dependency_prefix="$GITHUB_WORKSPACE/out/build/ci-linux-clang-debug/vcpkg_installed/x64-linux"
+          cmake --install out/build/ci-linux-clang-debug --prefix "$install_prefix"
+          cmake -S examples/conversion_consumer -B "$consumer_build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dptx_frontend_DIR="$install_prefix/lib/cmake/ptx_frontend" \
+            -DCMAKE_PREFIX_PATH="$install_prefix;$dependency_prefix"
+          cmake --build "$consumer_build"
+          "$consumer_build/conversion_consumer"
 
   release:
     needs: consumer-integration

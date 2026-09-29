@@ -157,15 +157,18 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | one category's opcode structs and module-reference visitors |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | one opcode's model, variant selection adapter, and resolver/checker declarations |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | narrow model and reference visitor without a complete syntax AST dependency |
+| `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | include-only aggregate of narrow opcode model leaves for the model and union APIs |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | include-only aggregate of the category's full opcode headers |
 | `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
-| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate compatibility header for all category model headers and the union |
-| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | self-contained category specialization declarations |
+| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | model-only aggregate of narrow category headers and the union |
+| `public/ptx_frontend/resolved_ir/resolution/<category>.gen.hpp` | `emit.resolved_resolver` | include-only category wrapper for resolver declarations |
+| `public/ptx_frontend/resolved_ir/checker/<category>.gen.hpp` | `emit.resolved_checker` | checker support, narrow category model, and checker specialization declarations without the Syntax AST dependency |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | out-of-line resolver and checker specialization definitions for one category |
-| `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category-owned descriptor storage and getters |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | one opcode's three descriptor families and out-of-line resolver/checker definitions |
 
 The generated public headers are under
 `generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
@@ -177,17 +180,19 @@ project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
 into `resolved_ir`. The top level only orchestrates submodules and provides the
 facade target.
 
-Although `syntax_descriptor.gen.cpp` describes source syntax, it implements
-getters on generated Resolved IR opcode types and is consumed by variant
-selection and resolution. Until that generator dependency boundary changes, it
-belongs to `resolved_ir` with the other atomic `gen_all.py` outputs rather than
-to the `syntax` submodule by filename alone.
+Syntax descriptor storage implements getters on generated Resolved IR opcode
+types and is consumed by variant selection and resolution. It shares each
+opcode's private source with resolved and checker descriptor storage.
 
-The public header contains no generated function bodies. Generation uses the
+The public opcode headers contain no generated resolver or checker bodies. The
+selection adapter lives in the small handwritten `ptx_resolved_ir_selection.hpp`;
+the narrow opcode and category model headers remain usable with an incomplete syntax AST.
+The model aggregate and instruction union include these narrow category headers.
+Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
-`codegen_category`. The generator uses that value to create stable category
-sources, which CMake compiles into the `resolved_ir` library. Consumers retain
+`codegen_category`. The generator creates one stable source per opcode,
+which CMake compiles into the `resolved_ir` library. Consumers retain
 one include entry point, while the complex `std::visit` code, lambdas, and
 resolve builders are compiled only once inside the library.
 
@@ -195,7 +200,7 @@ The generator formats a sibling candidate before comparing bytes with an
 existing artifact. Identical formatted output, including the output manifest,
 keeps its modification time. Whole-module APIs continue to include the
 aggregate model and complete union; category-local consumers include only their
-category model and resolver/checker declaration headers.
+full opcode header or its category aggregate.
 
 The comparison and selection spec now owns the generated
 `comparison_and_selection` category. Code using `Set`, `Setp`, `Selp`, or `Slct`
@@ -207,7 +212,7 @@ installed aggregate headers still expose the complete instruction model.
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
 `ptx_frontend::resolved_ir`. Checker specialization declarations share one
-`checker` namespace in the public header, and each category implementation
+`checker` namespace in the public header, and each opcode implementation
 likewise opens it only once.
 
 Emitters obtain C++ types and expressions for semantic values from normalized

@@ -2,13 +2,13 @@
 
 | Workflow | Events | Checks |
 | --- | --- | --- |
-| `linux-ci.yml` | PR opened/updated/reopened, monthly schedule, manual dispatch | Full GCC Debug and Release build/test presets; check names remain `Debug` and `Release` |
+| `linux-ci.yml` | PR opened/updated/reopened, monthly schedule, manual dispatch | Full Clang Debug and Release build/test presets; check names remain `Debug` and `Release` |
 | `python-and-package-consumer.yml` | PR opened/updated/reopened, monthly schedule, manual dispatch | Python unit tests and formatting; check name remains `test` |
-| `integration-smoke.yml` | Push to `main` or `dev`; manual dispatch | Pushes refresh normal Debug/Release production and unit-test caches; pushes to `main` and manual dispatch run opt-in consumer/integration coverage |
-| `release-wheel.yml` | Push of a `v*` tag | Consumer/integration validation, then wheel build, smoke, and release publication |
+| `integration-smoke.yml` | Push to `main` or `dev`; manual dispatch | Pushes refresh normal Clang Debug/Release production and unit-test caches |
+| `release-wheel.yml` | Push of a `v*` tag | Clang Debug tests and installed public API consumer, then wheel build, smoke, and release publication |
 
 Normal Debug/Release and Python unit coverage remain the regular merge checks.
-Consumer/integration coverage is manually selectable and mandatory before tag
+The installed public API consumer runs in the PR Debug job and before tag
 publication. Separate event/workflow concurrency groups keep an integration
 push from cancelling PR coverage.
 
@@ -23,34 +23,12 @@ audit](../docs/us-en/code_conventions.md) records the current exceptions.
 
 ## Integration cache warming
 
-Pushes configure the normal `ci-linux-gcc-debug` and `ci-linux-gcc-release`
+Pushes configure the normal `ci-linux-clang-debug` and `ci-linux-clang-release`
 presets, build `ptx_frontend_resolved_ir`, then build and run the normal
-`test_resolved_ir` suite in a disposable compiler cache. These presets explicitly
-leave `PTX_FRONTEND_BUILD_CONSUMER_TESTS` off. The persistent seed contains only
-production objects; a successful push refreshes it only after the matching unit
-test completes.
-
-Pushes to `main` and manual dispatch run the independent
-`ci-consumer-integration` preset. It enables `PTX_FRONTEND_BUILD_CONSUMER_TESTS`,
-builds only the production resolved-IR target and modern-operand fixture
-executable, and selects CTest tests by the stable `consumer` label. The group
-covers generated-fixture self-heal and topology checks, embedded-parent use, and
-the full installed-package consumer. It restores compatible caches but never
-saves a main seed.
-
-## Local consumer and integration coverage
-
-With the usual Python generator dependencies and vcpkg environment installed:
-
-```sh
-cmake --workflow --preset ci-consumer-integration
-```
-
-This uses an independent build/install directory and `BUILD_TESTING=ON` together
-with `PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON`. The label selection includes the full
-installed-package test (relocation, non-default data paths, and negative discovery
-cases), not a reduced smoke duplicate. Do not configure or build the same preset
-directory concurrently.
+`test_resolved_ir` suite in a disposable compiler cache. A successful main push
+refreshes its compiler-cache seed only after the matching unit test completes.
+GitHub Actions currently compiles project code with Clang 21; the GCC presets
+remain available for local validation.
 
 ## Cache reuse and limitations
 
@@ -64,19 +42,18 @@ configuration. Installed toolchains can differ within one matrix, so a fixed Deb
 writer cannot populate every Release key. Jobs sharing a key may race to save;
 the cache action handles duplicate saves without failing the job.
 Only Debug writes shared APT, pip, and vcpkg source-download caches. The Python
-unit and consumer jobs restore dependency caches without owning a main seed.
+unit and release jobs restore dependency caches without owning a main seed.
 
 Integration and PR Debug jobs share a compiler-cache namespace; Release has its
-own shared namespace. Main-push, manual, and tag consumer jobs restore Debug
-caches but do not upload a smaller consumer-only snapshot that could supersede a
-production seed.
+own shared namespace. The tag job restores Debug caches but does not upload a
+smaller snapshot that could supersede a production seed.
 Trusted-main production jobs publish per-run snapshots so caches can advance after
 source changes; this does not bypass ccache content validation.
 
 Prewarming covers the normal Debug/Release build graphs and their normal unit
-tests, not opt-in consumer fixtures. It does not promise hits for changed sources
-or headers, compiler flags, opt-in reconfiguration variants, or objects evicted
-from the cache. This repository has no Clang acceptance matrix to warm.
+tests, not the standalone installed consumer. It does not promise hits for changed
+sources or headers, compiler flags, opt-in reconfiguration variants, or objects
+evicted from the cache.
 Matching build paths are intentional: ccache normally hashes the working
 directory for Debug compilations. See the [ccache path-hashing contract](https://ccache.dev/manual/latest.html#config_hash_dir).
 
@@ -90,5 +67,5 @@ hosted runs; local validation success alone does not prove them.
 
 Third-party action references are pinned and checked across workflows and local
 composite actions. Workflow linting, Python unit tests, local Debug tests,
-cloud Release coverage, and opt-in consumer coverage are the relevant CI checks;
+cloud Release coverage, and installed-consumer coverage are the relevant CI checks;
 frontend behavior changes still require the ordinary project gates.

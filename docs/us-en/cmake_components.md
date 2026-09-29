@@ -46,18 +46,9 @@ database = load_packaged_spec_database()
 
 ## Test profiles
 
-`BUILD_TESTING=ON` builds the normal `test_resolved_ir` suite. The default is
-deliberately free of alternate generated fixtures, self-heal/topology checks,
-embedded-parent checks, and installed-package consumers.
-
-`PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON` requires `BUILD_TESTING=ON` and adds that
-consumer/integration group. The `ci-consumer-integration` configure, build, and
-test presets select it and run the stable CTest `consumer` label. The normal
-Debug and Release presets leave it off, so ordinary C++ and Python unit checks
-do not indirectly configure or build consumer fixtures.
-
-CI runs the consumer/integration profile automatically on pushes to `main`,
-alongside the normal Debug/Release cache-prewarming jobs. It also supports
-manual dispatch and gates wheel publication on version tags. Pushes to `dev`
-run only the normal prewarming jobs. The consumer job restores compatible
-compiler caches without publishing production cache seeds.
+`BUILD_TESTING=ON` builds the C++ test suites, including `test_resolved_ir`.
+The GCC and Clang Debug/Release presets enable this option. GitHub Actions
+currently uses the Clang 21 presets for ordinary C++ coverage and independently
+builds an installed-package consumer from `examples/conversion_consumer` in the
+PR Debug and release-tag jobs. The consumer build uses its own CMake directory
+and the package installed from the matching Clang Debug build.

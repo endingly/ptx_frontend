@@ -650,7 +650,8 @@ struct ResolvedFunctionRef {
   std::optional<binding::SymbolId> symbol_id;
   bool is_entry{};
   std::optional<checker::AvailabilityDescriptor> address_availability;
-  bool operator==(const ResolvedFunctionRef&) const = default;
+  /** Contextual availability has no value-equality contract. */
+  bool operator==(const ResolvedFunctionRef&) const = delete;
 };
 struct ResolvedIndirectMetadataRef {
   std::string spelling;
@@ -713,7 +714,8 @@ struct ResolvedSymbolRef {
   /** Parameter-space qualifier selected by an instruction for this direct address. */
   ParameterAddressQualifier parameter_qualifier =
       ParameterAddressQualifier::Default;
-  bool operator==(const ResolvedSymbolRef&) const = default;
+  /** Contextual availability has no value-equality contract. */
+  bool operator==(const ResolvedSymbolRef&) const = delete;
 };
 enum class ResolvedAddressOffsetOperator : uint8_t { Add, Subtract };
 struct ResolvedAddressOffset {
@@ -754,7 +756,8 @@ struct ResolvedAddress {
   bool unified = false;
   /** Suffix provenance for checker diagnostics. */
   SourceRange unified_range;
-  bool operator==(const ResolvedAddress&) const = default;
+  /** A symbol base can carry contextual availability without value equality. */
+  bool operator==(const ResolvedAddress&) const = delete;
 };
 struct ResolvedOperandLayoutTag {
   uint16_t value = 0;

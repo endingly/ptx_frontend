@@ -24,14 +24,14 @@ env:
 
 jobs:
   test:
-    name: GCC ${{ matrix.name }} prewarm
+    name: Clang ${{ matrix.name }} prewarm
     if: github.event_name == 'push'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     cache-mode: write
     env:
-      CC: /usr/bin/gcc
-      CXX: /usr/bin/g++
+      CC: /usr/bin/clang-21
+      CXX: /usr/bin/clang++-21
     outputs:
       debug-prefix: ${{ steps.seed-metadata.outputs.debug-prefix }}
       release-prefix: ${{ steps.seed-metadata.outputs.release-prefix }}
@@ -40,10 +40,10 @@ jobs:
       matrix:
         include:
           - name: Debug
-            preset: ci-linux-gcc-debug
+            preset: ci-linux-clang-debug
             writes_shared_caches: true
           - name: Release
-            preset: ci-linux-gcc-release
+            preset: ci-linux-clang-release
             writes_shared_caches: false
 
     steps:
@@ -76,7 +76,7 @@ jobs:
         shell: bash
         run: |
           prefix="ccache-v8-${RUNNER_OS}-${RUNNER_ARCH}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-"
-          if [ "${{ matrix.preset }}" = "ci-linux-gcc-debug" ]; then
+          if [ "${{ matrix.preset }}" = "ci-linux-clang-debug" ]; then
             echo "debug-prefix=$prefix" >> "$GITHUB_OUTPUT"
           else
             echo "release-prefix=$prefix" >> "$GITHUB_OUTPUT"

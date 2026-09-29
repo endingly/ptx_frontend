@@ -1,5 +1,5 @@
 name: Set up Linux build dependencies
-description: Shared GCC, Python, vcpkg, and cache setup for Linux CI workflows
+description: Shared Clang, Python, vcpkg, and cache setup for Linux CI workflows
 
 inputs:
   writes-shared-caches:
@@ -11,7 +11,7 @@ outputs:
     description: UTC cache-maintenance epoch
     value: ${{ steps.epoch.outputs.month }}
   compiler-identity:
-    description: Installed GCC/tool and OS identity, excluding runner image revisions
+    description: Installed Clang/tool and OS identity, excluding runner image revisions
     value: ${{ steps.identity.outputs.compiler }}
   vcpkg-revision:
     description: Full vcpkg builtin baseline from the manifest
@@ -72,7 +72,7 @@ runs:
           -o Dir::Cache::archives="$APT_CACHE_DIR" \
           -o Binary::apt::APT::Keep-Downloaded-Packages=true \
           install -y --no-install-recommends \
-          build-essential ccache clang-format-21 cmake curl flex gcc g++ git \
+          build-essential ccache clang-21 clang-format-21 cmake curl flex git \
           ninja-build pkg-config python3 python3-pip python3-venv tar unzip zip
         sudo chmod -R a+rX "$APT_CACHE_DIR"
 

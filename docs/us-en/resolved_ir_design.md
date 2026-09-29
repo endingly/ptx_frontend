@@ -592,19 +592,20 @@ No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-`selectVariant<T>` remains a common template adapter in the handwritten public
-ABI header, so every type satisfying the `PtxOperator` concept can use it
+`selectVariant<T>` remains a common template adapter in the small handwritten
+`ptx_resolved_ir_selection.hpp` header, so every type satisfying `PtxOperator` can use it
 directly. It passes the descriptor to an out-of-line non-template matcher and
 converts the selected variant name to the opcode's `VariantType`. Generated
-model headers, and the explicit-specialization declarations for `resolve<T>`
-and `check<T>`, are emitted by YAML `codegen_category`. The aggregate
+model and explicit-specialization declarations for `resolve<T>` and `check<T>`
+share one full opcode header under the YAML `codegen_category`. A narrow
+model-only opcode and category headers remain available to consumers with an incomplete syntax AST. The model aggregate and instruction union include those narrow category headers. The aggregate
 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`,
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp`, and
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
-category-local consumer can include only its model and specialization headers.
+category-local consumer can include only its full opcode header or category aggregate.
 The complete `ResolvedInstruction` union remains in its own aggregate header in
 canonical instruction order. Specialization definitions are non-inline and
-emitted into `resolved_ir_<category>.gen.cpp`, which is compiled into the
+emitted with all three descriptor families into `resolved_ir_<category>_<opcode>.gen.cpp`, which is compiled into the
 library. This boundary keeps only the small type adapter as a template while
 preventing every consumer translation unit from reparsing the matcher or
 instantiating large resolve builders and checker visits/lambdas.

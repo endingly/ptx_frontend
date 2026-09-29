@@ -1,11 +1,11 @@
 #include "test_module_snapshot.hpp"
-#include "test_module_projection.hpp"
+#include "test_module_projection_detail.hpp"
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir::test_support {
-namespace {
+namespace detail {
 
 /** Copy storage facts without exposing the full module instruction variant. */
 std::vector<StorageSnapshot> projectStorage(const ResolvedModule& module) {
@@ -27,6 +27,10 @@ std::vector<StorageSnapshot> projectStorage(const ResolvedModule& module) {
   return projected;
 }
 
+}  // namespace detail
+
+namespace {
+
 /** Copy only the function and storage facts used by module acceptance tests. */
 ModuleSnapshot project(const ResolvedModule& module) {
   ModuleSnapshot snapshot;
@@ -36,7 +40,7 @@ ModuleSnapshot project(const ResolvedModule& module) {
     snapshot.functions.push_back({function.symbol_id, function.name,
                                   function.is_prototype, function.body.size(),
                                   function.parameter_declarations});
-  snapshot.storage_declarations = projectStorage(module);
+  snapshot.storage_declarations = detail::projectStorage(module);
   snapshot.storage_metadata = module.storage_declarations;
   return snapshot;
 }
@@ -180,106 +184,5 @@ checkOwnedModuleMutation(std::string source, OwnedMutationScenario scenario) {
       validateModule(*resolved, ModuleValidationPolicy::RequireCompleteContext),
   };
 }
-
-}  // namespace ptx_frontend::resolved_ir::test_support
-
-namespace ptx_frontend::resolved_ir::test_support {
-
-template <PtxOperator... Instructions>
-std::expected<TypedModuleSnapshot<Instructions...>,
-              std::vector<ResolveDiagnostic>>
-resolveTypedModule(const syntax_ast::AstModule& ast, ModulePipeline pipeline) {
-  std::expected<ResolvedModule, ModuleResolveDiagnostics> resolved =
-      [&]() -> std::expected<ResolvedModule, ModuleResolveDiagnostics> {
-    switch (pipeline) {
-      case ModulePipeline::ResolveOnly:
-        return resolveModuleOnly(ast);
-      case ModulePipeline::AvailableContext:
-        return resolveModule(ast);
-      case ModulePipeline::CompleteContext:
-        return resolveAndValidateModule(ast);
-    }
-    __builtin_unreachable();
-  }();
-  if (!resolved)
-    return std::unexpected(std::move(resolved.error()));
-
-  TypedModuleSnapshot<Instructions...> snapshot;
-  snapshot.symbols = resolved->symbols;
-  snapshot.storage_declarations = projectStorage(*resolved);
-  snapshot.functions.reserve(resolved->functions.size());
-  for (const auto& function : resolved->functions) {
-    TypedFunctionSnapshot<Instructions...> projected;
-    projected.symbol_id = function.symbol_id;
-    projected.name = function.name;
-    projected.instruction_ranges = function.instruction_ranges;
-    projected.body.reserve(function.body.size());
-    for (const auto& instruction : function.body) {
-      std::variant<std::monostate, Instructions...> selected;
-      (
-          [&] {
-            if (const auto* value = std::get_if<Instructions>(&instruction))
-              selected = *value;
-          }(),
-          ...);
-      projected.body.push_back(std::move(selected));
-    }
-    snapshot.functions.push_back(std::move(projected));
-  }
-  return snapshot;
-}
-
-template std::expected<TypedModuleSnapshot<Mov>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Mov>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Ld>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Ld>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<St>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<St>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Bar>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Bar>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Barrier>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Barrier>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Brx>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Brx>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Mul>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Mul>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Add>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Add>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Set>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Set>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Setp>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Setp>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Selp>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Selp>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Slct>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Slct>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Div>, std::vector<ResolveDiagnostic>>
-resolveTypedModule<Div>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Abs, Neg>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Abs, Neg>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Rcp, Sqrt, Rsqrt>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Rcp, Sqrt, Rsqrt>(const syntax_ast::AstModule&,
-                                     ModulePipeline);
-template std::expected<TypedModuleSnapshot<Mov, Add>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Mov, Add>(const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<
-    TypedModuleSnapshot<Barrier, Clusterlaunchcontrol, Fence, Mbarrier>,
-    std::vector<ResolveDiagnostic>>
-resolveTypedModule<Barrier, Clusterlaunchcontrol, Fence, Mbarrier>(
-    const syntax_ast::AstModule&, ModulePipeline);
-template std::expected<TypedModuleSnapshot<Atom, Cp, Ldmatrix, Mma, Vote>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Atom, Cp, Ldmatrix, Mma, Vote>(const syntax_ast::AstModule&,
-                                                  ModulePipeline);
-template std::expected<TypedModuleSnapshot<Call, Ld, St>,
-                       std::vector<ResolveDiagnostic>>
-resolveTypedModule<Call, Ld, St>(const syntax_ast::AstModule&, ModulePipeline);
 
 }  // namespace ptx_frontend::resolved_ir::test_support

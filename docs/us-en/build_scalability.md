@@ -296,3 +296,35 @@ jobs reached a 21,914 MiB compiler RSS sum and only 121 MiB of
 `MemAvailable`; it was also stopped and is not a clean-build comparison.
 Local parallelism may be raised for convenience, but these observations do
 not justify removing the Debug CI parallel cap.
+
+## 2026-09-29 local Clang comparison
+
+The C++ source after the targeted module-test partition is unchanged by the
+documentation-only commit `092aac3`. The following additional clean
+`test_resolved_ir` builds use the same source, Ninja, Debug `-g0` for C and
+C++, disabled ccache, vcpkg toolchain, and local host as the third row above.
+Each run starts from a separate empty build directory; configuration is
+excluded. Clang is Ubuntu Clang 21.1.8, compared with GCC 15.2.0. The same
+261 C++ objects are compiled in each run, and all 887 Resolved IR tests pass.
+
+| Compiler | Parallel jobs | Clean target build | Sampled peak compiler RSS sum | Lowest sampled `MemAvailable` | Build directory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GCC 15.2 | 6 | 494 s | 10,964 MiB | 10,849 MiB | 5.4 GiB |
+| Clang 21.1.8 | 6 | 492 s | 4,947 MiB | 17,031 MiB | 3.0 GiB |
+| Clang 21.1.8 | 14 | 346 s | 8,865 MiB | 13,898 MiB | 3.0 GiB |
+
+At equal six-job parallelism, the two-second wall difference is not meaningful
+evidence of a compiler speed advantage; Clang's sampled compiler RSS sum is
+6,017 MiB lower. With the local Ninja default of 14 jobs, the Clang build is
+146 seconds faster than its six-job run and retains lower sampled compiler
+RSS than six-job GCC. This is a benefit from using the memory headroom for
+more concurrent work, not a same-parallelism compiler speedup. The Clang
+build emitted repeated `-Wdefaulted-function-deleted` warnings from existing
+headers; they were not suppressed for measurement. The warning count does not
+affect the passing test result.
+
+The RSS figures sum one-second samples of `cc1plus` for GCC or `clang++-21`
+and `clang-21` for Clang. Shared pages can be counted more than once; they
+are not process-tree or cgroup peaks. These single local runs do not establish
+the best parallelism or memory safety for CI, nor do they show that the per-op
+layout is faster than main under Clang.

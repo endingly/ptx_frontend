@@ -2388,4 +2388,112 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
   }});
 }
 
+CheckResult check_cp_async_rule(std::span<const FieldView> fields,
+                                std::span<const OperandView> operands,
+                                const Context& context) {
+  const OperandView* size = find_operand(operands, "cp_size");
+  if (size == nullptr || size->actual_shape != OperandShape::Immediate ||
+      size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "cp.async requires a typed immediate copy size.",
+    }});
+  }
+  const FieldView* hint_field = find_field(fields, "cache_hint");
+  const bool has_hint =
+      hint_field != nullptr && hint_field->bool_value.value_or(false);
+  const OperandView* policy = find_operand(operands, "cache_policy");
+  /** Preserve the declared integer/bit register family for cache policies. */
+  const auto is_policy_type = [](std::optional<ScalarType> type) {
+    return type == ScalarType::B64 || type == ScalarType::U64 ||
+           type == ScalarType::S64;
+  };
+  /** Defer type checking only when no declaration was bound to the operand. */
+  const auto unbound_unknown_type = [](const OperandView& operand) {
+    return !operand.register_type && !operand.register_symbol_id;
+  };
+  if (policy != nullptr &&
+      (!has_hint || policy->actual_shape != OperandShape::Register ||
+       policy->register_class != ResolvedRegisterClass::General ||
+       (!is_policy_type(policy->register_type) &&
+        !unbound_unknown_type(*policy)))) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(policy->locations, context),
+        .message = "cp.async cache policy requires an L2 cache hint and a "
+                   "64-bit integer or bit register.",
+    }});
+  }
+  const OperandView* control = find_operand(operands, "source_control");
+  if (control == nullptr)
+    return {};
+  if (control->cp_async_cache_policy) {
+    if (has_hint && policy == nullptr &&
+        control->actual_shape == OperandShape::Register &&
+        control->register_class == ResolvedRegisterClass::General &&
+        (is_policy_type(control->register_type) ||
+         unbound_unknown_type(*control)))
+      return {};
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(control->locations, context),
+        .message = "cp.async fourth-operand cache policy requires an L2 cache "
+                   "hint and no fifth operand.",
+    }});
+  }
+  if (control->actual_shape == OperandShape::Immediate) {
+    if (control->immediate_type != ScalarType::U32 ||
+        !control->immediate_bits ||
+        control->immediate_is_negative.value_or(false)) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be a 32-bit unsigned integer.",
+      }});
+    }
+    if (*control->immediate_bits >= *size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be smaller than copy size.",
+      }});
+    }
+    return {};
+  }
+  if (control->actual_shape == OperandShape::Register &&
+      control->register_class == ResolvedRegisterClass::General &&
+      (control->register_type == ScalarType::U32 ||
+       control->register_type == ScalarType::S32 ||
+       control->register_type == ScalarType::B32 ||
+       unbound_unknown_type(*control)))
+    return {};
+  if (control->actual_shape == OperandShape::Predicate) {
+    if (control->register_class != ResolvedRegisterClass::Predicate ||
+        (control->register_type != ScalarType::Pred &&
+         !unbound_unknown_type(*control))) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message =
+              "cp.async ignore-source control requires a predicate register.",
+      }});
+    }
+    if (context.target.ptx_version < PtxVersion{7, 5}) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async ignore-source control requires PTX 7.5.",
+      }});
+    }
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(control->locations, context),
+      .message = "cp.async source size must be a 32-bit integer or bit "
+                 "register, or an unsigned immediate.",
+  }});
+}
+
 }  // namespace ptx_frontend::resolved_ir::checker

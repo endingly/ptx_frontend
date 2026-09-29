@@ -7,18 +7,12 @@ from pathlib import Path
 from typing import Protocol
 
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.code_gen.emit.checker_descriptors import (
-    generate_resolved_checker_descriptor_source,
-)
 from ptx_frontend.code_gen.emit.category_source import (
-    generate_resolved_ir_category_source,
+    generate_resolved_ir_opcode_source,
 )
 from ptx_frontend.code_gen.emit.resolved_checker import (
     generate_resolved_ir_checker_category_declarations_header,
     generate_resolved_ir_checker_declarations_header,
-)
-from ptx_frontend.code_gen.emit.resolved_descriptors import (
-    generate_resolved_descriptor_source,
 )
 from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
@@ -26,14 +20,14 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 from ptx_frontend.code_gen.emit.resolved_model import (
     generate_resolved_instruction_union_header,
     generate_resolved_ir_category_header,
+    generate_resolved_ir_category_model_header,
     generate_resolved_ir_header,
+    generate_resolved_ir_opcode_full_header,
+    generate_resolved_ir_opcode_header,
 )
 from ptx_frontend.code_gen.emit.resolved_resolver import (
     generate_resolved_ir_resolution_category_declarations_header,
     generate_resolved_ir_resolution_declarations_header,
-)
-from ptx_frontend.code_gen.emit.syntax_descriptors import (
-    generate_syntax_descriptor_source,
 )
 from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
@@ -63,6 +57,20 @@ class CategoryArtifactEmitter(Protocol):
         output_path: Path,
     ) -> None:
         """Write one category-local artifact."""
+
+
+class OpcodeArtifactEmitter(Protocol):
+    """Emit one artifact for a canonical opcode within a codegen category."""
+
+    def __call__(
+        self,
+        context: GenerationContext,
+        *,
+        category: str,
+        opcode: str,
+        output_path: Path,
+    ) -> None:
+        """Write one opcode-local artifact."""
 
 
 @dataclass(frozen=True)
@@ -168,6 +176,37 @@ def build_generation_plan(
                 emitter=generate_resolved_ir_category_header,
             )
         )
+        artifacts.append(
+            _category_artifact(
+                path=(output_dir / f"public/ptx_frontend/resolved_ir/model/{category}/model.gen.hpp"),
+                category=category,
+                emitter=generate_resolved_ir_category_model_header,
+            )
+        )
+        artifacts.extend(
+            _opcode_artifact(
+                path=(
+                    output_dir
+                    / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp"
+                ),
+                category=category,
+                opcode=opcode,
+                emitter=generate_resolved_ir_opcode_full_header,
+            )
+            for opcode in _category_opcodes(context, category)
+        )
+        artifacts.extend(
+            _opcode_artifact(
+                path=(
+                    output_dir
+                    / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp"
+                ),
+                category=category,
+                opcode=opcode,
+                emitter=generate_resolved_ir_opcode_header,
+            )
+            for opcode in _category_opcodes(context, category)
+        )
 
     # ------------------------------------------------------------------
     # Aggregate model compatibility layer.
@@ -245,50 +284,18 @@ def build_generation_plan(
     )
 
     # ------------------------------------------------------------------
-    # Category-local resolver/checker implementation.
-    # ------------------------------------------------------------------
-
-    for category in categories:
-        artifacts.append(
-            _category_artifact(
-                path=(output_dir / f"private/resolved_ir_{category}.gen.cpp"),
-                category=category,
-                emitter=generate_resolved_ir_category_source,
-            )
-        )
-
-    # ------------------------------------------------------------------
-    # Category-local descriptor implementation.
+    # Opcode-local descriptors and resolver/checker implementation.
     # ------------------------------------------------------------------
 
     for category in categories:
         artifacts.extend(
-            (
-                _category_artifact(
-                    path=(output_dir / f"private/syntax_descriptor_{category}.gen.cpp"),
-                    category=category,
-                    emitter=generate_syntax_descriptor_source,
-                ),
-                _category_artifact(
-                    path=(
-                        output_dir / f"private/resolved_descriptor_{category}.gen.cpp"
-                    ),
-                    category=category,
-                    emitter=generate_resolved_descriptor_source,
-                ),
-                _category_artifact(
-                    path=(
-                        output_dir
-                        / (
-                            "private/"
-                            "resolved_ir_checker_descriptor_"
-                            f"{category}.gen.cpp"
-                        )
-                    ),
-                    category=category,
-                    emitter=generate_resolved_checker_descriptor_source,
-                ),
+            _opcode_artifact(
+                path=output_dir / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
+                category=category,
+                opcode=opcode,
+                emitter=generate_resolved_ir_opcode_source,
             )
+            for opcode in _category_opcodes(context, category)
         )
 
     # ------------------------------------------------------------------
@@ -326,6 +333,16 @@ def _bind_category_emitter(
     return bound
 
 
+def _category_opcodes(context: GenerationContext, category: str) -> tuple[str, ...]:
+    """Return canonical opcodes in their existing category declaration order."""
+
+    return tuple(
+        entry.specification.opcode
+        for entry in context.entries
+        if entry.specification.codegen_category == category
+    )
+
+
 def _category_artifact(
     *,
     path: Path,
@@ -342,3 +359,22 @@ def _category_artifact(
         ),
         category=category,
     )
+
+
+def _opcode_artifact(
+    *,
+    path: Path,
+    category: str,
+    opcode: str,
+    emitter: OpcodeArtifactEmitter,
+) -> GeneratedArtifact:
+    """Create one category-owned artifact bound to a canonical opcode."""
+
+    def bound(context: GenerationContext, *, output_path: Path) -> None:
+        """Emit the source selected by this plan entry."""
+
+        emitter(
+            context, category=category, opcode=opcode, output_path=output_path
+        )
+
+    return GeneratedArtifact(path=path, emit=bound, category=category)

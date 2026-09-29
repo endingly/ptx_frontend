@@ -38,6 +38,7 @@ from ptx_frontend.code_gen.reference_policy import validate_reference_field_type
 from ptx_frontend.code_gen.emit.resolved_model import (
     generate_resolved_instruction_union_header,
     generate_resolved_ir_category_header,
+    generate_resolved_ir_opcode_header,
     generate_resolved_ir_header,
 )
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
@@ -3976,11 +3977,21 @@ class ResolvedIrBuildTest(unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Cp")
         self.assertEqual(
-            [candidate.cpp_name for candidate in resolved.variants[:8]],
+            [candidate.cpp_name for candidate in resolved.variants[:35]],
             ["AsyncCaSharedGlobal", "AsyncCommitGroup", "AsyncWaitGroup", "AsyncWaitAll",
              "AsyncMbarrierArriveGenericOrShared", "AsyncMbarrierArriveSharedCta",
              "AsyncMbarrierArriveNoincGenericOrShared",
-             "AsyncMbarrierArriveNoincSharedCta"],
+             "AsyncMbarrierArriveNoincSharedCta", "AsyncCgSharedGlobal",
+             "AsyncCaSharedCtaGlobal", "AsyncCgSharedCtaGlobal",
+             "AsyncCaSharedGlobalControl", "AsyncCgSharedGlobalControl",
+             "AsyncCaSharedCtaGlobalControl", "AsyncCgSharedCtaGlobalControl",
+             "AsyncCaSharedGlobalPrefetchBase", "AsyncCaSharedGlobalPrefetchControl", "AsyncCaSharedGlobalCacheHintBase",
+             "AsyncCaSharedGlobalCacheHintControl", "AsyncCaSharedGlobalCacheHintControlPolicy", "AsyncCaSharedCtaGlobalPrefetchBase",
+             "AsyncCaSharedCtaGlobalPrefetchControl", "AsyncCaSharedCtaGlobalCacheHintBase", "AsyncCaSharedCtaGlobalCacheHintControl",
+             "AsyncCaSharedCtaGlobalCacheHintControlPolicy", "AsyncCgSharedGlobalPrefetchBase", "AsyncCgSharedGlobalPrefetchControl",
+             "AsyncCgSharedGlobalCacheHintBase", "AsyncCgSharedGlobalCacheHintControl", "AsyncCgSharedGlobalCacheHintControlPolicy",
+             "AsyncCgSharedCtaGlobalPrefetchBase", "AsyncCgSharedCtaGlobalPrefetchControl", "AsyncCgSharedCtaGlobalCacheHintBase",
+             "AsyncCgSharedCtaGlobalCacheHintControl", "AsyncCgSharedCtaGlobalCacheHintControlPolicy"],
         )
         self.assertEqual(variant.cpp_name, "AsyncCaSharedGlobal")
         self.assertEqual(variant.completion_kind, AsyncCompletionKind.ASYNC_GROUP)
@@ -3991,6 +4002,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertTrue(all(
             candidate.completion_kind is AsyncCompletionKind.NONE
             for candidate in resolved.variants[4:8]
+        ))
+        self.assertTrue(all(
+            candidate.completion_kind is AsyncCompletionKind.ASYNC_GROUP
+            for candidate in resolved.variants[8:35]
         ))
         self.assertEqual(dict(variant.availability), {"ptx": "7.0", "sm": 80})
         self.assertEqual(
@@ -4938,10 +4953,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             context = build_test_generation_context(self.database)
-            generate_resolved_ir_category_header(
-                context, category="parallel_synchronization_and_communication",
-                output_path=path / "model.hpp",
-            )
+            for opcode in ("atom", "red"):
+                generate_resolved_ir_opcode_header(
+                    context, category="parallel_synchronization_and_communication",
+                    opcode=opcode, output_path=path / f"{opcode}.hpp",
+                )
             generate_resolved_ir_category_source(
                 context, category="parallel_synchronization_and_communication",
                 output_path=path / "logic.cpp",
@@ -4950,7 +4966,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 context, category="parallel_synchronization_and_communication",
                 output_path=path / "descriptors.cpp",
             )
-            model = (path / "model.hpp").read_text()
+            model = "\n".join((path / f"{opcode}.hpp").read_text()
+                              for opcode in ("atom", "red"))
             logic = (path / "logic.cpp").read_text()
             descriptors = (path / "descriptors.cpp").read_text()
         self.assertEqual(model.count("WithLocs<AtomicAddressQualifier> address_qualifier;"), 2)
@@ -5218,11 +5235,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
             union_source = union.read_text(encoding="utf-8")
 
         for instruction in ("Set", "Setp", "Selp", "Slct"):
-            self.assertIn(f"struct {instruction} {{", comparison_source)
-            self.assertNotIn(f"struct {instruction} {{", arithmetic_source)
+            self.assertIn(f"comparison_and_selection/{instruction.lower()}.gen.hpp", comparison_source)
+            self.assertNotIn(f"arithmetic/{instruction.lower()}.gen.hpp", arithmetic_source)
             self.assertIn(instruction, union_source)
         self.assertIn(
-            '#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>',
+            '#include <ptx_frontend/resolved_ir/model/comparison_and_selection/model.gen.hpp>',
             union_source,
         )
         self.assertIn(
@@ -5247,6 +5264,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
                     context, category=category, output_path=category_path
                 )
                 category_paths.append(category_path)
+                for entry in context.entries:
+                    if entry.specification.codegen_category != category:
+                        continue
+                    leaf_path = Path(directory) / f"{category}_{entry.specification.opcode}.gen.hpp"
+                    generate_resolved_ir_opcode_header(
+                        context, category=category,
+                        opcode=entry.specification.opcode, output_path=leaf_path,
+                    )
+                    category_paths.append(leaf_path)
             union_path = Path(directory) / "resolved_instruction_union.gen.hpp"
             generate_resolved_instruction_union_header(
                 context, output_path=union_path
@@ -6427,9 +6453,9 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             header_path = Path(directory) / "uncategorized.gen.hpp"
             source_path = Path(directory) / "resolved_ir_uncategorized.gen.cpp"
-            generate_resolved_ir_category_header(
+            generate_resolved_ir_opcode_header(
                 build_test_generation_context(database),
-                category="uncategorized", output_path=header_path,
+                category="uncategorized", opcode="sample", output_path=header_path,
             )
             generate_resolved_ir_category_source(build_test_generation_context(database),
                 category="uncategorized",

@@ -42,16 +42,8 @@ database = load_packaged_spec_database()
 
 ## 测试 profile
 
-`BUILD_TESTING=ON` 只构建普通的 `test_resolved_ir` suite。默认配置刻意不包含 alternate
-generated fixture、self-heal/topology check、embedded-parent check 或 installed-package
-consumer。
-
-`PTX_FRONTEND_BUILD_CONSUMER_TESTS=ON` 必须与 `BUILD_TESTING=ON` 一同使用，并加入上述
-consumer/integration group。`ci-consumer-integration` 的 configure、build、test preset
-会选择它并运行稳定的 CTest `consumer` label。普通 Debug 与 Release preset 保持关闭，因而
-一般 C++ 与 Python unit check 不会间接 configure 或 build consumer fixture。
-
-CI 在 push 到 `main` 时自动运行 consumer/integration profile，与普通 Debug/Release
-缓存预热任务并行。它也支持手动触发，并在版本 tag 发布 wheel 前作为门禁。
-push 到 `dev` 时只运行普通预热任务。consumer job 会恢复兼容的编译器缓存，
-但不发布 production cache seed。
+`BUILD_TESTING=ON` 会构建包括 `test_resolved_ir` 在内的 C++ 测试套件。
+GCC 和 Clang 的 Debug/Release preset 都启用该选项。GitHub Actions 当前使用
+Clang 21 preset 运行常规 C++ 测试，并在 PR Debug 和发布标签任务中独立构建
+`examples/conversion_consumer` 的安装包 consumer。consumer 使用独立的 CMake
+构建目录，以及对应 Clang Debug 构建安装的 package。

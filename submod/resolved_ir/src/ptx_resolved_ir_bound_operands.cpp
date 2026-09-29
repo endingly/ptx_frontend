@@ -1938,6 +1938,60 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::CpAsyncSourceControl: {
+      const auto range = syntax_ast::sourceRange(operand);
+      if (const auto* immediate =
+              std::get_if<syntax_ast::AstImmediate>(&operand)) {
+        auto value = resolve_immediate_value(*immediate, ScalarType::U32, true);
+        if (!value)
+          return std::unexpected(value.error());
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{std::move(*value)}, range}};
+      }
+      if (std::holds_alternative<syntax_ast::AstPredicateOperand>(operand)) {
+        auto value = resolve_predicate(operand, context);
+        if (!value)
+          return std::unexpected(value.error());
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
+      }
+      if (const auto* identifier =
+              std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+        auto predicate = resolve_predicate_identifier(
+            *identifier, false, identifier->syntax.range, context);
+        if (predicate) {
+          return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+              ResolvedCpAsyncSourceControl{std::move(predicate->value)},
+              range}};
+        }
+      }
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      const auto hint = fields.modifiers.find("cache_hint");
+      const auto* hint_value = hint == fields.modifiers.end()
+                                   ? nullptr
+                                   : std::get_if<WithLocs<bool>>(&hint->second);
+      if (context == nullptr && !value->value.declared_type &&
+          fields.operand_count == 4 && hint_value && hint_value->value) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = range,
+            .message = "cp.async fourth register with .L2::cache_hint "
+                       "requires a declaration to distinguish source size "
+                       "from cache policy.",
+        });
+      }
+      if (value->value.declared_type == ScalarType::B64 ||
+          value->value.declared_type == ScalarType::U64 ||
+          value->value.declared_type == ScalarType::S64) {
+        return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+            ResolvedCpAsyncSourceControl{ResolvedCpAsyncCachePolicy{
+                .register_ref = std::move(value->value)}},
+            range}};
+      }
+      return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{
+          ResolvedCpAsyncSourceControl{std::move(value->value)}, range}};
+    }
     case ResolvedValueKind::ShflDestination: {
       auto value =
           resolve_shfl_destination(operand, binding.allow_destination_sink,

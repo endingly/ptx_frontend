@@ -32,6 +32,7 @@ class ResolvedValueKind(Enum):
     REG_OR_IMM = "RegOrImm"
     REGISTER_OR_SINK = "RegisterOrSink"
     MOV_SOURCE = "MovSource"
+    CP_ASYNC_SOURCE_CONTROL = "CpAsyncSourceControl"
     VECTOR_REGISTER = "VectorRegister"
     VECTOR_SPECIAL_REGISTER = "VectorSpecialRegister"
     BRANCH_TARGET = "BranchTarget"

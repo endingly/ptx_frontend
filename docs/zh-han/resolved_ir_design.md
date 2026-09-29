@@ -463,16 +463,17 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
 对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
-`selectVariant<T>` 是手写公共 ABI 头中的通用模板适配器，任何满足 `PtxOperator`
+`selectVariant<T>` 是小型手写 `ptx_resolved_ir_selection.hpp` 头中的通用模板适配器，任何满足 `PtxOperator`
 concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line 的非模板 matcher，
 再把选中的 variant name 转成对应 `VariantType`。opcode struct 以及
-`resolve<T>`、`check<T>` 的显式特化声明按 YAML `codegen_category` 生成。
+`resolve<T>`、`check<T>` 的显式特化声明共用按 YAML `codegen_category` 生成的完整 opcode 头。
+需要不完整 syntax AST 的 consumer 仍可包含独立的窄 opcode 或 category model 头；model 聚合头与 instruction union 也包含窄 category 头。
 聚合 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`、
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` 与
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
-可以只包含所属 category 的 model 与特化声明头。完整 `ResolvedInstruction` union
+可以只包含所属 opcode 的完整头或 category 聚合头。完整 `ResolvedInstruction` union
 仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
-生成到 `resolved_ir_<category>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
+与三类 descriptor 一起生成到 `resolved_ir_<category>_<opcode>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
 留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、大型
 resolve builder 与 checker visit/lambda。
 

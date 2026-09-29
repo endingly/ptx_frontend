@@ -97,6 +97,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       .variant_name = variant_name,
       .operand_layout = ResolvedOperandLayoutTag{static_cast<uint16_t>(
           selected_layout->index)},
+      .operand_count = ast.operands.size(),
   };
   if (ast.predicate) {
     auto predicate = detail::resolve_predicate_identifier(

@@ -658,6 +658,19 @@ operand_patterns:
       access: read
       type: u32
 
+  cp_async_shared_global_control:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: cp_size, kind: imm, role: src, access: read, type: u32}
+    - {name: source_control, kind: cp_async_source_control, role: src, access: read}
+
+  cp_async_shared_global_control_policy:
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: src, kind: addr, role: addr, access: read, state_space: [global]}
+    - {name: cp_size, kind: imm, role: src, access: read, type: u32}
+    - {name: source_control, kind: cp_async_source_control, role: src, access: read}
+    - {name: cache_policy, kind: reg, role: src, access: read, type: b64, register_width: same_width}
+
   cp_async_mbarrier_arrive_address:
     - name: address
       kind: addr
@@ -4345,6 +4358,428 @@ instructions:
         operands: $cp_async_mbarrier_arrive_address
         rule: data_movement.cp_async_mbarrier_arrive
         constraints: [{kind: address_alignment, address_operand: address, alignment: 8}]
+
+  - opcode: cp
+    section: "9.7.9.26.3.1"
+    doc: "L2-only non-bulk copy from global to shared memory."
+    syntax: "cp.async.cg.shared.global [dst], [src], 16"
+    variants:
+      - name: cp_async_cg_shared_global
+        completion_kind: async_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+        examples:
+          - {ptx: "cp.async.cg.shared.global [shared_value], [global_value], 16;", valid: true}
+
+      - name: cp_async_ca_shared_cta_global
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_global_control
+        completion_kind: async_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_control
+        completion_kind: async_group
+        availability: {ptx: "7.0", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+  - opcode: cp
+    section: "9.7.9.26.3.1"
+    doc: "Non-bulk L2 prefetch and cache-hint forms, including typed source control and cache policy."
+    syntax: "cp.async.{ca|cg}.shared{::cta}.global{.L2::cache_hint}{.L2::64B|.L2::128B|.L2::256B} [dst], [src], cp_size{, src_size|ignore_src}{, cache_policy}"
+    variants:
+      - name: cp_async_ca_shared_global_prefetch_base
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_global_prefetch_control
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_global_cache_hint_base
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_global_cache_hint_control
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_global_cache_hint_control_policy
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control_policy
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_prefetch_base
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_prefetch_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_cache_hint_base
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_cache_hint_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_ca_shared_cta_global_cache_hint_control_policy
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: ca, kind: flag, presence: fixed, value: true, token: .ca}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control_policy
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [4, 8, 16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_prefetch_base
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_prefetch_control
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_cache_hint_base
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_cache_hint_control
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_global_cache_hint_control_policy
+        completion_kind: async_group
+        availability: {ptx: "7.4", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control_policy
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_prefetch_base
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_prefetch_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: required, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}]}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_cache_hint_base
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_cache_hint_control
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
+
+      - name: cp_async_cg_shared_cta_global_cache_hint_control_policy
+        completion_kind: async_group
+        availability: {ptx: "7.8", sm: 80}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: cg, kind: flag, presence: fixed, value: true, token: .cg}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: global, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
+          - {name: prefetch_size, kind: prefetch_size, domain: prefetch_sizes, presence: optional, values: [{value: L2::64B, token: .L2::64B}, {value: L2::128B, token: .L2::128B}, {value: L2::256B, token: .L2::256B}], default: none}
+        operands: $cp_async_shared_global_control_policy
+        rule: data_movement.cp_async
+        constraints:
+          - {kind: immediate_value, operand: cp_size, values: [16]}
+          - {kind: address_alignment, address_operands: [dst, src], immediate_operand: cp_size}
 
   - opcode: cp
     section: "9.7.9.26.4.1"

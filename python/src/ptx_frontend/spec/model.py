@@ -148,6 +148,7 @@ class OperandKind(_SemanticToken):
     PREDICATE_PAIR = "pred_pair"
     PREDICATE_PAIR_OR_SINK = "pred_pair_or_sink"
     MOV_SCALAR_SOURCE = "mov_scalar_src"
+    CP_ASYNC_SOURCE_CONTROL = "cp_async_source_control"
     CLUSTER_ADDRESS = "cluster_address"
     VECTOR_REGISTER = "vector_reg"
     VECTOR_SPECIAL_REGISTER = "vector_sreg"

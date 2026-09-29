@@ -303,6 +303,7 @@ domains:
       PredicatePair: ResolvedPredicatePair
       PredicatePairOrSink: ResolvedPredicatePairOrSink
       MovSource: ResolvedMovSource
+      CpAsyncSourceControl: ResolvedCpAsyncSourceControl
       VectorRegister: ResolvedVectorRegisterRef
       VectorSpecialRegister: ResolvedVectorSpecialRegisterRef
       BranchTarget: ResolvedBranchTarget
@@ -391,6 +392,7 @@ domains:
       PredicatePair: check_end::ResolvedValueKind::PredicatePair
       PredicatePairOrSink: check_end::ResolvedValueKind::PredicatePairOrSink
       MovSource: check_end::ResolvedValueKind::MovSource
+      CpAsyncSourceControl: check_end::ResolvedValueKind::CpAsyncSourceControl
       VectorRegister: check_end::ResolvedValueKind::VectorRegister
       VectorSpecialRegister: check_end::ResolvedValueKind::VectorSpecialRegister
       BranchTarget: check_end::ResolvedValueKind::BranchTarget

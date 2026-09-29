@@ -233,12 +233,14 @@ excluded from the build times. No other build ran concurrently.
 | Main baseline | 450 s | 123 | 4.7 GiB | 15,632 MiB | 6,397 MiB |
 | Per-op candidate | 530 s | 251 | 5.3 GiB | 15,645 MiB | 6,280 MiB |
 | Per-op candidate with targeted module-test shards | 494 s | 261 | 5.4 GiB | 10,964 MiB | 10,849 MiB |
+| Above plus six-way memory/vector test split (discarded) | 565 s | 266 | 5.7 GiB | 10,311 MiB | 11,117 MiB |
 
 The candidate is 80 seconds (17.8%) slower and shows no meaningful memory
 headroom improvement in this clean-build comparison. Its generated objects
 grew from 25 to 93, and test objects from 78 to 138. Summed compiler object
-durations from Ninja's log grew by approximately 207 and 288 CPU seconds for
-those groups, respectively. The test split consists of 55 single-op files
+wall durations from Ninja's log grew by approximately 207 and 288 seconds
+for those groups, respectively. These overlapping durations are not CPU time.
+The test split consists of 55 single-op files
 (204 cases), four cross-op files (10 cases), and eight module files (211
 cases); other existing tests remain in place. An audit found no wholly
 redundant module-level test case. One duplicated Membar subassertion was
@@ -264,6 +266,22 @@ The sampled compiler RSS sum falls by 4,681 MiB relative to the unsplit
 candidate. All 887 tests across 130 suites pass. This single local result
 supports retaining the targeted test split for further review; it does not
 meet the issue's clean-build speed objective or prove safe uncapped CI builds.
+
+The fourth row is a further isolated experiment on the third-row candidate.
+It split the 2,432-line `test_resolved_module_memory_vectors.cpp` into six
+semantic source files while preserving the 48 test bodies and the full
+887-case inventory. The original file took 102.2 seconds in the third-row
+parallel build and 80.6 seconds with a 3,328-MiB maximum RSS when compiled
+alone. Despite smaller individual sources, the fresh target build became
+71 seconds slower. Summed test-object durations increased from 1,743.1 to
+2,118.6 seconds across all test objects, and sampled compiler RSS fell by only
+653 MiB. Repeated parsing of the aggregate header in five additional units is a
+plausible contributor, not an isolated measured cause. The six-way split was
+reverted; this row records the negative result rather than a shipped layout.
+A separate `-fsyntax-only -ftime-report` probe of the original giant file
+reported 15.70 of 21.44 seconds under template instantiation. That probe
+omits code generation and is not a substitute for the complete-build timing;
+it indicates that reducing source lines alone cannot remove its template cost.
 
 Before the targeted test split, a separate trial used a **test-only**, opt-in
 PCH for 29 source files that include

@@ -118,14 +118,15 @@ TEST(BulkAsync, StoreTopologiesAndSizeVersion) {
   .reg .u32 %r<4>;
   .reg .u32 %count32;
   .reg .u64 %count64;
-  st.async.shared::cluster.mbarrier::complete_tx::bytes.u32 [s], %r0, [bar];
-  st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 [s], {%r0, %r1}, [bar];
-  st.async.release.gpu.global.u32 [g], %r2;
-  st.async.mmio.release.sys.global.u32 [g], %r3;
+  .reg .u64 %sd, %gd;
+  st.async.shared::cluster.mbarrier::complete_tx::bytes.u32 [%sd], %r0, [bar];
+  st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 [%sd], {%r0, %r1}, [bar];
+  st.async.release.gpu.global.u32 [%gd], %r2;
+  st.async.mmio.release.sys.global.u32 [%gd], %r3;
   st.bulk.weak.shared::cta [s], 64, 0;
   st.bulk [s], %count32, 0;
   st.bulk [s], %count64, 0;
-  st.async.weak.shared::cluster.mbarrier::complete_tx::bytes.u32 [s], %r0, [bar];
+  st.async.weak.shared::cluster.mbarrier::complete_tx::bytes.u32 [%sd], %r0, [bar];
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
@@ -152,6 +153,102 @@ TEST(BulkAsync, StoreTopologiesAndSizeVersion) {
   EXPECT_TRUE(checker::check(std::get<St>(body[4]), old).has_value());
   EXPECT_FALSE(checker::check(std::get<St>(body[5]), old).has_value());
   EXPECT_TRUE(checker::check(std::get<St>(body[6]), old).has_value());
+}
+
+/** Async stores require a register base for every destination layout. */
+TEST(BulkAsync, AsyncStoreDestinationBase) {
+  constexpr std::string_view prefix = R"ptx(
+.version 9.3
+.target sm_100
+.address_size 64
+.global .align 16 .b8 g[64];
+.shared .align 16 .b8 s[64];
+.shared .align 8 .b64 bar;
+.entry kernel() {
+  .reg .u32 %r<2>;
+)ptx";
+  for (const std::string_view invalid : {
+           "st.async.shared::cluster.mbarrier::complete_tx::bytes.u32 [s], "
+           "%r0, [bar];",
+           "st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 [s], "
+           "{%r0, %r1}, [bar];",
+           "st.async.release.gpu.global.u32 [g], %r0;",
+           "st.async.shared::cluster.mbarrier::complete_tx::bytes.u32 [0], "
+           "%r0, [bar];",
+           "st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 [0], "
+           "{%r0, %r1}, [bar];",
+           "st.async.release.gpu.global.u32 [0], %r0;",
+       }) {
+    const std::string source =
+        std::string{prefix} + std::string{invalid} + "\n}\n";
+    const auto parsed = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveModule(*parsed).has_value()) << invalid;
+  }
+}
+
+/** A cache hint permits either operand layout, while policy needs a hint. */
+TEST(BulkAsync, CacheHintPolicyLayouts) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 16 .b8 g[64];
+.shared .align 16 .b8 s[64];
+.shared .align 8 .b64 bar;
+.entry kernel() {
+  .reg .b64 %policy;
+  cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes.L2::cache_hint [s], [g], 16, [bar];
+  cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes.L2::cache_hint [s], [g], 16, [bar], %policy;
+  cp.reduce.async.bulk.global.shared::cta.bulk_group.L2::cache_hint.add.u32 [g], [s], 16;
+  cp.reduce.async.bulk.global.shared::cta.bulk_group.L2::cache_hint.add.u32 [g], [s], 16, %policy;
+  cp.async.bulk.prefetch.L2.global.L2::cache_hint [g], 16;
+  cp.async.bulk.prefetch.L2.global.L2::cache_hint [g], 16, %policy;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  for (const auto& item : body)
+    EXPECT_TRUE(checker::check(std::get<Cp>(item), context).has_value());
+}
+
+/** Owned validation distrusts missing or altered bulk-store size type caches. */
+TEST(BulkAsync, OwnedBulkSizeTypeBinding) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_100
+.address_size 64
+.shared .align 16 .b8 s[64];
+.entry kernel() {
+  .reg .u32 %count;
+  st.bulk [s], %count, 0;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_TRUE(validateModule(*resolved).has_value());
+  auto& store = std::get<St>(resolved->functions.front().body.front());
+  auto& size = std::get<ResolvedRegisterRef>(
+      std::get<St::BulkZero>(store.variant).size.value);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 100}};
+  const checker::Context old{
+      .target = {.ptx_version = {8, 6}, .sm_version = 100}};
+  EXPECT_FALSE(checker::check(store, old).has_value());
+  size.declared_type = std::nullopt;
+  EXPECT_TRUE(checker::check(store, context).has_value());
+  EXPECT_FALSE(validateModule(*resolved).has_value());
+  size.declared_type = ScalarType::U64;
+  EXPECT_TRUE(checker::check(store, old).has_value());
+  EXPECT_FALSE(validateModule(*resolved).has_value());
+  size.declared_type = ScalarType::U32;
+  EXPECT_TRUE(validateModule(*resolved).has_value());
 }
 
 /** Check optional operand layouts and family-gated copy semantics. */
@@ -210,8 +307,11 @@ TEST(BulkAsync, CopyQualifierMatrix) {
   }
   auto& bounded = std::get<Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob>(
       std::get<Cp>(resolved->functions.front().body[3]).variant);
-  auto& ignore_left =
-      std::get<ResolvedImmediate>(bounded.ignore_bytes_left.value);
+  auto& ignore_left = std::get<ResolvedImmediate>(
+      std::get<
+          Cp::AsyncBulkGlobalSharedCtaCacheHintIgnoreOob::WithPolicyOperands>(
+          bounded.operands)
+          .ignore_bytes_left.value);
   ignore_left.bits = 16;
   ignore_left.integer_source_bits = 16;
   const checker::Context base_context{
@@ -305,8 +405,6 @@ TEST(BulkAsync, RejectsInvalidQualifierPairings) {
   .reg .b64 %policy;
 )ptx";
   for (const std::string_view invalid : {
-           "cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes.L2::"
-           "cache_hint [s], [g], 16, [bar];",
            "cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes."
            "ignore_oob [s], [g], 16, 1, 1, [bar];",
            "cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes.cp_"
@@ -315,7 +413,11 @@ TEST(BulkAsync, RejectsInvalidQualifierPairings) {
            "mbarrier::complete_tx::bytes.add.u64 [s], [s], 16, [bar];",
            "cp.reduce.async.bulk.global.shared::cta.bulk_group.add.f16 [g], "
            "[s], 16;",
-           "cp.async.bulk.prefetch.L2.global.L2::cache_hint [g], 16;",
+           "cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
+           "[s], [g], 16, [bar], %policy;",
+           "cp.reduce.async.bulk.global.shared::cta.bulk_group.add.u32 "
+           "[g], [s], 16, %policy;",
+           "cp.async.bulk.prefetch.L2.global [g], 16, %policy;",
        }) {
     const std::string source =
         std::string{prefix} + std::string{invalid} + "\n}\n";

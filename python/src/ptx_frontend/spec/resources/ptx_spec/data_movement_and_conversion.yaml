@@ -787,12 +787,12 @@ operand_patterns:
     - {name: cache_policy, kind: reg, role: src, access: read, type: b64}
 
   async_store_shared_scalar:
-    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared], address_base: register}
     - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_shared_vector:
-    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [shared], address_base: register}
     - name: value
       kind: reg_vector
       role: src
@@ -803,7 +803,7 @@ operand_patterns:
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_global:
-    - {name: dst, kind: addr, role: addr, access: write, state_space: [global]}
+    - {name: dst, kind: addr, role: addr, access: write, state_space: [global], address_base: register}
     - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
 
   bulk_store_zero:
@@ -4862,7 +4862,9 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
-        operands: $bulk_copy_cluster_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_mbarrier}
+          - {name: with_policy, operands: $bulk_copy_cluster_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -4897,7 +4899,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
-        operands: $bulk_copy_cluster_multicast_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_cluster_multicast}
+          - {name: with_policy, operands: $bulk_copy_cluster_multicast_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -4914,7 +4918,9 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
-        operands: $bulk_copy_cta_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_mbarrier}
+          - {name: with_policy, operands: $bulk_copy_cta_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -4951,7 +4957,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
-        operands: $bulk_copy_cta_cache_hint_ignore_oob
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_cta_ignore_oob}
+          - {name: with_policy, operands: $bulk_copy_cta_cache_hint_ignore_oob}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -4970,7 +4978,9 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
-        operands: $bulk_copy_group_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_group}
+          - {name: with_policy, operands: $bulk_copy_group_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5003,7 +5013,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
-        operands: $bulk_copy_group_cache_hint_cp_mask
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_group_cp_mask}
+          - {name: with_policy, operands: $bulk_copy_group_cache_hint_cp_mask}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5092,7 +5104,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_cluster_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_mbarrier}
+          - {name: with_policy, operands: $bulk_copy_cluster_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -5131,7 +5145,9 @@ instructions:
           - {name: multicast, kind: flag, presence: fixed, value: true, token: .multicast::cluster}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_cluster_multicast_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_cluster_multicast}
+          - {name: with_policy, operands: $bulk_copy_cluster_multicast_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -5150,7 +5166,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_cta_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_mbarrier}
+          - {name: with_policy, operands: $bulk_copy_cta_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -5191,7 +5209,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: ignore_oob, kind: flag, presence: fixed, value: true, token: .ignore_oob}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_cta_cache_hint_ignore_oob
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_cta_ignore_oob}
+          - {name: with_policy, operands: $bulk_copy_cta_cache_hint_ignore_oob}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: address_alignment, address_operand: mbar, alignment: 8}
@@ -5212,7 +5232,9 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_group_cache_hint
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_group}
+          - {name: with_policy, operands: $bulk_copy_group_cache_hint}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5249,7 +5271,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
-        operands: $bulk_copy_group_cache_hint_cp_mask
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_copy_group_cp_mask}
+          - {name: with_policy, operands: $bulk_copy_group_cache_hint_cp_mask}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5606,7 +5630,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, f32, f64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5624,7 +5650,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5642,7 +5670,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5660,7 +5690,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5678,7 +5710,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5696,7 +5730,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5714,7 +5750,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5732,7 +5770,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -5751,7 +5791,9 @@ instructions:
           - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
           - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6103,7 +6145,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, f32, f64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6123,7 +6167,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .min}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6143,7 +6189,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .max}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6163,7 +6211,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .inc}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6183,7 +6233,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .dec}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6203,7 +6255,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .and}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6223,7 +6277,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .or}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6243,7 +6299,9 @@ instructions:
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
           - {name: operation, kind: flag, presence: fixed, value: true, token: .xor}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6264,7 +6322,9 @@ instructions:
           - {name: operation, kind: flag, presence: fixed, value: true, token: .add}
           - {name: noftz, kind: flag, presence: fixed, value: true, token: .noftz}
           - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
-        operands: $bulk_reduce_group_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_reduce_group}
+          - {name: with_policy, operands: $bulk_reduce_group_policy}
         constraints:
           - {kind: address_alignment, address_operands: [dst, src], alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
@@ -6298,7 +6358,9 @@ instructions:
           - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: cache_hint, kind: flag, presence: fixed, value: true, token: .L2::cache_hint}
-        operands: $bulk_prefetch_policy
+        operand_layouts:
+          - {name: without_policy, operands: $bulk_prefetch}
+          - {name: with_policy, operands: $bulk_prefetch_policy}
         constraints:
           - {kind: address_alignment, address_operand: src, alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}

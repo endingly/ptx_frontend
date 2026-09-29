@@ -4046,9 +4046,16 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual([binding.target_field_id for binding in variants[
             "AsyncBulkGlobalSharedCtaCacheHintIgnoreOob"].operand_layouts[0].bindings],
                          ["dst", "src", "size", "ignore_bytes_left", "ignore_bytes_right",
+                          "mbar"])
+        self.assertEqual([binding.target_field_id for binding in variants[
+            "AsyncBulkGlobalSharedCtaCacheHintIgnoreOob"].operand_layouts[1].bindings],
+                         ["dst", "src", "size", "ignore_bytes_left", "ignore_bytes_right",
                           "mbar", "cache_policy"])
         self.assertEqual([binding.target_field_id for binding in variants[
             "AsyncBulkSharedCtaGlobalCacheHintCpMask"].operand_layouts[0].bindings],
+                         ["dst", "src", "size", "byte_mask"])
+        self.assertEqual([binding.target_field_id for binding in variants[
+            "AsyncBulkSharedCtaGlobalCacheHintCpMask"].operand_layouts[1].bindings],
                          ["dst", "src", "size", "cache_policy", "byte_mask"])
         relaxed = variants["AsyncBulkGlobalSharedCtaRelaxed"]
         self.assertEqual(relaxed.completion_kind, AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
@@ -4069,7 +4076,8 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(dict(shared.availability), {"ptx": "9.3", "sm": 90})
         self.assertEqual(shared.completion_kind, AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES)
         self.assertEqual(global_policy.completion_kind, AsyncCompletionKind.BULK_GROUP)
-        self.assertEqual(global_policy.operand_layouts[0].bindings[-1].target_field_id, "cache_policy")
+        self.assertEqual(len(global_policy.operand_layouts), 2)
+        self.assertEqual(global_policy.operand_layouts[1].bindings[-1].target_field_id, "cache_policy")
         st = next(item for item in self.database.instructions if item.opcode == "st")
         st_variants = {item.cpp_name: item for item in from_instruction_spec(st).variants}
         self.assertEqual(st_variants["AsyncSharedClusterScalar"].completion_kind,

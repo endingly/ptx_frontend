@@ -95,11 +95,6 @@ jobs:
           date +%s > "$CCACHE_METRICS_DIR/production.started-at"
           cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
 
-      - name: Limit main Debug build parallelism
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.preset == 'ci-linux-gcc-debug'
-        shell: bash
-        run: echo "CMAKE_BUILD_PARALLEL_LEVEL=4" >> "$GITHUB_ENV"
-
       - name: Build production target
         id: production-build
         shell: bash
@@ -147,12 +142,7 @@ jobs:
         id: test-support
         if: success()
         shell: bash
-        run: |
-          if [[ "${{ matrix.preset }}" == "ci-linux-gcc-debug" ]]; then
-            cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir --parallel 1
-          else
-            cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
-          fi
+        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
 
       - name: Run normal resolved-IR tests
         id: test

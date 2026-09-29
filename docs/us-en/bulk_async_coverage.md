@@ -39,10 +39,17 @@ When omitted, reduction scope follows the ISA's default `.relaxed.sys`.
 The multicast architecture list is a performance recommendation, not an
 additional legality gate.
 
+For bulk copy, global reduction, and prefetch forms, `.L2::cache_hint` accepts
+the ordinary operands with or without a final 64-bit `cache_policy` register.
+The policy operand requires the hint. `st.async` destinations require a register
+base; a symbol base or an immediate-only address is rejected.
+
 The checker enforces known address spaces, static alignment (16 bytes for
 bulk copy/reduce/prefetch, 8 bytes for a barrier), modifier/operand coupling,
 supported type tuples, immediate divisibility, and target availability.
 `st.bulk` size must be an 8-byte multiple no larger than 16,777,216 bytes.
+Owned module validation compares a register size's cached type with its bound
+declaration; standalone instruction checking defers that declaration check.
 For register sizes and addresses, runtime values, remote-CTA provenance,
 group/phase completion protocol, and cache behavior remain consumer
 obligations. This frontend does not execute instructions.

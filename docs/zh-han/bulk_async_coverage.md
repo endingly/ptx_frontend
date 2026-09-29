@@ -34,8 +34,13 @@ PTX 9.3 扩展，在基础 SM 90 上即可使用；shared 归约只允许
 `.cta/.cluster`，global 归约允许四种 scope。省略时依照 ISA 默认为
 `.relaxed.sys`。multicast 的架构列表是性能建议，不是额外合法性门槛。
 
+bulk copy、global 归约与 prefetch 形式带 `.L2::cache_hint` 时，均可省略
+或附加末尾的 64-bit `cache_policy` 寄存器；policy 操作数要求该 hint。
+`st.async` 的目的地址必须以寄存器为基址，symbol 基址和纯立即数地址均不接受。
+
 Checker 检查已知地址空间、静态对齐（bulk copy/reduce/prefetch 为 16
 字节，barrier 为 8 字节）、修饰符和操作数配对、类型组合、立即数倍数
 以及目标可用性。`st.bulk` 字节数必须为 8 的倍数且不大于
-16,777,216。对寄存器字节数和地址，其运行时值、远端 CTA 身份、
+16,777,216。owned module 验证会对照绑定声明核验寄存器字节数的缓存类型；
+单条指令检查在没有声明时延后这一步。对寄存器字节数和地址，其运行时值、远端 CTA 身份、
 group/phase 完成协议及缓存效果仍由 consumer 负责；frontend 不执行指令。

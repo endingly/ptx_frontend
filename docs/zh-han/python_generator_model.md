@@ -138,15 +138,17 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 一个 category 的 opcode struct 与 module-reference visitor |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 model、variant 选择适配器及 resolver/checker 声明 |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | 不依赖完整 syntax AST 的窄 model 与 reference visitor 头 |
+| `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | 供 model 与 union API 使用、聚合窄 opcode model 头的纯 include 头 |
+| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 聚合该 category 完整 opcode 头的纯 include 头 |
 | `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
-| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合所有 category model header 与 union 的兼容头 |
-| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | 可独立包含的 category 特化声明 |
+| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合窄 category model 头与 union 的 model-only 头 |
+| `public/ptx_frontend/resolved_ir/{resolution,checker}/<category>.gen.hpp` | `emit.resolved_resolver` / `emit.resolved_checker` | category 兼容纯 include 头 |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `emit.category_source` | 一个 category 的 out-of-line resolver 与 checker 特化定义 |
-| `private/{syntax_descriptor,resolved_descriptor,resolved_ir_checker_descriptor}_<category>.gen.cpp` | descriptor emitters | category 所有的 descriptor storage 与 getter |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | 单个 opcode 的三类 descriptor 及 out-of-line resolver/checker 定义 |
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
 `generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
@@ -155,19 +157,22 @@ include 工程级的 `cmake/generate_ptx_frontend.cmake`；
 该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
 target。顶层只提供 submodule 编排与 facade target。
 
-`syntax_descriptor.gen.cpp` 虽描述 source syntax，但它实现的是 generated Resolved IR
-opcode 类型的 getter，并由 variant selection/resolution 消费；在生成器依赖边界改变前，
-它仍与其他 `gen_all.py` 输出一起归属 `resolved_ir`，不按文件名拆入 `syntax` submodule。
+Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
+供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker
+descriptor storage 共用一个私有源文件。
 
-公共头不包含生成函数体。生成分片使用归一化后的 `codegen_category`；它与记录 PTX
+完整 opcode 公共头不包含生成的 resolver/checker 函数体。小型手写
+`ptx_resolved_ir_selection.hpp` 提供通用选择适配器；窄 opcode 与 category model 头仍可在 syntax AST
+不完整时使用。model 聚合头与 instruction union 包含这些窄 category 头。
+生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
-`codegen_category`，生成脚本据此产生稳定的 category 源文件，
+`codegen_category`，生成脚本据此为每个 opcode 产生稳定的私有源文件，
 并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
 生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
 output manifest）时保留 modification time。whole-module API 继续包含聚合 model 与完整
-union；category-local consumer 只包含自己的 model 以及 resolver/checker 声明头。
+union；category-local consumer 可包含自己的完整 opcode 头或 category 聚合头。
 
 比较与选择规范现在单独生成 `comparison_and_selection` 分区。通过分类头使用 `Set`、
 `Setp`、`Selp` 或 `Slct` 的代码，需要把原来的 `arithmetic.gen.hpp` 路径改为
@@ -176,7 +181,7 @@ union；category-local consumer 只包含自己的 model 以及 resolver/checker
 
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker
-specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
+specialization 声明位于公共头的单一 `checker` namespace，每个 opcode 实现文件也只
 打开一次对应 namespace。
 
 所有 emitter 从规范化后的 C++ backend domain 获取语义值对应的 C++ 类型与表达式。

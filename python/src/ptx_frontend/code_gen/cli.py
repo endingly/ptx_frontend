@@ -241,9 +241,18 @@ def remove_obsolete_generated_files(
         "public/resolved_ir/model/*.gen.hpp",
         "public/resolved_ir/resolution/*.gen.hpp",
         "public/resolved_ir/checker/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir/model/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir/model/*/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir/resolution/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir/checker/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir/model/*/*/model.gen.hpp",
+        "public/ptx_frontend/resolved_ir/model/*/*/resolution.gen.hpp",
+        "public/ptx_frontend/resolved_ir/model/*/*/checker.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
         "private/resolved_ir_*.gen.cpp",
+        "private/syntax_descriptor_*.gen.cpp",
+        "private/resolved_descriptor_*.gen.cpp",
     ):
         obsolete.update(
             path.relative_to(output_dir).as_posix()

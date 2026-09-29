@@ -20,6 +20,7 @@ from ptx_frontend.code_gen.emit.checker_descriptors import (
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
     generate_resolved_ir_category_header,
+    generate_resolved_ir_opcode_header,
     generate_resolved_ir_header,
 )
 from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
@@ -380,9 +381,10 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
             source_path = directory_path / "resolved_ir_test.gen.cpp"
             syntax_path = directory_path / "syntax_descriptor.gen.cpp"
-            generate_resolved_ir_category_header(
+            generate_resolved_ir_opcode_header(
                 build_test_generation_context(database),
-                category="test", output_path=header_path,
+                category="test", opcode=instruction.opcode,
+                output_path=header_path,
             )
             generate_resolved_descriptor_source(build_test_generation_context(database), category="test", output_path=descriptor_path)
             generate_resolved_ir_category_source(build_test_generation_context(database), category="test", output_path=source_path

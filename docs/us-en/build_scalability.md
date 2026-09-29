@@ -208,3 +208,123 @@ those alternatives on identical inputs before selecting one. Do not change the
 existing generation self-heal, topology, embedded-parent, or installed-package
 contracts merely to improve a stopwatch result, and do not add a hard CI timing
 gate from this single shared-host Debug run.
+
+## 2026-09-29 test-build follow-up
+
+The earlier library-only measurement does not predict the cost of building the
+Resolved IR tests. A new, uncommitted candidate splits generated declarations
+and definitions by opcode, offers full opcode headers under
+`model/<category>/<opcode>.gen.hpp`, and moves single-op test cases into
+separate translation units. Category headers aggregate the opcode headers;
+the model-only headers remain separate so the AST module can stay incomplete.
+The candidate retains all 887 distinct GTest cases across 130 suites.
+
+The following are matched, single-run **clean** builds of the
+`test_resolved_ir` target from empty Ninja build directories on the same host.
+The baseline is `origin/main` at `1fe66d6`; the candidate is the uncommitted
+`perf/issue-203-parallelism-restart` worktree based on that commit. Both used
+GCC 15.2, Debug with C and C++ debug flags set to `-g0`, the same vcpkg
+toolchain, tests enabled, ccache disabled, and six parallel build jobs. Each
+build used the Python package from its own source worktree. Configuration is
+excluded from the build times. No other build ran concurrently.
+
+| Layout | Clean test-target build | Compiled C++ objects | Build directory | Sampled peak compiler RSS sum | Lowest sampled `MemAvailable` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Main baseline | 450 s | 123 | 4.7 GiB | 15,632 MiB | 6,397 MiB |
+| Per-op candidate | 530 s | 251 | 5.3 GiB | 15,645 MiB | 6,280 MiB |
+| Per-op candidate with targeted module-test shards | 494 s | 261 | 5.4 GiB | 10,964 MiB | 10,849 MiB |
+| Above plus six-way memory/vector test split (discarded) | 565 s | 266 | 5.7 GiB | 10,311 MiB | 11,117 MiB |
+
+The candidate is 80 seconds (17.8%) slower and shows no meaningful memory
+headroom improvement in this clean-build comparison. Its generated objects
+grew from 25 to 93, and test objects from 78 to 138. Summed compiler object
+wall durations from Ninja's log grew by approximately 207 and 288 seconds
+for those groups, respectively. These overlapping durations are not CPU time.
+The test split consists of 55 single-op files
+(204 cases), four cross-op files (10 cases), and eight module files (211
+cases); other existing tests remain in place. An audit found no wholly
+redundant module-level test case. One duplicated Membar subassertion was
+removed from a Fence test while the dedicated Membar assertion was retained.
+
+Compiler RSS was sampled once per second by adding `cc1plus` process RSS; it
+can count shared pages more than once and is not a cgroup memory high-water
+mark. These local measurements do not establish safety on a smaller CI runner.
+The historical table above used a different test scope and must not be
+compared directly with these test-target build times.
+
+The third row is one additional fresh build with the same flags, compiler,
+toolchain, and six-job limit. It applies the test-only partition from PR #209
+to two measured hotspots: typed-projection instantiations in
+`test_module_snapshot.cpp` and source-association cases in
+`test_module_source_associations.cpp`. The latter also avoids copying the
+complete `ResolvedInstruction` union when creating an extra known `Ret`.
+Test objects increase from 138 to 148, but the longest of these newly
+partitioned objects is 66.5 seconds, compared with 144.0 and 146.5 seconds
+for the original two files. The whole target improves by 36 seconds relative
+to the unsplit candidate, while remaining 44 seconds slower than main.
+The sampled compiler RSS sum falls by 4,681 MiB relative to the unsplit
+candidate. All 887 tests across 130 suites pass. This single local result
+supports retaining the targeted test split for further review; it does not
+meet the issue's clean-build speed objective or prove safe uncapped CI builds.
+
+The fourth row is a further isolated experiment on the third-row candidate.
+It split the 2,432-line `test_resolved_module_memory_vectors.cpp` into six
+semantic source files while preserving the 48 test bodies and the full
+887-case inventory. The original file took 102.2 seconds in the third-row
+parallel build and 80.6 seconds with a 3,328-MiB maximum RSS when compiled
+alone. Despite smaller individual sources, the fresh target build became
+71 seconds slower. Summed test-object durations increased from 1,743.1 to
+2,118.6 seconds across all test objects, and sampled compiler RSS fell by only
+653 MiB. Repeated parsing of the aggregate header in five additional units is a
+plausible contributor, not an isolated measured cause. The six-way split was
+reverted; this row records the negative result rather than a shipped layout.
+A separate `-fsyntax-only -ftime-report` probe of the original giant file
+reported 15.70 of 21.44 seconds under template instantiation. That probe
+omits code generation and is not a substitute for the complete-build timing;
+it indicates that reducing source lines alone cannot remove its template cost.
+
+Before the targeted test split, a separate trial used a **test-only**, opt-in
+PCH for 29 source files that include
+the aggregate Resolved IR header. It did not apply the aggregate PCH to the
+whole target. With the same `-g0` and six-job settings, the clean build was
+stopped after approximately 400 seconds at step 170 of 269: the sampled
+compiler RSS sum had reached 17,800 MiB and `MemAvailable` had fallen to
+4,427 MiB. Because the build was stopped, there is no valid completion time
+or test result for this PCH variant. The experimental CMake wiring was
+removed. A separate exploratory `-g2` run at Ninja's local default of 14
+jobs reached a 21,914 MiB compiler RSS sum and only 121 MiB of
+`MemAvailable`; it was also stopped and is not a clean-build comparison.
+Local parallelism may be raised for convenience, but these observations do
+not justify removing the Debug CI parallel cap.
+
+## 2026-09-29 local Clang comparison
+
+The C++ source after the targeted module-test partition is unchanged by the
+documentation-only commit `092aac3`. The following additional clean
+`test_resolved_ir` builds use the same source, Ninja, Debug `-g0` for C and
+C++, disabled ccache, vcpkg toolchain, and local host as the third row above.
+Each run starts from a separate empty build directory; configuration is
+excluded. Clang is Ubuntu Clang 21.1.8, compared with GCC 15.2.0. The same
+261 C++ objects are compiled in each run, and all 887 Resolved IR tests pass.
+
+| Compiler | Parallel jobs | Clean target build | Sampled peak compiler RSS sum | Lowest sampled `MemAvailable` | Build directory |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GCC 15.2 | 6 | 494 s | 10,964 MiB | 10,849 MiB | 5.4 GiB |
+| Clang 21.1.8 | 6 | 492 s | 4,947 MiB | 17,031 MiB | 3.0 GiB |
+| Clang 21.1.8 | 14 | 346 s | 8,865 MiB | 13,898 MiB | 3.0 GiB |
+
+At equal six-job parallelism, the two-second wall difference is not meaningful
+evidence of a compiler speed advantage; Clang's sampled compiler RSS sum is
+6,017 MiB lower. With the local Ninja default of 14 jobs, the Clang build is
+146 seconds faster than its six-job run and retains lower sampled compiler
+RSS than six-job GCC. This is a benefit from using the memory headroom for
+more concurrent work, not a same-parallelism compiler speedup. The Clang
+build emitted repeated `-Wdefaulted-function-deleted` warnings from existing
+headers; they were not suppressed for measurement. The warning count does not
+affect the passing test result.
+
+The RSS figures sum one-second samples of `cc1plus` for GCC or `clang++-21`
+and `clang-21` for Clang. Shared pages can be counted more than once; they
+are not process-tree or cgroup peaks. These single local runs do not establish
+the best parallelism or memory safety for CI, nor do they show that the per-op
+layout is faster than main under Clang.

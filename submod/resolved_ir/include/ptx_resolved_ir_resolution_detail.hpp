@@ -11,6 +11,7 @@
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_selection.hpp>
 
 namespace ptx_frontend::resolved_ir::check_end {
 /** Classify one complete syntax-AST operand for resolution-only matching. */
@@ -66,9 +67,6 @@ using ActualModifierTable =
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxVariantDescriptor& variant);
-std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
-    const syntax_ast::AstInstruction& ast,
-    const check_end::SyntaxInstructionDescriptor& instruction);
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type);
 std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
@@ -93,26 +91,7 @@ using ::ptx_frontend::resolved_ir::collect_actual_modifiers;
 using ::ptx_frontend::resolved_ir::resolve_call_literal;
 using ::ptx_frontend::resolved_ir::resolve_fields;
 using ::ptx_frontend::resolved_ir::resolve_immediate_literal;
-using ::ptx_frontend::resolved_ir::select_variant_name;
 using ::ptx_frontend::resolved_ir::special_register_availability;
-
-/** Select the generated variant named by syntax descriptor matching. */
-template <::ptx_frontend::resolved_ir::PtxOperator T>
-std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
-    const syntax_ast::AstInstruction& ast) {
-  const auto variant_name =
-      select_variant_name(ast, T::get_syntax_descriptor());
-  if (!variant_name)
-    return std::unexpected(variant_name.error());
-  const auto variant =
-      magic_enum::enum_cast<typename T::VariantType>(*variant_name);
-  if (!variant) {
-    throw ResolveException(fmt::format(
-        "Descriptor variant '{}.{}' has no matching VariantType enumerator.",
-        utils::type_name<T>(), *variant_name));
-  }
-  return *variant;
-}
 
 /** Retrieve a typed modifier or report an inconsistent generated contract. */
 template <ResolvedFieldType T>
@@ -151,6 +130,5 @@ namespace ptx_frontend::resolved_ir {
 // Compatibility aliases preserve existing aggregate-header entry points.
 using detail::resolved_modifier;
 using detail::resolved_operand;
-using detail::selectVariant;
 
 }  // namespace ptx_frontend::resolved_ir

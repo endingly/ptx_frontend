@@ -72,7 +72,7 @@ supported surface and its exclusions.
 
 ## Build and install
 
-The reproducible local path uses CMake presets, Ninja, GCC/G++, and the vcpkg
+The reproducible local path uses CMake presets, Ninja, GCC/G++ or Clang, and the vcpkg
 manifest. Install CMake 3.28 or newer, a C++23 compiler, Python 3, Flex, and
 `clang-format`; initialize vcpkg and export its location before configuring.
 
@@ -88,7 +88,9 @@ cmake --install out/build/ci-linux-gcc-debug
 ```
 
 The installed prefix for this preset is `out/install/ci-linux-gcc-debug`.
-`ci-linux-gcc-release` provides the corresponding Release build. See the
+`ci-linux-gcc-release` provides the corresponding Release build. The
+`ci-linux-clang-debug` and `ci-linux-clang-release` presets provide Clang 21
+builds with the same test profiles and are used by GitHub Actions. See the
 [CMake component documentation](docs/us-en/cmake_components.md) for embedded
 builds, Python specification-model use, and optional consumer coverage.
 

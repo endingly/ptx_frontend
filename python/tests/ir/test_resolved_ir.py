@@ -2592,11 +2592,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             for instruction in self.database.instructions
             if instruction.opcode == "mov"
         ))
+        mov_visitor = emit_reference_visitor(mov, BACKEND)
         self.assertIn(
             "visitor(payload.src.value, payload.src.locs, "
             "checker::AddressSymbolResolutionPolicy::MaterializeDeviceParameter);",
-            emit_reference_visitor(mov, BACKEND),
+            mov_visitor,
         )
+        self.assertIn("switch (instruction.variant.index())", mov_visitor)
+        self.assertIn("switch (selected.operands.index())", mov_visitor)
+        self.assertIn("std::get<0>(instruction.variant)", mov_visitor)
+        self.assertIn("std::get<0>(selected.operands)", mov_visitor)
+        self.assertIn("throw std::bad_variant_access{};", mov_visitor)
+        self.assertNotIn("if constexpr (std::same_as<Variant", mov_visitor)
         self.assertIn(
             "visitor(selected.src.value, selected.src.locs, "
             "checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);",

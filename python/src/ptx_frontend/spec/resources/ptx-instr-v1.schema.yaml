@@ -1517,6 +1517,42 @@ $defs:
       availability:
         $ref: "#/$defs/availability"
 
+  matrix:
+    description: >
+      Typed warp-matrix topology. Fragment lane counts and register types are
+      derived from the named operands, never repeated here.
+    type: object
+    additionalProperties: false
+    required: [family, m, n, k, elements, fragments]
+    properties:
+      family:
+        enum: [ldmatrix, stmatrix, movmatrix, mma, mma_sparse, wmma_load, wmma_store, wmma_mma]
+      m: {type: integer, minimum: 1, maximum: 65535}
+      n: {type: integer, minimum: 1, maximum: 65535}
+      k: {type: integer, minimum: 0, maximum: 65535}
+      a_layout: {enum: [none, row, col]}
+      b_layout: {enum: [none, row, col]}
+      kind: {enum: [classic, f8f6f4, mxf8f6f4, mxf4, mxf4nvf4]}
+      sparse_order: {enum: [none, native, ordered]}
+      scale_type: {enum: [none, ue8m0, ue4m3]}
+      source_packing: {enum: [b4x16_p64, b6x16_p32]}
+      transpose: {type: boolean}
+      matrix_count: {type: integer, minimum: 0, maximum: 4}
+      scale_vector_size: {enum: [0, 1, 2, 4]}
+      elements:
+        type: object
+        minProperties: 1
+        maxProperties: 4
+        propertyNames: {enum: [d, a, b, c]}
+        additionalProperties:
+          enum: [b1, b8, b16, b4x16_p64, b6x16_p32, f16, bf16, tf32, f32, f64, s8, u8, s32, s4, u4, e4m3, e5m2, e3m2, e2m3, e2m1]
+      fragments:
+        type: object
+        minProperties: 1
+        maxProperties: 4
+        propertyNames: {$ref: "#/$defs/schema_identifier"}
+        additionalProperties: {enum: [d, a, b, c]}
+
   variant:
     description: "A PTX instruction variant."
     type: object
@@ -1536,6 +1572,9 @@ $defs:
         description: "Instruction-local asynchronous completion mechanism."
         type: string
         enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes]
+
+      matrix:
+        $ref: "#/$defs/matrix"
 
       name:
         $ref: "#/$defs/schema_identifier"

@@ -178,6 +178,8 @@ struct ResolvedVariantDescriptor {
   std::span<const ResolvedFieldDescriptor> fields;
   std::span<const ResolvedModifierBindingDescriptor> modifier_bindings;
   std::span<const ResolvedOperandLayoutDescriptor> operand_layouts;
+  /** Present for a generated warp-matrix form; owns all topology values. */
+  std::optional<MatrixInstructionDescriptor> matrix;
 };
 struct ResolvedInstructionDescriptor {
   std::string_view opcode_name;

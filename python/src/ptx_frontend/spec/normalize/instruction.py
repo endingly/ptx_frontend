@@ -19,6 +19,7 @@ from .constraints import (
 )
 from .availability import normalize_availability
 from .layout import normalize_operand_layouts
+from .matrix import normalize_matrix
 from .modifiers import (
     normalize_modifier,
     normalize_modifier_order_aliases,
@@ -80,6 +81,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     availability=normalize_availability(raw_variant["availability"]),
                     modifiers=modifiers,
                     operand_layouts=operand_layouts,
+                    matrix=normalize_matrix(raw_variant.get("matrix"), modifiers, operand_layouts),
                     modifier_order_aliases=modifier_order_aliases,
                     rule=_normalize_semantic_rule(raw_variant.get("rule")),
                     operand_type_compatibilities=(

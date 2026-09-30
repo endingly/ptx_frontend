@@ -16,6 +16,7 @@ from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
 )
 from .references import emit_reference_visitor
+from .matrix import emit_matrix_descriptor
 from .resolved_resolver import _emit_resolve_specialization_declaration
 from .resolved_checker import emit_check_specialization_declaration
 
@@ -291,6 +292,14 @@ struct {instruction.cpp_name} {{
 
 
 def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: CodegenUnit) -> str:
+    matrix_contract = (
+        "    /** Canonical topology copied into owned resolution metadata. */\n"
+        "    inline static constexpr MatrixInstructionDescriptor matrix_contract =\n"
+        f"        {emit_matrix_descriptor(variant.matrix, backend)};\n"
+        "    /** Owned matrix identity and source range for consumer inspection. */\n"
+        "    WithLocs<MatrixInstructionDescriptor> matrix;\n"
+        if variant.matrix is not None else ""
+    )
     modifier_fields = "\n".join(
         _emit_resolved_field(field, backend) for field in variant.modifier_fields
     )
@@ -316,6 +325,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
 
     return f"""\
   // YAML: {variant.variant_id}
+  /** Resolved form for the canonical {variant.variant_id} topology. */
   struct {variant.cpp_name} {{
     /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
     inline static constexpr ConditionCodeEffect condition_code_effect =
@@ -324,6 +334,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
     inline static constexpr base::AsyncCompletionKind completion_kind =
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
     ResolvedOperandLayoutTag operand_layout;
+{matrix_contract}\
 {body}
   }};"""
 

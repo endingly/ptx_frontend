@@ -77,6 +77,70 @@ constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   }
   return 0;
 }
+/** Warp-level instruction family retained independently of opcode spelling. */
+enum class MatrixFamily : uint8_t {
+  LDMATRIX, STMATRIX, MOVMATRIX, MMA, MMA_SPARSE, WMMA_LOAD, WMMA_STORE,
+  WMMA_MMA
+};
+/** Logical matrix element, independent of register packing and declaration type. */
+enum class MatrixElementType : uint8_t {
+  B1, B8, B16, B4X16_P64, B6X16_P32, F16, BF16, TF32, F32, F64,
+  S8, U8, S32, S4, U4, E4M3, E5M2, E3M2, E2M3, E2M1
+};
+/** Row or column placement of a logical matrix operand. */
+enum class MatrixLayout : uint8_t { NONE, ROW, COL };
+/** MMA numeric format; block-scaled formats retain their distinct identity. */
+enum class MatrixKind : uint8_t {
+  CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4
+};
+/** Sparse metadata ordering requirement exposed to consumers. */
+enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
+/** Logical scale-factor type selected by a block-scaled MMA form. */
+enum class MatrixScaleType : uint8_t { NONE, UE8M0, UE4M3 };
+/** Logical register-fragment role in a matrix instruction. */
+enum class MatrixFragmentRole : uint8_t { D, A, B, C };
+/** Logical M×N×K shape; raw matrix movement instructions use K=0. */
+struct MatrixShape {
+  uint16_t m = 0;
+  uint16_t n = 0;
+  uint16_t k = 0;
+  /** Compare logical dimensions without consulting source spelling. */
+  bool operator==(const MatrixShape&) const = default;
+};
+/** One generated register fragment's semantic role, packing, and lane count. */
+struct MatrixFragmentShape {
+  /** Stable generated operand field name; borrowed static storage. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::D;
+  MatrixElementType element_type = MatrixElementType::B16;
+  base::ScalarType register_type = base::ScalarType::Invalid;
+  /** Number of register lanes in the corresponding owned operand. */
+  uint8_t register_count = 0;
+  /** Compare semantic role and exact register-fragment contract. */
+  bool operator==(const MatrixFragmentShape&) const = default;
+};
+/** Immutable generated matrix topology, copied into owned resolved metadata. */
+struct MatrixInstructionDescriptor {
+  MatrixFamily family = MatrixFamily::MMA;
+  MatrixShape shape{};
+  MatrixLayout a_layout = MatrixLayout::NONE;
+  MatrixLayout b_layout = MatrixLayout::NONE;
+  MatrixKind kind = MatrixKind::CLASSIC;
+  MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
+  MatrixScaleType scale_type = MatrixScaleType::NONE;
+  /** Physical source encoding when a movement operation decompresses data. */
+  std::optional<MatrixElementType> source_packing;
+  bool transpose = false;
+  /** Number of movement matrices represented by one instruction. */
+  uint8_t matrix_count = 0;
+  /** Logical block-scale vector width; zero when scaling is absent. */
+  uint8_t scale_vector_size = 0;
+  /** Only the first fragment_count entries are live. */
+  std::array<MatrixFragmentShape, 4> fragments{};
+  uint8_t fragment_count = 0;
+  /** Compare the complete instruction-local topology and controls. */
+  bool operator==(const MatrixInstructionDescriptor&) const = default;
+};
 /** Function provenance retained for resolved memory addresses. */
 enum class EnclosingFunctionKind : uint8_t { Unknown, Entry, Device };
 /** Parameter role independent of binding-layer enum types. */

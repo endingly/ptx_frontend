@@ -22,6 +22,7 @@ from ptx_frontend.spec.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MatrixSpec,
     MbarrierStateTokenForm,
     OperandAddressBasePolicy,
     OperandAddressOffsetDomain,
@@ -313,6 +314,7 @@ class ResolvedVariant:
     modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
+    matrix: MatrixSpec | None
     modifier_value_domains: tuple["ResolvedModifierValueDomain", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
@@ -649,6 +651,7 @@ def _build_variant(
             for modifier, field in zip(active_modifiers, modifier_fields, strict=True)
         ),
         operand_layouts=operand_layouts,
+        matrix=variant.matrix,
         atomic_address_qualifier_domain=(
             _build_atomic_address_qualifier_domain(atomic_policy, variant)
         ),

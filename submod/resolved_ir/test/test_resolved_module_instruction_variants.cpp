@@ -2326,6 +2326,49 @@ TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
   mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
     {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
 }
+
+TEST(ResolvedModule, OwnsAndRechecksTypedMatrixTopologyAfterAstRelease) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %d<4>;
+  .reg .f32 %c<4>;
+  .reg .f16x2 %a<2>;
+  .reg .f16x2 %b<1>;
+  mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
+    {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned = std::move(*resolved);
+  }
+
+  auto& instruction = std::get<Mma>(owned->functions.front().body.front());
+  auto& variant =
+      std::get<Mma::SyncAlignedM16n8k8RowColF32F16F16F32>(instruction.variant);
+  ASSERT_FALSE(variant.matrix.locs.empty());
+  EXPECT_EQ(variant.matrix.value.family, MatrixFamily::MMA);
+  EXPECT_EQ(variant.matrix.value.shape, (MatrixShape{16, 8, 8}));
+  EXPECT_EQ(variant.matrix.value.a_layout, MatrixLayout::ROW);
+  EXPECT_EQ(variant.matrix.value.b_layout, MatrixLayout::COL);
+  ASSERT_EQ(variant.matrix.value.fragment_count, 4);
+  EXPECT_EQ(variant.matrix.value.fragments[0].register_count, 4);
+  EXPECT_EQ(variant.matrix.value.fragments[1].register_type, ScalarType::F16x2);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = variant.matrix.locs.front(),
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  variant.matrix.value.shape.k = 16;
+  const auto changed = checker::check(instruction, context);
+  ASSERT_FALSE(changed.has_value());
+  EXPECT_EQ(changed.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto& ast = *parsed_module_1;

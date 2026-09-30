@@ -147,6 +147,11 @@ def _emit_resolve_variant_case(
     variant: ResolvedVariant,
     backend: CodegenUnit,
 ) -> str:
+    matrix_initializer = (
+        ".matrix = WithLocs<MatrixInstructionDescriptor>{"
+        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range},\n"
+        if variant.matrix is not None else ""
+    )
     atomic_qualifier = (
         ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n        "
         if instruction.atomic_address_qualifier is not None else ""
@@ -164,6 +169,7 @@ def _emit_resolve_variant_case(
         {atomic_qualifier}\
         .variant = {instruction.cpp_name}::{variant.cpp_name}{{
                    .operand_layout = fields->operand_layout,
+                   {matrix_initializer}\
 {fields}
     }}}};
   }}"""
@@ -190,6 +196,11 @@ def _emit_resolve_multi_layout_case(
     layout_index: int,
     backend: CodegenUnit,
 ) -> str:
+    matrix_initializer = (
+        ".matrix = WithLocs<MatrixInstructionDescriptor>{"
+        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range},\n"
+        if variant.matrix is not None else ""
+    )
     layout = variant.operand_layouts[layout_index]
     atomic_qualifier = (
         ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n          "
@@ -211,6 +222,7 @@ def _emit_resolve_multi_layout_case(
           {atomic_qualifier}\
           .variant = {instruction.cpp_name}::{variant.cpp_name}{{
               .operand_layout = fields->operand_layout,
+              {matrix_initializer}\
 {modifier_fields}
               .operands = {instruction.cpp_name}::{variant.cpp_name}::Operands{{
                   {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands{{

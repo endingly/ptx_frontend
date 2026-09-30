@@ -10,6 +10,7 @@ from pathlib import Path
 from ptx_frontend.base.utils import generated_at_comment, to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from .availability import emit_availability
+from .matrix import emit_matrix_descriptor
 from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
@@ -431,12 +432,17 @@ def _emit_type_expression_descriptor(
 
 def _emit_resolved_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     name = to_file_stem(variant.variant_id)
+    matrix = (
+        f"\n              .matrix = {emit_matrix_descriptor(variant.matrix, backend)},"
+        if variant.matrix is not None else ""
+    )
     return f"""          check_end::ResolvedVariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .condition_code_effect = {condition_code_cpp_value(variant.condition_code_effect)},
               .fields = {name}_fields,
               .modifier_bindings = {name}_modifier_bindings,
               .operand_layouts = {name}_operand_layouts,
+{matrix}
           }}"""
 
 

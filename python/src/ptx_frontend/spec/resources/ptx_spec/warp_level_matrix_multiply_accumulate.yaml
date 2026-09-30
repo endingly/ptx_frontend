@@ -58,6 +58,15 @@ instructions:
     variants:
       - name: mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32
         availability: {ptx: "6.5", sm: 75}
+        matrix:
+          family: mma
+          m: 16
+          n: 8
+          k: 8
+          a_layout: row
+          b_layout: col
+          elements: {d: f32, a: f16, b: f16, c: f32}
+          fragments: {dst: d, a: a, b: b, c: c}
         modifiers:
           - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
           - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
@@ -82,6 +91,14 @@ instructions:
     variants:
       - name: ldmatrix_sync_aligned_m8n8_x2_shared_b16
         availability: {ptx: "6.5", sm: 75}
+        matrix:
+          family: ldmatrix
+          m: 8
+          n: 8
+          k: 0
+          matrix_count: 2
+          elements: {d: b16}
+          fragments: {dst: d}
         modifiers:
           - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
           - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}

@@ -551,6 +551,19 @@ CheckResult check_common(const InstructionDescriptor& instruction,
   return check_availability(*variant, context);
 }
 
+/** Validate the owned topology against canonical generated variant data. */
+CheckResult check_matrix_metadata(
+    const WithLocs<MatrixInstructionDescriptor>& owned,
+    const MatrixInstructionDescriptor& generated, const Context& context) {
+  if (owned.value == generated)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = owned.locs.empty() ? context.instruction_range : owned.locs.front(),
+      .message = "Owned matrix topology differs from its generated contract.",
+  }});
+}
+
 CheckResult check_execution_predicate(
     const std::optional<WithLocs<ResolvedPredicate>>& predicate,
     const Context& context) {

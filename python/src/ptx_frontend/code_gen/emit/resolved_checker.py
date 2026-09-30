@@ -172,6 +172,17 @@ def _emit_check_variant_lambda(
     )
     operand_check = _emit_check_operand_dispatch(instruction, variant, variant_index, backend)
     lambda_name = _check_lambda_name(instruction, variant)
+    matrix_check = (
+        "          const auto matrix_check = check_matrix_metadata(\n"
+        "              selected.matrix,\n"
+        f"              *{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}].matrix,\n"
+        "              context);\n"
+        "          if (!matrix_check) {\n"
+        "            diagnostics.insert(diagnostics.end(), matrix_check.error().begin(),\n"
+        "                               matrix_check.error().end());\n"
+        "          }\n"
+        if variant.matrix is not None else ""
+    )
     return f"""  const auto {lambda_name} =
       [&](const {instruction.cpp_name}::{variant.cpp_name}& selected) -> CheckResult {{
           const std::array<FieldView, {len(modifier_fields)}> fields = {{{{
@@ -188,6 +199,7 @@ def _emit_check_variant_lambda(
             diagnostics.insert(diagnostics.end(), common.error().begin(),
                                common.error().end());
           }}
+{matrix_check}\
           const auto modifier_domain = check_modifier_value_domain(
               {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                   .modifier_value_domains,

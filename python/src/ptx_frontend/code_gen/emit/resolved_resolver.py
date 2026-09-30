@@ -149,7 +149,7 @@ def _emit_resolve_variant_case(
 ) -> str:
     matrix_initializer = (
         ".matrix = WithLocs<MatrixInstructionDescriptor>{"
-        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range},\n"
+        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range}},\n"
         if variant.matrix is not None else ""
     )
     atomic_qualifier = (
@@ -198,7 +198,7 @@ def _emit_resolve_multi_layout_case(
 ) -> str:
     matrix_initializer = (
         ".matrix = WithLocs<MatrixInstructionDescriptor>{"
-        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range},\n"
+        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range}},\n"
         if variant.matrix is not None else ""
     )
     layout = variant.operand_layouts[layout_index]

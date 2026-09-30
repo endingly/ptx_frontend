@@ -14,6 +14,15 @@ SPEC_DIR = packaged_spec_dir()
 WMMA_FILE = SPEC_DIR / "warp_level_matrix_multiply_accumulate.yaml"
 
 
+def _change_first_layout_count(item: dict) -> None:
+    """Break a YAML alias before making only one stride layout inconsistent."""
+
+    operand = item["operand_layouts"][0]["operands"][0]
+    item["operand_layouts"][0]["operands"][0] = {
+        **operand, "cardinality": {"min": 1, "max": 1},
+    }
+
+
 class WmmaCoverageTests(unittest.TestCase):
     """Guard the documented WMMA cohorts, fragments, strides, and exclusions."""
 
@@ -114,8 +123,7 @@ class WmmaCoverageTests(unittest.TestCase):
                    if item["name"] == "wmma_load_c_m8n8k4_col_shared_cta_f64")
         for mutate in (
             lambda item: item["matrix"]["elements"].update(c="f32"),
-            lambda item: item["operand_layouts"][0]["operands"][0]
-                ["cardinality"].update(min=1, max=1),
+            _change_first_layout_count,
         ):
             changed = deepcopy(raw)
             mutate(changed)

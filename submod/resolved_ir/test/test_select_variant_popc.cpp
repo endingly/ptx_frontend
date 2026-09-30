@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,8 +27,8 @@ TEST(ResolvePopc, SelectsBothBitWidths) {
   for (const auto source : {"popc.b32 %r0, 1;", "popc.b64 %r0, %rd1;"}) {
     const auto popc = resolve<Popc>(parse_instruction(source));
     ASSERT_TRUE(popc.has_value()) << popc.error().message;
-    EXPECT_TRUE(std::holds_alternative<Popc::B32>(popc->variant) ||
-                std::holds_alternative<Popc::B64>(popc->variant));
+    EXPECT_TRUE(test_ir_access::holds_alternative<Popc::B32>(popc->variant) ||
+                test_ir_access::holds_alternative<Popc::B64>(popc->variant));
   }
 }
 

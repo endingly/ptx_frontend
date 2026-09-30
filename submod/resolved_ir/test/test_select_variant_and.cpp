@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,9 +27,10 @@ TEST(ResolveAnd, SelectsB32VariantAndAcceptsImmediateSource) {
   const auto ast = parse_instruction("and.b32 %r0, %r1, 1;");
   const auto resolved = resolve<And>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* and_b32 = std::get_if<And::B32>(&resolved->variant);
+  const auto* and_b32 = test_ir_access::get_if<And::B32>(&resolved->variant);
   ASSERT_NE(and_b32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(and_b32->src2.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      and_b32->src2.value));
 }
 
 }  // namespace
@@ -69,7 +71,8 @@ TEST(ResolvedIrChecker, RevalidationRejectsMutatedPredicateDestination) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<And>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination = std::get<And::Pred>(resolved->variant).dst.value;
+  auto& destination =
+      test_ir_access::get<And::Pred>(resolved->variant).dst.value;
   destination.negated = true;
   const auto checked = check(
       *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},

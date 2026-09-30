@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -52,12 +53,13 @@ TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
   const auto integer_resolved = resolve<Sub>(integer_ast);
   ASSERT_TRUE(integer_resolved.has_value()) << integer_resolved.error().message;
   const auto* integer =
-      std::get_if<Sub::OptionalSat>(&integer_resolved->variant);
+      test_ir_access::get_if<Sub::OptionalSat>(&integer_resolved->variant);
   ASSERT_NE(integer, nullptr);
   EXPECT_TRUE(integer->saturate.value);
   ASSERT_EQ(integer->saturate.locs.size(), 1U);
   EXPECT_EQ(integer->type.value, ScalarType::S32);
-  const auto* immediate = std::get_if<ResolvedImmediate>(&integer->src2.value);
+  const auto* immediate =
+      test_ir_access::get_if<ResolvedImmediate>(&integer->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->type, ScalarType::S32);
 
@@ -65,13 +67,15 @@ TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
       parse_instruction("sub.rz.f32.bf16.sat %f0, %h1, %f2;");
   const auto mixed_resolved = resolve<Sub>(mixed_ast);
   ASSERT_TRUE(mixed_resolved.has_value()) << mixed_resolved.error().message;
-  const auto* mixed = std::get_if<Sub::MixedF32>(&mixed_resolved->variant);
+  const auto* mixed =
+      test_ir_access::get_if<Sub::MixedF32>(&mixed_resolved->variant);
   ASSERT_NE(mixed, nullptr);
   EXPECT_EQ(mixed->rounding.value, RoundingMode::Rz);
   EXPECT_EQ(Sub::MixedF32::result_type, ScalarType::F32);
   EXPECT_EQ(mixed->input_type.value, ScalarType::BF16);
   EXPECT_TRUE(mixed->saturate.value);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(mixed->subtrahend.value).spelling,
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(mixed->subtrahend.value)
+                .spelling,
             "%f2");
 }
 
@@ -88,7 +92,8 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 
   const auto resolved = resolve<Sub>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Sub::OptionalSat>(&resolved->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Sub::OptionalSat>(&resolved->variant),
+            nullptr);
 
   constexpr std::array<std::string_view, 1> family{"sm_120f"};
   const Context unsupported_context{

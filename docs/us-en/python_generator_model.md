@@ -161,14 +161,14 @@ rendering or filesystem failure.
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | narrow model and reference visitor without a complete syntax AST dependency |
 | `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | include-only aggregate of narrow opcode model leaves for the model and union APIs |
 | `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | include-only aggregate of the category's full opcode headers |
-| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | the complete canonical-order `ResolvedInstruction` union |
+| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | canonical-order `InstructionUnion` for explicit whole-model consumers |
 | `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | model-only aggregate of narrow category headers and the union |
 | `public/ptx_frontend/resolved_ir/resolution/<category>.gen.hpp` | `emit.resolved_resolver` | include-only category wrapper for resolver declarations |
 | `public/ptx_frontend/resolved_ir/checker/<category>.gen.hpp` | `emit.resolved_checker` | checker support, narrow category model, and checker specialization declarations without the Syntax AST dependency |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | one opcode's three descriptor families and out-of-line resolver/checker definitions |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch through narrow per-op owner bridges |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | one opcode's three descriptor families, out-of-line resolver/checker definitions, and typed owner lifecycle, check, reference, and resolver bridges |
 
 The generated public headers are under
 `generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
@@ -183,6 +183,15 @@ facade target.
 Syntax descriptor storage implements getters on generated Resolved IR opcode
 types and is consumed by variant selection and resolution. It shares each
 opcode's private source with resolved and checker descriptor storage.
+
+The generated owner path does not change the YAML schema or normalized
+instruction model. Each opcode's existing generated `.cpp` owns its immutable
+operation table and boxes its typed resolved record. The central dispatch
+selects a per-op resolver through narrow declarations and does not include the
+complete union. New reference-bearing foundation payload types must have an
+explicit module collector; generation tests compare current emitted payloads
+with that collector, and generated owner bridges enforce the payload concept at
+compile time. The owner retains the existing typed inner variant and checker logic.
 
 The public opcode headers contain no generated resolver or checker bodies. The
 selection adapter lives in the small handwritten `ptx_resolved_ir_selection.hpp`;

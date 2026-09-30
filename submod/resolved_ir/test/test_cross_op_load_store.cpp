@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <string_view>
 #include <utility>
@@ -107,7 +108,7 @@ TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   const auto cached_load = resolve<Ld>(cached_load_ast);
   ASSERT_TRUE(cached_load.has_value()) << cached_load.error().message;
   const auto* load_variant =
-      std::get_if<Ld::GenericScalar>(&cached_load->variant);
+      test_ir_access::get_if<Ld::GenericScalar>(&cached_load->variant);
   ASSERT_NE(load_variant, nullptr);
   EXPECT_EQ(load_variant->cache.value, CacheOperator::Cg);
   ASSERT_EQ(load_variant->cache.locs.size(), 1u);
@@ -118,7 +119,7 @@ TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   const auto omitted_load = resolve<Ld>(omitted_load_ast);
   ASSERT_TRUE(omitted_load.has_value()) << omitted_load.error().message;
   const auto* omitted_load_variant =
-      std::get_if<Ld::GenericScalar>(&omitted_load->variant);
+      test_ir_access::get_if<Ld::GenericScalar>(&omitted_load->variant);
   ASSERT_NE(omitted_load_variant, nullptr);
   EXPECT_EQ(omitted_load_variant->cache.value, CacheOperator::Unspecified);
   EXPECT_TRUE(omitted_load_variant->cache.locs.empty());
@@ -128,7 +129,7 @@ TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   const auto cached_store = resolve<St>(cached_store_ast);
   ASSERT_TRUE(cached_store.has_value()) << cached_store.error().message;
   const auto* store_variant =
-      std::get_if<St::ExplicitScalar>(&cached_store->variant);
+      test_ir_access::get_if<St::ExplicitScalar>(&cached_store->variant);
   ASSERT_NE(store_variant, nullptr);
   EXPECT_EQ(store_variant->cache.value, CacheOperator::Wb);
   ASSERT_EQ(store_variant->cache.locs.size(), 1u);
@@ -140,7 +141,7 @@ TEST(ResolveLoadStore, PreservesCacheValuesAndOmittedSentinel) {
   const auto omitted_store = resolve<St>(omitted_store_ast);
   ASSERT_TRUE(omitted_store.has_value()) << omitted_store.error().message;
   const auto* omitted_store_variant =
-      std::get_if<St::ExplicitScalar>(&omitted_store->variant);
+      test_ir_access::get_if<St::ExplicitScalar>(&omitted_store->variant);
   ASSERT_NE(omitted_store_variant, nullptr);
   EXPECT_EQ(omitted_store_variant->cache.value, CacheOperator::Unspecified);
   EXPECT_TRUE(omitted_store_variant->cache.locs.empty());
@@ -151,7 +152,7 @@ TEST(ResolveLoadStore, PreservesMemoryConsistencyDefaultsAndExplicitWeak) {
   const auto omitted = resolve<Ld>(omitted_ast);
   ASSERT_TRUE(omitted.has_value()) << omitted.error().message;
   const auto* omitted_variant =
-      std::get_if<Ld::GenericScalar>(&omitted->variant);
+      test_ir_access::get_if<Ld::GenericScalar>(&omitted->variant);
   ASSERT_NE(omitted_variant, nullptr);
   EXPECT_EQ(omitted_variant->semantics.value, MemoryConsistency::Omitted);
   EXPECT_TRUE(omitted_variant->semantics.locs.empty());
@@ -161,7 +162,8 @@ TEST(ResolveLoadStore, PreservesMemoryConsistencyDefaultsAndExplicitWeak) {
   const auto weak_ast = parse_instruction("ld.weak.u32 %r0, [%rd0];");
   const auto weak = resolve<Ld>(weak_ast);
   ASSERT_TRUE(weak.has_value()) << weak.error().message;
-  const auto* weak_variant = std::get_if<Ld::GenericScalar>(&weak->variant);
+  const auto* weak_variant =
+      test_ir_access::get_if<Ld::GenericScalar>(&weak->variant);
   ASSERT_NE(weak_variant, nullptr);
   EXPECT_EQ(weak_variant->semantics.value, MemoryConsistency::Weak);
   ASSERT_EQ(weak_variant->semantics.locs.size(), 1U);

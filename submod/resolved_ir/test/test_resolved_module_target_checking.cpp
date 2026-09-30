@@ -1,11 +1,15 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <algorithm>
 #include <array>
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include "test_syntax_parse_helpers.hpp"
 
@@ -15,31 +19,32 @@ namespace {
 using test_helpers::parseModule;
 
 const Add::IntegerNoSat& resolvedIntegerAdd(
-    const ResolvedInstruction& instruction) {
-  return std::get<Add::IntegerNoSat>(std::get<Add>(instruction).variant);
+    const OwnedInstruction& instruction) {
+  return test_ir_access::get<Add::IntegerNoSat>(
+      test_ir_access::get<Add>(instruction).variant);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov::Scalar& mov) {
-  return std::get<Mov::Scalar::ScalarOperands>(mov.operands);
+  return test_ir_access::get<Mov::Scalar::ScalarOperands>(mov.operands);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov& mov) {
-  return scalarMovOperands(std::get<Mov::Scalar>(mov.variant));
+  return scalarMovOperands(test_ir_access::get<Mov::Scalar>(mov.variant));
 }
 
 const Mov::Scalar::PackOperands& packMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 Mov::Scalar::PackOperands& packMovOperands(Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 const Mov::Scalar::UnpackOperands& unpackMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::UnpackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::UnpackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
@@ -49,7 +54,7 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
       ADD_FAILURE() << (ast.diagnostics.empty()
                             ? "PTX source did not produce a syntax instruction."
                             : ast.diagnostics.front().message);
-      return std::expected<ResolvedInstruction, ResolveDiagnostic>{
+      return std::expected<OwnedInstruction, ResolveDiagnostic>{
           std::unexpected(
               ResolveDiagnostic{.message = "instruction parse failed"})};
     }
@@ -87,22 +92,26 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
                                     .capabilities = cluster_capabilities},
   };
   EXPECT_TRUE(
-      checker::check(std::get<Mov>(*explicit_cluster), supported).has_value());
-  const auto& special_source = std::get<ResolvedPredicateSpecialRegister>(
-      std::get<Mov::Pred>(std::get<Mov>(*explicit_cluster).variant).src.value);
+      checker::check(test_ir_access::get<Mov>(*explicit_cluster), supported)
+          .has_value());
+  const auto& special_source =
+      test_ir_access::get<ResolvedPredicateSpecialRegister>(
+          test_ir_access::get<Mov::Pred>(
+              test_ir_access::get<Mov>(*explicit_cluster).variant)
+              .src.value);
   EXPECT_EQ(special_source.register_ref.id,
             base::lookup("%is_explicit_cluster")->id);
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {7, 7};
   const auto rejected =
-      checker::check(std::get<Mov>(*explicit_cluster), old_ptx);
+      checker::check(test_ir_access::get<Mov>(*explicit_cluster), old_ptx);
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
   auto old_sm = supported;
   old_sm.target.sm_version = 80;
   const auto sm_rejected =
-      checker::check(std::get<Mov>(*explicit_cluster), old_sm);
+      checker::check(test_ir_access::get<Mov>(*explicit_cluster), old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
@@ -150,8 +159,8 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 4u);
   for (const auto& instruction : body) {
-    const auto& vector =
-        std::get<Mov::V4U32>(std::get<Mov>(instruction).variant);
+    const auto& vector = test_ir_access::get<Mov::V4U32>(
+        test_ir_access::get<Mov>(instruction).variant);
     EXPECT_EQ(vector.dst.value.register_ref.vector_width, 4u);
     EXPECT_EQ(vector.dst.value.register_ref.declared_type, ScalarType::B32);
     EXPECT_EQ(base::metadata(vector.src.value.id).vector_width, 4u);
@@ -164,16 +173,19 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
                                     .capabilities = cluster_capabilities},
       .instruction_range = ast.range,
   };
-  EXPECT_TRUE(checker::check(std::get<Mov>(body[0]), supported).has_value());
+  EXPECT_TRUE(
+      checker::check(test_ir_access::get<Mov>(body[0]), supported).has_value());
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {7, 7};
-  const auto ptx_rejected = checker::check(std::get<Mov>(body[0]), old_ptx);
+  const auto ptx_rejected =
+      checker::check(test_ir_access::get<Mov>(body[0]), old_ptx);
   ASSERT_FALSE(ptx_rejected.has_value());
   EXPECT_EQ(ptx_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
   auto old_sm = supported;
   old_sm.target.sm_version = 80;
-  const auto sm_rejected = checker::check(std::get<Mov>(body[0]), old_sm);
+  const auto sm_rejected =
+      checker::check(test_ir_access::get<Mov>(body[0]), old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
@@ -347,9 +359,9 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  const auto check = [&ast](const ResolvedInstruction& instruction,
+  const auto check = [&ast](const OwnedInstruction& instruction,
                             const checker::TargetInfo& target) {
-    return std::visit(
+    return test_ir_access::visit(
         [&target, &ast](const auto& resolved_instruction) {
           return checker::check(
               resolved_instruction,
@@ -401,7 +413,7 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_TRUE(cta.has_value()) << cta.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Mbarrier>(cta->functions.front().body.front()),
+          test_ir_access::get<Mbarrier>(cta->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}})
           .has_value());
 }
@@ -507,8 +519,9 @@ TEST(ResolvedModule, ClearsUnknownTargetAndKeepsFunctionIndicesAligned) {
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].message,
             "Unknown validation target 'sm_123a'.");
-  EXPECT_EQ(rejected.error()[0].range,
-            std::get<syntax_ast::AstTargetDirective>(ast.items[3]).range);
+  EXPECT_EQ(
+      rejected.error()[0].range,
+      test_ir_access::get<syntax_ast::AstTargetDirective>(ast.items[3]).range);
   EXPECT_EQ(rejected.error()[1].message,
             "Operand value '%cluster_ctarank' has no matching availability "
             "clause.");

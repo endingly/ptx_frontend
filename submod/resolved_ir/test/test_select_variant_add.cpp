@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -190,7 +191,7 @@ TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
   const auto default_resolved = resolve<Add>(default_ast);
   ASSERT_TRUE(default_resolved.has_value()) << default_resolved.error().message;
   const auto* default_add =
-      std::get_if<Add::FloatF32>(&default_resolved->variant);
+      test_ir_access::get_if<Add::FloatF32>(&default_resolved->variant);
   ASSERT_NE(default_add, nullptr);
   EXPECT_EQ(default_add->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(default_add->rounding.locs.empty());
@@ -200,7 +201,7 @@ TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
   EXPECT_TRUE(default_add->saturate.locs.empty());
   EXPECT_EQ(Add::FloatF32::type, ScalarType::F32);
   const auto* immediate =
-      std::get_if<ResolvedImmediate>(&default_add->src2.value);
+      test_ir_access::get_if<ResolvedImmediate>(&default_add->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->type, ScalarType::F32);
   EXPECT_EQ(immediate->bits, 0x3fc00000U);
@@ -211,7 +212,7 @@ TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
   ASSERT_TRUE(explicit_resolved.has_value())
       << explicit_resolved.error().message;
   const auto* explicit_add =
-      std::get_if<Add::FloatF32>(&explicit_resolved->variant);
+      test_ir_access::get_if<Add::FloatF32>(&explicit_resolved->variant);
   ASSERT_NE(explicit_add, nullptr);
   EXPECT_EQ(explicit_add->rounding.value, RoundingMode::Rz);
   ASSERT_EQ(explicit_add->rounding.locs.size(), 1U);
@@ -227,7 +228,7 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::MixedF32>(&resolved->variant);
+  const auto* add = test_ir_access::get_if<Add::MixedF32>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   EXPECT_EQ(add->rounding.value, RoundingMode::Rz);
   EXPECT_EQ(Add::MixedF32::result_type, ScalarType::F32);
@@ -236,7 +237,9 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   EXPECT_EQ(add->dst.value.spelling, "%f0");
   EXPECT_EQ(add->src.value.spelling, "%h1");
   // The addend is immediate-capable, so the reference is unwrapped explicitly.
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(add->addend.value).spelling, "%f2");
+  EXPECT_EQ(
+      test_ir_access::get<ResolvedRegisterRef>(add->addend.value).spelling,
+      "%f2");
   EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);
 }
 
@@ -282,7 +285,8 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
+  const auto* add =
+      test_ir_access::get_if<Add::IntegerNoSat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   EXPECT_EQ(add->operand_layout, (ResolvedOperandLayoutTag{0}));
   EXPECT_EQ(add->type.value, ScalarType::S32);
@@ -291,18 +295,20 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   EXPECT_EQ(add->dst.value.spelling, "%r4");
   EXPECT_EQ(add->dst.value.register_class, ResolvedRegisterClass::General);
   EXPECT_EQ(add->dst.value.index, 4U);
-  const auto& src1 = std::get<ResolvedRegisterRef>(add->src1.value);
+  const auto& src1 = test_ir_access::get<ResolvedRegisterRef>(add->src1.value);
   EXPECT_EQ(src1.spelling, "%r5");
   EXPECT_EQ(src1.register_class, ResolvedRegisterClass::General);
   EXPECT_EQ(src1.index, 5U);
 
-  const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
+  const auto* immediate =
+      test_ir_access::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->bits, 0xffffffffU);
   EXPECT_EQ(immediate->type, ScalarType::S32);
   ASSERT_EQ(add->src2.locs.size(), 1U);
   EXPECT_EQ(add->src2.locs.front(),
-            std::get<syntax_ast::AstImmediate>(ast.operands[2]).syntax.range);
+            test_ir_access::get<syntax_ast::AstImmediate>(ast.operands[2])
+                .syntax.range);
 }
 
 TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
@@ -311,14 +317,15 @@ TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::Sat>(&resolved->variant);
+  const auto* add = test_ir_access::get_if<Add::Sat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   EXPECT_TRUE(Add::Sat::saturate);
   EXPECT_EQ(add->type.value, ScalarType::S32);
   ASSERT_EQ(add->type.locs.size(), 1U);
   EXPECT_EQ(add->type.locs.front(), ast.modifiers[1].syntax.range);
 
-  const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
+  const auto* immediate =
+      test_ir_access::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->type, ScalarType::S32);
 }
@@ -333,27 +340,29 @@ TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   EXPECT_EQ(fields->variant_name, "IntegerNoSat");
   EXPECT_EQ(fields->operand_layout, (ResolvedOperandLayoutTag{0}));
-  const auto* type =
-      std::get_if<WithLocs<ScalarType>>(&fields->modifiers.at("type"));
+  const auto* type = test_ir_access::get_if<WithLocs<ScalarType>>(
+      &fields->modifiers.at("type"));
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(type->value, ScalarType::U32);
 
-  const auto* dst =
-      std::get_if<WithLocs<ResolvedRegisterRef>>(&fields->operands.at("dst"));
+  const auto* dst = test_ir_access::get_if<WithLocs<ResolvedRegisterRef>>(
+      &fields->operands.at("dst"));
   ASSERT_NE(dst, nullptr);
   EXPECT_EQ(dst->value.spelling, "%r4");
   EXPECT_EQ(dst->value.index, 4U);
 
   const auto* src1 =
-      std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src1"));
+      test_ir_access::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src1"));
   ASSERT_NE(src1, nullptr);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).spelling, "%r5");
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).index, 5U);
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(src1->value).spelling,
+            "%r5");
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(src1->value).index, 5U);
 
   const auto* src2 =
-      std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src2"));
+      test_ir_access::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src2"));
   ASSERT_NE(src2, nullptr);
-  const auto* immediate = std::get_if<ResolvedImmediate>(&src2->value);
+  const auto* immediate =
+      test_ir_access::get_if<ResolvedImmediate>(&src2->value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->bits, 6U);
   EXPECT_EQ(immediate->type, ScalarType::U32);
@@ -377,10 +386,11 @@ TEST(ResolveAdd, PreservesRegisterSpellingBeyondNumericIndex) {
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
+  const auto* add =
+      test_ir_access::get_if<Add::IntegerNoSat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   const auto& dst = add->dst.value;
-  const auto& src1 = std::get<ResolvedRegisterRef>(add->src1.value);
+  const auto& src1 = test_ir_access::get<ResolvedRegisterRef>(add->src1.value);
   EXPECT_EQ(dst.index, 1U);
   EXPECT_EQ(src1.index, 1U);
   EXPECT_EQ(dst.spelling, "%r1");
@@ -394,9 +404,9 @@ TEST(ResolveAdd, RejectsPredicateInGeneralRegisterSlot) {
   const auto resolved = resolve<Add>(ast);
 
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(
-      resolved.error().range,
-      std::get<syntax_ast::AstIdentifierRef>(ast.operands[0]).syntax.range);
+  EXPECT_EQ(resolved.error().range,
+            test_ir_access::get<syntax_ast::AstIdentifierRef>(ast.operands[0])
+                .syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Expected a non-predicate register, got '%p1'.");
 }
@@ -406,7 +416,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   const auto unsaturated = resolve<Add>(unsaturated_ast);
   ASSERT_TRUE(unsaturated.has_value()) << unsaturated.error().message;
   const auto* unsaturated_add =
-      std::get_if<Add::PackedOptionalSat>(&unsaturated->variant);
+      test_ir_access::get_if<Add::PackedOptionalSat>(&unsaturated->variant);
   ASSERT_NE(unsaturated_add, nullptr);
   EXPECT_FALSE(unsaturated_add->saturate.value);
   EXPECT_TRUE(unsaturated_add->saturate.locs.empty());
@@ -415,7 +425,7 @@ TEST(ResolveAdd, PreservesOptionalModifierPresence) {
   const auto saturated = resolve<Add>(saturated_ast);
   ASSERT_TRUE(saturated.has_value()) << saturated.error().message;
   const auto* saturated_add =
-      std::get_if<Add::PackedOptionalSat>(&saturated->variant);
+      test_ir_access::get_if<Add::PackedOptionalSat>(&saturated->variant);
   ASSERT_NE(saturated_add, nullptr);
   EXPECT_TRUE(saturated_add->saturate.value);
   ASSERT_EQ(saturated_add->saturate.locs.size(), 1U);
@@ -469,7 +479,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
 
   const auto simd = resolve<Add>(*simd_ast);
   ASSERT_TRUE(simd.has_value()) << simd.error().message;
-  ASSERT_NE(std::get_if<Add::IntegerNoSat>(&simd->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Add::IntegerNoSat>(&simd->variant), nullptr);
 
   const Context old_simd_target{
       .target = {.ptx_version = {7, 9}, .sm_version = 80},
@@ -495,7 +505,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
 
   const auto sat = resolve<Add>(*sat_ast);
   ASSERT_TRUE(sat.has_value()) << sat.error().message;
-  ASSERT_NE(std::get_if<Add::Sat>(&sat->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Add::Sat>(&sat->variant), nullptr);
 
   constexpr std::array<std::string_view, 1> families{"sm_120f"};
   const Context old_sat_target{
@@ -527,7 +537,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add = std::get_if<Add::FloatF32>(&resolved->variant);
+  const auto* add = test_ir_access::get_if<Add::FloatF32>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   EXPECT_EQ(add->rounding.value, RoundingMode::Rm);
 
@@ -598,7 +608,7 @@ TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Add::MixedF32>(&resolved->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Add::MixedF32>(&resolved->variant), nullptr);
 
   const Context old_target{
       .target = {.ptx_version = {8, 5}, .sm_version = 90},
@@ -626,9 +636,9 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
 
   auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
+  auto* add = test_ir_access::get_if<Add::IntegerNoSat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
-  auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
+  auto* immediate = test_ir_access::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   immediate->type = ScalarType::F32;
 
@@ -643,7 +653,8 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(result.error().front().range,
-            std::get<syntax_ast::AstImmediate>(ast->operands[2]).syntax.range);
+            test_ir_access::get<syntax_ast::AstImmediate>(ast->operands[2])
+                .syntax.range);
 }
 
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
@@ -653,7 +664,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
 
   auto resolved = resolve<Add>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto* add = std::get_if<Add::IntegerNoSat>(&resolved->variant);
+  auto* add = test_ir_access::get_if<Add::IntegerNoSat>(&resolved->variant);
   ASSERT_NE(add, nullptr);
   add->operand_layout = ResolvedOperandLayoutTag{1};
 

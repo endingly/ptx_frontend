@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -54,9 +55,11 @@ TEST(SelpCompleteness, ResolvesAndChecksEveryOrdinaryType) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 11u);
   for (std::size_t index = 0; index < body.size(); ++index) {
-    const auto& selp = std::get<Selp>(body[index]);
-    EXPECT_EQ(std::holds_alternative<Selp::U32>(selp.variant), index == 4);
-    EXPECT_EQ(std::holds_alternative<Selp::Scalar>(selp.variant), index != 4);
+    const auto& selp = test_ir_access::get<Selp>(body[index]);
+    EXPECT_EQ(test_ir_access::holds_alternative<Selp::U32>(selp.variant),
+              index == 4);
+    EXPECT_EQ(test_ir_access::holds_alternative<Selp::Scalar>(selp.variant),
+              index != 4);
   }
 }
 
@@ -90,13 +93,15 @@ TEST(SelpCompleteness, PreservesPredicateSourceTruthValues) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     const auto resolved = resolve<Selp>(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto& predicate = std::visit(
+    const auto& predicate = test_ir_access::visit(
         [](const auto& variant) -> const ResolvedPredicateSource& {
           return variant.predicate.value;
         },
         resolved->variant);
-    ASSERT_TRUE(std::holds_alternative<ResolvedPredicateConstant>(predicate));
-    EXPECT_EQ(std::get<ResolvedPredicateConstant>(predicate).value, expected);
+    ASSERT_TRUE(test_ir_access::holds_alternative<ResolvedPredicateConstant>(
+        predicate));
+    EXPECT_EQ(test_ir_access::get<ResolvedPredicateConstant>(predicate).value,
+              expected);
   }
 
   const auto parsed =
@@ -105,9 +110,9 @@ TEST(SelpCompleteness, PreservesPredicateSourceTruthValues) {
   const auto resolved = resolve<Selp>(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto& predicate =
-      std::get<Selp::Scalar>(resolved->variant).predicate.value;
-  ASSERT_TRUE(std::holds_alternative<ResolvedPredicate>(predicate));
-  EXPECT_TRUE(std::get<ResolvedPredicate>(predicate).negated);
+      test_ir_access::get<Selp::Scalar>(resolved->variant).predicate.value;
+  ASSERT_TRUE(test_ir_access::holds_alternative<ResolvedPredicate>(predicate));
+  EXPECT_TRUE(test_ir_access::get<ResolvedPredicate>(predicate).negated);
 }
 
 /** Check declarations, numeric immediates, and predicate shape in a full module. */
@@ -169,7 +174,7 @@ TEST(SelpCompleteness, RejectsMutatedTypeValue) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
   auto resolved = resolve<Selp>(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& scalar = std::get<Selp::Scalar>(resolved->variant);
+  auto& scalar = test_ir_access::get<Selp::Scalar>(resolved->variant);
   scalar.type.value = ScalarType::F16;
   const auto checked = checker::check(
       *resolved,
@@ -189,10 +194,11 @@ TEST(SelpCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
     owned = *resolved;
   }
   ASSERT_TRUE(owned.has_value());
-  const auto& variant = std::get<Selp::Scalar>(owned->variant);
+  const auto& variant = test_ir_access::get<Selp::Scalar>(owned->variant);
   EXPECT_EQ(variant.type.value, ScalarType::F64);
   EXPECT_FALSE(
-      std::get<ResolvedPredicateConstant>(variant.predicate.value).value);
+      test_ir_access::get<ResolvedPredicateConstant>(variant.predicate.value)
+          .value);
   EXPECT_TRUE(
       checker::check(*owned, checker::Context{.target = {.ptx_version = {9, 3},
                                                          .sm_version = 100}})

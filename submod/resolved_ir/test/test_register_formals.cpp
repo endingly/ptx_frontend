@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -78,11 +79,12 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     ASSERT_EQ(resolved->functions.size(), 1u);
     ASSERT_EQ(resolved->functions.front().body.size(), 2u);
-    const Add& add = std::get<Add>(resolved->functions.front().body.front());
+    const Add& add =
+        test_ir_access::get<Add>(resolved->functions.front().body.front());
     EXPECT_TRUE(checker::check(add, context).has_value());
 
     const auto& syntax_function =
-        std::get<syntax_ast::AstFunction>(ast->items.back());
+        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
     const auto function_scope =
         bound.table.functionScope(syntax_function.range);
     ASSERT_TRUE(function_scope.has_value());
@@ -96,19 +98,21 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
               binding::SymbolKind::InputParameter);
 
     if (test_case.scalar_type == ScalarType::F32) {
-      const auto* float_add = std::get_if<Add::FloatF32>(&add.variant);
+      const auto* float_add =
+          test_ir_access::get_if<Add::FloatF32>(&add.variant);
       ASSERT_NE(float_add, nullptr);
       expectBoundFormalMetadata(
           float_add->dst.value,
-          std::get<ResolvedRegisterRef>(float_add->src1.value), test_case,
-          *result_symbol, *input_symbol);
+          test_ir_access::get<ResolvedRegisterRef>(float_add->src1.value),
+          test_case, *result_symbol, *input_symbol);
     } else {
-      const auto* integer_add = std::get_if<Add::IntegerNoSat>(&add.variant);
+      const auto* integer_add =
+          test_ir_access::get_if<Add::IntegerNoSat>(&add.variant);
       ASSERT_NE(integer_add, nullptr);
       expectBoundFormalMetadata(
           integer_add->dst.value,
-          std::get<ResolvedRegisterRef>(integer_add->src1.value), test_case,
-          *result_symbol, *input_symbol);
+          test_ir_access::get<ResolvedRegisterRef>(integer_add->src1.value),
+          test_case, *result_symbol, *input_symbol);
     }
   }
 }
@@ -132,10 +136,12 @@ TEST(RegisterFormals, ResolvePredicateReadAndWrite) {
       *ast, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
-  const auto& bar = std::get<Bar>(resolved->functions.front().body.front());
-  const auto& reduction = std::get<Bar::RedAndPred>(bar.variant);
+  const auto& bar =
+      test_ir_access::get<Bar>(resolved->functions.front().body.front());
+  const auto& reduction = test_ir_access::get<Bar::RedAndPred>(bar.variant);
   const auto& operands =
-      std::get<Bar::RedAndPred::WithoutThreadCountOperands>(reduction.operands);
+      test_ir_access::get<Bar::RedAndPred::WithoutThreadCountOperands>(
+          reduction.operands);
   EXPECT_EQ(operands.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
   EXPECT_EQ(operands.predicate.value.register_ref.register_class,

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -70,7 +71,8 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
         << "The valid module did not retain its expected Add body entry.";
     return {};
   }
-  const auto* add = std::get_if<Add>(&resolved->functions.front().body[2]);
+  const auto* add =
+      test_ir_access::get_if<Add>(&resolved->functions.front().body[2]);
   if (add == nullptr) {
     ADD_FAILURE() << "The selected source instruction did not resolve as Add.";
     return {};
@@ -99,7 +101,8 @@ void expect_domain_failure(const checker::CheckResult& checked,
 /** Edited public IR must reject a named rounding enum outside the Add domain. */
 TEST(ModifierDomainRevalidation, RejectsMutatedFloatingAddRzi) {
   auto candidate = resolve_float_add();
-  auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected =
+      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
   ASSERT_NE(selected, nullptr);
   selected->rounding.value = RoundingMode::Rzi;
   ASSERT_FALSE(selected->rounding.locs.empty());
@@ -116,7 +119,8 @@ TEST(ModifierDomainRevalidation, PreservesLegalFloatingAddRoundingValues) {
                   RoundingMode::Rp}) {
     SCOPED_TRACE(static_cast<int>(rounding));
     auto candidate = resolve_float_add();
-    auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+    auto* selected =
+        test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
     ASSERT_NE(selected, nullptr);
     selected->rounding.value = rounding;
     EXPECT_TRUE(
@@ -127,7 +131,8 @@ TEST(ModifierDomainRevalidation, PreservesLegalFloatingAddRoundingValues) {
 /** Omitted rounding retains its per-field default, while missing locs do not relax domain checks. */
 TEST(ModifierDomainRevalidation, UsesDefaultAndFallbackRangeWithoutProvenance) {
   auto candidate = resolve_float_add("");
-  auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected =
+      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
   ASSERT_NE(selected, nullptr);
   EXPECT_EQ(selected->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(selected->rounding.locs.empty());
@@ -149,7 +154,7 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
       SCOPED_TRACE(retain_provenance);
       auto candidate = resolve_float_add();
       auto* selected =
-          std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+          test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
       ASSERT_NE(selected, nullptr);
       selected->rounding.value = rounding;
       ASSERT_FALSE(selected->rounding.locs.empty());
@@ -168,7 +173,8 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
 /** Domain membership does not replace target availability for a legal value. */
 TEST(ModifierDomainRevalidation, RetainsLegalRoundingAvailabilityChecks) {
   auto candidate = resolve_float_add(".rm");
-  auto* selected = std::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected =
+      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
   ASSERT_NE(selected, nullptr);
   ASSERT_FALSE(selected->rounding.locs.empty());
   candidate.context.target.sm_version = 10;

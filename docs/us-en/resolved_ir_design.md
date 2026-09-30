@@ -42,28 +42,42 @@ signatures. ABI comparison does not create a second indirect-call model.
 
 The public model entry point is
 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It aggregates the
-handwritten foundation, the generated instruction structs and
-`ResolvedInstruction` union, and handwritten module containers in that order.
-`ptx_resolved_ir_module.hpp` directly includes only the foundation and generated
-instruction surface, so fixed module fields can evolve in C++ without changing
-the generator and the headers remain acyclic. These headers contain owned data
-and read-only descriptors without requiring the complete Syntax AST, resolver
-helpers, or instruction-checker implementation. Resolution is exposed through
-`ptx_resolved_ir_resolution.hpp`, checking through `ptx_resolved_ir_checker.hpp`;
-`ptx_resolved_ir.hpp` remains the compatibility aggregate.
+handwritten foundation, generated typed instruction records, the
+`OwnedInstruction` outer value, and handwritten module containers. The narrower
+`ptx_resolved_ir_module.hpp` includes only foundation data and the owner header. These model headers retain owned data and read-only
+descriptors without requiring a complete Syntax AST. Resolution is exposed
+through `ptx_resolved_ir_resolution.hpp`, checking through
+`ptx_resolved_ir_checker.hpp`; `ptx_resolved_ir.hpp` remains the broad aggregate.
 
 The public layer also provides an opcode-independent boundary:
 
 ```cpp
-using ResolvedInstruction =
-    std::variant<Add, Sub, Bar, Bra, Call, Mov, Ld /* ... */>;
-
-std::expected<ResolvedInstruction, ResolveDiagnostic>
+std::expected<OwnedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
+
+`OwnedInstruction` is the sole outer instruction value and the element type of
+`ResolvedFunction::body`. There is no implicit `std::visit` or `std::get_if`
+conversion for an owner. The broad aggregate still exposes typed opcode records
+and `InstructionUnion` for explicit whole-model consumers; module implementation,
+central dispatch, and module availability include only the required narrow headers.
+
+An owner holds one heap-allocated typed opcode record and one pointer to an
+immutable table emitted in that opcode's existing generated translation unit.
+Its two-pointer handle deep-copies the record, moves without moving the payload,
+and safely represents an empty default or moved-from state. `get_if<T>()` checks
+exact generated record identity and returns a borrowed typed pointer; it is
+null for a different opcode or empty owner. The borrow survives moving the
+owner and vector growth, and ends on replacement or destruction. Validation
+rejects an empty instruction in a module body. Internal reference traversal
+borrows foundation payloads only during immutable validation, which forbids
+reentrant payload mutation; its location spans are consumed synchronously.
+Source ranges, typed inner variants, symbol
+identity, Call literal normalization, and the existing resolution-only versus
+final-validation guarantees retain their usual contracts. The owner does not establish a stable public visitor policy.
 
 The module entry points have distinct success contracts:
 
@@ -603,7 +617,7 @@ model-only opcode and category headers remain available to consumers with an inc
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp`, and
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
 category-local consumer can include only its full opcode header or category aggregate.
-The complete `ResolvedInstruction` union remains in its own aggregate header in
+The explicit `InstructionUnion` remains in its own aggregate header in
 canonical instruction order. Specialization definitions are non-inline and
 emitted with all three descriptor families into `resolved_ir_<category>_<opcode>.gen.cpp`, which is compiled into the
 library. This boundary keeps only the small type adapter as a template while

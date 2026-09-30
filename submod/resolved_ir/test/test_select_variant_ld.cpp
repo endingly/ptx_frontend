@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <string_view>
 #include <utility>
@@ -85,7 +86,7 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
   const auto resolved = resolve<Ld>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* no_allocate =
-      std::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant);
+      test_ir_access::get_if<Ld::GlobalNcL1NoAllocateU32>(&resolved->variant);
   ASSERT_NE(no_allocate, nullptr);
   EXPECT_EQ(Ld::GlobalNcL1NoAllocateU32::state_space, MemoryStateSpace::Global);
   EXPECT_TRUE(Ld::GlobalNcL1NoAllocateU32::nc);

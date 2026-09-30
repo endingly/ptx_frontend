@@ -1,5 +1,12 @@
 #include "test_module_projection_detail.hpp"
 
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/barrier/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/brx/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ld/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/st/model.gen.hpp>
+
 namespace ptx_frontend::resolved_ir::test_support {
 
 template std::expected<TypedModuleSnapshot<Mov>, std::vector<ResolveDiagnostic>>

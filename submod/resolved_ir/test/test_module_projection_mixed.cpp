@@ -1,5 +1,15 @@
 #include "test_module_projection_detail.hpp"
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/div/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rcp/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/slct/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt/model.gen.hpp>
+
 namespace ptx_frontend::resolved_ir::test_support {
 
 template std::expected<TypedModuleSnapshot<Slct>,

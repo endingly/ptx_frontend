@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <optional>
 #include <string>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mad.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -35,40 +37,43 @@ TEST(MadCompleteness, ResolvesEveryExplicitFloatingRoundingForm) {
   const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 8u);
-  const auto& rn_f32 = std::get<Mad::RnF32>(
-      std::get<Mad>(resolved->functions.front().body[0]).variant);
+  const auto& rn_f32 = test_ir_access::get<Mad::RnF32>(
+      test_ir_access::get<Mad>(resolved->functions.front().body[0]).variant);
   EXPECT_TRUE(rn_f32.ftz.value);
   EXPECT_TRUE(rn_f32.saturate.value);
-  const auto& rz_f32 = std::get<Mad::DirectedF32>(
-      std::get<Mad>(resolved->functions.front().body[1]).variant);
+  const auto& rz_f32 = test_ir_access::get<Mad::DirectedF32>(
+      test_ir_access::get<Mad>(resolved->functions.front().body[1]).variant);
   EXPECT_EQ(rz_f32.rounding.value, RoundingMode::Rz);
   EXPECT_FALSE(rz_f32.ftz.value);
   EXPECT_FALSE(rz_f32.saturate.value);
-  const auto& rm_f32 = std::get<Mad::DirectedF32>(
-      std::get<Mad>(resolved->functions.front().body[2]).variant);
+  const auto& rm_f32 = test_ir_access::get<Mad::DirectedF32>(
+      test_ir_access::get<Mad>(resolved->functions.front().body[2]).variant);
   EXPECT_EQ(rm_f32.rounding.value, RoundingMode::Rm);
   EXPECT_TRUE(rm_f32.ftz.value);
   EXPECT_FALSE(rm_f32.saturate.value);
-  const auto& rp_f32 = std::get<Mad::DirectedF32>(
-      std::get<Mad>(resolved->functions.front().body[3]).variant);
+  const auto& rp_f32 = test_ir_access::get<Mad::DirectedF32>(
+      test_ir_access::get<Mad>(resolved->functions.front().body[3]).variant);
   EXPECT_EQ(rp_f32.rounding.value, RoundingMode::Rp);
   EXPECT_FALSE(rp_f32.ftz.value);
   EXPECT_TRUE(rp_f32.saturate.value);
-  EXPECT_TRUE(std::holds_alternative<Mad::RnF64>(
-      std::get<Mad>(resolved->functions.front().body[4]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mad::RnF64>(
+      test_ir_access::get<Mad>(resolved->functions.front().body[4]).variant));
   EXPECT_EQ(Mad::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(std::get<Mad::DirectedF64>(
-                std::get<Mad>(resolved->functions.front().body[5]).variant)
-                .rounding.value,
-            RoundingMode::Rz);
-  EXPECT_EQ(std::get<Mad::DirectedF64>(
-                std::get<Mad>(resolved->functions.front().body[6]).variant)
-                .rounding.value,
-            RoundingMode::Rm);
-  EXPECT_EQ(std::get<Mad::DirectedF64>(
-                std::get<Mad>(resolved->functions.front().body[7]).variant)
-                .rounding.value,
-            RoundingMode::Rp);
+  EXPECT_EQ(
+      test_ir_access::get<Mad::DirectedF64>(
+          test_ir_access::get<Mad>(resolved->functions.front().body[5]).variant)
+          .rounding.value,
+      RoundingMode::Rz);
+  EXPECT_EQ(
+      test_ir_access::get<Mad::DirectedF64>(
+          test_ir_access::get<Mad>(resolved->functions.front().body[6]).variant)
+          .rounding.value,
+      RoundingMode::Rm);
+  EXPECT_EQ(
+      test_ir_access::get<Mad::DirectedF64>(
+          test_ir_access::get<Mad>(resolved->functions.front().body[7]).variant)
+          .rounding.value,
+      RoundingMode::Rp);
 }
 
 /** Reject omitted-rounding legacy forms and invalid explicit floating combinations. */
@@ -149,7 +154,7 @@ TEST(MadCompleteness, ChecksExplicitFloatingAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(instruction,
                                   checker::Context{.target = target});
@@ -198,11 +203,11 @@ TEST(MadCompleteness, OwnsBoundSourcesAndRevalidatesWrongWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& f32 = std::get<Mad::RnF32>(
-      std::get<Mad>(owned->functions.front().body.front()).variant);
+  auto& f32 = test_ir_access::get<Mad::RnF32>(
+      test_ir_access::get<Mad>(owned->functions.front().body.front()).variant);
   const auto f64_source =
-      std::get<Mad::RnF64>(
-          std::get<Mad>(owned->functions.front().body[1]).variant)
+      test_ir_access::get<Mad::RnF64>(
+          test_ir_access::get<Mad>(owned->functions.front().body[1]).variant)
           .src2.value;
   f32.src2.value = f64_source;
   const auto invalid =

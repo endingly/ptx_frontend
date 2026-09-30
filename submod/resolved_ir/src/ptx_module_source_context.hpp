@@ -4,7 +4,8 @@
 #include <optional>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::resolved_ir::detail {
 

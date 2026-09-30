@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,24 +26,24 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(ResolveMax, SelectsSignedBinaryAndTernaryVariants) {
   const auto s32 = resolve<Max>(parse_instruction("max.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  ASSERT_NE(std::get_if<Max::S32>(&s32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Max::S32>(&s32->variant), nullptr);
   EXPECT_EQ(Max::S32::type, ScalarType::S32);
 
   const auto nan =
       resolve<Max>(parse_instruction("max.NaN.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(nan.has_value()) << nan.error().message;
-  ASSERT_NE(std::get_if<Max::F32>(&nan->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Max::F32>(&nan->variant), nullptr);
   EXPECT_EQ(Max::F32::type, ScalarType::F32);
-  EXPECT_TRUE(std::get<Max::F32>(nan->variant).nan.value);
-  EXPECT_EQ(std::get<Max::F32>(nan->variant).operand_layout,
+  EXPECT_TRUE(test_ir_access::get<Max::F32>(nan->variant).nan.value);
+  EXPECT_EQ(test_ir_access::get<Max::F32>(nan->variant).operand_layout,
             (ResolvedOperandLayoutTag{0}));
 
   const auto ternary =
       resolve<Max>(parse_instruction("max.abs.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(ternary.has_value()) << ternary.error().message;
-  ASSERT_NE(std::get_if<Max::F32>(&ternary->variant), nullptr);
-  EXPECT_TRUE(std::get<Max::F32>(ternary->variant).abs.value);
-  EXPECT_EQ(std::get<Max::F32>(ternary->variant).operand_layout,
+  ASSERT_NE(test_ir_access::get_if<Max::F32>(&ternary->variant), nullptr);
+  EXPECT_TRUE(test_ir_access::get<Max::F32>(ternary->variant).abs.value);
+  EXPECT_EQ(test_ir_access::get<Max::F32>(ternary->variant).operand_layout,
             (ResolvedOperandLayoutTag{1}));
 }
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -10,7 +11,10 @@
 #include <variant>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/vote.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -418,16 +422,21 @@ TEST(OwnedModuleHandoff, RetainsContractsAndTypedCallsAfterInputDies) {
   ASSERT_EQ(kernel.instruction_opcodes.size(), kernel.body.size());
   EXPECT_EQ(kernel.instruction_opcodes.back(), "ret");
   EXPECT_NE(kernel.instruction_ranges.back(), SourceRange{});
-  const auto& direct = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(kernel.body[0]).variant).operands);
-  const auto& direct_literal = std::get<ResolvedCallLiteral>(
+  const auto& direct = test_ir_access::get<Call::Direct::TargetInputOperands>(
+      test_ir_access::get<Call::Direct>(
+          test_ir_access::get<Call>(kernel.body[0]).variant)
+          .operands);
+  const auto& direct_literal = test_ir_access::get<ResolvedCallLiteral>(
       direct.arguments.value.values.front().value);
   ASSERT_TRUE(direct_literal.value.has_value());
   EXPECT_EQ(direct_literal.value->type, base::ScalarType::U32);
   EXPECT_EQ(direct_literal.value->bits, 7u);
-  const auto& indirect = std::get<Call::Direct::TargetInputMetadataOperands>(
-      std::get<Call::Direct>(std::get<Call>(kernel.body[1]).variant).operands);
-  const auto& indirect_literal = std::get<ResolvedCallLiteral>(
+  const auto& indirect =
+      test_ir_access::get<Call::Direct::TargetInputMetadataOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(kernel.body[1]).variant)
+              .operands);
+  const auto& indirect_literal = test_ir_access::get<ResolvedCallLiteral>(
       indirect.arguments.value.values.front().value);
   ASSERT_TRUE(indirect_literal.value.has_value());
   EXPECT_EQ(indirect_literal.value->type, base::ScalarType::U32);
@@ -471,10 +480,10 @@ TEST(OwnedModuleHandoff, RevalidatesExecutionPredicateDeclarationsWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  auto& mov = std::get<Mov>(kernel.body.front());
+  auto& mov = test_ir_access::get<Mov>(kernel.body.front());
   ASSERT_TRUE(mov.execution_predicate.has_value());
-  auto& operands = std::get<Mov::Scalar::ScalarOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  auto& operands = test_ir_access::get<Mov::Scalar::ScalarOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
   const ResolvedRegisterRef original_guard =
       mov.execution_predicate->value.register_ref;
   mov.execution_predicate->value.register_ref = operands.dst.value;
@@ -566,16 +575,16 @@ TEST(OwnedModuleHandoff, RetainsSynchronizedWarpFormsAfterInputDies) {
   auto& kernel = module.functions.front();
   ASSERT_EQ(kernel.body.size(), 3u);
   ASSERT_EQ(kernel.instruction_ranges.size(), 3u);
-  auto& up = std::get<Shfl>(kernel.body[0]);
-  auto& bfly = std::get<Shfl>(kernel.body[1]);
-  auto& vote = std::get<Vote>(kernel.body[2]);
-  auto& up_mode = std::get<Shfl::SyncUpB32>(up.variant);
-  auto& bfly_mode = std::get<Shfl::SyncBflyB32>(bfly.variant);
-  auto& uni_mode = std::get<Vote::SyncUniPred>(vote.variant);
-  ASSERT_TRUE(std::holds_alternative<Shfl::SyncUpB32::WithoutPredicateOperands>(
-      up_mode.operands));
-  ASSERT_TRUE(std::holds_alternative<Shfl::SyncBflyB32::WithPredicateOperands>(
-      bfly_mode.operands));
+  auto& up = test_ir_access::get<Shfl>(kernel.body[0]);
+  auto& bfly = test_ir_access::get<Shfl>(kernel.body[1]);
+  auto& vote = test_ir_access::get<Vote>(kernel.body[2]);
+  auto& up_mode = test_ir_access::get<Shfl::SyncUpB32>(up.variant);
+  auto& bfly_mode = test_ir_access::get<Shfl::SyncBflyB32>(bfly.variant);
+  auto& uni_mode = test_ir_access::get<Vote::SyncUniPred>(vote.variant);
+  ASSERT_TRUE(test_ir_access::holds_alternative<
+              Shfl::SyncUpB32::WithoutPredicateOperands>(up_mode.operands));
+  ASSERT_TRUE(test_ir_access::holds_alternative<
+              Shfl::SyncBflyB32::WithPredicateOperands>(bfly_mode.operands));
   EXPECT_TRUE(uni_mode.predicate.value.negated);
 
   const checker::Context context{
@@ -588,8 +597,8 @@ TEST(OwnedModuleHandoff, RetainsSynchronizedWarpFormsAfterInputDies) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  auto& paired =
-      std::get<Shfl::SyncBflyB32::WithPredicateOperands>(bfly_mode.operands);
+  auto& paired = test_ir_access::get<Shfl::SyncBflyB32::WithPredicateOperands>(
+      bfly_mode.operands);
   ASSERT_TRUE(paired.dst.value.predicate.has_value());
   auto& predicate_type =
       paired.dst.value.predicate->value.register_ref.declared_type;
@@ -626,11 +635,12 @@ TEST(OwnedModuleHandoff, RejectsMutatedGeneratedOperandMemberIdentities) {
   ASSERT_TRUE(
       validateModule(module, ModuleValidationPolicy::RequireCompleteContext));
 
-  Mov& mov = std::get<Mov>(kernel.body.front());
-  Mov::Scalar& scalar = std::get<Mov::Scalar>(mov.variant);
-  auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
+  Mov& mov = test_ir_access::get<Mov>(kernel.body.front());
+  Mov::Scalar& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
+  auto& operands =
+      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
   ResolvedRegisterRef& source =
-      std::get<ResolvedRegisterRef>(operands.src.value);
+      test_ir_access::get<ResolvedRegisterRef>(operands.src.value);
   ASSERT_EQ(source.parameterized_index, 1u);
   ASSERT_TRUE(source.symbol_id.has_value());
 
@@ -676,8 +686,9 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtaOperandsWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Cvta& cvta = std::get<Cvta>(kernel.body.front());
-  Cvta::ToParamU32& to_param = std::get<Cvta::ToParamU32>(cvta.variant);
+  Cvta& cvta = test_ir_access::get<Cvta>(kernel.body.front());
+  Cvta::ToParamU32& to_param =
+      test_ir_access::get<Cvta::ToParamU32>(cvta.variant);
   const uint16_t original_layout = to_param.operand_layout.value;
   ++to_param.operand_layout.value;
   expect_owned_validation_kind(
@@ -716,10 +727,13 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolAddressMetadataWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Cvta& cvta = std::get<Cvta>(kernel.body.front());
-  Cvta::SharedCtaU64& shared_cta = std::get<Cvta::SharedCtaU64>(cvta.variant);
-  ResolvedAddress& address = std::get<ResolvedAddress>(shared_cta.src.value);
-  ResolvedSymbolRef& symbol = std::get<ResolvedSymbolRef>(address.base);
+  Cvta& cvta = test_ir_access::get<Cvta>(kernel.body.front());
+  Cvta::SharedCtaU64& shared_cta =
+      test_ir_access::get<Cvta::SharedCtaU64>(cvta.variant);
+  ResolvedAddress& address =
+      test_ir_access::get<ResolvedAddress>(shared_cta.src.value);
+  ResolvedSymbolRef& symbol =
+      test_ir_access::get<ResolvedSymbolRef>(address.base);
   ASSERT_EQ(symbol.address_state_space, syntax_ast::AstStateSpace::Shared);
   const auto original_state_space = symbol.address_state_space;
   symbol.address_state_space = syntax_ast::AstStateSpace::Global;
@@ -749,11 +763,11 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaParameterSymbolMetadataWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Cvta& cvta = std::get<Cvta>(kernel.body.front());
+  Cvta& cvta = test_ir_access::get<Cvta>(kernel.body.front());
   Cvta::ParamEntryU64& param_entry =
-      std::get<Cvta::ParamEntryU64>(cvta.variant);
+      test_ir_access::get<Cvta::ParamEntryU64>(cvta.variant);
   ResolvedSymbolRef& symbol =
-      std::get<ResolvedSymbolRef>(param_entry.src.value);
+      test_ir_access::get<ResolvedSymbolRef>(param_entry.src.value);
   ASSERT_EQ(symbol.enclosing_function_kind, EnclosingFunctionKind::Entry);
   const auto original_function_kind = symbol.enclosing_function_kind;
   symbol.enclosing_function_kind = EnclosingFunctionKind::Device;
@@ -796,11 +810,11 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolBindingIdentityWithoutAst) {
   const auto global =
       module.symbols.lookup(module.symbols.moduleScope(), "global_value");
   ASSERT_TRUE(global.has_value());
-  Cvta& direct_cvta = std::get<Cvta>(kernel.body[0]);
+  Cvta& direct_cvta = test_ir_access::get<Cvta>(kernel.body[0]);
   Cvta::SharedCtaU64& direct =
-      std::get<Cvta::SharedCtaU64>(direct_cvta.variant);
+      test_ir_access::get<Cvta::SharedCtaU64>(direct_cvta.variant);
   ResolvedSymbolRef& direct_symbol =
-      std::get<ResolvedSymbolRef>(direct.src.value);
+      test_ir_access::get<ResolvedSymbolRef>(direct.src.value);
   const auto original_direct_id = direct_symbol.symbol_id;
   direct_symbol.symbol_id = global->symbol;
   expect_owned_model_mismatch(module,
@@ -811,11 +825,13 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolBindingIdentityWithoutAst) {
                               ModuleValidationPolicy::RequireCompleteContext);
   direct_symbol.enclosing_function_kind = EnclosingFunctionKind::Entry;
 
-  Cvta& offset_cvta = std::get<Cvta>(kernel.body[1]);
+  Cvta& offset_cvta = test_ir_access::get<Cvta>(kernel.body[1]);
   Cvta::SharedCtaU64& offset =
-      std::get<Cvta::SharedCtaU64>(offset_cvta.variant);
-  ResolvedAddress& address = std::get<ResolvedAddress>(offset.src.value);
-  ResolvedSymbolRef& offset_symbol = std::get<ResolvedSymbolRef>(address.base);
+      test_ir_access::get<Cvta::SharedCtaU64>(offset_cvta.variant);
+  ResolvedAddress& address =
+      test_ir_access::get<ResolvedAddress>(offset.src.value);
+  ResolvedSymbolRef& offset_symbol =
+      test_ir_access::get<ResolvedSymbolRef>(address.base);
   const auto original_offset_id = offset_symbol.symbol_id;
   offset_symbol.symbol_id = global->symbol;
   expect_owned_model_mismatch(module,
@@ -844,10 +860,12 @@ TEST(OwnedModuleHandoff, PreservesMovDeviceParameterMaterializationWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ResolvedModule& module = *owned;
   ResolvedFunction& function = module.functions.front();
-  Mov& mov = std::get<Mov>(function.body.front());
-  Mov::Scalar& scalar = std::get<Mov::Scalar>(mov.variant);
-  auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
-  ResolvedSymbolRef& source = std::get<ResolvedSymbolRef>(operands.src.value);
+  Mov& mov = test_ir_access::get<Mov>(function.body.front());
+  Mov::Scalar& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
+  auto& operands =
+      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
+  ResolvedSymbolRef& source =
+      test_ir_access::get<ResolvedSymbolRef>(operands.src.value);
   EXPECT_EQ(source.declaration_state_space,
             syntax_ast::AstStateSpace::Parameter);
   EXPECT_EQ(source.address_state_space, syntax_ast::AstStateSpace::Local);
@@ -896,9 +914,9 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedIsspacepOperandsWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Isspacep& isspacep = std::get<Isspacep>(kernel.body.front());
+  Isspacep& isspacep = test_ir_access::get<Isspacep>(kernel.body.front());
   Isspacep::SharedCta& shared_cta =
-      std::get<Isspacep::SharedCta>(isspacep.variant);
+      test_ir_access::get<Isspacep::SharedCta>(isspacep.variant);
   const uint16_t original_layout = shared_cta.operand_layout.value;
   ++shared_cta.operand_layout.value;
   expect_owned_validation_kind(
@@ -942,10 +960,10 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedPrmtOperandsWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Prmt& prmt = std::get<Prmt>(kernel.body[1]);
-  Prmt::F4eB32& f4e = std::get<Prmt::F4eB32>(prmt.variant);
+  Prmt& prmt = test_ir_access::get<Prmt>(kernel.body[1]);
+  Prmt::F4eB32& f4e = test_ir_access::get<Prmt::F4eB32>(prmt.variant);
   ResolvedRegisterRef& selector =
-      std::get<ResolvedRegisterRef>(f4e.selector.value);
+      test_ir_access::get<ResolvedRegisterRef>(f4e.selector.value);
   ASSERT_TRUE(selector.declared_type.has_value());
   const ScalarType original_type = *selector.declared_type;
   selector.declared_type = ScalarType::B64;
@@ -981,9 +999,9 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtPackWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Cvt& cvt = std::get<Cvt>(kernel.body.front());
+  Cvt& cvt = test_ir_access::get<Cvt>(kernel.body.front());
   Cvt::PackSatSmallS32B32& pack =
-      std::get<Cvt::PackSatSmallS32B32>(cvt.variant);
+      test_ir_access::get<Cvt::PackSatSmallS32B32>(cvt.variant);
   const ScalarType original_dst_type = pack.dst_type.value;
   pack.dst_type.value = ScalarType::U8;
   expect_owned_validation_kind(
@@ -991,7 +1009,8 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtPackWithoutAst) {
       checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
   pack.dst_type.value = original_dst_type;
 
-  ResolvedRegisterRef& carry = std::get<ResolvedRegisterRef>(pack.carry.value);
+  ResolvedRegisterRef& carry =
+      test_ir_access::get<ResolvedRegisterRef>(pack.carry.value);
   ASSERT_TRUE(carry.declared_type.has_value());
   const ScalarType original_carry_type = *carry.declared_type;
   carry.declared_type = ScalarType::B64;
@@ -1024,9 +1043,9 @@ TEST(OwnedModuleHandoff, RevalidatesGeneratedCvtRuleWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  Cvt& cvt = std::get<Cvt>(module.functions.front().body.front());
+  Cvt& cvt = test_ir_access::get<Cvt>(module.functions.front().body.front());
   Cvt::RequiredNonRnRzi& ordinary =
-      std::get<Cvt::RequiredNonRnRzi>(cvt.variant);
+      test_ir_access::get<Cvt::RequiredNonRnRzi>(cvt.variant);
   const RoundingMode original_rounding = ordinary.rounding.value;
   ordinary.rounding.value = RoundingMode::Rn;
   expect_owned_validation_kind(module,
@@ -1267,7 +1286,8 @@ TEST(OwnedModuleHandoff, RetainsUnifiedUuidOverflowDiagnostics) {
 
   std::vector<SourceRange> expected_ranges;
   for (const auto& item : parsed->items) {
-    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
+    const auto* function =
+        test_ir_access::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
     const size_t invalid_index =
@@ -1372,8 +1392,10 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
 
-  auto& target_only = std::get<Call::Direct::TargetOperands>(
-      std::get<Call::Direct>(std::get<Call>(caller.body[0]).variant).operands);
+  auto& target_only = test_ir_access::get<Call::Direct::TargetOperands>(
+      test_ir_access::get<Call::Direct>(
+          test_ir_access::get<Call>(caller.body[0]).variant)
+          .operands);
   ASSERT_TRUE(target_only.target.value.symbol_id.has_value());
   const auto original_target = target_only.target.value.symbol_id;
   target_only.target.value.symbol_id = formal.symbol_id;
@@ -1400,10 +1422,12 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   returns_u32.contract.signature.return_parameters.front().scalar_type =
       original_return_type;
 
-  auto& parameter_call = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(caller.body[2]).variant).operands);
+  auto& parameter_call = test_ir_access::get<Call::Direct::TargetInputOperands>(
+      test_ir_access::get<Call::Direct>(
+          test_ir_access::get<Call>(caller.body[2]).variant)
+          .operands);
   ASSERT_EQ(parameter_call.arguments.value.values.size(), 1u);
-  auto& parameter_actual = std::get<ResolvedCallParameterRef>(
+  auto& parameter_actual = test_ir_access::get<ResolvedCallParameterRef>(
       parameter_call.arguments.value.values.front().value);
   ASSERT_EQ(parameter_actual.declared_type, base::ScalarType::U32);
   const auto original_parameter_type = parameter_actual.declared_type;
@@ -1412,8 +1436,11 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
                               ModuleValidationPolicy::RequireCompleteContext);
   parameter_actual.declared_type = original_parameter_type;
 
-  auto& metadata_call = std::get<Call::Direct::TargetInputMetadataOperands>(
-      std::get<Call::Direct>(std::get<Call>(caller.body[3]).variant).operands);
+  auto& metadata_call =
+      test_ir_access::get<Call::Direct::TargetInputMetadataOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(caller.body[3]).variant)
+              .operands);
   ASSERT_EQ(metadata_call.arguments.value.values.size(), 1u);
   ASSERT_EQ(caller.call_prototypes.size(), 1u);
   const auto original_prototypes = caller.call_prototypes;
@@ -1434,8 +1461,11 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
   EXPECT_TRUE(trailing.contract.signature.parameters.back().is_array);
   EXPECT_FALSE(
       trailing.contract.signature.parameters.back().array_extent.has_value());
-  const auto& trailing_call = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(caller.body[4]).variant).operands);
+  const auto& trailing_call =
+      test_ir_access::get<Call::Direct::TargetInputOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(caller.body[4]).variant)
+              .operands);
   EXPECT_EQ(trailing_call.arguments.value.values.size(), 1u);
   expect_owned_validation_success(
       module, ModuleValidationPolicy::RequireCompleteContext);
@@ -1459,9 +1489,11 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedContractsWithoutAst) {
   expect_owned_model_mismatch(module);
   kernel.instruction_ranges = original_ranges;
 
-  auto& direct = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(kernel.body[0]).variant).operands);
-  auto& direct_literal = std::get<ResolvedCallLiteral>(
+  auto& direct = test_ir_access::get<Call::Direct::TargetInputOperands>(
+      test_ir_access::get<Call::Direct>(
+          test_ir_access::get<Call>(kernel.body[0]).variant)
+          .operands);
+  auto& direct_literal = test_ir_access::get<ResolvedCallLiteral>(
       direct.arguments.value.values.front().value);
   ASSERT_TRUE(direct_literal.value.has_value());
   const base::ScalarType original_type = direct_literal.value->type;

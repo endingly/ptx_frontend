@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -72,7 +73,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_copy.has_value()) << invalid_copy.error().front().message;
   const auto copy_check = checker::check(
-      std::get<Cp>(invalid_copy->functions.front().body.front()), current);
+      test_ir_access::get<Cp>(invalid_copy->functions.front().body.front()),
+      current);
   ASSERT_FALSE(copy_check.has_value());
   EXPECT_EQ(copy_check.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
@@ -86,7 +88,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_atom.has_value()) << invalid_atom.error().front().message;
   const auto atom_check = checker::check(
-      std::get<Atom>(invalid_atom->functions.front().body.front()), current);
+      test_ir_access::get<Atom>(invalid_atom->functions.front().body.front()),
+      current);
   ASSERT_FALSE(atom_check.has_value());
   EXPECT_EQ(atom_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -101,7 +104,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_vote.has_value()) << invalid_vote.error().front().message;
   const auto vote_check = checker::check(
-      std::get<Vote>(invalid_vote->functions.front().body.front()), current);
+      test_ir_access::get<Vote>(invalid_vote->functions.front().body.front()),
+      current);
   ASSERT_FALSE(vote_check.has_value());
   EXPECT_EQ(vote_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -124,9 +128,10 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_ldmatrix.has_value())
       << invalid_ldmatrix.error().front().message;
-  const auto ldmatrix_check = checker::check(
-      std::get<Ldmatrix>(invalid_ldmatrix->functions.front().body.front()),
-      current);
+  const auto ldmatrix_check =
+      checker::check(test_ir_access::get<Ldmatrix>(
+                         invalid_ldmatrix->functions.front().body.front()),
+                     current);
   ASSERT_FALSE(ldmatrix_check.has_value());
   EXPECT_EQ(ldmatrix_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -153,7 +158,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(valid_mma.has_value()) << valid_mma.error().front().message;
   const auto old_target = checker::check(
-      std::get<Mma>(valid_mma->functions.front().body.front()),
+      test_ir_access::get<Mma>(valid_mma->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 80}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,

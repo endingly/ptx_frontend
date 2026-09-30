@@ -33,6 +33,8 @@ from ptx_frontend.code_gen.plan import (
     GenerationPlan,
     build_generation_plan,
 )
+from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
+from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
 from ptx_frontend.spec.database import (
     discover_codegen_category_inputs,
@@ -76,6 +78,37 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertEqual(len(context.instructions), len(self.database.instructions))
         self.assertEqual(lower.call_count, len(self.database.instructions))
         self.assertEqual(project.call_count, len(self.database.instructions))
+
+    def test_owned_bridges_cover_current_reference_payloads(self) -> None:
+        """Every generated reference kind has a foundation collector after erasure."""
+        context = build_generation_context(self.database, self.backend)
+        collector = (
+            ROOT / "submod/resolved_ir/src/ptx_module_availability.cpp"
+        ).read_text()
+        payload_types = {
+            field_value_cpp_type(field, backend=self.backend)
+            for instruction in context.instructions
+            for variant in instruction.variants
+            for layout in variant.operand_layouts
+            for field in layout.fields
+            if field.value_kind in REFERENCE_VALUE_KINDS
+        }
+        payload_types.add("ResolvedPredicate")
+        for payload_type in payload_types:
+            self.assertIn(f"PTX_COLLECT_OWNED_REFERENCE({payload_type})", collector)
+        self.assertGreater(len(payload_types), 10)
+        with tempfile.TemporaryDirectory() as directory:
+            for entry in context.entries:
+                output = Path(directory) / f"{entry.specification.opcode}.gen.cpp"
+                generate_resolved_ir_opcode_source(
+                    context,
+                    category=entry.specification.codegen_category,
+                    opcode=entry.specification.opcode,
+                    output_path=output,
+                )
+                source = output.read_text()
+                self.assertIn(f"OwnedInstruction box_instruction({entry.cpp_name}", source)
+                self.assertIn(f"resolve_owned_{entry.cpp_name}(", source)
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)

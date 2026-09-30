@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -66,11 +67,12 @@ TEST(SlctCompleteness, ResolvesAllTypeAndSelectorCombinations) {
   ASSERT_EQ(body.size(), 22u);
   for (size_t index = 0; index < body.size(); ++index) {
     SCOPED_TRACE(index);
-    const auto* instruction = std::get_if<Slct>(&body[index]);
+    const auto* instruction = test_ir_access::get_if<Slct>(&body[index]);
     ASSERT_NE(instruction, nullptr);
     EXPECT_EQ(instruction->variant.index(), index % 2u);
   }
-  const auto& floating = std::get<Slct::F32>(std::get<Slct>(body[21]).variant);
+  const auto& floating = test_ir_access::get<Slct::F32>(
+      test_ir_access::get<Slct>(body[21]).variant);
   EXPECT_TRUE(floating.ftz.value);
   EXPECT_EQ(floating.dtype.value, ScalarType::F64);
 }
@@ -95,17 +97,19 @@ TEST(SlctCompleteness, AcceptsNumericDataAndSelectorImmediates) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
-  const auto& integer = std::get<Slct::S32>(std::get<Slct>(body[0]).variant);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(integer.src_true.value));
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(integer.selector.value));
-  const auto& floating = std::get<Slct::F32>(std::get<Slct>(body[1]).variant);
+  const auto& integer = test_ir_access::get<Slct::S32>(
+      test_ir_access::get<Slct>(body[0]).variant);
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      integer.src_true.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      integer.selector.value));
+  const auto& floating = test_ir_access::get<Slct::F32>(
+      test_ir_access::get<Slct>(body[1]).variant);
   EXPECT_TRUE(floating.ftz.value);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(floating.src_false.value));
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      floating.src_false.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      floating.selector.value));
 }
 
 /** Reject unsupported data/selector suffixes and FTZ on integer selection. */
@@ -222,20 +226,21 @@ TEST(SlctCompleteness, RevalidatesOwnedAndMutatedInstruction) {
     owned = *resolved;
   }
   ASSERT_TRUE(owned.has_value());
-  auto& floating = std::get<Slct::F32>(owned->variant);
+  auto& floating = test_ir_access::get<Slct::F32>(owned->variant);
   EXPECT_TRUE(floating.ftz.value);
   EXPECT_EQ(floating.dtype.value, ScalarType::U32);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(floating.src_true.value));
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      floating.src_true.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      floating.selector.value));
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   EXPECT_TRUE(checker::check(*owned, context));
   floating.dtype.value = ScalarType::F16;
   EXPECT_FALSE(checker::check(*owned, context));
   floating.dtype.value = ScalarType::U32;
-  std::get<ResolvedImmediate>(floating.selector.value).type = ScalarType::S32;
+  test_ir_access::get<ResolvedImmediate>(floating.selector.value).type =
+      ScalarType::S32;
   EXPECT_FALSE(checker::check(*owned, context));
 }
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <cstdint>
 #include <string>
@@ -41,7 +42,7 @@ void check_carry_form(std::string_view spelling, ConditionCodeEffect effect,
       if (resolved->execution_predicate)
         EXPECT_TRUE(resolved->execution_predicate->value.negated);
       EXPECT_EQ(
-          std::visit(
+          test_ir_access::visit(
               [](const auto& variant) { return variant.condition_code_effect; },
               resolved->variant),
           effect);

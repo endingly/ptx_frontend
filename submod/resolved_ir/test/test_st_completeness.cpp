@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string_view>
@@ -234,7 +235,8 @@ TEST(StCompleteness, MaterializesOptionalL1EvictionDefault) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
   const auto resolved = resolve<St>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* store = std::get_if<St::GlobalL2EvictVector>(&resolved->variant);
+  const auto* store =
+      test_ir_access::get_if<St::GlobalL2EvictVector>(&resolved->variant);
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->l1_eviction_priority.value, EvictionPriority::Invalid);
 }
@@ -316,7 +318,7 @@ TEST(StCompleteness, PreservesParameterPolicyAndRevalidatesMutation) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(mmio_ast);
   auto mmio = resolve<St>(*mmio_ast);
   ASSERT_TRUE(mmio.has_value()) << mmio.error().message;
-  auto& store = std::get<St::ExplicitScalar>(mmio->variant);
+  auto& store = test_ir_access::get<St::ExplicitScalar>(mmio->variant);
   store.semantics.value = MemoryConsistency::Acquire;
   const auto checked = checker::check(
       *mmio,

@@ -1,4 +1,6 @@
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
@@ -552,31 +554,29 @@ std::string_view compatibility_message(
   return "incompatible";
 }
 
+/** Borrow a call record only when the outer instruction has that exact opcode. */
+Call* call_record(OwnedInstruction& instruction) {
+  return instruction.get_if<Call>();
+}
+
 /** Return the input argument group owned by a resolved call, when it has one. */
 ResolvedCallArguments* resolved_call_arguments(
-    ResolvedInstruction& instruction) {
+    OwnedInstruction& instruction) {
   ResolvedCallArguments* arguments = nullptr;
-  std::visit(
-      [&](auto& candidate) {
-        if constexpr (std::same_as<std::remove_cvref_t<decltype(candidate)>,
-                                   Call>) {
-          std::visit(
-              [&](auto& selected) {
-                if constexpr (requires { selected.operands; }) {
-                  std::visit(
-                      [&](auto& operands) {
-                        if constexpr (requires {
-                                        operands.arguments.value.values;
-                                      })
-                          arguments = &operands.arguments.value;
-                      },
-                      selected.operands);
-                }
-              },
-              candidate.variant);
-        }
-      },
-      instruction);
+  if (auto* candidate = call_record(instruction)) {
+    std::visit(
+        [&](auto& selected) {
+          if constexpr (requires { selected.operands; }) {
+            std::visit(
+                [&](auto& operands) {
+                  if constexpr (requires { operands.arguments.value.values; })
+                    arguments = &operands.arguments.value;
+                },
+                selected.operands);
+          }
+        },
+        candidate->variant);
+  }
   return arguments;
 }
 
@@ -588,7 +588,7 @@ ResolvedCallArguments* resolved_call_arguments(
  * can be destroyed.
  */
 void check_call_abi(const syntax_ast::AstInstruction& call,
-                    ResolvedInstruction& resolved_call,
+                    OwnedInstruction& resolved_call,
                     const binding::SymbolTable& symbols, binding::ScopeId scope,
                     const FunctionSignatureIndex& signatures,
                     const CallArgumentPropertyIndex& properties,

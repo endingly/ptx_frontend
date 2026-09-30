@@ -301,3 +301,5 @@ coverage. C++ tests cover the real parser/resolver/checker path.
 Extend schema and normalized dataclasses first, then Syntax/Resolved models,
 then emitters and tests. Do not make an emitter read a new raw YAML field: that
 bypasses the consistency boundary.
+
+For tensor-map replacement, the resolved model emitter derives the field-typed projection from each canonical fixed modifier. It emits an owned descriptor-reference copy and a Table 33 enum query only where the field has an encoded domain. The shared closed code table supplies the query and checker; variant names remain generated identities rather than semantic dispatch strings.

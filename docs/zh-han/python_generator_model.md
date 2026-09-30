@@ -256,3 +256,5 @@ ABI 片段。C++ 测试则验证真实 parser、resolver 与 checker 闭环。
 
 推荐顺序：先扩展 schema 与 normalized dataclass，再扩展 Syntax/Resolved model，最后
 修改 emitter 与测试。不要让 emitter 从原始 YAML 读取新字段，这会绕过一致性检查。
+
+对于 tensor-map 替换，resolved model emitter 从每个 canonical fixed modifier 派生字段类型化投影。仅在字段具有编码值域时生成自有 descriptor-reference 拷贝与 Table 33 enum 查询。查询及 checker 共用封闭编码表；variant 名称仍是生成身份，不作语义分派字符串。

@@ -46,5 +46,9 @@ if(BUILD_TESTING)
         test_resolved_ir
         PRIVATE GTest::gtest GTest::gtest_main ptx_frontend::resolved_ir
     )
+    # Keep source locations for test failures without full variable/type debug info.
+    target_compile_options(test_resolved_ir PRIVATE
+        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:Clang>>:-gline-tables-only>
+    )
     gtest_discover_tests(test_resolved_ir)
 endif()

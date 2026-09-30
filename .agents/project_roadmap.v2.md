@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11～M13 已完成；M14～M19 尚未开始。
+> - M11～M13 已完成；M15 的 PTX 9.3 warp-matrix 形式已进入 canonical spec，验证与验收待定；M14 与 M16～M19 尚未开始。
 >
 > ISA 规划基线：
 >
@@ -414,7 +414,7 @@ family scope，绝不表示整部 PTX ISA。
 | Control flow / call metadata | 已完成核心 contract | M2/M6/M7/M9 |
 | Cluster / mbarrier / proxy | 进入 1.0 | M13 |
 | Warp-level matrix / sparse MMA | 进入 1.0 | M15 |
-| WMMA compatibility | representative slice 进入 1.0 | M15 |
+| WMMA compatibility | PTX 9.3 现行 load/store/mma topology 进入 1.0；已移除与历史形式单列排除 | M15 |
 | Hopper WGMMA | 进入 1.0 | M16 |
 | Blackwell TCGEN05 | 进入 1.0 | M17/M18 |
 | Stack manipulation | 默认延后 | post-1.0 |
@@ -481,7 +481,7 @@ family scope，绝不表示整部 PTX ISA。
 | M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ✅ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
-| M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
+| M15 | 待验证 | warp-level matrix、sparse MMA 与 WMMA compatibility；#153 已建模 PTX 9.3 现行形式，验证与验收待定 |
 | M16 | ⬜ | Hopper WGMMA |
 | M17 | ⬜ | Blackwell Tensor Memory 与 TCGEN05 data movement |
 | M18 | ⬜ | Blackwell TCGEN05 MMA 与同步 |
@@ -954,35 +954,50 @@ instruction-local target check。
 
 ## 目标
 
-把 M10 的单一 `ldmatrix`/`mma` seed 提升为可复用 matrix domain，覆盖 Ampere 之后常见
-warp-level matrix topology，并为 WGMMA/TCGEN05 提供公共 shape/type/layout 基础。
+把 M10 的单一 `ldmatrix`/`mma` seed 提升为可复用 matrix domain。#153 的实施范围为
+PTX 9.3 §9.7.15 现行 warp-level matrix 语法：全部 `ldmatrix`、`stmatrix`、`movmatrix`
+movement，经典及现代低精度、block-scale dense `mma`，经典及 ordered sparse `mma.sp`，
+以及 `wmma.load`/`wmma.store`/`wmma.mma` compatibility topology。公共 shape/type/layout、
+fragment cardinality、sparse metadata 与 scale contract 要供后续 WGMMA/TCGEN05 复用。
+这比下表原有的 representative/first-slice 条件更宽。形式现已进入 canonical spec；下表状态
+在整体验证及独立 core 验收前仍为待定。规范中的 dense FP64 `.m8n84` 按
+fragment/example 视作 `.m8n8k4`；
+WMMA FP64 C/D fragment 按 mma/store 示例使用两个 `.f64` 寄存器；`stmatrix.m16n8.x4`
+示例漏写了规范要求的 `.trans`。Ordered metadata 的运行时 bit 排序和动态 scale selector
+值不能由静态 checker 证明。已移除的浮点 WMMA `.satfinite`、PTX 6.3 前隐式
+`.aligned` 历史形式和 GPU 数值/collective 动态行为不在本轮范围。
+
+当前 canonical spec inventory 为 994 个 variant：matrix movement 82（`ldmatrix` 54、
+`stmatrix` 27、`movmatrix` 1）、dense `mma` 175、
+sparse `mma.sp` 185、WMMA 552（load 352、store 104、compute 96）。该数量描述现有源码，
+统一验证和独立 core 验收尚待完成。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
 | M15-I01 | ⬜ | 独立 | 建立 `MatrixShape` | M/N/K 与 instruction family identity |
 | M15-I02 | ⬜ | 独立 | 建立 matrix element/accumulator type domain | f16/bf16/tf32/f32/f64/int/fp8/packed |
 | M15-I03 | ⬜ | 独立 | 建立 matrix layout 与 fragment cardinality | row/col、register tuple 数量由 data 生成 |
-| M15-I04 | ⬜ | 独立 | 扩展 `ldmatrix` x1/x4 slice | destination cardinality/shape |
-| M15-I05 | ⬜ | 独立 | 扩展 `ldmatrix` trans/modern type slice | transpose/type/target |
-| M15-I06 | ⬜ | 独立 | 支持 `stmatrix` first slice | source fragment/address/layout |
-| M15-I07 | ⬜ | 独立 | 支持 `movmatrix` first slice | source/destination fragment/transpose |
-| M15-I08 | ⬜ | 独立 | 扩展 `mma` f16/bf16 slice | common m16n8 shape 与 fragment |
-| M15-I09 | ⬜ | 独立 | 支持 `mma` tf32 slice | type/shape/layout/availability |
-| M15-I10 | ⬜ | 独立 | 支持 `mma` f64 slice | fragment/cardinality/target |
-| M15-I11 | ⬜ | 独立 | 支持 `mma` integer slice | signedness/satfinite/shape |
-| M15-I12 | ⬜ | 独立 | 支持 `mma` fp8 slice | e4m3/e5m2 input/accumulator |
-| M15-I13 | ⬜ | 独立 | 支持 `mma.sync` block-scaling first slice | scale vectors/IDs/type/shape |
+| M15-I04 | ⬜ | 独立 | 扩展 `ldmatrix` 全部现行 count | destination cardinality/shape |
+| M15-I05 | ⬜ | 独立 | 扩展 `ldmatrix` transpose/modern type | transpose/packing/address/target |
+| M15-I06 | ⬜ | 独立 | 支持 `stmatrix` 全部现行形式 | source fragment/address/layout/type |
+| M15-I07 | ⬜ | 独立 | 支持 `movmatrix` 现行形式 | source/destination fragment/transpose |
+| M15-I08 | ⬜ | 独立 | 扩展 `mma` f16/bf16 全部现行 topology | shape/type/layout/fragment |
+| M15-I09 | ⬜ | 独立 | 支持 `mma` tf32 全部现行 topology | type/shape/layout/availability |
+| M15-I10 | ⬜ | 独立 | 支持 `mma` f64 全部现行 topology | fragment/cardinality/target |
+| M15-I11 | ⬜ | 独立 | 支持 `mma` integer/bit 全部现行 topology | signedness/satfinite/bitOp/shape |
+| M15-I12 | ⬜ | 独立 | 支持 `mma` FP8/低位浮点形式 | e4m3/e5m2 与 f8f6f4 packing/type |
+| M15-I13 | ⬜ | 独立 | 支持 `mma.sync` 全部现行 block-scale 组合 | kind/scale vectors/IDs/type/shape |
 | M15-I14 | ⬜ | 独立 | 建立 sparse metadata domain | metadata register/selector/ordering |
-| M15-I15 | ⬜ | 独立 | 支持 `mma.sp` f16/bf16 first slice | sparse A、metadata、fragment |
-| M15-I16 | ⬜ | 独立 | 支持 `mma.sp` tf32 slice | shape/type/metadata |
-| M15-I17 | ⬜ | 独立 | 支持 `mma.sp` integer/fp8 slice | type/shape/selector |
-| M15-I18 | ⬜ | 独立 | 支持 `mma.sp::ordered_metadata` slice | metadata order contract |
-| M15-I19 | ⬜ | 独立 | 支持 `wmma.load` compatibility slice | fragment/layout/address/target |
-| M15-I20 | ⬜ | 独立 | 支持 `wmma.store` compatibility slice | fragment/layout/address/target |
-| M15-I21 | ⬜ | 独立 | 支持 `wmma.mma` compatibility slice | A/B/C/D fragment contract |
+| M15-I15 | ⬜ | 独立 | 支持 `mma.sp` f16/bf16 全部现行 topology | sparse A、metadata、fragment |
+| M15-I16 | ⬜ | 独立 | 支持 `mma.sp` tf32 全部现行 topology | shape/type/metadata |
+| M15-I17 | ⬜ | 独立 | 支持 `mma.sp` integer/FP8/现代低位/block-scale | type/shape/selector/scale |
+| M15-I18 | ⬜ | 独立 | 支持 `mma.sp::ordered_metadata` 全部现行形式 | metadata order 与 type/target contract |
+| M15-I19 | ⬜ | 独立 | 支持 `wmma.load` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
+| M15-I20 | ⬜ | 独立 | 支持 `wmma.store` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
+| M15-I21 | ⬜ | 独立 | 支持 `wmma.mma` 全部现行 compatibility 形式 | A/B/C/D fragment 与 modifier contract |
 | M15-C01 | ⬜ | 耦合 | 统一 matrix fragment constraint | shape/type/layout/cardinality 单一数据源 |
 | M15-C02 | ⬜ | 耦合 | 统一 sparse metadata constraint | mma.sp 与后续 WGMMA/TCGEN05 可复用基础 |
-| M15-C03 | ⬜ | 耦合 | 建立 warp-matrix corpus | sm75/sm80/sm90 matrix 正反例共同通过 |
+| M15-C03 | ⬜ | 耦合 | 建立 warp-matrix corpus | sm75/sm80/sm90 与适用的现代 target 正反例共同通过 |
 
 ### 出口
 

@@ -38,7 +38,8 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | PTX 9.3 `prefetch` / `prefetchu` | 支持 | 支持普通的 generic/global/local L1/L2、global L2 eviction priority、generic/const/param tensor-map 形式，以及 uniform-cache L1。参见 [预取覆盖范围](prefetch_coverage.md)。 |
 | PTX 9.3 `applypriority` / `discard` | 支持 | 支持 generic 与显式 global 的 L2 形式，并检查固定的 128 字节范围、对齐及目标条件。参见 [缓存范围覆盖范围](applypriority_discard_coverage.md)。 |
 | PTX 9.3 `createpolicy` | 支持 | 支持 fractional、range 与 access-property 转换形式，并检查类型化 priority、fraction、size 及目标条件。参见 [`createpolicy` 覆盖范围](createpolicy_coverage.md)。 |
-| 冻结的 M10 warp/async/matrix 子集 | 部分支持 | `activemask`（PTX 6.2 / SM 30）、`vote.sync.{all,any,uni}.pred`、`vote.sync.ballot.b32` 与 `shfl.sync.{up,down,bfly,idx}.b32`（PTX 6.0 / SM 30；见[同步 warp 覆盖范围](warp_sync_coverage.md)）、原有的 `cp.async.ca.shared.global` seed（现扩展于[非 bulk 复制覆盖范围](cp_async_coverage.md)）、`ldmatrix.sync.aligned.m8n8.x2.shared.b16`（PTX 9.3 §9.7.15.5.15；PTX 6.5 / SM 75；destination 2×b32）以及 `mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32`（PTX 9.3 §9.7.15.5.14；PTX 6.5 / SM 75；D/C 4×f32、A 2×f16x2、B 1×f16x2）。只 resolve/check 这些 form；没有 execution semantics 或 simulator support。 |
+| 冻结的 M10 warp/async/matrix seed | 部分支持 | `activemask`（PTX 6.2 / SM 30）、`vote.sync.{all,any,uni}.pred`、`vote.sync.ballot.b32` 与 `shfl.sync.{up,down,bfly,idx}.b32`（PTX 6.0 / SM 30；见[同步 warp 覆盖范围](warp_sync_coverage.md)）、原有的 `cp.async.ca.shared.global` seed（现扩展于[非 bulk 复制覆盖范围](cp_async_coverage.md)），以及原有的 `ldmatrix.sync.aligned.m8n8.x2.shared.b16`、`mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32` seed。Warp-matrix 扩展在下文单列。 |
+| PTX 9.3 warp-level matrix | 已建模，待验证 | 现行 `ldmatrix`、`stmatrix`、`movmatrix`、dense `mma`、sparse `mma.sp`/`mma.sp::ordered_metadata` 及 `wmma.load`/`wmma.store`/`wmma.mma` 的类型化 shape、element、layout、fragment、sparse metadata 与 scale 契约已进入 canonical spec。详见[具体边界](#ptx-93-warp-level-matrix)；generated C++ 验证和独立 core 验收尚待完成。 |
 | PTX 9.3 logic/shift | 支持 | `and`/`or`/`xor`/`not` 覆盖 `.pred/.b16/.b32/.b64`；`cnot` 覆盖 `.b16/.b32/.b64`；`lop3` 覆盖 base 与带 predicate-result 的 `.and/.or` layout，并检查 `.u8` LUT；`shf` 覆盖所有 `.l/.r` × `.clamp/.wrap` form；`shl` 覆盖 bit width；`shr` 覆盖 bit、unsigned 与 signed width。详见 [logic/shift 覆盖](logic_shift_coverage.md)。 |
 | PTX 9.3 整数位操作 | 支持 | `popc`、`clz`、`brev`、`bfind`、`bfe` 与 `bfi` 覆盖文档定义的 PTX 2.0 / `sm_20` width、sign、`.shiftamt` 与 control-operand form。详见 [位操作覆盖](bit_operations_coverage.md)。 |
 | PTX 9.3 整数算术 | 支持 | 已通过 parsing、resolution、operand/type check 与 target availability 建模 §9.7.1 全部文档 syntax form。详见 [整数算术覆盖](integer_arithmetic_coverage.md)。 |
@@ -53,6 +54,22 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `mad` | 支持子集 | 保留 integer 与 carry form；explicit-rounding FP32/FP64 form、operand、target minimum 及排除的 legacy profile 见 [MAD 覆盖](mad_coverage.md)。 |
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |
 | 已建模的 `div` | 支持子集 | frozen integer `div.u32`（PTX 1.0 / SM 0）与 explicit FP32/FP64 form；见 [DIV 覆盖](div_coverage.md)。zero divisor 保持接受，行为由 PTX 指定为 unspecified。 |
+
+## PTX 9.3 warp-level matrix
+
+Matrix 规格固定采用 [PTX ISA 9.3 §9.7.15](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions)。当前 canonical YAML 已包含下表形式；generated C++ 验证和独立 core 验收尚待完成。Frontend 契约包括解析、owned resolution、operand 与 fragment 检查及 target-aware validation；不执行 GPU 运算，也不证明所有 warp lane 满足 collective protocol。每个 form 的 PTX 版本和 generic、架构专属或 family-specific target 下限由 instruction model 提供。
+
+当前规格源码列出 994 个 variant：82 个 matrix movement（54 `ldmatrix`、27 `stmatrix`、1 `movmatrix`）、175 个 dense `mma`、185 个 sparse `mma.sp`，以及 552 个 WMMA（352 load、104 store、96 compute）。这些是当前源码的 inventory 数量，统一验证尚待完成。
+
+| Family | 已建模的 PTX 9.3 形式 |
+| --- | --- |
+| Matrix domain | 类型化 M/N/K shape；与 register scalar type/packing 分开的逻辑 element/accumulator type；row/col layout、fragment cardinality、sparse metadata order/selector，以及 block-scale kind、scale type、vector size、data 和 ID。原始 matrix move 使用 K=0；WMMA load/store 保留完整计算 shape。Fragment 数量从 operand check 共用的规格数据推导，包括超过普通 256-bit vector 限额的 matrix fragment。 |
+| Matrix movement | `ldmatrix` 的 `.m8n8`/`.m16n16`/`.m8n16` count、transpose、`.b16`/`.b8` 与压缩 source format；`stmatrix` 的 `.m8n8`/`.m16n8` count、transpose 与 type；`movmatrix.sync.aligned.m8n8.trans.b16`。Generic/shared 与 `.shared::cta` address qualifier 遵循各指令的 version/target gate；现代 shape 要求对应的架构专属或 family-specific target。 |
+| Dense `mma.sync.aligned` | 经典 `.f16`/`.bf16`/`.tf32`/`.f64` shape；`.s8`/`.u8`、`.s4`/`.u4`、`.b1` 形式及合法的 `.satfinite` 或 bit operation 位置；FP8 `.e4m3`/`.e5m2`、新式 `.kind::f8f6f4` 低位类型，以及 `.kind::mxf4`/`.kind::mxf4nvf4`/`.kind::mxf8f6f4` block-scale 组合。逐 form 检查 shape、layout、accumulator、register tuple、packing、scale operand 与 target gate。 |
+| Sparse `mma.sp` | 经典 `.f16`/`.bf16`/`.tf32`、integer、FP8 形式及 `mma.sp::ordered_metadata`；新式 ordered low-bit 与 block-scale 组合分别约束 type、shape、metadata、selector、scale 与 target。Ordered-metadata 标志保留源码承诺；静态检查不能证明运行时 metadata bit 已排序，也不能证明动态 scale selector 的值。 |
+| WMMA compatibility | `wmma.load.{a,b,c}`、`wmma.store.d`、`wmma.mma` 的现行 `.f16`、`.bf16`、`.tf32`、`.f64`、integer、sub-byte 与 single-bit topology。检查 layout、shape、register fragment、generic/global/shared address form、可选 stride 与各 cohort 的 availability。 |
+
+归档 grammar 中 dense FP64 的 `.m8n84` 排版按 fragment 章节与示例解释为 `.m8n8k4`。WMMA FP64 C/D fragment 按 `wmma.mma` 和 `wmma.store` 示例使用两个 `.f64` 寄存器。`stmatrix.m16n8.x4` 示例省略了 `.trans`；规范描述要求该限定符。已移除的浮点 WMMA `.satfinite` 与 PTX 6.3 前隐式 `.aligned` 的历史形式不在本次扩展内。WGMMA、TCGEN05、GPU 数值结果和动态 collective 行为另有边界。
 
 conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
 该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。

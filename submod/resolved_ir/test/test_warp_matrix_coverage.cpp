@@ -39,9 +39,8 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   const auto& load = std::get<Ldmatrix>(owned->functions.front().body[0]);
   const auto& store = std::get<Stmatrix>(owned->functions.front().body[1]);
   const auto& move = std::get<Movmatrix>(owned->functions.front().body[2]);
-  const auto load_matrix = std::visit([](const auto& variant) {
-    return variant.matrix.value;
-  }, load.variant);
+  const auto load_matrix = std::visit(
+      [](const auto& variant) { return variant.matrix.value; }, load.variant);
   EXPECT_EQ(load_matrix.family, MatrixFamily::LDMATRIX);
   EXPECT_EQ(load_matrix.shape, (MatrixShape{16, 16, 0}));
   EXPECT_EQ(load_matrix.matrix_count, 2);
@@ -49,11 +48,16 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   EXPECT_EQ(load_matrix.source_packing, MatrixElementType::B6X16_P32);
   EXPECT_EQ(load_matrix.destination_packing, MatrixElementType::B8X16);
   EXPECT_EQ(load_matrix.fragments[0].register_count, 4);
-  EXPECT_EQ(std::visit([](const auto& variant) {
-    return variant.matrix.value.fragments[0].register_count;
-  }, store.variant), 2);
+  EXPECT_EQ(std::visit(
+                [](const auto& variant) {
+                  return variant.matrix.value.fragments[0].register_count;
+                },
+                store.variant),
+            2);
   EXPECT_EQ(std::get<Movmatrix::SyncAlignedM8n8TransB16>(move.variant)
-                .matrix.value.fragments[0].register_count, 1);
+                .matrix.value.fragments[0]
+                .register_count,
+            1);
 
   const auto target = base::find_target_profile("sm_120a");
   ASSERT_TRUE(target.has_value());
@@ -72,7 +76,8 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   const checker::Context unsupported{
       .target = {.ptx_version = {9, 3},
                  .sm_version = generic_target->identity.architecture.number,
-                 .enabled_family_features = generic_target->enabled_family_features,
+                 .enabled_family_features =
+                     generic_target->enabled_family_features,
                  .identity = generic_target->identity,
                  .capabilities = generic_target->capabilities},
   };

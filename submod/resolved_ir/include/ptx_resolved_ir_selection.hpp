@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <expected>
 #include <string_view>
 
 #include <fmt/core.h>
-#include <magic_enum/magic_enum.hpp>
 
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
@@ -28,14 +28,16 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
       select_variant_name(ast, T::get_syntax_descriptor());
   if (!variant_name)
     return std::unexpected(variant_name.error());
-  const auto variant =
-      magic_enum::enum_cast<typename T::VariantType>(*variant_name);
-  if (!variant) {
-    throw ResolveException(fmt::format(
-        "Descriptor variant '{}.{}' has no matching VariantType enumerator.",
-        utils::type_name<T>(), *variant_name));
+  /** Generated descriptor and enum entries share one canonical source order. */
+  size_t index = 0;
+  for (const auto& variant : T::get_syntax_descriptor().variants) {
+    if (variant.variant_name == *variant_name)
+      return static_cast<typename T::VariantType>(index);
+    ++index;
   }
-  return *variant;
+  throw ResolveException(fmt::format(
+      "Descriptor variant '{}.{}' has no matching VariantType enumerator.",
+      utils::type_name<T>(), *variant_name));
 }
 
 }  // namespace detail

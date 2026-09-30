@@ -4,8 +4,10 @@ from copy import deepcopy
 import unittest
 
 from ptx_frontend.spec.model import MatrixFamily, MatrixFragmentRole
+from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize import normalize_instruction_spec
 from ptx_frontend.spec.normalize.availability import normalize_availability
+from ptx_frontend.spec.resources import packaged_spec_dir
 
 
 def _matrix_seed() -> dict:
@@ -84,6 +86,36 @@ class MatrixNormalizationTests(unittest.TestCase):
         self.assertEqual(len(normalize_availability({"any_of": clauses})["any_of"]), 6)
         with self.assertRaisesRegex(ValueError, "one to six"):
             normalize_availability({"any_of": clauses + [clauses[0]]})
+
+    def test_compressed_load_uses_one_exact_lexical_suffix(self) -> None:
+        """Decompression packing stays typed although its suffix is one token."""
+
+        source = load_yaml(packaged_spec_dir() /
+                           "warp_level_matrix_multiply_accumulate.yaml")
+        load = next(item for item in source["instructions"]
+                    if item["opcode"] == "ldmatrix")
+        sample = next(item for item in load["variants"]
+                      if item["name"].endswith("b8x16_b6x16_p32"))
+        suffixes = [modifier.get("token") for modifier in sample["modifiers"]]
+        self.assertIn(".b8x16.b6x16_p32", suffixes)
+        self.assertNotIn(".b6x16_p32", suffixes)
+        specification = {"category": "test", "codegen_category": "matrix",
+                         "instructions": [{"opcode": "ldmatrix", "variants": [sample]}]}
+        normalized = normalize_instruction_spec(specification)[0].variants[0]
+        self.assertEqual(normalized.matrix.source_packing.value, "b6x16_p32")
+        self.assertEqual(normalized.matrix.destination_packing.value, "b8x16")
+        changed = deepcopy(sample)
+        changed["matrix"]["source_packing"] = "b4x16_p64"
+        specification["instructions"][0]["variants"] = [changed]
+        with self.assertRaisesRegex(ValueError, "source packing disagrees"):
+            normalize_instruction_spec(specification)
+        malformed = deepcopy(sample)
+        next(modifier for modifier in malformed["modifiers"]
+             if modifier.get("token") == ".b8x16.b6x16_p32")["token"] = (
+                 ".b8x16.unsupported")
+        specification["instructions"][0]["variants"] = [malformed]
+        with self.assertRaisesRegex(ValueError, "source packing disagrees"):
+            normalize_instruction_spec(specification)
 
 
 if __name__ == "__main__":

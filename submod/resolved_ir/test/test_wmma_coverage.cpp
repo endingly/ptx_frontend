@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -81,8 +82,7 @@ TEST(WmmaCoverage, ResolvesOwnedF16PipelineAndChecksTarget) {
   ASSERT_NE(load.matrix_descriptor(), nullptr);
   EXPECT_EQ(load_a.matrix.value, *load.matrix_descriptor());
   const auto original_form = load.semantic_form.value;
-  load.semantic_form.value =
-      Wmma::VariantType::LoadAM16n16k16ColGlobalF16;
+  load.semantic_form.value = Wmma::VariantType::LoadAM16n16k16ColGlobalF16;
   ASSERT_TRUE(load.matrix_logical_index().has_value());
   EXPECT_FALSE(checker::check(load, supported).has_value());
   load.semantic_form.value = original_form;
@@ -139,7 +139,7 @@ TEST(WmmaCoverage, RejectsInvalidFragmentsAndUnsupportedModifiers) {
 
 /** Check FP64 C/D cardinality and constant stride and architecture limits. */
 TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
-  const auto parsed = test_helpers::parseModule(R"ptx(
+  const std::string source = R"ptx(
 .version 9.3
 .target sm_80
 .address_size 64
@@ -152,10 +152,11 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   wmma.mma.sync.aligned.m8n8k4.row.col.rz.f64.f64.f64.f64
     {%d0,%d1}, {%a}, {%b}, {%c0,%c1};
   wmma.store.d.sync.aligned.m8n8k4.global.row.f64 [tile], {%d0,%d1}, 8;
-  wmma.load.c.sync.aligned.m8n8k4.global.col.f64 {%c0,%c1}, [tile], 7;
-  wmma.load.c.sync.aligned.m8n8k4.global.col.f64 {%c0,%c1}, [tile], 9;
+  wmma.load.c.sync.aligned.m8n8k4.global.col.f64 {%c0,%c1}, [tile], 8;
+  wmma.load.c.sync.aligned.m8n8k4.global.col.f64 {%c0,%c1}, [tile], 8;
 }
-)ptx");
+)ptx";
+  const auto parsed = test_helpers::parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
@@ -182,11 +183,60 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   stride.integer_source_bits = 9;
   EXPECT_FALSE(checker::check(load_c, supported).has_value());
   stride.integer_source_bits = 8;
+  auto& below_minimum = std::get<ResolvedImmediate>(
+      std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
+          std::get<Wmma::LoadCM8n8k4ColGlobalF64>(
+              std::get<Wmma>(body[3]).variant)
+              .operands)
+          .stride.value);
+  below_minimum.bits = 7;
+  below_minimum.integer_source_bits = 7;
+  auto& misaligned = std::get<ResolvedImmediate>(
+      std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
+          std::get<Wmma::LoadCM8n8k4ColGlobalF64>(
+              std::get<Wmma>(body[4]).variant)
+              .operands)
+          .stride.value);
+  misaligned.bits = 9;
+  misaligned.integer_source_bits = 9;
   EXPECT_FALSE(checker::check(std::get<Wmma>(body[3]), supported).has_value());
   EXPECT_FALSE(checker::check(std::get<Wmma>(body[4]), supported).has_value());
   const checker::Context too_old{
       .target = {.ptx_version = {9, 3}, .sm_version = 75}};
   EXPECT_FALSE(checker::check(std::get<Wmma>(body[1]), too_old).has_value());
+
+  std::string invalid_source = source;
+  const auto stride_position = invalid_source.find("[tile], 8;");
+  ASSERT_NE(stride_position, std::string::npos);
+  invalid_source.replace(stride_position, 10, "[tile], 7;");
+  const auto invalid_parsed = test_helpers::parseModule(invalid_source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid_parsed);
+  EXPECT_FALSE(resolveModule(*invalid_parsed).has_value());
+}
+
+/** Resolve a logical form above the legacy enum reflection scan range. */
+TEST(WmmaCoverage, ResolvesHighestLogicalForm) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.entry kernel() {
+  .reg .b32 %a, %b;
+  .reg .s32 %d<2>, %c<2>;
+  wmma.mma.and.popc.sync.aligned.m8n8k128.row.col.s32.b1.b1.s32
+    {%d0,%d1}, {%a}, {%b}, {%c0,%c1};
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& instruction =
+      std::get<Wmma>(resolved->functions.front().body.front());
+  EXPECT_EQ(static_cast<std::size_t>(instruction.semantic_form.value), 551u);
+  ASSERT_TRUE(instruction.matrix_logical_index().has_value());
+  EXPECT_EQ(*instruction.matrix_logical_index(), 551u);
+  const checker::Context supported{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  EXPECT_TRUE(checker::check(instruction, supported).has_value());
 }
 
 }  // namespace

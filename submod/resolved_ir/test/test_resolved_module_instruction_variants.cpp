@@ -2296,6 +2296,20 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   const auto wrong_register = resolveModule(*parsed_module_4);
   ASSERT_FALSE(wrong_register.has_value());
 
+  const auto parsed_transpose = parseModule(R"ptx(
+.shared .align 16 .b16 shared_value;
+.entry kernel() { .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16
+    {%r0, %r1}, [shared_value]; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_transpose);
+  const auto transpose = resolveModule(*parsed_transpose);
+  ASSERT_TRUE(transpose.has_value()) << transpose.error().front().message;
+  EXPECT_TRUE(checker::check(
+                  std::get<Ldmatrix>(transpose->functions.front().body.front()),
+                  context)
+                  .has_value());
+
   for (const auto source : {
            ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; "
            "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
@@ -2305,8 +2319,6 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
            "ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
-           "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
        }) {

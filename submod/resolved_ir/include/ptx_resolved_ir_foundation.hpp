@@ -79,20 +79,43 @@ constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
 }
 /** Warp-level instruction family retained independently of opcode spelling. */
 enum class MatrixFamily : uint8_t {
-  LDMATRIX, STMATRIX, MOVMATRIX, MMA, MMA_SPARSE, WMMA_LOAD, WMMA_STORE,
+  LDMATRIX,
+  STMATRIX,
+  MOVMATRIX,
+  MMA,
+  MMA_SPARSE,
+  WMMA_LOAD,
+  WMMA_STORE,
   WMMA_MMA
 };
 /** Logical matrix element, independent of register packing and declaration type. */
 enum class MatrixElementType : uint8_t {
-  B1, B8, B8X16, B16, B4X16_P64, B6X16_P32, F16, BF16, TF32, F32, F64,
-  S8, U8, S32, S4, U4, E4M3, E5M2, E3M2, E2M3, E2M1
+  B1,
+  B8,
+  B8X16,
+  B16,
+  B4X16_P64,
+  B6X16_P32,
+  F16,
+  BF16,
+  TF32,
+  F32,
+  F64,
+  S8,
+  U8,
+  S32,
+  S4,
+  U4,
+  E4M3,
+  E5M2,
+  E3M2,
+  E2M3,
+  E2M1
 };
 /** Row or column placement of a logical matrix operand. */
 enum class MatrixLayout : uint8_t { NONE, ROW, COL };
 /** MMA numeric format; block-scaled formats retain their distinct identity. */
-enum class MatrixKind : uint8_t {
-  CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4
-};
+enum class MatrixKind : uint8_t { CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4 };
 /** Single-bit multiply replacement before population count. */
 enum class MatrixBitOperation : uint8_t { NONE, XOR, AND };
 /** Sparse metadata ordering requirement exposed to consumers. */
@@ -101,7 +124,10 @@ enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
 enum class MatrixScaleType : uint8_t { NONE, UE8M0, UE4M3 };
 /** Written matrix address qualifier, independent of address provenance. */
 enum class MatrixAddressQualifier : uint8_t {
-  NONE, GLOBAL, SHARED, SHARED_CTA
+  NONE,
+  GLOBAL,
+  SHARED,
+  SHARED_CTA
 };
 /** Logical register-fragment role in a matrix instruction. */
 enum class MatrixFragmentRole : uint8_t { D, A, B, C };

@@ -559,7 +559,8 @@ CheckResult check_matrix_metadata(
     return {};
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
-      .range = owned.locs.empty() ? context.instruction_range : owned.locs.front(),
+      .range =
+          owned.locs.empty() ? context.instruction_range : owned.locs.front(),
       .message = "Owned matrix topology differs from its generated contract.",
   }});
 }
@@ -1248,22 +1249,24 @@ CheckResult check_operands(
       const size_t width = operand.immediate_type
                                ? scalar_size_of(*operand.immediate_type) * 8u
                                : 0u;
-      const bool fits_width = width >= 64 ||
-                              (width != 0 && source < (uint64_t{1} << width));
-      if (operand.immediate_is_negative.value_or(false) ||
-          source != current || !fits_width) {
+      const bool fits_width =
+          width >= 64 || (width != 0 && source < (uint64_t{1} << width));
+      if (operand.immediate_is_negative.value_or(false) || source != current ||
+          !fits_width) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::ImmediateValueMismatch,
             .range = diagnostic_range(operand.locations, context),
             .message = fmt::format(
                 "Matrix control immediate '{}' does not match its unsigned "
-                "source value and declared width.", operand.field_id),
+                "source value and declared width.",
+                operand.field_id),
         });
       }
     }
     for (size_t index = 0; index < matrix->scale_selector_count; ++index) {
       const auto& selector = matrix->scale_selectors[index];
-      const OperandView* operand = find_operand(operands, selector.operand_field_id);
+      const OperandView* operand =
+          find_operand(operands, selector.operand_field_id);
       if (operand == nullptr || operand->actual_shape != OperandShape::Vector ||
           operand->vector_arity != 2)
         continue;
@@ -1272,8 +1275,9 @@ CheckResult check_operands(
           continue;
         const auto source = operand->vector_immediate_source_bits[lane];
         const auto current = operand->vector_immediate_bits[lane];
-        const bool valid = source && current && *source == *current &&
-            *source <= UINT16_MAX && !operand->vector_immediate_negative[lane] &&
+        const bool valid =
+            source && current && *source == *current && *source <= UINT16_MAX &&
+            !operand->vector_immediate_negative[lane] &&
             (lane == 0 ? (*source < 8 && (selector.byte_mask & (1u << *source)))
                        : (*source <= selector.thread_max));
         if (valid)

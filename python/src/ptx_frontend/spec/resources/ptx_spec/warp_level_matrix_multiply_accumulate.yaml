@@ -53135,12 +53135,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53228,12 +53223,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53321,12 +53311,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53409,12 +53394,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53502,12 +53482,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53595,12 +53570,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53683,12 +53653,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53776,12 +53741,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53869,12 +53829,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -53957,12 +53912,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54050,12 +54000,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54143,12 +54088,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54226,12 +54166,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54314,12 +54249,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54402,12 +54332,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54485,12 +54410,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54573,12 +54493,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54661,12 +54576,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54744,12 +54654,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54832,12 +54737,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -54920,12 +54820,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b6x16_p32
+      token: .b8x16.b6x16_p32
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55003,12 +54898,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55091,12 +54981,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55179,12 +55064,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55262,12 +55142,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55350,12 +55225,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55438,12 +55308,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55521,12 +55386,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55609,12 +55469,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment
@@ -55697,12 +55552,7 @@ instructions:
       kind: flag
       presence: fixed
       value: true
-      token: .b8x16
-    - name: source_format
-      kind: flag
-      presence: fixed
-      value: true
-      token: .b4x16_p64
+      token: .b8x16.b4x16_p64
     operands:
     - name: dst
       kind: matrix_fragment

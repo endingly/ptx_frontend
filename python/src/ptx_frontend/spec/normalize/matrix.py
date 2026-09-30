@@ -293,11 +293,20 @@ def _validate_fixed_modifiers(
 ) -> None:
     """Reject canonical metadata that disagrees with fixed source suffixes."""
 
-    tokens = tuple(
+    fixed_spellings = tuple(
         spelling
         for modifier in modifiers
         if modifier.presence is ModifierPresence.FIXED
         for spelling in modifier_spellings(modifier)
+    )
+    packed_suffix_parts = {
+        ".b8x16.b6x16_p32": (".b8x16", ".b6x16_p32"),
+        ".b8x16.b4x16_p64": (".b8x16", ".b4x16_p64"),
+    }
+    tokens = tuple(
+        part
+        for spelling in fixed_spellings
+        for part in packed_suffix_parts.get(spelling, (spelling,))
     )
     shape_tokens = [
         match for token in tokens

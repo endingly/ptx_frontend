@@ -129,11 +129,15 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
   const auto selected_variant = selectVariant<{instruction.cpp_name}>(ast);
   if (!selected_variant)
     return std::unexpected(selected_variant.error());
+  const size_t selected_index = static_cast<size_t>(*selected_variant);
+  const auto& syntax_variants = {instruction.cpp_name}::get_syntax_descriptor().variants;
+  if (selected_index >= syntax_variants.size())
+    throw ResolveException("Selected variant is outside its syntax descriptor.");
 
   auto fields = resolve_fields(
       ast, {instruction.cpp_name}::get_syntax_descriptor(),
       {instruction.cpp_name}::get_resolved_descriptor(),
-      magic_enum::enum_name(*selected_variant), context);
+      syntax_variants[selected_index].variant_name, context);
   if (!fields)
     return std::unexpected(fields.error());
 

@@ -76,9 +76,9 @@ CheckResult check_availability(const VariantDescriptor&, const Context&);
 CheckResult check_common(const InstructionDescriptor&, std::string_view,
                          const Context&);
 /** Reject mutation of owned matrix topology after resolution or AST release. */
-CheckResult check_matrix_metadata(
-    const WithLocs<MatrixInstructionDescriptor>&,
-    const MatrixInstructionDescriptor&, const Context&);
+CheckResult check_matrix_metadata(const WithLocs<MatrixInstructionDescriptor>&,
+                                  const MatrixInstructionDescriptor&,
+                                  const Context&);
 /** Check the common predicate-register contract of an instruction guard. */
 CheckResult check_execution_predicate(
     const std::optional<WithLocs<ResolvedPredicate>>&, const Context&);

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -132,8 +133,8 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   selected.matrix.value = *scaled.matrix_descriptor();
   EXPECT_FALSE(checker::check(scaled, supported).has_value());
   selected.matrix.value = original_matrix;
-  scaled.semantic_form.value = Mma::VariantType::
-      SyncAlignedM8n8k4RowColF64F64F64F64;
+  scaled.semantic_form.value =
+      Mma::VariantType::SyncAlignedM8n8k4RowColF64F64F64F64;
   EXPECT_FALSE(scaled.matrix_logical_index().has_value());
   EXPECT_EQ(scaled.matrix_descriptor(), nullptr);
   EXPECT_FALSE(checker::check(scaled, supported).has_value());
@@ -173,35 +174,36 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
 
 /** Range-check each scale-selector slot and the sparse immediate selector. */
 TEST(WarpMatrixMmaCoverage, RejectsScaleSelectorAndSparseSelectorLimits) {
-  const auto parsed = test_helpers::parseModule(R"ptx(
+  const std::string source = R"ptx(
 .version 9.3
 .target sm_120a
 .address_size 64
 .entry kernel() {
   .reg .f32 %d<4>, %c<4>;
   .reg .b32 %a<4>, %b<4>, %e, %sa, %sb;
-  .reg .u32 %bad;
+  .reg .u16 %selector;
   mma.sync.aligned.m16n8k64.row.col.kind::mxf4.block_scale.scale_vec::2X.f32.e2m1.e2m1.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
     {%c0,%c1,%c2,%c3}, %sa, {2,1}, %sb, {2,3};
   mma.sync.aligned.m16n8k64.row.col.kind::mxf4.block_scale.scale_vec::2X.f32.e2m1.e2m1.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
-    {%c0,%c1,%c2,%c3}, %sa, {1,1}, %sb, {2,3};
+    {%c0,%c1,%c2,%c3}, %sa, {2,1}, %sb, {2,3};
   mma.sync.aligned.m16n8k64.row.col.kind::mxf4.block_scale.scale_vec::2X.f32.e2m1.e2m1.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
-    {%c0,%c1,%c2,%c3}, %sa, {2,2}, %sb, {2,3};
+    {%c0,%c1,%c2,%c3}, %sa, {2,1}, %sb, {2,3};
   mma.sp.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
     {%d0,%d1,%d2,%d3}, {%a0,%a1}, {%b0,%b1},
-    {%c0,%c1,%c2,%c3}, %e, 2;
+    {%c0,%c1,%c2,%c3}, %e, 0;
   mma.sync.aligned.m16n8k64.row.col.kind::mxf4.block_scale.scale_vec::2X.f32.e2m1.e2m1.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
-    {%c0,%c1,%c2,%c3}, %sa, {%bad,1}, %sb, {2,3};
+    {%c0,%c1,%c2,%c3}, %sa, {%selector,1}, %sb, {2,3};
 }
-)ptx");
+)ptx";
+  const auto parsed = test_helpers::parseModule(source);
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& body = resolved->functions.front().body;
+  auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 5u);
   const auto profile = base::find_target_profile("sm_120a");
   ASSERT_TRUE(profile.has_value());
@@ -212,10 +214,44 @@ TEST(WarpMatrixMmaCoverage, RejectsScaleSelectorAndSparseSelectorLimits) {
                  .identity = profile->identity,
                  .capabilities = profile->capabilities},
   };
-  EXPECT_TRUE(checker::check(std::get<Mma>(body[0]), context).has_value());
-  for (size_t index = 1; index < body.size(); ++index)
-    EXPECT_FALSE(
-        checker::check(std::get<Mma>(body[index]), context).has_value());
+  for (const auto& instruction : body)
+    EXPECT_TRUE(
+        checker::check(std::get<Mma>(instruction), context).has_value());
+
+  using Scaled = Mma::
+      SyncAlignedM16n8k64RowColKindMxf4BlockScaleScaleVec2F32E2m1E2m1F32Ue8m0;
+  auto& invalid_byte = std::get<ResolvedImmediate>(
+      std::get<Scaled>(std::get<Mma>(body[1]).variant)
+          .scale_a_selector.value.byte_id);
+  invalid_byte.bits = 1;
+  invalid_byte.integer_source_bits = 1;
+  EXPECT_FALSE(checker::check(std::get<Mma>(body[1]), context).has_value());
+  auto& invalid_thread = std::get<ResolvedImmediate>(
+      std::get<Scaled>(std::get<Mma>(body[2]).variant)
+          .scale_a_selector.value.thread_id);
+  invalid_thread.bits = 2;
+  invalid_thread.integer_source_bits = 2;
+  EXPECT_FALSE(checker::check(std::get<Mma>(body[2]), context).has_value());
+  auto& sparse_selector =
+      std::get<Mma::SpSpSyncAlignedM16n8k32RowColF32E4m3E4m3F32>(
+          std::get<Mma>(body[3]).variant)
+          .selector.value;
+  sparse_selector.bits = 2;
+  sparse_selector.integer_source_bits = 2;
+  EXPECT_FALSE(checker::check(std::get<Mma>(body[3]), context).has_value());
+  auto& selector_register = std::get<ResolvedRegisterRef>(
+      std::get<Scaled>(std::get<Mma>(body[4]).variant)
+          .scale_a_selector.value.byte_id);
+  selector_register.declared_type = base::ScalarType::U32;
+  EXPECT_FALSE(checker::check(std::get<Mma>(body[4]), context).has_value());
+
+  std::string invalid_source = source;
+  const auto selector_position = invalid_source.find("{2,1}");
+  ASSERT_NE(selector_position, std::string::npos);
+  invalid_source.replace(selector_position, 5, "{1,1}");
+  const auto invalid_parsed = test_helpers::parseModule(invalid_source);
+  ASSERT_MODULE_PARSE_SUCCEEDS(invalid_parsed);
+  EXPECT_FALSE(resolveModule(*invalid_parsed).has_value());
 }
 
 }  // namespace

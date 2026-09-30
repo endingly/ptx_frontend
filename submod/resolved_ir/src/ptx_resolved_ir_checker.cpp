@@ -1754,6 +1754,27 @@ CheckResult check_red_async_release_qualifiers(
   return {};
 }
 
+/** Gate a 32-bit bulk-store size register while retaining legacy immediates. */
+CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
+                                     const Context& context) {
+  const OperandView* size = find_operand(operands, "size");
+  if (size == nullptr)
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Bulk store has no size operand.",
+    }});
+  if (size->register_type && base::scalar_size_of(*size->register_type) == 4 &&
+      context.target.ptx_version < PtxVersion{9, 0}) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = diagnostic_range(size->locations, context),
+        .message = "32-bit bulk-store size requires PTX 9.0 or newer.",
+    }});
+  }
+  return {};
+}
+
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,

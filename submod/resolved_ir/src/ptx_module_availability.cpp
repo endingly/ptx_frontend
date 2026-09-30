@@ -788,8 +788,48 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
                                             selected.cache_policy.locs,
                                             fallback, diagnostics);
           }
+          if constexpr (requires { selected.operands; }) {
+            std::visit(
+                [&](const auto& payload) {
+                  if constexpr (requires { payload.cache_policy; }) {
+                    check_cp_async_register_binding(
+                        module, payload.cache_policy.value,
+                        payload.cache_policy.locs, fallback, diagnostics);
+                  }
+                },
+                selected.operands);
+          }
         },
         copy->variant);
+  }
+}
+
+/** Match an owned bulk-store size register's cached type to its declaration. */
+void check_st_bulk_size_bindings(const ResolvedModule& module,
+                                 const ResolvedFunction& function,
+                                 checker::CheckDiagnostics& diagnostics) {
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    const auto* store = std::get_if<St>(&function.body[index]);
+    if (!store)
+      continue;
+    const auto* bulk = std::get_if<St::BulkZero>(&store->variant);
+    if (!bulk)
+      continue;
+    const auto* size = std::get_if<ResolvedRegisterRef>(&bulk->size.value);
+    if (!size)
+      continue;
+    const auto* symbol =
+        size->symbol_id ? owned_symbol(module, *size->symbol_id) : nullptr;
+    const auto declared = symbol && symbol->type
+                              ? detail::scalar_type_from_ptx_name(*symbol->type)
+                              : std::nullopt;
+    if (!declared || !size->declared_type ||
+        *size->declared_type != *declared) {
+      append_model_mismatch(
+          diagnostics,
+          reference_range(bulk->size.locs, function.instruction_ranges[index]),
+          "st.bulk size register type disagrees with its owned declaration.");
+    }
   }
 }
 
@@ -1669,6 +1709,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
       check_cp_async_control_bindings(module, function, diagnostics);
+      check_st_bulk_size_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
     }

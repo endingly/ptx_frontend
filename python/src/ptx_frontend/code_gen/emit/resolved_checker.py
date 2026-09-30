@@ -464,6 +464,14 @@ def _emit_cross_rule_checks(
                                  createpolicy_rule_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_ST_BULK:
+        checks += """            const auto size_width_check = check_st_bulk_size_width(
+                operands, context);
+            if (!size_width_check) {
+              diagnostics.insert(diagnostics.end(), size_width_check.error().begin(),
+                                 size_width_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.DATA_MOVEMENT_CP_ASYNC:
         checks += """            const auto cp_async_rule_check = check_cp_async_rule(
                 fields, operands, context);

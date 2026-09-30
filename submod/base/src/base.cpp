@@ -46,10 +46,14 @@ bool scalar_types_compatible(ScalarType actual, ScalarType instruction,
     return false;
   const uint8_t actual_size = scalar_size_of(actual);
   const uint8_t instruction_size = scalar_size_of(instruction);
-  if (actual_size != instruction_size &&
-      (size_policy != ScalarTypeSizePolicy::EqualOrWider ||
-       actual_size < instruction_size))
+  if (size_policy == ScalarTypeSizePolicy::WordOrDoubleword) {
+    if (instruction_size != 8 || (actual_size != 4 && actual_size != 8))
+      return false;
+  } else if (actual_size != instruction_size &&
+             (size_policy != ScalarTypeSizePolicy::EqualOrWider ||
+              actual_size < instruction_size)) {
     return false;
+  }
 
   const ScalarKind actual_kind = scalar_kind(actual);
   const ScalarKind instruction_kind = scalar_kind(instruction);

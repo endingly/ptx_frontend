@@ -142,10 +142,7 @@ jobs:
         id: test-support
         if: success()
         shell: bash
-        run: |
-          cmake --build \
-            --preset "${{ matrix.preset }}" \
-            --target test_resolved_ir
+        run: cmake --build --preset "${{ matrix.preset }}" --target test_resolved_ir
 
       - name: Run normal resolved-IR tests
         id: test

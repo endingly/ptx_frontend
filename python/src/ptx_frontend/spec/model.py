@@ -17,6 +17,15 @@ class ConditionCodeEffect(Enum):
     BORROW_IN_OUT = "borrow_in_out"
 
 
+class AsyncCompletionKind(Enum):
+    """Instruction-local completion identity shared by async instruction families."""
+
+    NONE = "none"
+    ASYNC_GROUP = "async_group"
+    BULK_GROUP = "bulk_group"
+    MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
+
+
 class _SemanticToken(Enum):
     """Strict semantic enum with stable YAML-facing formatting."""
 
@@ -47,6 +56,7 @@ class SemanticRule(_SemanticToken):
     DATA_MOVEMENT_PREFETCH = "data_movement.prefetch"
     DATA_MOVEMENT_ST_EXPLICIT = "data_movement.st_explicit"
     DATA_MOVEMENT_ST_GENERIC = "data_movement.st_generic"
+    DATA_MOVEMENT_ST_BULK = "data_movement.st_bulk"
     FLOATING_POINT_ADD = "floating_point.add"
     FLOATING_POINT_ADD_BFLOAT = "floating_point.add_bfloat"
     FLOATING_POINT_ADD_HALF = "floating_point.add_half"
@@ -223,6 +233,7 @@ class OperandRegisterWidthPolicy(_SemanticToken):
     EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
+    WORD_OR_DOUBLEWORD = "word_or_doubleword"
 
 
 class OperandAddressBasePolicy(_SemanticToken):
@@ -490,6 +501,7 @@ class VariantSpec:
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
+    completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None

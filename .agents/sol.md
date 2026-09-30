@@ -2,10 +2,12 @@
 
 Use this document for architecture decisions, core-boundary classification, and
 core acceptance, not every review or task mentioning PTX. The
-[registry](orchestration.md#model-preferences) requires Sol / `high`; use the
-packet's selection evidence, or [dispatch controls](references/dispatch.md) when
-that evidence is missing or invalid. Loading this file does not select a model.
-The coordinator cannot override Sol's architectural/core verdict.
+[registry](orchestration.md#model-preferences) assigns this authority only to
+Authority Sol (`gpt-6.1-sol` / `medium`); use the packet's selection evidence, or
+[dispatch controls](references/dispatch.md) when that evidence is missing or
+invalid. Loading this file does not select a model. Implementation Sol
+(`gpt-6-sol` / `high`) has no architecture or core acceptance authority. The
+coordinator cannot override Authority Sol's architectural/core verdict.
 
 ## Core boundary
 
@@ -62,9 +64,10 @@ regression coverage when changed. Raw strings belong at input/output boundaries,
 not in decisions about internal state or generation branches. Do not invent
 validation gates unrelated to the changed contract.
 
-Review is read-only unless edits are separately authorized. Use a Sol reviewer
-that did not author the implementation: if a Sol agent wrote it, use a distinct
-Sol review context. An architect may review another worker's implementation;
+Review is read-only unless edits are separately authorized. Use an Authority Sol
+reviewer that did not author the implementation: if an Authority Sol agent wrote
+it, use a distinct Authority Sol review context. An architect may review another
+worker's implementation, including an Implementation Sol worker's delivery;
 additional design critique is risk-based, not mandatory for every task. No worker
 may mark its own core delivery accepted or call self-review independent. If the
 required independent review cannot be obtained, acceptance remains pending.
@@ -76,9 +79,10 @@ optional improvements, and requested settings from runtime-reported settings.
 An empty summary or successful command is not acceptance.
 
 Limit acceptance to the reviewed inputs. Material subsequent changes, integration
-conflicts, or broken validation require focused Sol re-review, not automatic
-reuse of a verdict. When the required Sol / `high` selection or review is missing,
-follow [availability rules](orchestration.md#availability-and-fallback): keep the
+conflicts, or broken validation require focused Authority Sol re-review, not
+automatic reuse of a verdict. When the required `gpt-6.1-sol` / `medium`
+selection or review is missing, follow
+[availability rules](orchestration.md#availability-and-fallback): keep the
 gate pending while continuing independent authorized work. Another model or
 effort cannot substitute. Technical acceptance does not authorize commit,
 publication, merge, or unrelated work.

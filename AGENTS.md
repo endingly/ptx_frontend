@@ -1,10 +1,12 @@
 # Codex agent policy
 
 The primary agent coordinates the requested outcome, task routing, integration,
-and communication. Sol owns architecture control and core acceptance review,
-regardless of the primary model. The primary may implement, verify, and close
-non-core work within established contracts; it must not substitute its own
-approval for a required Sol decision. Model/effort selection is defined in the
+and communication. Authority Sol (`gpt-6.1-sol` / `medium`) owns architecture
+control and core acceptance review, regardless of the primary model.
+Implementation Sol (`gpt-6-sol` / `high`) owns cross-file delivery without that
+authority. The primary may implement, verify, and close non-core work within
+established contracts; it must not substitute its own approval for a required
+Authority Sol decision. Model/effort selection is defined in the
 [registry](.agents/orchestration.md#model-preferences); it does not reconfigure
 the host session.
 
@@ -15,7 +17,7 @@ the host session.
   role and the references needed for the action; do not recursively load every
   linked document. Apply the registry to every worker, retry, resume, and fallback.
 - For a proposed architecture/core-contract change or its acceptance review, use
-  [ptx-core-review](.agents/skills/ptx-core-review/SKILL.md). The Sol gate applies
+  [ptx-core-review](.agents/skills/ptx-core-review/SKILL.md). The Authority Sol gate applies
   even when the host does not discover skills. Simple explanations, spelling-only
   edits, and non-core checks do not trigger this workflow. When classification is
   uncertain, consult [the core boundary](.agents/sol.md#core-boundary).

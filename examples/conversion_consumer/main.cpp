@@ -1,6 +1,7 @@
 #include <array>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -93,6 +94,26 @@ constexpr std::string_view kFixture = R"ptx(
 
 namespace ir = ptx_frontend::resolved_ir;
 
+/** Borrow an exact opcode record from a const owner. */
+template <ir::PtxOperator T>
+const T* outer_get_if(const ir::OwnedInstruction* instruction) {
+  return instruction ? instruction->get_if<T>() : nullptr;
+}
+
+/** Borrow an exact opcode record from a mutable owner. */
+template <ir::PtxOperator T>
+T* outer_get_if(ir::OwnedInstruction* instruction) {
+  return instruction ? instruction->get_if<T>() : nullptr;
+}
+
+/** Require an exact opcode record and report mismatches as variant access errors. */
+template <ir::PtxOperator T>
+const T& outer_get(const ir::OwnedInstruction& instruction) {
+  if (const auto* value = outer_get_if<T>(&instruction))
+    return *value;
+  throw std::bad_variant_access();
+}
+
 /** Report a failed public-contract check in both Debug and Release builds. */
 bool require(bool condition, std::string_view description) {
   if (!condition)
@@ -152,15 +173,15 @@ bool checkBarrierSyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 7, "CTA barrier instructions retained"))
     return false;
-  const auto* ordinary = std::get_if<ir::Barrier>(&body[0]);
-  const auto* qualified = std::get_if<ir::Barrier>(&body[1]);
+  const auto* ordinary = outer_get_if<ir::Barrier>(&body[0]);
+  const auto* qualified = outer_get_if<ir::Barrier>(&body[1]);
   const auto* sync =
       ordinary ? std::get_if<ir::Barrier::Sync>(&ordinary->variant) : nullptr;
   const auto* cta_sync =
       qualified ? std::get_if<ir::Barrier::CtaSync>(&qualified->variant)
                 : nullptr;
-  const auto* ordinary_arrive = std::get_if<ir::Barrier>(&body[2]);
-  const auto* qualified_arrive = std::get_if<ir::Barrier>(&body[3]);
+  const auto* ordinary_arrive = outer_get_if<ir::Barrier>(&body[2]);
+  const auto* qualified_arrive = outer_get_if<ir::Barrier>(&body[3]);
   const auto* arrive =
       ordinary_arrive
           ? std::get_if<ir::Barrier::Arrive>(&ordinary_arrive->variant)
@@ -169,12 +190,12 @@ bool checkBarrierSyncContract() {
       qualified_arrive
           ? std::get_if<ir::Barrier::CtaArrive>(&qualified_arrive->variant)
           : nullptr;
-  const auto* popc_instruction = std::get_if<ir::Barrier>(&body[4]);
+  const auto* popc_instruction = outer_get_if<ir::Barrier>(&body[4]);
   const auto* popc =
       popc_instruction
           ? std::get_if<ir::Barrier::RedPopcU32>(&popc_instruction->variant)
           : nullptr;
-  const auto* and_instruction = std::get_if<ir::Barrier>(&body[5]);
+  const auto* and_instruction = outer_get_if<ir::Barrier>(&body[5]);
   const auto* and_reduction =
       and_instruction
           ? std::get_if<ir::Barrier::CtaRedAndPred>(&and_instruction->variant)
@@ -221,9 +242,9 @@ bool checkMembarLevelsContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 4, "all membar levels retained"))
     return false;
-  const auto* cta = std::get_if<ir::Membar>(&body[0]);
-  const auto* gl = std::get_if<ir::Membar>(&body[1]);
-  const auto* sys = std::get_if<ir::Membar>(&body[2]);
+  const auto* cta = outer_get_if<ir::Membar>(&body[0]);
+  const auto* gl = outer_get_if<ir::Membar>(&body[1]);
+  const auto* sys = outer_get_if<ir::Membar>(&body[2]);
   return require(
       cta && gl && sys &&
           std::holds_alternative<ir::Membar::Cta>(cta->variant) &&
@@ -259,7 +280,7 @@ bool checkMembarProxyAliasContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "membar proxy-alias retained"))
     return false;
-  const auto* instruction = std::get_if<ir::Membar>(&body.front());
+  const auto* instruction = outer_get_if<ir::Membar>(&body.front());
   return require(instruction && std::holds_alternative<ir::Membar::ProxyAlias>(
                                     instruction->variant),
                  "public membar proxy-alias variant");
@@ -291,7 +312,7 @@ bool checkFenceProxyAliasContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "fence proxy-alias retained"))
     return false;
-  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* instruction = outer_get_if<ir::Fence>(&body.front());
   const auto* alias =
       instruction ? std::get_if<ir::Fence::ProxyAlias>(&instruction->variant)
                   : nullptr;
@@ -335,7 +356,7 @@ bool checkMembarProxyAsyncContract() {
                                 ir::AsyncProxyKind::AsyncGlobal,
                                 ir::AsyncProxyKind::AsyncSharedCta};
   for (size_t i = 0; i < expected.size(); ++i) {
-    const auto* instruction = std::get_if<ir::Membar>(&body[i]);
+    const auto* instruction = outer_get_if<ir::Membar>(&body[i]);
     const auto* async =
         instruction ? std::get_if<ir::Membar::ProxyAsync>(&instruction->variant)
                     : nullptr;
@@ -344,7 +365,7 @@ bool checkMembarProxyAsyncContract() {
                  "public membar async-proxy space"))
       return false;
   }
-  const auto* instruction = std::get_if<ir::Membar>(&body[3]);
+  const auto* instruction = outer_get_if<ir::Membar>(&body[3]);
   const auto* cluster = instruction
                             ? std::get_if<ir::Membar::ProxyAsyncSharedCluster>(
                                   &instruction->variant)
@@ -391,7 +412,7 @@ bool checkOrdinaryFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 8, "ordinary fence forms retained"))
     return false;
-  const auto* omitted_instruction = std::get_if<ir::Fence>(&body[0]);
+  const auto* omitted_instruction = outer_get_if<ir::Fence>(&body[0]);
   const auto* omitted =
       omitted_instruction
           ? std::get_if<ir::Fence::OrdinaryCta>(&omitted_instruction->variant)
@@ -402,7 +423,7 @@ bool checkOrdinaryFenceContract() {
                "public omitted ordinary fence semantics"))
     return false;
   for (size_t i : {1U, 2U}) {
-    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    const auto* instruction = outer_get_if<ir::Fence>(&body[i]);
     const auto* sc =
         instruction ? std::get_if<ir::Fence::OrdinaryCta>(&instruction->variant)
                     : nullptr;
@@ -412,18 +433,18 @@ bool checkOrdinaryFenceContract() {
       return false;
   }
   for (size_t i : {3U, 4U}) {
-    const auto* instruction = std::get_if<ir::Fence>(&body[i]);
+    const auto* instruction = outer_get_if<ir::Fence>(&body[i]);
     if (!require(instruction && std::holds_alternative<ir::Fence::AcqRelCta>(
                                     instruction->variant),
                  "public legacy acquire-release CTA variant"))
       return false;
   }
-  const auto* gpu_instruction = std::get_if<ir::Fence>(&body[5]);
+  const auto* gpu_instruction = outer_get_if<ir::Fence>(&body[5]);
   const auto* gpu =
       gpu_instruction
           ? std::get_if<ir::Fence::OrdinaryGpuSys>(&gpu_instruction->variant)
           : nullptr;
-  const auto* cluster_instruction = std::get_if<ir::Fence>(&body[6]);
+  const auto* cluster_instruction = outer_get_if<ir::Fence>(&body[6]);
   const auto* cluster = cluster_instruction
                             ? std::get_if<ir::Fence::OrdinaryCluster>(
                                   &cluster_instruction->variant)
@@ -461,7 +482,7 @@ bool checkMbarrierInitFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "mbarrier-init fence retained"))
     return false;
-  const auto* instruction = std::get_if<ir::Fence>(&body.front());
+  const auto* instruction = outer_get_if<ir::Fence>(&body.front());
   const auto* restricted =
       instruction ? std::get_if<ir::Fence::MbarrierInitReleaseCluster>(
                         &instruction->variant)
@@ -502,8 +523,8 @@ bool checkSharedSyncRestrictedFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "shared restricted fences retained"))
     return false;
-  const auto* acquire_instruction = std::get_if<ir::Fence>(&body[0]);
-  const auto* release_instruction = std::get_if<ir::Fence>(&body[1]);
+  const auto* acquire_instruction = outer_get_if<ir::Fence>(&body[0]);
+  const auto* release_instruction = outer_get_if<ir::Fence>(&body[1]);
   const auto* acquire =
       acquire_instruction
           ? std::get_if<ir::Fence::AcquireSyncRestrictSharedCluster>(
@@ -560,8 +581,8 @@ bool checkMbarrierTestWaitContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 3, "paired mbarrier wait forms retained"))
     return false;
-  const auto* first_instruction = std::get_if<ir::Mbarrier>(&body[0]);
-  const auto* second_instruction = std::get_if<ir::Mbarrier>(&body[1]);
+  const auto* first_instruction = outer_get_if<ir::Mbarrier>(&body[0]);
+  const auto* second_instruction = outer_get_if<ir::Mbarrier>(&body[1]);
   const auto* first =
       first_instruction
           ? std::get_if<ir::Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
@@ -621,8 +642,8 @@ bool checkMbarrierTryWaitContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 3, "paired mbarrier try-wait forms retained"))
     return false;
-  const auto* first_instruction = std::get_if<ir::Mbarrier>(&body[0]);
-  const auto* second_instruction = std::get_if<ir::Mbarrier>(&body[1]);
+  const auto* first_instruction = outer_get_if<ir::Mbarrier>(&body[0]);
+  const auto* second_instruction = outer_get_if<ir::Mbarrier>(&body[1]);
   const auto* first =
       first_instruction
           ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared>(
@@ -658,22 +679,22 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(body.size() == 47, "all conversion and atomic instructions"))
     return false;
 
-  auto* atom_instruction = std::get_if<ir::Atom>(&body[27]);
+  auto* atom_instruction = outer_get_if<ir::Atom>(&body[27]);
   auto* atom =
       atom_instruction
           ? std::get_if<ir::Atom::GlobalAddU32>(&atom_instruction->variant)
           : nullptr;
-  auto* red_instruction = std::get_if<ir::Red>(&body[28]);
+  auto* red_instruction = outer_get_if<ir::Red>(&body[28]);
   auto* red =
       red_instruction
           ? std::get_if<ir::Red::GlobalAddU32>(&red_instruction->variant)
           : nullptr;
-  auto* legacy_cas_instruction = std::get_if<ir::Atom>(&body[29]);
+  auto* legacy_cas_instruction = outer_get_if<ir::Atom>(&body[29]);
   auto* legacy_cas = legacy_cas_instruction
                          ? std::get_if<ir::Atom::GlobalCasB32>(
                                &legacy_cas_instruction->variant)
                          : nullptr;
-  auto* modern_cas_instruction = std::get_if<ir::Atom>(&body[30]);
+  auto* modern_cas_instruction = outer_get_if<ir::Atom>(&body[30]);
   auto* modern_cas = modern_cas_instruction
                          ? std::get_if<ir::Atom::GlobalCasB32>(
                                &modern_cas_instruction->variant)
@@ -698,17 +719,17 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "owned atomic register and immediate sources"))
     return false;
 
-  const auto* inc_instruction = std::get_if<ir::Atom>(&body[31]);
+  const auto* inc_instruction = outer_get_if<ir::Atom>(&body[31]);
   const auto* inc =
       inc_instruction
           ? std::get_if<ir::Atom::GlobalIncU32>(&inc_instruction->variant)
           : nullptr;
-  const auto* exch_instruction = std::get_if<ir::Atom>(&body[32]);
+  const auto* exch_instruction = outer_get_if<ir::Atom>(&body[32]);
   const auto* exch =
       exch_instruction
           ? std::get_if<ir::Atom::GlobalExchB32>(&exch_instruction->variant)
           : nullptr;
-  const auto* xor_instruction = std::get_if<ir::Red>(&body[33]);
+  const auto* xor_instruction = outer_get_if<ir::Red>(&body[33]);
   const auto* xor_red =
       xor_instruction
           ? std::get_if<ir::Red::GlobalXorB32>(&xor_instruction->variant)
@@ -723,22 +744,22 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "owned expanded atomic and reduction variants"))
     return false;
 
-  const auto* add_64_instruction = std::get_if<ir::Atom>(&body[34]);
+  const auto* add_64_instruction = outer_get_if<ir::Atom>(&body[34]);
   const auto* add_64 =
       add_64_instruction
           ? std::get_if<ir::Atom::GlobalAddU64>(&add_64_instruction->variant)
           : nullptr;
-  const auto* min_64_instruction = std::get_if<ir::Atom>(&body[35]);
+  const auto* min_64_instruction = outer_get_if<ir::Atom>(&body[35]);
   const auto* min_64 =
       min_64_instruction
           ? std::get_if<ir::Atom::GlobalMinS64>(&min_64_instruction->variant)
           : nullptr;
-  const auto* cas_64_instruction = std::get_if<ir::Atom>(&body[36]);
+  const auto* cas_64_instruction = outer_get_if<ir::Atom>(&body[36]);
   const auto* cas_64 =
       cas_64_instruction
           ? std::get_if<ir::Atom::GlobalCasB64>(&cas_64_instruction->variant)
           : nullptr;
-  const auto* red_64_instruction = std::get_if<ir::Red>(&body[37]);
+  const auto* red_64_instruction = outer_get_if<ir::Red>(&body[37]);
   const auto* red_64 =
       red_64_instruction
           ? std::get_if<ir::Red::GlobalXorB64>(&red_64_instruction->variant)
@@ -757,10 +778,10 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "owned 64-bit atomic and reduction variants"))
     return false;
 
-  const auto* float_atom = std::get_if<ir::Atom>(&body[38]);
-  const auto* float_red = std::get_if<ir::Red>(&body[39]);
-  const auto* double_atom = std::get_if<ir::Atom>(&body[40]);
-  const auto* double_red = std::get_if<ir::Red>(&body[41]);
+  const auto* float_atom = outer_get_if<ir::Atom>(&body[38]);
+  const auto* float_red = outer_get_if<ir::Red>(&body[39]);
+  const auto* double_atom = outer_get_if<ir::Atom>(&body[40]);
+  const auto* double_red = outer_get_if<ir::Red>(&body[41]);
   if (!require(float_atom && float_red && double_atom && double_red &&
                    std::holds_alternative<ir::Atom::GlobalAddF32>(
                        float_atom->variant) &&
@@ -773,12 +794,12 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "owned float atomic and reduction variants"))
     return false;
 
-  const auto* vector_atom_instruction = std::get_if<ir::Atom>(&body[42]);
+  const auto* vector_atom_instruction = outer_get_if<ir::Atom>(&body[42]);
   const auto* vector_atom = vector_atom_instruction
                                 ? std::get_if<ir::Atom::VectorAddNoftzF16>(
                                       &vector_atom_instruction->variant)
                                 : nullptr;
-  const auto* vector_red_instruction = std::get_if<ir::Red>(&body[43]);
+  const auto* vector_red_instruction = outer_get_if<ir::Red>(&body[43]);
   const auto* vector_red = vector_red_instruction
                                ? std::get_if<ir::Red::VectorAddNoftzF16>(
                                      &vector_red_instruction->variant)
@@ -797,8 +818,8 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "owned vector atomic and reduction policy layout"))
     return false;
 
-  const auto* shared_async = std::get_if<ir::Red>(&body[44]);
-  const auto* release_async = std::get_if<ir::Red>(&body[45]);
+  const auto* shared_async = outer_get_if<ir::Red>(&body[44]);
+  const auto* release_async = outer_get_if<ir::Red>(&body[45]);
   if (!require(shared_async && release_async &&
                    std::holds_alternative<ir::Red::AsyncSharedAddU32>(
                        shared_async->variant) &&
@@ -813,34 +834,34 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "owned asynchronous reduction modes"))
     return false;
 
-  auto* testp = std::get_if<ir::Testp>(&body[8]);
+  auto* testp = outer_get_if<ir::Testp>(&body[8]);
   auto* property =
       testp ? std::get_if<ir::Testp::F32>(&testp->variant) : nullptr;
   if (!require(property && property->property.value ==
                                ptx_frontend::base::TestProperty::Normal,
                "typed testp.normal.f32 property"))
     return false;
-  const auto* copysign = std::get_if<ir::Copysign>(&body[9]);
+  const auto* copysign = outer_get_if<ir::Copysign>(&body[9]);
   if (!require(copysign &&
                    std::holds_alternative<ir::Copysign::F32>(copysign->variant),
                "typed copysign.f32 variant"))
     return false;
-  const auto* sin = std::get_if<ir::Sin>(&body[10]);
+  const auto* sin = outer_get_if<ir::Sin>(&body[10]);
   const auto* sin_f32 =
       sin ? std::get_if<ir::Sin::ApproxF32>(&sin->variant) : nullptr;
   if (!require(sin_f32 && sin_f32->ftz.value,
                "typed transcendental approximation and FTZ"))
     return false;
-  const auto* ex2 = std::get_if<ir::Ex2>(&body[11]);
+  const auto* ex2 = outer_get_if<ir::Ex2>(&body[11]);
   if (!require(
           ex2 && std::holds_alternative<ir::Ex2::ApproxFtzBf16>(ex2->variant),
           "typed BF16 transcendental variant"))
     return false;
 
-  auto* min_binary_instruction = std::get_if<ir::Min>(&body[12]);
-  auto* min_ternary_instruction = std::get_if<ir::Min>(&body[13]);
-  auto* max_binary_instruction = std::get_if<ir::Max>(&body[14]);
-  auto* max_ternary_instruction = std::get_if<ir::Max>(&body[15]);
+  auto* min_binary_instruction = outer_get_if<ir::Min>(&body[12]);
+  auto* min_ternary_instruction = outer_get_if<ir::Min>(&body[13]);
+  auto* max_binary_instruction = outer_get_if<ir::Max>(&body[14]);
+  auto* max_ternary_instruction = outer_get_if<ir::Max>(&body[15]);
   auto* min_binary =
       min_binary_instruction
           ? std::get_if<ir::Min::F32>(&min_binary_instruction->variant)
@@ -880,10 +901,10 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed MIN/MAX modifier and operand layouts"))
     return false;
 
-  auto* add_register_instruction = std::get_if<ir::Add>(&body[16]);
-  auto* add_immediate_instruction = std::get_if<ir::Add>(&body[17]);
-  auto* sub_register_instruction = std::get_if<ir::Sub>(&body[18]);
-  auto* sub_immediate_instruction = std::get_if<ir::Sub>(&body[19]);
+  auto* add_register_instruction = outer_get_if<ir::Add>(&body[16]);
+  auto* add_immediate_instruction = outer_get_if<ir::Add>(&body[17]);
+  auto* sub_register_instruction = outer_get_if<ir::Sub>(&body[18]);
+  auto* sub_immediate_instruction = outer_get_if<ir::Sub>(&body[19]);
   auto* add_register =
       add_register_instruction
           ? std::get_if<ir::Add::MixedF32>(&add_register_instruction->variant)
@@ -935,17 +956,17 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "mixed register and floating-immediate values"))
     return false;
 
-  auto* set_instruction = std::get_if<ir::Set>(&body[20]);
+  auto* set_instruction = outer_get_if<ir::Set>(&body[20]);
   auto* set_float =
       set_instruction
           ? std::get_if<ir::Set::FloatBoolean>(&set_instruction->variant)
           : nullptr;
-  auto* selp_scalar_instruction = std::get_if<ir::Selp>(&body[21]);
+  auto* selp_scalar_instruction = outer_get_if<ir::Selp>(&body[21]);
   auto* selp_scalar =
       selp_scalar_instruction
           ? std::get_if<ir::Selp::Scalar>(&selp_scalar_instruction->variant)
           : nullptr;
-  auto* selp_u32_instruction = std::get_if<ir::Selp>(&body[22]);
+  auto* selp_u32_instruction = outer_get_if<ir::Selp>(&body[22]);
   auto* selp_u32 =
       selp_u32_instruction
           ? std::get_if<ir::Selp::U32>(&selp_u32_instruction->variant)
@@ -968,12 +989,12 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed SET and both SELP public alternatives"))
     return false;
 
-  auto* set_half_instruction = std::get_if<ir::Set>(&body[23]);
+  auto* set_half_instruction = outer_get_if<ir::Set>(&body[23]);
   auto* set_half = set_half_instruction
                        ? std::get_if<ir::Set::HalfNativeF16x2Boolean>(
                              &set_half_instruction->variant)
                        : nullptr;
-  auto* set_bfloat_instruction = std::get_if<ir::Set>(&body[24]);
+  auto* set_bfloat_instruction = outer_get_if<ir::Set>(&body[24]);
   auto* set_bfloat =
       set_bfloat_instruction
           ? std::get_if<ir::Set::HalfBf16F16>(&set_bfloat_instruction->variant)
@@ -992,12 +1013,12 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed half/bfloat SET alternatives and owned operands"))
     return false;
 
-  auto* slct_integer_instruction = std::get_if<ir::Slct>(&body[25]);
+  auto* slct_integer_instruction = outer_get_if<ir::Slct>(&body[25]);
   auto* slct_integer =
       slct_integer_instruction
           ? std::get_if<ir::Slct::S32>(&slct_integer_instruction->variant)
           : nullptr;
-  auto* slct_floating_instruction = std::get_if<ir::Slct>(&body[26]);
+  auto* slct_floating_instruction = outer_get_if<ir::Slct>(&body[26]);
   auto* slct_floating =
       slct_floating_instruction
           ? std::get_if<ir::Slct::F32>(&slct_floating_instruction->variant)
@@ -1163,7 +1184,7 @@ bool checkCpAsyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() >= 3, "non-bulk copy forms retained"))
     return false;
-  const auto* original_instruction = std::get_if<ir::Cp>(&body[0]);
+  const auto* original_instruction = outer_get_if<ir::Cp>(&body[0]);
   const auto* original = original_instruction
                              ? std::get_if<ir::Cp::AsyncCaSharedGlobal>(
                                    &original_instruction->variant)
@@ -1173,7 +1194,7 @@ bool checkCpAsyncContract() {
                    original->cp_size.value.bits == 4,
                "original three-operand public copy fields remain available"))
     return false;
-  const auto* policy_instruction = std::get_if<ir::Cp>(&body[1]);
+  const auto* policy_instruction = outer_get_if<ir::Cp>(&body[1]);
   const auto* policy =
       policy_instruction
           ? std::get_if<ir::Cp::AsyncCaSharedGlobalCacheHintControl>(
@@ -1225,11 +1246,11 @@ bool checkBulkAsyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 5, "bulk async forms retained"))
     return false;
-  const auto* copy = std::get_if<ir::Cp>(&body[0]);
+  const auto* copy = outer_get_if<ir::Cp>(&body[0]);
   const auto* mbar =
       copy ? std::get_if<ir::Cp::AsyncBulkGlobalSharedCta>(&copy->variant)
            : nullptr;
-  const auto* group = std::get_if<ir::Cp>(&body[1]);
+  const auto* group = outer_get_if<ir::Cp>(&body[1]);
   const auto* bulk_group =
       group ? std::get_if<ir::Cp::AsyncBulkSharedCtaGlobal>(&group->variant)
             : nullptr;
@@ -1240,9 +1261,9 @@ bool checkBulkAsyncContract() {
                      ir::Cp::AsyncBulkSharedCtaGlobal::completion_kind ==
                          ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
                      std::holds_alternative<ir::Cp::AsyncBulkCommitGroup>(
-                         std::get<ir::Cp>(body[2]).variant) &&
+                         outer_get<ir::Cp>(body[2]).variant) &&
                      std::get<ir::Cp::AsyncBulkWaitGroup>(
-                         std::get<ir::Cp>(body[3]).variant)
+                         outer_get<ir::Cp>(body[3]).variant)
                          .read.value,
                  "public bulk async completion and group controls");
 }

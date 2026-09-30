@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <cstdint>
@@ -28,16 +29,17 @@ SyntaxInstructionParseResult parseImmediate(std::string_view spelling) {
 /** Return the second operand after the caller has verified the parsed instruction. */
 const syntax_ast::AstImmediate& immediateOperand(
     const syntax_ast::AstInstruction& instruction) {
-  return std::get<syntax_ast::AstImmediate>(instruction.operands[1]);
+  return test_ir_access::get<syntax_ast::AstImmediate>(instruction.operands[1]);
 }
 
 /** Return the immediate source held by a scalar move instruction. */
 const ResolvedImmediate& scalarMovImmediate(
     const std::variant<std::monostate, Mov>& instruction) {
-  const auto& mov = std::get<Mov>(instruction);
-  const auto& scalar = std::get<Mov::Scalar>(mov.variant);
-  const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
-  return std::get<ResolvedImmediate>(operands.src.value);
+  const auto& mov = test_ir_access::get<Mov>(instruction);
+  const auto& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
+  const auto& operands =
+      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
+  return test_ir_access::get<ResolvedImmediate>(operands.src.value);
 }
 
 /** Accept equivalent signs while retaining exact decimal floating bit patterns. */

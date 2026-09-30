@@ -1,7 +1,13 @@
 #include "test_module_snapshot.hpp"
+#include "test_instruction_visit.hpp"
 #include "test_module_projection_detail.hpp"
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/div.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rcp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir::test_support {
@@ -18,7 +24,7 @@ std::vector<StorageSnapshot> projectStorage(const ResolvedModule& module) {
         .first_constant_bits = [&]() -> std::optional<uint64_t> {
           if (storage.initializer.empty())
             return std::nullopt;
-          if (const auto* value = std::get_if<StorageConstant>(
+          if (const auto* value = test_ir_access::get_if<StorageConstant>(
                   &storage.initializer.front().value))
             return value->bits;
           return std::nullopt;
@@ -118,7 +124,7 @@ resolveAndCheckInstructionSnapshot(const syntax_ast::AstModule& ast,
     return std::unexpected(std::move(resolved.error()));
   for (const auto& function : resolved->functions) {
     for (const auto& instruction : function.body) {
-      const auto checked = std::visit(
+      const auto checked = test_ir_access::visit(
           [&](const auto& value) { return checker::check(value, context); },
           instruction);
       if (!checked) {
@@ -154,8 +160,10 @@ checkUnifiedLoadMutation(const syntax_ast::AstModule& ast) {
   if (!resolved)
     return std::unexpected(std::move(resolved.error()));
   auto before = validateModule(*resolved);
-  auto& load = std::get<Ld>(resolved->functions.front().body.front());
-  std::get<Ld::ExplicitScalar>(load.variant).address.value.unified = false;
+  auto& load =
+      test_ir_access::get<Ld>(resolved->functions.front().body.front());
+  test_ir_access::get<Ld::ExplicitScalar>(load.variant).address.value.unified =
+      false;
   return UnifiedLoadMutationCheck{std::move(before), validateModule(*resolved)};
 }
 
@@ -182,21 +190,27 @@ checkOwnedModuleMutation(std::string source, OwnedMutationScenario scenario) {
   auto& body = resolved->functions.front().body;
   switch (scenario) {
     case OwnedMutationScenario::DivSourceWidth: {
-      auto& f32 = std::get<Div::RnF32>(std::get<Div>(body[0]).variant);
-      f32.src2.value =
-          std::get<Div::RnF64>(std::get<Div>(body[1]).variant).src2.value;
+      auto& f32 = test_ir_access::get<Div::RnF32>(
+          test_ir_access::get<Div>(body[0]).variant);
+      f32.src2.value = test_ir_access::get<Div::RnF64>(
+                           test_ir_access::get<Div>(body[1]).variant)
+                           .src2.value;
       break;
     }
     case OwnedMutationScenario::AbsSourceWidth: {
-      auto& f32 = std::get<Abs::F32>(std::get<Abs>(body[0]).variant);
-      f32.src.value =
-          std::get<Neg::F64>(std::get<Neg>(body[1]).variant).src.value;
+      auto& f32 = test_ir_access::get<Abs::F32>(
+          test_ir_access::get<Abs>(body[0]).variant);
+      f32.src.value = test_ir_access::get<Neg::F64>(
+                          test_ir_access::get<Neg>(body[1]).variant)
+                          .src.value;
       break;
     }
     case OwnedMutationScenario::RcpSourceWidth: {
-      auto& f32 = std::get<Rcp::RnF32>(std::get<Rcp>(body[0]).variant);
-      f32.src.value =
-          std::get<Rcp::RnF64>(std::get<Rcp>(body[1]).variant).src.value;
+      auto& f32 = test_ir_access::get<Rcp::RnF32>(
+          test_ir_access::get<Rcp>(body[0]).variant);
+      f32.src.value = test_ir_access::get<Rcp::RnF64>(
+                          test_ir_access::get<Rcp>(body[1]).variant)
+                          .src.value;
       break;
     }
   }

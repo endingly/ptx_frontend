@@ -24,6 +24,51 @@ from .syntax_descriptors import (
 )
 
 
+def emit_owned_bridge(cpp_name: str, opcode: str) -> str:
+    """Emit the exact-type owner table and resolver beside the opcode definitions."""
+    return f"""\\
+/** Box a typed {opcode} payload without materializing the outer instruction union. */
+OwnedInstruction box_instruction({cpp_name} value) {{
+  static const detail::OwnedInstructionOps ops{{
+      .type = typeid({cpp_name}),
+      .destroy = [](void* payload) noexcept {{ delete static_cast<{cpp_name}*>(payload); }},
+      .clone = [](const void* payload) -> void* {{
+        return new {cpp_name}(*static_cast<const {cpp_name}*>(payload));
+      }},
+      .opcode = "{opcode}",
+      .check = [](const void* payload, const checker::Context& context) {{
+        return checker::check(*static_cast<const {cpp_name}*>(payload), context);
+      }},
+      .references = [](const void* payload, detail::OwnedReferenceSink sink) {{
+        detail::visit_instruction_references(
+            *static_cast<const {cpp_name}*>(payload),
+            [&](const auto& value, std::span<const SourceRange> locations,
+                checker::AddressSymbolResolutionPolicy policy) {{
+              static_assert(detail::OwnedReferencePayload<
+                  std::remove_cvref_t<decltype(value)>>);
+              sink.accept(sink.state, detail::OwnedReferenceView{{
+                  .type = typeid(value),
+                  .payload = &value,
+                  .locations = locations,
+                  .address_policy = policy,
+              }});
+            }});
+      }},
+  }};
+  return detail::OwnerAccess::adopt(new {cpp_name}(std::move(value)), &ops);
+}}
+
+/** Resolve {opcode} using the existing typed resolver and retain its payload. */
+std::expected<OwnedInstruction, ResolveDiagnostic> resolve_owned_{cpp_name}(
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context) {{
+  auto resolved = resolve<{cpp_name}>(ast, context);
+  if (!resolved)
+    return std::unexpected(std::move(resolved.error()));
+  return box_instruction(std::move(*resolved));
+}}
+"""
+
+
 def generate_resolved_ir_opcode_source(
     context: GenerationContext,
     *,
@@ -51,6 +96,9 @@ def generate_resolved_ir_opcode_source(
 #include <ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_owned_instruction.hpp>
+#include <typeinfo>
+#include <utility>
 
 namespace ptx_frontend::resolved_ir {{
 
@@ -81,6 +129,8 @@ namespace checker {{
 {emit_check_specialization(instruction, backend)}
 
 }}  // namespace checker
+
+{emit_owned_bridge(instruction.cpp_name, instruction.opcode)}
 
 }}  // namespace ptx_frontend::resolved_ir
 """

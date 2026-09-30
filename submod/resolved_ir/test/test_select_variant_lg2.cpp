@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,8 @@ TEST(ResolveLg2, SelectsFrozenApproxVariant) {
   const auto resolved =
       resolve<Lg2>(parse_instruction("lg2.approx.ftz.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Lg2::ApproxF32>(&resolved->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Lg2::ApproxF32>(&resolved->variant),
+            nullptr);
   EXPECT_EQ(Lg2::ApproxF32::type, ScalarType::F32);
   EXPECT_TRUE(Lg2::ApproxF32::approx);
 }

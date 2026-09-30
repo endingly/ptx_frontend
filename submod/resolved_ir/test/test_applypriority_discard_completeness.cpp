@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -6,7 +7,9 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/applypriority.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/discard.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -57,14 +60,16 @@ TEST(ApplypriorityDiscardCompleteness, ResolvesGenericAndExplicitForms) {
   ASSERT_TRUE(validateModule(*resolved));
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 6u);
-  EXPECT_TRUE(std::holds_alternative<Applypriority::GenericL2EvictNormal>(
-      std::get<Applypriority>(body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Applypriority::GlobalL2EvictNormal>(
-      std::get<Applypriority>(body[2]).variant));
-  EXPECT_TRUE(std::holds_alternative<Discard::GenericL2>(
-      std::get<Discard>(body[3]).variant));
-  EXPECT_TRUE(std::holds_alternative<Discard::GlobalL2>(
-      std::get<Discard>(body[5]).variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Applypriority::GenericL2EvictNormal>(
+          test_ir_access::get<Applypriority>(body[0]).variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Applypriority::GlobalL2EvictNormal>(
+          test_ir_access::get<Applypriority>(body[2]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Discard::GenericL2>(
+      test_ir_access::get<Discard>(body[3]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Discard::GlobalL2>(
+      test_ir_access::get<Discard>(body[5]).variant));
 }
 
 /** Generic cache operations require PTX 7.4 and SM 80 independently. */
@@ -158,9 +163,11 @@ TEST(ApplypriorityDiscardCompleteness, RevalidatesOwnedAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& discard = std::get<Discard::GenericL2>(
-      std::get<Discard>(owned->functions.front().body.front()).variant);
-  auto& symbol = std::get<ResolvedSymbolRef>(discard.address.value.base);
+  auto& discard = test_ir_access::get<Discard::GenericL2>(
+      test_ir_access::get<Discard>(owned->functions.front().body.front())
+          .variant);
+  auto& symbol =
+      test_ir_access::get<ResolvedSymbolRef>(discard.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 128u);
   symbol.address_alignment = 64;
   const auto invalid =

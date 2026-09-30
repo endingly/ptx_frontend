@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,13 +27,14 @@ TEST(ResolveTrap, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
   const auto bare_ast = parse_instruction("trap;");
   const auto bare = resolve<Trap>(bare_ast);
   ASSERT_TRUE(bare.has_value()) << bare.error().message;
-  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(bare->variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Trap::Bare>(bare->variant));
   EXPECT_FALSE(bare->execution_predicate.has_value());
 
   const auto predicated_ast = parse_instruction("@%p0 trap;");
   const auto predicated = resolve<Trap>(predicated_ast);
   ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
-  EXPECT_TRUE(std::holds_alternative<Trap::Bare>(predicated->variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Trap::Bare>(predicated->variant));
   EXPECT_TRUE(predicated->execution_predicate.has_value());
 
   const auto modifier_ast = parse_instruction("trap.uni;");

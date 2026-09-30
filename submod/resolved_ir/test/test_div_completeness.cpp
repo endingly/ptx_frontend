@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -43,33 +44,42 @@ TEST(DivCompleteness, ResolvesExplicitFloatingModesAndOperands) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  const auto& approx = std::get<Div::ApproxF32>(std::get<Div>(body[0]).variant);
+  const auto& approx = test_ir_access::get<Div::ApproxF32>(
+      test_ir_access::get<Div>(body[0]).variant);
   EXPECT_TRUE(Div::ApproxF32::approx);
   EXPECT_TRUE(approx.ftz.value);
-  const auto& full = std::get<Div::FullF32>(std::get<Div>(body[1]).variant);
+  const auto& full = test_ir_access::get<Div::FullF32>(
+      test_ir_access::get<Div>(body[1]).variant);
   EXPECT_TRUE(Div::FullF32::full);
   EXPECT_FALSE(full.ftz.value);
-  const auto& rn_f32 = std::get<Div::RnF32>(std::get<Div>(body[2]).variant);
+  const auto& rn_f32 = test_ir_access::get<Div::RnF32>(
+      test_ir_access::get<Div>(body[2]).variant);
   EXPECT_TRUE(rn_f32.ftz.value);
   EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
-  EXPECT_EQ(
-      std::get<Div::DirectedF32>(std::get<Div>(body[3]).variant).rounding.value,
-      RoundingMode::Rz);
-  EXPECT_TRUE(
-      std::get<Div::DirectedF32>(std::get<Div>(body[4]).variant).ftz.value);
-  EXPECT_EQ(
-      std::get<Div::DirectedF32>(std::get<Div>(body[5]).variant).rounding.value,
-      RoundingMode::Rp);
+  EXPECT_EQ(test_ir_access::get<Div::DirectedF32>(
+                test_ir_access::get<Div>(body[3]).variant)
+                .rounding.value,
+            RoundingMode::Rz);
+  EXPECT_TRUE(test_ir_access::get<Div::DirectedF32>(
+                  test_ir_access::get<Div>(body[4]).variant)
+                  .ftz.value);
+  EXPECT_EQ(test_ir_access::get<Div::DirectedF32>(
+                test_ir_access::get<Div>(body[5]).variant)
+                .rounding.value,
+            RoundingMode::Rp);
   EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(
-      std::get<Div::DirectedF64>(std::get<Div>(body[7]).variant).rounding.value,
-      RoundingMode::Rz);
-  EXPECT_EQ(
-      std::get<Div::DirectedF64>(std::get<Div>(body[8]).variant).rounding.value,
-      RoundingMode::Rm);
-  EXPECT_EQ(
-      std::get<Div::DirectedF64>(std::get<Div>(body[9]).variant).rounding.value,
-      RoundingMode::Rp);
+  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
+                test_ir_access::get<Div>(body[7]).variant)
+                .rounding.value,
+            RoundingMode::Rz);
+  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
+                test_ir_access::get<Div>(body[8]).variant)
+                .rounding.value,
+            RoundingMode::Rm);
+  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
+                test_ir_access::get<Div>(body[9]).variant)
+                .rounding.value,
+            RoundingMode::Rp);
 }
 
 /** Reject legacy, mixed-mode, forbidden-flag, sink, and integer source forms. */

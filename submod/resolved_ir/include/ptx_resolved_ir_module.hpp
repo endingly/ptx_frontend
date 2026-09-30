@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <ptx_frontend/resolved_ir/ptx_owned_instruction.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
-#include <ptx_frontend/resolved_ir/resolved_ir.gen.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -241,7 +241,7 @@ struct ResolvedFunction {
   /** Function-local indirect-call prototype metadata in lexical source order. */
   std::vector<ResolvedCallPrototypeContract> call_prototypes;
   /** Owned flattened instructions, ordered as they occur in the function body. */
-  std::vector<ResolvedInstruction> body;
+  std::vector<OwnedInstruction> body;
   /** Bound label locations whose offsets index ``body``. */
   std::vector<ResolvedLabelPosition> label_positions;
   /** Source extent of this function declaration and body. */

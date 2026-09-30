@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,10 +26,10 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
   const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, 1;"));
   ASSERT_TRUE(b32.has_value()) << b32.error().message;
-  EXPECT_NE(std::get_if<Clz::B32>(&b32->variant), nullptr);
+  EXPECT_NE(test_ir_access::get_if<Clz::B32>(&b32->variant), nullptr);
   const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
   ASSERT_TRUE(b64.has_value()) << b64.error().message;
-  EXPECT_NE(std::get_if<Clz::B64>(&b64->variant), nullptr);
+  EXPECT_NE(test_ir_access::get_if<Clz::B64>(&b64->variant), nullptr);
   EXPECT_FALSE(
       selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
 }

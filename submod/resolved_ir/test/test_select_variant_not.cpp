@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,9 +27,10 @@ TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
   const auto ast = parse_instruction("not.b32 %r0, 1;");
   const auto resolved = resolve<Not>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* not_b32 = std::get_if<Not::B32>(&resolved->variant);
+  const auto* not_b32 = test_ir_access::get_if<Not::B32>(&resolved->variant);
   ASSERT_NE(not_b32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(not_b32->src.value));
 }
 
 }  // namespace

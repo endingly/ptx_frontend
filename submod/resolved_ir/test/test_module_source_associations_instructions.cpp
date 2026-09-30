@@ -1,3 +1,4 @@
+#include "test_instruction_access.hpp"
 #include "test_module_source_associations_support.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -27,11 +28,11 @@ TEST(ModuleValidationContract, ReportsMissingAndExtraInstructions) {
   auto extra = resolveModule(*ast);
   ASSERT_TRUE(extra.has_value()) << extra.error().front().message;
   auto& function = extra->functions.front();
-  const auto& original_return = std::get<Ret>(function.body.front());
+  const auto& original_return = test_ir_access::get<Ret>(function.body.front());
   /** Preserve two concrete returns without copying the full instruction union. */
-  std::vector<ResolvedInstruction> duplicated_body(2);
-  duplicated_body[0].emplace<Ret>(original_return);
-  duplicated_body[1].emplace<Ret>(original_return);
+  std::vector<OwnedInstruction> duplicated_body(2);
+  duplicated_body[0] = OwnedInstruction{original_return};
+  duplicated_body[1] = OwnedInstruction{original_return};
   function.body.swap(duplicated_body);
   function.instruction_ranges.push_back(function.instruction_ranges.front());
   function.instruction_opcodes.push_back(function.instruction_opcodes.front());

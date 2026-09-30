@@ -1,8 +1,8 @@
 #pragma once
 
-// Compatibility aggregate for consumers resolving the complete model.
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
+// Module resolution API with the owned instruction value and narrow support headers.
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -18,11 +18,11 @@ enum class ModuleValidationPolicy : uint8_t {
 using ModuleResolveDiagnostics = std::vector<ResolveDiagnostic>;
 
 /** Resolve one standalone instruction without declaration binding. */
-std::expected<ResolvedInstruction, ResolveDiagnostic> resolveInstruction(
+std::expected<OwnedInstruction, ResolveDiagnostic> resolveInstruction(
     const syntax_ast::AstInstruction& ast);
 
 /** Resolve one instruction against an explicit declaration-binding context. */
-std::expected<ResolvedInstruction, ResolveDiagnostic> resolveInstruction(
+std::expected<OwnedInstruction, ResolveDiagnostic> resolveInstruction(
     const syntax_ast::AstInstruction& ast, const ResolveContext& context);
 
 /**
@@ -67,5 +67,3 @@ checker::CheckResult checkModuleAvailability(const syntax_ast::AstModule& ast,
                                              const ResolvedModule& module);
 
 }  // namespace ptx_frontend::resolved_ir
-
-#include <ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp>

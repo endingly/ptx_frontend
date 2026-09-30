@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -423,8 +424,8 @@ TEST(SelectVariantMbarrier, SelectsArriveFormsAndLayouts) {
   };
 
   const auto sink_ast = parse_instruction("mbarrier.arrive.b64 _, [%rd0];");
-  const auto* sink =
-      std::get_if<syntax_ast::AstIdentifierRef>(&sink_ast.operands[0]);
+  const auto* sink = test_ir_access::get_if<syntax_ast::AstIdentifierRef>(
+      &sink_ast.operands[0]);
   ASSERT_NE(sink, nullptr);
   EXPECT_EQ(sink->syntax.text, "_");
 

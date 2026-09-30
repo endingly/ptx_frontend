@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -83,14 +84,15 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
     ASSERT_EQ(module->functions.size(), 2u);
     const auto& function = module->functions.back();
     ASSERT_EQ(function.body.size(), 5u);
-    EXPECT_TRUE(std::holds_alternative<St>(function.body[0]));
-    EXPECT_TRUE(std::holds_alternative<St>(function.body[1]));
-    EXPECT_TRUE(std::holds_alternative<Ld>(function.body[3]));
-    EXPECT_TRUE(std::holds_alternative<Ld>(function.body[4]));
-    const auto* call = std::get_if<Call>(&function.body[2]);
+    EXPECT_TRUE(test_ir_access::holds_alternative<St>(function.body[0]));
+    EXPECT_TRUE(test_ir_access::holds_alternative<St>(function.body[1]));
+    EXPECT_TRUE(test_ir_access::holds_alternative<Ld>(function.body[3]));
+    EXPECT_TRUE(test_ir_access::holds_alternative<Ld>(function.body[4]));
+    const auto* call = test_ir_access::get_if<Call>(&function.body[2]);
     ASSERT_NE(call, nullptr);
-    const auto& operands = std::get<Call::Direct::ReturnTargetInputOperands>(
-        std::get<Call::Direct>(call->variant).operands);
+    const auto& operands =
+        test_ir_access::get<Call::Direct::ReturnTargetInputOperands>(
+            test_ir_access::get<Call::Direct>(call->variant).operands);
     const auto scope = module->symbols.symbol(function.symbol_id).owned_scope;
     ASSERT_TRUE(scope);
     const auto result = module->symbols.lookup(*scope, "result");
@@ -101,7 +103,7 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
       const auto symbol =
           module->symbols.lookup(*scope, index == 0 ? "a" : "b");
       ASSERT_TRUE(symbol);
-      const auto& argument = std::get<ResolvedCallParameterRef>(
+      const auto& argument = test_ir_access::get<ResolvedCallParameterRef>(
           operands.arguments.value.values[index].value);
       EXPECT_EQ(argument.symbol_id, symbol->symbol);
     }
@@ -126,11 +128,11 @@ TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
       const auto ast = parseCallModule(body);
       ASSERT_TRUE(ast);
       const auto& function =
-          std::get<syntax_ast::AstFunction>(ast->items.back());
+          test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
       std::optional<SourceRange> offending_range;
       for (const auto& item : function.body) {
         const auto* instruction =
-            std::get_if<syntax_ast::AstInstruction>(&item);
+            test_ir_access::get_if<syntax_ast::AstInstruction>(&item);
         if (instruction &&
             instruction->opcode.syntax.text == (before_call ? "st" : "ld"))
           offending_range = instruction->range;
@@ -166,11 +168,12 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
         "ld.param.b32 %r1, [result];";
     const auto ast = parseCallModule(body);
     ASSERT_TRUE(ast);
-    const auto& function = std::get<syntax_ast::AstFunction>(ast->items.back());
+    const auto& function =
+        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
     std::optional<SourceRange> predicate_range;
     for (const auto& item : function.body) {
       if (const auto* instruction =
-              std::get_if<syntax_ast::AstInstruction>(&item);
+              test_ir_access::get_if<syntax_ast::AstInstruction>(&item);
           instruction && instruction->predicate)
         predicate_range = instruction->predicate->range;
     }
@@ -212,15 +215,18 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   ASSERT_TRUE(scope);
   const auto outer = module->symbols.lookup(*scope, "result");
   ASSERT_TRUE(outer);
-  const auto& operands = std::get<Call::Direct::ReturnTargetInputOperands>(
-      std::get<Call::Direct>(std::get<Call>(function.body[1]).variant)
-          .operands);
+  const auto& operands =
+      test_ir_access::get<Call::Direct::ReturnTargetInputOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(function.body[1]).variant)
+              .operands);
   ASSERT_TRUE(operands.return_value.value.symbol_id);
   EXPECT_NE(operands.return_value.value.symbol_id, outer->symbol);
-  const auto& load =
-      std::get<Ld::ExplicitScalar>(std::get<Ld>(function.body[2]).variant);
-  EXPECT_EQ(std::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
-            operands.return_value.value.symbol_id);
+  const auto& load = test_ir_access::get<Ld::ExplicitScalar>(
+      test_ir_access::get<Ld>(function.body[2]).variant);
+  EXPECT_EQ(
+      test_ir_access::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
+      operands.return_value.value.symbol_id);
 
   const auto crossed_ast = parseCallModule(R"ptx(
   .param .b32 a, b, result;
@@ -236,11 +242,13 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   ASSERT_FALSE(crossed);
   ASSERT_EQ(crossed.error().size(), 1u);
   const auto& crossed_function =
-      std::get<syntax_ast::AstFunction>(crossed_ast->items.back());
-  const auto& block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
-      crossed_function.body.back());
-  EXPECT_EQ(crossed.error().front().range,
-            std::get<syntax_ast::AstInstruction>(block.body.back()).range);
+      test_ir_access::get<syntax_ast::AstFunction>(crossed_ast->items.back());
+  const auto& block =
+      *test_ir_access::get<std::unique_ptr<syntax_ast::AstBlock>>(
+          crossed_function.body.back());
+  EXPECT_EQ(
+      crossed.error().front().range,
+      test_ir_access::get<syntax_ast::AstInstruction>(block.body.back()).range);
   EXPECT_EQ(crossed.error().front().stage(),
             ResolveDiagnosticStage::Resolution);
   EXPECT_EQ(crossed.error().front().message,

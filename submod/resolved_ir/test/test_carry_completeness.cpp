@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -7,7 +8,10 @@
 #include <type_traits>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/addc.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/madc.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -44,7 +48,8 @@ TEST(CarryCompleteness, RejectsInvalidFormsAndRevalidatesType) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
   auto resolved = resolve<Addc>(*ast);
   ASSERT_TRUE(resolved);
-  std::get<Addc::Plain32>(resolved->variant).type.value = ScalarType::U64;
+  test_ir_access::get<Addc::Plain32>(resolved->variant).type.value =
+      ScalarType::U64;
   EXPECT_FALSE(checker::check(
       *resolved,
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}}));
@@ -53,7 +58,7 @@ TEST(CarryCompleteness, RejectsInvalidFormsAndRevalidatesType) {
   const auto add = resolve<Add>(*ordinary);
   ASSERT_TRUE(add);
   EXPECT_EQ(
-      std::visit(
+      test_ir_access::visit(
           [](const auto& variant) { return variant.condition_code_effect; },
           add->variant),
       ConditionCodeEffect::None);
@@ -79,8 +84,8 @@ TEST(CarryCompleteness, RetainsOwnedMultiplyAddCarryContract) {
   }
 
   const auto& madc =
-      std::get<Madc>(owned_module->functions.front().body.front());
-  const auto* variant = std::get_if<Madc::LoCc32>(&madc.variant);
+      test_ir_access::get<Madc>(owned_module->functions.front().body.front());
+  const auto* variant = test_ir_access::get_if<Madc::LoCc32>(&madc.variant);
   ASSERT_NE(variant, nullptr);
   EXPECT_EQ(variant->condition_code_effect, ConditionCodeEffect::CarryInOut);
   EXPECT_EQ(Madc::get_resolved_descriptor()
@@ -94,8 +99,9 @@ TEST(CarryCompleteness, RetainsOwnedMultiplyAddCarryContract) {
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
 
-  auto& mutable_variant = std::get<Madc::LoCc32>(
-      std::get<Madc>(owned_module->functions.front().body.front()).variant);
+  auto& mutable_variant = test_ir_access::get<Madc::LoCc32>(
+      test_ir_access::get<Madc>(owned_module->functions.front().body.front())
+          .variant);
   mutable_variant.type.value = ScalarType::U64;
   EXPECT_FALSE(validateModule(*owned_module,
                               ModuleValidationPolicy::RequireCompleteContext)

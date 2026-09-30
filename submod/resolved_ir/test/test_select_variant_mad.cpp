@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,30 +27,31 @@ TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   const auto resolved =
       resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mad = std::get_if<Mad::LoU32>(&resolved->variant);
+  const auto* mad = test_ir_access::get_if<Mad::LoU32>(&resolved->variant);
   ASSERT_NE(mad, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
 TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
   const auto lo =
       resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(lo.has_value()) << lo.error().message;
-  ASSERT_NE(std::get_if<Mad::LoS32>(&lo->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Mad::LoS32>(&lo->variant), nullptr);
   EXPECT_TRUE(Mad::LoS32::lo);
   EXPECT_EQ(Mad::LoS32::type, ScalarType::S32);
 
   const auto wide =
       resolve<Mad>(parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
   ASSERT_TRUE(wide.has_value()) << wide.error().message;
-  ASSERT_NE(std::get_if<Mad::WideU32>(&wide->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Mad::WideU32>(&wide->variant), nullptr);
   EXPECT_TRUE(Mad::WideU32::wide);
   EXPECT_EQ(Mad::WideU32::type, ScalarType::U32);
 
   const auto rn =
       resolve<Mad>(parse_instruction("mad.rn.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(rn.has_value()) << rn.error().message;
-  ASSERT_NE(std::get_if<Mad::RnF32>(&rn->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Mad::RnF32>(&rn->variant), nullptr);
   EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
 
@@ -57,14 +59,15 @@ TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
       resolve<Mad>(parse_instruction("mad.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(directed.has_value()) << directed.error().message;
   const auto* directed_variant =
-      std::get_if<Mad::DirectedF32>(&directed->variant);
+      test_ir_access::get_if<Mad::DirectedF32>(&directed->variant);
   ASSERT_NE(directed_variant, nullptr);
   EXPECT_EQ(directed_variant->rounding.value, RoundingMode::Rz);
 
   const auto f64 =
       resolve<Mad>(parse_instruction("mad.rp.f64 %d0, %d1, %d2, %d3;"));
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
-  const auto* f64_variant = std::get_if<Mad::DirectedF64>(&f64->variant);
+  const auto* f64_variant =
+      test_ir_access::get_if<Mad::DirectedF64>(&f64->variant);
   ASSERT_NE(f64_variant, nullptr);
   EXPECT_EQ(f64_variant->rounding.value, RoundingMode::Rp);
 }

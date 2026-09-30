@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,10 +27,11 @@ TEST(ResolveSin, SelectsFrozenApproxVariant) {
   const auto resolved =
       resolve<Sin>(parse_instruction("sin.approx.ftz.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Sin::ApproxF32>(&resolved->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Sin::ApproxF32>(&resolved->variant),
+            nullptr);
   EXPECT_EQ(Sin::ApproxF32::type, ScalarType::F32);
   EXPECT_TRUE(Sin::ApproxF32::approx);
-  EXPECT_TRUE(std::get<Sin::ApproxF32>(resolved->variant).ftz.value);
+  EXPECT_TRUE(test_ir_access::get<Sin::ApproxF32>(resolved->variant).ftz.value);
 }
 
 TEST(ResolveSin, RejectsInvalidForms) {

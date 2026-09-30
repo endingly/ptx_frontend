@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,8 +27,8 @@ TEST(ResolveBrev, SelectsBothBitWidths) {
   for (const auto source : {"brev.b32 %r0, 1;", "brev.b64 %rd0, %rd1;"}) {
     const auto brev = resolve<Brev>(parse_instruction(source));
     ASSERT_TRUE(brev.has_value()) << brev.error().message;
-    EXPECT_TRUE(std::holds_alternative<Brev::B32>(brev->variant) ||
-                std::holds_alternative<Brev::B64>(brev->variant));
+    EXPECT_TRUE(test_ir_access::holds_alternative<Brev::B32>(brev->variant) ||
+                test_ir_access::holds_alternative<Brev::B64>(brev->variant));
   }
 }
 

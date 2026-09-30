@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string_view>
@@ -76,7 +77,7 @@ TEST(MulCompleteness, ResolvesAndChecksEveryPtx93FormWithDeclaredOperands) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& mul = std::get<Mul>(instruction);
+    const auto& mul = test_ir_access::get<Mul>(instruction);
     const auto checked = checker::check(mul, context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
@@ -124,12 +125,13 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
   auto resolved = test_support::resolveTypedModule<Mul>(
       *parsed_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = std::get<Mul::F32x2>(
-      std::get<Mul>(resolved->functions.front().body.front()).variant);
+  auto& packed = test_ir_access::get<Mul::F32x2>(
+      test_ir_access::get<Mul>(resolved->functions.front().body.front())
+          .variant);
   ASSERT_EQ(packed.dst.value.declared_type, ScalarType::B64);
   packed.dst.value.declared_type = ScalarType::B32;
   const auto checked = checker::check(
-      std::get<Mul>(resolved->functions.front().body.front()),
+      test_ir_access::get<Mul>(resolved->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,

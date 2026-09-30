@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -51,25 +52,26 @@ TEST(SetCompleteness, ResolvesOrdinaryFamilies) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  EXPECT_TRUE(std::holds_alternative<Set::Bit>(std::get<Set>(body[0]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Set::BitBoolean>(std::get<Set>(body[1]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Set::Signed>(std::get<Set>(body[2]).variant));
-  EXPECT_TRUE(std::holds_alternative<Set::SignedBoolean>(
-      std::get<Set>(body[3]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Set::Unsigned>(std::get<Set>(body[4]).variant));
-  EXPECT_TRUE(std::holds_alternative<Set::UnsignedBoolean>(
-      std::get<Set>(body[5]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Set::Float>(std::get<Set>(body[6]).variant));
-  EXPECT_TRUE(std::holds_alternative<Set::FloatBoolean>(
-      std::get<Set>(body[7]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Set::FloatF64>(std::get<Set>(body[8]).variant));
-  EXPECT_TRUE(std::holds_alternative<Set::FloatF64Boolean>(
-      std::get<Set>(body[9]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Bit>(
+      test_ir_access::get<Set>(body[0]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::BitBoolean>(
+      test_ir_access::get<Set>(body[1]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Signed>(
+      test_ir_access::get<Set>(body[2]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::SignedBoolean>(
+      test_ir_access::get<Set>(body[3]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Unsigned>(
+      test_ir_access::get<Set>(body[4]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::UnsignedBoolean>(
+      test_ir_access::get<Set>(body[5]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Float>(
+      test_ir_access::get<Set>(body[6]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatBoolean>(
+      test_ir_access::get<Set>(body[7]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatF64>(
+      test_ir_access::get<Set>(body[8]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatF64Boolean>(
+      test_ir_access::get<Set>(body[9]).variant));
 }
 
 /** Reject comparison suffixes outside each source family and illegal FTZ use. */
@@ -140,7 +142,7 @@ TEST(SetCompleteness, RejectsMutatedTypedFields) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
   auto resolved = resolve<Set>(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& bit = std::get<Set::Bit>(resolved->variant);
+  auto& bit = test_ir_access::get<Set::Bit>(resolved->variant);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   bit.comparison.value = ComparisonOperator::Lt;
@@ -162,9 +164,11 @@ TEST(SetCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
     owned = *resolved;
   }
   ASSERT_TRUE(owned.has_value());
-  const auto& variant = std::get<Set::FloatBoolean>(owned->variant);
+  const auto& variant = test_ir_access::get<Set::FloatBoolean>(owned->variant);
   EXPECT_EQ(variant.comparison.value, ComparisonOperator::Nan);
-  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(variant.combine.value).value);
+  EXPECT_TRUE(
+      test_ir_access::get<ResolvedPredicateConstant>(variant.combine.value)
+          .value);
   EXPECT_TRUE(
       checker::check(*owned, checker::Context{.target = {.ptx_version = {9, 3},
                                                          .sm_version = 100}})

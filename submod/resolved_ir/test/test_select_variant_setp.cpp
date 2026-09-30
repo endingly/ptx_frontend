@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,7 @@ TEST(ResolveSetp, SelectsCompleteUnsignedVariants) {
   const auto simple_ast = parse_instruction("setp.lt.u32 %p0, %r0, 16;");
   const auto simple = resolve<Setp>(simple_ast);
   ASSERT_TRUE(simple.has_value()) << simple.error().message;
-  const auto* lt = std::get_if<Setp::Unsigned>(&simple->variant);
+  const auto* lt = test_ir_access::get_if<Setp::Unsigned>(&simple->variant);
   ASSERT_NE(lt, nullptr);
   EXPECT_EQ(lt->comparison.value, ComparisonOperator::Lt);
 
@@ -34,20 +35,23 @@ TEST(ResolveSetp, SelectsCompleteUnsignedVariants) {
       parse_instruction("setp.lt.and.u32 %p0, %r0, 16, !%p1;");
   const auto combined = resolve<Setp>(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and = std::get_if<Setp::UnsignedBoolean>(&combined->variant);
+  const auto* lt_and =
+      test_ir_access::get_if<Setp::UnsignedBoolean>(&combined->variant);
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
   const auto& operands =
-      std::get<Setp::UnsignedBoolean::SingleOperands>(lt_and->operands);
-  EXPECT_TRUE(std::get<ResolvedPredicate>(operands.combine.value).negated);
+      test_ir_access::get<Setp::UnsignedBoolean::SingleOperands>(
+          lt_and->operands);
+  EXPECT_TRUE(
+      test_ir_access::get<ResolvedPredicate>(operands.combine.value).negated);
 }
 
 TEST(ResolveSetp, SelectsCompleteSignedVariant) {
   const auto resolved =
       resolve<Setp>(parse_instruction("setp.ge.s32 %p0, %r0, -1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* ge = std::get_if<Setp::Signed>(&resolved->variant);
+  const auto* ge = test_ir_access::get_if<Setp::Signed>(&resolved->variant);
   ASSERT_NE(ge, nullptr);
   EXPECT_EQ(ge->comparison.value, ComparisonOperator::Ge);
 }
@@ -56,7 +60,7 @@ TEST(ResolveSetp, SelectsCompleteDualPredicateVariants) {
   const auto equality_ast = parse_instruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
   const auto equality = resolve<Setp>(equality_ast);
   ASSERT_TRUE(equality.has_value()) << equality.error().message;
-  const auto* eq = std::get_if<Setp::Unsigned>(&equality->variant);
+  const auto* eq = test_ir_access::get_if<Setp::Unsigned>(&equality->variant);
   ASSERT_NE(eq, nullptr);
   EXPECT_EQ(eq->comparison.value, ComparisonOperator::Eq);
 
@@ -64,13 +68,15 @@ TEST(ResolveSetp, SelectsCompleteDualPredicateVariants) {
       parse_instruction("setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;");
   const auto combined = resolve<Setp>(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and = std::get_if<Setp::SignedBoolean>(&combined->variant);
+  const auto* lt_and =
+      test_ir_access::get_if<Setp::SignedBoolean>(&combined->variant);
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
   const auto& operands =
-      std::get<Setp::SignedBoolean::PairOperands>(lt_and->operands);
-  const auto& combine = std::get<ResolvedPredicate>(operands.combine.value);
+      test_ir_access::get<Setp::SignedBoolean::PairOperands>(lt_and->operands);
+  const auto& combine =
+      test_ir_access::get<ResolvedPredicate>(operands.combine.value);
   EXPECT_FALSE(combine.negated);
   EXPECT_EQ(combine.register_ref.spelling, "%p2");
 }

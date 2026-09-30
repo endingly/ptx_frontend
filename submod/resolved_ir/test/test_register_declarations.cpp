@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -152,10 +153,11 @@ TEST(RegisterDeclarations, ClassifiesEveryModeledScalarFromBaseMetadata) {
     const auto ast = parseModule(source);
     ASSERT_TRUE(ast) << scalar_metadata->source_spelling;
     const auto* function =
-        std::get_if<syntax_ast::AstFunction>(&ast->items.front());
+        test_ir_access::get_if<syntax_ast::AstFunction>(&ast->items.front());
     ASSERT_NE(function, nullptr);
-    const auto* declaration = std::get_if<syntax_ast::AstVariableDeclaration>(
-        &function->body.front());
+    const auto* declaration =
+        test_ir_access::get_if<syntax_ast::AstVariableDeclaration>(
+            &function->body.front());
     ASSERT_NE(declaration, nullptr);
 
     const auto binding = binding::bindSymbols(*ast);
@@ -218,10 +220,12 @@ TEST(RegisterDeclarations, RejectsExternallyConstructedVectorWidths) {
 }
 )ptx");
   ASSERT_TRUE(ast);
-  auto* function = std::get_if<syntax_ast::AstFunction>(&ast->items.front());
+  auto* function =
+      test_ir_access::get_if<syntax_ast::AstFunction>(&ast->items.front());
   ASSERT_NE(function, nullptr);
   auto* declaration =
-      std::get_if<syntax_ast::AstVariableDeclaration>(&function->body.front());
+      test_ir_access::get_if<syntax_ast::AstVariableDeclaration>(
+          &function->body.front());
   ASSERT_NE(declaration, nullptr);
   ASSERT_TRUE(declaration->vector_type.has_value());
   declaration->vector_type->text = ".v8";

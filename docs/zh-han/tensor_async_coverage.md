@@ -11,6 +11,6 @@ Frontend 支持 [PTX ISA 9.3 §5.5 与 §9.7.9.26.5](https://docs.nvidia.com/cud
 
 `tensorMap` 是指向 opaque 128 字节 descriptor 的 generic pointer。直接 descriptor 符号可位于 kernel `.param`、`.const` 或 `.global`，其声明身份、存储空间、对齐及源码范围保留在 owned IR。寄存器指针保留寄存器身份，但运行时来源与对齐未知。Tensor 数据方向单独建模：load 将 global tensor 数据写入 shared，store 从 CTA shared 读取并写入 global tensor 数据。
 
-Checker 要求坐标数量恰好等于 rank，每个坐标具有 signed-32 语义；接受兼容的 32-bit 寄存器，拒绝 signed-32 范围外的立即数。Load 与 prefetch 可使用负坐标；store 拒绝静态负坐标，寄存器坐标值须在运行时检查。已知 descriptor、shared 数据、mbarrier 地址分别要求 64、16、8 字节对齐。Shared 数据检查采用 tiled mode 的基线；descriptor 不透明，依赖 swizzle mode 的更强对齐仍需运行时保证。未知寄存器指针对齐不视为已证明。已知 shared/local 或非 kernel parameter descriptor 会被拒绝，并检查 PTX/SM 可用性。
+Checker 要求坐标数量恰好等于 rank，每个坐标具有 signed-32 语义，并接受兼容的 32-bit 寄存器。PTX 的 64-bit 整数常量在坐标使用处转换为 signed 32-bit，原始值及符号仍保留在 owned IR 中：`4294967296` 转换为零，`4294967295` 转换为 −1。Load 与 prefetch 可使用转换后为负的坐标；store 拒绝静态转换后为负的坐标，寄存器坐标值须在运行时检查。已知 descriptor、shared 数据、mbarrier 地址分别要求 64、16、8 字节对齐。Shared 数据检查采用 tiled mode 的基线；descriptor 不透明，依赖 swizzle mode 的更强对齐仍需运行时保证。未知寄存器指针对齐不视为已证明。已知 shared/local 或非 kernel parameter descriptor 会被拒绝，并检查 PTX/SM 可用性。
 
 此切片无法静态证明 descriptor 内容、descriptor 内 rank 一致性、swizzle、stride、bounds、barrier locality 或运行时同步。`tensormap.replace`、`tensormap.cp_fenceproxy`、tensor reduction、im2col、gather/scatter、multicast、显式 CTA group、cache policy/hint 尚不在支持范围；相邻但未支持的拼写会在形式选择时失败。

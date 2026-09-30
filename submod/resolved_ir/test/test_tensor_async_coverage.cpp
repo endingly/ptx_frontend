@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -162,6 +163,48 @@ TEST(TensorAsync, StoreRanksAndSignedCoordinates) {
   EXPECT_FALSE(resolveModule(*negative).has_value());
 }
 
+/** Convert 64-bit integer literals at each tensor coordinate use. */
+TEST(TensorAsync, NarrowsIntegerCoordinatesAcrossDirections) {
+  const std::string prefix = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 tile_data[1024];
+.shared .align 8 .b64 barrier;
+.entry kernel() {
+)ptx";
+  constexpr std::array<std::string_view, 6> coordinates{
+      "4294967296", "-4294967296",          "-2147483649",
+      "4294967295", "18446744073709551615", "2147483648"};
+  for (size_t index = 0; index < coordinates.size(); ++index) {
+    const std::string coordinate{coordinates[index]};
+    const auto prefetch =
+        test_helpers::parseModule(prefix +
+                                  "cp.async.bulk.prefetch.tensor.1d.L2.global "
+                                  "[tensor_map, {" +
+                                  coordinate + "}];\n}");
+    ASSERT_MODULE_PARSE_SUCCEEDS(prefetch);
+    EXPECT_TRUE(resolveModule(*prefetch).has_value()) << coordinate;
+
+    const auto load = test_helpers::parseModule(
+        prefix +
+        "cp.async.bulk.tensor.1d.shared::cluster.global."
+        "mbarrier::complete_tx::bytes [tile_data], [tensor_map, {" +
+        coordinate + "}], [barrier];\n}");
+    ASSERT_MODULE_PARSE_SUCCEEDS(load);
+    EXPECT_TRUE(resolveModule(*load).has_value()) << coordinate;
+
+    const auto store = test_helpers::parseModule(
+        prefix +
+        "cp.async.bulk.tensor.1d.global.shared::cta.bulk_group "
+        "[tensor_map, {" +
+        coordinate + "}], [tile_data];\n}");
+    ASSERT_MODULE_PARSE_SUCCEEDS(store);
+    EXPECT_EQ(resolveModule(*store).has_value(), index < 3) << coordinate;
+  }
+}
+
 /** Unknown runtime descriptor pointers keep mixed register/immediate coords. */
 TEST(TensorAsync, RegisterDescriptorAndMixedCoordinates) {
   const auto parsed = test_helpers::parseModule(R"ptx(
@@ -211,10 +254,6 @@ TEST(TensorAsync, RejectsInvalidDescriptorAndCoordinateForms) {
            "cp.async.bulk.prefetch.tensor.1d.L2.global [0+1, {0}];",
            "cp.async.bulk.prefetch.tensor.2d.L2.global [global_map, {%coord}];",
            "cp.async.bulk.prefetch.tensor.1d.L2.global [global_map, {%wide}];",
-           "cp.async.bulk.prefetch.tensor.1d.L2.global [global_map, "
-           "{2147483648}];",
-           "cp.async.bulk.prefetch.tensor.1d.L2.global [global_map, "
-           "{-2147483649}];",
            "cp.async.bulk.prefetch.tensor.1d.L2.global.im2col [global_map, "
            "{%coord}];",
            "cp.async.bulk.prefetch.tensor.1d.L2.global.L2::cache_hint "
@@ -286,38 +325,70 @@ TEST(TensorAsync, RevalidatesOwnedTensorMetadata) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
 }
 
-/** Signed coordinate boundaries survive source-bit and owned-bit validation. */
+/** Narrowed coordinates retain original source provenance in owned IR. */
 TEST(TensorAsync, SignedCoordinateBoundariesAndOwnedMutation) {
-  const auto parsed = test_helpers::parseModule(R"ptx(
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
 .version 9.3
 .target sm_90
 .address_size 64
 .global .align 64 .b8 tensor_map[128];
 .entry kernel() {
   cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {-2147483648}];
-  cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {2147483647}];
+  cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {4294967296}];
+  cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {18446744073709551615}];
 }
 )ptx");
-  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  auto resolved = resolveModule(*parsed);
-  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
   auto& first = std::get<Cp::AsyncBulkPrefetchTensor1d>(
-      test_ir_access::get<Cp>(resolved->functions.front().body[0]).variant);
+      test_ir_access::get<Cp>(body[0]).variant);
   auto& immediate = std::get<ResolvedImmediate>(
       first.tensor.value.coordinates.elements.front());
+  const auto& second = std::get<ResolvedImmediate>(
+      std::get<Cp::AsyncBulkPrefetchTensor1d>(
+          test_ir_access::get<Cp>(body[1]).variant)
+          .tensor.value.coordinates.elements.front());
+  const auto& unsigned_max = std::get<ResolvedImmediate>(
+      std::get<Cp::AsyncBulkPrefetchTensor1d>(
+          test_ir_access::get<Cp>(body[2]).variant)
+          .tensor.value.coordinates.elements.front());
+  EXPECT_EQ(immediate.bits, uint64_t{0x80000000});
+  EXPECT_EQ(immediate.integer_source_bits, uint64_t{0xffffffff80000000});
+  EXPECT_TRUE(immediate.is_negative);
+  EXPECT_EQ(second.bits, uint64_t{0});
+  EXPECT_EQ(second.integer_source_bits, uint64_t{0x100000000});
+  EXPECT_FALSE(second.is_negative);
+  EXPECT_EQ(unsigned_max.bits, uint64_t{0xffffffff});
+  EXPECT_EQ(unsigned_max.integer_source_bits, uint64_t{0xffffffffffffffff});
+  EXPECT_FALSE(unsigned_max.is_negative);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   const uint64_t original_bits = immediate.bits;
   immediate.bits = 1;
   EXPECT_FALSE(
-      checker::check(
-          test_ir_access::get<Cp>(resolved->functions.front().body[0]), context)
-          .has_value());
+      checker::check(test_ir_access::get<Cp>(body[0]), context).has_value());
   immediate.bits = original_bits;
+  const auto original_source = immediate.integer_source_bits;
+  immediate.integer_source_bits = *original_source + 1;
+  EXPECT_FALSE(
+      checker::check(test_ir_access::get<Cp>(body[0]), context).has_value());
+  immediate.integer_source_bits.reset();
+  EXPECT_FALSE(
+      checker::check(test_ir_access::get<Cp>(body[0]), context).has_value());
+  immediate.integer_source_bits = original_source;
   EXPECT_TRUE(
-      checker::check(
-          test_ir_access::get<Cp>(resolved->functions.front().body[0]), context)
-          .has_value());
+      checker::check(test_ir_access::get<Cp>(body[0]), context).has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
 }
 /** Parameter descriptors require a kernel input declaration. */
 TEST(TensorAsync, KernelParameterDescriptorProvenance) {

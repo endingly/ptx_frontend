@@ -515,7 +515,8 @@ OperandView project_tensor_operand(
       const auto& immediate = std::get<ResolvedImmediate>(element);
       view.vector_element_shapes[index] = OperandShape::Immediate;
       view.vector_element_types[index] = immediate.type;
-      view.tensor_has_negative_immediate |= immediate.is_negative;
+      view.tensor_has_negative_immediate |=
+          (immediate.bits & uint64_t{0x80000000}) != 0;
     }
   }
   return view;
@@ -759,17 +760,11 @@ CheckResult check_operands(
               &tensor->coordinates.elements[index]);
           if (!immediate)
             continue;
-          const uint64_t source =
-              immediate->integer_source_bits.value_or(uint64_t{0});
-          const uint64_t magnitude =
-              immediate->is_negative ? uint64_t{0} - source : source;
           const bool valid =
               immediate->type == ScalarType::S32 &&
               immediate->integer_source_bits.has_value() &&
-              immediate->is_negative == (std::bit_cast<int64_t>(source) < 0) &&
-              immediate->bits == (source & uint64_t{0xffffffff}) &&
-              magnitude <= (immediate->is_negative ? uint64_t{1} << 31
-                                                   : (uint64_t{1} << 31) - 1);
+              immediate->bits ==
+                  (*immediate->integer_source_bits & uint64_t{0xffffffff});
           if (valid)
             continue;
           diagnostics.push_back(CheckDiagnostic{

@@ -157,6 +157,24 @@ EXPECTED_SECTIONS = {
 
 
 class PtxSpecTaxonomyTests(unittest.TestCase):
+    def test_tiled_tensor_coordinates_narrow_at_operand_use(self) -> None:
+        """Keep every tiled tensor rank and direction on PTX integer conversion."""
+        spec = load_yaml(SPEC_DIR / "data_movement_and_conversion.yaml")
+        operands = [
+            operand
+            for instruction in spec["instructions"]
+            for variant in instruction["variants"]
+            if variant["name"].startswith(
+                ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_")
+            )
+            for operand in variant["operands"]
+            if operand["kind"] == "tensor_operand"
+        ]
+        self.assertEqual(len(operands), 20)
+        self.assertTrue(
+            all(operand["immediate_conversion"] == "narrow" for operand in operands)
+        )
+
     def test_ptx_93_taxonomy_files_and_sections(self) -> None:
         paths = {
             entry.name

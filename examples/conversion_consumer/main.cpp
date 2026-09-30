@@ -1280,9 +1280,9 @@ bool checkTensorAsyncContract() {
 .shared .align 8 .b64 barrier;
 .entry kernel() {
   .reg .s32 %coord<2>;
-  cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%coord0, -1}];
-  cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes [tile_data], [tensor_map, {%coord0, %coord1}], [barrier];
-  cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {%coord0}], [tile_data];
+  cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%coord0, 4294967296}];
+  cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes [tile_data], [tensor_map, {18446744073709551615, %coord1}], [barrier];
+  cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {-4294967296}], [tile_data];
   cp.async.bulk.commit_group;
   cp.async.bulk.wait_group 0;
 }
@@ -1313,11 +1313,35 @@ bool checkTensorAsyncContract() {
       &outer_get<ir::Cp>(body[1]).variant);
   const auto* store = std::get_if<ir::Cp::AsyncBulkTensor1dGlobalSharedCta>(
       &outer_get<ir::Cp>(body[2]).variant);
+  const auto* prefetch_coordinate =
+      prefetch && prefetch->tensor.value.coordinates.elements.size() == 2
+          ? std::get_if<ir::ResolvedImmediate>(
+                &prefetch->tensor.value.coordinates.elements[1])
+          : nullptr;
+  const auto* load_coordinate =
+      load && load->tensor.value.coordinates.elements.size() == 2
+          ? std::get_if<ir::ResolvedImmediate>(
+                &load->tensor.value.coordinates.elements[0])
+          : nullptr;
+  const auto* store_coordinate =
+      store && store->tensor.value.coordinates.elements.size() == 1
+          ? std::get_if<ir::ResolvedImmediate>(
+                &store->tensor.value.coordinates.elements[0])
+          : nullptr;
   return require(
       prefetch && load && store && prefetch->tile.value &&
           prefetch->tensor.value.rank == ir::TensorRank::Two &&
           load->tensor.value.coordinates.elements.size() == 2 &&
-          store->tile.value &&
+          store->tile.value && prefetch_coordinate &&
+          prefetch_coordinate->bits == 0 &&
+          prefetch_coordinate->integer_source_bits == 0x100000000ULL &&
+          !prefetch_coordinate->is_negative && load_coordinate &&
+          load_coordinate->bits == 0xffffffffULL &&
+          load_coordinate->integer_source_bits == 0xffffffffffffffffULL &&
+          !load_coordinate->is_negative && store_coordinate &&
+          store_coordinate->bits == 0 &&
+          store_coordinate->integer_source_bits == 0xffffffff00000000ULL &&
+          store_coordinate->is_negative &&
           ir::Cp::AsyncBulkTensor2dSharedCluster::completion_kind ==
               ptx_frontend::base::AsyncCompletionKind::
                   MbarrierCompleteTxBytes &&

@@ -6384,7 +6384,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6408,7 +6408,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6432,7 +6432,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6456,7 +6456,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6480,7 +6480,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6504,7 +6504,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6528,7 +6528,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6552,7 +6552,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6576,7 +6576,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6600,7 +6600,7 @@ instructions:
           - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
         operands:
           - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: dst, alignment: 16}
@@ -6628,7 +6628,7 @@ instructions:
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands:
-          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
@@ -6650,7 +6650,7 @@ instructions:
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands:
-          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
@@ -6672,7 +6672,7 @@ instructions:
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands:
-          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
@@ -6694,7 +6694,7 @@ instructions:
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands:
-          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
@@ -6716,7 +6716,7 @@ instructions:
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
           - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
         operands:
-          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
           - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
@@ -6742,7 +6742,7 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
         operands:
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
         examples:
@@ -6761,7 +6761,7 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
         operands:
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
         examples:
@@ -6780,7 +6780,7 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
         operands:
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
         examples:
@@ -6799,7 +6799,7 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
         operands:
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
         examples:
@@ -6818,7 +6818,7 @@ instructions:
           - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
           - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
         operands:
-          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
         constraints:
           - {kind: address_alignment, address_operand: tensor, alignment: 64}
         examples:

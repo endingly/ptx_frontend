@@ -62,8 +62,8 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     if set(raw) != {"any_of"}:
         raise ValueError("any_of availability cannot mix with legacy fields")
     clauses = raw["any_of"]
-    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 5:
-        raise ValueError("availability any_of must contain one to five clauses")
+    if not isinstance(clauses, list) or not 1 <= len(clauses) <= 6:
+        raise ValueError("availability any_of must contain one to six clauses")
     normalized: list[dict[str, Any]] = []
     for clause in clauses:
         if not isinstance(clause, dict):

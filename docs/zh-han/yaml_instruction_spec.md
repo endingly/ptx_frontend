@@ -532,6 +532,8 @@ dispatch，而 checker descriptor 仅将该 spelling 保留为 inert metadata。
 `description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 
+`any_of` 列表允许一至六个 clause。Schema、normalizer 和生成的 C++ availability 存储采用同一上限；七个 clause 会被拒绝。Tensor-map 替换的六臂 target catalog 是实际用例。
+
 `any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一
 `enabled_family_features` 查找，不要求该 exact target spelling。
 

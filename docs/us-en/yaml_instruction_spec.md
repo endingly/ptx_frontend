@@ -614,6 +614,8 @@ on the typed identity, while checker descriptors retain the spelling only as
 inert metadata. `examples`, `doc`, and
 `description` document intent; they do not replace executable tests.
 
+An `any_of` list accepts one through six clauses. The schema, normalizer, and generated C++ availability storage share this bound; seven clauses are rejected. The six-arm tensor-map replacement target catalog is a concrete use.
+
 An `any_of` clause may also contain `family`; it is an AND-term within that
 clause and uses the same `enabled_family_features` lookup, rather than requiring
 that exact target spelling.

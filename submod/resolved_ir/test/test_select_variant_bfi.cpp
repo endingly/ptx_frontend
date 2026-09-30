@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,8 +30,9 @@ TEST(ResolveBfi, SelectsBothBitWidthsAndControlShapes) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfi>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(std::holds_alternative<Bfi::B32>(resolved->variant) ||
-                std::holds_alternative<Bfi::B64>(resolved->variant));
+    EXPECT_TRUE(
+        test_ir_access::holds_alternative<Bfi::B32>(resolved->variant) ||
+        test_ir_access::holds_alternative<Bfi::B64>(resolved->variant));
   }
   EXPECT_FALSE(resolve<Bfi>(parse_instruction("bfi.u32 %r0, %r1, %r2, 0, 8;"))
                    .has_value());

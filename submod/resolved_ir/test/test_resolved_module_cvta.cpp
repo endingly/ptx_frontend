@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -25,16 +27,20 @@ TEST(ResolveCvta, ResolvesForwardSymbolAndOffsetSources) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 2u);
 
-  const Cvta& direct = std::get<Cvta>(body[0]);
-  const auto& direct_variant = std::get<Cvta::GlobalU64>(direct.variant);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedSymbolRef>(direct_variant.src.value));
+  const Cvta& direct = test_ir_access::get<Cvta>(body[0]);
+  const auto& direct_variant =
+      test_ir_access::get<Cvta::GlobalU64>(direct.variant);
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedSymbolRef>(
+      direct_variant.src.value));
 
-  const Cvta& offset = std::get<Cvta>(body[1]);
-  const auto& offset_variant = std::get<Cvta::GlobalU64>(offset.variant);
-  const auto* address = std::get_if<ResolvedAddress>(&offset_variant.src.value);
+  const Cvta& offset = test_ir_access::get<Cvta>(body[1]);
+  const auto& offset_variant =
+      test_ir_access::get<Cvta::GlobalU64>(offset.variant);
+  const auto* address =
+      test_ir_access::get_if<ResolvedAddress>(&offset_variant.src.value);
   ASSERT_NE(address, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedSymbolRef>(address->base));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedSymbolRef>(address->base));
 }
 
 }  // namespace

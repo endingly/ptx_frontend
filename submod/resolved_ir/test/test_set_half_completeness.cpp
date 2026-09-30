@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -76,17 +77,19 @@ TEST(SetHalfCompleteness, ResolvesEveryTypedCohort) {
   ASSERT_EQ(body.size(), 30u);
   for (size_t i = 0; i < body.size(); ++i) {
     SCOPED_TRACE(i);
-    const auto* instruction = std::get_if<Set>(&body[i]);
+    const auto* instruction = test_ir_access::get_if<Set>(&body[i]);
     ASSERT_NE(instruction, nullptr);
     EXPECT_EQ(instruction->variant.index(), i + 10u);
   }
-  const auto& half =
-      std::get<Set::HalfF16F16Boolean>(std::get<Set>(body[5]).variant);
+  const auto& half = test_ir_access::get<Set::HalfF16F16Boolean>(
+      test_ir_access::get<Set>(body[5]).variant);
   EXPECT_TRUE(half.ftz.value);
-  EXPECT_TRUE(std::get<ResolvedPredicate>(half.combine.value).negated);
-  const auto& bfloat =
-      std::get<Set::HalfBf16F16Boolean>(std::get<Set>(body[15]).variant);
-  EXPECT_TRUE(std::get<ResolvedPredicate>(bfloat.combine.value).negated);
+  EXPECT_TRUE(
+      test_ir_access::get<ResolvedPredicate>(half.combine.value).negated);
+  const auto& bfloat = test_ir_access::get<Set::HalfBf16F16Boolean>(
+      test_ir_access::get<Set>(body[15]).variant);
+  EXPECT_TRUE(
+      test_ir_access::get<ResolvedPredicate>(bfloat.combine.value).negated);
 }
 
 /** Reject comparator and FTZ controls outside their source-type domains. */
@@ -270,9 +273,12 @@ TEST(SetHalfCompleteness, RevalidatesOwnedAndMutatedInstruction) {
     owned = *resolved;
   }
   ASSERT_TRUE(owned.has_value());
-  auto& packed = std::get<Set::HalfNativeF16x2Boolean>(owned->variant);
+  auto& packed =
+      test_ir_access::get<Set::HalfNativeF16x2Boolean>(owned->variant);
   EXPECT_TRUE(packed.ftz.value);
-  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(packed.combine.value).value);
+  EXPECT_TRUE(
+      test_ir_access::get<ResolvedPredicateConstant>(packed.combine.value)
+          .value);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   EXPECT_TRUE(checker::check(*owned, context));

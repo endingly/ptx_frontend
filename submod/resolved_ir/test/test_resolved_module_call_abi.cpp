@@ -1,11 +1,19 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/bra.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/brx.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include "test_syntax_parse_helpers.hpp"
 
@@ -15,31 +23,32 @@ namespace {
 using test_helpers::parseModule;
 
 const Add::IntegerNoSat& resolvedIntegerAdd(
-    const ResolvedInstruction& instruction) {
-  return std::get<Add::IntegerNoSat>(std::get<Add>(instruction).variant);
+    const OwnedInstruction& instruction) {
+  return test_ir_access::get<Add::IntegerNoSat>(
+      test_ir_access::get<Add>(instruction).variant);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov::Scalar& mov) {
-  return std::get<Mov::Scalar::ScalarOperands>(mov.operands);
+  return test_ir_access::get<Mov::Scalar::ScalarOperands>(mov.operands);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov& mov) {
-  return scalarMovOperands(std::get<Mov::Scalar>(mov.variant));
+  return scalarMovOperands(test_ir_access::get<Mov::Scalar>(mov.variant));
 }
 
 const Mov::Scalar::PackOperands& packMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 Mov::Scalar::PackOperands& packMovOperands(Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 const Mov::Scalar::UnpackOperands& unpackMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::UnpackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::UnpackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 TEST(ResolvedModule, ResolvesPredicatedDirectBranchTarget) {
@@ -57,11 +66,12 @@ done:
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 1u);
-  const auto& bra = std::get<Bra>(resolved->functions.front().body.front());
+  const auto& bra =
+      test_ir_access::get<Bra>(resolved->functions.front().body.front());
   ASSERT_TRUE(bra.execution_predicate.has_value());
   EXPECT_TRUE(bra.execution_predicate->value.negated);
 
-  const auto& direct = std::get<Bra::Direct>(bra.variant);
+  const auto& direct = test_ir_access::get<Bra::Direct>(bra.variant);
   EXPECT_TRUE(direct.uni.value);
   EXPECT_EQ(direct.target.value.spelling, "done");
   ASSERT_TRUE(direct.target.value.symbol_id.has_value());
@@ -95,9 +105,9 @@ TEST(ResolvedModule, StandaloneBranchTargetRemainsUnbound) {
   const auto resolved = resolveInstruction(*ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto& bra = std::get<Bra>(*resolved);
+  const auto& bra = test_ir_access::get<Bra>(*resolved);
   EXPECT_FALSE(bra.execution_predicate.has_value());
-  const auto& direct = std::get<Bra::Direct>(bra.variant);
+  const auto& direct = test_ir_access::get<Bra::Direct>(bra.variant);
   EXPECT_FALSE(direct.uni.value);
   EXPECT_TRUE(direct.uni.locs.empty());
   EXPECT_EQ(direct.target.value.spelling, "target");
@@ -120,8 +130,9 @@ done:
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 1u);
-  const auto& brx = std::get<Brx>(resolved->functions.front().body.front());
-  const auto& indexed = std::get<Brx::Idx>(brx.variant);
+  const auto& brx =
+      test_ir_access::get<Brx>(resolved->functions.front().body.front());
+  const auto& indexed = test_ir_access::get<Brx::Idx>(brx.variant);
   EXPECT_TRUE(indexed.uni.value);
   EXPECT_EQ(indexed.index.value.declared_type, ScalarType::U32);
   EXPECT_EQ(indexed.tlist.value.spelling, "targets");
@@ -190,7 +201,8 @@ done:
   const auto resolved = resolveModule(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& brx = std::get<Brx>(resolved->functions.front().body.front());
+  const auto& brx =
+      test_ir_access::get<Brx>(resolved->functions.front().body.front());
   const checker::Context context{
       .target = {.ptx_version = checker::PtxVersion{6, 0}, .sm_version = 30},
       .instruction_range = SourceRange{},
@@ -222,31 +234,34 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   const auto& body = resolved->functions.back().body;
   ASSERT_EQ(body.size(), 3u);
 
-  const auto& target_only = std::get<Call>(body[0]);
-  const auto& target_payload = std::get<Call::Direct::TargetOperands>(
-      std::get<Call::Direct>(target_only.variant).operands);
+  const auto& target_only = test_ir_access::get<Call>(body[0]);
+  const auto& target_payload =
+      test_ir_access::get<Call::Direct::TargetOperands>(
+          test_ir_access::get<Call::Direct>(target_only.variant).operands);
   EXPECT_EQ(target_payload.target.value.spelling, "callee");
   ASSERT_TRUE(target_payload.target.value.symbol_id.has_value());
 
-  const auto& empty_inputs = std::get<Call>(body[1]);
-  const auto& input_payload = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(empty_inputs.variant).operands);
+  const auto& empty_inputs = test_ir_access::get<Call>(body[1]);
+  const auto& input_payload =
+      test_ir_access::get<Call::Direct::TargetInputOperands>(
+          test_ir_access::get<Call::Direct>(empty_inputs.variant).operands);
   EXPECT_TRUE(input_payload.arguments.value.values.empty());
   ASSERT_EQ(input_payload.arguments.locs.size(), 1u);
 
-  Call call = std::get<Call>(body[2]);
-  auto& direct = std::get<Call::Direct>(call.variant);
+  Call call = test_ir_access::get<Call>(body[2]);
+  auto& direct = test_ir_access::get<Call::Direct>(call.variant);
   ASSERT_TRUE(call.execution_predicate.has_value());
   EXPECT_TRUE(direct.uni.value);
   const auto& return_payload =
-      std::get<Call::Direct::ReturnTargetInputOperands>(direct.operands);
+      test_ir_access::get<Call::Direct::ReturnTargetInputOperands>(
+          direct.operands);
   EXPECT_EQ(return_payload.return_value.value.spelling, "%out");
   ASSERT_TRUE(return_payload.return_value.value.symbol_id.has_value());
   ASSERT_EQ(return_payload.arguments.value.values.size(), 3u);
-  const auto& parameter = std::get<ResolvedCallParameterRef>(
+  const auto& parameter = test_ir_access::get<ResolvedCallParameterRef>(
       return_payload.arguments.value.values[1].value);
   EXPECT_EQ(parameter.state_space, syntax_ast::AstStateSpace::Parameter);
-  const auto& literal = std::get<ResolvedCallLiteral>(
+  const auto& literal = test_ir_access::get<ResolvedCallLiteral>(
       return_payload.arguments.value.values[2].value);
   EXPECT_EQ(literal.spelling, "-4");
   ASSERT_EQ(return_payload.arguments.value.values[2].locs.size(), 1u);
@@ -433,18 +448,22 @@ TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
   EXPECT_EQ(resolved.error()[5].message,
             "Integer literal '128' is out of range for scalar type 'S8'.");
 
-  const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[5]);
+  const auto& caller =
+      test_ir_access::get<syntax_ast::AstFunction>(ast.items[5]);
   const auto& extra_inputs =
-      std::get<syntax_ast::AstInstruction>(caller.body[6]);
+      test_ir_access::get<syntax_ast::AstInstruction>(caller.body[6]);
   const auto& type_mismatch =
-      std::get<syntax_ast::AstInstruction>(caller.body[7]);
+      test_ir_access::get<syntax_ast::AstInstruction>(caller.body[7]);
   const auto& extra_group =
-      std::get<syntax_ast::AstCallParameterList>(extra_inputs.operands[1]);
+      test_ir_access::get<syntax_ast::AstCallParameterList>(
+          extra_inputs.operands[1]);
   const auto& wide_group =
-      std::get<syntax_ast::AstCallParameterList>(type_mismatch.operands[1]);
+      test_ir_access::get<syntax_ast::AstCallParameterList>(
+          type_mismatch.operands[1]);
   EXPECT_EQ(resolved.error()[3].range, extra_group.range);
   EXPECT_EQ(resolved.error()[4].range,
-            std::get<syntax_ast::AstIdentifierRef>(wide_group.parameters[0])
+            test_ir_access::get<syntax_ast::AstIdentifierRef>(
+                wide_group.parameters[0])
                 .syntax.range);
 }
 
@@ -499,23 +518,23 @@ TEST(ResolvedModule, EnforcesPtx93CallParameterContexts) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& caller = resolved->functions[1].body;
   ASSERT_EQ(caller.size(), 6u);
-  const auto& entry_load =
-      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[0]).variant);
+  const auto& entry_load = test_ir_access::get<Ld::ExplicitScalar>(
+      test_ir_access::get<Ld>(caller[0]).variant);
   EXPECT_EQ(entry_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Entry);
-  const auto& staged_store =
-      std::get<St::ExplicitScalar>(std::get<St>(caller[2]).variant);
+  const auto& staged_store = test_ir_access::get<St::ExplicitScalar>(
+      test_ir_access::get<St>(caller[2]).variant);
   EXPECT_EQ(staged_store.address.value.parameter_qualifier,
             ParameterAddressQualifier::Function);
-  const auto& default_load =
-      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[1]).variant);
+  const auto& default_load = test_ir_access::get<Ld::ExplicitScalar>(
+      test_ir_access::get<Ld>(caller[1]).variant);
   EXPECT_EQ(default_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Default);
-  const auto& call = std::get<Call>(caller[4]);
+  const auto& call = test_ir_access::get<Call>(caller[4]);
   EXPECT_TRUE(call.execution_predicate.has_value());
-  EXPECT_TRUE(std::get<Call::Direct>(call.variant).uni.value);
-  const auto& return_load =
-      std::get<Ld::ExplicitScalar>(std::get<Ld>(caller[5]).variant);
+  EXPECT_TRUE(test_ir_access::get<Call::Direct>(call.variant).uni.value);
+  const auto& return_load = test_ir_access::get<Ld::ExplicitScalar>(
+      test_ir_access::get<Ld>(caller[5]).variant);
   EXPECT_EQ(return_load.address.value.parameter_qualifier,
             ParameterAddressQualifier::Function);
 }
@@ -680,34 +699,44 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
   ASSERT_TRUE(returning_prototype.has_value());
   const auto& body = resolved->functions[2].body;
   ASSERT_EQ(body.size(), 3u);
-  const auto& first = std::get<Call::Direct::TargetMetadataOperands>(
-      std::get<Call::Direct>(std::get<Call>(body[0]).variant).operands);
-  const auto& second = std::get<Call::Direct::TargetInputMetadataOperands>(
-      std::get<Call::Direct>(std::get<Call>(body[1]).variant).operands);
-  const auto& third = std::get<Call::Direct::ReturnTargetInputMetadataOperands>(
-      std::get<Call::Direct>(std::get<Call>(body[2]).variant).operands);
-  const auto& first_target = std::get<ResolvedRegisterRef>(first.target.value);
+  const auto& first = test_ir_access::get<Call::Direct::TargetMetadataOperands>(
+      test_ir_access::get<Call::Direct>(
+          test_ir_access::get<Call>(body[0]).variant)
+          .operands);
+  const auto& second =
+      test_ir_access::get<Call::Direct::TargetInputMetadataOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(body[1]).variant)
+              .operands);
+  const auto& third =
+      test_ir_access::get<Call::Direct::ReturnTargetInputMetadataOperands>(
+          test_ir_access::get<Call::Direct>(
+              test_ir_access::get<Call>(body[2]).variant)
+              .operands);
+  const auto& first_target =
+      test_ir_access::get<ResolvedRegisterRef>(first.target.value);
   ASSERT_TRUE(first_target.symbol_id.has_value());
   EXPECT_EQ(first_target.symbol_id, fptr->symbol);
   const auto& first_metadata =
-      std::get<ResolvedIndirectMetadataRef>(first.metadata.value);
+      test_ir_access::get<ResolvedIndirectMetadataRef>(first.metadata.value);
   EXPECT_EQ(first_metadata.symbol_id, empty_prototype->symbol);
   EXPECT_EQ(first_metadata.declaration_kind,
             binding::SymbolKind::CallPrototype);
   const auto& second_metadata =
-      std::get<ResolvedIndirectMetadataRef>(second.metadata.value);
+      test_ir_access::get<ResolvedIndirectMetadataRef>(second.metadata.value);
   EXPECT_EQ(second_metadata.symbol_id, targets->symbol);
   EXPECT_EQ(second_metadata.declaration_kind,
             binding::SymbolKind::CallTargetSet);
   const auto& second_target =
-      std::get<ResolvedRegisterRef>(second.target.value);
+      test_ir_access::get<ResolvedRegisterRef>(second.target.value);
   ASSERT_TRUE(second_target.symbol_id.has_value());
   EXPECT_EQ(second_target.symbol_id, fptr->symbol);
-  const auto& third_target = std::get<ResolvedRegisterRef>(third.target.value);
+  const auto& third_target =
+      test_ir_access::get<ResolvedRegisterRef>(third.target.value);
   ASSERT_TRUE(third_target.symbol_id.has_value());
   EXPECT_EQ(third_target.symbol_id, fptr->symbol);
   const auto& third_metadata =
-      std::get<ResolvedIndirectMetadataRef>(third.metadata.value);
+      test_ir_access::get<ResolvedIndirectMetadataRef>(third.metadata.value);
   EXPECT_EQ(third_metadata.symbol_id, returning_prototype->symbol);
   EXPECT_EQ(third_metadata.declaration_kind,
             binding::SymbolKind::CallPrototype);
@@ -720,7 +749,8 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
       .target = {.ptx_version = {2, 1}, .sm_version = 20},
       .instruction_range = indirect_forms.range,
   };
-  const auto rejected = checker::check(std::get<Call>(body[0]), old_target);
+  const auto rejected =
+      checker::check(test_ir_access::get<Call>(body[0]), old_target);
   ASSERT_FALSE(rejected.has_value());
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].kind,
@@ -728,7 +758,8 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
   EXPECT_EQ(rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      checker::check(std::get<Call>(body[0]), supported_target).has_value());
+      checker::check(test_ir_access::get<Call>(body[0]), supported_target)
+          .has_value());
 }
 
 TEST(ResolvedModule, ReportsIndirectCallAbiMismatches) {
@@ -813,12 +844,12 @@ TEST(ResolvedModule, StandaloneDirectCallRemainsUnbound) {
 
   const auto resolved = resolveInstruction(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto& call = std::get<Call>(*resolved);
-  const auto& payload = std::get<Call::Direct::TargetInputOperands>(
-      std::get<Call::Direct>(call.variant).operands);
+  const auto& call = test_ir_access::get<Call>(*resolved);
+  const auto& payload = test_ir_access::get<Call::Direct::TargetInputOperands>(
+      test_ir_access::get<Call::Direct>(call.variant).operands);
   EXPECT_FALSE(payload.target.value.symbol_id.has_value());
   ASSERT_EQ(payload.arguments.value.values.size(), 2u);
-  EXPECT_FALSE(std::get<ResolvedCallParameterRef>(
+  EXPECT_FALSE(test_ir_access::get<ResolvedCallParameterRef>(
                    payload.arguments.value.values.front().value)
                    .symbol_id.has_value());
 }
@@ -831,7 +862,7 @@ TEST(ResolvedModule, StandaloneResolutionRemainsDeclarationFree) {
   const auto resolved = resolveInstruction(*ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto& instruction = std::get<Add>(*resolved);
+  const auto& instruction = test_ir_access::get<Add>(*resolved);
   ASSERT_TRUE(instruction.execution_predicate.has_value());
   EXPECT_TRUE(instruction.execution_predicate->value.negated);
   EXPECT_EQ(instruction.execution_predicate->value.register_ref.index, 7u);
@@ -881,11 +912,11 @@ TEST(ResolvedModule, ResolvesACompatibleFunctionDefinitionScope) {
   EXPECT_FALSE(resolved->functions.back().is_prototype);
   ASSERT_EQ(resolved->functions.back().body.size(), 1u);
   const auto& add =
-      std::get<Add>(resolved->functions.back().body.front()).variant;
-  const auto& integer = std::get<Add::IntegerNoSat>(add);
+      test_ir_access::get<Add>(resolved->functions.back().body.front()).variant;
+  const auto& integer = test_ir_access::get<Add::IntegerNoSat>(add);
   EXPECT_TRUE(integer.dst.value.symbol_id.has_value());
-  EXPECT_TRUE(
-      std::get<ResolvedRegisterRef>(integer.src1.value).symbol_id.has_value());
+  EXPECT_TRUE(test_ir_access::get<ResolvedRegisterRef>(integer.src1.value)
+                  .symbol_id.has_value());
 }
 
 TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {

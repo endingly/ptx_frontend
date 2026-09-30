@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,15 +27,16 @@ TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = std::get_if<Mul::LoU32>(&resolved->variant);
+  const auto* mul = test_ir_access::get_if<Mul::LoU32>(&resolved->variant);
   ASSERT_NE(mul, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(mul->src2.value));
 }
 
 TEST(ResolveMul, SelectsM12HiAndWideU32Variants) {
   const auto hi = resolve<Mul>(parse_instruction("mul.hi.u32 %r0, %r1, %r2;"));
   ASSERT_TRUE(hi.has_value()) << hi.error().message;
-  const auto* hi_variant = std::get_if<Mul::HiU32>(&hi->variant);
+  const auto* hi_variant = test_ir_access::get_if<Mul::HiU32>(&hi->variant);
   ASSERT_NE(hi_variant, nullptr);
   EXPECT_TRUE(Mul::HiU32::hi);
   EXPECT_EQ(Mul::HiU32::type, ScalarType::U32);
@@ -42,7 +44,8 @@ TEST(ResolveMul, SelectsM12HiAndWideU32Variants) {
   const auto wide =
       resolve<Mul>(parse_instruction("mul.wide.u32 %rd0, %r1, %r2;"));
   ASSERT_TRUE(wide.has_value()) << wide.error().message;
-  const auto* wide_variant = std::get_if<Mul::WideU32>(&wide->variant);
+  const auto* wide_variant =
+      test_ir_access::get_if<Mul::WideU32>(&wide->variant);
   ASSERT_NE(wide_variant, nullptr);
   EXPECT_TRUE(Mul::WideU32::wide);
   EXPECT_EQ(Mul::WideU32::type, ScalarType::U32);
@@ -52,11 +55,12 @@ TEST(ResolveMul, SelectsM12WideS32Variant) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.wide.s32 %rd0, %r1, -7;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* wide = std::get_if<Mul::WideS32>(&resolved->variant);
+  const auto* wide = test_ir_access::get_if<Mul::WideS32>(&resolved->variant);
   ASSERT_NE(wide, nullptr);
   EXPECT_TRUE(Mul::WideS32::wide);
   EXPECT_EQ(Mul::WideS32::type, ScalarType::S32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(wide->src2.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(wide->src2.value));
 }
 
 TEST(ResolveMul, RejectsIllegalWide64Variants) {
@@ -72,7 +76,7 @@ TEST(ResolveMul, SelectsFrozenRnF32Variant) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = std::get_if<Mul::RnF32>(&resolved->variant);
+  const auto* mul = test_ir_access::get_if<Mul::RnF32>(&resolved->variant);
   ASSERT_NE(mul, nullptr);
   EXPECT_EQ(mul->rounding.value, RoundingMode::Rn);
   EXPECT_EQ(Mul::RnF32::type, ScalarType::F32);
@@ -91,9 +95,10 @@ TEST(ResolveMul, SelectsImmediateFloatingOperand) {
   const auto resolved =
       resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = std::get_if<Mul::RnF32>(&resolved->variant);
+  const auto* mul = test_ir_access::get_if<Mul::RnF32>(&resolved->variant);
   ASSERT_NE(mul, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src1.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(mul->src1.value));
 }
 
 }  // namespace

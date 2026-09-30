@@ -33,25 +33,34 @@ normal module indirect call 会保留已绑定的 target 与 metadata identity�
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
 公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
-它依次聚合手写 foundation、生成的 instruction struct 与 `ResolvedInstruction` union、以及手写
-module container。`ptx_resolved_ir_module.hpp` 只直接包含 foundation 和生成的 instruction
-surface，因此固定 module field 可在不修改 generator 的情况下用 C++ 演进，且 headers 保持无环。
-这些头只依赖拥有值的数据和只读 descriptor，不要求完整 Syntax AST、resolver helper 或
-instruction checker 实现接口。解析入口位于 `ptx_resolved_ir_resolution.hpp`，
-检查入口位于 `ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 保留为兼容聚合头。
+它聚合手写 foundation、生成的强类型指令记录、外层 `OwnedInstruction` 值，以及手写 module
+container。较窄的 `ptx_resolved_ir_module.hpp` 只包含 foundation 与 owner 头。
+这些 model 头提供 owned data 和只读 descriptor，不要求完整 Syntax AST。
+解析入口位于 `ptx_resolved_ir_resolution.hpp`，检查入口位于
+`ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 仍是宽聚合头。
 
 公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
-using ResolvedInstruction =
-    std::variant<Add, Sub, Bar, Bra, Call, Mov, Ld /* ... */>;
-
-std::expected<ResolvedInstruction, ResolveDiagnostic>
+std::expected<OwnedInstruction, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
+
+`OwnedInstruction` 是唯一的外层指令值，也是 `ResolvedFunction::body` 的元素类型。
+owner 不隐式兼容 `std::visit` 或 `std::get_if`。宽聚合头仍为显式完整 model consumer
+提供强类型 opcode 记录和 `InstructionUnion`；module 实现、中央 dispatch 与 module
+availability 只包含所需的窄头。
+
+owner 拥有一个堆分配的强类型 opcode 记录，并指向该 opcode 现有生成翻译单元中的不可变
+操作表。双指针 handle 深拷贝记录；移动不搬动 payload；默认构造或移出后为空态。
+`get_if<T>()` 检查精确记录类型，不匹配或空态时返回 null。借用的 typed 指针在 owner
+移动或 vector 扩容后仍有效，在 payload 替换或销毁后失效。module validation 会拒绝
+body 中的空 owner。内部 reference 遍历仅在不可变 validation 期间借用 foundation payload，
+遍历及其后续校验不得重入修改 payload；位置 span 同步消费。源码位置、内层强类型 variant、symbol identity、Call literal
+归一化，以及 resolution-only 与最终验证的原有保证继续适用。owner 不确立稳定的公共 visitor 政策。
 
 各模块入口的成功契约明确区分如下：
 
@@ -471,7 +480,7 @@ concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line �
 聚合 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`、
 `ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` 与
 `ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
-可以只包含所属 opcode 的完整头或 category 聚合头。完整 `ResolvedInstruction` union
+可以只包含所属 opcode 的完整头或 category 聚合头。显式 `InstructionUnion`
 仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
 与三类 descriptor 一起生成到 `resolved_ir_<category>_<opcode>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
 留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、大型

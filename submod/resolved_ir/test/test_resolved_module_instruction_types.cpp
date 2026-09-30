@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <algorithm>
 #include <array>
@@ -7,7 +8,17 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/setp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/slct.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvt.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/isspacep.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/prmt.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include "test_syntax_parse_helpers.hpp"
 
@@ -17,31 +28,32 @@ namespace {
 using test_helpers::parseModule;
 
 const Add::IntegerNoSat& resolvedIntegerAdd(
-    const ResolvedInstruction& instruction) {
-  return std::get<Add::IntegerNoSat>(std::get<Add>(instruction).variant);
+    const OwnedInstruction& instruction) {
+  return test_ir_access::get<Add::IntegerNoSat>(
+      test_ir_access::get<Add>(instruction).variant);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov::Scalar& mov) {
-  return std::get<Mov::Scalar::ScalarOperands>(mov.operands);
+  return test_ir_access::get<Mov::Scalar::ScalarOperands>(mov.operands);
 }
 
 const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov& mov) {
-  return scalarMovOperands(std::get<Mov::Scalar>(mov.variant));
+  return scalarMovOperands(test_ir_access::get<Mov::Scalar>(mov.variant));
 }
 
 const Mov::Scalar::PackOperands& packMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 Mov::Scalar::PackOperands& packMovOperands(Mov& mov) {
-  return std::get<Mov::Scalar::PackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::PackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 const Mov::Scalar::UnpackOperands& unpackMovOperands(const Mov& mov) {
-  return std::get<Mov::Scalar::UnpackOperands>(
-      std::get<Mov::Scalar>(mov.variant).operands);
+  return test_ir_access::get<Mov::Scalar::UnpackOperands>(
+      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
 }
 
 TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
@@ -57,12 +69,12 @@ TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto& valid_ast = *parsed_module_1;
   const auto valid = resolveModule(valid_ast);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  const auto valid_check =
-      checker::check(std::get<And>(valid->functions.front().body.front()),
-                     checker::Context{
-                         .target = {.ptx_version = {1, 0}, .sm_version = 0},
-                         .instruction_range = valid_ast.range,
-                     });
+  const auto valid_check = checker::check(
+      test_ir_access::get<And>(valid->functions.front().body.front()),
+      checker::Context{
+          .target = {.ptx_version = {1, 0}, .sm_version = 0},
+          .instruction_range = valid_ast.range,
+      });
   EXPECT_TRUE(valid_check.has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -77,8 +89,9 @@ TEST(ResolvedModule, ChecksAndB32RegisterCompatibilityAndWidth) {
   const auto invalid = resolveModule(invalid_ast);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& invalid_and =
-      std::get<And>(invalid->functions.front().body.front());
-  const auto& invalid_variant = std::get<And::B32>(invalid_and.variant);
+      test_ir_access::get<And>(invalid->functions.front().body.front());
+  const auto& invalid_variant =
+      test_ir_access::get<And::B32>(invalid_and.variant);
   const auto invalid_check = checker::check(
       invalid_and, checker::Context{
                        .target = {.ptx_version = {1, 0}, .sm_version = 0},
@@ -105,12 +118,12 @@ TEST(ResolvedModule, ChecksOrB32RegisterCompatibilityAndWidth) {
   const auto& valid_ast = *parsed_module_1;
   const auto valid = resolveModule(valid_ast);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  const auto valid_check =
-      checker::check(std::get<Or>(valid->functions.front().body.front()),
-                     checker::Context{
-                         .target = {.ptx_version = {1, 0}, .sm_version = 0},
-                         .instruction_range = valid_ast.range,
-                     });
+  const auto valid_check = checker::check(
+      test_ir_access::get<Or>(valid->functions.front().body.front()),
+      checker::Context{
+          .target = {.ptx_version = {1, 0}, .sm_version = 0},
+          .instruction_range = valid_ast.range,
+      });
   EXPECT_TRUE(valid_check.has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -125,8 +138,9 @@ TEST(ResolvedModule, ChecksOrB32RegisterCompatibilityAndWidth) {
   const auto invalid = resolveModule(invalid_ast);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& invalid_or =
-      std::get<Or>(invalid->functions.front().body.front());
-  const auto& invalid_variant = std::get<Or::B32>(invalid_or.variant);
+      test_ir_access::get<Or>(invalid->functions.front().body.front());
+  const auto& invalid_variant =
+      test_ir_access::get<Or::B32>(invalid_or.variant);
   const auto invalid_check = checker::check(
       invalid_or, checker::Context{
                       .target = {.ptx_version = {1, 0}, .sm_version = 0},
@@ -149,7 +163,7 @@ TEST(ResolvedModule, ChecksXorB32RegisterCompatibilityAndWidth) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Xor>(valid->functions.front().body.front()),
+          test_ir_access::get<Xor>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
 
@@ -160,8 +174,8 @@ TEST(ResolvedModule, ChecksXorB32RegisterCompatibilityAndWidth) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Xor>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Xor::B32>(instruction.variant);
+      test_ir_access::get<Xor>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Xor::B32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -181,7 +195,7 @@ TEST(ResolvedModule, ChecksNotB32RegisterCompatibilityAndWidth) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Not>(valid->functions.front().body.front()),
+          test_ir_access::get<Not>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -191,8 +205,8 @@ TEST(ResolvedModule, ChecksNotB32RegisterCompatibilityAndWidth) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Not>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Not::B32>(instruction.variant);
+      test_ir_access::get<Not>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Not::B32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -212,7 +226,7 @@ TEST(ResolvedModule, ChecksShlB32DataAndAmountWidths) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Shl>(valid->functions.front().body.front()),
+          test_ir_access::get<Shl>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -222,8 +236,8 @@ TEST(ResolvedModule, ChecksShlB32DataAndAmountWidths) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Shl>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Shl::B32>(instruction.variant);
+      test_ir_access::get<Shl>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Shl::B32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -242,7 +256,7 @@ TEST(ResolvedModule, ChecksShrU32DataAndAmountWidths) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Shr>(valid->functions.front().body.front()),
+          test_ir_access::get<Shr>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -252,8 +266,8 @@ TEST(ResolvedModule, ChecksShrU32DataAndAmountWidths) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Shr>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Shr::U32>(instruction.variant);
+      test_ir_access::get<Shr>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Shr::U32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -272,7 +286,7 @@ TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Setp>(valid->functions.front().body.front()),
+          test_ir_access::get<Setp>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
 
@@ -283,10 +297,11 @@ TEST(ResolvedModule, ChecksSetpLtU32OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Setp>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Setp::Unsigned>(instruction.variant);
+      test_ir_access::get<Setp>(invalid->functions.front().body.front());
+  const auto& variant =
+      test_ir_access::get<Setp::Unsigned>(instruction.variant);
   const auto& operands =
-      std::get<Setp::Unsigned::SingleOperands>(variant.operands);
+      test_ir_access::get<Setp::Unsigned::SingleOperands>(variant.operands);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -306,8 +321,9 @@ TEST(ResolvedModule, ChecksSetpGeS32OperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& instruction =
-      std::get<Setp>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Setp::Signed>(instruction.variant));
+      test_ir_access::get<Setp>(valid->functions.front().body.front());
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Setp::Signed>(instruction.variant));
   EXPECT_TRUE(checker::check(instruction, context).has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -317,10 +333,11 @@ TEST(ResolvedModule, ChecksSetpGeS32OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& invalid_instruction =
-      std::get<Setp>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Setp::Signed>(invalid_instruction.variant);
+      test_ir_access::get<Setp>(invalid->functions.front().body.front());
+  const auto& variant =
+      test_ir_access::get<Setp::Signed>(invalid_instruction.variant);
   const auto& operands =
-      std::get<Setp::Signed::SingleOperands>(variant.operands);
+      test_ir_access::get<Setp::Signed::SingleOperands>(variant.operands);
   const auto checked = checker::check(invalid_instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -337,15 +354,17 @@ TEST(ResolvedModule, ChecksSetpDualPredicateOperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   for (const auto& body : valid->functions.front().body) {
     EXPECT_TRUE(
-        checker::check(std::get<Setp>(body),
+        checker::check(test_ir_access::get<Setp>(body),
                        checker::Context{
                            .target = {.ptx_version = {1, 0}, .sm_version = 0}})
             .has_value());
   }
 
-  auto instruction = std::get<Setp>(valid->functions.front().body.front());
-  auto& variant = std::get<Setp::Unsigned>(instruction.variant);
-  auto& operands = std::get<Setp::Unsigned::PairOperands>(variant.operands);
+  auto instruction =
+      test_ir_access::get<Setp>(valid->functions.front().body.front());
+  auto& variant = test_ir_access::get<Setp::Unsigned>(instruction.variant);
+  auto& operands =
+      test_ir_access::get<Setp::Unsigned::PairOperands>(variant.operands);
   ASSERT_TRUE(operands.dst.value.second.has_value());
   operands.dst.value.second->register_ref.declared_type = ScalarType::U32;
   const auto checked = checker::check(
@@ -373,7 +392,7 @@ TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   for (const auto& body : valid->functions.front().body) {
     EXPECT_TRUE(
-        checker::check(std::get<Set>(body),
+        checker::check(test_ir_access::get<Set>(body),
                        checker::Context{
                            .target = {.ptx_version = {1, 0}, .sm_version = 0}})
             .has_value());
@@ -392,8 +411,9 @@ TEST(ResolvedModule, ChecksSetCommonScalarOperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Set>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Set::SignedBoolean>(instruction.variant);
+      test_ir_access::get<Set>(invalid->functions.front().body.front());
+  const auto& variant =
+      test_ir_access::get<Set::SignedBoolean>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -425,7 +445,7 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   for (const auto& body : valid->functions.front().body) {
     EXPECT_TRUE(
-        checker::check(std::get<Slct>(body),
+        checker::check(test_ir_access::get<Slct>(body),
                        checker::Context{
                            .target = {.ptx_version = {1, 0}, .sm_version = 0}})
             .has_value());
@@ -443,9 +463,9 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   ASSERT_TRUE(wrong_selector.has_value())
       << wrong_selector.error().front().message;
   const auto& selector_instruction =
-      std::get<Slct>(wrong_selector->functions.front().body.front());
+      test_ir_access::get<Slct>(wrong_selector->functions.front().body.front());
   const auto& selector_variant =
-      std::get<Slct::S32>(selector_instruction.variant);
+      test_ir_access::get<Slct::S32>(selector_instruction.variant);
   const auto bad_selector = checker::check(
       selector_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -467,7 +487,7 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   ASSERT_TRUE(wide_selector.has_value())
       << wide_selector.error().front().message;
   const auto& wide_selector_instruction =
-      std::get<Slct>(wide_selector->functions.front().body.front());
+      test_ir_access::get<Slct>(wide_selector->functions.front().body.front());
   const auto wide_selector_check = checker::check(
       wide_selector_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -487,8 +507,9 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   const auto wrong_data = resolveModule(*parsed_module_4);
   ASSERT_TRUE(wrong_data.has_value()) << wrong_data.error().front().message;
   const auto& data_instruction =
-      std::get<Slct>(wrong_data->functions.front().body.front());
-  const auto& data_variant = std::get<Slct::S32>(data_instruction.variant);
+      test_ir_access::get<Slct>(wrong_data->functions.front().body.front());
+  const auto& data_variant =
+      test_ir_access::get<Slct::S32>(data_instruction.variant);
   const auto bad_data = checker::check(
       data_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -508,8 +529,8 @@ TEST(ResolvedModule, ChecksSlctNumericSelectorAndBitSizeDataOperands) {
   const auto integer_float_selector = resolveModule(*parsed_module_5);
   ASSERT_TRUE(integer_float_selector.has_value())
       << integer_float_selector.error().front().message;
-  const auto& integer_float_instruction =
-      std::get<Slct>(integer_float_selector->functions.front().body.front());
+  const auto& integer_float_instruction = test_ir_access::get<Slct>(
+      integer_float_selector->functions.front().body.front());
   const auto integer_float_check = checker::check(
       integer_float_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -538,7 +559,7 @@ TEST(ResolvedModule, ChecksSelpU32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Selp>(valid->functions.front().body.front()),
+          test_ir_access::get<Selp>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
 
@@ -549,8 +570,8 @@ TEST(ResolvedModule, ChecksSelpU32OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Selp>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Selp::U32>(instruction.variant);
+      test_ir_access::get<Selp>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Selp::U32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -569,7 +590,7 @@ TEST(ResolvedModule, ChecksCvtS32U32OperandTypesAndWidths) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Cvt>(valid->functions.front().body.front()),
+          test_ir_access::get<Cvt>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}})
           .has_value());
 
@@ -580,8 +601,8 @@ TEST(ResolvedModule, ChecksCvtS32U32OperandTypesAndWidths) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Cvt>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Cvt::S32U32>(instruction.variant);
+      test_ir_access::get<Cvt>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Cvt::S32U32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -600,7 +621,7 @@ TEST(ResolvedModule, ChecksCvtRnF32F64OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Cvt>(valid->functions.front().body.front()),
+          test_ir_access::get<Cvt>(valid->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 13}})
           .has_value());
 
@@ -611,8 +632,8 @@ TEST(ResolvedModule, ChecksCvtRnF32F64OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Cvt>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Cvt::RnF32F64>(instruction.variant);
+      test_ir_access::get<Cvt>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Cvt::RnF32F64>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 13}});
@@ -632,10 +653,12 @@ TEST(ResolvedModule, ChecksMixedCvtOperandTypes) {
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
   EXPECT_TRUE(
-      checker::check(std::get<Cvt>(valid->functions.front().body[0]), context)
+      checker::check(test_ir_access::get<Cvt>(valid->functions.front().body[0]),
+                     context)
           .has_value());
   EXPECT_TRUE(
-      checker::check(std::get<Cvt>(valid->functions.front().body[1]), context)
+      checker::check(test_ir_access::get<Cvt>(valid->functions.front().body[1]),
+                     context)
           .has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -645,8 +668,9 @@ TEST(ResolvedModule, ChecksMixedCvtOperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Cvt>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Cvt::RziU32F32>(instruction.variant);
+      test_ir_access::get<Cvt>(invalid->functions.front().body.front());
+  const auto& variant =
+      test_ir_access::get<Cvt::RziU32F32>(instruction.variant);
   const auto checked = checker::check(instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -667,10 +691,13 @@ TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  const auto& scalar = std::get<Cvt>(valid->functions.front().body[0]);
-  const auto& packed = std::get<Cvt>(valid->functions.front().body[1]);
-  EXPECT_TRUE(std::holds_alternative<Cvt::RnF32S32>(scalar.variant));
-  EXPECT_TRUE(std::holds_alternative<Cvt::RnF16x2F32>(packed.variant));
+  const auto& scalar =
+      test_ir_access::get<Cvt>(valid->functions.front().body[0]);
+  const auto& packed =
+      test_ir_access::get<Cvt>(valid->functions.front().body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Cvt::RnF32S32>(scalar.variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Cvt::RnF16x2F32>(packed.variant));
   EXPECT_TRUE(
       checker::check(scalar, checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})
@@ -689,7 +716,8 @@ TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
       << packed_container.error().front().message;
   EXPECT_TRUE(
       checker::check(
-          std::get<Cvt>(packed_container->functions.front().body.front()),
+          test_ir_access::get<Cvt>(
+              packed_container->functions.front().body.front()),
           checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}})
           .has_value());
 
@@ -703,7 +731,7 @@ TEST(ResolvedModule, ChecksM12CvtScalarAndPackedTypes) {
     const auto wrong = resolveModule(*parsed_module_3);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Cvt>(wrong->functions.front().body.front()),
+        test_ir_access::get<Cvt>(wrong->functions.front().body.front()),
         checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
@@ -731,16 +759,17 @@ TEST(ResolvedModule, ChecksCvtPackOperandTypes) {
   const auto context =
       checker::Context{.target = {.ptx_version = {6, 5}, .sm_version = 75}};
   ASSERT_EQ(valid->functions.front().body.size(), 5u);
-  EXPECT_TRUE(std::holds_alternative<Cvt::PackSatU8S32B32>(
-      std::get<Cvt>(valid->functions.front().body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Cvt::PackSat16S32>(
-      std::get<Cvt>(valid->functions.front().body[1]).variant));
-  EXPECT_TRUE(std::holds_alternative<Cvt::PackSatSmallS32B32>(
-      std::get<Cvt>(valid->functions.front().body[3]).variant));
-  for (const ResolvedInstruction& resolved_instruction :
+  EXPECT_TRUE(test_ir_access::holds_alternative<Cvt::PackSatU8S32B32>(
+      test_ir_access::get<Cvt>(valid->functions.front().body[0]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Cvt::PackSat16S32>(
+      test_ir_access::get<Cvt>(valid->functions.front().body[1]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Cvt::PackSatSmallS32B32>(
+      test_ir_access::get<Cvt>(valid->functions.front().body[3]).variant));
+  for (const OwnedInstruction& resolved_instruction :
        valid->functions.front().body) {
-    EXPECT_TRUE(checker::check(std::get<Cvt>(resolved_instruction), context)
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(test_ir_access::get<Cvt>(resolved_instruction), context)
+            .has_value());
   }
 
   for (const auto source : {
@@ -761,7 +790,8 @@ TEST(ResolvedModule, ChecksCvtPackOperandTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Cvt>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Cvt>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -801,9 +831,9 @@ TEST(ResolvedModule, ChecksCvtaNonSubspaceRegisterFormsAndWidths) {
   const checker::Context context{
       .target = {.ptx_version = {7, 7}, .sm_version = 70}};
   ASSERT_EQ(valid->functions.front().body.size(), 20u);
-  for (const ResolvedInstruction& instruction : valid->functions.front().body) {
-    EXPECT_TRUE(
-        checker::check(std::get<Cvta>(instruction), context).has_value());
+  for (const OwnedInstruction& instruction : valid->functions.front().body) {
+    EXPECT_TRUE(checker::check(test_ir_access::get<Cvta>(instruction), context)
+                    .has_value());
   }
 
   /** One invalid spelling and the operand expected to receive its diagnostic. */
@@ -832,12 +862,12 @@ TEST(ResolvedModule, ChecksCvtaNonSubspaceRegisterFormsAndWidths) {
     const auto invalid = resolveModule(*parsed_module_2);
     ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
     const Cvta& instruction =
-        std::get<Cvta>(invalid->functions.front().body.front());
+        test_ir_access::get<Cvta>(invalid->functions.front().body.front());
     const auto checked = checker::check(instruction, context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
-    std::visit(
+    test_ir_access::visit(
         [&](const auto& variant) {
           EXPECT_EQ(checked.error().front().range,
                     test.destination_mismatch ? variant.dst.locs.front()
@@ -873,19 +903,20 @@ TEST(ResolvedModule, ChecksIsspacepAddressOperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
   ASSERT_EQ(body.size(), 8u);
-  EXPECT_TRUE(std::holds_alternative<Isspacep::GlobalU64>(
-      std::get<Isspacep>(body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Isspacep::SharedCta>(
-      std::get<Isspacep>(body[4]).variant));
-  EXPECT_TRUE(std::holds_alternative<Isspacep::SharedCluster>(
-      std::get<Isspacep>(body[5]).variant));
-  EXPECT_TRUE(std::holds_alternative<Isspacep::ParamEntry>(
-      std::get<Isspacep>(body[7]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Isspacep::GlobalU64>(
+      test_ir_access::get<Isspacep>(body[0]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Isspacep::SharedCta>(
+      test_ir_access::get<Isspacep>(body[4]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Isspacep::SharedCluster>(
+      test_ir_access::get<Isspacep>(body[5]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Isspacep::ParamEntry>(
+      test_ir_access::get<Isspacep>(body[7]).variant));
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   for (const auto& resolved_instruction : body) {
     EXPECT_TRUE(
-        checker::check(std::get<Isspacep>(resolved_instruction), context)
+        checker::check(test_ir_access::get<Isspacep>(resolved_instruction),
+                       context)
             .has_value());
   }
 
@@ -905,7 +936,8 @@ TEST(ResolvedModule, ChecksIsspacepAddressOperandTypes) {
     const auto wrong = resolveModuleOnly(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Isspacep>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Isspacep>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -927,8 +959,9 @@ TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
-  EXPECT_TRUE(checker::check(
-                  std::get<Mul>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Mul>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -938,8 +971,9 @@ TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
   const auto wrong_width = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
   const auto& width_instruction =
-      std::get<Mul>(wrong_width->functions.front().body.front());
-  const auto& width_variant = std::get<Mul::LoU32>(width_instruction.variant);
+      test_ir_access::get<Mul>(wrong_width->functions.front().body.front());
+  const auto& width_variant =
+      test_ir_access::get<Mul::LoU32>(width_instruction.variant);
   const auto width_checked = checker::check(width_instruction, context);
   ASSERT_FALSE(width_checked.has_value());
   EXPECT_EQ(width_checked.error().front().kind,
@@ -954,8 +988,9 @@ TEST(ResolvedModule, ChecksMulLoU32OperandTypes) {
   const auto wrong_type = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto& type_instruction =
-      std::get<Mul>(wrong_type->functions.front().body.front());
-  const auto& type_variant = std::get<Mul::LoU32>(type_instruction.variant);
+      test_ir_access::get<Mul>(wrong_type->functions.front().body.front());
+  const auto& type_variant =
+      test_ir_access::get<Mul::LoU32>(type_instruction.variant);
   const auto type_checked = checker::check(type_instruction, context);
   ASSERT_FALSE(type_checked.has_value());
   EXPECT_EQ(type_checked.error().front().kind,
@@ -978,10 +1013,10 @@ TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& hi = std::get<Mul>(body[0]);
-  const auto& wide = std::get<Mul>(body[1]);
-  EXPECT_TRUE(std::holds_alternative<Mul::HiU32>(hi.variant));
-  EXPECT_TRUE(std::holds_alternative<Mul::WideU32>(wide.variant));
+  const auto& hi = test_ir_access::get<Mul>(body[0]);
+  const auto& wide = test_ir_access::get<Mul>(body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mul::HiU32>(hi.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mul::WideU32>(wide.variant));
   EXPECT_TRUE(checker::check(hi, context).has_value());
   EXPECT_TRUE(checker::check(wide, context).has_value());
 
@@ -992,8 +1027,9 @@ TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
   const auto narrow_hi = resolveModule(*parsed_module_2);
   ASSERT_TRUE(narrow_hi.has_value()) << narrow_hi.error().front().message;
   const auto& narrow_instruction =
-      std::get<Mul>(narrow_hi->functions.front().body.front());
-  const auto& narrow_variant = std::get<Mul::HiU32>(narrow_instruction.variant);
+      test_ir_access::get<Mul>(narrow_hi->functions.front().body.front());
+  const auto& narrow_variant =
+      test_ir_access::get<Mul::HiU32>(narrow_instruction.variant);
   const auto narrow_checked = checker::check(narrow_instruction, context);
   ASSERT_FALSE(narrow_checked.has_value());
   EXPECT_EQ(narrow_checked.error().front().kind,
@@ -1009,7 +1045,7 @@ TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
   ASSERT_TRUE(bit_wide_source.has_value())
       << bit_wide_source.error().front().message;
   const auto& bit_instruction =
-      std::get<Mul>(bit_wide_source->functions.front().body.front());
+      test_ir_access::get<Mul>(bit_wide_source->functions.front().body.front());
   const auto bit_checked = checker::check(bit_instruction, context);
   EXPECT_TRUE(bit_checked.has_value()) << bit_checked.error().front().message;
 
@@ -1021,8 +1057,9 @@ TEST(ResolvedModule, ChecksMulHiAndWideU32OperandTypes) {
   ASSERT_TRUE(narrow_wide_dst.has_value())
       << narrow_wide_dst.error().front().message;
   const auto& dst_instruction =
-      std::get<Mul>(narrow_wide_dst->functions.front().body.front());
-  const auto& dst_variant = std::get<Mul::WideU32>(dst_instruction.variant);
+      test_ir_access::get<Mul>(narrow_wide_dst->functions.front().body.front());
+  const auto& dst_variant =
+      test_ir_access::get<Mul::WideU32>(dst_instruction.variant);
   const auto dst_checked = checker::check(dst_instruction, context);
   ASSERT_FALSE(dst_checked.has_value());
   EXPECT_EQ(dst_checked.error().front().kind,
@@ -1040,8 +1077,9 @@ TEST(ResolvedModule, ChecksMulWideS32OperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& instruction =
-      std::get<Mul>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Mul::WideS32>(instruction.variant));
+      test_ir_access::get<Mul>(valid->functions.front().body.front());
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Mul::WideS32>(instruction.variant));
   EXPECT_TRUE(checker::check(instruction, context).has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -1051,8 +1089,9 @@ TEST(ResolvedModule, ChecksMulWideS32OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& invalid_instruction =
-      std::get<Mul>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Mul::WideS32>(invalid_instruction.variant);
+      test_ir_access::get<Mul>(invalid->functions.front().body.front());
+  const auto& variant =
+      test_ir_access::get<Mul::WideS32>(invalid_instruction.variant);
   const auto checked = checker::check(invalid_instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -1069,8 +1108,9 @@ TEST(ResolvedModule, ChecksMulRnF32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
-  EXPECT_TRUE(checker::check(
-                  std::get<Mul>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Mul>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -1080,8 +1120,8 @@ TEST(ResolvedModule, ChecksMulRnF32OperandTypes) {
   const auto invalid = resolveModule(*parsed_module_2);
   ASSERT_TRUE(invalid.has_value()) << invalid.error().front().message;
   const auto& instruction =
-      std::get<Mul>(invalid->functions.front().body.front());
-  const auto& variant = std::get<Mul::RnF32>(instruction.variant);
+      test_ir_access::get<Mul>(invalid->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Mul::RnF32>(instruction.variant);
   const auto checked = checker::check(instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -1098,8 +1138,9 @@ TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
-  EXPECT_TRUE(checker::check(
-                  std::get<Mad>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Mad>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -1109,8 +1150,9 @@ TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
   const auto wrong_width = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
   const auto& width_instruction =
-      std::get<Mad>(wrong_width->functions.front().body.front());
-  const auto& width_variant = std::get<Mad::LoU32>(width_instruction.variant);
+      test_ir_access::get<Mad>(wrong_width->functions.front().body.front());
+  const auto& width_variant =
+      test_ir_access::get<Mad::LoU32>(width_instruction.variant);
   const auto width_checked = checker::check(width_instruction, context);
   ASSERT_FALSE(width_checked.has_value());
   EXPECT_EQ(width_checked.error().front().kind,
@@ -1125,8 +1167,9 @@ TEST(ResolvedModule, ChecksMadLoU32OperandTypes) {
   const auto wrong_type = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto& type_instruction =
-      std::get<Mad>(wrong_type->functions.front().body.front());
-  const auto& type_variant = std::get<Mad::LoU32>(type_instruction.variant);
+      test_ir_access::get<Mad>(wrong_type->functions.front().body.front());
+  const auto& type_variant =
+      test_ir_access::get<Mad::LoU32>(type_instruction.variant);
   const auto type_checked = checker::check(type_instruction, context);
   ASSERT_FALSE(type_checked.has_value());
   EXPECT_EQ(type_checked.error().front().kind,
@@ -1149,12 +1192,12 @@ TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& lo = std::get<Mad>(body[0]);
-  const auto& wide = std::get<Mad>(body[1]);
-  const auto& rn = std::get<Mad>(body[2]);
-  EXPECT_TRUE(std::holds_alternative<Mad::LoS32>(lo.variant));
-  EXPECT_TRUE(std::holds_alternative<Mad::WideU32>(wide.variant));
-  EXPECT_TRUE(std::holds_alternative<Mad::RnF32>(rn.variant));
+  const auto& lo = test_ir_access::get<Mad>(body[0]);
+  const auto& wide = test_ir_access::get<Mad>(body[1]);
+  const auto& rn = test_ir_access::get<Mad>(body[2]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mad::LoS32>(lo.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mad::WideU32>(wide.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Mad::RnF32>(rn.variant));
   EXPECT_TRUE(
       checker::check(lo, checker::Context{.target = {.ptx_version = {1, 0},
                                                      .sm_version = 0}})
@@ -1176,7 +1219,7 @@ TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
   ASSERT_TRUE(bit_wide_source.has_value())
       << bit_wide_source.error().front().message;
   const auto& bit_instruction =
-      std::get<Mad>(bit_wide_source->functions.front().body.front());
+      test_ir_access::get<Mad>(bit_wide_source->functions.front().body.front());
   const auto bit_checked = checker::check(
       bit_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -1189,10 +1232,10 @@ TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
   const auto narrow_wide_addend = resolveModule(*parsed_module_3);
   ASSERT_TRUE(narrow_wide_addend.has_value())
       << narrow_wide_addend.error().front().message;
-  const auto& addend_instruction =
-      std::get<Mad>(narrow_wide_addend->functions.front().body.front());
+  const auto& addend_instruction = test_ir_access::get<Mad>(
+      narrow_wide_addend->functions.front().body.front());
   const auto& addend_variant =
-      std::get<Mad::WideU32>(addend_instruction.variant);
+      test_ir_access::get<Mad::WideU32>(addend_instruction.variant);
   const auto addend_checked = checker::check(
       addend_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -1210,8 +1253,9 @@ TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
   ASSERT_TRUE(narrow_wide_dst.has_value())
       << narrow_wide_dst.error().front().message;
   const auto& dst_instruction =
-      std::get<Mad>(narrow_wide_dst->functions.front().body.front());
-  const auto& dst_variant = std::get<Mad::WideU32>(dst_instruction.variant);
+      test_ir_access::get<Mad>(narrow_wide_dst->functions.front().body.front());
+  const auto& dst_variant =
+      test_ir_access::get<Mad::WideU32>(dst_instruction.variant);
   const auto dst_checked = checker::check(
       dst_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -1227,8 +1271,8 @@ TEST(ResolvedModule, ChecksM12MadWideAndRnOperandTypes) {
   const auto bit_float_source = resolveModule(*parsed_module_5);
   ASSERT_TRUE(bit_float_source.has_value())
       << bit_float_source.error().front().message;
-  const auto& float_instruction =
-      std::get<Mad>(bit_float_source->functions.front().body.front());
+  const auto& float_instruction = test_ir_access::get<Mad>(
+      bit_float_source->functions.front().body.front());
   const auto float_checked = checker::check(
       float_instruction,
       checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
@@ -1250,15 +1294,15 @@ TEST(ResolvedModule, ChecksFmaFloatingAndPackedOperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  EXPECT_TRUE(checker::check(std::get<Fma>(body[0]),
+  EXPECT_TRUE(checker::check(test_ir_access::get<Fma>(body[0]),
                              checker::Context{.target = {.ptx_version = {2, 0},
                                                          .sm_version = 20}})
                   .has_value());
-  EXPECT_TRUE(checker::check(std::get<Fma>(body[1]),
+  EXPECT_TRUE(checker::check(test_ir_access::get<Fma>(body[1]),
                              checker::Context{.target = {.ptx_version = {1, 4},
                                                          .sm_version = 13}})
                   .has_value());
-  EXPECT_TRUE(checker::check(std::get<Fma>(body[2]),
+  EXPECT_TRUE(checker::check(test_ir_access::get<Fma>(body[2]),
                              checker::Context{.target = {.ptx_version = {8, 6},
                                                          .sm_version = 100}})
                   .has_value());
@@ -1270,8 +1314,8 @@ TEST(ResolvedModule, ChecksFmaFloatingAndPackedOperandTypes) {
   const auto wrong_scalar = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_scalar.has_value()) << wrong_scalar.error().front().message;
   const auto& instruction =
-      std::get<Fma>(wrong_scalar->functions.front().body.front());
-  const auto& variant = std::get<Fma::RnF32>(instruction.variant);
+      test_ir_access::get<Fma>(wrong_scalar->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Fma::RnF32>(instruction.variant);
   const auto checked = checker::check(
       instruction,
       checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}});
@@ -1287,8 +1331,9 @@ TEST(ResolvedModule, ChecksFmaFloatingAndPackedOperandTypes) {
   const auto wrong_packed = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_packed.has_value()) << wrong_packed.error().front().message;
   const auto& packed_instruction =
-      std::get<Fma>(wrong_packed->functions.front().body.front());
-  const auto& packed_variant = std::get<Fma::F32x2>(packed_instruction.variant);
+      test_ir_access::get<Fma>(wrong_packed->functions.front().body.front());
+  const auto& packed_variant =
+      test_ir_access::get<Fma::F32x2>(packed_instruction.variant);
   const auto packed_checked = checker::check(
       packed_instruction,
       checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100}});
@@ -1331,7 +1376,8 @@ TEST(ResolvedModule, ChecksFmaHalfBfloatAndMixedOperandTypes) {
   ASSERT_EQ(body.size(), contexts.size());
   for (size_t index = 0; index != body.size(); ++index) {
     EXPECT_TRUE(
-        checker::check(std::get<Fma>(body[index]), contexts[index]).has_value())
+        checker::check(test_ir_access::get<Fma>(body[index]), contexts[index])
+            .has_value())
         << index;
   }
 
@@ -1342,8 +1388,9 @@ TEST(ResolvedModule, ChecksFmaHalfBfloatAndMixedOperandTypes) {
   const auto wrong_bfloat = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_bfloat.has_value()) << wrong_bfloat.error().front().message;
   const auto& bfloat_instruction =
-      std::get<Fma>(wrong_bfloat->functions.front().body.front());
-  const auto& bfloat_variant = std::get<Fma::Bf16>(bfloat_instruction.variant);
+      test_ir_access::get<Fma>(wrong_bfloat->functions.front().body.front());
+  const auto& bfloat_variant =
+      test_ir_access::get<Fma::Bf16>(bfloat_instruction.variant);
   const auto bfloat_checked = checker::check(
       bfloat_instruction,
       checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
@@ -1360,10 +1407,10 @@ TEST(ResolvedModule, ChecksFmaHalfBfloatAndMixedOperandTypes) {
   const auto wrong_packed_bfloat = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_packed_bfloat.has_value())
       << wrong_packed_bfloat.error().front().message;
-  const auto& packed_bfloat_instruction =
-      std::get<Fma>(wrong_packed_bfloat->functions.front().body.front());
+  const auto& packed_bfloat_instruction = test_ir_access::get<Fma>(
+      wrong_packed_bfloat->functions.front().body.front());
   const auto& packed_bfloat_variant =
-      std::get<Fma::Bf16x2>(packed_bfloat_instruction.variant);
+      test_ir_access::get<Fma::Bf16x2>(packed_bfloat_instruction.variant);
   const auto packed_bfloat_checked = checker::check(
       packed_bfloat_instruction,
       checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
@@ -1380,9 +1427,9 @@ TEST(ResolvedModule, ChecksFmaHalfBfloatAndMixedOperandTypes) {
   const auto wrong_mixed = resolveModule(*parsed_module_4);
   ASSERT_TRUE(wrong_mixed.has_value()) << wrong_mixed.error().front().message;
   const auto& mixed_instruction =
-      std::get<Fma>(wrong_mixed->functions.front().body.front());
+      test_ir_access::get<Fma>(wrong_mixed->functions.front().body.front());
   const auto& mixed_variant =
-      std::get<Fma::MixedF32Bf16>(mixed_instruction.variant);
+      test_ir_access::get<Fma::MixedF32Bf16>(mixed_instruction.variant);
   const auto mixed_checked = checker::check(
       mixed_instruction,
       checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100}});
@@ -1435,7 +1482,8 @@ TEST(ResolvedModule, RejectsFmaMismatchedTypesInEveryOperandPosition) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   for (size_t index = 0; index != body.size(); ++index) {
-    const auto checked = checker::check(std::get<Fma>(body[index]), context);
+    const auto checked =
+        checker::check(test_ir_access::get<Fma>(body[index]), context);
     SCOPED_TRACE(index);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1U);
@@ -1453,8 +1501,9 @@ TEST(ResolvedModule, ChecksDivU32OperandTypes) {
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
-  EXPECT_TRUE(checker::check(
-                  std::get<Div>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Div>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
 
   const auto parsed_module_2 = parseModule(R"ptx(
@@ -1464,8 +1513,9 @@ TEST(ResolvedModule, ChecksDivU32OperandTypes) {
   const auto wrong_width = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
   const auto& width_instruction =
-      std::get<Div>(wrong_width->functions.front().body.front());
-  const auto& width_variant = std::get<Div::U32>(width_instruction.variant);
+      test_ir_access::get<Div>(wrong_width->functions.front().body.front());
+  const auto& width_variant =
+      test_ir_access::get<Div::U32>(width_instruction.variant);
   const auto width_checked = checker::check(width_instruction, context);
   ASSERT_FALSE(width_checked.has_value());
   EXPECT_EQ(width_checked.error().front().kind,
@@ -1480,8 +1530,9 @@ TEST(ResolvedModule, ChecksDivU32OperandTypes) {
   const auto wrong_type = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto& type_instruction =
-      std::get<Div>(wrong_type->functions.front().body.front());
-  const auto& type_variant = std::get<Div::U32>(type_instruction.variant);
+      test_ir_access::get<Div>(wrong_type->functions.front().body.front());
+  const auto& type_variant =
+      test_ir_access::get<Div::U32>(type_instruction.variant);
   const auto type_checked = checker::check(type_instruction, context);
   ASSERT_FALSE(type_checked.has_value());
   EXPECT_EQ(type_checked.error().front().kind,
@@ -1505,12 +1556,12 @@ TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& s32 = std::get<Div>(body[0]);
-  const auto& f32 = std::get<Div>(body[1]);
-  const auto& f64 = std::get<Div>(body[2]);
-  EXPECT_TRUE(std::holds_alternative<Div::S32>(s32.variant));
-  EXPECT_TRUE(std::holds_alternative<Div::RnF32>(f32.variant));
-  EXPECT_TRUE(std::holds_alternative<Div::RnF64>(f64.variant));
+  const auto& s32 = test_ir_access::get<Div>(body[0]);
+  const auto& f32 = test_ir_access::get<Div>(body[1]);
+  const auto& f64 = test_ir_access::get<Div>(body[2]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Div::S32>(s32.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Div::RnF32>(f32.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Div::RnF64>(f64.variant));
   EXPECT_TRUE(
       checker::check(s32, checker::Context{.target = {.ptx_version = {1, 0},
                                                       .sm_version = 0}})
@@ -1532,7 +1583,7 @@ TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
   ASSERT_TRUE(bit_f32_source.has_value())
       << bit_f32_source.error().front().message;
   const auto& f32_instruction =
-      std::get<Div>(bit_f32_source->functions.front().body.front());
+      test_ir_access::get<Div>(bit_f32_source->functions.front().body.front());
   const auto f32_checked = checker::check(
       f32_instruction,
       checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 20}});
@@ -1546,7 +1597,7 @@ TEST(ResolvedModule, ChecksM12DivS32AndRnFloatingOperandTypes) {
   ASSERT_TRUE(bit_f64_source.has_value())
       << bit_f64_source.error().front().message;
   const auto& f64_instruction =
-      std::get<Div>(bit_f64_source->functions.front().body.front());
+      test_ir_access::get<Div>(bit_f64_source->functions.front().body.front());
   const auto f64_checked = checker::check(
       f64_instruction,
       checker::Context{.target = {.ptx_version = {1, 4}, .sm_version = 13}});
@@ -1566,10 +1617,11 @@ TEST(ResolvedModule, ChecksM12RemTypesAndZeroDivisor) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& signed_rem = std::get<Rem>(body[0]);
-  const auto& unsigned_rem = std::get<Rem>(body[1]);
-  EXPECT_TRUE(std::holds_alternative<Rem::S32>(signed_rem.variant));
-  EXPECT_TRUE(std::holds_alternative<Rem::U32>(unsigned_rem.variant));
+  const auto& signed_rem = test_ir_access::get<Rem>(body[0]);
+  const auto& unsigned_rem = test_ir_access::get<Rem>(body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Rem::S32>(signed_rem.variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Rem::U32>(unsigned_rem.variant));
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
   EXPECT_TRUE(checker::check(signed_rem, context).has_value());
@@ -1582,8 +1634,9 @@ TEST(ResolvedModule, ChecksM12RemTypesAndZeroDivisor) {
   const auto wrong_type = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto& type_instruction =
-      std::get<Rem>(wrong_type->functions.front().body.front());
-  const auto& type_variant = std::get<Rem::U32>(type_instruction.variant);
+      test_ir_access::get<Rem>(wrong_type->functions.front().body.front());
+  const auto& type_variant =
+      test_ir_access::get<Rem::U32>(type_instruction.variant);
   const auto type_checked = checker::check(type_instruction, context);
   ASSERT_FALSE(type_checked.has_value());
   EXPECT_EQ(type_checked.error().front().kind,
@@ -1597,8 +1650,9 @@ TEST(ResolvedModule, ChecksM12RemTypesAndZeroDivisor) {
   const auto wrong_width = resolveModule(*parsed_module_3);
   ASSERT_TRUE(wrong_width.has_value()) << wrong_width.error().front().message;
   const auto& width_instruction =
-      std::get<Rem>(wrong_width->functions.front().body.front());
-  const auto& width_variant = std::get<Rem::S32>(width_instruction.variant);
+      test_ir_access::get<Rem>(wrong_width->functions.front().body.front());
+  const auto& width_variant =
+      test_ir_access::get<Rem::S32>(width_instruction.variant);
   const auto width_checked = checker::check(width_instruction, context);
   ASSERT_FALSE(width_checked.has_value());
   EXPECT_EQ(width_checked.error().front().kind,
@@ -1620,10 +1674,10 @@ TEST(ResolvedModule, ChecksM12MinTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& integer_min = std::get<Min>(body[0]);
-  const auto& nan_min = std::get<Min>(body[1]);
-  EXPECT_TRUE(std::holds_alternative<Min::S32>(integer_min.variant));
-  EXPECT_TRUE(std::holds_alternative<Min::F32>(nan_min.variant));
+  const auto& integer_min = test_ir_access::get<Min>(body[0]);
+  const auto& nan_min = test_ir_access::get<Min>(body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Min::S32>(integer_min.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Min::F32>(nan_min.variant));
   EXPECT_TRUE(checker::check(integer_min,
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})
@@ -1640,9 +1694,10 @@ TEST(ResolvedModule, ChecksM12MinTypes) {
   const auto wrong_integer_type = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_integer_type.has_value())
       << wrong_integer_type.error().front().message;
-  const auto& integer_instruction =
-      std::get<Min>(wrong_integer_type->functions.front().body.front());
-  const auto& integer_variant = std::get<Min::S32>(integer_instruction.variant);
+  const auto& integer_instruction = test_ir_access::get<Min>(
+      wrong_integer_type->functions.front().body.front());
+  const auto& integer_variant =
+      test_ir_access::get<Min::S32>(integer_instruction.variant);
   const auto integer_checked = checker::check(
       integer_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -1660,7 +1715,7 @@ TEST(ResolvedModule, ChecksM12MinTypes) {
   ASSERT_TRUE(bit_nan_source.has_value())
       << bit_nan_source.error().front().message;
   const auto& nan_instruction =
-      std::get<Min>(bit_nan_source->functions.front().body.front());
+      test_ir_access::get<Min>(bit_nan_source->functions.front().body.front());
   const auto nan_checked = checker::check(
       nan_instruction,
       checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
@@ -1680,10 +1735,10 @@ TEST(ResolvedModule, ChecksM12MaxTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& integer_max = std::get<Max>(body[0]);
-  const auto& nan_max = std::get<Max>(body[1]);
-  EXPECT_TRUE(std::holds_alternative<Max::S32>(integer_max.variant));
-  EXPECT_TRUE(std::holds_alternative<Max::F32>(nan_max.variant));
+  const auto& integer_max = test_ir_access::get<Max>(body[0]);
+  const auto& nan_max = test_ir_access::get<Max>(body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Max::S32>(integer_max.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Max::F32>(nan_max.variant));
   EXPECT_TRUE(checker::check(integer_max,
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})
@@ -1700,9 +1755,10 @@ TEST(ResolvedModule, ChecksM12MaxTypes) {
   const auto wrong_integer_type = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_integer_type.has_value())
       << wrong_integer_type.error().front().message;
-  const auto& integer_instruction =
-      std::get<Max>(wrong_integer_type->functions.front().body.front());
-  const auto& integer_variant = std::get<Max::S32>(integer_instruction.variant);
+  const auto& integer_instruction = test_ir_access::get<Max>(
+      wrong_integer_type->functions.front().body.front());
+  const auto& integer_variant =
+      test_ir_access::get<Max::S32>(integer_instruction.variant);
   const auto integer_checked = checker::check(
       integer_instruction,
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 0}});
@@ -1720,7 +1776,7 @@ TEST(ResolvedModule, ChecksM12MaxTypes) {
   ASSERT_TRUE(bit_nan_source.has_value())
       << bit_nan_source.error().front().message;
   const auto& nan_instruction =
-      std::get<Max>(bit_nan_source->functions.front().body.front());
+      test_ir_access::get<Max>(bit_nan_source->functions.front().body.front());
   const auto nan_checked = checker::check(
       nan_instruction,
       checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80}});
@@ -1740,10 +1796,10 @@ TEST(ResolvedModule, ChecksM12AbsTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& integer_abs = std::get<Abs>(body[0]);
-  const auto& float_abs = std::get<Abs>(body[1]);
-  EXPECT_TRUE(std::holds_alternative<Abs::S32>(integer_abs.variant));
-  EXPECT_TRUE(std::holds_alternative<Abs::F32>(float_abs.variant));
+  const auto& integer_abs = test_ir_access::get<Abs>(body[0]);
+  const auto& float_abs = test_ir_access::get<Abs>(body[1]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::S32>(integer_abs.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::F32>(float_abs.variant));
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0}};
   EXPECT_TRUE(checker::check(integer_abs, context).has_value());
@@ -1756,8 +1812,8 @@ TEST(ResolvedModule, ChecksM12AbsTypes) {
   const auto wrong_type = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto& instruction =
-      std::get<Abs>(wrong_type->functions.front().body.front());
-  const auto& variant = std::get<Abs::F32>(instruction.variant);
+      test_ir_access::get<Abs>(wrong_type->functions.front().body.front());
+  const auto& variant = test_ir_access::get<Abs::F32>(instruction.variant);
   const auto checked = checker::check(instruction, context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -1780,12 +1836,13 @@ TEST(ResolvedModule, ChecksM12NegTypesAndPackedContainers) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  const auto& integer_neg = std::get<Neg>(body[0]);
-  const auto& float_neg = std::get<Neg>(body[1]);
-  const auto& packed_neg = std::get<Neg>(body[2]);
-  EXPECT_TRUE(std::holds_alternative<Neg::S32>(integer_neg.variant));
-  EXPECT_TRUE(std::holds_alternative<Neg::F32>(float_neg.variant));
-  EXPECT_TRUE(std::holds_alternative<Neg::F16x2>(packed_neg.variant));
+  const auto& integer_neg = test_ir_access::get<Neg>(body[0]);
+  const auto& float_neg = test_ir_access::get<Neg>(body[1]);
+  const auto& packed_neg = test_ir_access::get<Neg>(body[2]);
+  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::S32>(integer_neg.variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::F32>(float_neg.variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Neg::F16x2>(packed_neg.variant));
   EXPECT_TRUE(checker::check(integer_neg,
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 0}})
@@ -1809,8 +1866,8 @@ TEST(ResolvedModule, ChecksM12NegTypesAndPackedContainers) {
     const auto wrong_container = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong_container.has_value())
         << wrong_container.error().front().message;
-    const auto& instruction =
-        std::get<Neg>(wrong_container->functions.front().body.front());
+    const auto& instruction = test_ir_access::get<Neg>(
+        wrong_container->functions.front().body.front());
     const auto checked = checker::check(
         instruction,
         checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 53}});
@@ -1831,8 +1888,9 @@ TEST(ResolvedModule, ChecksM12Lop3B32WidthCompatibility) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& instruction =
-      std::get<Lop3>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Lop3::B32>(instruction.variant));
+      test_ir_access::get<Lop3>(valid->functions.front().body.front());
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Lop3::B32>(instruction.variant));
   EXPECT_TRUE(checker::check(instruction,
                              checker::Context{.target = {.ptx_version = {4, 3},
                                                          .sm_version = 50}})
@@ -1851,10 +1909,10 @@ TEST(ResolvedModule, ChecksM12ShfTypesAndCounts) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& body = valid->functions.front().body;
-  EXPECT_TRUE(
-      std::holds_alternative<Shf::LClampB32>(std::get<Shf>(body[0]).variant));
-  EXPECT_TRUE(
-      std::holds_alternative<Shf::RWrapB32>(std::get<Shf>(body[1]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Shf::LClampB32>(
+      test_ir_access::get<Shf>(body[0]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Shf::RWrapB32>(
+      test_ir_access::get<Shf>(body[1]).variant));
   const auto parsed_module_2 = parseModule(R"ptx(
 .entry kernel() { .reg .u16 %dst; .reg .u32 %a, %b; shf.l.clamp.b32 %dst, %a, %b, 8; }
 )ptx");
@@ -1862,7 +1920,7 @@ TEST(ResolvedModule, ChecksM12ShfTypesAndCounts) {
   const auto wrong_type = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong_type.has_value()) << wrong_type.error().front().message;
   const auto checked = checker::check(
-      std::get<Shf>(wrong_type->functions.front().body.front()),
+      test_ir_access::get<Shf>(wrong_type->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {3, 1}, .sm_version = 32}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -1883,8 +1941,9 @@ TEST(ResolvedModule, ChecksPrmtRegisterWidths) {
   const auto context =
       checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 20}};
   for (const auto& resolved_instruction : valid->functions.front().body) {
-    EXPECT_TRUE(checker::check(std::get<Prmt>(resolved_instruction), context)
-                    .has_value());
+    EXPECT_TRUE(
+        checker::check(test_ir_access::get<Prmt>(resolved_instruction), context)
+            .has_value());
   }
   const auto parsed_module_2 = parseModule(
       ".entry kernel() { .reg .u16 %r0; .reg .u32 %r1, %r2; prmt.b32 %r0, %r1, "
@@ -1892,10 +1951,10 @@ TEST(ResolvedModule, ChecksPrmtRegisterWidths) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto wrong = resolveModule(*parsed_module_2);
   ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
-  EXPECT_FALSE(
-      checker::check(std::get<Prmt>(wrong->functions.front().body.front()),
-                     context)
-          .has_value());
+  EXPECT_FALSE(checker::check(test_ir_access::get<Prmt>(
+                                  wrong->functions.front().body.front()),
+                              context)
+                   .has_value());
 }
 
 TEST(ResolvedModule, ChecksM12PopcTypes) {
@@ -1907,8 +1966,9 @@ TEST(ResolvedModule, ChecksM12PopcTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   const auto& instruction =
-      std::get<Popc>(valid->functions.front().body.front());
-  EXPECT_TRUE(std::holds_alternative<Popc::B32>(instruction.variant));
+      test_ir_access::get<Popc>(valid->functions.front().body.front());
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Popc::B32>(instruction.variant));
   EXPECT_TRUE(checker::check(instruction, context).has_value());
   for (const auto source : {
            ".entry kernel() { .reg .u16 %dst; .reg .u32 %src; popc.b32 %dst, "
@@ -1921,7 +1981,8 @@ TEST(ResolvedModule, ChecksM12PopcTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Popc>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Popc>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -1938,10 +1999,12 @@ TEST(ResolvedModule, ChecksM12ClzTypes) {
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
   EXPECT_TRUE(
-      checker::check(std::get<Clz>(valid->functions.front().body[0]), context)
+      checker::check(test_ir_access::get<Clz>(valid->functions.front().body[0]),
+                     context)
           .has_value());
   EXPECT_TRUE(
-      checker::check(std::get<Clz>(valid->functions.front().body[1]), context)
+      checker::check(test_ir_access::get<Clz>(valid->functions.front().body[1]),
+                     context)
           .has_value());
   for (const auto source : {
            ".entry kernel() { .reg .u64 %dst, %src; clz.b64 %dst, %src; }",
@@ -1953,7 +2016,8 @@ TEST(ResolvedModule, ChecksM12ClzTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Clz>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Clz>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -1969,10 +2033,10 @@ TEST(ResolvedModule, ChecksM12BfindTypes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  EXPECT_TRUE(
-      checker::check(std::get<Bfind>(valid->functions.front().body.front()),
-                     context)
-          .has_value());
+  EXPECT_TRUE(checker::check(test_ir_access::get<Bfind>(
+                                 valid->functions.front().body.front()),
+                             context)
+                  .has_value());
   for (const auto source : {
            ".entry kernel() { .reg .s32 %dst, %src; bfind.shiftamt.u32 %dst, "
            "%src; }",
@@ -1984,9 +2048,9 @@ TEST(ResolvedModule, ChecksM12BfindTypes) {
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
     const auto compatible = resolveModule(*parsed_module_2);
     ASSERT_TRUE(compatible.has_value()) << compatible.error().front().message;
-    EXPECT_TRUE(checker::check(
-                    std::get<Bfind>(compatible->functions.front().body.front()),
-                    context)
+    EXPECT_TRUE(checker::check(test_ir_access::get<Bfind>(
+                                   compatible->functions.front().body.front()),
+                               context)
                     .has_value());
   }
   for (const auto source : {
@@ -1998,7 +2062,8 @@ TEST(ResolvedModule, ChecksM12BfindTypes) {
     const auto wrong = resolveModule(*parsed_module_3);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Bfind>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Bfind>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -2013,8 +2078,9 @@ TEST(ResolvedModule, ChecksM12BfeTypes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  EXPECT_TRUE(checker::check(
-                  std::get<Bfe>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Bfe>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
   for (const auto source : {
            ".entry kernel() { .reg .s32 %dst, %src; bfe.u32 %dst, %src, 0, 8; "
@@ -2027,10 +2093,10 @@ TEST(ResolvedModule, ChecksM12BfeTypes) {
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
     const auto compatible = resolveModule(*parsed_module_2);
     ASSERT_TRUE(compatible.has_value()) << compatible.error().front().message;
-    EXPECT_TRUE(
-        checker::check(
-            std::get<Bfe>(compatible->functions.front().body.front()), context)
-            .has_value());
+    EXPECT_TRUE(checker::check(test_ir_access::get<Bfe>(
+                                   compatible->functions.front().body.front()),
+                               context)
+                    .has_value());
   }
   for (const auto source : {
            ".entry kernel() { .reg .u64 %dst, %src; bfe.u32 %dst, %src, 0, 8; "
@@ -2042,7 +2108,8 @@ TEST(ResolvedModule, ChecksM12BfeTypes) {
     const auto wrong = resolveModule(*parsed_module_3);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Bfe>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Bfe>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -2058,8 +2125,9 @@ TEST(ResolvedModule, ChecksM12BfiTypes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  EXPECT_TRUE(checker::check(
-                  std::get<Bfi>(valid->functions.front().body.front()), context)
+  EXPECT_TRUE(checker::check(test_ir_access::get<Bfi>(
+                                 valid->functions.front().body.front()),
+                             context)
                   .has_value());
   for (const auto source : {
            ".entry kernel() { .reg .b64 %dst, %insert, %base; bfi.b32 %dst, "
@@ -2073,7 +2141,8 @@ TEST(ResolvedModule, ChecksM12BfiTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Bfi>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Bfi>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -2088,10 +2157,10 @@ TEST(ResolvedModule, ChecksM12BrevTypes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto valid = resolveModule(*parsed_module_1);
   ASSERT_TRUE(valid.has_value()) << valid.error().front().message;
-  EXPECT_TRUE(
-      checker::check(std::get<Brev>(valid->functions.front().body.front()),
-                     context)
-          .has_value());
+  EXPECT_TRUE(checker::check(test_ir_access::get<Brev>(
+                                 valid->functions.front().body.front()),
+                             context)
+                  .has_value());
   for (const auto source : {
            ".entry kernel() { .reg .u16 %dst, %src; brev.b32 %dst, %src; }",
            ".entry kernel() { .reg .b64 %dst, %src; brev.b32 %dst, %src; }",
@@ -2102,7 +2171,8 @@ TEST(ResolvedModule, ChecksM12BrevTypes) {
     const auto wrong = resolveModule(*parsed_module_2);
     ASSERT_TRUE(wrong.has_value()) << wrong.error().front().message;
     const auto checked = checker::check(
-        std::get<Brev>(wrong->functions.front().body.front()), context);
+        test_ir_access::get<Brev>(wrong->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -2141,7 +2211,8 @@ TEST(ResolvedModule, RetainsExpandedBitOperationsAndRevalidatesMutations) {
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
 
-  auto& bfind = std::get<Bfind::ShiftamtS64>(std::get<Bfind>(body[2]).variant);
+  auto& bfind = test_ir_access::get<Bfind::ShiftamtS64>(
+      test_ir_access::get<Bfind>(body[2]).variant);
   bfind.dst.value.declared_type = ScalarType::U64;
   const auto invalid_destination = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
@@ -2150,8 +2221,10 @@ TEST(ResolvedModule, RetainsExpandedBitOperationsAndRevalidatesMutations) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   bfind.dst.value.declared_type = ScalarType::U32;
 
-  auto& bfe = std::get<Bfe::S64>(std::get<Bfe>(body[3]).variant);
-  auto& offset_register = std::get<ResolvedRegisterRef>(bfe.offset.value);
+  auto& bfe =
+      test_ir_access::get<Bfe::S64>(test_ir_access::get<Bfe>(body[3]).variant);
+  auto& offset_register =
+      test_ir_access::get<ResolvedRegisterRef>(bfe.offset.value);
   offset_register.declared_type = ScalarType::U64;
   const auto invalid_control = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
@@ -2213,7 +2286,7 @@ TEST(ResolvedModule, ChecksIssue144LogicAndShiftFormsAfterAstLifetime) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   for (const auto& instruction : body) {
-    EXPECT_TRUE(std::visit(
+    EXPECT_TRUE(test_ir_access::visit(
         [&context](const auto& operation) {
           return checker::check(operation, context).has_value();
         },
@@ -2254,7 +2327,7 @@ TEST(ResolvedModule, ChecksIssue144LogicAndShiftWidthAndCountContracts) {
     const auto resolved = resolveModule(*parsed_module);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     ASSERT_EQ(resolved->functions.front().body.size(), 1u);
-    EXPECT_EQ(std::visit(
+    EXPECT_EQ(test_ir_access::visit(
                   [&context](const auto& operation) {
                     return checker::check(operation, context).has_value();
                   },
@@ -2301,7 +2374,8 @@ TEST(ResolvedModule, RejectsIssue144OutOfRangeLop3TruthTables) {
     const auto resolved = resolveModule(*parsed_module);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     const auto checked = checker::check(
-        std::get<Lop3>(resolved->functions.front().body.front()), context);
+        test_ir_access::get<Lop3>(resolved->functions.front().body.front()),
+        context);
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::ImmediateValueMismatch);

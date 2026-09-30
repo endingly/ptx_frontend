@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -323,7 +324,8 @@ TEST(LdCompleteness, MaterializesOptionalCacheControlDefaults) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
   auto resolved = resolve<Ld>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* load = std::get_if<Ld::GlobalL2EvictVector>(&resolved->variant);
+  const auto* load =
+      test_ir_access::get_if<Ld::GlobalL2EvictVector>(&resolved->variant);
   ASSERT_NE(load, nullptr);
   EXPECT_EQ(load->l1_eviction_priority.value, EvictionPriority::Invalid);
   EXPECT_EQ(load->prefetch_size.value, PrefetchSize::None);
@@ -333,7 +335,8 @@ TEST(LdCompleteness, MaterializesOptionalCacheControlDefaults) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(l1_ast);
   auto l1_resolved = resolve<Ld>(*l1_ast);
   ASSERT_TRUE(l1_resolved.has_value()) << l1_resolved.error().message;
-  auto* l1_load = std::get_if<Ld::GlobalU32L1Evict>(&l1_resolved->variant);
+  auto* l1_load =
+      test_ir_access::get_if<Ld::GlobalU32L1Evict>(&l1_resolved->variant);
   ASSERT_NE(l1_load, nullptr);
   EXPECT_EQ(l1_load->prefetch_size.value, PrefetchSize::None);
   const checker::Context sm75{

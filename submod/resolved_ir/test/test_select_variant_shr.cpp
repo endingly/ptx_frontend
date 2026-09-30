@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,9 +27,10 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   const auto ast = parse_instruction("shr.u32 %r0, %r1, 1;");
   const auto resolved = resolve<Shr>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* shr_u32 = std::get_if<Shr::U32>(&resolved->variant);
+  const auto* shr_u32 = test_ir_access::get_if<Shr::U32>(&resolved->variant);
   ASSERT_NE(shr_u32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      shr_u32->amount.value));
 }
 
 }  // namespace

@@ -1,12 +1,16 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <array>
 #include <optional>
 #include <string_view>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/dp4a.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/fns.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/min.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -132,7 +136,7 @@ TEST(IntegerArithmeticCompleteness, ResolvesAndChecksAllScalarAndPackedForms) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto checked = std::visit(
+    const auto checked = test_ir_access::visit(
         [&context](const auto& concrete) {
           return checker::check(concrete, context);
         },
@@ -183,8 +187,9 @@ TEST(IntegerArithmeticCompleteness,
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
 
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& minimum = std::get<Min>(instruction);
-    ASSERT_NE(std::get_if<Min::ReluS16x2>(&minimum.variant), nullptr);
+    const auto& minimum = test_ir_access::get<Min>(instruction);
+    ASSERT_NE(test_ir_access::get_if<Min::ReluS16x2>(&minimum.variant),
+              nullptr);
     EXPECT_TRUE(Min::ReluS16x2::relu);
     EXPECT_EQ(Min::ReluS16x2::type, ScalarType::S16x2);
     EXPECT_TRUE(checker::check(
@@ -289,7 +294,7 @@ TEST(IntegerArithmeticCompleteness, EnforcesNewFormTargetFloors) {
     const auto resolved = resolveInstruction(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value());
     const auto check = [&resolved](const checker::Context& context) {
-      return std::visit(
+      return test_ir_access::visit(
           [&context](const auto& concrete) {
             return checker::check(concrete, context);
           },
@@ -328,7 +333,7 @@ TEST(IntegerArithmeticCompleteness,
   const auto resolved_fns = resolveInstruction(*parsed_fns);
   ASSERT_TRUE(resolved_fns.has_value());
   const auto checked = checker::check(
-      std::get<Fns>(*resolved_fns),
+      test_ir_access::get<Fns>(*resolved_fns),
       checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 30}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -359,10 +364,11 @@ TEST(IntegerArithmeticCompleteness, RetainsOwnedOperandsAndRejectsMutation) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& dp4a = std::get<Dp4a::U32S32>(
-      std::get<Dp4a>(owned_module->functions.front().body[1]).variant);
-  std::get<ResolvedRegisterRef>(dp4a.accumulator.value).declared_type =
-      ScalarType::U64;
+  auto& dp4a = test_ir_access::get<Dp4a::U32S32>(
+      test_ir_access::get<Dp4a>(owned_module->functions.front().body[1])
+          .variant);
+  test_ir_access::get<ResolvedRegisterRef>(dp4a.accumulator.value)
+      .declared_type = ScalarType::U64;
   const auto invalid = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());

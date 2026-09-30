@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <expected>
 #include <optional>
@@ -60,30 +61,35 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
       *parsed, test_support::ModulePipeline::CompleteContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  const auto& rcp_approx =
-      std::get<Rcp::ApproxF32>(std::get<Rcp>(body[0]).variant);
+  const auto& rcp_approx = test_ir_access::get<Rcp::ApproxF32>(
+      test_ir_access::get<Rcp>(body[0]).variant);
   EXPECT_TRUE(Rcp::ApproxF32::approx);
   EXPECT_TRUE(rcp_approx.ftz.value);
-  EXPECT_EQ(
-      std::get<Rcp::DirectedF32>(std::get<Rcp>(body[1]).variant).rounding.value,
-      RoundingMode::Rz);
+  EXPECT_EQ(test_ir_access::get<Rcp::DirectedF32>(
+                test_ir_access::get<Rcp>(body[1]).variant)
+                .rounding.value,
+            RoundingMode::Rz);
   EXPECT_EQ(Rcp::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(
-      std::get<Rcp::DirectedF64>(std::get<Rcp>(body[3]).variant).rounding.value,
-      RoundingMode::Rp);
+  EXPECT_EQ(test_ir_access::get<Rcp::DirectedF64>(
+                test_ir_access::get<Rcp>(body[3]).variant)
+                .rounding.value,
+            RoundingMode::Rp);
   EXPECT_TRUE(Rcp::ApproxFtzF64::approx);
   EXPECT_TRUE(Rcp::ApproxFtzF64::ftz);
   EXPECT_TRUE(Sqrt::ApproxF32::approx);
-  EXPECT_EQ(std::get<Sqrt::DirectedF32>(std::get<Sqrt>(body[6]).variant)
+  EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF32>(
+                test_ir_access::get<Sqrt>(body[6]).variant)
                 .rounding.value,
             RoundingMode::Rm);
   EXPECT_EQ(Sqrt::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(std::get<Sqrt::DirectedF64>(std::get<Sqrt>(body[8]).variant)
+  EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF64>(
+                test_ir_access::get<Sqrt>(body[8]).variant)
                 .rounding.value,
             RoundingMode::Rp);
   EXPECT_TRUE(Rsqrt::ApproxF32::approx);
-  EXPECT_TRUE(
-      std::get<Rsqrt::ApproxF32>(std::get<Rsqrt>(body[9]).variant).ftz.value);
+  EXPECT_TRUE(test_ir_access::get<Rsqrt::ApproxF32>(
+                  test_ir_access::get<Rsqrt>(body[9]).variant)
+                  .ftz.value);
   EXPECT_TRUE(Rsqrt::ApproxF64::approx);
   EXPECT_TRUE(Rsqrt::ApproxFtzF64::approx);
   EXPECT_TRUE(Rsqrt::ApproxFtzF64::ftz);
@@ -101,14 +107,15 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
     if (std::string_view{source}.starts_with("rcp")) {
       const auto instruction = resolve<Rcp>(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(std::get<Rcp::DirectedF32>(instruction->variant).rounding.value,
+      EXPECT_EQ(test_ir_access::get<Rcp::DirectedF32>(instruction->variant)
+                    .rounding.value,
                 expected);
     } else {
       const auto instruction = resolve<Sqrt>(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(
-          std::get<Sqrt::DirectedF32>(instruction->variant).rounding.value,
-          expected);
+      EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF32>(instruction->variant)
+                    .rounding.value,
+                expected);
     }
   }
   for (const auto [source, expected] : {
@@ -124,14 +131,15 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
     if (std::string_view{source}.starts_with("rcp")) {
       const auto instruction = resolve<Rcp>(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(std::get<Rcp::DirectedF64>(instruction->variant).rounding.value,
+      EXPECT_EQ(test_ir_access::get<Rcp::DirectedF64>(instruction->variant)
+                    .rounding.value,
                 expected);
     } else {
       const auto instruction = resolve<Sqrt>(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(
-          std::get<Sqrt::DirectedF64>(instruction->variant).rounding.value,
-          expected);
+      EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF64>(instruction->variant)
+                    .rounding.value,
+                expected);
     }
   }
 }
@@ -220,7 +228,7 @@ TEST(UnaryFloatCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveUnaryFloat(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(instruction,
                                   checker::Context{.target = target});

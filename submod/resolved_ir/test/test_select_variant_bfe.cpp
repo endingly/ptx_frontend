@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,10 +30,11 @@ TEST(ResolveBfe, SelectsAllIntegerWidthsAndControlShapes) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Bfe>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(std::holds_alternative<Bfe::U32>(resolved->variant) ||
-                std::holds_alternative<Bfe::U64>(resolved->variant) ||
-                std::holds_alternative<Bfe::S32>(resolved->variant) ||
-                std::holds_alternative<Bfe::S64>(resolved->variant));
+    EXPECT_TRUE(
+        test_ir_access::holds_alternative<Bfe::U32>(resolved->variant) ||
+        test_ir_access::holds_alternative<Bfe::U64>(resolved->variant) ||
+        test_ir_access::holds_alternative<Bfe::S32>(resolved->variant) ||
+        test_ir_access::holds_alternative<Bfe::S64>(resolved->variant));
   }
   EXPECT_FALSE(
       resolve<Bfe>(parse_instruction("bfe.b32 %r0, %r1, 0, 8;")).has_value());

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <expected>
 #include <optional>
@@ -64,14 +65,14 @@ TEST(AbsNegCompleteness, ResolvesEveryFloatingCohort) {
       *parsed, test_support::ModulePipeline::CompleteContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 12u);
-  EXPECT_TRUE(std::holds_alternative<Abs::F32>(
-      std::get<Abs>(resolved->functions.front().body[0]).variant));
-  EXPECT_TRUE(std::holds_alternative<Abs::Bf16x2>(
-      std::get<Abs>(resolved->functions.front().body[5]).variant));
-  EXPECT_TRUE(std::holds_alternative<Neg::F16x2>(
-      std::get<Neg>(resolved->functions.front().body[9]).variant));
-  EXPECT_TRUE(std::holds_alternative<Neg::Bf16x2>(
-      std::get<Neg>(resolved->functions.front().body[11]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::F32>(
+      test_ir_access::get<Abs>(resolved->functions.front().body[0]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::Bf16x2>(
+      test_ir_access::get<Abs>(resolved->functions.front().body[5]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::F16x2>(
+      test_ir_access::get<Neg>(resolved->functions.front().body[9]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::Bf16x2>(
+      test_ir_access::get<Neg>(resolved->functions.front().body[11]).variant));
 }
 
 /** Accept floating literals and matching bit containers for scalar FP forms. */
@@ -169,7 +170,7 @@ TEST(AbsNegCompleteness, ChecksDistinctCohortAvailability) {
     const auto resolved = resolveAbsOrNeg(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(instruction,
                                   checker::Context{.target = target});
@@ -206,7 +207,7 @@ TEST(AbsNegCompleteness, ChecksFp32FtzValueAvailability) {
     const auto resolved = resolveAbsOrNeg(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::PtxVersion version) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(
                 instruction, checker::Context{.target = {.ptx_version = version,

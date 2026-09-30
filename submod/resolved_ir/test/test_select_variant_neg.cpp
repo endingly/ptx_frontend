@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,17 +26,17 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(ResolveNeg, SelectsFrozenScalarAndPackedVariants) {
   const auto s32 = resolve<Neg>(parse_instruction("neg.s32 %r0, %r1;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  ASSERT_NE(std::get_if<Neg::S32>(&s32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Neg::S32>(&s32->variant), nullptr);
   EXPECT_EQ(Neg::S32::type, ScalarType::S32);
 
   const auto f32 = resolve<Neg>(parse_instruction("neg.f32 %f0, %f1;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  ASSERT_NE(std::get_if<Neg::F32>(&f32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Neg::F32>(&f32->variant), nullptr);
   EXPECT_EQ(Neg::F32::type, ScalarType::F32);
 
   const auto f16x2 = resolve<Neg>(parse_instruction("neg.f16x2 %r0, %r1;"));
   ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
-  ASSERT_NE(std::get_if<Neg::F16x2>(&f16x2->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Neg::F16x2>(&f16x2->variant), nullptr);
   EXPECT_EQ(Neg::F16x2::type, ScalarType::F16x2);
 }
 

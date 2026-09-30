@@ -15,7 +15,7 @@
 #include <fmt/format.h>
 
 #include <ptx_frontend/base/ptx_integer.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
 #include "resolved_value_domains.gen.hpp"
 

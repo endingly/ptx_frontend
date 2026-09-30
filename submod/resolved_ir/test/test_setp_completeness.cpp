@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -67,7 +68,7 @@ TEST(SetpCompleteness, ResolvesAndChecksEveryPtx93Family) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& setp = std::get<Setp>(instruction);
+    const auto& setp = test_ir_access::get<Setp>(instruction);
     const auto checked = checker::check(setp, context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
@@ -144,11 +145,12 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
   auto resolved = test_support::resolveTypedModule<Setp>(
       *valid_module, test_support::ModulePipeline::AvailableContext);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = std::get<Setp::F16x2>(
-      std::get<Setp>(resolved->functions.front().body.front()).variant);
+  auto& packed = test_ir_access::get<Setp::F16x2>(
+      test_ir_access::get<Setp>(resolved->functions.front().body.front())
+          .variant);
   packed.src1.value.declared_type = ScalarType::F16;
   const auto checked = checker::check(
-      std::get<Setp>(resolved->functions.front().body.front()),
+      test_ir_access::get<Setp>(resolved->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
                        .instruction_range = parsed_module->range});
   ASSERT_FALSE(checked.has_value());
@@ -163,9 +165,10 @@ TEST(SetpCompleteness, RevalidationRejectsAllSinkPair) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
   auto resolved = resolve<Setp>(*parsed_instruction);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& unsigned_variant = std::get<Setp::Unsigned>(resolved->variant);
-  auto& operands =
-      std::get<Setp::Unsigned::PairOperands>(unsigned_variant.operands);
+  auto& unsigned_variant =
+      test_ir_access::get<Setp::Unsigned>(resolved->variant);
+  auto& operands = test_ir_access::get<Setp::Unsigned::PairOperands>(
+      unsigned_variant.operands);
   operands.dst.value.first.reset();
   operands.dst.value.second.reset();
 
@@ -211,11 +214,13 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     const auto resolved = resolve<Setp>(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto& variant = std::get<Setp::UnsignedBoolean>(resolved->variant);
+    const auto& variant =
+        test_ir_access::get<Setp::UnsignedBoolean>(resolved->variant);
     const auto& operands =
-        std::get<Setp::UnsignedBoolean::SingleOperands>(variant.operands);
-    const auto* constant =
-        std::get_if<ResolvedPredicateConstant>(&operands.combine.value);
+        test_ir_access::get<Setp::UnsignedBoolean::SingleOperands>(
+            variant.operands);
+    const auto* constant = test_ir_access::get_if<ResolvedPredicateConstant>(
+        &operands.combine.value);
     ASSERT_NE(constant, nullptr);
     EXPECT_EQ(constant->value, expected);
     EXPECT_TRUE(checker::check(
@@ -227,9 +232,11 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(half);
   auto resolved_half = resolve<Setp>(*half);
   ASSERT_TRUE(resolved_half.has_value()) << resolved_half.error().message;
-  auto& half_variant = std::get<Setp::F16Boolean>(resolved_half->variant);
+  auto& half_variant =
+      test_ir_access::get<Setp::F16Boolean>(resolved_half->variant);
   EXPECT_TRUE(
-      std::get<ResolvedPredicateConstant>(half_variant.combine.value).value);
+      test_ir_access::get<ResolvedPredicateConstant>(half_variant.combine.value)
+          .value);
 
   const auto special_info = base::lookup("%is_explicit_cluster");
   ASSERT_TRUE(special_info.has_value());

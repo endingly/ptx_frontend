@@ -155,6 +155,12 @@ bool is_fundamental_storage_scalar(base::ScalarType type) {
     case base::ScalarType::E3m2x4:
     case base::ScalarType::UE8M0x2:
     case base::ScalarType::S2f6x2:
+    case base::ScalarType::B1:
+    case base::ScalarType::E3m2:
+    case base::ScalarType::E2m3:
+    case base::ScalarType::E2m1:
+    case base::ScalarType::UE8M0:
+    case base::ScalarType::UE4M3:
       return false;
   }
   return false;

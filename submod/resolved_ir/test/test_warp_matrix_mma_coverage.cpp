@@ -120,6 +120,34 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   using Scaled = Mma::
       SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E4m3F32Ue8m0;
   auto& selected = std::get<Scaled>(scaled.variant);
+  ASSERT_TRUE(scaled.matrix_logical_index().has_value());
+  ASSERT_NE(scaled.matrix_descriptor(), nullptr);
+  EXPECT_EQ(selected.matrix.value, *scaled.matrix_descriptor());
+  const auto original_form = scaled.semantic_form.value;
+  const auto original_matrix = selected.matrix.value;
+  scaled.semantic_form.value = Mma::VariantType::
+      SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E5m2F32Ue8m0;
+  ASSERT_TRUE(scaled.matrix_logical_index().has_value());
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  selected.matrix.value = *scaled.matrix_descriptor();
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  selected.matrix.value = original_matrix;
+  scaled.semantic_form.value = Mma::VariantType::
+      SyncAlignedM8n8k4RowColF64F64F64F64;
+  EXPECT_FALSE(scaled.matrix_logical_index().has_value());
+  EXPECT_EQ(scaled.matrix_descriptor(), nullptr);
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  scaled.semantic_form.value = static_cast<Mma::VariantType>(9999);
+  EXPECT_FALSE(scaled.matrix_logical_index().has_value());
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  scaled.semantic_form.value = original_form;
+  selected.a_type.value = base::ScalarType::E5m2;
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  selected.a_type.value = base::ScalarType::E4m3;
+  selected.block_scale.value = false;
+  EXPECT_FALSE(checker::check(scaled, supported).has_value());
+  selected.block_scale.value = true;
+  EXPECT_TRUE(checker::check(scaled, supported).has_value());
   auto& a_identity = selected.a.value.elements.front()->symbol_id;
   const auto saved_identity = a_identity;
   a_identity = binding::SymbolId{.value = 999999u};

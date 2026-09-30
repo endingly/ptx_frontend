@@ -70,7 +70,7 @@ namespace generated_detail {{
 
 }}  // namespace generated_detail
 
-{emit_resolved_getter(instruction)}
+{emit_resolved_getter(instruction, backend)}
 
 {emit_checker_getter(instruction)}
 

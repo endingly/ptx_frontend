@@ -104,7 +104,7 @@ class GenerationPlanTests(unittest.TestCase):
                 for shard in shards:
                     shard.emit(context, output_path=shard.path)
                     source = shard.path.read_text(encoding="utf-8")
-                    self.assertIn("switch (instruction.variant.index())", source)
+                    self.assertIn("switch (*logical)", source)
                     self.assertIn("throw std::bad_variant_access{};", source)
                     indices = {int(match) for match in re.findall(
                         r"^    case (\d+):", source, flags=re.MULTILINE)}
@@ -126,8 +126,46 @@ class GenerationPlanTests(unittest.TestCase):
                 dispatcher.emit(context, output_path=dispatcher.path)
                 dispatch_source = dispatcher.path.read_text(encoding="utf-8")
                 self.assertIn("instruction.execution_predicate", dispatch_source)
-                self.assertIn(f"instruction.variant.index() / {MATRIX_REFERENCE_SHARD_SIZE}",
+                self.assertIn(f"*logical / {MATRIX_REFERENCE_SHARD_SIZE}",
                               dispatch_source)
+
+    def test_matrix_logical_forms_share_only_exact_storage_signatures(self) -> None:
+        """Bound physical alternatives while retaining every logical form."""
+
+        from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
+        from ptx_frontend.ir.resolved_ir import ResolvedFieldStorage
+
+        context = build_generation_context(self.database, self.backend)
+        expected = {"mma": (360, 13), "wmma": (552, 9),
+                    "ldmatrix": (54, 9), "stmatrix": (27, 4),
+                    "movmatrix": (1, 1)}
+        for instruction in context.instructions:
+            if instruction.opcode not in expected:
+                continue
+            plan = matrix_storage_plan(instruction, context.backend)
+            self.assertIsNotNone(plan)
+            assert plan is not None
+            self.assertEqual((len(instruction.variants), len(plan.representatives)),
+                             expected[instruction.opcode])
+            self.assertLessEqual(len(plan.representatives), 64)
+            self.assertEqual(len(plan.storage_indexes), len(instruction.variants))
+            for index, storage_index in enumerate(plan.storage_indexes):
+                self.assertGreaterEqual(storage_index, 0)
+                self.assertLess(storage_index, len(plan.representatives))
+                self.assertEqual(
+                    plan.storage_name(instruction, index),
+                    instruction.variants[plan.representatives[storage_index]].cpp_name,
+                )
+        for opcode, name in (
+            ("mma", "mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32"),
+            ("ldmatrix", "ldmatrix_sync_aligned_m8n8_x2_shared_b16"),
+        ):
+            instruction = next(value for value in context.instructions
+                               if value.opcode == opcode)
+            seed = next(value for value in instruction.variants
+                        if value.variant_id == name)
+            self.assertTrue(any(field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+                                for field in seed.modifier_fields))
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)

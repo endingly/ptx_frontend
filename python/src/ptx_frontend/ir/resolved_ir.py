@@ -622,8 +622,16 @@ def _build_variant(
         for modifier in variant.modifiers
         if modifier.presence != ModifierPresence.ABSENT
     )
+    legacy_matrix_forms = {
+        "mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32",
+        "ldmatrix_sync_aligned_m8n8_x2_shared_b16",
+    }
+    promote_fixed_matrix_modifiers = (
+        variant.matrix is not None and variant.name not in legacy_matrix_forms
+    )
     modifier_fields = tuple(
-        _build_modifier_field(modifier) for modifier in active_modifiers
+        _build_modifier_field(modifier, promote_fixed_matrix_modifiers)
+        for modifier in active_modifiers
     )
     operand_layouts = tuple(
         _build_operand_layout(
@@ -1113,7 +1121,10 @@ def _build_operand_layout(
     )
 
 
-def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
+def _build_modifier_field(
+    modifier: ModifierSpec, promote_fixed_matrix_modifier: bool = False
+) -> ResolvedField:
+    """Lower a modifier, retaining fixed new matrix controls as owned values."""
     try:
         value_kind = modifier_value_kind(modifier.kind)
     except ValueError as error:
@@ -1138,7 +1149,8 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
         source_name=modifier.name,
         storage=(
             ResolvedFieldStorage.STATIC_CONSTANT
-            if modifier.presence == ModifierPresence.FIXED
+            if (modifier.presence == ModifierPresence.FIXED
+                and not promote_fixed_matrix_modifier)
             else ResolvedFieldStorage.INSTANCE
         ),
         constant_value=(

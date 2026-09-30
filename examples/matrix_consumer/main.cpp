@@ -58,10 +58,23 @@ int main() {
     return 1;
   using Scaled = ir::Mma::SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E4m3F32Ue8m0;
   auto* selected = std::get_if<Scaled>(&mma->variant);
-  if (!require(selected != nullptr, "scaled alternative is selected"))
+  if (!require(selected != nullptr, "scaled storage is selected"))
+    return 1;
+  const auto logical = mma->matrix_logical_index();
+  const auto* canonical = mma->matrix_descriptor();
+  if (!require(logical.has_value() && canonical != nullptr &&
+                   mma->semantic_form.value ==
+                       ir::Mma::VariantType::
+                           SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E4m3F32Ue8m0 &&
+                   selected->a_type.value ==
+                       ptx_frontend::base::ScalarType::E4m3 &&
+                   selected->b_type.value ==
+                       ptx_frontend::base::ScalarType::E4m3,
+               "owned logical form and typed modifiers identify the exact form"))
     return 1;
   const ir::MatrixInstructionDescriptor& descriptor = selected->matrix.value;
-  if (!require(descriptor.family == ir::MatrixFamily::MMA &&
+  if (!require(descriptor == *canonical &&
+                   descriptor.family == ir::MatrixFamily::MMA &&
                    descriptor.kind == ir::MatrixKind::MXF8F6F4 &&
                    descriptor.shape == ir::MatrixShape{16, 8, 32} &&
                    descriptor.scale_type == ir::MatrixScaleType::UE8M0 &&

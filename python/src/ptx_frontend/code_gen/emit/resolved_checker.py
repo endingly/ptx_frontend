@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
+from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
 from ptx_frontend.spec.model import CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
@@ -119,6 +120,7 @@ CheckResult check<{instruction.cpp_name}>(
 
 
 def emit_check_specialization(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
+    storage = matrix_storage_plan(instruction, backend)
     variant_lambdas = "\n\n".join(
         _emit_check_variant_lambda(instruction, index, variant, backend)
         for index, variant in enumerate(instruction.variants)
@@ -126,16 +128,41 @@ def emit_check_specialization(instruction: ResolvedInstruction, backend: Codegen
     visitor_lambdas = ", ".join(
         _check_lambda_name(instruction, variant) for variant in instruction.variants
     )
+    if storage:
+        dispatch_cases = "\n".join(
+            f"    case {index}:\n"
+            f"      variant_check = {_check_lambda_name(instruction, variant)}("
+            f"std::get<{storage.storage_indexes[index]}>(instruction.variant));\n"
+            "      break;"
+            for index, variant in enumerate(instruction.variants)
+        )
+        dispatch = f"""  const auto selected_form = instruction.matrix_logical_index();
+  if (!selected_form) {{
+    return std::unexpected(CheckDiagnostics{{CheckDiagnostic{{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = instruction.semantic_form.locs.empty()
+            ? context.instruction_range : instruction.semantic_form.locs.front(),
+        .message = "Owned matrix logical form does not match its storage.",
+    }}}});
+  }}
+  CheckResult variant_check{{}};
+  switch (*selected_form) {{
+{dispatch_cases}
+    default:
+      throw std::bad_variant_access{{}};
+  }}"""
+    else:
+        dispatch = f"""  const auto variant_check =
+      std::visit(detail::Overloaded{{{visitor_lambdas}}}, instruction.variant);"""
     return f"""\
 template <>
 CheckResult check<{instruction.cpp_name}>(
     const {instruction.cpp_name}& instruction, const Context& context) {{
-  const auto execution_predicate_check = check_execution_predicate(
-      instruction.execution_predicate, context);
+{'' if storage else '  const auto execution_predicate_check = check_execution_predicate(instruction.execution_predicate, context);'}
 {variant_lambdas}
 
-  const auto variant_check =
-      std::visit(detail::Overloaded{{{visitor_lambdas}}}, instruction.variant);
+{dispatch}
+  {'const auto execution_predicate_check = check_execution_predicate(instruction.execution_predicate, context);' if storage else ''}
   if (execution_predicate_check && variant_check)
     return {{}};
   CheckDiagnostics diagnostics;
@@ -241,7 +268,7 @@ def _emit_check_operand_dispatch(
     )
     cross_rule_checks = _emit_cross_rule_checks(instruction, variant, checker_variant_expr)
     matrix_arg = (
-        f", &{instruction.cpp_name}::{variant.cpp_name}::matrix_contract"
+        f", &*{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}].matrix"
         if variant.matrix is not None else ""
     )
     if len(variant.operand_layouts) == 1:
@@ -338,7 +365,7 @@ def _emit_check_multi_layout_lambda(
         emit_check_operand_view(field, "payload", backend) for field in layout.fields
     )
     matrix_arg = (
-        f", &{instruction.cpp_name}::{variant.cpp_name}::matrix_contract"
+        f", &*{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}].matrix"
         if variant.matrix is not None else ""
     )
     cross_rule_return = f"""

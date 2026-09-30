@@ -15,8 +15,8 @@ from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
 )
+from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from .references import emit_reference_visitor
-from .matrix import emit_matrix_descriptor
 from .resolved_resolver import _emit_resolve_specialization_declaration
 from .resolved_checker import emit_check_specialization_declaration
 
@@ -109,7 +109,9 @@ def generate_resolved_ir_opcode_header(
 #pragma once
 
 #include <concepts>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -255,12 +257,40 @@ using ResolvedInstruction = std::variant<{alternatives}>;
 def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
     """Emit one opcode-level C++ resolved instruction struct."""
 
-    variant_names = ", ".join(variant.cpp_name for variant in instruction.variants)
+    storage = matrix_storage_plan(instruction, backend)
+    variant_names = ", ".join(
+        instruction.variants[index].cpp_name for index in storage.representatives
+    ) if storage else ", ".join(variant.cpp_name for variant in instruction.variants)
     variant_enum_values = "\n".join(
         f"    {variant.cpp_name}," for variant in instruction.variants
     )
     variant_definitions = "\n\n".join(
-        _emit_resolved_variant_definition(variant, backend) for variant in instruction.variants
+        _emit_resolved_variant_definition(
+            instruction.variants[index], backend,
+            shared=storage is not None and storage.storage_indexes.count(physical_index) > 1,
+        )
+        for physical_index, index in enumerate(
+            storage.representatives if storage else range(len(instruction.variants))
+        )
+    )
+    if storage:
+        aliases = "\n".join(
+            f"  /** Alias for logical form {variant.variant_id}; semantic_form selects its contract. */\n"
+            f"  using {variant.cpp_name} = {storage.storage_name(instruction, index)};"
+            for index, variant in enumerate(instruction.variants)
+            if index not in storage.representatives
+        )
+        variant_definitions += "\n\n" + aliases
+    storage_map = (
+        "  /** Physical alternative index for each canonical logical form. */\n"
+        f"  inline static constexpr std::array<uint16_t, {len(storage.storage_indexes)}> "
+        "storage_index_by_form = {"
+        + ", ".join(str(value) for value in storage.storage_indexes) + "};\n"
+        "  /** Return a valid logical form only when its storage matches the tag. */\n"
+        "  std::optional<size_t> matrix_logical_index() const noexcept;\n"
+        "  /** Return the tag's canonical topology; check() validates owned fields. */\n"
+        "  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept;\n"
+        if storage else ""
     )
 
     atomic_qualifier = (
@@ -279,6 +309,8 @@ struct {instruction.cpp_name} {{
   using Variant = std::variant<{variant_names}>;
   std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
 {atomic_qualifier}\
+  {"/** Owned logical form selecting one exact canonical matrix contract. */" if storage else ""}
+  {"WithLocs<VariantType> semantic_form;" if storage else ""}
   Variant variant;
 
   static const check_end::SyntaxInstructionDescriptor&
@@ -287,15 +319,17 @@ struct {instruction.cpp_name} {{
   get_resolved_descriptor() noexcept;
   static const checker::InstructionDescriptor&
   get_checker_descriptor() noexcept;
+{storage_map}\
 }};"""
     return definition
 
 
-def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: CodegenUnit) -> str:
+def _emit_resolved_variant_definition(
+    variant: ResolvedVariant, backend: CodegenUnit, *, shared: bool = False
+) -> str:
+    """Emit one physical variant, with a comment reflecting shared storage."""
+
     matrix_contract = (
-        "    /** Canonical topology copied into owned resolution metadata. */\n"
-        "    inline static constexpr MatrixInstructionDescriptor matrix_contract =\n"
-        f"        {emit_matrix_descriptor(variant.matrix, backend)};\n"
         "    /** Owned matrix identity and source range for consumer inspection. */\n"
         "    WithLocs<MatrixInstructionDescriptor> matrix;\n"
         if variant.matrix is not None else ""
@@ -325,7 +359,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
 
     return f"""\
   // YAML: {variant.variant_id}
-  /** Resolved form for the canonical {variant.variant_id} topology. */
+  /** {"Storage shared by logical forms selected through semantic_form" if shared else f"Resolved form for the canonical {variant.variant_id} topology"}. */
   struct {variant.cpp_name} {{
     /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
     inline static constexpr ConditionCodeEffect condition_code_effect =

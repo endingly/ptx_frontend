@@ -77,6 +77,15 @@ TEST(WmmaCoverage, ResolvesOwnedF16PipelineAndChecksTarget) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
   auto& load_a = std::get<Wmma::LoadAM16n16k16RowGlobalF16>(load.variant);
+  ASSERT_TRUE(load.matrix_logical_index().has_value());
+  ASSERT_NE(load.matrix_descriptor(), nullptr);
+  EXPECT_EQ(load_a.matrix.value, *load.matrix_descriptor());
+  const auto original_form = load.semantic_form.value;
+  load.semantic_form.value =
+      Wmma::VariantType::LoadAM16n16k16ColGlobalF16;
+  ASSERT_TRUE(load.matrix_logical_index().has_value());
+  EXPECT_FALSE(checker::check(load, supported).has_value());
+  load.semantic_form.value = original_form;
   auto& load_operands =
       std::get<Wmma::LoadAM16n16k16RowGlobalF16::ExplicitStrideOperands>(
           load_a.operands);

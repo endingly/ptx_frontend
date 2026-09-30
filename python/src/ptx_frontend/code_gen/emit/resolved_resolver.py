@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
+from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage,
@@ -117,8 +118,8 @@ def emit_resolve_specialization(instruction: ResolvedInstruction, backend: Codeg
     """Emit one resolver specialization definition for category composition."""
 
     variant_cases = "\n".join(
-        _emit_resolve_variant_case(instruction, variant, backend)
-        for variant in instruction.variants
+        _emit_resolve_variant_case(instruction, variant, index, backend)
+        for index, variant in enumerate(instruction.variants)
     )
     return f"""\
 template <>
@@ -145,12 +146,18 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
 def _emit_resolve_variant_case(
     instruction: ResolvedInstruction,
     variant: ResolvedVariant,
+    variant_index: int,
     backend: CodegenUnit,
 ) -> str:
     matrix_initializer = (
         ".matrix = WithLocs<MatrixInstructionDescriptor>{"
-        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range}},\n"
+        f"*{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}].matrix, ast.range}},\n"
         if variant.matrix is not None else ""
+    )
+    semantic_form_initializer = (
+        f".semantic_form = WithLocs<{instruction.cpp_name}::VariantType>{{"
+        f"{instruction.cpp_name}::VariantType::{variant.cpp_name}, ast.range}},\n        "
+        if matrix_storage_plan(instruction, backend) else ""
     )
     atomic_qualifier = (
         ".address_qualifier = atomic_address_qualifier_from_ast(ast),\n        "
@@ -167,6 +174,7 @@ def _emit_resolve_variant_case(
     return {instruction.cpp_name}{{
         .execution_predicate = std::move(fields->execution_predicate),
         {atomic_qualifier}\
+        {semantic_form_initializer}\
         .variant = {instruction.cpp_name}::{variant.cpp_name}{{
                    .operand_layout = fields->operand_layout,
                    {matrix_initializer}\
@@ -175,7 +183,7 @@ def _emit_resolve_variant_case(
   }}"""
 
     layout_cases = "\n".join(
-        _emit_resolve_multi_layout_case(instruction, variant, index, backend)
+        _emit_resolve_multi_layout_case(instruction, variant, variant_index, index, backend)
         for index, _ in enumerate(variant.operand_layouts)
     )
     fields = "\n".join(
@@ -193,13 +201,19 @@ def _emit_resolve_variant_case(
 def _emit_resolve_multi_layout_case(
     instruction: ResolvedInstruction,
     variant: ResolvedVariant,
+    variant_index: int,
     layout_index: int,
     backend: CodegenUnit,
 ) -> str:
     matrix_initializer = (
         ".matrix = WithLocs<MatrixInstructionDescriptor>{"
-        f"{instruction.cpp_name}::{variant.cpp_name}::matrix_contract, ast.range}},\n"
+        f"*{instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}].matrix, ast.range}},\n"
         if variant.matrix is not None else ""
+    )
+    semantic_form_initializer = (
+        f".semantic_form = WithLocs<{instruction.cpp_name}::VariantType>{{"
+        f"{instruction.cpp_name}::VariantType::{variant.cpp_name}, ast.range}},\n          "
+        if matrix_storage_plan(instruction, backend) else ""
     )
     layout = variant.operand_layouts[layout_index]
     atomic_qualifier = (
@@ -220,6 +234,7 @@ def _emit_resolve_multi_layout_case(
       return {instruction.cpp_name}{{
           .execution_predicate = std::move(fields->execution_predicate),
           {atomic_qualifier}\
+          {semantic_form_initializer}\
           .variant = {instruction.cpp_name}::{variant.cpp_name}{{
               .operand_layout = fields->operand_layout,
               {matrix_initializer}\

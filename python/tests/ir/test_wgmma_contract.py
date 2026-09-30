@@ -16,6 +16,7 @@ from ptx_frontend.code_gen.emit.matrix_private_shards import (
     matrix_private_shard_count,
 )
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.spec.database import (
     _validate_variant_modifier_exclusivity,
     load_codegen_database_from_files,
@@ -182,6 +183,18 @@ class WgmmaContractTests(unittest.TestCase):
                     r"case (\d+): return check_", path.read_text()
                 )]
                 self.assertEqual(cases, list(range(*intervals[shard])))
+                expected_scale_d_checks = sum(
+                    any(
+                        field.value_kind is ResolvedValueKind.WGMMA_SCALE_D
+                        for layout in variant.operand_layouts
+                        for field in layout.fields
+                    )
+                    for variant in instruction.variants[slice(*intervals[shard])]
+                )
+                self.assertEqual(
+                    path.read_text().count("check_wgmma_scale_d("),
+                    expected_scale_d_checks,
+                )
 
 
 if __name__ == "__main__":

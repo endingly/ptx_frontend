@@ -106,6 +106,83 @@ TEST(WgmmaCoverage, OwnsDenseSparseAndProtocolContracts) {
   EXPECT_FALSE(checker::check(wait, context).has_value());
 }
 
+/** Retain the source-only scale-d predicate domain after the AST is released. */
+TEST(WgmmaCoverage, RejectsOwnedScaleDPredicateMutation) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90a
+.address_size 64
+.entry kernel() {
+  .reg .pred %p;
+  .reg .b32 %d<2>;
+  .reg .b64 %a, %b;
+  wgmma.mma_async.sync.aligned.m64n8k16.f16.f16.f16
+    {%d0,%d1}, %a, %b, %p, 1, 1, 0, 0;
+  wgmma.mma_async.sync.aligned.m64n8k16.f16.f16.f16
+    {%d0,%d1}, %a, %b, 0, 1, 1, 0, 0;
+  wgmma.mma_async.sync.aligned.m64n8k16.f16.f16.f16
+    {%d0,%d1}, %a, %b, 1, 1, 1, 0, 0;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned = std::move(*resolved);
+  }
+  auto& body = owned->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+  const auto profile = base::find_target_profile("sm_90a");
+  ASSERT_TRUE(profile.has_value());
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = profile->identity.architecture.number,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities},
+  };
+  for (const auto& item : body) {
+    ASSERT_NE(item.get_if<Wgmma>(), nullptr);
+    EXPECT_TRUE(checker::check(*item.get_if<Wgmma>(), context).has_value());
+  }
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  auto& wgmma = *body[0].get_if<Wgmma>();
+  auto& selected =
+      std::get<Wgmma::MmaAsyncDenseM64n8k16F16F16F16SharedPlain>(wgmma.variant);
+  auto& predicate = std::get<ResolvedPredicate>(selected.scale_d.value);
+  const ResolvedPredicate original = predicate;
+  const auto rejects_mutation = [&]() {
+    EXPECT_FALSE(checker::check(wgmma, context).has_value());
+    EXPECT_FALSE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+            .has_value());
+    predicate = original;
+  };
+  predicate.negated = true;
+  rejects_mutation();
+  predicate.register_ref.register_class = ResolvedRegisterClass::General;
+  rejects_mutation();
+  predicate.register_ref.declared_type = ScalarType::F32;
+  rejects_mutation();
+  predicate.register_ref.vector_width = 2;
+  rejects_mutation();
+  EXPECT_TRUE(checker::check(wgmma, context).has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+
+  const auto& zero = std::get<Wgmma::MmaAsyncDenseM64n8k16F16F16F16SharedPlain>(
+      body[1].get_if<Wgmma>()->variant);
+  const auto& one = std::get<Wgmma::MmaAsyncDenseM64n8k16F16F16F16SharedPlain>(
+      body[2].get_if<Wgmma>()->variant);
+  EXPECT_FALSE(std::get<ResolvedPredicateConstant>(zero.scale_d.value).value);
+  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(one.scale_d.value).value);
+}
+
 /** A malformed register pack retains its topology selection and lane error. */
 TEST(WgmmaCoverage, RejectsMalformedRegisterFragment) {
   const auto parsed = test_helpers::parseModule(R"ptx(

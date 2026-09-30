@@ -2467,6 +2467,27 @@ CheckResult check_wgmma_scales(std::span<const OperandView> operands,
   return {};
 }
 
+/** Validate the owned WGMMA accumulation control before lossy view projection. */
+CheckResult check_wgmma_scale_d(
+    const WithLocs<ResolvedPredicateSource>& scale_d, const Context& context) {
+  if (std::holds_alternative<ResolvedPredicateConstant>(scale_d.value))
+    return {};
+  if (const auto* predicate = std::get_if<ResolvedPredicate>(&scale_d.value)) {
+    const auto& reg = predicate->register_ref;
+    if (!predicate->negated &&
+        reg.register_class == ResolvedRegisterClass::Predicate &&
+        (!reg.declared_type || *reg.declared_type == ScalarType::Pred) &&
+        !reg.vector_width)
+      return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(scale_d.locs, context),
+      .message =
+          "WGMMA scale-d requires a plain scalar predicate or 0/1 constant.",
+  }});
+}
+
 /** Validate source-known createpolicy fraction and range-size values. */
 CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
                                     const Context& context) {

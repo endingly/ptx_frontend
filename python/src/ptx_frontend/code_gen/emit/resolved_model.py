@@ -320,6 +320,9 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
     /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
     inline static constexpr ConditionCodeEffect condition_code_effect =
         {condition_code_cpp_value(variant.condition_code_effect)};
+    /** Instruction-local completion identity; no runtime group state is implied. */
+    inline static constexpr base::AsyncCompletionKind completion_kind =
+        base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
     ResolvedOperandLayoutTag operand_layout;
 {body}
   }};"""

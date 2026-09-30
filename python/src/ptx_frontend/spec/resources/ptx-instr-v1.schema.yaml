@@ -784,6 +784,7 @@ $defs:
           - exact
           - same_width
           - equal_or_wider
+          - word_or_doubleword
         default: same_width
 
       immediate_conversion:
@@ -1530,6 +1531,11 @@ $defs:
         description: "Implicit CC.CF access when the predicated instruction executes."
         type: string
         enum: [none, carry_out, carry_in, carry_in_out, borrow_out, borrow_in, borrow_in_out]
+
+      completion_kind:
+        description: "Instruction-local asynchronous completion mechanism."
+        type: string
+        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes]
 
       name:
         $ref: "#/$defs/schema_identifier"

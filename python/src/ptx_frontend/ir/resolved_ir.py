@@ -12,6 +12,7 @@ from typing import overload
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
+    AsyncCompletionKind,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     AddressAlignmentConstraint,
@@ -183,6 +184,7 @@ class ResolvedRegisterWidthPolicy(Enum):
     EXACT = "exact"
     SAME_WIDTH = "same_width"
     EQUAL_OR_WIDER = "equal_or_wider"
+    WORD_OR_DOUBLEWORD = "word_or_doubleword"
 
 
 class ResolvedImmediateConversionPolicy(Enum):
@@ -326,6 +328,7 @@ class ResolvedVariant:
     rule: SemanticRule | None
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
+    completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
 
     @property
@@ -634,6 +637,7 @@ def _build_variant(
     return ResolvedVariant(
         variant_id=variant.name,
         condition_code_effect=variant.condition_code_effect,
+        completion_kind=variant.completion_kind,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
         modifier_bindings=tuple(

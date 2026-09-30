@@ -109,6 +109,7 @@ enum class ScalarTypeSizePolicy : uint8_t {
   Exact,
   SameWidth,
   EqualOrWider,
+  WordOrDoubleword,
 };
 
 /** Semantic value of a PTX floating-point rounding modifier. */
@@ -218,6 +219,15 @@ enum class MemoryScope : uint8_t {
   Cluster,
   Gpu,
   Sys,
+};
+
+/** Completion mechanism of an asynchronous instruction variant. Group values
+ * describe per-thread instruction classes, not runtime group instances. */
+enum class AsyncCompletionKind : uint8_t {
+  None,
+  AsyncGroup,
+  BulkGroup,
+  MbarrierCompleteTxBytes,
 };
 
 /** Semantic value of a PTX mbarrier .phase_type qualifier. */

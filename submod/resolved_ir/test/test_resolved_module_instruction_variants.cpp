@@ -2392,6 +2392,20 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   const auto wrong_register = resolveModule(*parsed_module_4);
   ASSERT_FALSE(wrong_register.has_value());
 
+  const auto parsed_transpose = parseModule(R"ptx(
+.shared .align 16 .b16 shared_value;
+.entry kernel() { .reg .b32 %r<2>;
+  ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16
+    {%r0, %r1}, [shared_value]; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_transpose);
+  const auto transpose = resolveModule(*parsed_transpose);
+  ASSERT_TRUE(transpose.has_value()) << transpose.error().front().message;
+  EXPECT_TRUE(checker::check(
+                  *transpose->functions.front().body.front().get_if<Ldmatrix>(),
+                  context)
+                  .has_value());
+
   for (const auto source : {
            ".entry kernel() { .reg .b32 %r<3>; .shared .b16 x; "
            "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0}, [x]; }",
@@ -2401,8 +2415,6 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
            "ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
-           "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
        }) {
@@ -2497,6 +2509,49 @@ TEST(ResolvedModule, ResolvesAndChecksMmaSyncAlignedM16n8k8RowColSlice) {
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
     ASSERT_FALSE(resolveModule(*parsed_module_2).has_value()) << source;
   }
+}
+
+TEST(ResolvedModule, OwnsAndRechecksTypedMatrixTopologyAfterAstRelease) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.entry kernel() {
+  .reg .f32 %d<4>;
+  .reg .f32 %c<4>;
+  .reg .f16x2 %a<2>;
+  .reg .f16x2 %b<1>;
+  mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
+    {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned = std::move(*resolved);
+  }
+
+  auto& instruction = *owned->functions.front().body.front().get_if<Mma>();
+  auto& variant =
+      std::get<Mma::SyncAlignedM16n8k8RowColF32F16F16F32>(instruction.variant);
+  ASSERT_FALSE(variant.matrix.locs.empty());
+  EXPECT_EQ(variant.matrix.value.family, MatrixFamily::MMA);
+  EXPECT_EQ(variant.matrix.value.shape, (MatrixShape{16, 8, 8}));
+  EXPECT_EQ(variant.matrix.value.a_layout, MatrixLayout::ROW);
+  EXPECT_EQ(variant.matrix.value.b_layout, MatrixLayout::COL);
+  ASSERT_EQ(variant.matrix.value.fragment_count, 4);
+  EXPECT_EQ(variant.matrix.value.fragments[0].register_count, 4);
+  EXPECT_EQ(variant.matrix.value.fragments[1].register_type, ScalarType::F16x2);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = variant.matrix.locs.front(),
+  };
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+
+  variant.matrix.value.shape.k = 16;
+  const auto changed = checker::check(instruction, context);
+  ASSERT_FALSE(changed.has_value());
+  EXPECT_EQ(changed.error().front().kind,
+            checker::CheckDiagnosticKind::RuleViolation);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksMembarLevels) {

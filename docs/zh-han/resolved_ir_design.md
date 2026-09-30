@@ -404,7 +404,7 @@ struct Add {
 };
 ```
 
-fixed modifier 不作为每个 instruction instance 的可写状态保存。合并后的 `Add::Sat`
+在紧凑 matrix storage 以外，fixed modifier 不作为每个 instruction instance 的可写状态保存。合并后的 `Add::Sat`
 中，`.sat` 固定，而 type 是带独立 availability 的 allowed value，因此生成：
 
 ```cpp
@@ -413,6 +413,8 @@ WithLocs<ScalarType> type;
 ```
 
 这既避免后续 pass 重复判定固定事实，也保留了实际 type 及其源码位置。
+
+五个 warp-matrix opcode 用紧凑 representation 承载大量逻辑 form。每个外层 instruction 拥有 `WithLocs<VariantType> semantic_form`；其 `std::variant` alternative 保存物理 operand，多个具名逻辑 form 可以共用同一 alternative，因此 C++ form alias 或 `std::get<NamedForm>` 只能识别 storage，不能单独确定完整操作。`matrix_logical_index()` 先检查 tag 范围，再用 `storage_index_by_form` 确认它与实际 alternative 的对应关系；只有两者均合法才返回逻辑索引。`matrix_descriptor()` 对合法的 tag/storage 组合返回静态 canonical `MatrixInstructionDescriptor`，否则返回 null；这个指针本身不证明可变 instruction 已通过验证。为了共用 storage 而提升的 fixed suffix control 保存为 owned `WithLocs<ScalarType>` 或 `WithLocs<bool>`，既有两个具体 seed form 仍保留静态字段。`checker::check()` 和 module validation 对照准确的逻辑 descriptor 检查当前 control、owned matrix topology、operand 与 availability，包括 IR 被修改之后。
 
 一个 variant 可以有多个同 kind 的具名 modifier slot。mixed-precision Add 例如生成
 `static constexpr result_type = F32` 与动态的 `WithLocs<ScalarType> input_type`；三个

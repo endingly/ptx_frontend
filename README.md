@@ -13,6 +13,13 @@ supported surface and its exclusions.
 
 - [English documentation](docs/us-en/) and [简体中文文档](docs/zh-han/) cover
   design decisions, public contracts, and per-family support boundaries.
+- [Warp-level matrix coverage](docs/us-en/syntax_coverage.md#ptx-93-warp-level-matrix)
+  and its [简体中文版本](docs/zh-han/syntax_coverage.md#ptx-93-warp-level-matrix)
+  describe the modelled PTX 9.3 `ldmatrix`/`stmatrix`/`movmatrix`, dense and
+  sparse `mma`, and WMMA compatibility forms, including excluded historical
+  forms. Logical PTX forms retain individual contracts even when they share
+  generated C++ storage. The coverage page records current local build and test
+  results; assembler comparisons remain sampled.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

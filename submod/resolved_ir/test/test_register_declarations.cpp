@@ -104,6 +104,12 @@ TEST(RegisterDeclarations, RejectsInstructionOnlyFormatsAtDeclarationTime) {
   .reg .u8x4 %packed_integer;
   .reg .f32x2 %packed_float;
   .reg .e4m3x2 %packed_fp8;
+  .reg .b1 %logical_bit;
+  .reg .e3m2 %fp6_a;
+  .reg .e2m3 %fp6_b;
+  .reg .e2m1 %fp4;
+  .reg .ue8m0 %scale_e8;
+  .reg .ue4m3 %scale_e4;
   ret;
 }
 )ptx");
@@ -115,7 +121,7 @@ TEST(RegisterDeclarations, RejectsInstructionOnlyFormatsAtDeclarationTime) {
   EXPECT_EQ(declarationCount(diagnostics,
                              declaration_semantics::DeclarationDiagnosticKind::
                                  UnsupportedRegisterDeclarationType),
-            5u);
+            11u);
   EXPECT_EQ(declarationCount(diagnostics,
                              declaration_semantics::DeclarationDiagnosticKind::
                                  UnknownRegisterDeclarationType),

@@ -20,6 +20,7 @@
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include <fmt/format.h>
@@ -453,6 +454,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -540,6 +542,10 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
+    for (const RegOrImm* element : {&value.byte_id, &value.thread_id})
+      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(element))
+        collect_register(*register_ref);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -607,6 +613,7 @@ void collect_owned_reference(detail::OwnedReferenceView view,
   PTX_COLLECT_OWNED_REFERENCE(ResolvedSymbolRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedMatrixScaleSelector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)
@@ -718,6 +725,7 @@ void check_module_references(const ResolvedModule& module,
                              checker::CheckDiagnostics& diagnostics) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
+    const size_t first_use = uses.size();
     /** Borrowed collection state used only during this instruction's visit. */
     struct SinkState {
       /** Destination preserving descriptor order. */
@@ -725,14 +733,24 @@ void check_module_references(const ResolvedModule& module,
       /** Owned source location used when a field has no explicit location. */
       SourceRange fallback;
     } state{uses, function.instruction_ranges[index]};
-    function.body[index].visit_references(detail::OwnedReferenceSink{
-        .state = &state,
-        .accept =
-            [](void* opaque, detail::OwnedReferenceView view) {
-              auto& current = *static_cast<SinkState*>(opaque);
-              collect_owned_reference(view, current.fallback, current.uses);
-            },
-    });
+    try {
+      function.body[index].visit_references(detail::OwnedReferenceSink{
+          .state = &state,
+          .accept =
+              [](void* opaque, detail::OwnedReferenceView view) {
+                auto& current = *static_cast<SinkState*>(opaque);
+                collect_owned_reference(view, current.fallback, current.uses);
+              },
+      });
+    } catch (const std::bad_variant_access&) {
+      uses.resize(first_use);
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = function.instruction_ranges[index],
+          .message = "Owned instruction reference traversal cannot select "
+                     "its logical form or storage.",
+      });
+    }
   }
   for (const auto& use : uses) {
     if (!use.symbol_id) {

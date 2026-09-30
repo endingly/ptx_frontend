@@ -77,6 +77,125 @@ constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   }
   return 0;
 }
+/** Warp-level instruction family retained independently of opcode spelling. */
+enum class MatrixFamily : uint8_t {
+  LDMATRIX,
+  STMATRIX,
+  MOVMATRIX,
+  MMA,
+  MMA_SPARSE,
+  WMMA_LOAD,
+  WMMA_STORE,
+  WMMA_MMA
+};
+/** Logical matrix element, independent of register packing and declaration type. */
+enum class MatrixElementType : uint8_t {
+  B1,
+  B8,
+  B8X16,
+  B16,
+  B4X16_P64,
+  B6X16_P32,
+  F16,
+  BF16,
+  TF32,
+  F32,
+  F64,
+  S8,
+  U8,
+  S32,
+  S4,
+  U4,
+  E4M3,
+  E5M2,
+  E3M2,
+  E2M3,
+  E2M1
+};
+/** Row or column placement of a logical matrix operand. */
+enum class MatrixLayout : uint8_t { NONE, ROW, COL };
+/** MMA numeric format; block-scaled formats retain their distinct identity. */
+enum class MatrixKind : uint8_t { CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4 };
+/** Single-bit multiply replacement before population count. */
+enum class MatrixBitOperation : uint8_t { NONE, XOR, AND };
+/** Sparse metadata ordering requirement exposed to consumers. */
+enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
+/** Logical scale-factor type selected by a block-scaled MMA form. */
+enum class MatrixScaleType : uint8_t { NONE, UE8M0, UE4M3 };
+/** Written matrix address qualifier, independent of address provenance. */
+enum class MatrixAddressQualifier : uint8_t {
+  NONE,
+  GLOBAL,
+  SHARED,
+  SHARED_CTA
+};
+/** Logical register-fragment role in a matrix instruction. */
+enum class MatrixFragmentRole : uint8_t { D, A, B, C };
+/** Logical M×N×K shape; raw matrix movement instructions use K=0. */
+struct MatrixShape {
+  uint16_t m = 0;
+  uint16_t n = 0;
+  uint16_t k = 0;
+  /** Compare logical dimensions without consulting source spelling. */
+  bool operator==(const MatrixShape&) const = default;
+};
+/** One generated register fragment's semantic role, packing, and lane count. */
+struct MatrixFragmentShape {
+  /** Stable generated operand field name; borrowed static storage. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::D;
+  MatrixElementType element_type = MatrixElementType::B16;
+  base::ScalarType register_type = base::ScalarType::Invalid;
+  /** Number of register lanes in the corresponding owned operand. */
+  uint8_t register_count = 0;
+  /** Compare semantic role and exact register-fragment contract. */
+  bool operator==(const MatrixFragmentShape&) const = default;
+};
+/** Generated immediate domains for one A/B block-scale selector tuple. */
+struct MatrixScaleSelectorDescriptor {
+  /** Static operand field name used to locate the owned two-slot tuple. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::A;
+  /** Bit i permits immediate byte ID i. */
+  uint8_t byte_mask = 0;
+  /** Largest permitted immediate thread ID, inclusive. */
+  uint8_t thread_max = 0;
+  /** Compare the full typed selector contract. */
+  bool operator==(const MatrixScaleSelectorDescriptor&) const = default;
+};
+/** Immutable generated matrix topology, copied into owned resolved metadata. */
+struct MatrixInstructionDescriptor {
+  MatrixFamily family = MatrixFamily::MMA;
+  MatrixShape shape{};
+  MatrixLayout a_layout = MatrixLayout::NONE;
+  MatrixLayout b_layout = MatrixLayout::NONE;
+  /** C/D layouts are explicit on WMMA memory forms; otherwise absent. */
+  MatrixLayout c_layout = MatrixLayout::NONE;
+  MatrixLayout d_layout = MatrixLayout::NONE;
+  MatrixKind kind = MatrixKind::CLASSIC;
+  /** Single-bit operation before population count, or NONE for other forms. */
+  MatrixBitOperation bit_operation = MatrixBitOperation::NONE;
+  MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
+  MatrixScaleType scale_type = MatrixScaleType::NONE;
+  MatrixAddressQualifier address_qualifier = MatrixAddressQualifier::NONE;
+  /** Physical source encoding when a movement operation decompresses data. */
+  std::optional<MatrixElementType> source_packing;
+  /** Register-side destination encoding for a decompressed matrix load. */
+  std::optional<MatrixElementType> destination_packing;
+  bool transpose = false;
+  /** Number of movement matrices represented by one instruction. */
+  uint8_t matrix_count = 0;
+  /** Logical block-scale vector width; zero when scaling is absent. */
+  uint8_t scale_vector_size = 0;
+  /** Only the first fragment_count entries are live. */
+  std::array<MatrixFragmentShape, 4> fragments{};
+  uint8_t fragment_count = 0;
+  /** The first scale_selector_count entries describe A/B selector operands. */
+  std::array<MatrixScaleSelectorDescriptor, 2> scale_selectors{};
+  uint8_t scale_selector_count = 0;
+  /** Compare the complete instruction-local topology and controls. */
+  bool operator==(const MatrixInstructionDescriptor&) const = default;
+};
 /** Function provenance retained for resolved memory addresses. */
 enum class EnclosingFunctionKind : uint8_t { Unknown, Entry, Device };
 /** Parameter role independent of binding-layer enum types. */
@@ -159,7 +278,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 /** Fixed DNF capacity shared by generated availability descriptors. */
-inline constexpr size_t kMaxAvailabilityClauses = 5;
+inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 /** One AND-clause in a bounded generated target-availability expression. */
@@ -332,6 +451,14 @@ struct OperandView {
       ParameterAddressQualifier::Default;
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
+  /** Original integer source for each immediate vector lane, when present. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_source_bits{};
+  /** Current owned integer payload for each immediate vector lane. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_bits{};
+  /** Signed negativity accompanies vector_immediate_source_bits. */
+  std::array<bool, kMaxOperandElements> vector_immediate_negative{};
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
@@ -764,6 +891,13 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Owned block-scale selector pair in PTX byte-ID then thread-ID order. */
+struct ResolvedMatrixScaleSelector {
+  RegOrImm byte_id;
+  RegOrImm thread_id;
+  /** Compare both selector values after the syntax tree is released. */
+  bool operator==(const ResolvedMatrixScaleSelector&) const = default;
+};
 struct ResolvedTensorCoordinate {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedTensorCoordinate&) const = default;

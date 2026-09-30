@@ -29,6 +29,11 @@ from ptx_frontend.code_gen.emit.resolved_resolver import (
     generate_resolved_ir_resolution_category_declarations_header,
     generate_resolved_ir_resolution_declarations_header,
 )
+from ptx_frontend.code_gen.emit.references_private import (
+    generate_matrix_reference_dispatcher,
+    generate_matrix_reference_shard,
+    matrix_reference_shard_count,
+)
 from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
 )
@@ -297,6 +302,30 @@ def build_generation_plan(
             )
             for opcode in _category_opcodes(context, category)
         )
+        if category == "matrix":
+            for opcode in _category_opcodes(context, category):
+                instruction = next(
+                    entry.resolved for entry in context.entries
+                    if entry.specification.codegen_category == category
+                    and entry.specification.opcode == opcode
+                )
+                artifacts.append(
+                    _opcode_artifact(
+                        path=output_dir / f"private/resolved_ir_matrix_references_{opcode}_dispatch.gen.cpp",
+                        category=category,
+                        opcode=opcode,
+                        emitter=generate_matrix_reference_dispatcher,
+                    )
+                )
+                for shard in range(matrix_reference_shard_count(instruction)):
+                    artifacts.append(
+                        _matrix_reference_shard_artifact(
+                            path=output_dir / f"private/resolved_ir_matrix_references_{opcode}_shard_{shard:03d}.gen.cpp",
+                            category=category,
+                            opcode=opcode,
+                            shard=shard,
+                        )
+                    )
 
     # ------------------------------------------------------------------
     # Ownership sanity check.
@@ -375,6 +404,21 @@ def _opcode_artifact(
 
         emitter(
             context, category=category, opcode=opcode, output_path=output_path
+        )
+
+    return GeneratedArtifact(path=path, emit=bound, category=category)
+
+
+def _matrix_reference_shard_artifact(
+    *, path: Path, category: str, opcode: str, shard: int
+) -> GeneratedArtifact:
+    """Bind one matrix reference shard to a category-owned output path."""
+
+    def bound(context: GenerationContext, *, output_path: Path) -> None:
+        """Emit the exact bounded variant interval of this shard."""
+
+        generate_matrix_reference_shard(
+            context, opcode=opcode, shard=shard, output_path=output_path
         )
 
     return GeneratedArtifact(path=path, emit=bound, category=category)

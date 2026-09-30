@@ -26,6 +26,7 @@ REFERENCE_VALUE_KINDS = frozenset({
     ResolvedValueKind.ADDRESS,
     ResolvedValueKind.REGISTER_VECTOR,
     ResolvedValueKind.TENSOR_COORDINATE,
+    ResolvedValueKind.MATRIX_SCALE_SELECTOR,
     ResolvedValueKind.DIRECT_CALL_TARGET,
     ResolvedValueKind.INDIRECT_CALLEE,
     ResolvedValueKind.CALL_RETURN_PARAMETER,

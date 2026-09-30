@@ -2116,6 +2116,23 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::MatrixScaleSelector: {
+      auto value = resolve_tensor_coordinate(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      if (value->value.elements.size() != 2)
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "A matrix scale selector requires byte and thread IDs.",
+        });
+      WithLocs<ResolvedMatrixScaleSelector> selector{
+          ResolvedMatrixScaleSelector{
+              .byte_id = std::move(value->value.elements[0]),
+              .thread_id = std::move(value->value.elements[1]),
+          }};
+      selector.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(selector)};
+    }
     case ResolvedValueKind::DirectCallTarget: {
       auto value = resolve_direct_call_target(operand, context);
       if (!value)

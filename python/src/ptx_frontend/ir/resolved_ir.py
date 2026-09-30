@@ -22,6 +22,7 @@ from ptx_frontend.spec.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MatrixSpec,
     MbarrierStateTokenForm,
     OperandAddressBasePolicy,
     OperandAddressOffsetDomain,
@@ -112,6 +113,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
+    OperandKind.MATRIX_SCALE_SELECTOR: ResolvedValueKind.MATRIX_SCALE_SELECTOR,
     OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
     OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
     OperandKind.INDIRECT_CALL_TARGET: ResolvedValueKind.INDIRECT_CALLEE,
@@ -313,6 +315,7 @@ class ResolvedVariant:
     modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
+    matrix: MatrixSpec | None
     modifier_value_domains: tuple["ResolvedModifierValueDomain", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
@@ -512,6 +515,7 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
+    OperandKind.MATRIX_SCALE_SELECTOR: (ResolvedOperandShape.VECTOR,),
     OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
     OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),
     OperandKind.INDIRECT_CALL_TARGET: (ResolvedOperandShape.INDIRECT_CALLEE,),
@@ -527,6 +531,9 @@ _OPERAND_ROLES = {
     OperandRole.SOURCE_1: ResolvedOperandRole.SOURCE,
     OperandRole.SOURCE_2: ResolvedOperandRole.SOURCE,
     OperandRole.SOURCE_3: ResolvedOperandRole.SOURCE,
+    OperandRole.SOURCE_4: ResolvedOperandRole.SOURCE,
+    OperandRole.METADATA: ResolvedOperandRole.SOURCE,
+    OperandRole.IMMEDIATE: ResolvedOperandRole.SOURCE,
     OperandRole.ADDRESS: ResolvedOperandRole.ADDRESS,
     OperandRole.PREDICATE: ResolvedOperandRole.PREDICATE,
     OperandRole.LABEL: ResolvedOperandRole.BRANCH_TARGET,
@@ -615,8 +622,16 @@ def _build_variant(
         for modifier in variant.modifiers
         if modifier.presence != ModifierPresence.ABSENT
     )
+    legacy_matrix_forms = {
+        "mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32",
+        "ldmatrix_sync_aligned_m8n8_x2_shared_b16",
+    }
+    promote_fixed_matrix_modifiers = (
+        variant.matrix is not None and variant.name not in legacy_matrix_forms
+    )
     modifier_fields = tuple(
-        _build_modifier_field(modifier) for modifier in active_modifiers
+        _build_modifier_field(modifier, promote_fixed_matrix_modifiers)
+        for modifier in active_modifiers
     )
     operand_layouts = tuple(
         _build_operand_layout(
@@ -649,6 +664,7 @@ def _build_variant(
             for modifier, field in zip(active_modifiers, modifier_fields, strict=True)
         ),
         operand_layouts=operand_layouts,
+        matrix=variant.matrix,
         atomic_address_qualifier_domain=(
             _build_atomic_address_qualifier_domain(atomic_policy, variant)
         ),
@@ -1105,7 +1121,10 @@ def _build_operand_layout(
     )
 
 
-def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
+def _build_modifier_field(
+    modifier: ModifierSpec, promote_fixed_matrix_modifier: bool = False
+) -> ResolvedField:
+    """Lower a modifier, retaining fixed new matrix controls as owned values."""
     try:
         value_kind = modifier_value_kind(modifier.kind)
     except ValueError as error:
@@ -1130,7 +1149,8 @@ def _build_modifier_field(modifier: ModifierSpec) -> ResolvedField:
         source_name=modifier.name,
         storage=(
             ResolvedFieldStorage.STATIC_CONSTANT
-            if modifier.presence == ModifierPresence.FIXED
+            if (modifier.presence == ModifierPresence.FIXED
+                and not promote_fixed_matrix_modifier)
             else ResolvedFieldStorage.INSTANCE
         ),
         constant_value=(

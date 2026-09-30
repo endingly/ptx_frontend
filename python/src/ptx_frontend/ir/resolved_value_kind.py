@@ -41,6 +41,7 @@ class ResolvedValueKind(Enum):
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
     TENSOR_COORDINATE = "TensorCoordinate"
+    MATRIX_SCALE_SELECTOR = "MatrixScaleSelector"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"
     BRANCH_TARGET_SET = "BranchTargetSet"

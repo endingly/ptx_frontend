@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
+from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from ptx_frontend.code_gen.reference_policy import (
     REFERENCE_VALUE_KINDS,
 )
@@ -67,26 +68,45 @@ def _reference_payload_types(
 def emit_reference_visitor(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
     """Emit typed operand visitation without a hand-maintained opcode switch."""
 
+    storage = matrix_storage_plan(instruction, backend)
     variant_cases: list[str] = []
-    for variant in instruction.variants:
+    for variant_index, variant in enumerate(instruction.variants):
         if len(variant.operand_layouts) == 1:
             body = _emit_reference_fields(variant.operand_layouts[0], "selected")
         else:
             layouts = "\n".join(
-                f"        if constexpr (std::same_as<Payload, {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands>) {{\n"
-                f"{_emit_reference_fields(layout, 'payload')}\n        }}"
-                for layout in variant.operand_layouts
+                f"      case {layout_index}: {{\n"
+                f"        const auto& payload = std::get<{layout_index}>(selected.operands);\n"
+                f"{_emit_reference_fields(layout, 'payload')}\n"
+                "        break;\n      }"
+                for layout_index, layout in enumerate(variant.operand_layouts)
             )
-            body = f"""      std::visit([&]<typename Payload>(const Payload& payload) {{
+            body = f"""      switch (selected.operands.index()) {{
 {layouts}
-      }}, selected.operands);"""
+      default:
+        throw std::bad_variant_access{{}};
+      }}"""
         variant_cases.append(
-            f"    if constexpr (std::same_as<Variant, {instruction.cpp_name}::{variant.cpp_name}>) {{\n{body}\n    }}"
+            f"    case {variant_index}: {{\n"
+            f"      const auto& selected = std::get<{storage.storage_indexes[variant_index] if storage else variant_index}>(instruction.variant);\n"
+            f"{body}\n      break;\n    }}"
         )
     visitor_requirements = " &&\n         ".join(
         "std::invocable<Visitor&, const "
         f"{payload}&, std::span<const SourceRange>, checker::AddressSymbolResolutionPolicy>"
         for payload in _reference_payload_types(instruction, backend)
+    )
+    cases = "\n".join(variant_cases)
+    dispatch = (
+        "  const auto logical = instruction.matrix_logical_index();\n"
+        "  if (!logical)\n    throw std::bad_variant_access{};\n"
+        "  switch (*logical) {"
+        if storage else "  switch (instruction.variant.index()) {"
+    )
+    validation = (
+        "  if (!instruction.matrix_logical_index())\n"
+        "    throw std::bad_variant_access{};\n"
+        if storage else ""
     )
     return f"""/**
  * Visit every binding-bearing operand selected by this resolved instruction.
@@ -99,10 +119,13 @@ template <typename Visitor>
   requires ({visitor_requirements})
 void visit_instruction_references(const {instruction.cpp_name}& instruction,
                                   Visitor&& visitor) {{
+{validation}\
   if (instruction.execution_predicate)
     visitor(instruction.execution_predicate->value, instruction.execution_predicate->locs,
             checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
-  std::visit([&]<typename Variant>(const Variant& selected) {{
-{" else ".join(variant_cases)}
-  }}, instruction.variant);
+{dispatch}
+{cases}
+    default:
+      throw std::bad_variant_access{{}};
+  }}
 }}"""

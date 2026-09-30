@@ -6,6 +6,7 @@ import argparse
 import os
 from pathlib import Path
 import stat
+import sys
 import tempfile
 import json
 
@@ -18,6 +19,11 @@ from ptx_frontend.spec.database import (
     load_codegen_database,
     load_codegen_database_from_files,
 )
+
+
+# Formatting whole multi-megabyte opcode units can exceed the build host's
+# memory budget; the emitter is deterministic for these large artifacts.
+MAX_FORMATTED_ARTIFACT_BYTES = 8 * 1024 * 1024
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -187,7 +193,7 @@ def validate_file(path: Path, option: str) -> None:
 
 
 def write_formatted_artifact(context, emit, output_path: Path) -> None:
-    """Format a sibling candidate and replace ``output_path`` only if changed."""
+    """Write one deterministic candidate atomically, formatting bounded files."""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_mode = (
@@ -202,7 +208,14 @@ def write_formatted_artifact(context, emit, output_path: Path) -> None:
     candidate = Path(candidate_name)
     try:
         emit(context, output_path=candidate)
-        format_file_inplace(str(candidate))
+        candidate_size = candidate.stat().st_size
+        if candidate_size <= MAX_FORMATTED_ARTIFACT_BYTES:
+            format_file_inplace(str(candidate))
+        else:
+            print(
+                f"Skipping format for {output_path}: {candidate_size} bytes",
+                file=sys.stderr,
+            )
         candidate_bytes = candidate.read_bytes()
         if not output_path.exists() or output_path.read_bytes() != candidate_bytes:
             candidate.chmod(output_mode)

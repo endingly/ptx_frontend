@@ -8,6 +8,7 @@ import ast
 from contextlib import redirect_stdout
 from io import StringIO
 import json
+import re
 import sys
 from pathlib import Path
 import tempfile
@@ -79,6 +80,94 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertEqual(lower.call_count, len(self.database.instructions))
         self.assertEqual(project.call_count, len(self.database.instructions))
 
+    def test_matrix_reference_shards_are_bounded_and_manifest_owned(self) -> None:
+        """Private matrix traversal covers every variant in bounded C++ units."""
+
+        from ptx_frontend.code_gen.emit.references_private import (
+            MATRIX_REFERENCE_SHARD_SIZE,
+        )
+        from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
+
+        context = build_generation_context(self.database, self.backend)
+        with tempfile.TemporaryDirectory() as directory:
+            plan = build_generation_plan(context, Path(directory))
+            for opcode in ("mma", "wmma"):
+                instruction = next(item for item in context.instructions
+                                   if item.opcode == opcode)
+                prefix = f"resolved_ir_matrix_references_{opcode}_shard_"
+                shards = [item for item in plan.artifacts
+                          if item.path.name.startswith(prefix)]
+                count = len(instruction.variants)
+                self.assertEqual(len(shards),
+                                 (count + MATRIX_REFERENCE_SHARD_SIZE - 1)
+                                 // MATRIX_REFERENCE_SHARD_SIZE)
+                covered: set[int] = set()
+                emitted_fields = 0
+                for shard in shards:
+                    shard.emit(context, output_path=shard.path)
+                    source = shard.path.read_text(encoding="utf-8")
+                    self.assertIn("switch (*logical)", source)
+                    self.assertIn("throw std::bad_variant_access{};", source)
+                    indices = {int(match) for match in re.findall(
+                        r"^    case (\d+):", source, flags=re.MULTILINE)}
+                    self.assertLessEqual(len(indices), MATRIX_REFERENCE_SHARD_SIZE)
+                    self.assertTrue(covered.isdisjoint(indices))
+                    covered.update(indices)
+                    emitted_fields += source.count("callback(MatrixReferenceView{")
+                self.assertEqual(covered, set(range(count)))
+                expected_fields = sum(
+                    field.value_kind in REFERENCE_VALUE_KINDS
+                    for variant in instruction.variants
+                    for layout in variant.operand_layouts
+                    for field in layout.fields
+                )
+                self.assertEqual(emitted_fields, expected_fields)
+                dispatcher = next(item for item in plan.artifacts
+                                  if item.path.name ==
+                                  f"resolved_ir_matrix_references_{opcode}_dispatch.gen.cpp")
+                dispatcher.emit(context, output_path=dispatcher.path)
+                dispatch_source = dispatcher.path.read_text(encoding="utf-8")
+                self.assertIn("instruction.execution_predicate", dispatch_source)
+                self.assertIn(f"*logical / {MATRIX_REFERENCE_SHARD_SIZE}",
+                              dispatch_source)
+
+    def test_matrix_logical_forms_share_only_exact_storage_signatures(self) -> None:
+        """Bound physical alternatives while retaining every logical form."""
+
+        from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
+        from ptx_frontend.ir.resolved_ir import ResolvedFieldStorage
+
+        context = build_generation_context(self.database, self.backend)
+        expected = {"mma": (360, 13), "wmma": (552, 9),
+                    "ldmatrix": (54, 9), "stmatrix": (27, 4),
+                    "movmatrix": (1, 1)}
+        for instruction in context.instructions:
+            if instruction.opcode not in expected:
+                continue
+            plan = matrix_storage_plan(instruction, context.backend)
+            self.assertIsNotNone(plan)
+            assert plan is not None
+            self.assertEqual((len(instruction.variants), len(plan.representatives)),
+                             expected[instruction.opcode])
+            self.assertLessEqual(len(plan.representatives), 64)
+            self.assertEqual(len(plan.storage_indexes), len(instruction.variants))
+            for index, storage_index in enumerate(plan.storage_indexes):
+                self.assertGreaterEqual(storage_index, 0)
+                self.assertLess(storage_index, len(plan.representatives))
+                self.assertEqual(
+                    plan.storage_name(instruction, index),
+                    instruction.variants[plan.representatives[storage_index]].cpp_name,
+                )
+        for opcode, name in (
+            ("mma", "mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32"),
+            ("ldmatrix", "ldmatrix_sync_aligned_m8n8_x2_shared_b16"),
+        ):
+            instruction = next(value for value in context.instructions
+                               if value.opcode == opcode)
+            seed = next(value for value in instruction.variants
+                        if value.variant_id == name)
+            self.assertTrue(any(field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+                                for field in seed.modifier_fields))
     def test_owned_bridges_cover_current_reference_payloads(self) -> None:
         """Every generated reference kind has a foundation collector after erasure."""
         context = build_generation_context(self.database, self.backend)
@@ -109,6 +198,10 @@ class GenerationPlanTests(unittest.TestCase):
                 source = output.read_text()
                 self.assertIn(f"OwnedInstruction box_instruction({entry.cpp_name}", source)
                 self.assertIn(f"resolve_owned_{entry.cpp_name}(", source)
+                if entry.specification.codegen_category == "matrix":
+                    self.assertIn("detail::visit_matrix_references(", source)
+                    self.assertIn('ptx_module_matrix_references.hpp', source)
+                    self.assertNotIn("detail::visit_instruction_references(", source)
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -234,6 +327,7 @@ class GenerationPlanTests(unittest.TestCase):
                 if artifact.path.suffix == ".cpp"
                 and artifact.path.name.startswith("resolved_ir_")
                 and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
+                and "_matrix_references_" not in artifact.path.name
             }
             self.assertEqual(len(sources), len(context.entries))
             for entry in context.entries:
@@ -518,6 +612,34 @@ class GenerationPlanTests(unittest.TestCase):
                 cli.write_formatted_artifact(None, emit, output)
             self.assertEqual(output.read_text(encoding="utf-8"), "new raw content\n")
             self.assertEqual(output.stat().st_mode & 0o777, 0o640)
+
+    def test_large_artifact_skips_formatter_and_keeps_atomic_write_contract(self) -> None:
+        """A bounded formatting bypass retains content, mode, and stable mtime."""
+
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated/private/large.gen.cpp"
+            output.parent.mkdir(parents=True)
+            output.write_text("old", encoding="utf-8")
+            output.chmod(0o640)
+
+            def emit(_context, *, output_path: Path) -> None:
+                output_path.write_text("large-source", encoding="utf-8")
+
+            with (
+                patch.object(cli, "MAX_FORMATTED_ARTIFACT_BYTES", 8),
+                patch.object(cli, "format_file_inplace") as formatter,
+            ):
+                cli.write_formatted_artifact(None, emit, output)
+                first_mtime = output.stat().st_mtime_ns
+                self.assertEqual(output.read_text(encoding="utf-8"), "large-source")
+                self.assertEqual(output.stat().st_mode & 0o777, 0o640)
+                time.sleep(0.01)
+                cli.write_formatted_artifact(None, emit, output)
+                self.assertEqual(output.stat().st_mtime_ns, first_mtime)
+                formatter.assert_not_called()
+            self.assertEqual(list(output.parent.glob(".large.gen.*")), [])
 
     def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(
         self,

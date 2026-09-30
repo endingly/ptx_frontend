@@ -30,6 +30,7 @@ domains:
       s32: ScalarType::S32
       s64: ScalarType::S64
       b8: ScalarType::B8
+      b1: ScalarType::B1
       b16: ScalarType::B16
       b32: ScalarType::B32
       b64: ScalarType::B64
@@ -57,6 +58,11 @@ domains:
       tf32: ScalarType::TF32
       e4m3: ScalarType::E4m3
       e5m2: ScalarType::E5m2
+      e3m2: ScalarType::E3m2
+      e2m3: ScalarType::E2m3
+      e2m1: ScalarType::E2m1
+      ue8m0: ScalarType::UE8M0
+      ue4m3: ScalarType::UE4M3
 
   special_register_kinds:
     cpp_type: base::SpecialRegisterKind
@@ -312,6 +318,7 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
+      MatrixScaleSelector: ResolvedMatrixScaleSelector
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
       BranchTargetSet: ResolvedBranchTargetSet
@@ -401,6 +408,7 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
+      MatrixScaleSelector: check_end::ResolvedValueKind::MatrixScaleSelector
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet

@@ -65,7 +65,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
         "f16", "f16x2", "f32", "f32x2", "f64", "bf16", "bf16x2", "tf32",
         "e4m3", "e4m3x2", "e4m3x4", "e5m2", "e5m2x2", "e5m2x4", "e3m2",
         "e3m2x2", "e3m2x4", "e2m3", "e2m3x2", "e2m3x4", "e2m1", "e2m1x2",
-        "e2m1x4", "ue8m0x2", "s2f6x2", "b4x16_p64", "b6x16_p32", "b6p2x16",
+        "e2m1x4", "ue8m0", "ue4m3", "ue8m0x2", "s2f6x2", "b4x16_p64", "b6x16_p32", "b6p2x16",
     }),
     SemanticDomain.ROUNDING_MODE: frozenset({
         "rn", "rz", "rm", "rp", "rzi", "rni", "rmi", "rpi", "rna", "rs",

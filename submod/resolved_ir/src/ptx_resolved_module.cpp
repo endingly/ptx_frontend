@@ -6,9 +6,11 @@
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include "ptx_module_instruction_append.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_source_identity.hpp"
 #include "ptx_storage_declarations.hpp"
+#include "ptx_variant_visit.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -1090,14 +1092,34 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
       }
     } else if (const auto* instruction =
                    std::get_if<syntax_ast::AstInstruction>(&body_item)) {
-      auto resolved = resolveInstruction(*instruction, context);
-      if (!resolved) {
-        diagnostics.push_back(std::move(resolved.error()));
+      /** Borrowed ABI inputs are consumed before the resolved value is appended. */
+      struct CallAbiContext {
+        const syntax_ast::AstInstruction& instruction;
+        const binding::SymbolTable& symbols;
+        binding::ScopeId scope;
+        const FunctionSignatureIndex& signatures;
+        const CallArgumentPropertyIndex& properties;
+        ModuleResolveDiagnostics& diagnostics;
+      } abi_context{*instruction,
+                    symbols,
+                    context.scope,
+                    signatures,
+                    call_argument_properties,
+                    diagnostics};
+      const auto before_append = [](OwnedInstruction& resolved,
+                                    void* user_data) {
+        const auto& inputs = *static_cast<CallAbiContext*>(user_data);
+        check_call_abi(inputs.instruction, resolved, inputs.symbols,
+                       inputs.scope, inputs.signatures, inputs.properties,
+                       inputs.diagnostics);
+      };
+      auto error = detail::resolve_and_append_instruction(
+          resolved_function.body, *instruction, context, before_append,
+          &abi_context);
+      if (error) {
+        diagnostics.push_back(std::move(*error));
         continue;
       }
-      check_call_abi(*instruction, *resolved, symbols, context.scope,
-                     signatures, call_argument_properties, diagnostics);
-      resolved_function.body.push_back(std::move(*resolved));
       resolved_function.instruction_ranges.push_back(instruction->range);
       resolved_function.instruction_opcodes.emplace_back(
           instruction->opcode.syntax.text);

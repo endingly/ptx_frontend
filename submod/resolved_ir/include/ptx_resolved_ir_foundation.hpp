@@ -26,6 +26,7 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+struct ResolvedTensorOperand;
 enum class ResolvedRegisterClass : uint8_t;
 
 /**
@@ -63,6 +64,10 @@ enum class AtomicAddressQualifier : uint8_t {
 };
 /** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
+/** Dimension count encoded by a tiled tensor instruction. */
+enum class TensorRank : uint8_t { One = 1, Two, Three, Four, Five };
+/** Tensor transfer interpretation represented by this operand. */
+enum class TensorAccessMode : uint8_t { Tiled };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -128,7 +133,8 @@ enum class OperandShape : uint16_t {
   IndirectCallee = 1 << 11,
   BranchTargetSet = 1 << 12,
   ShflDestination = 1 << 13,
-  PredicatePair = 1 << 14
+  PredicatePair = 1 << 14,
+  TensorOperand = 1 << 15
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -335,6 +341,12 @@ struct OperandView {
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
+  /** Composite tensor coordinates with a statically negative immediate. */
+  bool tensor_has_negative_immediate = false;
+  /** Composite tensor rank encoded by the owned operand. */
+  std::optional<TensorRank> tensor_rank;
+  /** Borrowed owned payload for rank, provenance, and signedness checks. */
+  const ResolvedTensorOperand* tensor_operand = nullptr;
   /** Original element count before fixed-size checker projection. */
   size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -767,6 +779,20 @@ using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 struct ResolvedTensorCoordinate {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedTensorCoordinate&) const = default;
+};
+/** Owned descriptor pointer with its storage identity and address metadata. */
+struct ResolvedTensorMapRef {
+  ResolvedAddress address;
+  SourceRange range;
+};
+/** One owned composite descriptor and coordinate operand. */
+struct ResolvedTensorOperand {
+  ResolvedTensorMapRef tensor_map;
+  ResolvedTensorCoordinate coordinates;
+  TensorRank rank = TensorRank::One;
+  TensorAccessMode mode = TensorAccessMode::Tiled;
+  /** Coordinate element ranges, independent of the enclosing operand range. */
+  std::vector<SourceRange> coordinate_ranges;
 };
 struct ResolvedShflSyncDestination {
   std::optional<WithLoc<ResolvedRegisterRef>> data;

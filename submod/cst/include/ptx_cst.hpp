@@ -83,6 +83,16 @@ struct CstVectorPack {
   CstTokenRange token_range;
 };
 
+/** One bracketed tensor-map address and its nested coordinate tuple. */
+struct CstTensorOperand {
+  TokenId left_bracket{};
+  CstAddress tensor_map;
+  TokenId comma{};
+  CstVectorPack coordinates;
+  TokenId right_bracket{};
+  CstTokenRange token_range;
+};
+
 enum class CstCallParameterListKind : uint8_t {
   Return,
   Input,
@@ -129,6 +139,7 @@ struct CstRegisterPredicatePair {
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
                  CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
+                 CstTensorOperand,
                  CstCallParameterList, CstCallTarget, CstCallTargetSet,
                  CstBranchTarget, CstBranchTargetSet, CstRegisterPredicatePair>;
 

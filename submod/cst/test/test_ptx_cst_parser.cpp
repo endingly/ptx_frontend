@@ -29,6 +29,28 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** The composite source preserves its inner punctuation and address tokens. */
+TEST(PtxCstParser, PreservesTensorMapCoordinateComposite) {
+  PtxCstParser parser(
+      "cp.async.bulk.prefetch.tensor.2d.L2.global "
+      "[tensor_map+64, {%r0, -2}];");
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->instruction()->operands.size(), 1u);
+  const auto& operand = std::get<syntax_cst::CstTensorOperand>(
+      result->instruction()->operands.front().operand);
+  EXPECT_EQ(result->token(operand.left_bracket).kind, TokenKind::LBracket);
+  EXPECT_EQ(result->token(operand.comma).kind, TokenKind::Comma);
+  EXPECT_EQ(result->token(operand.coordinates.left_brace).kind,
+            TokenKind::LBrace);
+  EXPECT_EQ(result->token(operand.coordinates.commas.front()).kind,
+            TokenKind::Comma);
+  EXPECT_EQ(result->token(operand.right_bracket).kind, TokenKind::RBracket);
+  ASSERT_TRUE(operand.tensor_map.offset.has_value());
+  EXPECT_EQ(result->token(operand.tensor_map.offset->operator_token).kind,
+            TokenKind::Plus);
+}
+
 TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   constexpr std::string_view source =
       "  // lead\n@!%p add /* type */ .u32 "

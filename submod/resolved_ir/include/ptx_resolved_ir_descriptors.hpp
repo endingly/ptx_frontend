@@ -28,6 +28,7 @@ enum class OperandSyntaxShape : uint16_t {
   BranchTargetSet = 1 << 10,
   RegisterPredicatePair = 1 << 11,
   NegatedImmediate = 1 << 12
+  , TensorOperand = 1 << 13
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -74,6 +75,7 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   TensorCoordinate,
+  TensorOperand,
   DirectCallTarget,
   IndirectCallee,
   BranchTargetSet,

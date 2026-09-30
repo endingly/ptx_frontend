@@ -8,7 +8,7 @@ from pathlib import Path
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
-from ptx_frontend.spec.model import CodegenUnit, SemanticRule
+from ptx_frontend.spec.model import AsyncCompletionKind, CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
 def generate_resolved_ir_checker_category_declarations_header(
@@ -447,6 +447,21 @@ def _emit_cross_rule_checks(
               diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
                                  immediate_multiple_of_check.error().end());
             }}
+"""
+    if (variant.completion_kind is AsyncCompletionKind.BULK_GROUP and
+            any(field.value_kind is ResolvedValueKind.TENSOR_OPERAND
+                for layout in variant.operand_layouts for field in layout.fields)):
+        checks += """            for (const auto& operand : operands) {
+              if (operand.actual_shape != OperandShape::TensorOperand)
+                continue;
+              const auto coordinate_check =
+                  check_tensor_store_coordinates(operand, context);
+              if (!coordinate_check) {
+                diagnostics.insert(diagnostics.end(),
+                                   coordinate_check.error().begin(),
+                                   coordinate_check.error().end());
+              }
+            }
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_CVT:
         checks += """            const auto cvt_rule_check = check_cvt_rule(

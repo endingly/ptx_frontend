@@ -513,7 +513,7 @@ struct Add {
 };
 ```
 
-A fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
+Outside compact matrix storage, a fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
 `.sat` is fixed while the type is an allowed value with its own availability,
 so it generates:
 
@@ -524,6 +524,8 @@ WithLocs<ScalarType> type;
 
 This avoids re-inferring the fixed fact while retaining the selected type and
 its source location.
+
+The five warp-matrix opcodes use a compact representation for their many logical forms. Each outer instruction owns `WithLocs<VariantType> semantic_form`; its `std::variant` alternative stores the physical operands and can be shared by several named logical forms, so a C++ form alias or `std::get<NamedForm>` identifies storage rather than the complete operation. `matrix_logical_index()` returns a logical index only after checking the tag range and its mapping to the actual alternative through `storage_index_by_form`. `matrix_descriptor()` returns the static canonical `MatrixInstructionDescriptor` for that valid tag/storage pair, or null otherwise; the pointer alone does not certify the mutable instruction. Fixed suffix controls promoted for sharing are owned `WithLocs<ScalarType>` or `WithLocs<bool>` values, while the two earlier concrete seed forms keep their static fields. `checker::check()` and module validation compare the current controls, owned matrix topology, operands, and availability with the exact logical descriptor, including after IR mutation.
 
 One variant may have multiple named modifier slots of the same value kind. The
 mixed-precision Add, for example, emits a static `result_type = F32` and a

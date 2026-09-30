@@ -17,7 +17,8 @@ supported surface and its exclusions.
   and its [简体中文版本](docs/zh-han/syntax_coverage.md#ptx-93-warp-level-matrix)
   describe the modelled PTX 9.3 `ldmatrix`/`stmatrix`/`movmatrix`, dense and
   sparse `mma`, and WMMA compatibility forms, including excluded historical
-  forms. Integrated verification and core acceptance are pending.
+  forms. Logical PTX forms retain individual contracts even when they share
+  generated C++ storage; integrated verification and core acceptance are pending.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

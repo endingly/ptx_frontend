@@ -59,7 +59,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 
 Matrix 规格固定采用 [PTX ISA 9.3 §9.7.15](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions)。当前 canonical YAML 已包含下表形式；generated C++ 验证和独立 core 验收尚待完成。Frontend 契约包括解析、owned resolution、operand 与 fragment 检查及 target-aware validation；不执行 GPU 运算，也不证明所有 warp lane 满足 collective protocol。每个 form 的 PTX 版本和 generic、架构专属或 family-specific target 下限由 instruction model 提供。
 
-当前规格源码列出 994 个 variant：82 个 matrix movement（54 `ldmatrix`、27 `stmatrix`、1 `movmatrix`）、175 个 dense `mma`、185 个 sparse `mma.sp`，以及 552 个 WMMA（352 load、104 store、96 compute）。这些是当前源码的 inventory 数量，统一验证尚待完成。
+当前规格源码列出 994 个逻辑 form：82 个 matrix movement（54 `ldmatrix`、27 `stmatrix`、1 `movmatrix`）、175 个 dense `mma`、185 个 sparse `mma.sp`，以及 552 个 WMMA（352 load、104 store、96 compute）。这些数量表示互不相同的 canonical instruction contract，并非 C++ storage alternative 的数量；统一验证尚待完成。紧凑的 generated representation 让物理 operand 存储相同的 form 共用 alternative。逻辑 form identity 与其 owned modifier 值决定准确契约；validation 先检查 identity 是否属于实际存储的 alternative，再选择契约并检查当前 modifier 与 operand。因此，仅凭 C++ type 不能确定操作。既有两个具体且 modifier 静态的 seed API 继续保留。
 
 | Family | 已建模的 PTX 9.3 形式 |
 | --- | --- |
@@ -73,7 +73,7 @@ Matrix 规格固定采用 [PTX ISA 9.3 §9.7.15](https://docs.nvidia.com/cuda/ar
 
 离线 assembler 抽样使用 CUDA `ptxas` V13.3.73，并为每个完整 PTX module 指定 `.version` 和 `.target`。WMMA FP64 C/D 双寄存器、dense FP64 `.m8n8k4`、代表性的 movement、混合符号与 `.b1` MMA、经典 sparse MMA，以及 `sm_120a` 上的 dense 和 ordered-sparse block-scale 形式均被接受；对应的错误 fragment、已移除 modifier、必需 `.trans`、scale type 和 target 反例被拒绝。这是 assembler 抽样证据，不代表 994 个 variant 均已验证，也不代表 frontend 测试已通过。`ptxas` 接受 WMMA 立即数 stride 17，但 PTX memory-layout 契约下该布局行为未定义；frontend 保留静态 stride 约束。
 
-稀疏 FP8 `.m16n8k32` 的 shape 已在规范中引入，但规范未直接列出 metadata selector 范围。Frontend 根据 2:4 稀疏格式和 fragment 规模所隐含的双线程 metadata 拓扑接受 0 和 1。`ptxas` V13.3.73 对 native 和 ordered metadata 的完整 `.m16n8k32` FP8 module 均在 instruction-type 检查阶段拒绝 selector 0 和 1，而 `.m16n8k64` FP8 对照能够汇编；selector 2 的诊断另外指出预期范围为 0 或 1。因此，此 assembler 尚未证实 selector 1 的正例；该范围仍是有待独立 core review 的规范解释。
+稀疏 FP8 `.m16n8k32` 的 shape 已在规范中引入，但规范未直接列出 metadata selector 范围。Frontend 根据 2:4 稀疏格式和 fragment 规模所隐含的双线程 metadata 拓扑接受 0 和 1。`ptxas` V13.3.73 对 native 和 ordered metadata 的完整 `.m16n8k32` FP8 module 均在 instruction-type 检查阶段拒绝 selector 0 和 1，而 `.m16n8k64` FP8 对照能够汇编；selector 2 的诊断另外指出预期范围为 0 或 1。因此，此 assembler 尚未证实 selector 1 的正例。Frontend 保留此规范解释；完整的 core 验收仍待完成。
 
 conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
 该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。

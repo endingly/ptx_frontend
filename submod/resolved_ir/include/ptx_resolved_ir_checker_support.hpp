@@ -115,6 +115,16 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView>,
 /** Check typed fractional bounds and statically known createpolicy range sizes. */
 CheckResult check_createpolicy_rule(std::span<const OperandView>,
                                     const Context&);
+/** Check exact tensor-map field codes, typed-value conversion, and target gates. */
+CheckResult check_tensor_map_replace_rule(std::span<const FieldView>,
+                                          std::span<const OperandView>,
+                                          const Context&);
+/** Require a source-backed, exactly 128-byte tensor-map proxy copy. */
+CheckResult check_tensor_map_cp_fenceproxy_rule(std::span<const OperandView>,
+                                                const Context&);
+/** Require a known tensor-map address-register type to have 32 or 64 bits. */
+CheckResult check_tensor_map_address_register_width(
+    const WithLocs<ResolvedAddress>&, const Context&);
 /** Check typed non-bulk copy source control and statically known zero-fill size. */
 CheckResult check_cp_async_rule(std::span<const FieldView>,
                                 std::span<const OperandView>, const Context&);

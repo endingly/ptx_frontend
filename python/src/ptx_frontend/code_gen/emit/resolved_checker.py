@@ -495,6 +495,40 @@ def _emit_cross_rule_checks(
                                  cp_async_rule_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_REPLACE:
+        checks += """            const auto tensor_map_rule_check = check_tensor_map_replace_rule(
+                fields, operands, context);
+            if (!tensor_map_rule_check) {
+              diagnostics.insert(diagnostics.end(), tensor_map_rule_check.error().begin(),
+                                 tensor_map_rule_check.error().end());
+            }
+            const auto tensor_map_address_check =
+                check_tensor_map_address_register_width(selected.tensor_map, context);
+            if (!tensor_map_address_check) {
+              diagnostics.insert(diagnostics.end(), tensor_map_address_check.error().begin(),
+                                 tensor_map_address_check.error().end());
+            }
+"""
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY:
+        checks += """            const auto tensor_map_fence_check = check_tensor_map_cp_fenceproxy_rule(
+                operands, context);
+            if (!tensor_map_fence_check) {
+              diagnostics.insert(diagnostics.end(), tensor_map_fence_check.error().begin(),
+                                 tensor_map_fence_check.error().end());
+            }
+            const auto tensor_map_dst_check =
+                check_tensor_map_address_register_width(selected.dst, context);
+            if (!tensor_map_dst_check) {
+              diagnostics.insert(diagnostics.end(), tensor_map_dst_check.error().begin(),
+                                 tensor_map_dst_check.error().end());
+            }
+            const auto tensor_map_src_check =
+                check_tensor_map_address_register_width(selected.src, context);
+            if (!tensor_map_src_check) {
+              diagnostics.insert(diagnostics.end(), tensor_map_src_check.error().begin(),
+                                 tensor_map_src_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

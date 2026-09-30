@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ptx_frontend.base.utils import generated_at_comment
+from ptx_frontend.base.utils import file_stem_to_pascal_case, generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldStorage, ResolvedInstruction,
@@ -352,6 +352,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
     using Operands = std::variant<{alternatives}>;
     Operands operands;"""
 
+    tensor_map_projection = _emit_tensor_map_replace_projection(variant)
     return f"""\
   // YAML: {variant.variant_id}
   struct {variant.cpp_name} {{
@@ -363,7 +364,52 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
     ResolvedOperandLayoutTag operand_layout;
 {body}
+{tensor_map_projection}
   }};"""
+
+
+def _emit_tensor_map_replace_projection(variant: ResolvedVariant) -> str:
+    """Emit a field-typed projection from canonical fixed-field metadata."""
+
+    fields = [
+        field.source_name.removeprefix("field_")
+        for field in variant.modifier_fields
+        if field.source_name.startswith("field_")
+    ]
+    if not fields:
+        return ""
+    if len(fields) != 1:
+        raise ValueError("a tensor-map replacement needs exactly one fixed field")
+    field = fields[0]
+    enum_name = file_stem_to_pascal_case(field)
+    result = (
+        "    /** Closed identity of the encoded tensor-map field. */\n"
+        "    inline static constexpr TensorMapReplaceField replacement_field = "
+        f"TensorMapReplaceField::{enum_name};\n"
+        "    /** Own a copy of the opaque descriptor reference; absent if malformed. */\n"
+        "    std::optional<ResolvedTensorMapRef> tensor_map_ref() const {\n"
+        "      if (tensor_map.locs.empty())\n"
+        "        return std::nullopt;\n"
+        "      return ResolvedTensorMapRef{tensor_map.value, tensor_map.locs.front()};\n"
+        "    }"
+    )
+    encoded_types = {
+        "elemtype": "TensorMapElementType",
+        "interleave_layout": "TensorMapInterleaveLayout",
+        "swizzle_mode": "TensorMapSwizzleMode",
+        "swizzle_atomicity": "TensorMapSwizzleAtomicity",
+        "fill_mode": "TensorMapFillMode",
+    }
+    if field in encoded_types:
+        value_type = encoded_types[field]
+        result += (
+            "\n    /** Decode the original Table 33 code after owned-value consistency checks. */\n"
+            f"    std::optional<{value_type}> encoded_value() const noexcept {{\n"
+            f"      return project_tensor_map_encoded_value<{value_type}>(\n"
+            "          replacement_field, new_val.value);\n"
+            "    }"
+        )
+    return result
 
 
 def _emit_operand_layout_definition(layout: ResolvedOperandLayout, backend: CodegenUnit) -> str:

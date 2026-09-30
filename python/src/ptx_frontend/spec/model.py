@@ -57,6 +57,8 @@ class SemanticRule(_SemanticToken):
     DATA_MOVEMENT_ST_EXPLICIT = "data_movement.st_explicit"
     DATA_MOVEMENT_ST_GENERIC = "data_movement.st_generic"
     DATA_MOVEMENT_ST_BULK = "data_movement.st_bulk"
+    DATA_MOVEMENT_TENSORMAP_REPLACE = "data_movement.tensormap_replace"
+    DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY = "data_movement.tensormap_cp_fenceproxy"
     FLOATING_POINT_ADD = "floating_point.add"
     FLOATING_POINT_ADD_BFLOAT = "floating_point.add_bfloat"
     FLOATING_POINT_ADD_HALF = "floating_point.add_half"

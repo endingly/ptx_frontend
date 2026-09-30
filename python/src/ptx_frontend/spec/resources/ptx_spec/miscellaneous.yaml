@@ -8,6 +8,66 @@ codegen_category: control_flow
 section: "9.7.20"
 
 instructions:
+  - opcode: brkpt
+    section: "9.7.20.1"
+    doc: "Suspend the current thread at a breakpoint."
+    syntax: "brkpt"
+
+    variants:
+      - name: brkpt_bare
+        description: "Breakpoint with no modifiers or operands."
+        availability: {ptx: "1.0", sm: 11}
+        modifiers: []
+        operands: []
+        examples:
+          - {ptx: "brkpt;", valid: true}
+          - {ptx: "@%p0 brkpt;", valid: true}
+
+  - opcode: nanosleep
+    section: "9.7.20.2"
+    doc: "Suspend the thread for an approximate duration in nanoseconds."
+    syntax: "nanosleep.u32 t"
+
+    variants:
+      - name: nanosleep_u32
+        description: "Sleep duration from a 32-bit register or immediate."
+        availability: {ptx: "6.3", sm: 70}
+        modifiers:
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operands:
+          - {name: t, kind: reg_or_imm, role: src, access: read, type: u32, register_width: same_width}
+        examples:
+          - {ptx: "nanosleep.u32 42;", valid: true}
+
+  - opcode: pmevent
+    section: "9.7.20.3"
+    doc: "Trigger one or more performance monitor events."
+    syntax: "pmevent[.mask] a"
+
+    variants:
+      - name: pmevent_index
+        description: "Trigger one event selected by its index."
+        availability: {ptx: "1.4", sm: 0}
+        modifiers: []
+        operands:
+          - {name: a, kind: imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: immediate_range, operand: a, minimum: 0, maximum: 15}
+        examples:
+          - {ptx: "pmevent 7;", valid: true}
+
+      - name: pmevent_mask
+        description: "Trigger the events selected by a 16-bit mask."
+        availability: {ptx: "3.0", sm: 20}
+        modifiers:
+          - {name: mask, kind: flag, presence: fixed, value: true, token: .mask}
+        operands:
+          - {name: a, kind: imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: immediate_range, operand: a, minimum: 0, maximum: 65535}
+        examples:
+          - {ptx: "pmevent.mask 0xff;", valid: true}
+
   - opcode: trap
     section: "9.7.20.4"
     doc: "Trap the current thread."

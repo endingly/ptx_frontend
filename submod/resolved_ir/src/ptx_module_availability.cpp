@@ -320,8 +320,7 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
       continue;
     }
     for (size_t i = 0; i < instructions.size(); ++i) {
-      const auto opcode =
-          resolved.body[i].opcode_name();
+      const auto opcode = resolved.body[i].opcode_name();
       if (instructions[i]->opcode.syntax.text !=
               resolved.instruction_opcodes[i] ||
           opcode != resolved.instruction_opcodes[i]) {
@@ -347,8 +346,7 @@ void check_instruction_body(const ResolvedFunction& function,
         .target = target,
         .instruction_range = function.instruction_ranges[i],
     };
-    const auto result =
-        function.body[i].check(context);
+    const auto result = function.body[i].check(context);
     if (!result)
       diagnostics.insert(diagnostics.end(), result.error().begin(),
                          result.error().end());

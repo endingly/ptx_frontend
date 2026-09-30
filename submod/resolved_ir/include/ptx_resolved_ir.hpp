@@ -6,5 +6,5 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
-#include <ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
+#include <ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp>

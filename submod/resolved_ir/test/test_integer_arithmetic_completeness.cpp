@@ -9,8 +9,8 @@
 #include <ptx_frontend/resolved_ir/model/arithmetic/dp4a.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/fns.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/min.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 

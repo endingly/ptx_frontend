@@ -54,9 +54,8 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
       ADD_FAILURE() << (ast.diagnostics.empty()
                             ? "PTX source did not produce a syntax instruction."
                             : ast.diagnostics.front().message);
-      return std::expected<OwnedInstruction, ResolveDiagnostic>{
-          std::unexpected(
-              ResolveDiagnostic{.message = "instruction parse failed"})};
+      return std::expected<OwnedInstruction, ResolveDiagnostic>{std::unexpected(
+          ResolveDiagnostic{.message = "instruction parse failed"})};
     }
     return resolveInstruction(*ast);
   };

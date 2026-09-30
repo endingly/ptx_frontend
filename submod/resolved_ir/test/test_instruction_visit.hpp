@@ -2,8 +2,8 @@
 
 #include "test_instruction_access.hpp"
 
-#include <cstddef>
 #include <concepts>
+#include <cstddef>
 #include <functional>
 #include <type_traits>
 #include <utility>

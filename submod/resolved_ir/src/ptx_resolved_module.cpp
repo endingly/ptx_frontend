@@ -1,6 +1,6 @@
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
@@ -560,8 +560,7 @@ Call* call_record(OwnedInstruction& instruction) {
 }
 
 /** Return the input argument group owned by a resolved call, when it has one. */
-ResolvedCallArguments* resolved_call_arguments(
-    OwnedInstruction& instruction) {
+ResolvedCallArguments* resolved_call_arguments(OwnedInstruction& instruction) {
   ResolvedCallArguments* arguments = nullptr;
   if (auto* candidate = call_record(instruction)) {
     std::visit(

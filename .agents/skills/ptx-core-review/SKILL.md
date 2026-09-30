@@ -18,10 +18,13 @@ follow their references as needed, not as a recursive reading checklist.
 
 The model/effort requirement comes from the [registry](../../orchestration.md#model-preferences).
 Loading this skill does not switch the model or grant approval authority. Only
-Sol / `high` may decide architecture and core acceptance; use the packet's valid
-selection evidence or [dispatch controls](../../references/dispatch.md) when needed.
-Another worker may gather evidence, but cannot sign the verdict. If Sol is
-unavailable, keep that decision pending and continue independent authorized work.
+Authority Sol (`gpt-6.1-sol` / `medium`) may decide architecture and core
+acceptance; use the packet's valid selection evidence or
+[dispatch controls](../../references/dispatch.md) when needed. Implementation Sol
+(`gpt-6-sol` / `high`) cannot satisfy this gate.
+Another worker may gather evidence, but cannot sign the verdict. If Authority
+Sol is unavailable, keep that decision pending and continue independent
+authorized work.
 
 Return the decision/review record required by the selected Sol section. Review
 alone is read-only; it does not authorize implementation, commit, push, or merge.

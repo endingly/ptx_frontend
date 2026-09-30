@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,10 +27,12 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   const auto ast = parse_instruction("selp.u32 %r0, %r1, 0, %p0;");
   const auto resolved = resolve<Selp>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* selp = std::get_if<Selp::U32>(&resolved->variant);
+  const auto* selp = test_ir_access::get_if<Selp::U32>(&resolved->variant);
   ASSERT_NE(selp, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(selp->src_false.value));
-  EXPECT_FALSE(std::get<ResolvedPredicate>(selp->predicate.value).negated);
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      selp->src_false.value));
+  EXPECT_FALSE(
+      test_ir_access::get<ResolvedPredicate>(selp->predicate.value).negated);
 }
 
 }  // namespace

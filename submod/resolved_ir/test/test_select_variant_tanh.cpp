@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,31 +27,33 @@ TEST(ResolveTanh, SelectsFrozenFloatAndLowPrecisionVariants) {
   const auto f32 =
       resolve<Tanh>(parse_instruction("tanh.approx.f32 %f0, %f1;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  ASSERT_NE(std::get_if<Tanh::ApproxF32>(&f32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Tanh::ApproxF32>(&f32->variant), nullptr);
   EXPECT_EQ(Tanh::ApproxF32::type, ScalarType::F32);
 
   const auto f16 =
       resolve<Tanh>(parse_instruction("tanh.approx.f16 %h0, %h1;"));
   ASSERT_TRUE(f16.has_value()) << f16.error().message;
-  ASSERT_NE(std::get_if<Tanh::ApproxF16>(&f16->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Tanh::ApproxF16>(&f16->variant), nullptr);
   EXPECT_EQ(Tanh::ApproxF16::type, ScalarType::F16);
 
   const auto f16x2 =
       resolve<Tanh>(parse_instruction("tanh.approx.f16x2 %r0, %r1;"));
   ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
-  ASSERT_NE(std::get_if<Tanh::ApproxF16x2>(&f16x2->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Tanh::ApproxF16x2>(&f16x2->variant),
+            nullptr);
   EXPECT_EQ(Tanh::ApproxF16x2::type, ScalarType::F16x2);
 
   const auto bf16 =
       resolve<Tanh>(parse_instruction("tanh.approx.bf16 %b0, %b1;"));
   ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
-  ASSERT_NE(std::get_if<Tanh::ApproxBf16>(&bf16->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Tanh::ApproxBf16>(&bf16->variant), nullptr);
   EXPECT_EQ(Tanh::ApproxBf16::type, ScalarType::BF16);
 
   const auto bf16x2 =
       resolve<Tanh>(parse_instruction("tanh.approx.bf16x2 %r0, %r1;"));
   ASSERT_TRUE(bf16x2.has_value()) << bf16x2.error().message;
-  ASSERT_NE(std::get_if<Tanh::ApproxBf16x2>(&bf16x2->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Tanh::ApproxBf16x2>(&bf16x2->variant),
+            nullptr);
   EXPECT_EQ(Tanh::ApproxBf16x2::type, ScalarType::BF16x2);
 }
 

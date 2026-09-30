@@ -1,5 +1,11 @@
 #include "test_module_projection_detail.hpp"
 
+#include <ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/mul/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set/model.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/setp/model.gen.hpp>
+
 namespace ptx_frontend::resolved_ir::test_support {
 
 template std::expected<TypedModuleSnapshot<Mul>, std::vector<ResolveDiagnostic>>

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,7 @@ TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolve<Cvt>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* cvt = std::get_if<Cvt::S32U32>(&resolved->variant);
+  const auto* cvt = test_ir_access::get_if<Cvt::S32U32>(&resolved->variant);
   ASSERT_NE(cvt, nullptr);
   EXPECT_EQ(Cvt::S32U32::dst_type, ScalarType::S32);
   EXPECT_EQ(Cvt::S32U32::src_type, ScalarType::U32);
@@ -36,7 +37,7 @@ TEST(ResolveCvt, SelectsFrozenRnF32F64Variant) {
   const auto ast = parse_instruction("cvt.rn.f32.f64 %f0, %fd0;");
   const auto resolved = resolve<Cvt>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* cvt = std::get_if<Cvt::RnF32F64>(&resolved->variant);
+  const auto* cvt = test_ir_access::get_if<Cvt::RnF32F64>(&resolved->variant);
   ASSERT_NE(cvt, nullptr);
   EXPECT_EQ(Cvt::RnF32F64::rounding, RoundingMode::Rn);
   EXPECT_EQ(Cvt::RnF32F64::dst_type, ScalarType::F32);
@@ -47,12 +48,13 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
   const auto to_float =
       resolve<Cvt>(parse_instruction("cvt.rn.f32.u32 %f0, %r0;"));
   ASSERT_TRUE(to_float.has_value()) << to_float.error().message;
-  EXPECT_NE(std::get_if<Cvt::RnF32U32>(&to_float->variant), nullptr);
+  EXPECT_NE(test_ir_access::get_if<Cvt::RnF32U32>(&to_float->variant), nullptr);
 
   const auto to_integer =
       resolve<Cvt>(parse_instruction("cvt.rzi.u32.f32 %r0, %f0;"));
   ASSERT_TRUE(to_integer.has_value()) << to_integer.error().message;
-  const auto* cvt = std::get_if<Cvt::RziU32F32>(&to_integer->variant);
+  const auto* cvt =
+      test_ir_access::get_if<Cvt::RziU32F32>(&to_integer->variant);
   ASSERT_NE(cvt, nullptr);
   EXPECT_EQ(Cvt::RziU32F32::rounding, RoundingMode::Rzi);
   EXPECT_EQ(Cvt::RziU32F32::dst_type, ScalarType::U32);
@@ -63,12 +65,12 @@ TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
   const auto scalar =
       resolve<Cvt>(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
   ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
-  ASSERT_NE(std::get_if<Cvt::RnF32S32>(&scalar->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Cvt::RnF32S32>(&scalar->variant), nullptr);
 
   const auto packed =
       resolve<Cvt>(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0, %f1;"));
   ASSERT_TRUE(packed.has_value()) << packed.error().message;
-  ASSERT_NE(std::get_if<Cvt::RnF16x2F32>(&packed->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Cvt::RnF16x2F32>(&packed->variant), nullptr);
   EXPECT_EQ(Cvt::RnF16x2F32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Cvt::RnF16x2F32::dst_type, ScalarType::F16x2);
   EXPECT_EQ(Cvt::RnF16x2F32::src_type, ScalarType::F32);
@@ -245,7 +247,8 @@ TEST(ResolveCvt, SelectsPackedSatVariantsAndRejectsInvalidTopologies) {
       parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
   const auto resolved = resolve<Cvt>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(std::get_if<Cvt::PackSatU8S32B32>(&resolved->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Cvt::PackSatU8S32B32>(&resolved->variant),
+            nullptr);
   EXPECT_TRUE(Cvt::PackSatU8S32B32::pack);
   EXPECT_TRUE(Cvt::PackSatU8S32B32::saturate);
   EXPECT_EQ(Cvt::PackSatU8S32B32::dst_type, ScalarType::U8);
@@ -255,14 +258,16 @@ TEST(ResolveCvt, SelectsPackedSatVariantsAndRejectsInvalidTopologies) {
   const auto packed_16 =
       resolve<Cvt>(parse_instruction("cvt.pack.sat.s16.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(packed_16.has_value()) << packed_16.error().message;
-  const auto* s16 = std::get_if<Cvt::PackSat16S32>(&packed_16->variant);
+  const auto* s16 =
+      test_ir_access::get_if<Cvt::PackSat16S32>(&packed_16->variant);
   ASSERT_NE(s16, nullptr);
   EXPECT_EQ(s16->dst_type.value, ScalarType::S16);
 
   const auto packed_small = resolve<Cvt>(
       parse_instruction("cvt.pack.sat.u4.s32.b32 %r0, %r1, %r2, 0;"));
   ASSERT_TRUE(packed_small.has_value()) << packed_small.error().message;
-  const auto* u4 = std::get_if<Cvt::PackSatSmallS32B32>(&packed_small->variant);
+  const auto* u4 =
+      test_ir_access::get_if<Cvt::PackSatSmallS32B32>(&packed_small->variant);
   ASSERT_NE(u4, nullptr);
   EXPECT_EQ(u4->dst_type.value, ScalarType::U4);
 

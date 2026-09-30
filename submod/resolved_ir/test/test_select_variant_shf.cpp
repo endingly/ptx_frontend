@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,19 +27,21 @@ TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
   const auto left =
       resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;
-  ASSERT_NE(std::get_if<Shf::LClampB32>(&left->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Shf::LClampB32>(&left->variant), nullptr);
   const auto right =
       resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(right.has_value()) << right.error().message;
-  ASSERT_NE(std::get_if<Shf::RWrapB32>(&right->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Shf::RWrapB32>(&right->variant), nullptr);
   const auto left_wrap =
       resolve<Shf>(parse_instruction("shf.l.wrap.b32 %r0, 1, %r2, 32;"));
   ASSERT_TRUE(left_wrap.has_value()) << left_wrap.error().message;
-  ASSERT_NE(std::get_if<Shf::LWrapB32>(&left_wrap->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Shf::LWrapB32>(&left_wrap->variant),
+            nullptr);
   const auto right_clamp =
       resolve<Shf>(parse_instruction("shf.r.clamp.b32 %r0, %r1, 2, 33;"));
   ASSERT_TRUE(right_clamp.has_value()) << right_clamp.error().message;
-  ASSERT_NE(std::get_if<Shf::RClampB32>(&right_clamp->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Shf::RClampB32>(&right_clamp->variant),
+            nullptr);
 }
 
 }  // namespace

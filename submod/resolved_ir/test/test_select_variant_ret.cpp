@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,7 @@ TEST(ResolveRet, SelectsBareVariantAndRejectsModifiersAndOperands) {
   const auto bare_ast = parse_instruction("ret;");
   const auto bare = resolve<Ret>(bare_ast);
   ASSERT_TRUE(bare.has_value()) << bare.error().message;
-  EXPECT_TRUE(std::holds_alternative<Ret::Bare>(bare->variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<Ret::Bare>(bare->variant));
 
   const auto modifier_ast = parse_instruction("ret.uni;");
   const auto modifier = resolve<Ret>(modifier_ast);

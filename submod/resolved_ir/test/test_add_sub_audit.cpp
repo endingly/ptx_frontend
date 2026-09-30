@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sub.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -80,19 +83,20 @@ TEST(AddSubAudit, OwnsMixedAddendImmediateAndRevalidates) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
 
-  const auto& add = std::get<Add::MixedF32>(
-      std::get<Add>(owned->functions.front().body[0]).variant);
-  const auto* addend = std::get_if<ResolvedImmediate>(&add.addend.value);
+  const auto& add = test_ir_access::get<Add::MixedF32>(
+      test_ir_access::get<Add>(owned->functions.front().body[0]).variant);
+  const auto* addend =
+      test_ir_access::get_if<ResolvedImmediate>(&add.addend.value);
   ASSERT_NE(addend, nullptr);
   EXPECT_EQ(addend->type, ScalarType::F32);
   EXPECT_EQ(addend->bits, 0x3F800000u);
   // The narrow source keeps its register representation, not the wide one.
   EXPECT_EQ(add.src.value.spelling, "%h1");
 
-  const auto& sub = std::get<Sub::MixedF32>(
-      std::get<Sub>(owned->functions.front().body[1]).variant);
+  const auto& sub = test_ir_access::get<Sub::MixedF32>(
+      test_ir_access::get<Sub>(owned->functions.front().body[1]).variant);
   const auto* subtrahend =
-      std::get_if<ResolvedImmediate>(&sub.subtrahend.value);
+      test_ir_access::get_if<ResolvedImmediate>(&sub.subtrahend.value);
   ASSERT_NE(subtrahend, nullptr);
   EXPECT_EQ(subtrahend->type, ScalarType::F32);
   EXPECT_EQ(subtrahend->bits, 0x40000000u);

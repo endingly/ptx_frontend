@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -7,7 +8,8 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/prefetch.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -233,13 +235,15 @@ TEST(PrefetchCompleteness, RevalidatesOwnedAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& prefetch = std::get<Prefetch::GlobalL2Evict>(
-      std::get<Prefetch>(owned->functions.front().body.front()).variant);
-  auto& symbol = std::get<ResolvedSymbolRef>(prefetch.address.value.base);
+  auto& prefetch = test_ir_access::get<Prefetch::GlobalL2Evict>(
+      test_ir_access::get<Prefetch>(owned->functions.front().body.front())
+          .variant);
+  auto& symbol =
+      test_ir_access::get<ResolvedSymbolRef>(prefetch.address.value.base);
   ASSERT_TRUE(symbol.address_state_space.has_value());
   symbol.address_state_space = base::DeclarationStateSpace::Local;
   const auto wrong_space = checker::check(
-      std::get<Prefetch>(owned->functions.front().body.front()),
+      test_ir_access::get<Prefetch>(owned->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(wrong_space.has_value());
   EXPECT_EQ(wrong_space.error().front().kind,
@@ -270,14 +274,16 @@ TEST(PrefetchCompleteness, RevalidatesGenericTensormapWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& prefetch = std::get<Prefetch::GenericTensormap>(
-      std::get<Prefetch>(owned->functions.front().body.front()).variant);
-  auto& symbol = std::get<ResolvedSymbolRef>(prefetch.address.value.base);
+  auto& prefetch = test_ir_access::get<Prefetch::GenericTensormap>(
+      test_ir_access::get<Prefetch>(owned->functions.front().body.front())
+          .variant);
+  auto& symbol =
+      test_ir_access::get<ResolvedSymbolRef>(prefetch.address.value.base);
   ASSERT_TRUE(symbol.address_state_space.has_value());
   const auto original_space = symbol.address_state_space;
   symbol.address_state_space = base::DeclarationStateSpace::Shared;
   const auto invalid = checker::check(
-      std::get<Prefetch>(owned->functions.front().body.front()),
+      test_ir_access::get<Prefetch>(owned->functions.front().body.front()),
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind,

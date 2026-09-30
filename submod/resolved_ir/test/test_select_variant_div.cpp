@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,26 +26,27 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
   const auto resolved = resolve<Div>(parse_instruction("div.u32 %r0, %r1, 0;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* div = std::get_if<Div::U32>(&resolved->variant);
+  const auto* div = test_ir_access::get_if<Div::U32>(&resolved->variant);
   ASSERT_NE(div, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<ResolvedImmediate>(div->src2.value));
 }
 
 TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
   const auto s32 = resolve<Div>(parse_instruction("div.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  ASSERT_NE(std::get_if<Div::S32>(&s32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Div::S32>(&s32->variant), nullptr);
   EXPECT_EQ(Div::S32::type, ScalarType::S32);
 
   const auto f32 = resolve<Div>(parse_instruction("div.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  ASSERT_NE(std::get_if<Div::RnF32>(&f32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Div::RnF32>(&f32->variant), nullptr);
   EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
   EXPECT_EQ(Div::RnF32::type, ScalarType::F32);
 
   const auto f64 = resolve<Div>(parse_instruction("div.rn.f64 %d0, %d1, %d2;"));
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
-  ASSERT_NE(std::get_if<Div::RnF64>(&f64->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Div::RnF64>(&f64->variant), nullptr);
   EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
   EXPECT_EQ(Div::RnF64::type, ScalarType::F64);
 }

@@ -1,10 +1,16 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <optional>
 #include <string>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/cos.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/ex2.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/lg2.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sin.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/tanh.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -45,14 +51,17 @@ TEST(TranscendentalCompleteness, ResolvesTypedApproxAndLowPrecisionCohorts) {
   ASSERT_EQ(body.size(), 17u);
 
   EXPECT_TRUE(Sin::ApproxF32::approx);
-  EXPECT_FALSE(
-      std::get<Sin::ApproxF32>(std::get<Sin>(body[0]).variant).ftz.value);
-  EXPECT_TRUE(
-      std::get<Sin::ApproxF32>(std::get<Sin>(body[1]).variant).ftz.value);
+  EXPECT_FALSE(test_ir_access::get<Sin::ApproxF32>(
+                   test_ir_access::get<Sin>(body[0]).variant)
+                   .ftz.value);
+  EXPECT_TRUE(test_ir_access::get<Sin::ApproxF32>(
+                  test_ir_access::get<Sin>(body[1]).variant)
+                  .ftz.value);
   EXPECT_TRUE(Cos::ApproxF32::approx);
   EXPECT_TRUE(Lg2::ApproxF32::approx);
-  EXPECT_TRUE(
-      std::get<Ex2::ApproxF32>(std::get<Ex2>(body[7]).variant).ftz.value);
+  EXPECT_TRUE(test_ir_access::get<Ex2::ApproxF32>(
+                  test_ir_access::get<Ex2>(body[7]).variant)
+                  .ftz.value);
   EXPECT_TRUE(Tanh::ApproxF32::approx);
   EXPECT_EQ(Tanh::ApproxF32::type, ScalarType::F32);
 
@@ -197,7 +206,7 @@ TEST(TranscendentalCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(instruction,
                                   checker::Context{.target = target});
@@ -240,11 +249,11 @@ TEST(TranscendentalCompleteness, OwnsSourcesAndRevalidatesBoundWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& bf16 = std::get<Ex2::ApproxFtzBf16>(
-      std::get<Ex2>(owned->functions.front().body[1]).variant);
+  auto& bf16 = test_ir_access::get<Ex2::ApproxFtzBf16>(
+      test_ir_access::get<Ex2>(owned->functions.front().body[1]).variant);
   const auto packed =
-      std::get<Ex2::ApproxF16x2>(
-          std::get<Ex2>(owned->functions.front().body[0]).variant)
+      test_ir_access::get<Ex2::ApproxF16x2>(
+          test_ir_access::get<Ex2>(owned->functions.front().body[0]).variant)
           .src.value;
   bf16.src.value = packed;
   const auto invalid =

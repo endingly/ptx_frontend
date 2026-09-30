@@ -128,6 +128,10 @@ namespace detail {{
 
 }}  // namespace detail
 
+class OwnedInstruction;
+/** Box this exact opcode record through its generated ownership bridge. */
+OwnedInstruction box_instruction({instruction.cpp_name} value);
+
 }}  // namespace ptx_frontend::resolved_ir
 """
 
@@ -247,7 +251,7 @@ def _emit_resolved_instruction_union(
 
     alternatives = ", ".join(instruction.cpp_name for instruction in instructions)
     return f"""\
-using ResolvedInstruction = std::variant<{alternatives}>;
+using InstructionUnion = std::variant<{alternatives}>;
 """
 
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,12 +26,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
   const auto s32 = resolve<Abs>(parse_instruction("abs.s32 %r0, %r1;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  ASSERT_NE(std::get_if<Abs::S32>(&s32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Abs::S32>(&s32->variant), nullptr);
   EXPECT_EQ(Abs::S32::type, ScalarType::S32);
 
   const auto f32 = resolve<Abs>(parse_instruction("abs.f32 %f0, %f1;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  ASSERT_NE(std::get_if<Abs::F32>(&f32->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Abs::F32>(&f32->variant), nullptr);
   EXPECT_EQ(Abs::F32::type, ScalarType::F32);
 }
 

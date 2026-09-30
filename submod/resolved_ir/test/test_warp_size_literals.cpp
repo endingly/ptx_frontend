@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <limits>
 #include <string_view>
@@ -20,10 +21,11 @@ namespace {
 /** Return the immediate source held by a scalar move instruction. */
 const ResolvedImmediate& scalarMovImmediate(
     const std::variant<std::monostate, Mov, Add>& instruction) {
-  const auto& mov = std::get<Mov>(instruction);
-  const auto& scalar = std::get<Mov::Scalar>(mov.variant);
-  const auto& operands = std::get<Mov::Scalar::ScalarOperands>(scalar.operands);
-  return std::get<ResolvedImmediate>(operands.src.value);
+  const auto& mov = test_ir_access::get<Mov>(instruction);
+  const auto& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
+  const auto& operands =
+      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
+  return test_ir_access::get<ResolvedImmediate>(operands.src.value);
 }
 
 /** Resolve WARP_SZ through parser, module binding, and typed instruction uses. */
@@ -62,8 +64,10 @@ TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
   EXPECT_EQ(mov.integer_source_bits, 32u);
   EXPECT_FALSE(mov.is_negative);
 
-  const auto& add = std::get<Add::IntegerNoSat>(std::get<Add>(body[1]).variant);
-  const auto& add_immediate = std::get<ResolvedImmediate>(add.src2.value);
+  const auto& add = test_ir_access::get<Add::IntegerNoSat>(
+      test_ir_access::get<Add>(body[1]).variant);
+  const auto& add_immediate =
+      test_ir_access::get<ResolvedImmediate>(add.src2.value);
   EXPECT_EQ(add_immediate.type, ScalarType::U32);
   EXPECT_EQ(add_immediate.bits, 32u);
   EXPECT_EQ(add_immediate.integer_source_bits, 32u);

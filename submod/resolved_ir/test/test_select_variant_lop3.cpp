@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,7 +30,7 @@ TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
     SCOPED_TRACE(source);
     const auto resolved = resolve<Lop3>(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    ASSERT_NE(std::get_if<Lop3::B32>(&resolved->variant), nullptr);
+    ASSERT_NE(test_ir_access::get_if<Lop3::B32>(&resolved->variant), nullptr);
     EXPECT_EQ(Lop3::B32::type, ScalarType::B32);
   }
 }
@@ -38,7 +39,7 @@ TEST(ResolveLop3, SelectsBoolopLayoutAndRejectsNonImmediateLut) {
   const auto boolop = resolve<Lop3>(
       parse_instruction("lop3.and.b32 _|%p0, 1, %r2, 3, 0x1a, !%p1;"));
   ASSERT_TRUE(boolop.has_value()) << boolop.error().message;
-  ASSERT_NE(std::get_if<Lop3::BoolopB32>(&boolop->variant), nullptr);
+  ASSERT_NE(test_ir_access::get_if<Lop3::BoolopB32>(&boolop->variant), nullptr);
   EXPECT_FALSE(
       resolve<Lop3>(parse_instruction("lop3.b32 %r0, %r1, %r2, %r3, %r4;"))
           .has_value());
@@ -125,8 +126,8 @@ TEST(ResolvedIrChecker, RevalidationRejectsMutatedLop3PredicateDestination) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<Lop3>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination =
-      std::get<Lop3::BoolopB32>(resolved->variant).dst.value.predicate;
+  auto& destination = test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
+                          .dst.value.predicate;
   ASSERT_TRUE(destination.has_value());
   destination->value.negated = true;
   const auto checked = check(
@@ -144,7 +145,8 @@ TEST(ResolvedIrChecker, RevalidationRejectsMissingLop3PredicateLane) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<Lop3>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination = std::get<Lop3::BoolopB32>(resolved->variant).dst.value;
+  auto& destination =
+      test_ir_access::get<Lop3::BoolopB32>(resolved->variant).dst.value;
   destination.predicate.reset();
   const auto checked = check(
       *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
@@ -161,7 +163,8 @@ TEST(ResolvedIrChecker, RevalidationRejectsEmptyLop3PairedDestination) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<Lop3>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination = std::get<Lop3::BoolopB32>(resolved->variant).dst.value;
+  auto& destination =
+      test_ir_access::get<Lop3::BoolopB32>(resolved->variant).dst.value;
   destination.data.reset();
   destination.predicate.reset();
   const auto checked = check(
@@ -179,7 +182,8 @@ TEST(ResolvedIrChecker, RevalidationAllowsLop3DataSinkWithPredicateLane) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<Lop3>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  std::get<Lop3::BoolopB32>(resolved->variant).dst.value.data.reset();
+  test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
+      .dst.value.data.reset();
   EXPECT_TRUE(check(*resolved, Context{.target = {.ptx_version = {9, 3},
                                                   .sm_version = 100},
                                        .instruction_range = ast->range})
@@ -193,8 +197,8 @@ TEST(ResolvedIrChecker, RevalidationRejectsWrongLop3PredicateLaneType) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   auto resolved = resolve<Lop3>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& predicate =
-      std::get<Lop3::BoolopB32>(resolved->variant).dst.value.predicate;
+  auto& predicate = test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
+                        .dst.value.predicate;
   ASSERT_TRUE(predicate.has_value());
   predicate->value.register_ref.declared_type = ScalarType::U32;
   const auto checked = check(

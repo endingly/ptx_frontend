@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -7,7 +8,8 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ldu.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -171,7 +173,7 @@ TEST(LduCompleteness, RevalidatesOwnedMutation) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
   auto resolved = resolve<Ldu>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& vector = std::get<Ldu::ExplicitV2>(resolved->variant);
+  auto& vector = test_ir_access::get<Ldu::ExplicitV2>(resolved->variant);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
       .instruction_range = ast->range};
@@ -209,9 +211,10 @@ TEST(LduCompleteness, RevalidatesOwnedBoundAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& load = std::get<Ldu::ExplicitV4>(
-      std::get<Ldu>(owned->functions.front().body.front()).variant);
-  auto& symbol = std::get<ResolvedSymbolRef>(load.address.value.base);
+  auto& load = test_ir_access::get<Ldu::ExplicitV4>(
+      test_ir_access::get<Ldu>(owned->functions.front().body.front()).variant);
+  auto& symbol =
+      test_ir_access::get<ResolvedSymbolRef>(load.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 16u);
   symbol.address_alignment = 4;
   const auto invalid =

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <cstdint>
@@ -26,9 +27,10 @@ TEST(CheckerProjectionSafety, RejectsMutatedVectorRegisterWidths) {
   ASSERT_TRUE(module.has_value()) << module.error().front().message;
   ASSERT_FALSE(module->functions.empty());
   ASSERT_FALSE(module->functions.front().body.empty());
-  auto* instruction = std::get_if<Mov>(&module->functions.front().body.front());
+  auto* instruction =
+      test_ir_access::get_if<Mov>(&module->functions.front().body.front());
   ASSERT_NE(instruction, nullptr);
-  auto* primitive = std::get_if<Mov::V4U32>(&instruction->variant);
+  auto* primitive = test_ir_access::get_if<Mov::V4U32>(&instruction->variant);
   ASSERT_NE(primitive, nullptr);
   constexpr std::array<std::string_view, 1> capabilities{"cluster"};
   const checker::Context context{

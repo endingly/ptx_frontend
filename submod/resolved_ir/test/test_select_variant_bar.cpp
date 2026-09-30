@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -72,29 +73,35 @@ TEST(ResolveBar, BuildsPredicateReductionWithThreadCount) {
   const auto resolved = resolve<Bar>(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* bar = std::get_if<Bar::CtaRedAndPred>(&resolved->variant);
+  const auto* bar =
+      test_ir_access::get_if<Bar::CtaRedAndPred>(&resolved->variant);
   ASSERT_NE(bar, nullptr);
   EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{1}));
-  ASSERT_TRUE(
-      std::holds_alternative<Bar::CtaRedAndPred::WithThreadCountOperands>(
-          bar->operands));
+  ASSERT_TRUE(test_ir_access::holds_alternative<
+              Bar::CtaRedAndPred::WithThreadCountOperands>(bar->operands));
   const auto& operands =
-      std::get<Bar::CtaRedAndPred::WithThreadCountOperands>(bar->operands);
+      test_ir_access::get<Bar::CtaRedAndPred::WithThreadCountOperands>(
+          bar->operands);
   EXPECT_EQ(operands.dst.value.register_ref.spelling, "%p0");
   EXPECT_EQ(operands.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
   EXPECT_EQ(operands.dst.value.register_ref.index, 0U);
   EXPECT_FALSE(operands.dst.value.negated);
-  EXPECT_EQ(std::get<ResolvedImmediate>(operands.barrier.value).bits, 1U);
-  EXPECT_EQ(std::get<ResolvedImmediate>(operands.thread_count.value).bits, 64U);
+  EXPECT_EQ(test_ir_access::get<ResolvedImmediate>(operands.barrier.value).bits,
+            1U);
+  EXPECT_EQ(
+      test_ir_access::get<ResolvedImmediate>(operands.thread_count.value).bits,
+      64U);
   EXPECT_EQ(operands.predicate.value.register_ref.spelling, "%p1");
   EXPECT_EQ(operands.predicate.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
   EXPECT_EQ(operands.predicate.value.register_ref.index, 1U);
   EXPECT_TRUE(operands.predicate.value.negated);
   ASSERT_EQ(operands.predicate.locs.size(), 1U);
-  EXPECT_EQ(operands.predicate.locs.front(),
-            std::get<syntax_ast::AstPredicateOperand>(ast.operands[3]).range);
+  EXPECT_EQ(
+      operands.predicate.locs.front(),
+      test_ir_access::get<syntax_ast::AstPredicateOperand>(ast.operands[3])
+          .range);
 
   const checker::Context context{
       .target = {.ptx_version = {9, 2}, .sm_version = 120},
@@ -109,9 +116,9 @@ TEST(ResolveBar, RejectsGeneralRegisterInPredicateSlot) {
   const auto resolved = resolve<Bar>(ast);
 
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(
-      resolved.error().range,
-      std::get<syntax_ast::AstIdentifierRef>(ast.operands[2]).syntax.range);
+  EXPECT_EQ(resolved.error().range,
+            test_ir_access::get<syntax_ast::AstIdentifierRef>(ast.operands[2])
+                .syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Expected a predicate register, got '%r1'.");
 }
@@ -129,10 +136,10 @@ TEST(ResolvedIrChecker, GeneratedBarWrapperRejectsMismatchedLayoutPayload) {
 
   auto resolved = resolve<Bar>(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto* bar = std::get_if<Bar::Sync>(&resolved->variant);
+  auto* bar = test_ir_access::get_if<Bar::Sync>(&resolved->variant);
   ASSERT_NE(bar, nullptr);
-  ASSERT_TRUE(std::holds_alternative<Bar::Sync::BarrierAndThreadCountOperands>(
-      bar->operands));
+  ASSERT_TRUE(test_ir_access::holds_alternative<
+              Bar::Sync::BarrierAndThreadCountOperands>(bar->operands));
   EXPECT_EQ(bar->operand_layout, (ResolvedOperandLayoutTag{2}));
 
   const Context context{

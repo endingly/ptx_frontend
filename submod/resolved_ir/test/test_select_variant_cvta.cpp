@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -114,7 +115,7 @@ TEST(ResolveCvta, SelectsStateSpaceRegisterVariants) {
 
     const auto resolved = resolve<Cvta>(parse_instruction(test.source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    std::visit(
+    test_ir_access::visit(
         [&](const auto& variant) {
           using Variant = std::remove_cvref_t<decltype(variant)>;
           EXPECT_EQ(Variant::state_space, test.state_space);

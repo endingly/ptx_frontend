@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,9 +27,10 @@ TEST(ResolveXor, SelectsB32VariantAndAcceptsImmediateSource) {
   const auto ast = parse_instruction("xor.b32 %r0, %r1, 1;");
   const auto resolved = resolve<Xor>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* xor_b32 = std::get_if<Xor::B32>(&resolved->variant);
+  const auto* xor_b32 = test_ir_access::get_if<Xor::B32>(&resolved->variant);
   ASSERT_NE(xor_b32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(xor_b32->src2.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      xor_b32->src2.value));
 }
 
 }  // namespace

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <cstddef>
@@ -9,7 +10,8 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -73,17 +75,18 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
                  .capabilities = cluster_capabilities},
   };
   for (std::size_t index = 0; index < expected.size(); ++index) {
-    const auto& instruction = std::get<Mbarrier>(function.body[index]);
+    const auto& instruction =
+        test_ir_access::get<Mbarrier>(function.body[index]);
     EXPECT_EQ(instruction.variant.index(),
               static_cast<std::size_t>(expected[index]));
     EXPECT_TRUE(checker::check(instruction, supported).has_value()) << index;
   }
   const auto& first_qualifiers =
-      std::get<Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
-          std::get<Mbarrier>(function.body[0]).variant);
+      test_ir_access::get<Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
+          test_ir_access::get<Mbarrier>(function.body[0]).variant);
   const auto& second_qualifiers =
-      std::get<Mbarrier::TestWaitTokenSemanticsSharedCta>(
-          std::get<Mbarrier>(function.body[1]).variant);
+      test_ir_access::get<Mbarrier::TestWaitTokenSemanticsSharedCta>(
+          test_ir_access::get<Mbarrier>(function.body[1]).variant);
   EXPECT_EQ(first_qualifiers.semantics.value, MemoryConsistency::Acquire);
   EXPECT_EQ(first_qualifiers.scope.value, MemoryScope::Cta);
   EXPECT_FALSE(first_qualifiers.semantics.locs.empty());
@@ -92,18 +95,20 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
   EXPECT_EQ(second_qualifiers.scope.value, MemoryScope::Cluster);
   EXPECT_FALSE(second_qualifiers.semantics.locs.empty());
   EXPECT_FALSE(second_qualifiers.scope.locs.empty());
-  EXPECT_TRUE(std::holds_alternative<Mbarrier::TestWaitTokenGenericOrShared>(
-      std::get<Mbarrier>(function.body[10]).variant));
-  EXPECT_TRUE(std::holds_alternative<Mbarrier::TestWaitParityGenericOrShared>(
-      std::get<Mbarrier>(function.body[11]).variant));
+  EXPECT_TRUE(
+      test_ir_access::holds_alternative<Mbarrier::TestWaitTokenGenericOrShared>(
+          test_ir_access::get<Mbarrier>(function.body[10]).variant));
+  EXPECT_TRUE(test_ir_access::holds_alternative<
+              Mbarrier::TestWaitParityGenericOrShared>(
+      test_ir_access::get<Mbarrier>(function.body[11]).variant));
 
-  const auto& report =
-      std::get<Mbarrier::TestWaitTokenPrimarySemanticsGenericOrShared>(
-          std::get<Mbarrier>(function.body[4]).variant);
+  const auto& report = test_ir_access::get<
+      Mbarrier::TestWaitTokenPrimarySemanticsGenericOrShared>(
+      test_ir_access::get<Mbarrier>(function.body[4]).variant);
   EXPECT_EQ(report.operand_layout.value, 2U);
-  const auto& conditional =
-      std::get<Mbarrier::TestWaitParityConditionalSemanticsGenericOrShared>(
-          std::get<Mbarrier>(function.body[8]).variant);
+  const auto& conditional = test_ir_access::get<
+      Mbarrier::TestWaitParityConditionalSemanticsGenericOrShared>(
+      test_ir_access::get<Mbarrier>(function.body[8]).variant);
   EXPECT_EQ(conditional.phase_parity.value.index(), 1U);
 
   /** Recheck one public instruction against an alternate target context. */
@@ -117,7 +122,8 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
                                        ? std::span(cluster_capabilities)
                                        : std::span<const std::string_view>{}},
     };
-    return checker::check(std::get<Mbarrier>(function.body[index]), context)
+    return checker::check(test_ir_access::get<Mbarrier>(function.body[index]),
+                          context)
         .has_value();
   };
   EXPECT_TRUE(check_at(0, 8, 0, 80, false));
@@ -133,25 +139,26 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
   EXPECT_FALSE(check_at(4, 9, 2, 90, true));
   EXPECT_FALSE(check_at(4, 9, 3, 89, true));
 
-  auto& first = std::get<Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
-      std::get<Mbarrier>(function.body.front()).variant);
+  auto& first =
+      test_ir_access::get<Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
+          test_ir_access::get<Mbarrier>(function.body.front()).variant);
   first.semantics.value = MemoryConsistency::Release;
-  const auto bad_semantics =
-      checker::check(std::get<Mbarrier>(function.body.front()), supported);
+  const auto bad_semantics = checker::check(
+      test_ir_access::get<Mbarrier>(function.body.front()), supported);
   ASSERT_FALSE(bad_semantics.has_value());
   EXPECT_EQ(bad_semantics.error().front().kind,
             checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
   first.semantics.value = MemoryConsistency::Acquire;
   first.scope.value = MemoryScope::Gpu;
-  const auto bad_scope =
-      checker::check(std::get<Mbarrier>(function.body.front()), supported);
+  const auto bad_scope = checker::check(
+      test_ir_access::get<Mbarrier>(function.body.front()), supported);
   ASSERT_FALSE(bad_scope.has_value());
   EXPECT_EQ(bad_scope.error().front().kind,
             checker::CheckDiagnosticKind::ModifierValueDomainMismatch);
   first.scope.value = MemoryScope::Cta;
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto bad_layout =
-      checker::check(std::get<Mbarrier>(function.body.front()), supported);
+  const auto bad_layout = checker::check(
+      test_ir_access::get<Mbarrier>(function.body.front()), supported);
   ASSERT_FALSE(bad_layout.has_value());
   EXPECT_EQ(bad_layout.error().front().kind,
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
@@ -180,12 +187,12 @@ TEST(MbarrierTestWaitQualifiers, RejectsBadParityAndAddress) {
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
   };
   const auto bad_parity =
-      checker::check(std::get<Mbarrier>(body[0]), supported);
+      checker::check(test_ir_access::get<Mbarrier>(body[0]), supported);
   ASSERT_FALSE(bad_parity.has_value());
   EXPECT_EQ(bad_parity.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
   const auto bad_address =
-      checker::check(std::get<Mbarrier>(body[1]), supported);
+      checker::check(test_ir_access::get<Mbarrier>(body[1]), supported);
   ASSERT_FALSE(bad_address.has_value());
   EXPECT_EQ(bad_address.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);

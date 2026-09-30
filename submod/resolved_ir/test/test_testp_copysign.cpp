@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <array>
 #include <optional>
@@ -7,7 +8,9 @@
 #include <tuple>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/copysign.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/testp.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
@@ -18,8 +21,9 @@ using checker::PtxVersion;
 
 /** Return the property selected by either floating-point `testp` variant. */
 TestProperty test_property_value(const Testp& instruction) {
-  return std::visit([](const auto& variant) { return variant.property.value; },
-                    instruction.variant);
+  return test_ir_access::visit(
+      [](const auto& variant) { return variant.property.value; },
+      instruction.variant);
 }
 
 /** Resolve a standalone `testp` form after releasing its parsed AST. */
@@ -103,7 +107,8 @@ TEST(TestpCompleteness, ChecksIndependentPtxAndSmBoundariesAndCorruption) {
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  auto& property = std::get<Testp::F64>(resolved->variant).property.value;
+  auto& property =
+      test_ir_access::get<Testp::F64>(resolved->variant).property.value;
   property = TestProperty::Invalid;
   EXPECT_FALSE(checker::check(*resolved, current).has_value());
   property = static_cast<TestProperty>(255);
@@ -121,7 +126,7 @@ TEST(TestpCopysignCompleteness, ChecksAvailabilityForBothTypesAndOpcodes) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return std::visit(
+      return test_ir_access::visit(
           [&](const auto& instruction) {
             return checker::check(instruction,
                                   checker::Context{.target = target});
@@ -169,12 +174,14 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& f32_testp = std::get<Testp::F32>(
-      std::get<Testp>(owned_module->functions.front().body.front()).variant);
+  auto& f32_testp = test_ir_access::get<Testp::F32>(
+      test_ir_access::get<Testp>(owned_module->functions.front().body.front())
+          .variant);
   const auto original_f32_source = f32_testp.src.value;
-  const auto f64_source = std::get<ResolvedRegisterRef>(
-      std::get<Testp::F64>(
-          std::get<Testp>(owned_module->functions.front().body[1]).variant)
+  const auto f64_source = test_ir_access::get<ResolvedRegisterRef>(
+      test_ir_access::get<Testp::F64>(
+          test_ir_access::get<Testp>(owned_module->functions.front().body[1])
+              .variant)
           .src.value);
   f32_testp.src.value = f64_source;
   const auto invalid_testp = validateModule(
@@ -184,12 +191,15 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   f32_testp.src.value = original_f32_source;
 
-  auto& copysign = std::get<Copysign::F64>(
-      std::get<Copysign>(owned_module->functions.front().body[2]).variant);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(copysign.sign_source.value).spelling,
+  auto& copysign = test_ir_access::get<Copysign::F64>(
+      test_ir_access::get<Copysign>(owned_module->functions.front().body[2])
+          .variant);
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(copysign.sign_source.value)
+                .spelling,
             "%fd2");
   EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(copysign.magnitude_source.value).spelling,
+      test_ir_access::get<ResolvedRegisterRef>(copysign.magnitude_source.value)
+          .spelling,
       "%bd1");
   copysign.magnitude_source.value = original_f32_source;
   const auto invalid_copysign = validateModule(
@@ -205,11 +215,13 @@ TEST(CopysignCompleteness, RetainsSignThenMagnitudeSourceIdentity) {
   ASSERT_TRUE(parsed.has_value());
   const auto resolved = resolve<Copysign>(*parsed);
   ASSERT_TRUE(resolved.has_value());
-  const auto& variant = std::get<Copysign::F64>(resolved->variant);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(variant.sign_source.value).spelling,
+  const auto& variant = test_ir_access::get<Copysign::F64>(resolved->variant);
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(variant.sign_source.value)
+                .spelling,
             "%fd1");
   EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(variant.magnitude_source.value).spelling,
+      test_ir_access::get<ResolvedRegisterRef>(variant.magnitude_source.value)
+          .spelling,
       "%fd2");
 }
 

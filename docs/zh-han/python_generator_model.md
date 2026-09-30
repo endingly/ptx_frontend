@@ -142,14 +142,14 @@ rendering 或 filesystem 失败。
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | 不依赖完整 syntax AST 的窄 model 与 reference visitor 头 |
 | `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | 供 model 与 union API 使用、聚合窄 opcode model 头的纯 include 头 |
 | `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 聚合该 category 完整 opcode 头的纯 include 头 |
-| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 保持 canonical 顺序的完整 `ResolvedInstruction` union |
+| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 供显式完整 model consumer 使用、保持 canonical 顺序的 `InstructionUnion` |
 | `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合窄 category model 头与 union 的 model-only 头 |
 | `public/ptx_frontend/resolved_ir/resolution/<category>.gen.hpp` | `emit.resolved_resolver` | resolver 声明的 category 纯 include 头 |
 | `public/ptx_frontend/resolved_ir/checker/<category>.gen.hpp` | `emit.resolved_checker` | checker support、窄 category model 与 checker 特化声明，不依赖完整 Syntax AST |
 | `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | 单个 opcode 的三类 descriptor 及 out-of-line resolver/checker 定义 |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 通过窄 per-op owner 桥接实现 opcode-independent resolution dispatch |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | 单个 opcode 的三类 descriptor、out-of-line resolver/checker 定义及强类型 owner 生命周期、checker、reference 和 resolver 桥接 |
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
 `generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
@@ -161,6 +161,13 @@ target。顶层只提供 submodule 编排与 facade target。
 Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
 供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker
 descriptor storage 共用一个私有源文件。
+
+生成的 owner 路径不改变 YAML schema 或 normalized instruction model。每个 opcode
+的现有生成 `.cpp` 拥有不可变操作表，并装箱该 opcode 的强类型解析记录。中央 dispatch
+只通过窄声明调用 per-op resolver，不包含完整 union。新出现的带 reference 的
+foundation payload 必须有显式 module collector；生成器测试对照当前输出类型与 collector，
+生成的 owner 桥接还以 payload concept 做编译期检查。owner 保留现有的内层 typed
+variant 和 checker 逻辑。
 
 完整 opcode 公共头不包含生成的 resolver/checker 函数体。小型手写
 `ptx_resolved_ir_selection.hpp` 提供通用选择适配器；窄 opcode 与 category model 头仍可在 syntax AST

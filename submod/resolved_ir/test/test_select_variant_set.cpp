@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -26,22 +27,24 @@ TEST(ResolveSet, SelectsOrdinaryTypedFamilies) {
   const auto eq =
       resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
   ASSERT_TRUE(eq.has_value()) << eq.error().message;
-  const auto* unsigned_result = std::get_if<Set::Unsigned>(&eq->variant);
+  const auto* unsigned_result =
+      test_ir_access::get_if<Set::Unsigned>(&eq->variant);
   ASSERT_NE(unsigned_result, nullptr);
   EXPECT_EQ(unsigned_result->comparison.value, ComparisonOperator::Eq);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(unsigned_result->src2.value));
+  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+      unsigned_result->src2.value));
 
   const auto lt_and =
       resolve<Set>(parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
   ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
   const auto* signed_boolean =
-      std::get_if<Set::SignedBoolean>(&lt_and->variant);
+      test_ir_access::get_if<Set::SignedBoolean>(&lt_and->variant);
   ASSERT_NE(signed_boolean, nullptr);
   EXPECT_EQ(signed_boolean->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(signed_boolean->boolean.value, BooleanOperator::And);
   EXPECT_TRUE(
-      std::get<ResolvedPredicate>(signed_boolean->combine.value).negated);
+      test_ir_access::get<ResolvedPredicate>(signed_boolean->combine.value)
+          .negated);
 }
 
 TEST(ResolveSet, RejectsInvalidOrdinaryModifierDomains) {

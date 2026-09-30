@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -27,7 +28,8 @@ TEST(ResolveIsspacep, SelectsStateSpaceVariantsAndRejectsOtherForms) {
   const auto ast = parse_instruction("isspacep.global %p0, %rd0;");
   const auto resolved = resolve<Isspacep>(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* global = std::get_if<Isspacep::GlobalU64>(&resolved->variant);
+  const auto* global =
+      test_ir_access::get_if<Isspacep::GlobalU64>(&resolved->variant);
   ASSERT_NE(global, nullptr);
   EXPECT_EQ(Isspacep::GlobalU64::state_space, MemoryStateSpace::Global);
   EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
@@ -49,12 +51,14 @@ TEST(ResolveIsspacep, SelectsStateSpaceVariantsAndRejectsOtherForms) {
   const auto shared_cta =
       resolve<Isspacep>(parse_instruction("isspacep.shared::cta %p0, %rd0;"));
   ASSERT_TRUE(shared_cta.has_value()) << shared_cta.error().message;
-  EXPECT_NE(std::get_if<Isspacep::SharedCta>(&shared_cta->variant), nullptr);
+  EXPECT_NE(test_ir_access::get_if<Isspacep::SharedCta>(&shared_cta->variant),
+            nullptr);
   const auto parameter_entry =
       resolve<Isspacep>(parse_instruction("isspacep.param::entry %p0, %rd0;"));
   ASSERT_TRUE(parameter_entry.has_value()) << parameter_entry.error().message;
-  EXPECT_NE(std::get_if<Isspacep::ParamEntry>(&parameter_entry->variant),
-            nullptr);
+  EXPECT_NE(
+      test_ir_access::get_if<Isspacep::ParamEntry>(&parameter_entry->variant),
+      nullptr);
 
   for (const auto source :
        {"isspacep %p0, %rd0;", "isspacep.param::func %p0, %rd0;",

@@ -1,5 +1,9 @@
 #include <ptx_frontend/base/ptx_integer.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -14,6 +18,7 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
+#include <typeinfo>
 #include <unordered_map>
 #include <vector>
 
@@ -23,6 +28,12 @@ namespace ptx_frontend::resolved_ir {
 /** Optional generated opcode type used by owned call ABI validation. */
 struct Call;
 namespace {
+
+/** Borrow one exact generated record from the instruction owner. */
+template <PtxOperator T>
+const T* instruction_if(const OwnedInstruction& instruction) {
+  return instruction.get_if<T>();
+}
 
 checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
                                              uint32_t minimum_sm = 0,
@@ -309,11 +320,7 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
       continue;
     }
     for (size_t i = 0; i < instructions.size(); ++i) {
-      const auto opcode = std::visit(
-          [](const auto& instruction) {
-            return instruction.get_resolved_descriptor().opcode_name;
-          },
-          resolved.body[i]);
+      const auto opcode = resolved.body[i].opcode_name();
       if (instructions[i]->opcode.syntax.text !=
               resolved.instruction_opcodes[i] ||
           opcode != resolved.instruction_opcodes[i]) {
@@ -339,11 +346,7 @@ void check_instruction_body(const ResolvedFunction& function,
         .target = target,
         .instruction_range = function.instruction_ranges[i],
     };
-    const auto result = std::visit(
-        [&context](const auto& resolved) {
-          return checker::check(resolved, context);
-        },
-        function.body[i]);
+    const auto result = function.body[i].check(context);
     if (!result)
       diagnostics.insert(diagnostics.end(), result.error().begin(),
                          result.error().end());
@@ -575,6 +578,45 @@ void collect_operand_references(
   }
 }
 
+/** Decode a borrowed foundation payload without including any opcode union. */
+void collect_owned_reference(detail::OwnedReferenceView view,
+                             SourceRange fallback,
+                             std::vector<ModuleReferenceUse>& uses) {
+#define PTX_COLLECT_OWNED_REFERENCE(Type)                               \
+  if (view.type == typeid(Type)) {                                      \
+    collect_operand_references(*static_cast<const Type*>(view.payload), \
+                               view.locations, fallback, uses,          \
+                               view.address_policy);                    \
+    return;                                                             \
+  }
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterRef)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedMbarrierStateToken)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterOrSink)
+  PTX_COLLECT_OWNED_REFERENCE(RegOrImm)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedShflSyncDestination)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicatePair)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicatePairOrSink)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicateOrSink)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedMovSource)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedCpAsyncSourceControl)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicate)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicateSource)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedBranchTarget)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedBranchTargetSet)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedVectorRegisterRef)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedSymbolRef)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedCallParameterRef)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedCallArguments)
+#undef PTX_COLLECT_OWNED_REFERENCE
+  throw ResolveException(
+      "Generated reference payload has no module collector.");
+}
+
 /** Return a symbol only when an externally supplied identity is in table bounds. */
 const binding::Symbol* owned_symbol(const ResolvedModule& module,
                                     binding::SymbolId id) {
@@ -676,19 +718,21 @@ void check_module_references(const ResolvedModule& module,
                              checker::CheckDiagnostics& diagnostics) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
-    std::visit(
-        [&](const auto& instruction) {
-          detail::visit_instruction_references(
-              instruction,
-              [&](const auto& value, std::span<const SourceRange> locations,
-                  checker::AddressSymbolResolutionPolicy
-                      address_resolution_policy) {
-                collect_operand_references(value, locations,
-                                           function.instruction_ranges[index],
-                                           uses, address_resolution_policy);
-              });
-        },
-        function.body[index]);
+    /** Borrowed collection state used only during this instruction's visit. */
+    struct SinkState {
+      /** Destination preserving descriptor order. */
+      std::vector<ModuleReferenceUse>& uses;
+      /** Owned source location used when a field has no explicit location. */
+      SourceRange fallback;
+    } state{uses, function.instruction_ranges[index]};
+    function.body[index].visit_references(detail::OwnedReferenceSink{
+        .state = &state,
+        .accept =
+            [](void* opaque, detail::OwnedReferenceView view) {
+              auto& current = *static_cast<SinkState*>(opaque);
+              collect_owned_reference(view, current.fallback, current.uses);
+            },
+    });
   }
   for (const auto& use : uses) {
     if (!use.symbol_id) {
@@ -757,7 +801,7 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
                                      const ResolvedFunction& function,
                                      checker::CheckDiagnostics& diagnostics) {
   for (size_t index = 0; index < function.body.size(); ++index) {
-    const auto* copy = std::get_if<Cp>(&function.body[index]);
+    const auto* copy = instruction_if<Cp>(function.body[index]);
     if (!copy)
       continue;
     const SourceRange fallback = function.instruction_ranges[index];
@@ -809,7 +853,7 @@ void check_st_bulk_size_bindings(const ResolvedModule& module,
                                  const ResolvedFunction& function,
                                  checker::CheckDiagnostics& diagnostics) {
   for (size_t index = 0; index < function.body.size(); ++index) {
-    const auto* store = std::get_if<St>(&function.body[index]);
+    const auto* store = instruction_if<St>(function.body[index]);
     if (!store)
       continue;
     const auto* bulk = std::get_if<St::BulkZero>(&store->variant);
@@ -858,7 +902,7 @@ void check_cvta_constant_pointer_restriction(
     return;
   for (const auto& function : module.functions) {
     for (size_t index = 0; index < function.body.size(); ++index) {
-      const auto* cvta = std::get_if<Cvta>(&function.body[index]);
+      const auto* cvta = instruction_if<Cvta>(function.body[index]);
       if (cvta == nullptr ||
           (!std::holds_alternative<Cvta::ConstU32>(cvta->variant) &&
            !std::holds_alternative<Cvta::ConstU64>(cvta->variant))) {
@@ -1458,67 +1502,56 @@ void check_typed_call_literals(
     const std::unordered_map<uint32_t, CallArgumentProperties>& declarations,
     checker::CheckDiagnostics& diagnostics) {
   for (size_t index = 0; index < function.body.size(); ++index) {
-    std::visit(
-        [&](const auto& candidate) {
-          if constexpr (std::same_as<std::remove_cvref_t<decltype(candidate)>,
-                                     Call>) {
-            std::visit(
-                [&](const auto& selected) {
-                  if constexpr (requires { selected.operands; }) {
-                    std::visit(
-                        [&](const auto& operands) {
-                          const declaration_semantics::FunctionSignature*
-                              signature = nullptr;
-                          if constexpr (requires { operands.metadata.value; }) {
-                            if (const auto metadata =
-                                    indirect_metadata_identity(
-                                        operands.metadata.value)) {
-                              signature =
-                                  metadata_signature(signatures, *metadata);
-                            }
-                          } else if constexpr (requires {
-                                                 operands.target.value
-                                                     .symbol_id;
-                                               }) {
-                            if (operands.target.value.symbol_id) {
-                              signature = direct_signature(
-                                  module, signatures,
-                                  *operands.target.value.symbol_id);
-                            }
-                          }
-                          if (signature == nullptr) {
-                            append_model_mismatch(
-                                diagnostics, function.instruction_ranges[index],
-                                "Resolved module call has no retained formal "
-                                "signature.");
-                            return;
-                          }
-                          const ResolvedCallArguments* inputs = nullptr;
-                          if constexpr (requires {
-                                          operands.arguments.value.values;
-                                        })
-                            inputs = &operands.arguments.value;
-                          const ResolvedCallParameterRef* returns = nullptr;
-                          if constexpr (requires {
-                                          operands.return_value.value.symbol_id;
-                                        }) {
-                            returns = &operands.return_value.value;
-                          }
-                          check_call_inputs(inputs, signature->parameters,
-                                            declarations, diagnostics,
-                                            function.instruction_ranges[index]);
-                          check_call_returns(
-                              returns, signature->return_parameters,
-                              declarations, diagnostics,
-                              function.instruction_ranges[index]);
-                        },
-                        selected.operands);
-                  }
-                },
-                candidate.variant);
-          }
-        },
-        function.body[index]);
+    if (const auto* call = instruction_if<Call>(function.body[index])) {
+      std::visit(
+          [&](const auto& selected) {
+            if constexpr (requires { selected.operands; }) {
+              std::visit(
+                  [&](const auto& operands) {
+                    const declaration_semantics::FunctionSignature* signature =
+                        nullptr;
+                    if constexpr (requires { operands.metadata.value; }) {
+                      if (const auto metadata = indirect_metadata_identity(
+                              operands.metadata.value)) {
+                        signature = metadata_signature(signatures, *metadata);
+                      }
+                    } else if constexpr (requires {
+                                           operands.target.value.symbol_id;
+                                         }) {
+                      if (operands.target.value.symbol_id) {
+                        signature =
+                            direct_signature(module, signatures,
+                                             *operands.target.value.symbol_id);
+                      }
+                    }
+                    if (signature == nullptr) {
+                      append_model_mismatch(
+                          diagnostics, function.instruction_ranges[index],
+                          "Resolved module call has no retained formal "
+                          "signature.");
+                      return;
+                    }
+                    const ResolvedCallArguments* inputs = nullptr;
+                    if constexpr (requires { operands.arguments.value.values; })
+                      inputs = &operands.arguments.value;
+                    const ResolvedCallParameterRef* returns = nullptr;
+                    if constexpr (requires {
+                                    operands.return_value.value.symbol_id;
+                                  }) {
+                      returns = &operands.return_value.value;
+                    }
+                    check_call_inputs(inputs, signature->parameters,
+                                      declarations, diagnostics,
+                                      function.instruction_ranges[index]);
+                    check_call_returns(returns, signature->return_parameters,
+                                       declarations, diagnostics,
+                                       function.instruction_ranges[index]);
+                  },
+                  selected.operands);
+            }
+          },
+          call->variant);
+    }
   }
 }
 
@@ -1676,6 +1709,13 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       invalid(
           function.range,
           "Resolved function instruction provenance does not match its body.");
+    }
+    if (complete_instruction_provenance) {
+      for (size_t index = 0; index < function.body.size(); ++index) {
+        if (!function.body[index])
+          invalid(function.instruction_ranges[index],
+                  "Resolved function contains an empty instruction owner.");
+      }
     }
     for (const auto& label : function.label_positions) {
       const auto* label_symbol = owned_symbol(module, label.symbol_id);

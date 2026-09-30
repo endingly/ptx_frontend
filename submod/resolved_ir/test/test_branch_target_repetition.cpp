@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <string>
 #include <utility>
@@ -40,16 +41,16 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     const auto table_symbol = resolved->symbols.lookup(*scope, "targets");
     ASSERT_TRUE(table_symbol);
     ASSERT_EQ(function.body.size(), 4u);
-    const auto& branch =
-        std::get<Brx::Idx>(std::get<Brx>(function.body[1]).variant);
+    const auto& branch = test_ir_access::get<Brx::Idx>(
+        test_ir_access::get<Brx>(function.body[1]).variant);
     EXPECT_EQ(branch.tlist.value.symbol_id, table_symbol->symbol);
     EXPECT_EQ(resolved->symbols.symbol(table_symbol->symbol).kind,
               binding::SymbolKind::BranchTargetSet);
 
     const auto& syntax_function =
-        std::get<syntax_ast::AstFunction>(ast->items.back());
-    const auto& table =
-        std::get<syntax_ast::AstBranchTargets>(syntax_function.body[1]);
+        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
+    const auto& table = test_ir_access::get<syntax_ast::AstBranchTargets>(
+        syntax_function.body[1]);
     // Expand only in this assertion: the public AST retains compact entries.
     std::vector<std::string> expanded;
     std::string retained_entries;
@@ -90,9 +91,9 @@ TEST(BranchTargetRepetition, RejectsMissingAndForeignLabels) {
     ASSERT_TRUE(ast);
     ASSERT_TRUE(ast.diagnostics.empty());
     const auto& function =
-        std::get<syntax_ast::AstFunction>(ast->items.front());
+        test_ir_access::get<syntax_ast::AstFunction>(ast->items.front());
     const auto& table =
-        std::get<syntax_ast::AstBranchTargets>(function.body[1]);
+        test_ir_access::get<syntax_ast::AstBranchTargets>(function.body[1]);
     const auto resolved = test_support::resolveTypedModule<Brx>(
         *ast, test_support::ModulePipeline::AvailableContext);
     ASSERT_FALSE(resolved);

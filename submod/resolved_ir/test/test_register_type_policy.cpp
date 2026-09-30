@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_visit.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +10,9 @@
 #include <string_view>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvt.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -90,7 +93,7 @@ const checker::Context kContext{
     .target = {.ptx_version = {9, 3}, .sm_version = 100}};
 
 /** Parse and resolve exactly one instruction, keeping parser failures test-visible. */
-std::optional<ResolvedInstruction> resolveSingleInstruction(
+std::optional<OwnedInstruction> resolveSingleInstruction(
     std::string_view source) {
   PtxSyntaxParser parser(source);
   auto ast = parser.parseModule();
@@ -245,14 +248,14 @@ TEST(RegisterTypePolicy, WideIntegerFundamentalMatrixIsMetamorphic) {
       SCOPED_TRACE(mul_source);
       const auto mul = resolveSingleInstruction(mul_source);
       ASSERT_TRUE(mul);
-      expectAccepted(checker::check(std::get<Mul>(*mul), kContext));
+      expectAccepted(checker::check(test_ir_access::get<Mul>(*mul), kContext));
 
       const std::string mad_source =
           wideMadSource(destination.spelling, multiplicand.spelling);
       SCOPED_TRACE(mad_source);
       const auto mad = resolveSingleInstruction(mad_source);
       ASSERT_TRUE(mad);
-      expectAccepted(checker::check(std::get<Mad>(*mad), kContext));
+      expectAccepted(checker::check(test_ir_access::get<Mad>(*mad), kContext));
     }
   }
 }
@@ -264,7 +267,8 @@ TEST(RegisterTypePolicy, WideArithmeticRejectsWidthsAndCategoriesAtOperands) {
       resolveSingleInstruction(wide_multiplicand);
   ASSERT_TRUE(wide_multiplicand_instruction);
   expectTypeMismatch(
-      checker::check(std::get<Mul>(*wide_multiplicand_instruction), kContext),
+      checker::check(test_ir_access::get<Mul>(*wide_multiplicand_instruction),
+                     kContext),
       occurrenceRange(wide_multiplicand, "%src1", 2));
 
   const std::string float_multiplicand = wideMadSource("u64", "f32", "u32");
@@ -272,7 +276,8 @@ TEST(RegisterTypePolicy, WideArithmeticRejectsWidthsAndCategoriesAtOperands) {
       resolveSingleInstruction(float_multiplicand);
   ASSERT_TRUE(float_multiplicand_instruction);
   expectTypeMismatch(
-      checker::check(std::get<Mad>(*float_multiplicand_instruction), kContext),
+      checker::check(test_ir_access::get<Mad>(*float_multiplicand_instruction),
+                     kContext),
       occurrenceRange(float_multiplicand, "%src1", 2));
 
   const std::string narrow_result = wideMadSource("u32", "u32", "u32", "u64");
@@ -280,14 +285,16 @@ TEST(RegisterTypePolicy, WideArithmeticRejectsWidthsAndCategoriesAtOperands) {
       resolveSingleInstruction(narrow_result);
   ASSERT_TRUE(narrow_result_instruction);
   expectTypeMismatch(
-      checker::check(std::get<Mad>(*narrow_result_instruction), kContext),
+      checker::check(test_ir_access::get<Mad>(*narrow_result_instruction),
+                     kContext),
       occurrenceRange(narrow_result, "%dst", 2));
 
   const std::string float_result = wideMulSource("f64", "u32");
   const auto float_result_instruction = resolveSingleInstruction(float_result);
   ASSERT_TRUE(float_result_instruction);
   expectTypeMismatch(
-      checker::check(std::get<Mul>(*float_result_instruction), kContext),
+      checker::check(test_ir_access::get<Mul>(*float_result_instruction),
+                     kContext),
       occurrenceRange(float_result, "%dst", 2));
 }
 
@@ -298,34 +305,35 @@ TEST(RegisterTypePolicy, BitContainersWorkForOrdinaryArithmeticAndBitCounts) {
       "%f2, %f3; }";
   const auto mad = resolveSingleInstruction(source);
   ASSERT_TRUE(mad);
-  expectAccepted(checker::check(std::get<Mad>(*mad), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Mad>(*mad), kContext));
 
   constexpr std::string_view popc_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s32 %src; popc.b32 %dst, %src; "
       "}";
   const auto popc = resolveSingleInstruction(popc_source);
   ASSERT_TRUE(popc);
-  expectAccepted(checker::check(std::get<Popc>(*popc), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Popc>(*popc), kContext));
 
   constexpr std::string_view clz32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src; clz.b32 %dst, %src; }";
   const auto clz32 = resolveSingleInstruction(clz32_source);
   ASSERT_TRUE(clz32);
-  expectAccepted(checker::check(std::get<Clz>(*clz32), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Clz>(*clz32), kContext));
 
   constexpr std::string_view clz64_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s64 %src; clz.b64 %dst, %src; }";
   const auto clz64 = resolveSingleInstruction(clz64_source);
   ASSERT_TRUE(clz64);
-  expectAccepted(checker::check(std::get<Clz>(*clz64), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Clz>(*clz64), kContext));
 
   constexpr std::string_view wrong_result =
       ".entry kernel() { .reg .u64 %dst; .reg .b32 %src; popc.b32 %dst, %src; "
       "}";
   const auto rejected = resolveSingleInstruction(wrong_result);
   ASSERT_TRUE(rejected);
-  expectTypeMismatch(checker::check(std::get<Popc>(*rejected), kContext),
-                     occurrenceRange(wrong_result, "%dst", 2));
+  expectTypeMismatch(
+      checker::check(test_ir_access::get<Popc>(*rejected), kContext),
+      occurrenceRange(wrong_result, "%dst", 2));
 }
 
 /** A target-bearing multi-instruction kernel retains the same wide-multiply contract. */
@@ -353,8 +361,8 @@ TEST(RegisterTypePolicy, TargetedKernelUsesSameWideMultiplyPolicy) {
   ASSERT_EQ(body.size(), 4u);
   const checker::Context target_context{
       .target = {.ptx_version = {8, 0}, .sm_version = 80}};
-  for (const ResolvedInstruction& instruction : body) {
-    const auto checked = std::visit(
+  for (const OwnedInstruction& instruction : body) {
+    const auto checked = test_ir_access::visit(
         [&target_context](const auto& concrete) {
           return checker::check(concrete, target_context);
         },
@@ -370,35 +378,35 @@ TEST(RegisterTypePolicy, OtherOrdinaryPatternsUseFundamentalCompatibility) {
       "}";
   const auto bfind = resolveSingleInstruction(bfind_source);
   ASSERT_TRUE(bfind);
-  expectAccepted(checker::check(std::get<Bfind>(*bfind), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Bfind>(*bfind), kContext));
 
   constexpr std::string_view bfe_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s32 %src; bfe.u32 %dst, %src, "
       "0, 8; }";
   const auto bfe = resolveSingleInstruction(bfe_source);
   ASSERT_TRUE(bfe);
-  expectAccepted(checker::check(std::get<Bfe>(*bfe), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Bfe>(*bfe), kContext));
 
   constexpr std::string_view div_source =
       ".entry kernel() { .reg .b64 %dst, %src1, %src2; div.rn.f64 %dst, %src1, "
       "%src2; }";
   const auto div = resolveSingleInstruction(div_source);
   ASSERT_TRUE(div);
-  expectAccepted(checker::check(std::get<Div>(*div), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Div>(*div), kContext));
 
   constexpr std::string_view min_source =
       ".entry kernel() { .reg .b32 %dst, %src1, %src2; min.NaN.f32 %dst, "
       "%src1, %src2; }";
   const auto min = resolveSingleInstruction(min_source);
   ASSERT_TRUE(min);
-  expectAccepted(checker::check(std::get<Min>(*min), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Min>(*min), kContext));
 
   constexpr std::string_view max_source =
       ".entry kernel() { .reg .b32 %dst, %src1, %src2; max.NaN.f32 %dst, "
       "%src1, %src2; }";
   const auto max = resolveSingleInstruction(max_source);
   ASSERT_TRUE(max);
-  expectAccepted(checker::check(std::get<Max>(*max), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Max>(*max), kContext));
 }
 
 /** Packed bfloat FMA still requires its exact b16 storage container. */
@@ -408,7 +416,7 @@ TEST(RegisterTypePolicy, PackedBfloatStorageRemainsExact) {
       "fma.rn.bf16 %dst, %src1, %src2, %src3; }";
   const auto fma = resolveSingleInstruction(source);
   ASSERT_TRUE(fma);
-  expectTypeMismatch(checker::check(std::get<Fma>(*fma), kContext),
+  expectTypeMismatch(checker::check(test_ir_access::get<Fma>(*fma), kContext),
                      occurrenceRange(source, "%src1", 2));
 }
 
@@ -419,29 +427,31 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
       "%src; }";
   const auto neg = resolveSingleInstruction(neg_source);
   ASSERT_TRUE(neg);
-  expectAccepted(checker::check(std::get<Neg>(*neg), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Neg>(*neg), kContext));
 
   constexpr std::string_view native_neg_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src; neg.f16x2 %dst, "
       "%src; }";
   const auto native_neg = resolveSingleInstruction(native_neg_source);
   ASSERT_TRUE(native_neg);
-  expectTypeMismatch(checker::check(std::get<Neg>(*native_neg), kContext),
-                     occurrenceRange(native_neg_source, "%dst", 2));
+  expectTypeMismatch(
+      checker::check(test_ir_access::get<Neg>(*native_neg), kContext),
+      occurrenceRange(native_neg_source, "%dst", 2));
 
   constexpr std::string_view cvt_f16x2_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src1, %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto cvt_f16x2 = resolveSingleInstruction(cvt_f16x2_source);
   ASSERT_TRUE(cvt_f16x2);
-  expectAccepted(checker::check(std::get<Cvt>(*cvt_f16x2), kContext));
+  expectAccepted(
+      checker::check(test_ir_access::get<Cvt>(*cvt_f16x2), kContext));
 
   constexpr std::string_view cvt_b32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .f32 %src1, %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto cvt_b32 = resolveSingleInstruction(cvt_b32_source);
   ASSERT_TRUE(cvt_b32);
-  expectAccepted(checker::check(std::get<Cvt>(*cvt_b32), kContext));
+  expectAccepted(checker::check(test_ir_access::get<Cvt>(*cvt_b32), kContext));
 
   constexpr std::string_view wrong_destination =
       ".entry kernel() { .reg .u32 %dst; .reg .f32 %src1, %src2; "
@@ -449,7 +459,7 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
   const auto rejected_destination = resolveSingleInstruction(wrong_destination);
   ASSERT_TRUE(rejected_destination);
   expectTypeMismatch(
-      checker::check(std::get<Cvt>(*rejected_destination), kContext),
+      checker::check(test_ir_access::get<Cvt>(*rejected_destination), kContext),
       occurrenceRange(wrong_destination, "%dst", 2));
 
   constexpr std::string_view wrong_source =
@@ -457,15 +467,17 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto rejected_source = resolveSingleInstruction(wrong_source);
   ASSERT_TRUE(rejected_source);
-  expectTypeMismatch(checker::check(std::get<Cvt>(*rejected_source), kContext),
-                     occurrenceRange(wrong_source, "%src1", 2));
+  expectTypeMismatch(
+      checker::check(test_ir_access::get<Cvt>(*rejected_source), kContext),
+      occurrenceRange(wrong_source, "%src1", 2));
 
   constexpr std::string_view cvt_f32_s32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src; cvt.rn.f32.s32 %dst, "
       "%src; }";
   const auto cvt_f32_s32 = resolveSingleInstruction(cvt_f32_s32_source);
   ASSERT_TRUE(cvt_f32_s32);
-  expectAccepted(checker::check(std::get<Cvt>(*cvt_f32_s32), kContext));
+  expectAccepted(
+      checker::check(test_ir_access::get<Cvt>(*cvt_f32_s32), kContext));
 }
 
 /** Generated metadata distinguishes ordinary compatibility from packed exact storage. */

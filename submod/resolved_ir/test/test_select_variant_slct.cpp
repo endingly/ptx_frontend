@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -27,17 +28,17 @@ TEST(ResolveSlct, SelectsTypedNumericSelectorVariants) {
   const auto integer =
       resolve<Slct>(parse_instruction("slct.u32.s32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(integer.has_value()) << integer.error().message;
-  const auto* u32_s32 = std::get_if<Slct::S32>(&integer->variant);
+  const auto* u32_s32 = test_ir_access::get_if<Slct::S32>(&integer->variant);
   ASSERT_NE(u32_s32, nullptr);
-  EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(u32_s32->selector.value).register_class,
-      ResolvedRegisterClass::General);
+  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(u32_s32->selector.value)
+                .register_class,
+            ResolvedRegisterClass::General);
   EXPECT_EQ(u32_s32->dtype.value, ScalarType::U32);
 
   const auto floating = resolve<Slct>(
       parse_instruction("slct.ftz.u64.f32 %rd0, %rd1, %rd2, %f0;"));
   ASSERT_TRUE(floating.has_value()) << floating.error().message;
-  const auto* f32 = std::get_if<Slct::F32>(&floating->variant);
+  const auto* f32 = test_ir_access::get_if<Slct::F32>(&floating->variant);
   ASSERT_NE(f32, nullptr);
   EXPECT_TRUE(f32->ftz.value);
   EXPECT_EQ(f32->dtype.value, ScalarType::U64);

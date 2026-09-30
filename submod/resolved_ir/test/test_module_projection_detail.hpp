@@ -1,10 +1,11 @@
 #pragma once
 
+#include "test_instruction_access.hpp"
 #include "test_module_projection.hpp"
 
 #include <functional>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
 
 namespace ptx_frontend::resolved_ir::test_support {
 namespace detail {
@@ -40,7 +41,7 @@ resolveTypedModule(const syntax_ast::AstModule& ast, ModulePipeline pipeline) {
             (
                 [&] {
                   if (const auto* value =
-                          std::get_if<Instructions>(&instruction))
+                          test_ir_access::get_if<Instructions>(&instruction))
                     selected = *value;
                 }(),
                 ...);

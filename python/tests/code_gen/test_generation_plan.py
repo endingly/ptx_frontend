@@ -328,6 +328,7 @@ class GenerationPlanTests(unittest.TestCase):
                 and artifact.path.name.startswith("resolved_ir_")
                 and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
                 and "_matrix_references_" not in artifact.path.name
+                and "_shard_" not in artifact.path.name
             }
             self.assertEqual(len(sources), len(context.entries))
             for entry in context.entries:

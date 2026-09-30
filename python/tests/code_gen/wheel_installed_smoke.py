@@ -40,6 +40,9 @@ def check_packaged_resources() -> None:
     assert packaged_backend_spec_schema().is_file()
     assert packaged_backend_spec().is_file()
     assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
+    assert packaged_spec_dir().joinpath(
+        "asynchronous_warpgroup_matrix_multiply_accumulate.yaml"
+    ).is_file()
 
 
 def check_module_layout() -> None:
@@ -93,6 +96,9 @@ def check_packaged_spec_model() -> None:
     assert all(isinstance(item, InstructionSpec) for item in database.instructions)
 
     assert any(item.opcode == "add" for item in database.instructions)
+    wgmma = next(item for item in database.instructions if item.opcode == "wgmma")
+    assert len(wgmma.variants) == 2151
+    assert wgmma.variants[-1].name == "wgmma_wait_group_sync_aligned"
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

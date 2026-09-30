@@ -416,6 +416,8 @@ WithLocs<ScalarType> type;
 
 五个 warp-matrix opcode 用紧凑 representation 承载大量逻辑 form。每个外层 instruction 拥有 `WithLocs<VariantType> semantic_form`；其 `std::variant` alternative 保存物理 operand，多个具名逻辑 form 可以共用同一 alternative，因此 C++ form alias 或 `std::get<NamedForm>` 只能识别 storage，不能单独确定完整操作。`matrix_logical_index()` 先检查 tag 范围，再用 `storage_index_by_form` 确认它与实际 alternative 的对应关系；只有两者均合法才返回逻辑索引。`matrix_descriptor()` 对合法的 tag/storage 组合返回静态 canonical `MatrixInstructionDescriptor`，否则返回 null；这个指针本身不证明可变 instruction 已通过验证。为了共用 storage 而提升的 fixed suffix control 保存为 owned `WithLocs<ScalarType>` 或 `WithLocs<bool>`，既有两个具体 seed form 仍保留静态字段。`checker::check()` 和 module validation 对照准确的逻辑 descriptor 检查当前 control、owned matrix topology、operand 与 availability，包括 IR 被修改之后。
 
+WGMMA 将这套逻辑 tag 与 storage 契约用于 2,151 个形式，其中三个控制形式的 `matrix_descriptor()` 为 null。MMA descriptor 保留 128 线程 warpgroup participation、A 来源位置、不透明 shared descriptor operand 和 sparse metadata kind。Instruction-local 的 `WgmmaGroup` completion identity 及 action（`Issue`、`RegisterFence`、`Commit`、`Wait`）告诉下游使用者适用的 protocol obligation，但不声称动态指令序列已完成。静态 descriptor backing 与 checker code 按 64-form 私有 shard 输出；public getter span 在 AST 释放后仍稳定。
+
 一个 variant 可以有多个同 kind 的具名 modifier slot。mixed-precision Add 例如生成
 `static constexpr result_type = F32` 与动态的 `WithLocs<ScalarType> input_type`；三个
 operand 的类型表达式分别引用 `result_type`、`input_type`、`result_type`。slot ID 是

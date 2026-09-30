@@ -20,6 +20,10 @@ supported surface and its exclusions.
   forms. Logical PTX forms retain individual contracts even when they share
   generated C++ storage. The coverage page records current local build and test
   results; assembler comparisons remain sampled.
+- [WGMMA coverage](docs/us-en/wgmma_coverage.md) and its
+  [简体中文版本](docs/zh-han/wgmma_coverage.md) describe dense and sparse
+  warpgroup MMA, its separate fence/commit/wait protocol, typed owned
+  descriptors, and the static/runtime boundary.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

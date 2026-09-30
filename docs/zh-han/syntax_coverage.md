@@ -71,7 +71,7 @@ Matrix 规格固定采用 [PTX ISA 9.3 §9.7.15](https://docs.nvidia.com/cuda/ar
 | Sparse `mma.sp` | 经典 `.f16`/`.bf16`/`.tf32`、integer、FP8 形式及 `mma.sp::ordered_metadata`；新式 ordered low-bit 与 block-scale 组合分别约束 type、shape、metadata、selector、scale 与 target。四种 sparse `.kind::mxf4`/`.kind::mxf4nvf4` 组合在 `sm_121a` 上要求 PTX 8.8；`.kind::mxf4nvf4.scale_vec::4X...ue8m0` 组合在 `sm_120a` 和 `sm_121a` 上均要求 PTX 9.1。Ordered-metadata 标志保留源码承诺；静态检查不能证明运行时 metadata bit 已排序，也不能证明动态 scale selector 的值。 |
 | WMMA compatibility | `wmma.load.{a,b,c}`、`wmma.store.d`、`wmma.mma` 的现行 `.f16`、`.bf16`、`.tf32`、`.f64`、integer、sub-byte 与 single-bit topology。检查 layout、shape、register fragment、generic/global/shared address form、可选 stride 与各 cohort 的 availability。 |
 
-归档 grammar 中 dense FP64 的 `.m8n84` 排版按 fragment 章节与示例解释为 `.m8n8k4`。WMMA FP64 C/D fragment 按 `wmma.mma` 和 `wmma.store` 示例使用两个 `.f64` 寄存器。`stmatrix.m16n8.x4` 示例省略了 `.trans`；规范描述要求该限定符。已移除的浮点 WMMA `.satfinite` 与 PTX 6.3 前隐式 `.aligned` 的历史形式不在本次扩展内。WGMMA、TCGEN05、GPU 数值结果和动态 collective 行为另有边界。
+归档 grammar 中 dense FP64 的 `.m8n84` 排版按 fragment 章节与示例解释为 `.m8n8k4`。WMMA FP64 C/D fragment 按 `wmma.mma` 和 `wmma.store` 示例使用两个 `.f64` 寄存器。`stmatrix.m16n8.x4` 示例省略了 `.trans`；规范描述要求该限定符。已移除的浮点 WMMA `.satfinite` 与 PTX 6.3 前隐式 `.aligned` 的历史形式不在本次扩展内。[WGMMA](wgmma_coverage.md) 有独立的覆盖范围与 protocol 边界；TCGEN05、GPU 数值结果和动态 collective 行为仍各有边界。
 
 离线 assembler 抽样使用 CUDA `ptxas` V13.3.73，并为每个完整 PTX module 指定 `.version` 和 `.target`。WMMA FP64 C/D 双寄存器、dense FP64 `.m8n8k4`、代表性的 movement、混合符号与 `.b1` MMA、经典 sparse MMA，以及 `sm_120a` 上的 dense 和 ordered-sparse block-scale 形式均被接受；对应的错误 fragment、已移除 modifier、必需 `.trans`、scale type 和 target 反例被拒绝。这些抽样对照并非全部 994 个逻辑 form 的逐项 assembler oracle。`ptxas` 接受 WMMA 立即数 stride 17，但 PTX memory-layout 契约下该布局行为未定义；frontend 保留静态 stride 约束。
 

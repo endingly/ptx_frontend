@@ -355,7 +355,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 )
 
     def test_brace_pack_cardinality_boundaries_and_boolean_rejection(self) -> None:
-        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 64)):
+        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 128)):
             for minimum, maximum in (
                 (0, 1),
                 (2, 1),

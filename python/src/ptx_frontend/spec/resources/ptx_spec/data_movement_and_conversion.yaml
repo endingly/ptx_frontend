@@ -6365,6 +6365,106 @@ instructions:
           - {kind: address_alignment, address_operand: src, alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
 
+  - opcode: cp
+    section: "9.7.9.26.5.4"
+    doc: "Tiled tensor-map prefetch from global tensor data into L2."
+    syntax: "cp.async.bulk.prefetch.tensor.{1d|2d|3d|4d|5d}.L2.global{.tile} [tensorMap, {coords}]"
+    variants:
+      - name: cp_async_bulk_prefetch_tensor_1d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .1d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {%r0}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.1d.L2.global.tile [tensor_map, {%r0}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_2d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .2d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map, {%r0, %r1}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%r0, %r1}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_3d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global [tensor_map, {%r0, %r1, %r2}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global.tile [tensor_map, {%r0, %r1, %r2}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_4d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global [tensor_map, {%r0, %r1, %r2, %r3}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global.tile [tensor_map, {%r0, %r1, %r2, %r3}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_5d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: require_target_range, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global [tensor_map, {%r0, %r1, %r2, %r3, %r4}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global.tile [tensor_map, {%r0, %r1, %r2, %r3, %r4}];", valid: true}
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

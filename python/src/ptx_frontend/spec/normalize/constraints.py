@@ -300,12 +300,13 @@ def _normalize_address_alignment_constraints(
         if any(
             len(operands) != len(address_operands)
             or {operand.name for operand in operands} != set(address_operands)
-            or any(operand.kind is not OperandKind.ADDRESS for operand in operands)
+            or any(operand.kind not in {OperandKind.ADDRESS, OperandKind.TENSOR_OPERAND}
+                   for operand in operands)
             for operands in matching_operands
         ):
             raise ValueError(
                 f"variant {raw_variant['name']!r}: address_alignment address "
-                "operand must name an active kind 'addr' operand"
+                "operand must name an active address or tensor operand"
             )
         immediate_operand = raw.get("immediate_operand")
         if immediate_operand is not None:

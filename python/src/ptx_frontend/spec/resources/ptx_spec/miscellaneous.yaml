@@ -95,12 +95,14 @@ instructions:
 
     variants:
       - name: setmaxnreg_inc_sync_aligned_u32
-        description: "Frozen increasing register-count request at modeled PTX target levels."
+        description: "Increase the warp's per-thread maximum register count."
         availability:
           any_of:
             - {ptx: "8.0", sm: 90, target: sm_90a}
             - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.7", sm: 120, target: sm_120a}
             - {ptx: "8.8", sm: 100, family: sm_100f}
+            - {ptx: "9.0", sm: 110, family: sm_110f}
             - {ptx: "8.8", sm: 120, family: sm_120f}
         modifiers:
           - {name: inc, kind: flag, presence: fixed, value: true, token: .inc}
@@ -115,3 +117,26 @@ instructions:
         examples:
           - ptx: "setmaxnreg.inc.sync.aligned.u32 192;"
             valid: true
+
+      - name: setmaxnreg_dec_sync_aligned_u32
+        description: "Decrease the warp's per-thread maximum register count."
+        availability:
+          any_of:
+            - {ptx: "8.0", sm: 90, target: sm_90a}
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.7", sm: 120, target: sm_120a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+            - {ptx: "9.0", sm: 110, family: sm_110f}
+            - {ptx: "8.8", sm: 120, family: sm_120f}
+        modifiers:
+          - {name: dec, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
+        operands:
+          - {name: count, kind: imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: immediate_range, operand: count, minimum: 24, maximum: 256}
+          - {kind: immediate_multiple_of, operand: count, divisor: 8}
+        examples:
+          - {ptx: "setmaxnreg.dec.sync.aligned.u32 64;", valid: true}

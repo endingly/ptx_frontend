@@ -3907,7 +3907,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
 
-    def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
+    def test_setmaxnreg_actions_model_and_generator(self) -> None:
         database = self.database
         setmaxnreg = next(
             instruction
@@ -3918,35 +3918,35 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Setmaxnreg")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["IncSyncAlignedU32"],
+            ["IncSyncAlignedU32", "DecSyncAlignedU32"],
         )
-        variant = resolved.variants[0]
-        self.assertEqual(
-            dict(variant.availability),
-            {"any_of": [
-                {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
-                {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
-                {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-                {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
-            ]},
-        )
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [
-                ("inc", "bool"),
-                ("sync", "bool"),
-                ("aligned", "bool"),
-                ("type", "ScalarType"),
-                ("count", "WithLocs<ResolvedImmediate>"),
-            ],
-        )
-        self.assertEqual(
-            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
-             for constraint in variant.immediate_ranges],
-            [("count", 24, 256)],
-        )
-        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count") # pyright: ignore[reportOptionalMemberAccess]
-        self.assertEqual(variant.immediate_multiple_of.divisor, 8) # pyright: ignore[reportOptionalMemberAccess]
+        expected_availability = {"any_of": [
+            {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+            {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
+        ]}
+        for variant, action in zip(resolved.variants, ("inc", "dec"), strict=True):
+            self.assertEqual(dict(variant.availability), expected_availability)
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.fields],
+                [
+                    (action, "bool"),
+                    ("sync", "bool"),
+                    ("aligned", "bool"),
+                    ("type", "ScalarType"),
+                    ("count", "WithLocs<ResolvedImmediate>"),
+                ],
+            )
+            self.assertEqual(
+                [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+                 for constraint in variant.immediate_ranges],
+                [("count", 24, 256)],
+            )
+            self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count") # pyright: ignore[reportOptionalMemberAccess]
+            self.assertEqual(variant.immediate_multiple_of.divisor, 8) # pyright: ignore[reportOptionalMemberAccess]
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
@@ -3958,13 +3958,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
         self.assertIn("check_immediate_multiple_of(", source)
-        start = source.index("check_inc_sync_aligned_u32")
-        setmaxnreg_check = source[start:source.index("static_assert", start)]
-        self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
-        self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
+        for action in ("inc", "dec"):
+            start = source.index(f"check_{action}_sync_aligned_u32")
+            setmaxnreg_check = source[start:source.index("static_assert", start)]
+            self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
+            self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
         self.assertIn("std::expected<Setmaxnreg, ResolveDiagnostic>", source)
-        self.assertIn(".any_of_count = 4", descriptor)
+        self.assertIn(".any_of_count = 6", descriptor)
         self.assertIn('.required_family = "sm_100f",', descriptor)
+        self.assertIn('.required_family = "sm_110f",', descriptor)
         self.assertIn('.required_family = "sm_120f",', descriptor)
         self.assertIn('.operand_field_id = "count",', descriptor)
         self.assertIn(".divisor = uint64_t{8ULL},", descriptor)

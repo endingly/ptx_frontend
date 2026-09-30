@@ -151,7 +151,13 @@ EXPECTED_SECTIONS = {
         "mma": {"9.7.15.5.14"},
         "ldmatrix": {"9.7.15.5.15"},
     },
-    "miscellaneous.yaml": {"trap": {"9.7.20.4"}, "setmaxnreg": {"9.7.20.5"}},
+    "miscellaneous.yaml": {
+        "brkpt": {"9.7.20.1"},
+        "nanosleep": {"9.7.20.2"},
+        "pmevent": {"9.7.20.3"},
+        "trap": {"9.7.20.4"},
+        "setmaxnreg": {"9.7.20.5"},
+    },
 }
 
 

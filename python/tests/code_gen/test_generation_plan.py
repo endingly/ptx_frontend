@@ -486,6 +486,34 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(output.read_text(encoding="utf-8"), "new raw content\n")
             self.assertEqual(output.stat().st_mode & 0o777, 0o640)
 
+    def test_large_artifact_skips_formatter_and_keeps_atomic_write_contract(self) -> None:
+        """A bounded formatting bypass retains content, mode, and stable mtime."""
+
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "generated/private/large.gen.cpp"
+            output.parent.mkdir(parents=True)
+            output.write_text("old", encoding="utf-8")
+            output.chmod(0o640)
+
+            def emit(_context, *, output_path: Path) -> None:
+                output_path.write_text("large-source", encoding="utf-8")
+
+            with (
+                patch.object(cli, "MAX_FORMATTED_ARTIFACT_BYTES", 8),
+                patch.object(cli, "format_file_inplace") as formatter,
+            ):
+                cli.write_formatted_artifact(None, emit, output)
+                first_mtime = output.stat().st_mtime_ns
+                self.assertEqual(output.read_text(encoding="utf-8"), "large-source")
+                self.assertEqual(output.stat().st_mode & 0o777, 0o640)
+                time.sleep(0.01)
+                cli.write_formatted_artifact(None, emit, output)
+                self.assertEqual(output.stat().st_mtime_ns, first_mtime)
+                formatter.assert_not_called()
+            self.assertEqual(list(output.parent.glob(".large.gen.*")), [])
+
     def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(
         self,
     ) -> None:

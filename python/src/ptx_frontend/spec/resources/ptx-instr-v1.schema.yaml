@@ -262,6 +262,8 @@ $defs:
       - e2m1
       - e2m1x2
       - e2m1x4
+      - ue8m0
+      - ue4m3
 
       # Conversion-only packed floating and fixed-point formats
       - ue8m0x2

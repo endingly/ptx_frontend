@@ -27,6 +27,27 @@ std::vector<StorageSnapshot> projectStorage(const ResolvedModule& module) {
   return projected;
 }
 
+std::expected<void, std::vector<ResolveDiagnostic>> withResolvedModule(
+    const syntax_ast::AstModule& ast, ModulePipeline pipeline,
+    const std::function<void(const ResolvedModule&)>& project) {
+  std::expected<ResolvedModule, ModuleResolveDiagnostics> resolved =
+      [&]() -> std::expected<ResolvedModule, ModuleResolveDiagnostics> {
+    switch (pipeline) {
+      case ModulePipeline::ResolveOnly:
+        return resolveModuleOnly(ast);
+      case ModulePipeline::AvailableContext:
+        return resolveModule(ast);
+      case ModulePipeline::CompleteContext:
+        return resolveAndValidateModule(ast);
+    }
+    __builtin_unreachable();
+  }();
+  if (!resolved)
+    return std::unexpected(std::move(resolved.error()));
+  project(*resolved);
+  return {};
+}
+
 }  // namespace detail
 
 namespace {

@@ -52,7 +52,7 @@ TEST(WmmaCoverage, ResolvesOwnedF16PipelineAndChecksTarget) {
 
   ASSERT_EQ(owned->functions.front().body.size(), 5u);
   auto& body = owned->functions.front().body;
-  auto& load = std::get<Wmma>(body[0]);
+  auto& load = *body[0].get_if<Wmma>();
   const auto descriptor = std::visit(
       [](const auto& variant) { return variant.matrix.value; }, load.variant);
   EXPECT_EQ(descriptor.family, MatrixFamily::WMMA_LOAD);
@@ -61,19 +61,19 @@ TEST(WmmaCoverage, ResolvesOwnedF16PipelineAndChecksTarget) {
   EXPECT_EQ(descriptor.fragments[0].register_count, 8);
   EXPECT_EQ(std::visit(
                 [](const auto& variant) { return variant.matrix.value.family; },
-                std::get<Wmma>(body[3]).variant),
+                body[3].get_if<Wmma>()->variant),
             MatrixFamily::WMMA_MMA);
   EXPECT_EQ(
       std::visit(
           [](const auto& variant) { return variant.matrix.value.d_layout; },
-          std::get<Wmma>(body[4]).variant),
+          body[4].get_if<Wmma>()->variant),
       MatrixLayout::COL);
 
   const checker::Context supported{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   for (const auto& instruction : body)
     EXPECT_TRUE(
-        checker::check(std::get<Wmma>(instruction), supported).has_value());
+        checker::check(*instruction.get_if<Wmma>(), supported).has_value());
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
@@ -164,15 +164,15 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   ASSERT_EQ(body.size(), 5u);
   const auto descriptor =
       std::visit([](const auto& variant) { return variant.matrix.value; },
-                 std::get<Wmma>(body[1]).variant);
+                 body[1].get_if<Wmma>()->variant);
   EXPECT_EQ(descriptor.fragments[0].register_count, 2);
   EXPECT_EQ(descriptor.fragments[3].register_count, 2);
   const checker::Context supported{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   for (std::size_t index = 0; index < 3; ++index)
     EXPECT_TRUE(
-        checker::check(std::get<Wmma>(body[index]), supported).has_value());
-  auto& load_c = std::get<Wmma>(body[0]);
+        checker::check(*body[index].get_if<Wmma>(), supported).has_value());
+  auto& load_c = *body[0].get_if<Wmma>();
   auto& stride = std::get<ResolvedImmediate>(
       std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
           std::get<Wmma::LoadCM8n8k4ColGlobalF64>(load_c.variant).operands)
@@ -186,7 +186,7 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   auto& below_minimum = std::get<ResolvedImmediate>(
       std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
           std::get<Wmma::LoadCM8n8k4ColGlobalF64>(
-              std::get<Wmma>(body[3]).variant)
+              body[3].get_if<Wmma>()->variant)
               .operands)
           .stride.value);
   below_minimum.bits = 7;
@@ -194,16 +194,16 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   auto& misaligned = std::get<ResolvedImmediate>(
       std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
           std::get<Wmma::LoadCM8n8k4ColGlobalF64>(
-              std::get<Wmma>(body[4]).variant)
+              body[4].get_if<Wmma>()->variant)
               .operands)
           .stride.value);
   misaligned.bits = 9;
   misaligned.integer_source_bits = 9;
-  EXPECT_FALSE(checker::check(std::get<Wmma>(body[3]), supported).has_value());
-  EXPECT_FALSE(checker::check(std::get<Wmma>(body[4]), supported).has_value());
+  EXPECT_FALSE(checker::check(*body[3].get_if<Wmma>(), supported).has_value());
+  EXPECT_FALSE(checker::check(*body[4].get_if<Wmma>(), supported).has_value());
   const checker::Context too_old{
       .target = {.ptx_version = {9, 3}, .sm_version = 75}};
-  EXPECT_FALSE(checker::check(std::get<Wmma>(body[1]), too_old).has_value());
+  EXPECT_FALSE(checker::check(*body[1].get_if<Wmma>(), too_old).has_value());
 
   std::string invalid_source = source;
   const auto stride_position = invalid_source.find("[tile], 8;");
@@ -230,7 +230,7 @@ TEST(WmmaCoverage, ResolvesHighestLogicalForm) {
   auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& instruction =
-      std::get<Wmma>(resolved->functions.front().body.front());
+      *resolved->functions.front().body.front().get_if<Wmma>();
   EXPECT_EQ(static_cast<std::size_t>(instruction.semantic_form.value), 551u);
   ASSERT_TRUE(instruction.matrix_logical_index().has_value());
   EXPECT_EQ(*instruction.matrix_logical_index(), 551u);

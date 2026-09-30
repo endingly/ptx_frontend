@@ -36,9 +36,9 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
     owned = std::move(*resolved);
   }
   ASSERT_EQ(owned->functions.front().body.size(), 3u);
-  const auto& load = std::get<Ldmatrix>(owned->functions.front().body[0]);
-  const auto& store = std::get<Stmatrix>(owned->functions.front().body[1]);
-  const auto& move = std::get<Movmatrix>(owned->functions.front().body[2]);
+  const auto& load = *owned->functions.front().body[0].get_if<Ldmatrix>();
+  const auto& store = *owned->functions.front().body[1].get_if<Stmatrix>();
+  const auto& move = *owned->functions.front().body[2].get_if<Movmatrix>();
   const auto load_matrix = std::visit(
       [](const auto& variant) { return variant.matrix.value; }, load.variant);
   EXPECT_EQ(load_matrix.family, MatrixFamily::LDMATRIX);
@@ -104,7 +104,8 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   expect_modern_target("sm_100a", 8, 6, true);
   expect_modern_target("sm_110a", 8, 9, false);
   expect_modern_target("sm_110a", 9, 0, true);
-  expect_modern_target("sm_120a", 8, 6, true);
+  expect_modern_target("sm_120a", 8, 6, false);
+  expect_modern_target("sm_120a", 8, 7, true);
   expect_modern_target("sm_100f", 8, 7, false);
   expect_modern_target("sm_100f", 8, 8, true);
   expect_modern_target("sm_110f", 8, 9, false);
@@ -142,7 +143,7 @@ TEST(WarpMatrixCoverage, RejectsInvalidMovementTopologyAndAddressSpace) {
       .target = {.ptx_version = {9, 3}, .sm_version = 80},
   };
   const auto checked = checker::check(
-      std::get<Ldmatrix>(resolved->functions.front().body.front()), context);
+      *resolved->functions.front().body.front().get_if<Ldmatrix>(), context);
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);

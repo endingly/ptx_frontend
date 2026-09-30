@@ -53,7 +53,7 @@ int main() {
                    owned->functions.front().body.size() >= 1,
                "owned function body is available"))
     return 1;
-  auto* mma = std::get_if<ir::Mma>(&owned->functions.front().body.front());
+  auto* mma = owned->functions.front().body.front().get_if<ir::Mma>();
   if (!require(mma != nullptr, "matrix instruction is typed Mma"))
     return 1;
   using Scaled = ir::Mma::

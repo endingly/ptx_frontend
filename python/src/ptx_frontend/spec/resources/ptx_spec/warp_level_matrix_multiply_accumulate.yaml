@@ -52576,7 +52576,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -52657,7 +52657,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -52743,7 +52743,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -52829,7 +52829,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -52910,7 +52910,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -52996,7 +52996,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53082,7 +53082,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53165,7 +53165,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53253,7 +53253,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53341,7 +53341,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53424,7 +53424,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53512,7 +53512,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53600,7 +53600,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53683,7 +53683,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53771,7 +53771,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53859,7 +53859,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -53942,7 +53942,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54030,7 +54030,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54118,7 +54118,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54196,7 +54196,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54279,7 +54279,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54362,7 +54362,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54440,7 +54440,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54523,7 +54523,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54606,7 +54606,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54684,7 +54684,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54767,7 +54767,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54850,7 +54850,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -54928,7 +54928,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55011,7 +55011,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55094,7 +55094,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55172,7 +55172,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55255,7 +55255,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55338,7 +55338,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55416,7 +55416,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -55499,7 +55499,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -56790,7 +56790,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -56870,7 +56870,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -56955,7 +56955,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57040,7 +57040,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57120,7 +57120,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57205,7 +57205,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57290,7 +57290,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57370,7 +57370,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100
@@ -57455,7 +57455,7 @@ instructions:
         target: sm_100a
       - ptx: '9.0'
         target: sm_110a
-      - ptx: '8.6'
+      - ptx: '8.7'
         target: sm_120a
       - ptx: '8.8'
         sm: 100

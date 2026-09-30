@@ -52,21 +52,21 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   }
   ASSERT_EQ(owned->functions.front().body.size(), 6u);
   auto& body = owned->functions.front().body;
-  const auto& dense = std::get<Mma>(body[0]);
+  const auto& dense = *body[0].get_if<Mma>();
   const auto dense_descriptor =
       std::visit([](const auto& selected) { return selected.matrix.value; },
                  dense.variant);
   EXPECT_EQ(dense_descriptor.shape, (MatrixShape{16, 8, 16}));
   EXPECT_EQ(dense_descriptor.fragments[1].register_count, 8);
   EXPECT_EQ(dense_descriptor.fragments[1].register_type, base::ScalarType::F64);
-  auto& sparse = std::get<Mma>(body[1]);
+  auto& sparse = *body[1].get_if<Mma>();
   EXPECT_EQ(std::visit(
                 [](const auto& selected) {
                   return selected.matrix.value.sparse_order;
                 },
                 sparse.variant),
             MatrixSparseOrder::ORDERED);
-  auto& scaled = std::get<Mma>(body[2]);
+  auto& scaled = *body[2].get_if<Mma>();
   const auto scaled_descriptor =
       std::visit([](const auto& selected) { return selected.matrix.value; },
                  scaled.variant);
@@ -84,7 +84,7 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   };
   for (const auto& instruction : body)
     EXPECT_TRUE(
-        checker::check(std::get<Mma>(instruction), supported).has_value());
+        checker::check(*instruction.get_if<Mma>(), supported).has_value());
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
@@ -101,7 +101,7 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
                    .identity = target->identity,
                    .capabilities = target->capabilities},
     };
-    return checker::check(std::get<Mma>(body[index]), context).has_value();
+    return checker::check(*body[index].get_if<Mma>(), context).has_value();
   };
   EXPECT_TRUE(check_target("sm_121a", 2));
   EXPECT_TRUE(check_target("sm_121a", 4));
@@ -216,34 +216,34 @@ TEST(WarpMatrixMmaCoverage, RejectsScaleSelectorAndSparseSelectorLimits) {
   };
   for (const auto& instruction : body)
     EXPECT_TRUE(
-        checker::check(std::get<Mma>(instruction), context).has_value());
+        checker::check(*instruction.get_if<Mma>(), context).has_value());
 
   using Scaled = Mma::
       SyncAlignedM16n8k64RowColKindMxf4BlockScaleScaleVec2F32E2m1E2m1F32Ue8m0;
   auto& invalid_byte = std::get<ResolvedImmediate>(
-      std::get<Scaled>(std::get<Mma>(body[1]).variant)
+      std::get<Scaled>(body[1].get_if<Mma>()->variant)
           .scale_a_selector.value.byte_id);
   invalid_byte.bits = 1;
   invalid_byte.integer_source_bits = 1;
-  EXPECT_FALSE(checker::check(std::get<Mma>(body[1]), context).has_value());
+  EXPECT_FALSE(checker::check(*body[1].get_if<Mma>(), context).has_value());
   auto& invalid_thread = std::get<ResolvedImmediate>(
-      std::get<Scaled>(std::get<Mma>(body[2]).variant)
+      std::get<Scaled>(body[2].get_if<Mma>()->variant)
           .scale_a_selector.value.thread_id);
   invalid_thread.bits = 2;
   invalid_thread.integer_source_bits = 2;
-  EXPECT_FALSE(checker::check(std::get<Mma>(body[2]), context).has_value());
+  EXPECT_FALSE(checker::check(*body[2].get_if<Mma>(), context).has_value());
   auto& sparse_selector =
       std::get<Mma::SpSpSyncAlignedM16n8k32RowColF32E4m3E4m3F32>(
-          std::get<Mma>(body[3]).variant)
+          body[3].get_if<Mma>()->variant)
           .selector.value;
   sparse_selector.bits = 2;
   sparse_selector.integer_source_bits = 2;
-  EXPECT_FALSE(checker::check(std::get<Mma>(body[3]), context).has_value());
+  EXPECT_FALSE(checker::check(*body[3].get_if<Mma>(), context).has_value());
   auto& selector_register = std::get<ResolvedRegisterRef>(
-      std::get<Scaled>(std::get<Mma>(body[4]).variant)
+      std::get<Scaled>(body[4].get_if<Mma>()->variant)
           .scale_a_selector.value.byte_id);
   selector_register.declared_type = base::ScalarType::U32;
-  EXPECT_FALSE(checker::check(std::get<Mma>(body[4]), context).has_value());
+  EXPECT_FALSE(checker::check(*body[4].get_if<Mma>(), context).has_value());
 
   std::string invalid_source = source;
   const auto selector_position = invalid_source.find("{2,1}");

@@ -5,7 +5,7 @@
 namespace ptx_frontend::resolved_ir::detail {
 
 std::optional<ResolveDiagnostic> resolve_and_append_instruction(
-    std::vector<ResolvedInstruction>& body,
+    std::vector<OwnedInstruction>& body,
     const syntax_ast::AstInstruction& instruction,
     const ResolveContext& context, BeforeAppendInstruction before_append,
     void* user_data) {

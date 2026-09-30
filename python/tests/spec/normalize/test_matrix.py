@@ -77,8 +77,8 @@ class MatrixNormalizationTests(unittest.TestCase):
         """Represent three architecture and three later family target paths."""
 
         clauses = [
-            {"ptx": "8.6", "target": f"sm_{arch}a"}
-            for arch in (100, 110, 120)
+            {"ptx": version, "target": f"sm_{arch}a"}
+            for arch, version in ((100, "8.6"), (110, "8.6"), (120, "8.7"))
         ] + [
             {"ptx": "8.8", "sm": arch, "family": f"sm_{arch}f"}
             for arch in (100, 110, 120)
@@ -86,6 +86,20 @@ class MatrixNormalizationTests(unittest.TestCase):
         self.assertEqual(len(normalize_availability({"any_of": clauses})["any_of"]), 6)
         with self.assertRaisesRegex(ValueError, "one to six"):
             normalize_availability({"any_of": clauses + [clauses[0]]})
+
+    def test_sm120a_matrix_clauses_require_ptx87(self) -> None:
+        """Exact modern matrix targets cannot precede target introduction."""
+
+        source = load_yaml(packaged_spec_dir() /
+                           "warp_level_matrix_multiply_accumulate.yaml")
+        clauses = [clause
+                   for instruction in source["instructions"]
+                   for variant in instruction["variants"]
+                   for clause in variant["availability"].get("any_of", [])
+                   if clause.get("target") == "sm_120a"]
+        self.assertGreater(len(clauses), 200)
+        self.assertTrue(all(tuple(map(int, clause["ptx"].split("."))) >= (8, 7)
+                            for clause in clauses))
 
     def test_compressed_load_uses_one_exact_lexical_suffix(self) -> None:
         """Decompression packing stays typed although its suffix is one token."""

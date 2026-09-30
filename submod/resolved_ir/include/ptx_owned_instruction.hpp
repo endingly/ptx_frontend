@@ -65,6 +65,7 @@ concept OwnedReferencePayload =
     std::same_as<T, ResolvedSymbolRef> || std::same_as<T, ResolvedAddress> ||
     std::same_as<T, ResolvedRegisterVector> ||
     std::same_as<T, ResolvedTensorCoordinate> ||
+    std::same_as<T, ResolvedMatrixScaleSelector> ||
     std::same_as<T, ResolvedFunctionRef> ||
     std::same_as<T, ResolvedIndirectCallee> ||
     std::same_as<T, ResolvedCallParameterRef> ||

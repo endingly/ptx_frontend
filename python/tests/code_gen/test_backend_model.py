@@ -443,8 +443,16 @@ class BackendModelTests(unittest.TestCase):
         )[0]
         field = from_instruction_spec(instruction).variants[0].modifier_fields[0]
 
-        with self.assertRaisesRegex(ValueError, "has no value 'b1'"):
-            field_cpp_constant_expr(field, backend=self.backend)
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        del raw["domains"][CppDomain.SCALAR_TYPES.value]["values"]["b1"]
+        with tempfile.TemporaryDirectory() as directory:
+            backend_path = Path(directory) / "backend.yaml"
+            backend_path.write_text(
+                yaml.safe_dump(raw, sort_keys=False), encoding="utf-8"
+            )
+            backend = load_cpp_backend(backend_path)
+            with self.assertRaisesRegex(ValueError, "has no value 'b1'"):
+                field_cpp_constant_expr(field, backend=backend)
 
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:
         with self.assertRaisesRegex(TypeError, "CppDomain member"):

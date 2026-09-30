@@ -8,7 +8,7 @@
 namespace ptx_frontend::resolved_ir::detail {
 
 /** Synchronous, borrowed callback that may inspect and update an owned instruction. */
-using BeforeAppendInstruction = void (*)(ResolvedInstruction&, void*);
+using BeforeAppendInstruction = void (*)(OwnedInstruction&, void*);
 
 /**
  * Resolve one instruction and append it after the caller's synchronous callback.
@@ -19,7 +19,7 @@ using BeforeAppendInstruction = void (*)(ResolvedInstruction&, void*);
  * instruction; exceptions propagate to the caller.
  */
 std::optional<ResolveDiagnostic> resolve_and_append_instruction(
-    std::vector<ResolvedInstruction>& body,
+    std::vector<OwnedInstruction>& body,
     const syntax_ast::AstInstruction& instruction,
     const ResolveContext& context, BeforeAppendInstruction before_append,
     void* user_data);

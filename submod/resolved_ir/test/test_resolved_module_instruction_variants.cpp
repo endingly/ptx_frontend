@@ -2402,7 +2402,7 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   const auto transpose = resolveModule(*parsed_transpose);
   ASSERT_TRUE(transpose.has_value()) << transpose.error().front().message;
   EXPECT_TRUE(checker::check(
-                  std::get<Ldmatrix>(transpose->functions.front().body.front()),
+                  *transpose->functions.front().body.front().get_if<Ldmatrix>(),
                   context)
                   .has_value());
 
@@ -2530,7 +2530,7 @@ TEST(ResolvedModule, OwnsAndRechecksTypedMatrixTopologyAfterAstRelease) {
     owned = std::move(*resolved);
   }
 
-  auto& instruction = std::get<Mma>(owned->functions.front().body.front());
+  auto& instruction = *owned->functions.front().body.front().get_if<Mma>();
   auto& variant =
       std::get<Mma::SyncAlignedM16n8k8RowColF32F16F16F32>(instruction.variant);
   ASSERT_FALSE(variant.matrix.locs.empty());

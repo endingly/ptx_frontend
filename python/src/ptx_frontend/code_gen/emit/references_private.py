@@ -69,7 +69,7 @@ def _emit_fields(layout: ResolvedOperandLayout, selected: str) -> str:
             f".kind = MatrixReferenceKind::{kind}, "
             f".value = &{selected}.{field.name}.value, "
             f".locations = {selected}.{field.name}.locs, "
-            f".address_resolution_policy = {policy}" 
+            f".address_resolution_policy = {policy}"
             "}, context);"
         )
     return "\n".join(lines)

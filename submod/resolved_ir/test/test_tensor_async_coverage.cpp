@@ -26,6 +26,48 @@ TEST(TensorAsync, PrefetchRanksAndTileProvenance) {
   cp.async.bulk.prefetch.tensor.4d.L2.global.tile [tensor_map, {%r0, %r1, %r2, %r3}];
   cp.async.bulk.prefetch.tensor.5d.L2.global [tensor_map, {%r0, %r1, %r2, %r3, %r4}];
 }
+
+/** Cluster and CTA tiled loads retain mbarrier completion and target gates. */
+TEST(TensorAsync, LoadDirectionsAndRanks) {
+  const std::string prefix = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 128 .b8 tile_data[1024];
+.shared .align 8 .b64 barrier;
+.entry kernel() {
+  .reg .s32 %r<5>;
+)ptx";
+  for (std::string_view direction : {"cluster", "cta"}) {
+    for (int rank = 1; rank <= 5; ++rank) {
+      std::string coords = "%r0";
+      for (int index = 1; index < rank; ++index)
+        coords += ", %r" + std::to_string(index);
+      const std::string instruction =
+          "cp.async.bulk.tensor." + std::to_string(rank) + "d.shared::" +
+          std::string(direction) + ".global" +
+          (rank % 2 == 0 ? ".tile" : "") +
+          ".mbarrier::complete_tx::bytes [tile_data], [tensor_map, {" +
+          coords + "}], [barrier];";
+      const auto parsed = test_helpers::parseModule(prefix + instruction + "\n}");
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      const auto resolved = resolveModule(*parsed);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      const auto& copy = std::get<Cp>(resolved->functions.front().body.front());
+      const checker::Context available{
+          .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+      EXPECT_TRUE(checker::check(copy, available).has_value()) << instruction;
+      const checker::Context too_old{
+          .target = {.ptx_version = {8, 0}, .sm_version = 90}};
+      EXPECT_EQ(checker::check(copy, too_old).has_value(),
+                direction == "cluster");
+      const checker::Context too_small{
+          .target = {.ptx_version = {9, 3}, .sm_version = 89}};
+      EXPECT_FALSE(checker::check(copy, too_small).has_value());
+    }
+  }
+}
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);

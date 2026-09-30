@@ -27,8 +27,8 @@ enum class OperandSyntaxShape : uint16_t {
   BranchTarget = 1 << 9,
   BranchTargetSet = 1 << 10,
   RegisterPredicatePair = 1 << 11,
-  NegatedImmediate = 1 << 12
-  , TensorOperand = 1 << 13
+  NegatedImmediate = 1 << 12,
+  TensorOperand = 1 << 13
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {

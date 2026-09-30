@@ -66,8 +66,8 @@ struct Context {
 };
 
 /** Project an owned tensor operand into descriptor and coordinate checks. */
-OperandView project_tensor_operand(std::string_view field_id,
-                                   const WithLocs<ResolvedTensorOperand>& operand);
+OperandView project_tensor_operand(
+    std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand);
 /** Reject static negative coordinates for shared-to-global tensor stores. */
 CheckResult check_tensor_store_coordinates(const OperandView& operand,
                                            const Context& context);

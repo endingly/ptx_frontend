@@ -139,9 +139,9 @@ struct AstRegisterPredicatePair {
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
                  AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
-                 AstTensorOperand,
-                 AstCallParameterList, AstCallTarget, AstCallTargetSet,
-                 AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
+                 AstTensorOperand, AstCallParameterList, AstCallTarget,
+                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
+                 AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

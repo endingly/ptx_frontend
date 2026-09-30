@@ -139,9 +139,9 @@ struct CstRegisterPredicatePair {
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
                  CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
-                 CstTensorOperand,
-                 CstCallParameterList, CstCallTarget, CstCallTargetSet,
-                 CstBranchTarget, CstBranchTargetSet, CstRegisterPredicatePair>;
+                 CstTensorOperand, CstCallParameterList, CstCallTarget,
+                 CstCallTargetSet, CstBranchTarget, CstBranchTargetSet,
+                 CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;

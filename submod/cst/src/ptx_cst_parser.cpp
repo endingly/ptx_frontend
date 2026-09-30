@@ -388,8 +388,11 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
       return std::unexpected(close.error());
     return syntax_cst::CstOperand{syntax_cst::CstTensorOperand{
         open,
-        syntax_cst::CstAddress{std::nullopt, std::move(base),
-                               std::move(offset), std::nullopt, std::nullopt,
+        syntax_cst::CstAddress{std::nullopt,
+                               std::move(base),
+                               std::move(offset),
+                               std::nullopt,
+                               std::nullopt,
                                {open + 1, comma}},
         comma,
         std::get<syntax_cst::CstVectorPack>(std::move(*parsed)),

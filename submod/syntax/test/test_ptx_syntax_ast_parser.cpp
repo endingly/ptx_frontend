@@ -49,14 +49,13 @@ TEST(PtxSyntaxParser, LowersTensorMapCoordinateComposite) {
   ASSERT_EQ(result->operands.size(), 1u);
   const auto& tensor =
       std::get<syntax_ast::AstTensorOperand>(result->operands.front());
-  EXPECT_EQ(sourceSlice(source, tensor.range),
-            "[tensor_map+64, {%r0, -2}]");
+  EXPECT_EQ(sourceSlice(source, tensor.range), "[tensor_map+64, {%r0, -2}]");
   EXPECT_EQ(sourceSlice(source, tensor.comma_range), ",");
   EXPECT_EQ(sourceSlice(source, tensor.tensor_map.range), "tensor_map+64");
   ASSERT_EQ(tensor.coordinates.elements.size(), 2u);
-  EXPECT_EQ(std::get<AstImmediate>(tensor.coordinates.elements.back())
-                .syntax.text,
-            "-2");
+  EXPECT_EQ(
+      std::get<AstImmediate>(tensor.coordinates.elements.back()).syntax.text,
+      "-2");
 }
 
 std::string_view sourceSlice(std::string_view source, SourceRange range) {

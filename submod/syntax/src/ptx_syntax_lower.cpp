@@ -281,7 +281,8 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
             elements.push_back(lowerVectorElement(cst, element));
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
-        } else if constexpr (std::same_as<Value, syntax_cst::CstTensorOperand>) {
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstTensorOperand>) {
           auto address = std::get<syntax_ast::AstAddress>(
               lowerOperand(cst, syntax_cst::CstOperand{value.tensor_map}));
           // The tensor-map address is the first member of the outer brackets.
@@ -289,7 +290,8 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           auto coordinates = std::get<syntax_ast::AstVectorPack>(
               lowerOperand(cst, syntax_cst::CstOperand{value.coordinates}));
           return syntax_ast::AstTensorOperand{
-              std::move(address), std::move(coordinates),
+              std::move(address),
+              std::move(coordinates),
               cst.token(value.left_bracket).range,
               cst.token(value.comma).range,
               cst.token(value.right_bracket).range,

@@ -1586,8 +1586,9 @@ resolve_tensor_operand(
       binding.minimum_elements != binding.maximum_elements) {
     return std::unexpected(ResolveDiagnostic{
         .range = tensor->coordinates.range,
-        .message = fmt::format("Tensor operand requires exactly {} coordinates.",
-                               binding.minimum_elements)});
+        .message =
+            fmt::format("Tensor operand requires exactly {} coordinates.",
+                        binding.minimum_elements)});
   }
   ResolvedTensorOperand resolved{
       .tensor_map = {std::move(map->value), tensor->tensor_map.range},

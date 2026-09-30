@@ -312,6 +312,15 @@ def emit_check_operand_view(
                   view.vector_element_types[index] = info.element_type;
                 return view;
               }}()"""
+    if field.value_kind is ResolvedValueKind.SHARED_MATRIX_DESCRIPTOR:
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
+                  .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .register_symbol_id = {object_name}.{field.name}.value.register_ref.symbol_id,
+                  .register_class = {object_name}.{field.name}.value.register_ref.register_class,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_kind is ResolvedValueKind.REGISTER:
         return f"""              OperandView{{
                   .field_id = "{field.name}",
@@ -409,7 +418,8 @@ def emit_check_operand_view(
                   .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
-    if field.value_kind is ResolvedValueKind.PREDICATE_SOURCE:
+    if field.value_kind in {ResolvedValueKind.PREDICATE_SOURCE,
+                            ResolvedValueKind.WGMMA_SCALE_D}:
         return f"""              [&]() -> OperandView {{
                 const auto& source = {object_name}.{field.name}.value;
                 if (const auto* special =

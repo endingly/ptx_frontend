@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include <fmt/format.h>
 
@@ -145,6 +146,34 @@ std::pair<uint64_t, bool> integer_constraint_value(
     const OperandView& operand) noexcept {
   return {operand.integer_source_bits.value_or(*operand.immediate_bits),
           operand.immediate_is_negative.value_or(false)};
+}
+
+/**
+ * Recheck the use-width bits of a source-backed integer immediate.
+ * Fixed integer constraints use the original source value for legality, while
+ * consumers observe the converted bits; both representations must agree.
+ */
+CheckResult check_integer_immediate_consistency(const OperandView& operand,
+                                                const Context& context) {
+  if (!operand.integer_source_bits || !operand.immediate_bits ||
+      !operand.immediate_type || !is_integer_type(*operand.immediate_type))
+    return {};
+  const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
+  if (byte_width == 0 || byte_width > sizeof(uint64_t))
+    return {};
+  const uint8_t bit_width = byte_width * 8;
+  const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max()
+                                        : (uint64_t{1} << bit_width) - 1;
+  if (*operand.immediate_bits == (*operand.integer_source_bits & mask))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand.locations, context),
+      .message = fmt::format(
+          "Immediate operand '{}' has bits inconsistent with its integer "
+          "source value.",
+          operand.field_id),
+  }});
 }
 
 void append_value_availability_diagnostics(const OperandView& operand,
@@ -1237,9 +1266,13 @@ CheckResult check_operands(
   }
 
   if (matrix != nullptr) {
-    // Matrix control immediates are unsigned, retained after source
-    // conversion. Both the original value and owned payload must agree.
+    // Signed WGMMA scales have their own source and converted-bit check.
+    // Other matrix controls retain the unsigned source contract.
     for (const OperandView& operand : operands) {
+      if ((matrix->family == MatrixFamily::WGMMA ||
+           matrix->family == MatrixFamily::WGMMA_SPARSE) &&
+          (operand.field_id == "scale_a" || operand.field_id == "scale_b"))
+        continue;
       if (operand.actual_shape != OperandShape::Immediate ||
           !operand.immediate_bits)
         continue;
@@ -2291,6 +2324,9 @@ CheckResult check_immediate_value(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
                        descriptor.allowed_values.end()) {
@@ -2338,6 +2374,9 @@ CheckResult check_immediate_multiple_of(
                         descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value % descriptor.divisor == 0) {
     return {};
@@ -2375,6 +2414,9 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value >= descriptor.minimum &&
       (!descriptor.has_maximum || value <= descriptor.maximum)) {
@@ -2386,6 +2428,63 @@ CheckResult check_immediate_range(
       .message = fmt::format(
           "Immediate operand '{}' has value {} outside the supported range.",
           descriptor.operand_field_id, value),
+  }});
+}
+
+/** Check signed WGMMA scale controls against their original integer sources. */
+CheckResult check_wgmma_scales(std::span<const OperandView> operands,
+                               const Context& context) {
+  for (const std::string_view name : {"scale_a", "scale_b"}) {
+    const OperandView* operand = find_operand(operands, name);
+    if (operand == nullptr ||
+        operand->actual_shape != OperandShape::Immediate ||
+        operand->immediate_type != ScalarType::S32 ||
+        !operand->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = operand == nullptr
+                       ? context.instruction_range
+                       : diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("WGMMA {} requires a signed-32 immediate.", name),
+      }});
+    }
+    if (auto consistency =
+            check_integer_immediate_consistency(*operand, context);
+        !consistency)
+      return consistency;
+    const auto [source, negative] = integer_constraint_value(*operand);
+    if ((!negative && source == 1 && *operand->immediate_bits == 1) ||
+        (negative && source == UINT64_MAX &&
+         *operand->immediate_bits == UINT32_MAX))
+      continue;
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand->locations, context),
+        .message = fmt::format("WGMMA {} must be +1 or -1.", name),
+    }});
+  }
+  return {};
+}
+
+/** Validate the owned WGMMA accumulation control before lossy view projection. */
+CheckResult check_wgmma_scale_d(
+    const WithLocs<ResolvedPredicateSource>& scale_d, const Context& context) {
+  if (std::holds_alternative<ResolvedPredicateConstant>(scale_d.value))
+    return {};
+  if (const auto* predicate = std::get_if<ResolvedPredicate>(&scale_d.value)) {
+    const auto& reg = predicate->register_ref;
+    if (!predicate->negated &&
+        reg.register_class == ResolvedRegisterClass::Predicate &&
+        (!reg.declared_type || *reg.declared_type == ScalarType::Pred) &&
+        !reg.vector_width)
+      return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(scale_d.locs, context),
+      .message =
+          "WGMMA scale-d requires a plain scalar predicate or 0/1 constant.",
   }});
 }
 

@@ -49,6 +49,12 @@ def emit_owned_bridge(cpp_name: str, opcode: str, category: str) -> str:
                 case detail::MatrixReferenceKind::Register:
                   forward(*static_cast<const ResolvedRegisterRef*>(view.value));
                   break;
+                case detail::MatrixReferenceKind::SharedMatrixDescriptor:
+                  forward(*static_cast<const ResolvedSharedMatrixDescriptor*>(view.value));
+                  break;
+                case detail::MatrixReferenceKind::PredicateSource:
+                  forward(*static_cast<const ResolvedPredicateSource*>(view.value));
+                  break;
                 case detail::MatrixReferenceKind::ScaleSelector:
                   forward(*static_cast<const ResolvedMatrixScaleSelector*>(view.value));
                   break;

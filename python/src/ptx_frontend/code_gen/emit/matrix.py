@@ -48,5 +48,8 @@ def emit_matrix_descriptor(matrix: MatrixSpec, backend: CodegenUnit) -> str:
         f".fragment_count = {len(matrix.fragments)}, "
         f".scale_selectors = std::array<MatrixScaleSelectorDescriptor, 2>{{{selectors}}}, "
         f".scale_selector_count = {len(matrix.scale_selectors)}"
+        f", .source_placement = WgmmaSourcePlacement::{matrix.source_placement.name}"
+        f", .sparse_metadata_kind = WgmmaSparseMetadataKind::{matrix.sparse_metadata_kind.name}"
+        f", .warpgroup = {'WarpGroup128{}' if matrix.family.name in ('WGMMA', 'WGMMA_SPARSE') else 'std::nullopt'}"
         "}"
     )

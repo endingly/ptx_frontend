@@ -12,6 +12,7 @@ struct Mma;
 struct Movmatrix;
 struct Stmatrix;
 struct Wmma;
+struct Wgmma;
 
 namespace detail {
 
@@ -21,6 +22,8 @@ enum class MatrixReferenceKind : uint8_t {
   RegisterVector,
   Register,
   ScaleSelector,
+  SharedMatrixDescriptor,
+  PredicateSource,
   Address,
   RegisterOrImmediate,
 };
@@ -54,6 +57,9 @@ void visit_matrix_references(const Stmatrix& instruction,
                              MatrixReferenceCallback callback, void* context);
 /** Visit one selected matrix instruction through bounded private shards. */
 void visit_matrix_references(const Wmma& instruction,
+                             MatrixReferenceCallback callback, void* context);
+/** Visit the selected WGMMA form through bounded private shards. */
+void visit_matrix_references(const Wgmma& instruction,
                              MatrixReferenceCallback callback, void* context);
 
 }  // namespace detail

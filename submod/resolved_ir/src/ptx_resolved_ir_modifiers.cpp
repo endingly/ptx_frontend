@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <string_view>
+#include <type_traits>
 #include <unordered_set>
 
 #include "resolved_value_domains.gen.hpp"
@@ -751,6 +752,36 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_modifier_value(
   return domain->parser(modifier);
 }
 
+/** Match only top-level syntax shapes after modifier and arity selection tie.
+ *
+ * Cardinality, element types, values, and target checks remain with the
+ * selected layout and instruction checker so malformed operands keep their
+ * existing diagnostics.
+ */
+bool matches_variant_operand_shapes(
+    const check_end::SyntaxVariantDescriptor& variant,
+    const syntax_ast::AstInstruction& ast) {
+  using Bits = std::underlying_type_t<check_end::OperandSyntaxShape>;
+  for (const auto& layout : variant.operand_layouts) {
+    if (layout.slots.size() != ast.operands.size())
+      continue;
+    bool matches = true;
+    for (size_t index = 0; index < layout.slots.size(); ++index) {
+      const Bits allowed =
+          static_cast<Bits>(layout.slots[index].allowed_shapes);
+      const Bits actual = static_cast<Bits>(
+          check_end::get_operand_syntax_shape(ast.operands[index]));
+      if ((allowed & actual) == 0) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches)
+      return true;
+  }
+  return false;
+}
+
 }  // namespace detail
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
@@ -819,7 +850,7 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
     // existing operand arity from an extended form.  Only use arity when the
     // modifier match itself is ambiguous; ordinary operand diagnostics remain
     // with the selected variant's layout checker.
-    std::optional<std::string_view> selected;
+    std::vector<const check_end::SyntaxVariantDescriptor*> arity_matches;
     for (const auto* variant : modifier_matches) {
       const bool matches_arity = std::ranges::any_of(
           variant->operand_layouts, [&](const auto& layout) {
@@ -827,18 +858,35 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
           });
       if (!matches_arity)
         continue;
-      if (selected) {
-        return std::unexpected(ResolveDiagnostic{
-            .range = ast.range,
-            .message = fmt::format("Ambiguous modifier and operand-count "
-                                   "combination for instruction '{}'.",
-                                   ast.opcode.syntax.text),
-        });
-      }
-      selected = variant->variant_name;
+      arity_matches.push_back(variant);
     }
-    if (selected)
-      return *selected;
+    if (arity_matches.size() == 1)
+      return arity_matches.front()->variant_name;
+    if (arity_matches.size() > 1) {
+      std::optional<std::string_view> selected;
+      for (const auto* variant : arity_matches) {
+        if (!detail::matches_variant_operand_shapes(*variant, ast))
+          continue;
+        if (selected) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = ast.range,
+              .message =
+                  fmt::format("Ambiguous modifier, operand-count, and "
+                              "syntax-shape combination for instruction '{}'.",
+                              ast.opcode.syntax.text),
+          });
+        }
+        selected = variant->variant_name;
+      }
+      if (selected)
+        return *selected;
+      return std::unexpected(ResolveDiagnostic{
+          .range = ast.range,
+          .message = fmt::format("No operand-shape variant of instruction '{}' "
+                                 "accepts these operands.",
+                                 ast.opcode.syntax.text),
+      });
+    }
     return std::unexpected(ResolveDiagnostic{
         .range = ast.range,
         .message = fmt::format(

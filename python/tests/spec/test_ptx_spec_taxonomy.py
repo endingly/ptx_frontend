@@ -31,6 +31,11 @@ EXPECTED_FILES = {
         "matrix",
         "9.7.15",
     ),
+    "asynchronous_warpgroup_matrix_multiply_accumulate.yaml": (
+        "asynchronous_warpgroup_matrix_multiply_accumulate",
+        "matrix",
+        "9.7.16",
+    ),
     "miscellaneous.yaml": ("miscellaneous", "control_flow", "9.7.20"),
 }
 
@@ -153,6 +158,9 @@ EXPECTED_SECTIONS = {
         "stmatrix": {"9.7.15.5.16"},
         "movmatrix": {"9.7.15.5.17"},
         "wmma": {"9.7.15.4", "9.7.15.4.3", "9.7.15.4.4", "9.7.15.4.5"},
+    },
+    "asynchronous_warpgroup_matrix_multiply_accumulate.yaml": {
+        "wgmma": {"9.7.16", "9.7.16.5.2", "9.7.16.6.3", "9.7.16.7"},
     },
     "miscellaneous.yaml": {"trap": {"9.7.20.4"}, "setmaxnreg": {"9.7.20.5"}},
 }

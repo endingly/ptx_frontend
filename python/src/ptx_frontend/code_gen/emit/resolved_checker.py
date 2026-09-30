@@ -9,6 +9,7 @@ from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
+from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.spec.model import CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
@@ -426,6 +427,22 @@ def _emit_cross_rule_checks(
     """Emit a variant's cross-rule checks in a fixed order."""
 
     checks = ""
+    scale_d_fields = tuple(
+        field
+        for layout in variant.operand_layouts
+        for field in layout.fields
+        if field.value_kind is ResolvedValueKind.WGMMA_SCALE_D
+    )
+    if scale_d_fields:
+        if len(variant.operand_layouts) != 1 or len(scale_d_fields) != 1:
+            raise ValueError("WGMMA scale-d requires one unambiguous operand layout")
+        checks += f"""            const auto wgmma_scale_d_check = check_wgmma_scale_d(
+                selected.{scale_d_fields[0].name}, context);
+            if (!wgmma_scale_d_check) {{
+              diagnostics.insert(diagnostics.end(), wgmma_scale_d_check.error().begin(),
+                                 wgmma_scale_d_check.error().end());
+            }}
+"""
     if instruction.atomic_address_qualifier is not None:
         checks += f"""            const auto atomic_check = check_atomic_qualifiers(
                 {checker_variant_expr}.atomic_address_qualifier,
@@ -509,6 +526,14 @@ def _emit_cross_rule_checks(
             if (!createpolicy_rule_check) {
               diagnostics.insert(diagnostics.end(), createpolicy_rule_check.error().begin(),
                                  createpolicy_rule_check.error().end());
+            }
+"""
+    if variant.rule is SemanticRule.MATRIX_WGMMA_SCALE:
+        checks += """            const auto wgmma_scale_check = check_wgmma_scales(
+                operands, context);
+            if (!wgmma_scale_check) {
+              diagnostics.insert(diagnostics.end(), wgmma_scale_check.error().begin(),
+                                 wgmma_scale_check.error().end());
             }
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_ST_BULK:

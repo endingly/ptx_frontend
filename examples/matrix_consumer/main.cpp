@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <iostream>
 #include <optional>
 #include <string_view>
@@ -22,6 +23,27 @@ constexpr std::string_view kMatrixSource = R"ptx(
   mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.block_scale.scale_vec::1X.f32.e4m3.e4m3.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
     {%c0,%c1,%c2,%c3}, %sa, {%byte_id,%thread_id}, %sb, {2,3};
+  ret;
+}
+)ptx";
+
+/** Independent WGMMA group forms straddling the generated checker shard boundary. */
+constexpr std::string_view kWgmmaSource = R"ptx(
+.version 9.3
+.target sm_90a
+.address_size 64
+.visible .entry wgmma_consumer() {
+  .reg .f32 %f<12>;
+  .reg .b32 %a<4>, %d<6>;
+  .reg .b64 %adesc, %bdesc;
+  wgmma.fence.sync.aligned;
+  wgmma.mma_async.sync.aligned.m64n24k32.f32.e4m3.e5m2
+    {%f0,%f1,%f2,%f3,%f4,%f5,%f6,%f7,%f8,%f9,%f10,%f11},
+    {%a0,%a1,%a2,%a3}, %bdesc, 1, -1, 1;
+  wgmma.mma_async.sync.aligned.m64n24k32.f16.e5m2.e4m3
+    {%d0,%d1,%d2,%d3,%d4,%d5}, %adesc, %bdesc, 1, 1, -1;
+  wgmma.commit_group.sync.aligned;
+  wgmma.wait_group.sync.aligned 4294967296;
   ret;
 }
 )ptx";
@@ -102,8 +124,61 @@ int main() {
                  .identity = profile->identity,
                  .capabilities = profile->capabilities},
   };
-  return require(ir::checker::check(*mma, context).has_value(),
-                 "owned instruction validates")
-             ? 0
-             : 1;
+  if (!require(ir::checker::check(*mma, context).has_value(),
+               "owned instruction validates"))
+    return 1;
+
+  std::optional<ir::ResolvedModule> wgmma_owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{kWgmmaSource};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "WGMMA source parses"))
+      return 1;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "WGMMA module resolves"))
+      return 1;
+    wgmma_owned.emplace(std::move(*resolved));
+  }
+  const auto& wgmma_body = wgmma_owned->functions.front().body;
+  if (!require(wgmma_body.size() >= 5, "WGMMA body owns all protocol forms"))
+    return 1;
+  const auto* first = wgmma_body[1].get_if<ir::Wgmma>();
+  const auto* second = wgmma_body[2].get_if<ir::Wgmma>();
+  if (!require(first != nullptr && second != nullptr &&
+                   first->matrix_logical_index() == 63 &&
+                   second->matrix_logical_index() == 64 &&
+                   first->matrix_descriptor() != nullptr &&
+                   second->matrix_descriptor() != nullptr &&
+                   first->matrix_descriptor()->source_placement ==
+                       ir::WgmmaSourcePlacement::REGISTER &&
+                   second->matrix_descriptor()->source_placement ==
+                       ir::WgmmaSourcePlacement::SHARED,
+               "installed WGMMA descriptors survive both checker shards"))
+    return 1;
+  if (!require(
+          wgmma_body[0].get_if<ir::Wgmma>()->matrix_descriptor() == nullptr &&
+              wgmma_body[3].get_if<ir::Wgmma>()->matrix_descriptor() ==
+                  nullptr &&
+              wgmma_body[4].get_if<ir::Wgmma>()->matrix_descriptor() == nullptr,
+          "WGMMA protocol controls have no matrix topology"))
+    return 1;
+  const auto wgmma_profile = ptx_frontend::base::find_target_profile("sm_90a");
+  if (!require(wgmma_profile.has_value(), "WGMMA target profile exists"))
+    return 1;
+  const ir::checker::Context wgmma_context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = wgmma_profile->identity.architecture.number,
+                 .enabled_family_features =
+                     wgmma_profile->enabled_family_features,
+                 .identity = wgmma_profile->identity,
+                 .capabilities = wgmma_profile->capabilities},
+  };
+  for (std::size_t index = 0; index < 5; ++index) {
+    const auto* wgmma = wgmma_body[index].get_if<ir::Wgmma>();
+    if (!require(wgmma != nullptr, "protocol body item is typed Wgmma") ||
+        !require(ir::checker::check(*wgmma, wgmma_context).has_value(),
+                 "owned WGMMA form validates"))
+      return 1;
+  }
+  return 0;
 }

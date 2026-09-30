@@ -455,6 +455,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -542,6 +543,8 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedSharedMatrixDescriptor>) {
+    collect_register(value.register_ref);
   } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
     for (const RegOrImm* element : {&value.byte_id, &value.thread_id})
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(element))
@@ -614,6 +617,7 @@ void collect_owned_reference(detail::OwnedReferenceView view,
   PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedMatrixScaleSelector)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedSharedMatrixDescriptor)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)

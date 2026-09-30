@@ -319,6 +319,8 @@ domains:
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
       MatrixScaleSelector: ResolvedMatrixScaleSelector
+      SharedMatrixDescriptor: ResolvedSharedMatrixDescriptor
+      WgmmaScaleD: ResolvedPredicateSource
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
       BranchTargetSet: ResolvedBranchTargetSet
@@ -409,6 +411,8 @@ domains:
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       MatrixScaleSelector: check_end::ResolvedValueKind::MatrixScaleSelector
+      SharedMatrixDescriptor: check_end::ResolvedValueKind::SharedMatrixDescriptor
+      WgmmaScaleD: check_end::ResolvedValueKind::WgmmaScaleD
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet

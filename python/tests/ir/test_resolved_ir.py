@@ -5258,7 +5258,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             union_source,
         )
         self.assertIn(
-            "Copysign, Set, Setp, Selp, Slct, Call",
+            "Copysign, Wgmma, Set, Setp, Selp, Slct, Call",
             " ".join(union_source.split()),
         )
 

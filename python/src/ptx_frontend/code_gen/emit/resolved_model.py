@@ -371,6 +371,9 @@ def _emit_resolved_variant_definition(
     /** Instruction-local completion identity; no runtime group state is implied. */
     inline static constexpr base::AsyncCompletionKind completion_kind =
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
+    /** Programmer-expressed WGMMA action; sequence obligations remain with consumers. */
+    inline static constexpr base::WgmmaProtocolAction wgmma_protocol_action =
+        base::WgmmaProtocolAction::{''.join(part.title() for part in variant.wgmma_protocol_action.value.split('_'))};
     ResolvedOperandLayoutTag operand_layout;
 {matrix_contract}\
 {body}

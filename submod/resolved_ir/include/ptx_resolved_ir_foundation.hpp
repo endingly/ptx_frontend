@@ -86,7 +86,24 @@ enum class MatrixFamily : uint8_t {
   MMA_SPARSE,
   WMMA_LOAD,
   WMMA_STORE,
-  WMMA_MMA
+  WMMA_MMA,
+  WGMMA,
+  WGMMA_SPARSE
+};
+/** Static placement of WGMMA multiplicand A; B is always shared. */
+enum class WgmmaSourcePlacement : uint8_t { NONE, SHARED, REGISTER };
+/** Shape-specific interpretation of an opaque WGMMA b32 metadata register. */
+enum class WgmmaSparseMetadataKind : uint8_t {
+  NONE,
+  TWO_OF_FOUR,
+  ONE_OF_TWO_TF32
+};
+/** Static 128-thread participation identity of one WGMMA instruction. */
+struct WarpGroup128 {
+  /** PTX warpgroup size; participation uniformity is a runtime obligation. */
+  inline static constexpr uint16_t thread_count = 128;
+  /** Compare the closed participation domain without a runtime thread count. */
+  bool operator==(const WarpGroup128&) const = default;
 };
 /** Logical matrix element, independent of register packing and declaration type. */
 enum class MatrixElementType : uint8_t {
@@ -193,6 +210,12 @@ struct MatrixInstructionDescriptor {
   /** The first scale_selector_count entries describe A/B selector operands. */
   std::array<MatrixScaleSelectorDescriptor, 2> scale_selectors{};
   uint8_t scale_selector_count = 0;
+  /** Source location of A; B is represented by a shared descriptor. */
+  WgmmaSourcePlacement source_placement = WgmmaSourcePlacement::NONE;
+  /** Sparse metadata interpretation, without claiming runtime bits are known. */
+  WgmmaSparseMetadataKind sparse_metadata_kind = WgmmaSparseMetadataKind::NONE;
+  /** Present only for warpgroup MMA; does not prove dynamic convergence. */
+  std::optional<WarpGroup128> warpgroup;
   /** Compare the complete instruction-local topology and controls. */
   bool operator==(const MatrixInstructionDescriptor&) const = default;
 };
@@ -338,7 +361,8 @@ enum class AddressBaseKind : uint8_t { Unknown, Register, Immediate, Symbol };
 enum class AddressOffsetDomain : uint8_t { Unrestricted, Signed32 };
 enum class MbarrierStateTokenForm : uint8_t { Register, RegisterOrSink, Sink };
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
-inline constexpr size_t kMaxOperandElements = 64;
+/** Largest matrix fragment per thread; other operand kinds retain narrower limits. */
+inline constexpr size_t kMaxOperandElements = 128;
 /** Semantic constraints for one generated operand position. */
 struct OperandDescriptor {
   std::string_view target_field_id;
@@ -725,6 +749,17 @@ struct ResolvedImmediate {
 struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
   bool operator==(const ResolvedRegisterVector&) const = default;
+};
+/** Opaque WGMMA shared-memory descriptor carried by a b64 register.
+ *
+ * The register contents, address, alignment, swizzle, and layout remain runtime
+ * obligations. This wrapper records operand identity without decoding bits.
+ */
+struct ResolvedSharedMatrixDescriptor {
+  /** Bound b64 register whose runtime value is the matrix descriptor. */
+  ResolvedRegisterRef register_ref;
+  /** Compare the source register identity, not its unknown runtime contents. */
+  bool operator==(const ResolvedSharedMatrixDescriptor&) const = default;
 };
 struct ResolvedPredicate {
   ResolvedRegisterRef register_ref;

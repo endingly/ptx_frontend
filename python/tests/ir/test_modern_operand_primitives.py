@@ -153,7 +153,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             _operand(
                 "matrix_fragment",
                 "fragment",
-                cardinality={"min": 1, "max": 65},
+                cardinality={"min": 1, "max": 129},
                 element_kinds=["reg"],
             ),
             _operand(

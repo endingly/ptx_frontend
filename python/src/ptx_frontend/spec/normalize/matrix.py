@@ -20,6 +20,8 @@ from ptx_frontend.spec.model import (
     MatrixScaleType,
     MatrixScaleSelectorSpec,
     MatrixSpec,
+    WgmmaSourcePlacement,
+    WgmmaSparseMetadataKind,
     ModifierPresence,
     ModifierSpec,
     OperandKind,
@@ -51,6 +53,7 @@ def normalize_matrix(
         "scale_vector_size", "scale_type", "source_packing", "sparse_order",
         "destination_packing", "address_qualifier",
         "c_layout", "d_layout", "scale_selectors", "bit_operation",
+        "source_placement", "sparse_metadata_kind",
     }
     if set(raw) - permitted:
         raise ValueError(f"matrix has unknown keys {sorted(set(raw) - permitted)}")
@@ -65,6 +68,8 @@ def normalize_matrix(
         sparse_order = MatrixSparseOrder(raw.get("sparse_order", "none"))
         scale_type = MatrixScaleType(raw.get("scale_type", "none"))
         address_qualifier = MatrixAddressQualifier(raw.get("address_qualifier", "none"))
+        source_placement = WgmmaSourcePlacement(raw.get("source_placement", "none"))
+        sparse_metadata_kind = WgmmaSparseMetadataKind(raw.get("sparse_metadata_kind", "none"))
         source_packing = (
             MatrixElementType(raw["source_packing"])
             if "source_packing" in raw else None
@@ -92,14 +97,22 @@ def normalize_matrix(
         raise ValueError("matrix.matrix_count must be 0..4")
     if type(scale_vector_size) is not int or scale_vector_size not in (0, 1, 2, 4):
         raise ValueError("matrix.scale_vector_size must be 0, 1, 2, or 4")
-    if family is MatrixFamily.MMA_SPARSE and sparse_order is MatrixSparseOrder.NONE:
+    sparse_families = {MatrixFamily.MMA_SPARSE, MatrixFamily.WGMMA_SPARSE}
+    wgmma_families = {MatrixFamily.WGMMA, MatrixFamily.WGMMA_SPARSE}
+    if family in sparse_families and sparse_order is MatrixSparseOrder.NONE:
         raise ValueError("sparse MMA requires a metadata ordering contract")
-    if family is not MatrixFamily.MMA_SPARSE and sparse_order is not MatrixSparseOrder.NONE:
+    if family not in sparse_families and sparse_order is not MatrixSparseOrder.NONE:
         raise ValueError("only sparse MMA accepts a metadata ordering contract")
+    if (family in wgmma_families) != (source_placement is not WgmmaSourcePlacement.NONE):
+        raise ValueError("WGMMA requires a source placement; other families forbid it")
+    if (family is MatrixFamily.WGMMA_SPARSE) != (
+        sparse_metadata_kind is not WgmmaSparseMetadataKind.NONE
+    ):
+        raise ValueError("WGMMA sparse metadata kind must match sparse family")
     if family not in (MatrixFamily.LDMATRIX, MatrixFamily.STMATRIX) and matrix_count:
         raise ValueError("matrix count only applies to ldmatrix/stmatrix")
     if bit_operation is not MatrixBitOperation.NONE and family not in {
-        MatrixFamily.MMA, MatrixFamily.WMMA_MMA,
+        MatrixFamily.MMA, MatrixFamily.WMMA_MMA, MatrixFamily.WGMMA,
     }:
         raise ValueError("single-bit operation only applies to dense MMA")
     if (scale_type is MatrixScaleType.NONE) != (scale_vector_size == 0):
@@ -137,7 +150,15 @@ def normalize_matrix(
         raise ValueError("matrix element and fragment roles must be unique")
     if len(set(fragment_roles.values())) != len(fragment_roles):
         raise ValueError("matrix fragment roles must be unique")
-    if set(fragment_roles.values()) != set(elements):
+    if family in wgmma_families:
+        expected_roles = {MatrixFragmentRole.D}
+        if source_placement is WgmmaSourcePlacement.REGISTER:
+            expected_roles.add(MatrixFragmentRole.A)
+        if set(fragment_roles.values()) != expected_roles or not {
+            MatrixFragmentRole.D, MatrixFragmentRole.A, MatrixFragmentRole.B
+        } <= set(elements):
+            raise ValueError("WGMMA fragments must contain D and register A only")
+    elif set(fragment_roles.values()) != set(elements):
         raise ValueError("matrix elements must exactly match fragment roles")
 
     fragments = _normalize_fragments(fragment_roles, elements, layouts, modifiers)
@@ -153,6 +174,8 @@ def normalize_matrix(
         destination_packing=destination_packing,
         address_qualifier=address_qualifier,
         transpose=transpose, matrix_count=matrix_count,
+        source_placement=source_placement,
+        sparse_metadata_kind=sparse_metadata_kind,
     )
     return MatrixSpec(
         family=family,
@@ -174,6 +197,8 @@ def normalize_matrix(
         scale_vector_size=scale_vector_size,
         sparse_order=sparse_order,
         scale_selectors=tuple(selectors),
+        source_placement=source_placement,
+        sparse_metadata_kind=sparse_metadata_kind,
     )
 
 
@@ -290,6 +315,8 @@ def _validate_fixed_modifiers(
     scale_vector_size: int,
     transpose: bool,
     matrix_count: int,
+    source_placement: WgmmaSourcePlacement,
+    sparse_metadata_kind: WgmmaSparseMetadataKind,
 ) -> None:
     """Reject canonical metadata that disagrees with fixed source suffixes."""
 
@@ -333,6 +360,8 @@ def _validate_fixed_modifiers(
                     if token in (".row", ".col"))
     expected_layouts = tuple(layout.value for layout in (a_layout, b_layout, c_layout, d_layout)
                              if layout is not MatrixLayout.NONE)
+    if family in {MatrixFamily.WGMMA, MatrixFamily.WGMMA_SPARSE}:
+        expected_layouts = ()
     if layouts != expected_layouts:
         raise ValueError("matrix layouts disagree with fixed source suffixes")
     sparse_tokens = tuple(token for token in tokens
@@ -344,6 +373,14 @@ def _validate_fixed_modifiers(
     }[sparse_order]
     if sparse_tokens != expected_sparse:
         raise ValueError("matrix sparse order disagrees with fixed suffix")
+    if family in {MatrixFamily.WGMMA, MatrixFamily.WGMMA_SPARSE}:
+        if source_placement is WgmmaSourcePlacement.NONE:
+            raise ValueError("WGMMA requires A source placement")
+        if sparse_metadata_kind is WgmmaSparseMetadataKind.ONE_OF_TWO_TF32 and (
+            elements.get(MatrixFragmentRole.A) is not MatrixElementType.TF32
+            or shape.k != 16
+        ):
+            raise ValueError("tf32 sparse metadata requires k16 tf32")
     kinds = tuple(token for token in tokens if token.startswith(".kind::"))
     expected_kind = () if kind is MatrixKind.CLASSIC else (f".kind::{kind.value}",)
     if kinds != expected_kind:

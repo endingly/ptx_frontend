@@ -24,6 +24,17 @@ class AsyncCompletionKind(Enum):
     ASYNC_GROUP = "async_group"
     BULK_GROUP = "bulk_group"
     MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
+    WGMMA_GROUP = "wgmma_group"
+
+
+class WgmmaProtocolAction(Enum):
+    """Instruction-local action in the independent warpgroup MMA protocol."""
+
+    NONE = "none"
+    ISSUE = "issue"
+    REGISTER_FENCE = "register_fence"
+    COMMIT = "commit"
+    WAIT = "wait"
 
 
 class MatrixFamily(Enum):
@@ -37,6 +48,24 @@ class MatrixFamily(Enum):
     WMMA_LOAD = "wmma_load"
     WMMA_STORE = "wmma_store"
     WMMA_MMA = "wmma_mma"
+    WGMMA = "wgmma"
+    WGMMA_SPARSE = "wgmma_sparse"
+
+
+class WgmmaSourcePlacement(Enum):
+    """Where operand A resides; WGMMA operand B always uses shared memory."""
+
+    NONE = "none"
+    SHARED = "shared"
+    REGISTER = "register"
+
+
+class WgmmaSparseMetadataKind(Enum):
+    """Shape-specific interpretation of the opaque b32 sparse metadata."""
+
+    NONE = "none"
+    TWO_OF_FOUR = "two_of_four"
+    ONE_OF_TWO_TF32 = "one_of_two_tf32"
 
 
 class MatrixElementType(Enum):
@@ -178,6 +207,8 @@ class MatrixSpec:
     scale_vector_size: int = 0
     sparse_order: MatrixSparseOrder = MatrixSparseOrder.NONE
     scale_selectors: tuple[MatrixScaleSelectorSpec, ...] = ()
+    source_placement: WgmmaSourcePlacement = WgmmaSourcePlacement.NONE
+    sparse_metadata_kind: WgmmaSparseMetadataKind = WgmmaSparseMetadataKind.NONE
 
 
 class _SemanticToken(Enum):
@@ -223,6 +254,7 @@ class SemanticRule(_SemanticToken):
     INTEGER_ARITH_SUB = "integer_arith.sub"
     INTEGER_ARITH_SUB_SAT = "integer_arith.sub_sat"
     MATRIX_MMA = "matrix.mma"
+    MATRIX_WGMMA_SCALE = "matrix.wgmma_scale"
     MIXED_PRECISION_ADD = "mixed_precision.add"
     MIXED_PRECISION_SUB = "mixed_precision.sub"
     PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"
@@ -322,6 +354,8 @@ class OperandKind(_SemanticToken):
     TENSOR_COORDINATE = "tensor_coordinate"
     MATRIX_FRAGMENT = "matrix_fragment"
     MATRIX_SCALE_SELECTOR = "matrix_scale_selector"
+    SHARED_MATRIX_DESCRIPTOR = "shared_matrix_descriptor"
+    WGMMA_SCALE_D = "wgmma_scale_d"
     DESCRIPTOR = "descriptor"
     TYPED_TOKEN = "typed_token"
     MBARRIER_STATE_TOKEN = "mbarrier_state_token"
@@ -658,6 +692,7 @@ class VariantSpec:
     matrix: MatrixSpec | None = None
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None

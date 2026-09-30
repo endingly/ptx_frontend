@@ -972,6 +972,14 @@ WMMA FP64 C/D fragment 按 mma/store 示例使用两个 `.f64` 寄存器；`stma
 sparse `mma.sp` 185、WMMA 552（load 352、store 104、compute 96）。该数量描述现有源码，
 统一验证和独立 core 验收尚待完成。
 
+离线 `ptxas` V13.3.73 的完整 module 抽样支持 WMMA FP64 双寄存器、dense FP64
+`.m8n8k4`、movement、经典 sparse，以及 `sm_120a` 的 dense/ordered-sparse
+block-scale 正例和相应反例；不代替全部 variant 的验证。Assembler 接受 PTX 布局行为
+未定义的 WMMA stride 17，frontend 保留静态约束。稀疏 FP8 `.m16n8k32`
+selector `{0,1}` 是根据 2:4 metadata 拓扑对规范的解释：`ptxas` 对 selector
+0、1 均先报 instruction-type 错误，selector 2 的诊断提示预期为 0 或 1，
+故 selector 1 的正例尚未得到 assembler 证实。独立 core review 仍待完成。
+
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
 | M15-I01 | ⬜ | 独立 | 建立 `MatrixShape` | M/N/K 与 instruction family identity |

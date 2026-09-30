@@ -71,6 +71,10 @@ Matrix 规格固定采用 [PTX ISA 9.3 §9.7.15](https://docs.nvidia.com/cuda/ar
 
 归档 grammar 中 dense FP64 的 `.m8n84` 排版按 fragment 章节与示例解释为 `.m8n8k4`。WMMA FP64 C/D fragment 按 `wmma.mma` 和 `wmma.store` 示例使用两个 `.f64` 寄存器。`stmatrix.m16n8.x4` 示例省略了 `.trans`；规范描述要求该限定符。已移除的浮点 WMMA `.satfinite` 与 PTX 6.3 前隐式 `.aligned` 的历史形式不在本次扩展内。WGMMA、TCGEN05、GPU 数值结果和动态 collective 行为另有边界。
 
+离线 assembler 抽样使用 CUDA `ptxas` V13.3.73，并为每个完整 PTX module 指定 `.version` 和 `.target`。WMMA FP64 C/D 双寄存器、dense FP64 `.m8n8k4`、代表性的 movement、混合符号与 `.b1` MMA、经典 sparse MMA，以及 `sm_120a` 上的 dense 和 ordered-sparse block-scale 形式均被接受；对应的错误 fragment、已移除 modifier、必需 `.trans`、scale type 和 target 反例被拒绝。这是 assembler 抽样证据，不代表 994 个 variant 均已验证，也不代表 frontend 测试已通过。`ptxas` 接受 WMMA 立即数 stride 17，但 PTX memory-layout 契约下该布局行为未定义；frontend 保留静态 stride 约束。
+
+稀疏 FP8 `.m16n8k32` 的 shape 已在规范中引入，但规范未直接列出 metadata selector 范围。Frontend 根据 2:4 稀疏格式和 fragment 规模所隐含的双线程 metadata 拓扑接受 0 和 1。`ptxas` V13.3.73 对 native 和 ordered metadata 的完整 `.m16n8k32` FP8 module 均在 instruction-type 检查阶段拒绝 selector 0 和 1，而 `.m16n8k64` FP8 对照能够汇编；selector 2 的诊断另外指出预期范围为 0 或 1。因此，此 assembler 尚未证实 selector 1 的正例；该范围仍是有待独立 core review 的规范解释。
+
 conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
 该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。
 

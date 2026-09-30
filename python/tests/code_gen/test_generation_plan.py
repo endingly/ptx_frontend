@@ -84,6 +84,7 @@ class GenerationPlanTests(unittest.TestCase):
         from ptx_frontend.code_gen.emit.references_private import (
             MATRIX_REFERENCE_SHARD_SIZE,
         )
+        from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 
         context = build_generation_context(self.database, self.backend)
         with tempfile.TemporaryDirectory() as directory:
@@ -99,6 +100,7 @@ class GenerationPlanTests(unittest.TestCase):
                                  (count + MATRIX_REFERENCE_SHARD_SIZE - 1)
                                  // MATRIX_REFERENCE_SHARD_SIZE)
                 covered: set[int] = set()
+                emitted_fields = 0
                 for shard in shards:
                     shard.emit(context, output_path=shard.path)
                     source = shard.path.read_text(encoding="utf-8")
@@ -109,7 +111,15 @@ class GenerationPlanTests(unittest.TestCase):
                     self.assertLessEqual(len(indices), MATRIX_REFERENCE_SHARD_SIZE)
                     self.assertTrue(covered.isdisjoint(indices))
                     covered.update(indices)
+                    emitted_fields += source.count("callback(MatrixReferenceView{")
                 self.assertEqual(covered, set(range(count)))
+                expected_fields = sum(
+                    field.value_kind in REFERENCE_VALUE_KINDS
+                    for variant in instruction.variants
+                    for layout in variant.operand_layouts
+                    for field in layout.fields
+                )
+                self.assertEqual(emitted_fields, expected_fields)
                 dispatcher = next(item for item in plan.artifacts
                                   if item.path.name ==
                                   f"resolved_ir_matrix_references_{opcode}_dispatch.gen.cpp")

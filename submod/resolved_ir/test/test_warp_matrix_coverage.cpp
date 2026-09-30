@@ -11,6 +11,7 @@
 namespace ptx_frontend::resolved_ir {
 namespace {
 
+/** Preserve owned movement packing and exact modern target availability. */
 TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   std::optional<ResolvedModule> owned;
   {
@@ -106,6 +107,7 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   expect_modern_target("sm_120f", 8, 8, true);
 }
 
+/** Reject malformed register and address topology before module use. */
 TEST(WarpMatrixCoverage, RejectsInvalidMovementTopologyAndAddressSpace) {
   for (const std::string_view source : {
            ".entry kernel() { .reg .b32 %r<4>; .shared .align 16 .b32 x[16]; "

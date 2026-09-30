@@ -1205,6 +1205,61 @@ bool checkBulkAsyncContract() {
   cp.async.bulk.wait_group.read 0;
   st.bulk.shared::cta [s], 16, 0;
 }
+
+/** Exercise installed tiled tensor variants after syntax ownership expires. */
+bool checkTensorAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 128 .b8 tile_data[1024];
+.shared .align 8 .b64 barrier;
+.entry kernel() {
+  .reg .s32 %coord<2>;
+  cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%coord0, -1}];
+  cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes [tile_data], [tensor_map, {%coord0, %coord1}], [barrier];
+  cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {%coord0}], [tile_data];
+  cp.async.bulk.commit_group;
+  cp.async.bulk.wait_group 0;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 5, "tensor forms retained"))
+    return false;
+  const auto* prefetch = std::get_if<ir::Cp::AsyncBulkPrefetchTensor2d>(
+      &std::get<ir::Cp>(body[0]).variant);
+  const auto* load = std::get_if<ir::Cp::AsyncBulkTensor2dSharedCluster>(
+      &std::get<ir::Cp>(body[1]).variant);
+  const auto* store = std::get_if<ir::Cp::AsyncBulkTensor1dGlobalSharedCta>(
+      &std::get<ir::Cp>(body[2]).variant);
+  return require(
+      prefetch && load && store && prefetch->tile.value &&
+          prefetch->tensor.value.rank == ir::TensorRank::Two &&
+          load->tensor.value.coordinates.elements.size() == 2 &&
+          store->tile.value &&
+          ir::Cp::AsyncBulkTensor2dSharedCluster::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::MbarrierCompleteTxBytes &&
+          ir::Cp::AsyncBulkTensor1dGlobalSharedCta::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::BulkGroup,
+      "installed tensor map, rank, tile, and completion identities");
+}
 )ptx";
   std::optional<ir::ResolvedModule> owned;
   {
@@ -1302,6 +1357,8 @@ int main() {
     return 16;
   if (!checkBulkAsyncContract())
     return 17;
+  if (!checkTensorAsyncContract())
+    return 18;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

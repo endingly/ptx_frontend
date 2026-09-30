@@ -50,6 +50,9 @@ supported surface and its exclusions.
 - [`slct` coverage](docs/us-en/slct_coverage.md) and its
   [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
   types, numeric selectors, `.ftz`, operand containers, and target limits.
+- [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
+  and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
+  `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

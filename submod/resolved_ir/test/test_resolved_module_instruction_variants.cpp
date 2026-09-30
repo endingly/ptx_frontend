@@ -1290,7 +1290,7 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
   for (const auto source : {
            ".entry kernel() { .reg .u32 %r0; setmaxnreg.inc.sync.aligned.u32 "
            "%r0; }",
-           ".entry kernel() { setmaxnreg.dec.sync.aligned.u32 192; }",
+           ".entry kernel() { setmaxnreg.dec.sync.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.aligned.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.sync.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.sync.aligned.s32 192; }",

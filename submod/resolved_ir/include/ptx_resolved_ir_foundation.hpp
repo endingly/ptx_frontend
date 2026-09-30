@@ -159,7 +159,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 /** Fixed DNF capacity shared by generated availability descriptors. */
-inline constexpr size_t kMaxAvailabilityClauses = 5;
+inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 /** One AND-clause in a bounded generated target-availability expression. */

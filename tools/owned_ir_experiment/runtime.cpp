@@ -91,6 +91,46 @@ void print_samples(std::string_view key, std::array<double, 5> samples) {
   std::cout << "],\"" << key << "_median_ns\":" << samples[2];
 }
 
+/** Write a JSON string, escaping quotes, backslashes, and control bytes. */
+void print_json_string(std::string_view value) {
+  constexpr char hex_digits[] = "0123456789abcdef";
+  std::cout << '"';
+  for (const char raw_byte : value) {
+    const auto byte = static_cast<unsigned char>(raw_byte);
+    switch (byte) {
+      case '"':
+        std::cout << "\\\"";
+        break;
+      case '\\':
+        std::cout << "\\\\";
+        break;
+      case '\b':
+        std::cout << "\\b";
+        break;
+      case '\f':
+        std::cout << "\\f";
+        break;
+      case '\n':
+        std::cout << "\\n";
+        break;
+      case '\r':
+        std::cout << "\\r";
+        break;
+      case '\t':
+        std::cout << "\\t";
+        break;
+      default:
+        if (byte < 0x20) {
+          std::cout << "\\u00" << hex_digits[byte >> 4]
+                    << hex_digits[byte & 0x0f];
+        } else {
+          std::cout << static_cast<char>(byte);
+        }
+    }
+  }
+  std::cout << '"';
+}
+
 /** Read a corpus, compare its owned operations, and print machine-readable data. */
 int run(int argc, char** argv) {
   if (argc != 3)
@@ -146,8 +186,9 @@ int run(int argc, char** argv) {
         checksum += opcode.size();
       }
   });
-  std::cout << "{\"configuration\":\"owned\",\"corpus\":\"" << argv[1]
-            << "\",\"iterations\":" << iterations
+  std::cout << "{\"configuration\":\"owned\",\"corpus\":";
+  print_json_string(argv[1]);
+  std::cout << ",\"iterations\":" << iterations
             << ",\"functions\":" << resolved->functions.size()
             << ",\"instructions\":" << instructions
             << ",\"instruction_slot_bytes\":" << sizeof(ir::OwnedInstruction)

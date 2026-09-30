@@ -7,6 +7,7 @@
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 
+#include "test_instruction_access.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -34,11 +35,11 @@ TEST(TensorAsync, PrefetchRanksAndTileProvenance) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 5u);
   EXPECT_TRUE(std::holds_alternative<Cp::AsyncBulkPrefetchTensor1d>(
-      std::get<Cp>(body[0]).variant));
-  const auto& first =
-      std::get<Cp::AsyncBulkPrefetchTensor1d>(std::get<Cp>(body[0]).variant);
-  const auto& second =
-      std::get<Cp::AsyncBulkPrefetchTensor2d>(std::get<Cp>(body[1]).variant);
+      test_ir_access::get<Cp>(body[0]).variant));
+  const auto& first = std::get<Cp::AsyncBulkPrefetchTensor1d>(
+      test_ir_access::get<Cp>(body[0]).variant);
+  const auto& second = std::get<Cp::AsyncBulkPrefetchTensor2d>(
+      test_ir_access::get<Cp>(body[1]).variant);
   EXPECT_FALSE(first.tile.value);
   EXPECT_TRUE(first.tile.locs.empty());
   EXPECT_TRUE(second.tile.value);
@@ -49,7 +50,8 @@ TEST(TensorAsync, PrefetchRanksAndTileProvenance) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   for (const auto& item : body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(item), context).has_value());
+    EXPECT_TRUE(
+        checker::check(test_ir_access::get<Cp>(item), context).has_value());
 }
 
 /** Generated variant names round-trip across the former reflection limit. */
@@ -96,7 +98,8 @@ TEST(TensorAsync, LoadDirectionsAndRanks) {
       ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
       const auto resolved = resolveModule(*parsed);
       ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-      const auto& copy = std::get<Cp>(resolved->functions.front().body.front());
+      const auto& copy =
+          test_ir_access::get<Cp>(resolved->functions.front().body.front());
       const checker::Context available{
           .target = {.ptx_version = {9, 3}, .sm_version = 90}};
       EXPECT_TRUE(checker::check(copy, available).has_value()) << instruction;
@@ -145,7 +148,8 @@ TEST(TensorAsync, StoreRanksAndSignedCoordinates) {
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
     const auto resolved = resolveModule(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    const auto& copy = std::get<Cp>(resolved->functions.front().body.front());
+    const auto& copy =
+        test_ir_access::get<Cp>(resolved->functions.front().body.front());
     const checker::Context available{
         .target = {.ptx_version = {8, 0}, .sm_version = 90}};
     EXPECT_TRUE(checker::check(copy, available).has_value()) << instruction;
@@ -180,7 +184,8 @@ TEST(TensorAsync, RegisterDescriptorAndMixedCoordinates) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   for (const auto& item : resolved->functions.front().body)
-    EXPECT_TRUE(checker::check(std::get<Cp>(item), context).has_value());
+    EXPECT_TRUE(
+        checker::check(test_ir_access::get<Cp>(item), context).has_value());
 }
 
 /** Descriptor spaces, alignment, rank arity, and unsupported modes fail. */
@@ -243,7 +248,7 @@ TEST(TensorAsync, RevalidatesOwnedTensorMetadata) {
   }
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& copy = std::get<Cp>(owned->functions.front().body.front());
+  auto& copy = test_ir_access::get<Cp>(owned->functions.front().body.front());
   auto& prefetch = std::get<Cp::AsyncBulkPrefetchTensor1d>(copy.variant);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
@@ -297,7 +302,7 @@ TEST(TensorAsync, SignedCoordinateBoundariesAndOwnedMutation) {
   auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& first = std::get<Cp::AsyncBulkPrefetchTensor1d>(
-      std::get<Cp>(resolved->functions.front().body[0]).variant);
+      test_ir_access::get<Cp>(resolved->functions.front().body[0]).variant);
   auto& immediate = std::get<ResolvedImmediate>(
       first.tensor.value.coordinates.elements.front());
   const checker::Context context{
@@ -305,11 +310,13 @@ TEST(TensorAsync, SignedCoordinateBoundariesAndOwnedMutation) {
   const uint64_t original_bits = immediate.bits;
   immediate.bits = 1;
   EXPECT_FALSE(
-      checker::check(std::get<Cp>(resolved->functions.front().body[0]), context)
+      checker::check(
+          test_ir_access::get<Cp>(resolved->functions.front().body[0]), context)
           .has_value());
   immediate.bits = original_bits;
   EXPECT_TRUE(
-      checker::check(std::get<Cp>(resolved->functions.front().body[0]), context)
+      checker::check(
+          test_ir_access::get<Cp>(resolved->functions.front().body[0]), context)
           .has_value());
 }
 /** Parameter descriptors require a kernel input declaration. */

@@ -1308,11 +1308,11 @@ bool checkTensorAsyncContract() {
   if (!require(body.size() == 5, "tensor forms retained"))
     return false;
   const auto* prefetch = std::get_if<ir::Cp::AsyncBulkPrefetchTensor2d>(
-      &std::get<ir::Cp>(body[0]).variant);
+      &outer_get<ir::Cp>(body[0]).variant);
   const auto* load = std::get_if<ir::Cp::AsyncBulkTensor2dSharedCluster>(
-      &std::get<ir::Cp>(body[1]).variant);
+      &outer_get<ir::Cp>(body[1]).variant);
   const auto* store = std::get_if<ir::Cp::AsyncBulkTensor1dGlobalSharedCta>(
-      &std::get<ir::Cp>(body[2]).variant);
+      &outer_get<ir::Cp>(body[2]).variant);
   return require(
       prefetch && load && store && prefetch->tile.value &&
           prefetch->tensor.value.rank == ir::TensorRank::Two &&

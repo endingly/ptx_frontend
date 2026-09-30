@@ -625,6 +625,7 @@ void collect_owned_reference(detail::OwnedReferenceView view,
   PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorOperand)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedCallParameterRef)

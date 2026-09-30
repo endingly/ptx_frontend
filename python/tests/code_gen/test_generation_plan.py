@@ -253,6 +253,7 @@ class GenerationPlanTests(unittest.TestCase):
                 if artifact.path.suffix == ".cpp"
                 and artifact.path.name.startswith("resolved_ir_")
                 and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
+                and "_matrix_references_" not in artifact.path.name
             }
             self.assertEqual(len(sources), len(context.entries))
             for entry in context.entries:

@@ -16,6 +16,7 @@ target_include_directories(
     ptx_frontend_resolved_ir
     PUBLIC $<BUILD_INTERFACE:${PTX_RESOLVED_IR_GENERATED_PUBLIC_INCLUDE_DIR}>
     PRIVATE ${PTX_RESOLVED_IR_GENERATED_PRIVATE_INCLUDE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(

@@ -50,26 +50,43 @@ TEST(WmmaCoverage, ResolvesOwnedF16PipelineAndChecksTarget) {
   }
 
   ASSERT_EQ(owned->functions.front().body.size(), 5u);
-  const auto& body = owned->functions.front().body;
-  const auto& load = std::get<Wmma>(body[0]);
-  const auto descriptor = std::visit([](const auto& variant) {
-    return variant.matrix.value;
-  }, load.variant);
+  auto& body = owned->functions.front().body;
+  auto& load = std::get<Wmma>(body[0]);
+  const auto descriptor = std::visit(
+      [](const auto& variant) { return variant.matrix.value; }, load.variant);
   EXPECT_EQ(descriptor.family, MatrixFamily::WMMA_LOAD);
   EXPECT_EQ(descriptor.shape, (MatrixShape{16, 16, 16}));
   EXPECT_EQ(descriptor.a_layout, MatrixLayout::ROW);
   EXPECT_EQ(descriptor.fragments[0].register_count, 8);
-  EXPECT_EQ(std::visit([](const auto& variant) {
-    return variant.matrix.value.family;
-  }, std::get<Wmma>(body[3]).variant), MatrixFamily::WMMA_MMA);
-  EXPECT_EQ(std::visit([](const auto& variant) {
-    return variant.matrix.value.d_layout;
-  }, std::get<Wmma>(body[4]).variant), MatrixLayout::COL);
+  EXPECT_EQ(std::visit(
+                [](const auto& variant) { return variant.matrix.value.family; },
+                std::get<Wmma>(body[3]).variant),
+            MatrixFamily::WMMA_MMA);
+  EXPECT_EQ(
+      std::visit(
+          [](const auto& variant) { return variant.matrix.value.d_layout; },
+          std::get<Wmma>(body[4]).variant),
+      MatrixLayout::COL);
 
   const checker::Context supported{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Wmma>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Wmma>(instruction), supported).has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  auto& load_a = std::get<Wmma::LoadAM16n16k16RowGlobalF16>(load.variant);
+  auto& load_operands =
+      std::get<Wmma::LoadAM16n16k16RowGlobalF16::ExplicitStrideOperands>(
+          load_a.operands);
+  auto& a_identity = load_operands.dst.value.elements.front()->symbol_id;
+  const auto saved_identity = a_identity;
+  a_identity = binding::SymbolId{.value = 999999u};
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  a_identity = saved_identity;
   const checker::Context too_old{
       .target = {.ptx_version = {9, 3}, .sm_version = 60}};
   EXPECT_FALSE(checker::check(load, too_old).has_value());
@@ -135,15 +152,16 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 5u);
-  const auto descriptor = std::visit([](const auto& variant) {
-    return variant.matrix.value;
-  }, std::get<Wmma>(body[1]).variant);
+  const auto descriptor =
+      std::visit([](const auto& variant) { return variant.matrix.value; },
+                 std::get<Wmma>(body[1]).variant);
   EXPECT_EQ(descriptor.fragments[0].register_count, 2);
   EXPECT_EQ(descriptor.fragments[3].register_count, 2);
   const checker::Context supported{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   for (std::size_t index = 0; index < 3; ++index)
-    EXPECT_TRUE(checker::check(std::get<Wmma>(body[index]), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Wmma>(body[index]), supported).has_value());
   auto& load_c = std::get<Wmma>(body[0]);
   auto& stride = std::get<ResolvedImmediate>(
       std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(

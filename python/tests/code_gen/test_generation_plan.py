@@ -8,6 +8,7 @@ import ast
 from contextlib import redirect_stdout
 from io import StringIO
 import json
+import re
 import sys
 from pathlib import Path
 import tempfile
@@ -76,6 +77,47 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertEqual(len(context.instructions), len(self.database.instructions))
         self.assertEqual(lower.call_count, len(self.database.instructions))
         self.assertEqual(project.call_count, len(self.database.instructions))
+
+    def test_matrix_reference_shards_are_bounded_and_manifest_owned(self) -> None:
+        """Private matrix traversal covers every variant in bounded C++ units."""
+
+        from ptx_frontend.code_gen.emit.references_private import (
+            MATRIX_REFERENCE_SHARD_SIZE,
+        )
+
+        context = build_generation_context(self.database, self.backend)
+        with tempfile.TemporaryDirectory() as directory:
+            plan = build_generation_plan(context, Path(directory))
+            for opcode in ("mma", "wmma"):
+                instruction = next(item for item in context.instructions
+                                   if item.opcode == opcode)
+                prefix = f"resolved_ir_matrix_references_{opcode}_shard_"
+                shards = [item for item in plan.artifacts
+                          if item.path.name.startswith(prefix)]
+                count = len(instruction.variants)
+                self.assertEqual(len(shards),
+                                 (count + MATRIX_REFERENCE_SHARD_SIZE - 1)
+                                 // MATRIX_REFERENCE_SHARD_SIZE)
+                covered: set[int] = set()
+                for shard in shards:
+                    shard.emit(context, output_path=shard.path)
+                    source = shard.path.read_text(encoding="utf-8")
+                    self.assertIn("switch (instruction.variant.index())", source)
+                    self.assertIn("throw std::bad_variant_access{};", source)
+                    indices = {int(match) for match in re.findall(
+                        r"^    case (\d+):", source, flags=re.MULTILINE)}
+                    self.assertLessEqual(len(indices), MATRIX_REFERENCE_SHARD_SIZE)
+                    self.assertTrue(covered.isdisjoint(indices))
+                    covered.update(indices)
+                self.assertEqual(covered, set(range(count)))
+                dispatcher = next(item for item in plan.artifacts
+                                  if item.path.name ==
+                                  f"resolved_ir_matrix_references_{opcode}_dispatch.gen.cpp")
+                dispatcher.emit(context, output_path=dispatcher.path)
+                dispatch_source = dispatcher.path.read_text(encoding="utf-8")
+                self.assertIn("instruction.execution_predicate", dispatch_source)
+                self.assertIn(f"instruction.variant.index() / {MATRIX_REFERENCE_SHARD_SIZE}",
+                              dispatch_source)
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)

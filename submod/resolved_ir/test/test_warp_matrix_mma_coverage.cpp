@@ -52,20 +52,23 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   ASSERT_EQ(owned->functions.front().body.size(), 6u);
   const auto& body = owned->functions.front().body;
   const auto& dense = std::get<Mma>(body[0]);
-  const auto dense_descriptor = std::visit([](const auto& selected) {
-    return selected.matrix.value;
-  }, dense.variant);
+  const auto dense_descriptor =
+      std::visit([](const auto& selected) { return selected.matrix.value; },
+                 dense.variant);
   EXPECT_EQ(dense_descriptor.shape, (MatrixShape{16, 8, 16}));
   EXPECT_EQ(dense_descriptor.fragments[1].register_count, 8);
   EXPECT_EQ(dense_descriptor.fragments[1].register_type, base::ScalarType::F64);
   auto& sparse = std::get<Mma>(body[1]);
-  EXPECT_EQ(std::visit([](const auto& selected) {
-    return selected.matrix.value.sparse_order;
-  }, sparse.variant), MatrixSparseOrder::ORDERED);
+  EXPECT_EQ(std::visit(
+                [](const auto& selected) {
+                  return selected.matrix.value.sparse_order;
+                },
+                sparse.variant),
+            MatrixSparseOrder::ORDERED);
   auto& scaled = std::get<Mma>(body[2]);
-  const auto scaled_descriptor = std::visit([](const auto& selected) {
-    return selected.matrix.value;
-  }, scaled.variant);
+  const auto scaled_descriptor =
+      std::visit([](const auto& selected) { return selected.matrix.value; },
+                 scaled.variant);
   EXPECT_EQ(scaled_descriptor.kind, MatrixKind::MXF8F6F4);
   EXPECT_EQ(scaled_descriptor.scale_selector_count, 2);
   EXPECT_EQ(scaled_descriptor.scale_selectors[0].byte_mask, 0b1111);
@@ -79,7 +82,11 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
                  .capabilities = profile->capabilities},
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(checker::check(std::get<Mma>(instruction), supported).has_value());
+    EXPECT_TRUE(
+        checker::check(std::get<Mma>(instruction), supported).has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
   /** Keep sparse exact targets distinct from the modern family targets. */
   const auto check_target = [&](std::string_view name, size_t index) {
     const auto target = base::find_target_profile(name);
@@ -102,15 +109,24 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   EXPECT_FALSE(check_target("sm_120f", 5));
   auto& sparse_selector =
       std::get<Mma::SpOrderedMetadataSyncAlignedM16n8k64RowColF32E4m3E4m3F32>(
-          sparse.variant).selector.value;
+          sparse.variant)
+          .selector.value;
   sparse_selector.bits = 4;
   EXPECT_FALSE(checker::check(sparse, supported).has_value());
   sparse_selector.bits = 0;
   sparse_selector.integer_source_bits = 4;
   EXPECT_FALSE(checker::check(sparse, supported).has_value());
   sparse_selector.integer_source_bits = 0;
-  using Scaled = Mma::SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E4m3F32Ue8m0;
+  using Scaled = Mma::
+      SyncAlignedM16n8k32RowColKindMxf8f6f4BlockScaleScaleVec1F32E4m3E4m3F32Ue8m0;
   auto& selected = std::get<Scaled>(scaled.variant);
+  auto& a_identity = selected.a.value.elements.front()->symbol_id;
+  const auto saved_identity = a_identity;
+  a_identity = binding::SymbolId{.value = 999999u};
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  a_identity = saved_identity;
   auto& byte_id =
       std::get<ResolvedImmediate>(selected.scale_a_selector.value.byte_id);
   byte_id.bits = 9;
@@ -119,9 +135,11 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   byte_id.integer_source_bits = 9;
   EXPECT_FALSE(checker::check(scaled, supported).has_value());
   byte_id.integer_source_bits = 0;
-  std::visit([](auto& selected) {
-    selected.matrix.value.scale_selectors[0].byte_mask = 1;
-  }, scaled.variant);
+  std::visit(
+      [](auto& selected) {
+        selected.matrix.value.scale_selectors[0].byte_mask = 1;
+      },
+      scaled.variant);
   EXPECT_FALSE(checker::check(scaled, supported).has_value());
 }
 
@@ -168,7 +186,8 @@ TEST(WarpMatrixMmaCoverage, RejectsScaleSelectorAndSparseSelectorLimits) {
   };
   EXPECT_TRUE(checker::check(std::get<Mma>(body[0]), context).has_value());
   for (size_t index = 1; index < body.size(); ++index)
-    EXPECT_FALSE(checker::check(std::get<Mma>(body[index]), context).has_value());
+    EXPECT_FALSE(
+        checker::check(std::get<Mma>(body[index]), context).has_value());
 }
 
 }  // namespace

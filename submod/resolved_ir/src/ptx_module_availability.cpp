@@ -1,5 +1,6 @@
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include "ptx_module_matrix_references.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -680,18 +681,65 @@ void check_module_references(const ResolvedModule& module,
                              const ResolvedFunction& function,
                              checker::CheckDiagnostics& diagnostics) {
   std::vector<ModuleReferenceUse> uses;
+  /** Mutable call-local destination for one type-erased matrix callback. */
+  struct MatrixCollectionContext {
+    std::vector<ModuleReferenceUse>* uses;
+    SourceRange fallback;
+  };
+  const detail::MatrixReferenceCallback matrix_callback =
+      [](detail::MatrixReferenceView view, void* opaque) {
+        auto& collection = *static_cast<MatrixCollectionContext*>(opaque);
+        const auto append = [&](const auto& value) {
+          collect_operand_references(value, view.locations, collection.fallback,
+                                     *collection.uses,
+                                     view.address_resolution_policy);
+        };
+        switch (view.kind) {
+          case detail::MatrixReferenceKind::Predicate:
+            append(*static_cast<const ResolvedPredicate*>(view.value));
+            break;
+          case detail::MatrixReferenceKind::RegisterVector:
+            append(*static_cast<const ResolvedRegisterVector*>(view.value));
+            break;
+          case detail::MatrixReferenceKind::Register:
+            append(*static_cast<const ResolvedRegisterRef*>(view.value));
+            break;
+          case detail::MatrixReferenceKind::ScaleSelector:
+            append(
+                *static_cast<const ResolvedMatrixScaleSelector*>(view.value));
+            break;
+          case detail::MatrixReferenceKind::Address:
+            append(*static_cast<const ResolvedAddress*>(view.value));
+            break;
+          case detail::MatrixReferenceKind::RegisterOrImmediate:
+            append(*static_cast<const RegOrImm*>(view.value));
+            break;
+        }
+      };
   for (size_t index = 0; index < function.body.size(); ++index) {
+    MatrixCollectionContext matrix_context{&uses,
+                                           function.instruction_ranges[index]};
     std::visit(
         [&](const auto& instruction) {
-          detail::visit_instruction_references(
-              instruction,
-              [&](const auto& value, std::span<const SourceRange> locations,
-                  checker::AddressSymbolResolutionPolicy
-                      address_resolution_policy) {
-                collect_operand_references(value, locations,
-                                           function.instruction_ranges[index],
-                                           uses, address_resolution_policy);
-              });
+          using Instruction = std::remove_cvref_t<decltype(instruction)>;
+          if constexpr (std::same_as<Instruction, Ldmatrix> ||
+                        std::same_as<Instruction, Mma> ||
+                        std::same_as<Instruction, Movmatrix> ||
+                        std::same_as<Instruction, Stmatrix> ||
+                        std::same_as<Instruction, Wmma>) {
+            detail::visit_matrix_references(instruction, matrix_callback,
+                                            &matrix_context);
+          } else {
+            detail::visit_instruction_references(
+                instruction,
+                [&](const auto& value, std::span<const SourceRange> locations,
+                    checker::AddressSymbolResolutionPolicy
+                        address_resolution_policy) {
+                  collect_operand_references(value, locations,
+                                             function.instruction_ranges[index],
+                                             uses, address_resolution_policy);
+                });
+          }
         },
         function.body[index]);
   }

@@ -18,8 +18,8 @@ supported surface and its exclusions.
   describe the modelled PTX 9.3 `ldmatrix`/`stmatrix`/`movmatrix`, dense and
   sparse `mma`, and WMMA compatibility forms, including excluded historical
   forms. Logical PTX forms retain individual contracts even when they share
-  generated C++ storage. The modelled matrix surface passed local Clang Debug
-  validation and independent core acceptance; assembler comparisons remain sampled.
+  generated C++ storage. The coverage page records current local build and test
+  results; assembler comparisons remain sampled.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

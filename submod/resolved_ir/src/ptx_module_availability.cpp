@@ -20,6 +20,7 @@
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include <fmt/format.h>
@@ -724,6 +725,7 @@ void check_module_references(const ResolvedModule& module,
                              checker::CheckDiagnostics& diagnostics) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
+    const size_t first_use = uses.size();
     /** Borrowed collection state used only during this instruction's visit. */
     struct SinkState {
       /** Destination preserving descriptor order. */
@@ -731,14 +733,24 @@ void check_module_references(const ResolvedModule& module,
       /** Owned source location used when a field has no explicit location. */
       SourceRange fallback;
     } state{uses, function.instruction_ranges[index]};
-    function.body[index].visit_references(detail::OwnedReferenceSink{
-        .state = &state,
-        .accept =
-            [](void* opaque, detail::OwnedReferenceView view) {
-              auto& current = *static_cast<SinkState*>(opaque);
-              collect_owned_reference(view, current.fallback, current.uses);
-            },
-    });
+    try {
+      function.body[index].visit_references(detail::OwnedReferenceSink{
+          .state = &state,
+          .accept =
+              [](void* opaque, detail::OwnedReferenceView view) {
+                auto& current = *static_cast<SinkState*>(opaque);
+                collect_owned_reference(view, current.fallback, current.uses);
+              },
+      });
+    } catch (const std::bad_variant_access&) {
+      uses.resize(first_use);
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = function.instruction_ranges[index],
+          .message = "Owned instruction reference traversal cannot select "
+                     "its logical form or storage.",
+      });
+    }
   }
   for (const auto& use : uses) {
     if (!use.symbol_id) {

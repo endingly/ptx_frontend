@@ -50386,7 +50386,7 @@ instructions:
       any_of:
       - ptx: '8.7'
         target: sm_120a
-      - ptx: '8.7'
+      - ptx: '8.8'
         target: sm_121a
     matrix:
       family: mma_sparse
@@ -50577,7 +50577,7 @@ instructions:
       any_of:
       - ptx: '8.7'
         target: sm_120a
-      - ptx: '8.7'
+      - ptx: '8.8'
         target: sm_121a
     matrix:
       family: mma_sparse
@@ -50773,7 +50773,7 @@ instructions:
       any_of:
       - ptx: '8.7'
         target: sm_120a
-      - ptx: '8.7'
+      - ptx: '8.8'
         target: sm_121a
     matrix:
       family: mma_sparse
@@ -50967,9 +50967,9 @@ instructions:
     section: 9.7.15.6.3
     availability:
       any_of:
-      - ptx: '8.7'
+      - ptx: '9.1'
         target: sm_120a
-      - ptx: '8.7'
+      - ptx: '9.1'
         target: sm_121a
     matrix:
       family: mma_sparse
@@ -51165,7 +51165,7 @@ instructions:
       any_of:
       - ptx: '8.7'
         target: sm_120a
-      - ptx: '8.7'
+      - ptx: '8.8'
         target: sm_121a
     matrix:
       family: mma_sparse

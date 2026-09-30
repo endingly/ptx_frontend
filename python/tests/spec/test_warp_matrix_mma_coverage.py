@@ -81,6 +81,27 @@ class WarpMatrixMmaCoverageTests(unittest.TestCase):
         self.assertEqual(len(modern.availability["any_of"]), 2)
         self.assertEqual(modern.matrix.scale_vector_size, 1)
 
+    def test_sparse_mxf4_target_and_scale_version_floors(self) -> None:
+        """Keep exact target introductions and the later scale combination distinct."""
+
+        forms = [item for item in self.variants.values()
+                 if item.matrix.family is MatrixFamily.MMA_SPARSE
+                 and item.matrix.kind in {MatrixKind.MXF4, MatrixKind.MXF4NVF4}]
+        self.assertEqual(len(forms), 5)
+        late = [item for item in forms
+                if item.matrix.kind is MatrixKind.MXF4NVF4
+                and item.matrix.scale_vector_size == 4
+                and item.matrix.scale_type.value == "ue8m0"]
+        self.assertEqual(len(late), 1)
+        for form in forms:
+            with self.subTest(form=form.name):
+                minimum = "9.1" if form is late[0] else "8.7"
+                self.assertEqual(form.availability["any_of"], [
+                    {"ptx": minimum, "target": "sm_120a"},
+                    {"ptx": "9.1" if form is late[0] else "8.8",
+                     "target": "sm_121a"},
+                ])
+
     def test_rejects_topology_and_selector_drift(self) -> None:
         """Canonical metadata cannot misstate suffixes or selector operand type."""
 

@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -252,6 +253,132 @@ TEST(WarpMatrixMmaCoverage, RejectsScaleSelectorAndSparseSelectorLimits) {
   const auto invalid_parsed = test_helpers::parseModule(invalid_source);
   ASSERT_MODULE_PARSE_SUCCEEDS(invalid_parsed);
   EXPECT_FALSE(resolveModule(*invalid_parsed).has_value());
+}
+
+/** Check sparse mxf4 target introduction and the later 4X/ue8m0 pair. */
+TEST(WarpMatrixMmaCoverage, SparseMxf4VersionAndTargetBoundaries) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_121a
+.address_size 64
+.entry kernel() {
+  .reg .f32 %d<4>, %c<4>;
+  .reg .b32 %a<4>, %b<4>, %e, %sa, %sb;
+  mma.sp::ordered_metadata.sync.aligned.m16n8k128.row.col.kind::mxf4.block_scale.f32.e2m1.e2m1.f32.ue8m0
+    {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1,%b2,%b3},
+    {%c0,%c1,%c2,%c3}, %e, 0, %sa, {2,1}, %sb, {2,3};
+  mma.sp::ordered_metadata.sync.aligned.m16n8k128.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X.f32.e2m1.e2m1.f32.ue4m3
+    {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1,%b2,%b3},
+    {%c0,%c1,%c2,%c3}, %e, 0, %sa, {0,0}, %sb, {0,0};
+  mma.sp::ordered_metadata.sync.aligned.m16n8k128.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X.f32.e2m1.e2m1.f32.ue8m0
+    {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1,%b2,%b3},
+    {%c0,%c1,%c2,%c3}, %e, 0, %sa, {0,0}, %sb, {0,0};
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  const auto resolved = resolveModule(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3u);
+
+  const auto check_at = [&](size_t index, std::string_view target_name,
+                            int major, int minor) {
+    const auto profile = base::find_target_profile(target_name);
+    EXPECT_TRUE(profile.has_value()) << target_name;
+    if (!profile)
+      return false;
+    const checker::Context context{
+        .target = {.ptx_version = {static_cast<uint16_t>(major),
+                                   static_cast<uint16_t>(minor)},
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+    };
+    return checker::check(*body[index].get_if<Mma>(), context).has_value();
+  };
+  EXPECT_FALSE(check_at(0, "sm_121a", 8, 7));
+  EXPECT_TRUE(check_at(0, "sm_121a", 8, 8));
+  EXPECT_TRUE(check_at(0, "sm_120a", 8, 7));
+  EXPECT_FALSE(check_at(1, "sm_121a", 8, 7));
+  EXPECT_TRUE(check_at(1, "sm_121a", 8, 8));
+  EXPECT_TRUE(check_at(1, "sm_120a", 8, 7));
+  EXPECT_FALSE(check_at(2, "sm_120a", 9, 0));
+  EXPECT_FALSE(check_at(2, "sm_121a", 9, 0));
+  EXPECT_TRUE(check_at(2, "sm_120a", 9, 1));
+  EXPECT_TRUE(check_at(2, "sm_121a", 9, 1));
+}
+
+/** Module validation diagnoses corrupt owned matrix form tags after AST release. */
+TEST(WarpMatrixMmaCoverage, InvalidOwnedLogicalFormReturnsModuleDiagnostics) {
+  constexpr std::string_view body = R"ptx(
+.entry kernel() {
+  .reg .f32 %d<4>, %c<4>;
+  .reg .f16x2 %a<2>, %b<1>;
+  mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
+    {%d0,%d1,%d2,%d3}, {%a0,%a1}, {%b0}, {%c0,%c1,%c2,%c3};
+}
+)ptx";
+  std::optional<ResolvedModule> full;
+  {
+    const auto parsed = test_helpers::parseModule(
+        std::string{".version 9.3\n.target sm_120a\n.address_size 64\n"} +
+        std::string{body});
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    full = std::move(*resolved);
+  }
+  std::optional<ResolvedModule> without_target;
+  {
+    const auto parsed = test_helpers::parseModule(
+        std::string{".version 9.3\n.address_size 64\n"} + std::string{body});
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    without_target = std::move(*resolved);
+  }
+  ASSERT_TRUE(
+      validateModule(*full, ModuleValidationPolicy::RequireCompleteContext));
+  ASSERT_TRUE(validateModule(*without_target,
+                             ModuleValidationPolicy::AvailableContext));
+
+  const auto expect_diagnostic = [](ResolvedModule& module,
+                                    ModuleValidationPolicy policy,
+                                    Mma::VariantType form) {
+    auto& owner = module.functions.front().body.front();
+    auto* instruction = owner.get_if<Mma>();
+    ASSERT_NE(instruction, nullptr);
+    instruction->semantic_form.value = form;
+    const detail::OwnedReferenceSink sink{
+        .state = nullptr,
+        .accept = [](void*, detail::OwnedReferenceView) {},
+    };
+    EXPECT_THROW(owner.visit_references(sink), std::bad_variant_access);
+    checker::CheckResult result{};
+    EXPECT_NO_THROW(result = validateModule(module, policy));
+    ASSERT_FALSE(result.has_value());
+    bool found_form_diagnostic = false;
+    for (const auto& diagnostic : result.error()) {
+      if (diagnostic.kind == checker::CheckDiagnosticKind::RuleViolation &&
+          diagnostic.message.find("logical form") != std::string::npos) {
+        found_form_diagnostic = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found_form_diagnostic);
+  };
+  constexpr auto invalid = static_cast<Mma::VariantType>(9999);
+  constexpr auto mismatched =
+      Mma::VariantType::SyncAlignedM8n8k4RowColF64F64F64F64;
+  expect_diagnostic(*full, ModuleValidationPolicy::RequireCompleteContext,
+                    invalid);
+  expect_diagnostic(*without_target, ModuleValidationPolicy::AvailableContext,
+                    invalid);
+  expect_diagnostic(*full, ModuleValidationPolicy::RequireCompleteContext,
+                    mismatched);
+  expect_diagnostic(*without_target, ModuleValidationPolicy::AvailableContext,
+                    mismatched);
 }
 
 }  // namespace

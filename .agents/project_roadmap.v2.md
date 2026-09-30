@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11～M13 已完成；M15 的 PTX 9.3 warp-matrix 形式已进入 canonical spec，验证与验收待定；M14 与 M16～M19 尚未开始。
+> - M11～M13 与 M15 已完成；M15 的 PTX 9.3 warp-matrix 形式已本地验证并通过独立 core 验收；M14 与 M16～M19 尚未开始。
 >
 > ISA 规划基线：
 >
@@ -481,7 +481,7 @@ family scope，绝不表示整部 PTX ISA。
 | M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ✅ | cluster、proxy 与 mbarrier |
 | M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
-| M15 | 待验证 | warp-level matrix、sparse MMA 与 WMMA compatibility；#153 已建模 PTX 9.3 现行形式，验证与验收待定 |
+| M15 | ✅ | warp-level matrix、sparse MMA 与 WMMA compatibility；#153 的 PTX 9.3 现行形式已本地验证并通过独立 core 验收 |
 | M16 | ⬜ | Hopper WGMMA |
 | M17 | ⬜ | Blackwell Tensor Memory 与 TCGEN05 data movement |
 | M18 | ⬜ | Blackwell TCGEN05 MMA 与同步 |
@@ -959,8 +959,8 @@ PTX 9.3 §9.7.15 现行 warp-level matrix 语法：全部 `ldmatrix`、`stmatrix
 movement，经典及现代低精度、block-scale dense `mma`，经典及 ordered sparse `mma.sp`，
 以及 `wmma.load`/`wmma.store`/`wmma.mma` compatibility topology。公共 shape/type/layout、
 fragment cardinality、sparse metadata 与 scale contract 要供后续 WGMMA/TCGEN05 复用。
-这比下表原有的 representative/first-slice 条件更宽。形式现已进入 canonical spec；下表状态
-在整体验证及独立 core 验收前仍为待定。规范中的 dense FP64 `.m8n84` 按
+这比下表原有的 representative/first-slice 条件更宽。形式已进入 canonical spec，
+并完成整体验证及独立 core 验收。规范中的 dense FP64 `.m8n84` 按
 fragment/example 视作 `.m8n8k4`；
 WMMA FP64 C/D fragment 按 mma/store 示例使用两个 `.f64` 寄存器；`stmatrix.m16n8.x4`
 示例漏写了规范要求的 `.trans`。Ordered metadata 的运行时 bit 排序和动态 scale selector
@@ -975,7 +975,12 @@ sparse `mma.sp` 185、WMMA 552（load 352、store 104、compute 96）。该数�
 alternative；既有两个具体、modifier 静态的 seed API 保留。逻辑 form identity 与 owned
 modifier 值仍指定准确 canonical contract：checker 必须先验证 identity 范围及其与实际
 storage alternative 的对应关系，再选择 descriptor，并据当前 modifier/operand 验证契约。
-仅凭 C++ type 不代表唯一操作。统一验证和独立 core 验收尚待完成。
+仅凭 C++ type 不代表唯一操作。本地验证与独立 core 验收已完成。
+
+验证证据：Clang Debug 全构建 exit 0，CTest 1141/1141（7.23 秒），全新 installed
+consumer 的 configure/build/run 均 exit 0；Python focused suite 分别为 39 与 6
+例，packing 测试 4/4，generator 输出逐字节一致，tracked formatting 与 diff check
+均 exit 0。该证据验证 frontend 实现，不执行 GPU matrix 指令。
 
 离线 `ptxas` V13.3.73 的完整 module 抽样支持 WMMA FP64 双寄存器、dense FP64
 `.m8n8k4`、movement、经典 sparse，以及 `sm_120a` 的 dense/ordered-sparse
@@ -983,34 +988,34 @@ block-scale 正例和相应反例；不代替全部 variant 的验证。Assemble
 未定义的 WMMA stride 17，frontend 保留静态约束。稀疏 FP8 `.m16n8k32`
 selector `{0,1}` 是根据 2:4 metadata 拓扑对规范的解释：`ptxas` 对 selector
 0、1 均先报 instruction-type 错误，selector 2 的诊断提示预期为 0 或 1，
-故 selector 1 的正例尚未得到 assembler 证实。保留该规范解释；完整 core 验收仍待完成。
+故 selector 1 的正例尚未得到 assembler 证实。独立 core 验收保留了该规范解释与工具差异。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M15-I01 | ⬜ | 独立 | 建立 `MatrixShape` | M/N/K 与 instruction family identity |
-| M15-I02 | ⬜ | 独立 | 建立 matrix element/accumulator type domain | f16/bf16/tf32/f32/f64/int/fp8/packed |
-| M15-I03 | ⬜ | 独立 | 建立 matrix layout 与 fragment cardinality | row/col、register tuple 数量由 data 生成 |
-| M15-I04 | ⬜ | 独立 | 扩展 `ldmatrix` 全部现行 count | destination cardinality/shape |
-| M15-I05 | ⬜ | 独立 | 扩展 `ldmatrix` transpose/modern type | transpose/packing/address/target |
-| M15-I06 | ⬜ | 独立 | 支持 `stmatrix` 全部现行形式 | source fragment/address/layout/type |
-| M15-I07 | ⬜ | 独立 | 支持 `movmatrix` 现行形式 | source/destination fragment/transpose |
-| M15-I08 | ⬜ | 独立 | 扩展 `mma` f16/bf16 全部现行 topology | shape/type/layout/fragment |
-| M15-I09 | ⬜ | 独立 | 支持 `mma` tf32 全部现行 topology | type/shape/layout/availability |
-| M15-I10 | ⬜ | 独立 | 支持 `mma` f64 全部现行 topology | fragment/cardinality/target |
-| M15-I11 | ⬜ | 独立 | 支持 `mma` integer/bit 全部现行 topology | signedness/satfinite/bitOp/shape |
-| M15-I12 | ⬜ | 独立 | 支持 `mma` FP8/低位浮点形式 | e4m3/e5m2 与 f8f6f4 packing/type |
-| M15-I13 | ⬜ | 独立 | 支持 `mma.sync` 全部现行 block-scale 组合 | kind/scale vectors/IDs/type/shape |
-| M15-I14 | ⬜ | 独立 | 建立 sparse metadata domain | metadata register/selector/ordering |
-| M15-I15 | ⬜ | 独立 | 支持 `mma.sp` f16/bf16 全部现行 topology | sparse A、metadata、fragment |
-| M15-I16 | ⬜ | 独立 | 支持 `mma.sp` tf32 全部现行 topology | shape/type/metadata |
-| M15-I17 | ⬜ | 独立 | 支持 `mma.sp` integer/FP8/现代低位/block-scale | type/shape/selector/scale |
-| M15-I18 | ⬜ | 独立 | 支持 `mma.sp::ordered_metadata` 全部现行形式 | metadata order 与 type/target contract |
-| M15-I19 | ⬜ | 独立 | 支持 `wmma.load` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
-| M15-I20 | ⬜ | 独立 | 支持 `wmma.store` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
-| M15-I21 | ⬜ | 独立 | 支持 `wmma.mma` 全部现行 compatibility 形式 | A/B/C/D fragment 与 modifier contract |
-| M15-C01 | ⬜ | 耦合 | 统一 matrix fragment constraint | shape/type/layout/cardinality 单一数据源 |
-| M15-C02 | ⬜ | 耦合 | 统一 sparse metadata constraint | mma.sp 与后续 WGMMA/TCGEN05 可复用基础 |
-| M15-C03 | ⬜ | 耦合 | 建立 warp-matrix corpus | sm75/sm80/sm90 与适用的现代 target 正反例共同通过 |
+| M15-I01 | ✅ | 独立 | 建立 `MatrixShape` | M/N/K 与 instruction family identity |
+| M15-I02 | ✅ | 独立 | 建立 matrix element/accumulator type domain | f16/bf16/tf32/f32/f64/int/fp8/packed |
+| M15-I03 | ✅ | 独立 | 建立 matrix layout 与 fragment cardinality | row/col、register tuple 数量由 data 生成 |
+| M15-I04 | ✅ | 独立 | 扩展 `ldmatrix` 全部现行 count | destination cardinality/shape |
+| M15-I05 | ✅ | 独立 | 扩展 `ldmatrix` transpose/modern type | transpose/packing/address/target |
+| M15-I06 | ✅ | 独立 | 支持 `stmatrix` 全部现行形式 | source fragment/address/layout/type |
+| M15-I07 | ✅ | 独立 | 支持 `movmatrix` 现行形式 | source/destination fragment/transpose |
+| M15-I08 | ✅ | 独立 | 扩展 `mma` f16/bf16 全部现行 topology | shape/type/layout/fragment |
+| M15-I09 | ✅ | 独立 | 支持 `mma` tf32 全部现行 topology | type/shape/layout/availability |
+| M15-I10 | ✅ | 独立 | 支持 `mma` f64 全部现行 topology | fragment/cardinality/target |
+| M15-I11 | ✅ | 独立 | 支持 `mma` integer/bit 全部现行 topology | signedness/satfinite/bitOp/shape |
+| M15-I12 | ✅ | 独立 | 支持 `mma` FP8/低位浮点形式 | e4m3/e5m2 与 f8f6f4 packing/type |
+| M15-I13 | ✅ | 独立 | 支持 `mma.sync` 全部现行 block-scale 组合 | kind/scale vectors/IDs/type/shape |
+| M15-I14 | ✅ | 独立 | 建立 sparse metadata domain | metadata register/selector/ordering |
+| M15-I15 | ✅ | 独立 | 支持 `mma.sp` f16/bf16 全部现行 topology | sparse A、metadata、fragment |
+| M15-I16 | ✅ | 独立 | 支持 `mma.sp` tf32 全部现行 topology | shape/type/metadata |
+| M15-I17 | ✅ | 独立 | 支持 `mma.sp` integer/FP8/现代低位/block-scale | type/shape/selector/scale |
+| M15-I18 | ✅ | 独立 | 支持 `mma.sp::ordered_metadata` 全部现行形式 | metadata order 与 type/target contract |
+| M15-I19 | ✅ | 独立 | 支持 `wmma.load` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
+| M15-I20 | ✅ | 独立 | 支持 `wmma.store` 全部现行 compatibility 形式 | fragment/layout/address/stride/target |
+| M15-I21 | ✅ | 独立 | 支持 `wmma.mma` 全部现行 compatibility 形式 | A/B/C/D fragment 与 modifier contract |
+| M15-C01 | ✅ | 耦合 | 统一 matrix fragment constraint | shape/type/layout/cardinality 单一数据源 |
+| M15-C02 | ✅ | 耦合 | 统一 sparse metadata constraint | mma.sp 与后续 WGMMA/TCGEN05 可复用基础 |
+| M15-C03 | ✅ | 耦合 | 建立 warp-matrix corpus | sm75/sm80/sm90 与适用的现代 target 正反例共同通过 |
 
 ### 出口
 

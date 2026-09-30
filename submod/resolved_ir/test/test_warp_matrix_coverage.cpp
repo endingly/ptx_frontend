@@ -78,6 +78,32 @@ TEST(WarpMatrixCoverage, ResolvesOwnedMatrixMovementAndChecksTarget) {
   EXPECT_FALSE(checker::check(load, unsupported).has_value());
   EXPECT_FALSE(checker::check(store, unsupported).has_value());
   EXPECT_TRUE(checker::check(move, unsupported).has_value());
+
+  /** Check every architecture/family branch and the renamed 110 target floor. */
+  const auto expect_modern_target = [&](std::string_view name, int major,
+                                        int minor, bool expected) {
+    const auto profile = base::find_target_profile(name);
+    ASSERT_TRUE(profile.has_value()) << name;
+    const checker::Context selected{
+        .target = {.ptx_version = {static_cast<uint16_t>(major),
+                                   static_cast<uint16_t>(minor)},
+                   .sm_version = profile->identity.architecture.number,
+                   .enabled_family_features = profile->enabled_family_features,
+                   .identity = profile->identity,
+                   .capabilities = profile->capabilities},
+    };
+    EXPECT_EQ(checker::check(load, selected).has_value(), expected) << name;
+    EXPECT_EQ(checker::check(store, selected).has_value(), expected) << name;
+  };
+  expect_modern_target("sm_100a", 8, 6, true);
+  expect_modern_target("sm_110a", 8, 9, false);
+  expect_modern_target("sm_110a", 9, 0, true);
+  expect_modern_target("sm_120a", 8, 6, true);
+  expect_modern_target("sm_100f", 8, 7, false);
+  expect_modern_target("sm_100f", 8, 8, true);
+  expect_modern_target("sm_110f", 8, 9, false);
+  expect_modern_target("sm_110f", 9, 0, true);
+  expect_modern_target("sm_120f", 8, 8, true);
 }
 
 TEST(WarpMatrixCoverage, RejectsInvalidMovementTopologyAndAddressSpace) {

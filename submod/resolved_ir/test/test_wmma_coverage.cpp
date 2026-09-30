@@ -131,9 +131,9 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolveModule(*parsed);
+  auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& body = resolved->functions.front().body;
+  auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 5u);
   const auto descriptor = std::visit([](const auto& variant) {
     return variant.matrix.value;
@@ -144,6 +144,17 @@ TEST(WmmaCoverage, F64FragmentsAndStrideLimits) {
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   for (std::size_t index = 0; index < 3; ++index)
     EXPECT_TRUE(checker::check(std::get<Wmma>(body[index]), supported).has_value());
+  auto& load_c = std::get<Wmma>(body[0]);
+  auto& stride = std::get<ResolvedImmediate>(
+      std::get<Wmma::LoadCM8n8k4ColGlobalF64::ExplicitStrideOperands>(
+          std::get<Wmma::LoadCM8n8k4ColGlobalF64>(load_c.variant).operands)
+          .stride.value);
+  stride.bits = 9;
+  EXPECT_FALSE(checker::check(load_c, supported).has_value());
+  stride.bits = 8;
+  stride.integer_source_bits = 9;
+  EXPECT_FALSE(checker::check(load_c, supported).has_value());
+  stride.integer_source_bits = 8;
   EXPECT_FALSE(checker::check(std::get<Wmma>(body[3]), supported).has_value());
   EXPECT_FALSE(checker::check(std::get<Wmma>(body[4]), supported).has_value());
   const checker::Context too_old{

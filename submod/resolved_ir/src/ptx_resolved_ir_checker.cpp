@@ -1236,6 +1236,31 @@ CheckResult check_operands(
   }
 
   if (matrix != nullptr) {
+    // Matrix control immediates are unsigned, retained after source
+    // conversion. Both the original value and owned payload must agree.
+    for (const OperandView& operand : operands) {
+      if (operand.actual_shape != OperandShape::Immediate ||
+          !operand.immediate_bits)
+        continue;
+      const uint64_t source =
+          operand.integer_source_bits.value_or(*operand.immediate_bits);
+      const uint64_t current = *operand.immediate_bits;
+      const size_t width = operand.immediate_type
+                               ? scalar_size_of(*operand.immediate_type) * 8u
+                               : 0u;
+      const bool fits_width = width >= 64 ||
+                              (width != 0 && source < (uint64_t{1} << width));
+      if (operand.immediate_is_negative.value_or(false) ||
+          source != current || !fits_width) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+            .range = diagnostic_range(operand.locations, context),
+            .message = fmt::format(
+                "Matrix control immediate '{}' does not match its unsigned "
+                "source value and declared width.", operand.field_id),
+        });
+      }
+    }
     for (size_t index = 0; index < matrix->scale_selector_count; ++index) {
       const auto& selector = matrix->scale_selectors[index];
       const OperandView* operand = find_operand(operands, selector.operand_field_id);
@@ -1245,10 +1270,12 @@ CheckResult check_operands(
       for (size_t lane = 0; lane < 2; ++lane) {
         if (operand->vector_element_shapes[lane] != OperandShape::Immediate)
           continue;
-        const auto value = operand->vector_immediate_source_bits[lane];
-        const bool valid = value && !operand->vector_immediate_negative[lane] &&
-            (lane == 0 ? (*value < 8 && (selector.byte_mask & (1u << *value)))
-                       : (*value <= selector.thread_max));
+        const auto source = operand->vector_immediate_source_bits[lane];
+        const auto current = operand->vector_immediate_bits[lane];
+        const bool valid = source && current && *source == *current &&
+            *source <= UINT16_MAX && !operand->vector_immediate_negative[lane] &&
+            (lane == 0 ? (*source < 8 && (selector.byte_mask & (1u << *source)))
+                       : (*source <= selector.thread_max));
         if (valid)
           continue;
         diagnostics.push_back(CheckDiagnostic{

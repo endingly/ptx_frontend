@@ -268,6 +268,7 @@ def emit_check_operand_view(
                     view.vector_element_types[index] = imm.type;
                     view.vector_immediate_source_bits[index] =
                         imm.integer_source_bits.value_or(imm.bits);
+                    view.vector_immediate_bits[index] = imm.bits;
                     view.vector_immediate_negative[index] = imm.is_negative;
                   }}
                 }}

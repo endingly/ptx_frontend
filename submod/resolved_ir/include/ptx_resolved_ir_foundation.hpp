@@ -428,6 +428,9 @@ struct OperandView {
   /** Original integer source for each immediate vector lane, when present. */
   std::array<std::optional<uint64_t>, kMaxOperandElements>
       vector_immediate_source_bits{};
+  /** Current owned integer payload for each immediate vector lane. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_bits{};
   /** Signed negativity accompanies vector_immediate_source_bits. */
   std::array<bool, kMaxOperandElements> vector_immediate_negative{};
   /** Borrowed lane references; null for sinks and non-register lanes. */

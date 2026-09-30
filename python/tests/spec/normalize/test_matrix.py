@@ -5,6 +5,7 @@ import unittest
 
 from ptx_frontend.spec.model import MatrixFamily, MatrixFragmentRole
 from ptx_frontend.spec.normalize import normalize_instruction_spec
+from ptx_frontend.spec.normalize.availability import normalize_availability
 
 
 def _matrix_seed() -> dict:
@@ -34,7 +35,7 @@ def _matrix_seed() -> dict:
                 ],
                 "matrix": {
                     "family": "ldmatrix", "m": 8, "n": 8, "k": 0,
-                    "matrix_count": 2, "elements": {"d": "b16"},
+                    "matrix_count": 2, "address_qualifier": "shared", "elements": {"d": "b16"},
                     "fragments": {"dst": "d"},
                 },
             }],
@@ -69,6 +70,20 @@ class MatrixNormalizationTests(unittest.TestCase):
             raw["instructions"][0]["variants"][0]["matrix"].update(change)
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, message):
                 normalize_instruction_spec(raw)
+
+    def test_six_target_clauses_fit_exact_modern_matrix_availability(self) -> None:
+        """Represent three architecture and three later family target paths."""
+
+        clauses = [
+            {"ptx": "8.6", "target": f"sm_{arch}a"}
+            for arch in (100, 110, 120)
+        ] + [
+            {"ptx": "8.8", "sm": arch, "family": f"sm_{arch}f"}
+            for arch in (100, 110, 120)
+        ]
+        self.assertEqual(len(normalize_availability({"any_of": clauses})["any_of"]), 6)
+        with self.assertRaisesRegex(ValueError, "one to six"):
+            normalize_availability({"any_of": clauses + [clauses[0]]})
 
 
 if __name__ == "__main__":

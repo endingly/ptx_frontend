@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from ptx_frontend.spec.model import (
+    MatrixAddressQualifier,
     MatrixElementType,
     MatrixFamily,
     MatrixFragmentRole,
@@ -46,6 +47,7 @@ def normalize_matrix(
         "family", "m", "n", "k", "a_layout", "b_layout", "elements",
         "fragments", "kind", "transpose", "matrix_count",
         "scale_vector_size", "scale_type", "source_packing", "sparse_order",
+        "destination_packing", "address_qualifier",
     }
     if set(raw) - permitted:
         raise ValueError(f"matrix has unknown keys {sorted(set(raw) - permitted)}")
@@ -56,9 +58,14 @@ def normalize_matrix(
         kind = MatrixKind(raw.get("kind", "classic"))
         sparse_order = MatrixSparseOrder(raw.get("sparse_order", "none"))
         scale_type = MatrixScaleType(raw.get("scale_type", "none"))
+        address_qualifier = MatrixAddressQualifier(raw.get("address_qualifier", "none"))
         source_packing = (
             MatrixElementType(raw["source_packing"])
             if "source_packing" in raw else None
+        )
+        destination_packing = (
+            MatrixElementType(raw["destination_packing"])
+            if "destination_packing" in raw else None
         )
     except (KeyError, ValueError) as error:
         raise ValueError(f"invalid matrix family, layout, kind, or sparse order: {error}") from error
@@ -87,8 +94,10 @@ def normalize_matrix(
         raise ValueError("matrix count only applies to ldmatrix/stmatrix")
     if (scale_type is MatrixScaleType.NONE) != (scale_vector_size == 0):
         raise ValueError("scale type and vector size must both be present or absent")
-    if source_packing is not None and family is not MatrixFamily.LDMATRIX:
+    if (source_packing is not None or destination_packing is not None) and family is not MatrixFamily.LDMATRIX:
         raise ValueError("only ldmatrix has a decompressed source encoding")
+    if (source_packing is None) != (destination_packing is None):
+        raise ValueError("matrix decompression needs both source and destination packing")
 
     raw_elements = raw.get("elements")
     raw_fragments = raw.get("fragments")
@@ -122,6 +131,8 @@ def normalize_matrix(
         a_layout=a_layout, b_layout=b_layout, kind=kind,
         sparse_order=sparse_order, scale_type=scale_type,
         source_packing=source_packing, scale_vector_size=scale_vector_size,
+        destination_packing=destination_packing,
+        address_qualifier=address_qualifier,
         transpose=transpose, matrix_count=matrix_count,
     )
     return MatrixSpec(
@@ -134,6 +145,8 @@ def normalize_matrix(
         kind=kind,
         scale_type=scale_type,
         source_packing=source_packing,
+        destination_packing=destination_packing,
+        address_qualifier=address_qualifier,
         transpose=transpose,
         matrix_count=matrix_count,
         scale_vector_size=scale_vector_size,
@@ -211,6 +224,8 @@ def _validate_fixed_modifiers(
     sparse_order: MatrixSparseOrder,
     scale_type: MatrixScaleType,
     source_packing: MatrixElementType | None,
+    destination_packing: MatrixElementType | None,
+    address_qualifier: MatrixAddressQualifier,
     scale_vector_size: int,
     transpose: bool,
     matrix_count: int,
@@ -268,11 +283,26 @@ def _validate_fixed_modifiers(
     expected_pack = () if source_packing is None else (f".{source_packing.value}",)
     if source_pack_tokens != expected_pack:
         raise ValueError("matrix source packing disagrees with fixed suffix")
+    destination_pack_tokens = tuple(token for token in tokens
+                                    if token == ".b8x16")
+    expected_destination_pack = (
+        () if destination_packing is None else (f".{destination_packing.value}",)
+    )
+    if destination_pack_tokens != expected_destination_pack:
+        raise ValueError("matrix destination packing disagrees with fixed suffix")
     scale_types = tuple(token for token in tokens
                         if token in (".ue8m0", ".ue4m3"))
     expected_scale_type = () if scale_type is MatrixScaleType.NONE else (f".{scale_type.value}",)
     if scale_types != expected_scale_type:
         raise ValueError("matrix scale type disagrees with fixed suffix")
+    address_tokens = tuple(token for token in tokens
+                           if token in (".global", ".shared", ".shared::cta"))
+    expected_address = (
+        () if address_qualifier is MatrixAddressQualifier.NONE
+        else (f".{address_qualifier.value}",)
+    )
+    if address_tokens != expected_address:
+        raise ValueError("matrix address qualifier disagrees with fixed suffix")
     scale_vectors = tuple(int(match.group(1)) for token in tokens
                           if (match := re.fullmatch(r"\.scale_vec::([124])X", token)))
     if scale_vectors and scale_vectors != (scale_vector_size,):
@@ -289,7 +319,6 @@ def _validate_fixed_modifiers(
             element is None or fixed_values[field] != element.value
         ):
             raise ValueError(f"matrix {role.value} element disagrees with {field}")
-    if "type" in fixed_values and len(elements) == 1:
-        only = next(iter(elements.values()))
-        if fixed_values["type"] != only.value:
+    if "type" in fixed_values:
+        if any(fixed_values["type"] != element.value for element in elements.values()):
             raise ValueError("matrix element disagrees with fixed type suffix")

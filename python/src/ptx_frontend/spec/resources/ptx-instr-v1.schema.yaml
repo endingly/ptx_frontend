@@ -1218,7 +1218,7 @@ $defs:
           any_of:
             type: array
             minItems: 1
-            maxItems: 5
+            maxItems: 6
             items:
               type: object
               additionalProperties: false
@@ -1535,7 +1535,9 @@ $defs:
       kind: {enum: [classic, f8f6f4, mxf8f6f4, mxf4, mxf4nvf4]}
       sparse_order: {enum: [none, native, ordered]}
       scale_type: {enum: [none, ue8m0, ue4m3]}
+      address_qualifier: {enum: [none, global, shared, "shared::cta"]}
       source_packing: {enum: [b4x16_p64, b6x16_p32]}
+      destination_packing: {enum: [b8x16]}
       transpose: {type: boolean}
       matrix_count: {type: integer, minimum: 0, maximum: 4}
       scale_vector_size: {enum: [0, 1, 2, 4]}
@@ -1545,7 +1547,7 @@ $defs:
         maxProperties: 4
         propertyNames: {enum: [d, a, b, c]}
         additionalProperties:
-          enum: [b1, b8, b16, b4x16_p64, b6x16_p32, f16, bf16, tf32, f32, f64, s8, u8, s32, s4, u4, e4m3, e5m2, e3m2, e2m3, e2m1]
+          enum: [b1, b8, b8x16, b16, b4x16_p64, b6x16_p32, f16, bf16, tf32, f32, f64, s8, u8, s32, s4, u4, e4m3, e5m2, e3m2, e2m3, e2m1]
       fragments:
         type: object
         minProperties: 1

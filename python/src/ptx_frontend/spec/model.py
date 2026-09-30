@@ -44,6 +44,7 @@ class MatrixElementType(Enum):
 
     B1 = "b1"
     B8 = "b8"
+    B8X16 = "b8x16"
     B16 = "b16"
     B4X16_P64 = "b4x16_p64"
     B6X16_P32 = "b6x16_p32"
@@ -98,6 +99,15 @@ class MatrixScaleType(Enum):
     UE4M3 = "ue4m3"
 
 
+class MatrixAddressQualifier(Enum):
+    """Written matrix address-space suffix, distinct from bound provenance."""
+
+    NONE = "none"
+    GLOBAL = "global"
+    SHARED = "shared"
+    SHARED_CTA = "shared::cta"
+
+
 class MatrixFragmentRole(Enum):
     """A, B, C, or D position of an owned register fragment."""
 
@@ -140,6 +150,8 @@ class MatrixSpec:
     kind: MatrixKind = MatrixKind.CLASSIC
     scale_type: MatrixScaleType = MatrixScaleType.NONE
     source_packing: MatrixElementType | None = None
+    destination_packing: MatrixElementType | None = None
+    address_qualifier: MatrixAddressQualifier = MatrixAddressQualifier.NONE
     transpose: bool = False
     matrix_count: int = 0
     scale_vector_size: int = 0

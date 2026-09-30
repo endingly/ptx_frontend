@@ -84,7 +84,7 @@ enum class MatrixFamily : uint8_t {
 };
 /** Logical matrix element, independent of register packing and declaration type. */
 enum class MatrixElementType : uint8_t {
-  B1, B8, B16, B4X16_P64, B6X16_P32, F16, BF16, TF32, F32, F64,
+  B1, B8, B8X16, B16, B4X16_P64, B6X16_P32, F16, BF16, TF32, F32, F64,
   S8, U8, S32, S4, U4, E4M3, E5M2, E3M2, E2M3, E2M1
 };
 /** Row or column placement of a logical matrix operand. */
@@ -97,6 +97,10 @@ enum class MatrixKind : uint8_t {
 enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
 /** Logical scale-factor type selected by a block-scaled MMA form. */
 enum class MatrixScaleType : uint8_t { NONE, UE8M0, UE4M3 };
+/** Written matrix address qualifier, independent of address provenance. */
+enum class MatrixAddressQualifier : uint8_t {
+  NONE, GLOBAL, SHARED, SHARED_CTA
+};
 /** Logical register-fragment role in a matrix instruction. */
 enum class MatrixFragmentRole : uint8_t { D, A, B, C };
 /** Logical M×N×K shape; raw matrix movement instructions use K=0. */
@@ -128,8 +132,11 @@ struct MatrixInstructionDescriptor {
   MatrixKind kind = MatrixKind::CLASSIC;
   MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
   MatrixScaleType scale_type = MatrixScaleType::NONE;
+  MatrixAddressQualifier address_qualifier = MatrixAddressQualifier::NONE;
   /** Physical source encoding when a movement operation decompresses data. */
   std::optional<MatrixElementType> source_packing;
+  /** Register-side destination encoding for a decompressed matrix load. */
+  std::optional<MatrixElementType> destination_packing;
   bool transpose = false;
   /** Number of movement matrices represented by one instruction. */
   uint8_t matrix_count = 0;
@@ -223,7 +230,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 /** Fixed DNF capacity shared by generated availability descriptors. */
-inline constexpr size_t kMaxAvailabilityClauses = 5;
+inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 /** One AND-clause in a bounded generated target-availability expression. */

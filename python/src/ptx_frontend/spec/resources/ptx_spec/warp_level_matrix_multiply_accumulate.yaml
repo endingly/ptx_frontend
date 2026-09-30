@@ -2,116 +2,6530 @@
 # yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
 
 schema: ptx-instr/v1
-ptx_isa: "9.3"
+ptx_isa: '9.3'
 category: warp_level_matrix_multiply_accumulate
 codegen_category: matrix
-section: "9.7.15"
-
+section: 9.7.15
 operand_patterns:
   mma_m16n8k8_f32_f16:
-    - name: dst
-      kind: reg_vector
-      role: dst
-      access: write
-      type: f32
-      vector: {kind: matrix_fragment, arity: [4], type_policy: element}
-    - name: a
-      kind: reg_vector
-      role: src1
-      access: read
-      type: f16x2
-      vector: {kind: matrix_fragment, arity: [2], type_policy: element}
-    - name: b
-      kind: reg_vector
-      role: src2
-      access: read
-      type: f16x2
-      vector: {kind: matrix_fragment, arity: [1], type_policy: element}
-    - name: c
-      kind: reg_vector
-      role: src3
-      access: read
-      type: f32
-      vector: {kind: matrix_fragment, arity: [4], type_policy: element}
-
+  - name: dst
+    kind: reg_vector
+    role: dst
+    access: write
+    type: f32
+    vector:
+      kind: matrix_fragment
+      arity:
+      - 4
+      type_policy: element
+  - name: a
+    kind: reg_vector
+    role: src1
+    access: read
+    type: f16x2
+    vector:
+      kind: matrix_fragment
+      arity:
+      - 2
+      type_policy: element
+  - name: b
+    kind: reg_vector
+    role: src2
+    access: read
+    type: f16x2
+    vector:
+      kind: matrix_fragment
+      arity:
+      - 1
+      type_policy: element
+  - name: c
+    kind: reg_vector
+    role: src3
+    access: read
+    type: f32
+    vector:
+      kind: matrix_fragment
+      arity:
+      - 4
+      type_policy: element
   ldmatrix_m8n8_x2_shared_b16:
+  - name: dst
+    kind: reg_vector
+    role: dst
+    access: write
+    type: b32
+    vector:
+      kind: matrix_fragment
+      arity:
+      - 2
+      type_policy: element
+  - name: address
+    kind: addr
+    role: addr
+    access: read
+    state_space:
+    - shared
+instructions:
+- opcode: mma
+  section: 9.7.15.5.14
+  doc: Matrix multiply-accumulate, limited to m16n8k8 f16 inputs and f32 accumulation.
+  syntax: mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {dst0, dst1, dst2, dst3}, {a0, a1}, {b0}, {c0, c1,
+    c2, c3}
+  operands: $mma_m16n8k8_f32_f16
+  variants:
+  - name: mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: mma
+      m: 16
+      n: 8
+      k: 8
+      a_layout: row
+      b_layout: col
+      elements:
+        d: f32
+        a: f16
+        b: f16
+        c: f32
+      fragments:
+        dst: d
+        a: a
+        b: b
+        c: c
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+      token: .sync
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+      token: .aligned
+    - name: m16n8k8
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8k8
+    - name: row
+      kind: flag
+      presence: fixed
+      value: true
+      token: .row
+    - name: col
+      kind: flag
+      presence: fixed
+      value: true
+      token: .col
+    - name: d_type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: f32
+    - name: a_type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: f16
+    - name: b_type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: f16
+    - name: c_type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: f32
+    rule: matrix.mma
+    examples:
+    - ptx: mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0,
+        %c1, %c2, %c3};
+      valid: true
+- opcode: ldmatrix
+  section: 9.7.15.5.15
+  doc: Synchronized warp-level matrix load from shared memory.
+  syntax: ldmatrix.sync.aligned.shape.num{.trans}{.ss}.type {dst}, [address]
+  variants:
+  - name: ldmatrix_sync_aligned_m8n8_x2_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+      token: .sync
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+      token: .aligned
+    - name: m8n8
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: x2
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: shared
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands: $ldmatrix_m8n8_x2_shared_b16
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+    examples:
+    - ptx: ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];
+      valid: true
+  - name: ldmatrix_sync_aligned_m8n8_x1_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
     - name: dst
-      kind: reg_vector
+      kind: matrix_fragment
       role: dst
       access: write
       type: b32
-      vector: {kind: matrix_fragment, arity: [2], type_policy: element}
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
     - name: address
       kind: addr
       role: addr
       access: read
-      state_space: [shared]
-
-instructions:
-  - opcode: mma
-    section: "9.7.15.5.14"
-    doc: "Matrix multiply-accumulate, limited to m16n8k8 f16 inputs and f32 accumulation."
-    syntax: >-
-      mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
-      {dst0, dst1, dst2, dst3}, {a0, a1}, {b0}, {c0, c1, c2, c3}
-    operands: $mma_m16n8k8_f32_f16
-    variants:
-      - name: mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32
-        availability: {ptx: "6.5", sm: 75}
-        matrix:
-          family: mma
-          m: 16
-          n: 8
-          k: 8
-          a_layout: row
-          b_layout: col
-          elements: {d: f32, a: f16, b: f16, c: f32}
-          fragments: {dst: d, a: a, b: b, c: c}
-        modifiers:
-          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
-          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
-          - {name: m16n8k8, kind: flag, presence: fixed, value: true, token: .m16n8k8}
-          - {name: row, kind: flag, presence: fixed, value: true, token: .row}
-          - {name: col, kind: flag, presence: fixed, value: true, token: .col}
-          - {name: d_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
-          - {name: a_type, kind: type, domain: scalar_types, presence: fixed, value: f16}
-          - {name: b_type, kind: type, domain: scalar_types, presence: fixed, value: f16}
-          - {name: c_type, kind: type, domain: scalar_types, presence: fixed, value: f32}
-        rule: matrix.mma
-        examples:
-          - ptx: >-
-              mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
-              {%d0, %d1, %d2, %d3}, {%a0, %a1}, {%b0}, {%c0, %c1, %c2, %c3};
-            valid: true
-
-  - opcode: ldmatrix
-    section: "9.7.15.5.15"
-    doc: "Matrix load, limited to synchronized aligned m8n8.x2 shared b16."
-    syntax: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {dst0, dst1}, [address]"
-    variants:
-      - name: ldmatrix_sync_aligned_m8n8_x2_shared_b16
-        availability: {ptx: "6.5", sm: 75}
-        matrix:
-          family: ldmatrix
-          m: 8
-          n: 8
-          k: 0
-          matrix_count: 2
-          elements: {d: b16}
-          fragments: {dst: d}
-        modifiers:
-          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
-          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
-          - {name: m8n8, kind: flag, presence: fixed, value: true, token: .m8n8}
-          - {name: x2, kind: flag, presence: fixed, value: true, token: .x2}
-          - {name: shared, kind: flag, presence: fixed, value: true, token: .shared}
-          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b16}
-        operands: $ldmatrix_m8n8_x2_shared_b16
-        rule: data_movement.ldmatrix
-        constraints:
-          - kind: address_alignment
-            address_operand: address
-            alignment: 16
-        examples:
-          - ptx: "ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0, %r1}, [shared_value];"
-            valid: true
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x1_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x1_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x1_trans_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x1_trans_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x1_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x2_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x2_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x2_trans_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x2_trans_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x2_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_trans_generic_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_trans_shared_b16
+    availability:
+      ptx: '6.5'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n8_x4_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        d: b16
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_generic_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_cta_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_generic_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_cta_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_generic_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_cta_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_generic_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_cta_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_generic_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x1_trans_shared_cta_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_generic_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m16n16_x2_trans_shared_cta_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 16
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: true
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_generic_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_shared_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_shared_cta_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_generic_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_shared_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_shared_cta_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_generic_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_shared_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_shared_cta_b8x16_b6x16_p32
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b6x16_p32
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b6x16_p32
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_generic_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_shared_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x1_shared_cta_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_generic_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_shared_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x2_shared_cta_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_generic_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_shared_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: ldmatrix_sync_aligned_m8n16_x4_shared_cta_b8x16_b4x16_p64
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: ldmatrix
+      m: 8
+      n: 16
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        d: b8
+      fragments:
+        dst: d
+      transpose: false
+      source_packing: b4x16_p64
+      destination_packing: b8x16
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n16
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: destination_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b8x16
+    - name: source_format
+      kind: flag
+      presence: fixed
+      value: true
+      token: .b4x16_p64
+    operands:
+    - name: dst
+      kind: matrix_fragment
+      role: dst
+      access: write
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    rule: data_movement.ldmatrix
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+- opcode: stmatrix
+  section: 9.7.15.5.16
+  doc: Synchronized warp-level matrix store into shared memory.
+  syntax: stmatrix.sync.aligned.shape.num{.trans}{.ss}.type [address], {src}
+  variants:
+  - name: stmatrix_sync_aligned_m8n8_x1_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x1_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x1_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x1_trans_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x1_trans_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x1_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_trans_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_trans_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x2_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: false
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_trans_generic_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_trans_shared_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m8n8_x4_trans_shared_cta_b16
+    availability:
+      ptx: '7.8'
+      sm: 90
+    matrix:
+      family: stmatrix
+      m: 8
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        a: b16
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x1_trans_generic_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: none
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x1_trans_shared_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x1_trans_shared_cta_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 1
+      address_qualifier: shared::cta
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x1
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 1
+        max: 1
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x2_trans_generic_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: none
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x2_trans_shared_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x2_trans_shared_cta_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 2
+      address_qualifier: shared::cta
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x2
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 2
+        max: 2
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x4_trans_generic_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: none
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x4_trans_shared_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+  - name: stmatrix_sync_aligned_m16n8_x4_trans_shared_cta_b8
+    availability:
+      any_of:
+      - ptx: '8.6'
+        target: sm_100a
+      - ptx: '8.6'
+        target: sm_110a
+      - ptx: '8.6'
+        target: sm_120a
+      - ptx: '8.8'
+        sm: 100
+        family: sm_100f
+      - ptx: '8.8'
+        sm: 110
+        family: sm_110f
+      - ptx: '8.8'
+        sm: 120
+        family: sm_120f
+    matrix:
+      family: stmatrix
+      m: 16
+      n: 8
+      k: 0
+      matrix_count: 4
+      address_qualifier: shared::cta
+      elements:
+        a: b8
+      fragments:
+        src: a
+      transpose: true
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m16n8
+    - name: count
+      kind: flag
+      presence: fixed
+      value: true
+      token: .x4
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: state_space
+      kind: flag
+      presence: fixed
+      value: true
+      token: .shared::cta
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b8
+    operands:
+    - name: address
+      kind: addr
+      role: addr
+      access: read
+      state_space:
+      - shared
+    - name: src
+      kind: matrix_fragment
+      role: src
+      access: read
+      type: b32
+      cardinality:
+        min: 4
+        max: 4
+      element_kinds:
+      - reg
+    constraints:
+    - kind: address_alignment
+      address_operand: address
+      alignment: 16
+- opcode: movmatrix
+  section: 9.7.15.5.17
+  doc: Synchronized warp-level transpose of an m8n8 b16 register matrix.
+  syntax: movmatrix.sync.aligned.m8n8.trans.b16 dst, src
+  variants:
+  - name: movmatrix_sync_aligned_m8n8_trans_b16
+    availability:
+      ptx: '7.8'
+      sm: 75
+    matrix:
+      family: movmatrix
+      m: 8
+      n: 8
+      k: 0
+      transpose: true
+      elements:
+        d: b16
+        a: b16
+      fragments:
+        dst: d
+        src: a
+    modifiers:
+    - name: sync
+      kind: flag
+      presence: fixed
+      value: true
+    - name: aligned
+      kind: flag
+      presence: fixed
+      value: true
+    - name: shape
+      kind: flag
+      presence: fixed
+      value: true
+      token: .m8n8
+    - name: transpose
+      kind: flag
+      presence: fixed
+      value: true
+      token: .trans
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: b16
+    operands:
+    - name: dst
+      kind: reg
+      role: dst
+      access: write
+      type: b32
+    - name: src
+      kind: reg
+      role: src
+      access: read
+      type: b32

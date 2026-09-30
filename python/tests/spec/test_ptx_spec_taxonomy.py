@@ -150,6 +150,8 @@ EXPECTED_SECTIONS = {
     "warp_level_matrix_multiply_accumulate.yaml": {
         "mma": {"9.7.15.5.14"},
         "ldmatrix": {"9.7.15.5.15"},
+        "stmatrix": {"9.7.15.5.16"},
+        "movmatrix": {"9.7.15.5.17"},
     },
     "miscellaneous.yaml": {"trap": {"9.7.20.4"}, "setmaxnreg": {"9.7.20.5"}},
 }

@@ -75,6 +75,8 @@ enum class ResolvedValueKind : uint8_t {
   RegisterVector,
   TensorCoordinate,
   MatrixScaleSelector,
+  SharedMatrixDescriptor,
+  WgmmaScaleD,
   DirectCallTarget,
   IndirectCallee,
   BranchTargetSet,

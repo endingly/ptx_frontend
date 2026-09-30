@@ -1266,9 +1266,13 @@ CheckResult check_operands(
   }
 
   if (matrix != nullptr) {
-    // Matrix control immediates are unsigned, retained after source
-    // conversion. Both the original value and owned payload must agree.
+    // Signed WGMMA scales have their own source and converted-bit check.
+    // Other matrix controls retain the unsigned source contract.
     for (const OperandView& operand : operands) {
+      if ((matrix->family == MatrixFamily::WGMMA ||
+           matrix->family == MatrixFamily::WGMMA_SPARSE) &&
+          (operand.field_id == "scale_a" || operand.field_id == "scale_b"))
+        continue;
       if (operand.actual_shape != OperandShape::Immediate ||
           !operand.immediate_bits)
         continue;
@@ -2425,6 +2429,42 @@ CheckResult check_immediate_range(
           "Immediate operand '{}' has value {} outside the supported range.",
           descriptor.operand_field_id, value),
   }});
+}
+
+/** Check signed WGMMA scale controls against their original integer sources. */
+CheckResult check_wgmma_scales(std::span<const OperandView> operands,
+                               const Context& context) {
+  for (const std::string_view name : {"scale_a", "scale_b"}) {
+    const OperandView* operand = find_operand(operands, name);
+    if (operand == nullptr ||
+        operand->actual_shape != OperandShape::Immediate ||
+        operand->immediate_type != ScalarType::S32 ||
+        !operand->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = operand == nullptr
+                       ? context.instruction_range
+                       : diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("WGMMA {} requires a signed-32 immediate.", name),
+      }});
+    }
+    if (auto consistency =
+            check_integer_immediate_consistency(*operand, context);
+        !consistency)
+      return consistency;
+    const auto [source, negative] = integer_constraint_value(*operand);
+    if ((!negative && source == 1 && *operand->immediate_bits == 1) ||
+        (negative && source == UINT64_MAX &&
+         *operand->immediate_bits == UINT32_MAX))
+      continue;
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand->locations, context),
+        .message = fmt::format("WGMMA {} must be +1 or -1.", name),
+    }});
+  }
+  return {};
 }
 
 /** Validate source-known createpolicy fraction and range-size values. */

@@ -1894,6 +1894,34 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::WgmmaScaleD: {
+      if (const auto* immediate =
+              std::get_if<syntax_ast::AstImmediate>(&operand)) {
+        auto value = resolve_immediate_value(*immediate, ScalarType::B64);
+        if (!value)
+          return std::unexpected(value.error());
+        if (value->is_negative || value->bits > 1) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = syntax_ast::sourceRange(operand),
+              .message = "WGMMA scale-d constant must be 0 or 1.",
+          });
+        }
+        return ResolvedFieldValue{WithLocs<ResolvedPredicateSource>{
+            ResolvedPredicateSource{
+                ResolvedPredicateConstant{.value = value->bits == 1}},
+            syntax_ast::sourceRange(operand)}};
+      }
+      if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(operand)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "WGMMA scale-d requires a predicate or 0/1 constant.",
+        });
+      }
+      auto value = resolve_predicate_source(operand, false, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::PredicateSource: {
       auto value = resolve_predicate_source(
           operand,
@@ -2115,6 +2143,16 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::SharedMatrixDescriptor: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedSharedMatrixDescriptor> descriptor{
+          ResolvedSharedMatrixDescriptor{.register_ref =
+                                             std::move(value->value)}};
+      descriptor.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(descriptor)};
     }
     case ResolvedValueKind::MatrixScaleSelector: {
       auto value = resolve_tensor_coordinate(operand, binding, fields, context);

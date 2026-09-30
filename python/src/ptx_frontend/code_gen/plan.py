@@ -10,6 +10,12 @@ from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.emit.category_source import (
     generate_resolved_ir_opcode_source,
 )
+from ptx_frontend.code_gen.emit.matrix_private_shards import (
+    generate_matrix_private_checker_shard,
+    generate_matrix_private_descriptor_shard,
+    generate_matrix_private_main,
+    matrix_private_shard_count,
+)
 from ptx_frontend.code_gen.emit.resolved_checker import (
     generate_resolved_ir_checker_category_declarations_header,
     generate_resolved_ir_checker_declarations_header,
@@ -293,15 +299,38 @@ def build_generation_plan(
     # ------------------------------------------------------------------
 
     for category in categories:
-        artifacts.extend(
-            _opcode_artifact(
+        for opcode in _category_opcodes(context, category):
+            instruction = next(
+                entry.resolved for entry in context.entries
+                if entry.specification.codegen_category == category
+                and entry.specification.opcode == opcode
+            )
+            private_shards = (
+                matrix_private_shard_count(instruction)
+                if category == "matrix" else 0
+            )
+            artifacts.append(_opcode_artifact(
                 path=output_dir / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
                 category=category,
                 opcode=opcode,
-                emitter=generate_resolved_ir_opcode_source,
-            )
-            for opcode in _category_opcodes(context, category)
-        )
+                emitter=(generate_matrix_private_main if private_shards
+                         else generate_resolved_ir_opcode_source),
+            ))
+            for shard in range(private_shards):
+                for kind in ("syntax", "resolved", "checker"):
+                    artifacts.append(_matrix_private_descriptor_shard_artifact(
+                        path=output_dir / (
+                            f"private/resolved_ir_{category}_{opcode}_{kind}_shard_"
+                            f"{shard:03d}.gen.cpp"
+                        ), category=category, opcode=opcode,
+                        kind=kind, shard=shard,
+                    ))
+                artifacts.append(_matrix_private_checker_shard_artifact(
+                    path=output_dir / (
+                        f"private/resolved_ir_{category}_{opcode}_check_shard_"
+                        f"{shard:03d}.gen.cpp"
+                    ), category=category, opcode=opcode, shard=shard,
+                ))
         if category == "matrix":
             for opcode in _category_opcodes(context, category):
                 instruction = next(
@@ -419,6 +448,38 @@ def _matrix_reference_shard_artifact(
 
         generate_matrix_reference_shard(
             context, opcode=opcode, shard=shard, output_path=output_path
+        )
+
+    return GeneratedArtifact(path=path, emit=bound, category=category)
+
+
+def _matrix_private_descriptor_shard_artifact(
+    *, path: Path, category: str, opcode: str, kind: str, shard: int
+) -> GeneratedArtifact:
+    """Bind one static-backed private descriptor interval to its output."""
+
+    def bound(context: GenerationContext, *, output_path: Path) -> None:
+        """Emit the exact descriptor interval selected by this plan entry."""
+
+        generate_matrix_private_descriptor_shard(
+            context, category=category, opcode=opcode,
+            kind=kind, shard=shard, output_path=output_path,
+        )
+
+    return GeneratedArtifact(path=path, emit=bound, category=category)
+
+
+def _matrix_private_checker_shard_artifact(
+    *, path: Path, category: str, opcode: str, shard: int
+) -> GeneratedArtifact:
+    """Bind one checker implementation interval to its output."""
+
+    def bound(context: GenerationContext, *, output_path: Path) -> None:
+        """Emit the exact checker interval selected by this plan entry."""
+
+        generate_matrix_private_checker_shard(
+            context, category=category, opcode=opcode,
+            shard=shard, output_path=output_path,
         )
 
     return GeneratedArtifact(path=path, emit=bound, category=category)

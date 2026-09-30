@@ -113,6 +113,8 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView>,
 /** Check typed fractional bounds and statically known createpolicy range sizes. */
 CheckResult check_createpolicy_rule(std::span<const OperandView>,
                                     const Context&);
+/** Require each floating WGMMA input-negation control to be exactly +1 or -1. */
+CheckResult check_wgmma_scales(std::span<const OperandView>, const Context&);
 /** Check typed non-bulk copy source control and statically known zero-fill size. */
 CheckResult check_cp_async_rule(std::span<const FieldView>,
                                 std::span<const OperandView>, const Context&);

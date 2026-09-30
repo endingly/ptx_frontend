@@ -234,6 +234,17 @@ enum class AsyncCompletionKind : uint8_t {
   AsyncGroup,
   BulkGroup,
   MbarrierCompleteTxBytes,
+  /** Commit/wait identity of the independent warpgroup MMA queue. */
+  WgmmaGroup,
+};
+
+/** Action expressed by one WGMMA instruction, without dynamic sequence proof. */
+enum class WgmmaProtocolAction : uint8_t {
+  None,
+  Issue,
+  RegisterFence,
+  Commit,
+  Wait,
 };
 
 /** Semantic value of a PTX mbarrier .phase_type qualifier. */

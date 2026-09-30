@@ -53,6 +53,7 @@ def _storage_key(variant: ResolvedVariant, backend: CodegenUnit) -> tuple:
     return (
         variant.condition_code_effect,
         variant.completion_kind,
+        variant.wgmma_protocol_action,
         _fields_key(variant.modifier_fields, backend),
         tuple(
             (layout.cpp_name, _fields_key(layout.fields, backend))
@@ -64,13 +65,10 @@ def _storage_key(variant: ResolvedVariant, backend: CodegenUnit) -> tuple:
 def matrix_storage_plan(
     instruction: ResolvedInstruction, backend: CodegenUnit
 ) -> MatrixStoragePlan | None:
-    """Deduplicate only opcodes whose every form has canonical matrix metadata."""
+    """Deduplicate opcodes with matrix forms, preserving control forms too."""
 
     if not instruction.variants or not any(v.matrix for v in instruction.variants):
         return None
-    if not all(v.matrix for v in instruction.variants):
-        raise ValueError(f"matrix opcode {instruction.opcode!r} has mixed forms")
-
     indexes: dict[tuple, int] = {}
     representatives: list[int] = []
     storage_indexes: list[int] = []

@@ -20,6 +20,8 @@ _REFERENCE_KINDS = {
     ResolvedValueKind.REGISTER_VECTOR: "RegisterVector",
     ResolvedValueKind.REGISTER: "Register",
     ResolvedValueKind.MATRIX_SCALE_SELECTOR: "ScaleSelector",
+    ResolvedValueKind.SHARED_MATRIX_DESCRIPTOR: "SharedMatrixDescriptor",
+    ResolvedValueKind.WGMMA_SCALE_D: "PredicateSource",
     ResolvedValueKind.ADDRESS: "Address",
     ResolvedValueKind.REG_OR_IMM: "RegisterOrImmediate",
 }

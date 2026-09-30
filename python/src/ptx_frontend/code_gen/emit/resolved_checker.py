@@ -511,6 +511,14 @@ def _emit_cross_rule_checks(
                                  createpolicy_rule_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.MATRIX_WGMMA_SCALE:
+        checks += """            const auto wgmma_scale_check = check_wgmma_scales(
+                operands, context);
+            if (!wgmma_scale_check) {
+              diagnostics.insert(diagnostics.end(), wgmma_scale_check.error().begin(),
+                                 wgmma_scale_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.DATA_MOVEMENT_ST_BULK:
         checks += """            const auto size_width_check = check_st_bulk_size_width(
                 operands, context);

@@ -42,6 +42,8 @@ class ResolvedValueKind(Enum):
     REGISTER_VECTOR = "RegisterVector"
     TENSOR_COORDINATE = "TensorCoordinate"
     MATRIX_SCALE_SELECTOR = "MatrixScaleSelector"
+    SHARED_MATRIX_DESCRIPTOR = "SharedMatrixDescriptor"
+    WGMMA_SCALE_D = "WgmmaScaleD"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"
     BRANCH_TARGET_SET = "BranchTargetSet"

@@ -47,6 +47,7 @@ from ptx_frontend.spec.model import (
     OperandVectorTypePolicy,
     SemanticRule,
     VariantSpec,
+    WgmmaProtocolAction,
 )
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.ir.resolved_value_policy import (
@@ -114,6 +115,8 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
     OperandKind.MATRIX_SCALE_SELECTOR: ResolvedValueKind.MATRIX_SCALE_SELECTOR,
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: ResolvedValueKind.SHARED_MATRIX_DESCRIPTOR,
+    OperandKind.WGMMA_SCALE_D: ResolvedValueKind.WGMMA_SCALE_D,
     OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
     OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
     OperandKind.INDIRECT_CALL_TARGET: ResolvedValueKind.INDIRECT_CALLEE,
@@ -332,6 +335,7 @@ class ResolvedVariant:
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
 
     @property
@@ -516,6 +520,8 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
     OperandKind.MATRIX_SCALE_SELECTOR: (ResolvedOperandShape.VECTOR,),
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: (ResolvedOperandShape.REGISTER,),
+    OperandKind.WGMMA_SCALE_D: (ResolvedOperandShape.PREDICATE, ResolvedOperandShape.IMMEDIATE),
     OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
     OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),
     OperandKind.INDIRECT_CALL_TARGET: (ResolvedOperandShape.INDIRECT_CALLEE,),
@@ -653,6 +659,7 @@ def _build_variant(
         variant_id=variant.name,
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
+        wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
         modifier_bindings=tuple(

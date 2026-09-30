@@ -6,6 +6,7 @@ from ptx_frontend.spec.model import (
     InstructionSpec,
     SemanticRule,
     VariantSpec,
+    WgmmaProtocolAction,
 )
 from .constraints import (
     _normalize_operand_type_compatibilities,
@@ -74,6 +75,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     name=raw_variant["name"],
                     completion_kind=AsyncCompletionKind(
                         raw_variant.get("completion_kind", "none")
+                    ),
+                    wgmma_protocol_action=WgmmaProtocolAction(
+                        raw_variant.get("wgmma_protocol_action", "none")
                     ),
                     condition_code_effect=ConditionCodeEffect(
                         raw_variant.get("condition_code_effect", "none")

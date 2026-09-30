@@ -18,6 +18,7 @@ from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
+from .synatax_shapes import OPERAND_SYNTAX_SHAPES
 
 PTX_INSTRUCTION_SCHEMA = packaged_spec_schema()
 
@@ -194,14 +195,23 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
         for right_index in range(left_index + 1, len(instruction.variants)):
             right = instruction.variants[right_index]
             if languages[left_index] & languages[right_index]:
-                left_arities = {len(layout.operands) for layout in left.operand_layouts}
-                right_arities = {len(layout.operands) for layout in right.operand_layouts}
-                if left_arities.isdisjoint(right_arities):
+                if all(
+                    len(left_layout.operands) != len(right_layout.operands)
+                    or any(
+                        not (OPERAND_SYNTAX_SHAPES[left_operand.kind]
+                             & OPERAND_SYNTAX_SHAPES[right_operand.kind])
+                        for left_operand, right_operand in zip(
+                            left_layout.operands, right_layout.operands
+                        )
+                    )
+                    for left_layout in left.operand_layouts
+                    for right_layout in right.operand_layouts
+                ):
                     continue
                 raise ValueError(
                     f"opcode {instruction.opcode!r} variants {left.name!r} and "
                     f"{right.name!r} accept an overlapping modifier combination "
-                    "at the same operand count"
+                    "at the same operand count and syntax shapes"
                 )
 
 

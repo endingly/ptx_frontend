@@ -246,7 +246,7 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
         minimum_elements = cardinality.get("min")
         maximum_elements = cardinality.get("max")
         ceiling = (5 if raw["kind"] is OperandKind.TENSOR_COORDINATE else
-                   2 if raw["kind"] is OperandKind.MATRIX_SCALE_SELECTOR else 64)
+                   2 if raw["kind"] is OperandKind.MATRIX_SCALE_SELECTOR else 128)
         if (
             type(minimum_elements) is not int
             or type(maximum_elements) is not int

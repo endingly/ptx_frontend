@@ -462,27 +462,45 @@ OperandView project_tensor_operand(
   std::optional<uint64_t> alignment;
   if (symbol)
     alignment = symbol->address_alignment;
+  else if (const auto* immediate =
+               std::get_if<ResolvedImmediate>(&address.base))
+    alignment = low_bit(immediate->bits);
   if (alignment && address.offset) {
     const uint64_t offset_alignment = low_bit(address.offset->value.bits);
-    if (offset_alignment != 0 && offset_alignment < *alignment)
+    if (offset_alignment != 0 &&
+        (*alignment == 0 || offset_alignment < *alignment))
       alignment = offset_alignment;
   }
   OperandView view{
       .field_id = field_id,
       .actual_shape = OperandShape::TensorOperand,
       .address_state_space = space,
-      .address_base_kind = std::holds_alternative<ResolvedRegisterRef>(address.base)
-                               ? AddressBaseKind::Register
-                               : std::holds_alternative<ResolvedSymbolRef>(address.base)
-                                     ? AddressBaseKind::Symbol
-                                     : AddressBaseKind::Immediate,
+      .address_base_kind =
+          std::holds_alternative<ResolvedRegisterRef>(address.base)
+              ? AddressBaseKind::Register
+          : std::holds_alternative<ResolvedSymbolRef>(address.base)
+              ? AddressBaseKind::Symbol
+              : AddressBaseKind::Immediate,
       .address_offset_fits_signed32 =
           !address.offset || address_offset_fits_signed32(*address.offset),
       .address_alignment = alignment,
       .enclosing_function_kind = address.enclosing_function_kind,
-      .vector_arity = tensor.coordinates.elements.size(),
+      .parameter_direction = symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::InputParameter
+                                 ? ParameterDirection::Input
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::ReturnParameter
+                                 ? ParameterDirection::Return
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::CallParameter
+                                 ? ParameterDirection::CallArgument
+                                 : ParameterDirection::None,
       .tensor_rank = tensor.rank,
       .tensor_operand = &tensor,
+      .vector_arity = tensor.coordinates.elements.size(),
       .locations = operand.locs,
   };
   for (size_t index = 0; index < tensor.coordinates.elements.size() &&
@@ -714,8 +732,7 @@ CheckResult check_operands(
     if (operand->actual_shape == OperandShape::TensorOperand) {
       const auto* tensor = operand->tensor_operand;
       const bool invalid_structure =
-          tensor == nullptr ||
-          tensor->mode != TensorAccessMode::Tiled ||
+          tensor == nullptr || tensor->mode != TensorAccessMode::Tiled ||
           static_cast<size_t>(tensor->rank) != operand->vector_arity ||
           tensor->coordinate_ranges.size() != operand->vector_arity ||
           tensor->tensor_map.range == SourceRange{};
@@ -723,14 +740,17 @@ CheckResult check_operands(
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::RuleViolation,
             .range = diagnostic_range(operand->locations, context),
-            .message = "Tensor operand rank, mode, or source metadata is invalid."});
+            .message =
+                "Tensor operand rank, mode, or source metadata is invalid."});
       }
       if (operand->address_state_space == MemoryStateSpace::Parameter &&
-          operand->enclosing_function_kind != EnclosingFunctionKind::Entry) {
+          (operand->enclosing_function_kind != EnclosingFunctionKind::Entry ||
+           operand->parameter_direction != ParameterDirection::Input)) {
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
             .range = diagnostic_range(operand->locations, context),
-            .message = "Tensor-map parameter storage requires a kernel parameter."});
+            .message =
+                "Tensor-map parameter storage requires a kernel parameter."});
       }
       if (tensor != nullptr) {
         for (size_t index = 0; index < tensor->coordinates.elements.size();
@@ -740,16 +760,25 @@ CheckResult check_operands(
           if (!immediate)
             continue;
           const uint64_t source =
-              immediate->integer_source_bits.value_or(immediate->bits);
-          if (source <= (immediate->is_negative ? uint64_t{1} << 31
-                                               : (uint64_t{1} << 31) - 1))
+              immediate->integer_source_bits.value_or(uint64_t{0});
+          const uint64_t magnitude =
+              immediate->is_negative ? uint64_t{0} - source : source;
+          const bool valid =
+              immediate->type == ScalarType::S32 &&
+              immediate->integer_source_bits.has_value() &&
+              immediate->is_negative == (std::bit_cast<int64_t>(source) < 0) &&
+              immediate->bits == (source & uint64_t{0xffffffff}) &&
+              magnitude <= (immediate->is_negative ? uint64_t{1} << 31
+                                                   : (uint64_t{1} << 31) - 1);
+          if (valid)
             continue;
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::OperandTypeMismatch,
               .range = index < tensor->coordinate_ranges.size()
                            ? tensor->coordinate_ranges[index]
                            : diagnostic_range(operand->locations, context),
-              .message = "Tensor coordinate immediate is outside signed 32-bit range."});
+              .message = "Tensor coordinate immediate has invalid signed "
+                         "32-bit metadata."});
         }
       }
     }

@@ -81,7 +81,8 @@ WithLocs<AtomicAddressQualifier> atomic_address_qualifier_from_ast(
 
 /** Constrain generated instruction records to their public descriptor accessors. */
 template <typename T>
-concept PtxOperator = requires(T object) {
+concept PtxOperator = requires(T object, std::string_view variant_name,
+                               typename T::VariantType variant) {
   typename T::VariantType;
   requires std::is_scoped_enum_v<typename T::VariantType>;
   {
@@ -90,6 +91,10 @@ concept PtxOperator = requires(T object) {
   {
     T::get_resolved_descriptor()
   } -> std::same_as<const check_end::ResolvedInstructionDescriptor&>;
+  {
+    T::variant_type_from_name(variant_name)
+  } -> std::same_as<std::optional<typename T::VariantType>>;
+  { T::variant_type_name(variant) } -> std::same_as<std::string_view>;
 };
 
 /** Resolve a generated instruction against an optional declaration context. */

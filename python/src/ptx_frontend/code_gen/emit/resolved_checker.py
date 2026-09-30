@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
+from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedValueKind, ResolvedVariant
 from ptx_frontend.spec.model import AsyncCompletionKind, CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 

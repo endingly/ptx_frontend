@@ -24,6 +24,9 @@ from ptx_frontend.code_gen.context import (
 from ptx_frontend.code_gen.emit.category_source import (
     generate_resolved_ir_opcode_source,
 )
+from ptx_frontend.code_gen.emit.resolved_model import (
+    emit_resolved_instruction_definition,
+)
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
 )
@@ -50,6 +53,23 @@ class GenerationPlanTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.database = load_codegen_database(spec_dir=SPEC_DIR)
         cls.backend = load_cpp_backend(BACKEND_SPEC)
+
+    def test_cp_variant_mapping_names_every_generated_enumerator(self) -> None:
+        """The generated bidirectional map covers all current Cp alternatives."""
+        context = build_generation_context(self.database, self.backend)
+        cp = next(
+            entry.resolved for entry in context.entries
+            if entry.specification.opcode == "cp"
+        )
+        definition = emit_resolved_instruction_definition(cp, self.backend)
+        self.assertGreater(len(cp.variants), 128)
+        for variant in cp.variants:
+            self.assertIn(
+                f'{{VariantType::{variant.cpp_name}, "{variant.cpp_name}"}}',
+                definition,
+            )
+        self.assertIn("variant_type_from_name", definition)
+        self.assertIn("variant_type_name", definition)
 
     def test_context_lowers_and_projects_each_instruction_once(self) -> None:
         with (

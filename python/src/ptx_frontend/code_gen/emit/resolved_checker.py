@@ -240,6 +240,10 @@ def _emit_check_operand_dispatch(
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
     cross_rule_checks = _emit_cross_rule_checks(instruction, variant, checker_variant_expr)
+    matrix_arg = (
+        f", &{instruction.cpp_name}::{variant.cpp_name}::matrix_contract"
+        if variant.matrix is not None else ""
+    )
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             emit_check_operand_view(field, "selected", backend)
@@ -272,7 +276,7 @@ def _emit_check_operand_dispatch(
             }}
             const auto operand_check = check_operands(
                 layouts[selected.operand_layout.value].bindings, fields, operands,
-                {checker_variant_expr}.operand_type_compatibilities, context);
+                {checker_variant_expr}.operand_type_compatibilities, context{matrix_arg});
             if (!operand_check) {{
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),
                                  operand_check.error().end());
@@ -333,6 +337,10 @@ def _emit_check_multi_layout_lambda(
     operand_views = ",\n".join(
         emit_check_operand_view(field, "payload", backend) for field in layout.fields
     )
+    matrix_arg = (
+        f", &{instruction.cpp_name}::{variant.cpp_name}::matrix_contract"
+        if variant.matrix is not None else ""
+    )
     cross_rule_return = f"""
             return check_operands(
                 {instruction.cpp_name}::get_resolved_descriptor().variants[{variant_index}]
@@ -341,7 +349,7 @@ def _emit_check_multi_layout_lambda(
                 fields, operands,
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
-                context);"""
+                context{matrix_arg});"""
     cross_rule_checks = _emit_cross_rule_checks(
         instruction, variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
@@ -355,7 +363,7 @@ def _emit_check_multi_layout_lambda(
                 fields, operands,
                 {instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]
                     .operand_type_compatibilities,
-                context);
+                context{matrix_arg});
             CheckDiagnostics diagnostics;
             if (!operand_check) {{
               diagnostics.insert(diagnostics.end(), operand_check.error().begin(),

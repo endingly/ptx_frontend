@@ -243,6 +243,36 @@ def emit_check_operand_view(
                 }}
                 return view;
               }}()"""
+    if field.value_kind is ResolvedValueKind.MATRIX_SCALE_SELECTOR:
+        return f"""              [&]() -> OperandView {{
+                OperandView view{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                  .vector_arity = 2,
+                  .locations = {object_name}.{field.name}.locs,
+                }};
+                const auto& selector = {object_name}.{field.name}.value;
+                const std::array<const RegOrImm*, 2> values{{&selector.byte_id,
+                                                               &selector.thread_id}};
+                for (size_t index = 0; index < values.size(); ++index) {{
+                  if (const auto* reg = std::get_if<ResolvedRegisterRef>(values[index])) {{
+                    view.vector_element_shapes[index] =
+                        {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
+                    view.vector_element_types[index] = reg->declared_type.value_or(
+                        {_cpp_default(backend, CppDomain.SCALAR_TYPES)});
+                    view.vector_element_registers[index] = reg;
+                  }} else {{
+                    const auto& imm = std::get<ResolvedImmediate>(*values[index]);
+                    view.vector_element_shapes[index] =
+                        {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")};
+                    view.vector_element_types[index] = imm.type;
+                    view.vector_immediate_source_bits[index] =
+                        imm.integer_source_bits.value_or(imm.bits);
+                    view.vector_immediate_negative[index] = imm.is_negative;
+                  }}
+                }}
+                return view;
+              }}()"""
     if field.value_kind is ResolvedValueKind.VECTOR_REGISTER:
         return f"""              [&]() -> OperandView {{
                 const auto& register_ref =

@@ -83,6 +83,14 @@ class MatrixKind(Enum):
     MXF4NVF4 = "mxf4nvf4"
 
 
+class MatrixBitOperation(Enum):
+    """Single-bit MMA operation applied before population count."""
+
+    NONE = "none"
+    XOR = "xor"
+    AND = "and"
+
+
 class MatrixSparseOrder(Enum):
     """Static ordering contract for sparse metadata bits."""
 
@@ -138,6 +146,16 @@ class MatrixFragmentShape:
 
 
 @dataclass(frozen=True)
+class MatrixScaleSelectorSpec:
+    """Named A/B selector tuple and its canonical per-position immediate limits."""
+
+    operand: str
+    role: MatrixFragmentRole
+    byte_mask: int
+    thread_max: int
+
+
+@dataclass(frozen=True)
 class MatrixSpec:
     """Typed instruction-local matrix topology shared by generators."""
 
@@ -145,9 +163,12 @@ class MatrixSpec:
     shape: MatrixShape
     a_layout: MatrixLayout
     b_layout: MatrixLayout
+    c_layout: MatrixLayout
+    d_layout: MatrixLayout
     elements: tuple[tuple[MatrixFragmentRole, MatrixElementType], ...]
     fragments: tuple[MatrixFragmentShape, ...]
     kind: MatrixKind = MatrixKind.CLASSIC
+    bit_operation: MatrixBitOperation = MatrixBitOperation.NONE
     scale_type: MatrixScaleType = MatrixScaleType.NONE
     source_packing: MatrixElementType | None = None
     destination_packing: MatrixElementType | None = None
@@ -156,6 +177,7 @@ class MatrixSpec:
     matrix_count: int = 0
     scale_vector_size: int = 0
     sparse_order: MatrixSparseOrder = MatrixSparseOrder.NONE
+    scale_selectors: tuple[MatrixScaleSelectorSpec, ...] = ()
 
 
 class _SemanticToken(Enum):
@@ -299,6 +321,7 @@ class OperandKind(_SemanticToken):
     TUPLE = "tuple"
     TENSOR_COORDINATE = "tensor_coordinate"
     MATRIX_FRAGMENT = "matrix_fragment"
+    MATRIX_SCALE_SELECTOR = "matrix_scale_selector"
     DESCRIPTOR = "descriptor"
     TYPED_TOKEN = "typed_token"
     MBARRIER_STATE_TOKEN = "mbarrier_state_token"

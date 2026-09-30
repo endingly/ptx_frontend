@@ -8,6 +8,7 @@ from typing import Any
 
 from ptx_frontend.spec.model import (
     MatrixAddressQualifier,
+    MatrixBitOperation,
     MatrixElementType,
     MatrixFamily,
     MatrixFragmentRole,
@@ -17,6 +18,7 @@ from ptx_frontend.spec.model import (
     MatrixShape,
     MatrixSparseOrder,
     MatrixScaleType,
+    MatrixScaleSelectorSpec,
     MatrixSpec,
     ModifierPresence,
     ModifierSpec,
@@ -48,6 +50,7 @@ def normalize_matrix(
         "fragments", "kind", "transpose", "matrix_count",
         "scale_vector_size", "scale_type", "source_packing", "sparse_order",
         "destination_packing", "address_qualifier",
+        "c_layout", "d_layout", "scale_selectors", "bit_operation",
     }
     if set(raw) - permitted:
         raise ValueError(f"matrix has unknown keys {sorted(set(raw) - permitted)}")
@@ -55,7 +58,10 @@ def normalize_matrix(
         family = MatrixFamily(raw["family"])
         a_layout = MatrixLayout(raw.get("a_layout", "none"))
         b_layout = MatrixLayout(raw.get("b_layout", "none"))
+        c_layout = MatrixLayout(raw.get("c_layout", "none"))
+        d_layout = MatrixLayout(raw.get("d_layout", "none"))
         kind = MatrixKind(raw.get("kind", "classic"))
+        bit_operation = MatrixBitOperation(raw.get("bit_operation", "none"))
         sparse_order = MatrixSparseOrder(raw.get("sparse_order", "none"))
         scale_type = MatrixScaleType(raw.get("scale_type", "none"))
         address_qualifier = MatrixAddressQualifier(raw.get("address_qualifier", "none"))
@@ -92,8 +98,19 @@ def normalize_matrix(
         raise ValueError("only sparse MMA accepts a metadata ordering contract")
     if family not in (MatrixFamily.LDMATRIX, MatrixFamily.STMATRIX) and matrix_count:
         raise ValueError("matrix count only applies to ldmatrix/stmatrix")
+    if bit_operation is not MatrixBitOperation.NONE and family not in {
+        MatrixFamily.MMA, MatrixFamily.WMMA_MMA,
+    }:
+        raise ValueError("single-bit operation only applies to dense MMA")
     if (scale_type is MatrixScaleType.NONE) != (scale_vector_size == 0):
         raise ValueError("scale type and vector size must both be present or absent")
+    raw_selectors = raw.get("scale_selectors", {})
+    if not isinstance(raw_selectors, Mapping):
+        raise TypeError("matrix.scale_selectors must map operands to A/B roles")
+    if scale_vector_size and sorted(map(str, raw_selectors.values())) != ["a", "b"]:
+        raise ValueError("block-scaled matrix requires A and B scale selectors")
+    if not scale_vector_size and raw_selectors:
+        raise ValueError("unscaled matrix cannot have scale selectors")
     if (source_packing is not None or destination_packing is not None) and family is not MatrixFamily.LDMATRIX:
         raise ValueError("only ldmatrix has a decompressed source encoding")
     if (source_packing is None) != (destination_packing is None):
@@ -124,11 +141,13 @@ def normalize_matrix(
         raise ValueError("matrix elements must exactly match fragment roles")
 
     fragments = _normalize_fragments(fragment_roles, elements, layouts, modifiers)
+    selectors = _normalize_scale_selectors(raw_selectors, layouts, scale_vector_size)
     if len(fragments) > 4:
         raise ValueError("matrix supports at most four register fragments")
     _validate_fixed_modifiers(
         family, MatrixShape(m=m, n=n, k=k), elements, modifiers,
-        a_layout=a_layout, b_layout=b_layout, kind=kind,
+        a_layout=a_layout, b_layout=b_layout, c_layout=c_layout,
+        d_layout=d_layout, kind=kind, bit_operation=bit_operation,
         sparse_order=sparse_order, scale_type=scale_type,
         source_packing=source_packing, scale_vector_size=scale_vector_size,
         destination_packing=destination_packing,
@@ -140,9 +159,12 @@ def normalize_matrix(
         shape=MatrixShape(m=m, n=n, k=k),
         a_layout=a_layout,
         b_layout=b_layout,
+        c_layout=c_layout,
+        d_layout=d_layout,
         elements=tuple(elements.items()),
         fragments=tuple(fragments),
         kind=kind,
+        bit_operation=bit_operation,
         scale_type=scale_type,
         source_packing=source_packing,
         destination_packing=destination_packing,
@@ -151,7 +173,43 @@ def normalize_matrix(
         matrix_count=matrix_count,
         scale_vector_size=scale_vector_size,
         sparse_order=sparse_order,
+        scale_selectors=tuple(selectors),
     )
+
+
+def _normalize_scale_selectors(
+    raw_selectors: Mapping[str, object],
+    layouts: tuple[OperandLayoutSpec, ...],
+    vector_size: int,
+) -> list[MatrixScaleSelectorSpec]:
+    """Bind each block-scale tuple to its semantic matrix and legal ID set."""
+
+    result: list[MatrixScaleSelectorSpec] = []
+    byte_mask = {0: 0, 1: 0b1111, 2: 0b0101, 4: 0b0001}[vector_size]
+    declared = {
+        operand.name
+        for layout in layouts
+        for operand in layout.operands
+        if operand.kind is OperandKind.MATRIX_SCALE_SELECTOR
+    }
+    if declared != set(raw_selectors):
+        raise ValueError("matrix scale selector metadata must name every selector operand")
+    for name, raw_role in raw_selectors.items():
+        if not isinstance(name, str) or raw_role not in ("a", "b"):
+            raise ValueError("scale selector requires a named A/B operand")
+        for layout in layouts:
+            operand = next((item for item in layout.operands if item.name == name), None)
+            if (operand is None or operand.kind is not OperandKind.MATRIX_SCALE_SELECTOR
+                    or operand.type_expression is None
+                    or operand.type_expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+                    or operand.type_expression.scalar_type != "u16"):
+                raise ValueError("scale selector operand must be a u16 matrix selector")
+        role = MatrixFragmentRole(raw_role)
+        result.append(MatrixScaleSelectorSpec(
+            operand=name, role=role, byte_mask=byte_mask,
+            thread_max=1 if role is MatrixFragmentRole.A else 3,
+        ))
+    return result
 
 
 def _normalize_fragments(
@@ -220,7 +278,10 @@ def _validate_fixed_modifiers(
     *,
     a_layout: MatrixLayout,
     b_layout: MatrixLayout,
+    c_layout: MatrixLayout,
+    d_layout: MatrixLayout,
     kind: MatrixKind,
+    bit_operation: MatrixBitOperation,
     sparse_order: MatrixSparseOrder,
     scale_type: MatrixScaleType,
     source_packing: MatrixElementType | None,
@@ -261,7 +322,7 @@ def _validate_fixed_modifiers(
         raise ValueError("matrix transpose disagrees with its fixed suffix")
     layouts = tuple(token.removeprefix(".") for token in tokens
                     if token in (".row", ".col"))
-    expected_layouts = tuple(layout.value for layout in (a_layout, b_layout)
+    expected_layouts = tuple(layout.value for layout in (a_layout, b_layout, c_layout, d_layout)
                              if layout is not MatrixLayout.NONE)
     if layouts != expected_layouts:
         raise ValueError("matrix layouts disagree with fixed source suffixes")
@@ -278,6 +339,11 @@ def _validate_fixed_modifiers(
     expected_kind = () if kind is MatrixKind.CLASSIC else (f".kind::{kind.value}",)
     if kinds != expected_kind:
         raise ValueError("matrix numeric kind disagrees with fixed suffix")
+    bit_tokens = tuple(token for token in tokens if token in (".xor", ".and"))
+    expected_bit = () if bit_operation is MatrixBitOperation.NONE else (
+        f".{bit_operation.value}",)
+    if bit_tokens != expected_bit or ((".popc" in tokens) != bool(expected_bit)):
+        raise ValueError("matrix bit operation disagrees with fixed suffix")
     source_pack_tokens = tuple(token for token in tokens
                                if token in (".b4x16_p64", ".b6x16_p32"))
     expected_pack = () if source_packing is None else (f".{source_packing.value}",)

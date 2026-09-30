@@ -596,7 +596,7 @@ CheckResult check_operands(
     std::span<const OperandDescriptor> descriptors,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
-    const Context& context) {
+    const Context& context, const MatrixInstructionDescriptor* matrix) {
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
@@ -1233,6 +1233,35 @@ CheckResult check_operands(
                                "instruction layout.",
                                operand.field_id),
     });
+  }
+
+  if (matrix != nullptr) {
+    for (size_t index = 0; index < matrix->scale_selector_count; ++index) {
+      const auto& selector = matrix->scale_selectors[index];
+      const OperandView* operand = find_operand(operands, selector.operand_field_id);
+      if (operand == nullptr || operand->actual_shape != OperandShape::Vector ||
+          operand->vector_arity != 2)
+        continue;
+      for (size_t lane = 0; lane < 2; ++lane) {
+        if (operand->vector_element_shapes[lane] != OperandShape::Immediate)
+          continue;
+        const auto value = operand->vector_immediate_source_bits[lane];
+        const bool valid = value && !operand->vector_immediate_negative[lane] &&
+            (lane == 0 ? (*value < 8 && (selector.byte_mask & (1u << *value)))
+                       : (*value <= selector.thread_max));
+        if (valid)
+          continue;
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = lane < operand->locations.size()
+                         ? operand->locations[lane]
+                         : diagnostic_range(operand->locations, context),
+            .message = fmt::format(
+                "Matrix scale selector '{}' has an invalid {} ID.",
+                selector.operand_field_id, lane == 0 ? "byte" : "thread"),
+        });
+      }
+    }
   }
 
   if (diagnostics.empty())

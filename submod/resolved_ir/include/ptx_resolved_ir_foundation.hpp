@@ -93,6 +93,8 @@ enum class MatrixLayout : uint8_t { NONE, ROW, COL };
 enum class MatrixKind : uint8_t {
   CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4
 };
+/** Single-bit multiply replacement before population count. */
+enum class MatrixBitOperation : uint8_t { NONE, XOR, AND };
 /** Sparse metadata ordering requirement exposed to consumers. */
 enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
 /** Logical scale-factor type selected by a block-scaled MMA form. */
@@ -123,13 +125,28 @@ struct MatrixFragmentShape {
   /** Compare semantic role and exact register-fragment contract. */
   bool operator==(const MatrixFragmentShape&) const = default;
 };
+/** Generated immediate domains for one A/B block-scale selector tuple. */
+struct MatrixScaleSelectorDescriptor {
+  /** Static operand field name used to locate the owned two-slot tuple. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::A;
+  /** Bit i permits immediate byte ID i. */
+  uint8_t byte_mask = 0;
+  /** Largest permitted immediate thread ID, inclusive. */
+  uint8_t thread_max = 0;
+  /** Compare the full typed selector contract. */
+  bool operator==(const MatrixScaleSelectorDescriptor&) const = default;
+};
 /** Immutable generated matrix topology, copied into owned resolved metadata. */
 struct MatrixInstructionDescriptor {
   MatrixFamily family = MatrixFamily::MMA;
   MatrixShape shape{};
   MatrixLayout a_layout = MatrixLayout::NONE;
   MatrixLayout b_layout = MatrixLayout::NONE;
+  MatrixLayout c_layout = MatrixLayout::NONE;
+  MatrixLayout d_layout = MatrixLayout::NONE;
   MatrixKind kind = MatrixKind::CLASSIC;
+  MatrixBitOperation bit_operation = MatrixBitOperation::NONE;
   MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
   MatrixScaleType scale_type = MatrixScaleType::NONE;
   MatrixAddressQualifier address_qualifier = MatrixAddressQualifier::NONE;
@@ -145,6 +162,9 @@ struct MatrixInstructionDescriptor {
   /** Only the first fragment_count entries are live. */
   std::array<MatrixFragmentShape, 4> fragments{};
   uint8_t fragment_count = 0;
+  /** The first scale_selector_count entries describe A/B selector operands. */
+  std::array<MatrixScaleSelectorDescriptor, 2> scale_selectors{};
+  uint8_t scale_selector_count = 0;
   /** Compare the complete instruction-local topology and controls. */
   bool operator==(const MatrixInstructionDescriptor&) const = default;
 };
@@ -403,6 +423,11 @@ struct OperandView {
       ParameterAddressQualifier::Default;
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
+  /** Original integer source for each immediate vector lane, when present. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_source_bits{};
+  /** Signed negativity accompanies vector_immediate_source_bits. */
+  std::array<bool, kMaxOperandElements> vector_immediate_negative{};
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
@@ -835,6 +860,13 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Owned block-scale selector pair in PTX byte-ID then thread-ID order. */
+struct ResolvedMatrixScaleSelector {
+  RegOrImm byte_id;
+  RegOrImm thread_id;
+  /** Compare both selector values after the syntax tree is released. */
+  bool operator==(const ResolvedMatrixScaleSelector&) const = default;
+};
 struct ResolvedTensorCoordinate {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedTensorCoordinate&) const = default;

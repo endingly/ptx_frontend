@@ -87,7 +87,8 @@ CheckResult check_operands(std::span<const OperandDescriptor>,
                            std::span<const FieldView>,
                            std::span<const OperandView>,
                            std::span<const OperandTypeCompatibilityDescriptor>,
-                           const Context&);
+                           const Context&,
+                           const MatrixInstructionDescriptor* matrix = nullptr);
 /** Verify that a resolved instruction retained a valid selected layout tag. */
 CheckResult check_operand_layout_tag(std::string_view, uint16_t, size_t,
                                      const Context&);

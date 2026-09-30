@@ -692,6 +692,7 @@ $defs:
       - tuple
       - tensor_coordinate
       - matrix_fragment
+      - matrix_scale_selector
       - descriptor
       - typed_token
       - mbarrier_state_token
@@ -938,6 +939,7 @@ $defs:
                 enum:
                   - tensor_coordinate
                   - matrix_fragment
+                  - matrix_scale_selector
           required:
             - kind
         then:
@@ -998,6 +1000,28 @@ $defs:
           not:
             required:
               - vector
+
+      - if:
+          properties:
+            kind:
+              const: matrix_scale_selector
+          required:
+            - kind
+        then:
+          required: [cardinality, element_kinds]
+          properties:
+            cardinality:
+              properties:
+                min: {const: 2}
+                max: {const: 2}
+            element_kinds:
+              minItems: 2
+              maxItems: 2
+              allOf:
+                - contains: {const: reg}
+                - contains: {const: imm}
+          not:
+            required: [vector]
 
   operand_cardinality:
     description: "Inclusive variable brace-pack cardinality."
@@ -1532,7 +1556,10 @@ $defs:
       k: {type: integer, minimum: 0, maximum: 65535}
       a_layout: {enum: [none, row, col]}
       b_layout: {enum: [none, row, col]}
+      c_layout: {enum: [none, row, col]}
+      d_layout: {enum: [none, row, col]}
       kind: {enum: [classic, f8f6f4, mxf8f6f4, mxf4, mxf4nvf4]}
+      bit_operation: {enum: [none, xor, and]}
       sparse_order: {enum: [none, native, ordered]}
       scale_type: {enum: [none, ue8m0, ue4m3]}
       address_qualifier: {enum: [none, global, shared, "shared::cta"]}
@@ -1541,6 +1568,12 @@ $defs:
       transpose: {type: boolean}
       matrix_count: {type: integer, minimum: 0, maximum: 4}
       scale_vector_size: {enum: [0, 1, 2, 4]}
+      scale_selectors:
+        type: object
+        minProperties: 2
+        maxProperties: 2
+        propertyNames: {$ref: "#/$defs/schema_identifier"}
+        additionalProperties: {enum: [a, b]}
       elements:
         type: object
         minProperties: 1

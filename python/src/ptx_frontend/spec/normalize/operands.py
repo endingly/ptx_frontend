@@ -238,19 +238,23 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     element_kinds: tuple[OperandKind, ...] = ()
-    if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.MATRIX_FRAGMENT}:
+    if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.MATRIX_FRAGMENT,
+                       OperandKind.MATRIX_SCALE_SELECTOR}:
         cardinality = raw.get("cardinality")
         if not isinstance(cardinality, dict):
             raise ValueError(f"{raw['kind']} operand requires cardinality")
         minimum_elements = cardinality.get("min")
         maximum_elements = cardinality.get("max")
-        ceiling = 5 if raw["kind"] is OperandKind.TENSOR_COORDINATE else 64
+        ceiling = (5 if raw["kind"] is OperandKind.TENSOR_COORDINATE else
+                   2 if raw["kind"] is OperandKind.MATRIX_SCALE_SELECTOR else 64)
         if (
             type(minimum_elements) is not int
             or type(maximum_elements) is not int
             or minimum_elements < 1
             or maximum_elements < minimum_elements
             or maximum_elements > ceiling
+            or (raw["kind"] is OperandKind.MATRIX_SCALE_SELECTOR
+                and (minimum_elements, maximum_elements) != (2, 2))
         ):
             raise ValueError(
                 f"{raw['kind']} cardinality must be within 1..{ceiling} with min <= max"
@@ -264,7 +268,8 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
             raise ValueError(f"{raw['kind']} element_kinds contain an unsupported kind") from error
         expected_element_kinds = (
             (OperandKind.REGISTER, OperandKind.IMMEDIATE)
-            if raw["kind"] is OperandKind.TENSOR_COORDINATE
+            if raw["kind"] in {OperandKind.TENSOR_COORDINATE,
+                               OperandKind.MATRIX_SCALE_SELECTOR}
             else (OperandKind.REGISTER,)
         )
         if set(element_kinds) != set(expected_element_kinds) or len(
@@ -455,6 +460,7 @@ def _normalize_immediate_conversion(
             OperandKind.IMMEDIATE,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.TENSOR_COORDINATE,
+            OperandKind.MATRIX_SCALE_SELECTOR,
         }
     ):
         raise ValueError(

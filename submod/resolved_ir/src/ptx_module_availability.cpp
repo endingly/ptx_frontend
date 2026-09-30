@@ -450,6 +450,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -536,6 +537,10 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate>) {
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
+        collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
+    for (const RegOrImm* element : {&value.byte_id, &value.thread_id})
+      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(element))
         collect_register(*register_ref);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =

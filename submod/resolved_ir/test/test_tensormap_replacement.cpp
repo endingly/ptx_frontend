@@ -601,12 +601,59 @@ TEST(TensorMapReplacement, OwnedAddressRegisterMutation) {
   ASSERT_TRUE(address_register.symbol_id);
   EXPECT_TRUE(
       checker::check(update, context_for("sm_90a", {9, 3})).has_value());
+  EXPECT_TRUE(
+      validateModule(*resolved, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  address_register.vector_width = 2;
+  EXPECT_FALSE(
+      checker::check(update, context_for("sm_90a", {9, 3})).has_value());
+  EXPECT_FALSE(
+      validateModule(*resolved, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  address_register.vector_width.reset();
   address_register.declared_type = ScalarType::B16;
   EXPECT_FALSE(
       checker::check(update, context_for("sm_90a", {9, 3})).has_value());
   address_register.declared_type.reset();
   EXPECT_FALSE(
       checker::check(update, context_for("sm_90a", {9, 3})).has_value());
+}
+
+/** Both proxy-copy pointer roles reject vector shapes in AST-released IR. */
+TEST(TensorMapReplacement, OwnedProxyFenceVectorAddressMutation) {
+  const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.entry kernel() {
+  .reg .b64 %dst;
+  .reg .b64 %src;
+  tensormap.cp_fenceproxy.global.shared::cta.tensormap::generic.release.cta.sync.aligned [%dst], [%src], 128;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  auto resolved = resolveModuleOnly(*parsed);
+  ASSERT_TRUE(resolved.has_value());
+  auto& update =
+      test_ir_access::get<Tensormap>(resolved->functions.front().body.front());
+  auto& fence = std::get<Tensormap::CpFenceproxyOrdinary>(update.variant);
+  auto& dst = std::get<ResolvedRegisterRef>(fence.dst.value.base);
+  auto& src = std::get<ResolvedRegisterRef>(fence.src.value.base);
+  ASSERT_TRUE(dst.symbol_id);
+  ASSERT_TRUE(src.symbol_id);
+  ASSERT_TRUE(checker::check(update, context_for("sm_90", {9, 3})).has_value());
+  ASSERT_TRUE(
+      validateModule(*resolved, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  for (auto* pointer : {&dst, &src}) {
+    pointer->vector_width = 2;
+    EXPECT_FALSE(
+        checker::check(update, context_for("sm_90", {9, 3})).has_value());
+    EXPECT_FALSE(validateModule(*resolved,
+                                ModuleValidationPolicy::RequireCompleteContext)
+                     .has_value());
+    pointer->vector_width.reset();
+  }
 }
 
 }  // namespace

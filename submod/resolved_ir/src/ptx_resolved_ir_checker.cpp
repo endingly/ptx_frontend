@@ -2735,6 +2735,7 @@ CheckResult check_tensor_map_address_register_width(
   if (!reg)
     return {};
   const bool invalid = reg->register_class != ResolvedRegisterClass::General ||
+                       reg->vector_width.has_value() ||
                        (reg->symbol_id && !reg->declared_type) ||
                        (reg->declared_type &&
                         (!is_integer_type(*reg->declared_type) ||
@@ -2746,8 +2747,8 @@ CheckResult check_tensor_map_address_register_width(
       .kind = CheckDiagnosticKind::OperandTypeMismatch,
       .range = diagnostic_range(address.locs, context),
       .message =
-          "Tensor-map address register requires a 32- or 64-bit integer/bit "
-          "type.",
+          "Tensor-map address requires a scalar 32- or 64-bit integer/bit "
+          "register.",
   }});
 }
 

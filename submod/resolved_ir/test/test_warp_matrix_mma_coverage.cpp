@@ -50,7 +50,7 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
     owned = std::move(*resolved);
   }
   ASSERT_EQ(owned->functions.front().body.size(), 6u);
-  const auto& body = owned->functions.front().body;
+  auto& body = owned->functions.front().body;
   const auto& dense = std::get<Mma>(body[0]);
   const auto dense_descriptor =
       std::visit([](const auto& selected) { return selected.matrix.value; },

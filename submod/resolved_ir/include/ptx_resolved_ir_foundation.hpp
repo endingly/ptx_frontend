@@ -143,9 +143,11 @@ struct MatrixInstructionDescriptor {
   MatrixShape shape{};
   MatrixLayout a_layout = MatrixLayout::NONE;
   MatrixLayout b_layout = MatrixLayout::NONE;
+  /** C/D layouts are explicit on WMMA memory forms; otherwise absent. */
   MatrixLayout c_layout = MatrixLayout::NONE;
   MatrixLayout d_layout = MatrixLayout::NONE;
   MatrixKind kind = MatrixKind::CLASSIC;
+  /** Single-bit operation before population count, or NONE for other forms. */
   MatrixBitOperation bit_operation = MatrixBitOperation::NONE;
   MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
   MatrixScaleType scale_type = MatrixScaleType::NONE;

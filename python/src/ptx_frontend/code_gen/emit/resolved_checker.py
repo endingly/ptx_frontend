@@ -539,6 +539,14 @@ def _emit_cross_rule_checks(
                                  tcgen_allocation_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.TENSOR_MEMORY_ALLOC:
+        checks += """            const auto tcgen_result_slot_check = check_tcgen_allocation_result_slot(
+                selected.dst, context);
+            if (!tcgen_result_slot_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_result_slot_check.error().begin(),
+                                 tcgen_result_slot_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

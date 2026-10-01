@@ -1932,6 +1932,33 @@ CheckResult check_tcgen_allocation_rule(TcgenAllocationAction action,
   return std::unexpected(std::move(diagnostics));
 }
 
+/** Preserve the allocation slot's scalar pointer contract in owned checking. */
+CheckResult check_tcgen_allocation_result_slot(
+    const WithLocs<ResolvedAddress>& slot, const Context& context) {
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(&slot.value.base);
+  if (!register_ref)
+    return {};
+  const auto type = register_ref->declared_type;
+  const bool scalar_pointer_type =
+      type &&
+      (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+       base::scalar_kind(*type) == base::ScalarKind::Signed ||
+       base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+      (base::scalar_size_of(*type) == 4 || base::scalar_size_of(*type) == 8);
+  if (register_ref->register_class == ResolvedRegisterClass::General &&
+      !register_ref->vector_width &&
+      (scalar_pointer_type || (!type && !register_ref->symbol_id))) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(slot.locs, context),
+      .message = "Tensor Memory allocation result-slot register must be a "
+                 "scalar General-class b32/s32/u32/b64/s64/u64 pointer "
+                 "carrier with known declaration type when bound.",
+  }});
+}
+
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,

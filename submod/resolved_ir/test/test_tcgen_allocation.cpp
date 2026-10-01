@@ -246,5 +246,74 @@ TEST(TcgenAllocation, RejectsOwnedImmediateTensorAddressTampering) {
   EXPECT_TRUE(validateModule(*owned).has_value());
 }
 
+/** Both allocation spellings recheck a bound pointer after AST destruction. */
+TEST(TcgenAllocation, RejectsOwnedResultSlotRegisterTampering) {
+  for (const auto& [qualifier, pointer] :
+       {std::pair{"", "%wide"}, std::pair{".shared::cta", "%t"}}) {
+    SCOPED_TRACE(qualifier);
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string instruction =
+          "  tcgen05.alloc.cta_group::1.sync.aligned" + std::string(qualifier) +
+          ".b32 [" + pointer + "], 32;\n";
+      auto ast = parse_allocation_module(allocation_source(instruction));
+      ASSERT_TRUE(ast);
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      owned = std::move(*resolved);
+    }
+    ASSERT_TRUE(owned);
+    auto& allocation = *owned->functions.front().body[0].get_if<Tcgen05>();
+    auto& slot =
+        qualifier[0] == '\0'
+            ? std::get<Tcgen05::AllocGeneric>(allocation.variant).dst
+            : std::get<Tcgen05::AllocSharedCta>(allocation.variant).dst;
+    auto& register_ref = std::get<ResolvedRegisterRef>(slot.value.base);
+    ASSERT_TRUE(register_ref.symbol_id.has_value());
+    ASSERT_TRUE(register_ref.declared_type.has_value());
+    const auto saved_type = register_ref.declared_type;
+    const auto saved_id = register_ref.symbol_id;
+    const auto target = base::find_target_profile("sm_100a");
+    ASSERT_TRUE(target.has_value());
+    const checker::Context context{
+        .target = {.ptx_version = {8, 6},
+                   .sm_version = target->identity.architecture.number,
+                   .enabled_family_features = target->enabled_family_features,
+                   .identity = target->identity,
+                   .capabilities = target->capabilities},
+        .instruction_range = owned->functions.front().instruction_ranges[0],
+    };
+    const auto expect_rejected = [&]() {
+      const auto direct = checker::check(allocation, context);
+      ASSERT_FALSE(direct.has_value());
+      EXPECT_EQ(direct.error().front().kind,
+                checker::CheckDiagnosticKind::OperandTypeMismatch);
+      EXPECT_FALSE(validateModule(*owned).has_value());
+    };
+    EXPECT_TRUE(checker::check(allocation, context).has_value());
+    EXPECT_TRUE(validateModule(*owned).has_value());
+
+    register_ref.vector_width = 2;
+    expect_rejected();
+    register_ref.vector_width.reset();
+    register_ref.register_class = ResolvedRegisterClass::Predicate;
+    expect_rejected();
+    register_ref.register_class = ResolvedRegisterClass::General;
+    for (const auto invalid_type :
+         {base::ScalarType::F32, base::ScalarType::B16}) {
+      register_ref.declared_type = invalid_type;
+      expect_rejected();
+    }
+    register_ref.declared_type.reset();
+    expect_rejected();
+    register_ref.symbol_id.reset();
+    EXPECT_TRUE(checker::check(allocation, context).has_value());
+    register_ref.symbol_id = saved_id;
+    register_ref.declared_type = saved_type;
+    EXPECT_TRUE(checker::check(allocation, context).has_value());
+    EXPECT_TRUE(validateModule(*owned).has_value());
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

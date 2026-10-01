@@ -135,6 +135,9 @@ CheckResult check_st_bulk_size_width(std::span<const OperandView>,
 CheckResult check_tcgen_allocation_rule(TcgenAllocationAction,
                                         std::span<const OperandView>,
                                         const Context&);
+/** Recheck the owned allocation result-slot register before view projection. */
+CheckResult check_tcgen_allocation_result_slot(const WithLocs<ResolvedAddress>&,
+                                               const Context&);
 /** Reject `.unified` address suffixes not explicitly admitted by a variant. */
 CheckResult check_unified_address_suffix(const VariantDescriptor&,
                                          std::span<const FieldView>,

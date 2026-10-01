@@ -75,6 +75,7 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   TensorCoordinate,
+  TensorIm2colInfo,
   TensorOperand,
   DirectCallTarget,
   IndirectCallee,

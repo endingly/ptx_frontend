@@ -41,9 +41,10 @@ using ResolvedFieldValue = std::variant<
     WithLocs<ResolvedVectorRegisterRef>,
     WithLocs<ResolvedVectorSpecialRegisterRef>, WithLocs<ResolvedSymbolRef>,
     WithLocs<ResolvedAddress>, WithLocs<ResolvedRegisterVector>,
-    WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedTensorOperand>,
-    WithLocs<ResolvedFunctionRef>, WithLocs<ResolvedIndirectCallee>,
-    WithLocs<ResolvedCallParameterRef>, WithLocs<ResolvedCallArguments>>;
+    WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedTensorIm2colInfo>,
+    WithLocs<ResolvedTensorOperand>, WithLocs<ResolvedFunctionRef>,
+    WithLocs<ResolvedIndirectCallee>, WithLocs<ResolvedCallParameterRef>,
+    WithLocs<ResolvedCallArguments>>;
 /** Resolver-only lookup table keyed by generated field IDs. */
 using ResolvedFieldMap = std::unordered_map<std::string, ResolvedFieldValue>;
 /** Scratch fields consumed once when generated variants are constructed. */

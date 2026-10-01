@@ -691,6 +691,7 @@ $defs:
       - vector
       - tuple
       - tensor_coordinate
+      - tensor_im2col_info
       - tensor_operand
       - matrix_fragment
       - descriptor
@@ -862,7 +863,7 @@ $defs:
       element_kinds:
         description: >
           Source element shapes accepted by a modern brace-pack primitive.
-          tensor_coordinate admits register and immediate; matrix_fragment
+          tensor_coordinate and tensor_im2col_info admit register and immediate; matrix_fragment
           admits register only.
         type: array
         minItems: 1
@@ -938,6 +939,7 @@ $defs:
               not:
                 enum:
                   - tensor_coordinate
+                  - tensor_im2col_info
                   - tensor_operand
                   - matrix_fragment
           required:
@@ -953,7 +955,7 @@ $defs:
       - if:
           properties:
             kind:
-              enum: [tensor_coordinate, tensor_operand]
+              enum: [tensor_coordinate, tensor_im2col_info, tensor_operand]
           required:
             - kind
         then:

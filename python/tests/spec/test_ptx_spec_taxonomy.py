@@ -158,8 +158,8 @@ EXPECTED_SECTIONS = {
 
 
 class PtxSpecTaxonomyTests(unittest.TestCase):
-    def test_tiled_tensor_coordinates_narrow_at_operand_use(self) -> None:
-        """Keep every tiled tensor rank and direction on PTX integer conversion."""
+    def test_tensor_coordinates_narrow_at_operand_use(self) -> None:
+        """Keep every supported tensor mode on PTX S32 use conversion."""
         spec = load_yaml(SPEC_DIR / "data_movement_and_conversion.yaml")
         operands = [
             operand
@@ -169,10 +169,11 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
                 ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_",
                  "cp_reduce_async_bulk_tensor_")
             )
-            for operand in variant["operands"]
+            for operand in (variant["operands"] if "operands" in variant
+                            else variant["operand_layouts"][0]["operands"])
             if operand["kind"] == "tensor_operand"
         ]
-        self.assertEqual(len(operands), 87)
+        self.assertEqual(len(operands), 114)
         self.assertTrue(
             all(operand["immediate_conversion"] == "narrow" for operand in operands)
         )

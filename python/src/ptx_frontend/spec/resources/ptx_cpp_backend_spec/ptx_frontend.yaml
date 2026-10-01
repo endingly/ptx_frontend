@@ -312,6 +312,7 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
+      TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
@@ -403,6 +404,7 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
+      TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee

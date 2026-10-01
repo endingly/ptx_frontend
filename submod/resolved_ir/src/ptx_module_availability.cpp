@@ -453,6 +453,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
@@ -541,6 +542,17 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorIm2colInfo>) {
+    for (size_t index = 0; index < value.elements.size(); ++index) {
+      const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&value.elements[index]);
+      if (!register_ref)
+        continue;
+      const std::array<SourceRange, 1> element_range{
+          index < locations.size() ? locations[index] : value.pack_range};
+      collect_operand_references(*register_ref, element_range, fallback, uses,
+                                 address_resolution_policy);
+    }
   } else if constexpr (std::same_as<Value, ResolvedTensorOperand>) {
     const std::array<SourceRange, 1> map_range{value.tensor_map.range};
     collect_operand_references(value.tensor_map.address, map_range, fallback,
@@ -625,6 +637,7 @@ void collect_owned_reference(detail::OwnedReferenceView view,
   PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
+  PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorIm2colInfo)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorOperand)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)

@@ -551,6 +551,33 @@ OperandView project_tensor_operand(
   return view;
 }
 
+OperandView project_tensor_im2col_info(
+    std::string_view field_id,
+    const WithLocs<ResolvedTensorIm2colInfo>& operand) {
+  OperandView view{
+      .field_id = field_id,
+      .actual_shape = OperandShape::Vector,
+      .vector_arity = operand.value.elements.size(),
+      .locations = operand.locs,
+  };
+  for (size_t index = 0;
+       index < operand.value.elements.size() && index < kMaxOperandElements;
+       ++index) {
+    const auto& element = operand.value.elements[index];
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      view.vector_element_shapes[index] = OperandShape::Register;
+      view.vector_element_types[index] =
+          reg->declared_type.value_or(ScalarType::Invalid);
+      view.vector_element_registers[index] = reg;
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(element);
+      view.vector_element_shapes[index] = OperandShape::Immediate;
+      view.vector_element_types[index] = immediate.type;
+    }
+  }
+  return view;
+}
+
 CheckResult check_tensor_store_coordinates(const OperandView& operand,
                                            const Context& context) {
   if (!operand.tensor_has_negative_immediate)
@@ -764,8 +791,10 @@ CheckResult check_operands(
       const bool invalid_structure =
           tensor == nullptr || !descriptor.expected_tensor_mode ||
           (*descriptor.expected_tensor_mode != TensorAccessMode::Tiled &&
-           *descriptor.expected_tensor_mode !=
-               TensorAccessMode::Im2colNoOffs) ||
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2col &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW128) ||
           tensor->mode != *descriptor.expected_tensor_mode ||
           static_cast<size_t>(tensor->rank) != operand->vector_arity ||
           tensor->coordinate_ranges.size() != operand->vector_arity ||
@@ -2777,6 +2806,97 @@ CheckResult check_tensor_map_address_register_width(
   }});
 }
 
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
+  return check_tensor_map_address_register_width(
+      WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
+                                tensor.value.tensor_map.range},
+      context);
+}
+
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedAddress>& dst, const WithLocs<ResolvedAddress>& mbar,
+    const Context& context) {
+  if (auto result = check_tensor_read_addresses(tensor, context); !result)
+    return result;
+  if (auto result = check_tensor_map_address_register_width(dst, context);
+      !result)
+    return result;
+  return check_tensor_map_address_register_width(mbar, context);
+}
+
+CheckResult check_tensor_im2col_info(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedTensorIm2colInfo>& info,
+    std::span<const uint16_t> maximum_values, const Context& context) {
+  const auto mode = tensor.value.mode;
+  const size_t rank = static_cast<size_t>(tensor.value.rank);
+  const size_t expected =
+      mode == TensorAccessMode::Im2col && rank >= 3 && rank <= 5 ? rank - 2
+      : (mode == TensorAccessMode::Im2colW ||
+         mode == TensorAccessMode::Im2colW128) &&
+              rank >= 3 && rank <= 5
+          ? 2
+          : 0;
+  if (expected == 0 || info.value.elements.size() != expected ||
+      info.locs.size() != expected || maximum_values.size() != expected ||
+      info.value.pack_range == SourceRange{})
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidVectorOperand,
+        .range = info.value.pack_range == SourceRange{}
+                     ? context.instruction_range
+                     : info.value.pack_range,
+        .message = "Im2col information mode, arity, or source ranges are "
+                   "invalid."}});
+  CheckDiagnostics diagnostics;
+  for (size_t index = 0; index < expected; ++index) {
+    const auto& element = info.value.elements[index];
+    const auto range = info.locs[index];
+    if (range == SourceRange{}) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::InvalidVectorOperand,
+          .range = info.value.pack_range,
+          .message = "Im2col information element has no source range."});
+      continue;
+    }
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      const bool invalid =
+          reg->register_class != ResolvedRegisterClass::General ||
+          reg->vector_width.has_value() ||
+          (reg->symbol_id && !reg->declared_type) ||
+          (reg->declared_type &&
+           (!is_integer_type(*reg->declared_type) ||
+            base::scalar_size_of(*reg->declared_type) != 2));
+      if (invalid)
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = range,
+            .message = "Im2col information requires a scalar 16-bit "
+                       "integer/bit register."});
+      continue;
+    }
+    const auto& immediate = std::get<ResolvedImmediate>(element);
+    if (immediate.type != ScalarType::U16 || !immediate.integer_source_bits ||
+        immediate.bits != (*immediate.integer_source_bits & uint64_t{0xffff})) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = range,
+          .message = "Im2col information immediate lacks consistent U16 "
+                     "instruction-use metadata."});
+    } else if (immediate.bits > maximum_values[index]) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = range,
+          .message = "Im2col information exceeds this mode's unsigned "
+                     "16-bit instruction-use bound."});
+    }
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 /** Preserve address-register shape and width after syntax ownership ends. */
 CheckResult check_tensor_reduction_addresses(
     const WithLocs<ResolvedTensorOperand>& tensor,
@@ -2899,3 +3019,32 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
 }
 
 }  // namespace ptx_frontend::resolved_ir::checker
+
+namespace ptx_frontend::resolved_ir {
+
+std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
+    const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
+    size_t index) {
+  const size_t rank = static_cast<size_t>(tensor.rank);
+  if (rank < 3 || rank > 5 || index >= info.elements.size() ||
+      info.pack_range == SourceRange{})
+    return std::nullopt;
+  if (tensor.mode == TensorAccessMode::Im2col) {
+    if (info.elements.size() != rank - 2)
+      return std::nullopt;
+    constexpr std::array roles{TensorIm2colInfoRole::OffsetW,
+                               TensorIm2colInfoRole::OffsetH,
+                               TensorIm2colInfoRole::OffsetD};
+    return roles[index];
+  }
+  if (tensor.mode == TensorAccessMode::Im2colW ||
+      tensor.mode == TensorAccessMode::Im2colW128) {
+    if (info.elements.size() != 2)
+      return std::nullopt;
+    return index == 0 ? TensorIm2colInfoRole::Halo
+                      : TensorIm2colInfoRole::Offset;
+  }
+  return std::nullopt;
+}
+
+}  // namespace ptx_frontend::resolved_ir

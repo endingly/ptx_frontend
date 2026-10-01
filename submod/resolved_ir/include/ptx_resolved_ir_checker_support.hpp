@@ -68,6 +68,23 @@ struct Context {
 /** Project an owned tensor operand into descriptor and coordinate checks. */
 OperandView project_tensor_operand(
     std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand);
+/** Project an owned im2col information pack for generated operand checks. */
+OperandView project_tensor_im2col_info(
+    std::string_view field_id,
+    const WithLocs<ResolvedTensorIm2colInfo>& operand);
+/** Recheck owned info provenance, scalar carriers, and generated U16 bounds. */
+CheckResult check_tensor_im2col_info(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedTensorIm2colInfo>& info,
+    std::span<const uint16_t> maximum_values, const Context& context);
+/** Recheck scalar pointer metadata on a new tensor read after AST release. */
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor, const Context& context);
+/** Recheck tensor map, destination, and barrier pointers on a load. */
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedAddress>& dst, const WithLocs<ResolvedAddress>& mbar,
+    const Context& context);
 /** Reject static negative coordinates for shared-to-global tensor stores. */
 CheckResult check_tensor_store_coordinates(const OperandView& operand,
                                            const Context& context);

@@ -68,7 +68,13 @@ enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 enum class TensorRank : uint8_t { One = 1, Two, Three, Four, Five };
 /** Tensor transfer interpretation represented by this operand. */
 /** Instruction-selected interpretation of a tensor coordinate vector. */
-enum class TensorAccessMode : uint8_t { Tiled, Im2colNoOffs };
+enum class TensorAccessMode : uint8_t {
+  Tiled,
+  Im2colNoOffs,
+  Im2col,
+  Im2colW,
+  Im2colW128
+};
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -783,6 +789,22 @@ struct ResolvedTensorCoordinate {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedTensorCoordinate&) const = default;
 };
+/** Owned unsigned-16 instruction-use information for an im2col read. */
+struct ResolvedTensorIm2colInfo {
+  /** W/H/D offsets or W halo/offset; values retain original literal provenance. */
+  std::vector<RegOrImm> elements;
+  /** Full brace-pack range, independent of individual element ranges. */
+  SourceRange pack_range;
+  bool operator==(const ResolvedTensorIm2colInfo&) const = default;
+};
+/** Semantic role of one im2col information element. */
+enum class TensorIm2colInfoRole : uint8_t {
+  OffsetW,
+  OffsetH,
+  OffsetD,
+  Halo,
+  Offset
+};
 /** Owned descriptor pointer with its storage identity and address metadata. */
 struct ResolvedTensorMapRef {
   ResolvedAddress address;
@@ -797,6 +819,11 @@ struct ResolvedTensorOperand {
   /** Coordinate element ranges, independent of the enclosing operand range. */
   std::vector<SourceRange> coordinate_ranges;
 };
+
+/** Return a role only when the owned mode, rank, and info arity agree. */
+std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
+    const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
+    size_t index);
 
 /** Encoded field identity of a tiled tensor-map replacement. */
 enum class TensorMapReplaceField : uint8_t {

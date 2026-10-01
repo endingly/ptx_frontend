@@ -1562,6 +1562,48 @@ resolve_tensor_coordinate(
   return resolved;
 }
 
+/** Resolve an im2col info pack with the existing owned element conversion. */
+std::expected<WithLocs<ResolvedTensorIm2colInfo>, ResolveDiagnostic>
+resolve_tensor_im2col_info(
+    const syntax_ast::AstOperand& operand,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+  const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (pack == nullptr || pack->elements.empty())
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a nonempty im2col information brace pack."});
+  auto resolved = resolve_tensor_coordinate(operand, binding, fields, context);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  for (size_t index = 0; index < resolved->value.elements.size(); ++index) {
+    const auto* reg =
+        std::get_if<ResolvedRegisterRef>(&resolved->value.elements[index]);
+    if (!reg)
+      continue;
+    const bool invalid =
+        reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width.has_value() ||
+        (reg->symbol_id && !reg->declared_type) ||
+        (reg->declared_type &&
+         (base::scalar_size_of(*reg->declared_type) != 2 ||
+          (base::scalar_kind(*reg->declared_type) != base::ScalarKind::Bit &&
+           base::scalar_kind(*reg->declared_type) !=
+               base::ScalarKind::Unsigned &&
+           base::scalar_kind(*reg->declared_type) !=
+               base::ScalarKind::Signed)));
+    if (invalid)
+      return std::unexpected(ResolveDiagnostic{
+          .range = resolved->locs[index],
+          .message = "Im2col information requires scalar 16-bit integer/bit "
+                     "registers."});
+  }
+  WithLocs<ResolvedTensorIm2colInfo> info{ResolvedTensorIm2colInfo{
+      std::move(resolved->value.elements), pack->range}};
+  info.locs = std::move(resolved->locs);
+  return info;
+}
+
 /** Resolve both parts of a tensor operand using the selected form's mode. */
 std::expected<WithLocs<ResolvedTensorOperand>, ResolveDiagnostic>
 resolve_tensor_operand(
@@ -1575,7 +1617,10 @@ resolve_tensor_operand(
         .message = "Expected [tensorMap, {coordinates}] operand."});
   if (!binding.expected_tensor_mode ||
       (*binding.expected_tensor_mode != TensorAccessMode::Tiled &&
-       *binding.expected_tensor_mode != TensorAccessMode::Im2colNoOffs))
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2col &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colW &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colW128))
     return std::unexpected(ResolveDiagnostic{
         .range = tensor->range,
         .message = "Tensor operand binding has no valid access mode."});
@@ -2155,6 +2200,13 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::TensorCoordinate: {
       auto value = resolve_tensor_coordinate(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TensorIm2colInfo: {
+      auto value =
+          resolve_tensor_im2col_info(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

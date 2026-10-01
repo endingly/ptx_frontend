@@ -267,6 +267,33 @@ TEST(TensorReduction, OwnedCoordinatesAndAddressMutation) {
   coordinate_register.declared_type = base::ScalarType::U64;
   EXPECT_FALSE(checker::check(copy, context).has_value());
   coordinate_register.declared_type = base::ScalarType::S32;
+  const auto saved_coordinate = coordinate_register;
+  auto check_coordinate_damage = [&] {
+    EXPECT_FALSE(checker::check(copy, context).has_value());
+    EXPECT_FALSE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+            .has_value());
+  };
+  coordinate_register.vector_width = 2;
+  check_coordinate_damage();
+  coordinate_register = saved_coordinate;
+  coordinate_register.register_class = ResolvedRegisterClass::Predicate;
+  check_coordinate_damage();
+  coordinate_register = saved_coordinate;
+  coordinate_register.declared_type = base::ScalarType::B16;
+  check_coordinate_damage();
+  coordinate_register = saved_coordinate;
+  coordinate_register.declared_type.reset();
+  check_coordinate_damage();
+  coordinate_register = saved_coordinate;
+  EXPECT_TRUE(checker::check(copy, context).has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+          .has_value());
+  coordinate_register.symbol_id.reset();
+  coordinate_register.declared_type.reset();
+  EXPECT_TRUE(checker::check(copy, context).has_value());
+  coordinate_register = saved_coordinate;
   const auto original_space = map_symbol.address_state_space;
   map_symbol.address_state_space = base::DeclarationStateSpace::Shared;
   EXPECT_FALSE(checker::check(copy, context).has_value());

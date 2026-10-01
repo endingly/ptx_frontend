@@ -405,6 +405,7 @@ def _emit_resolved_variant_definition(
     Operands operands;"""
 
     tensor_map_projection = _emit_tensor_map_replace_projection(variant)
+    tensor_group_projection = _emit_tensor_cta_group_projection(variant)
     reduction_identity = ""
     if has_tensor_reduction:
         value = (
@@ -428,10 +429,53 @@ def _emit_resolved_variant_definition(
 {reduction_identity}\
     /** Fixed cluster-multicast identity selected by canonical metadata. */
     inline static constexpr bool tensor_multicast = {str(variant.tensor_multicast).lower()};
+    /** Whether this form has tensor-copy CTA-group mbarrier routing. */
+    inline static constexpr bool tensor_cta_group_applicable = {str(variant.tensor_cta_group_applicable).lower()};
     ResolvedOperandLayoutTag operand_layout;
 {body}
 {tensor_map_projection}
+{tensor_group_projection}
   }};"""
+
+
+def _emit_tensor_cta_group_projection(variant: ResolvedVariant) -> str:
+    """Emit a safe owned projection of written and effective TMA CTA-group roles."""
+
+    if variant.tensor_access_mode is None:
+        return ""
+    if not variant.tensor_cta_group_applicable:
+        return """    /** No tensor-copy CTA-group role exists on this form. */
+    std::optional<TensorCtaGroupRole> tensor_cta_group_role() const noexcept {
+      return std::nullopt;
+    }"""
+    multicast = variant.tensor_multicast
+    one_route = ("MulticastDestinations" if multicast else "Destination")
+    two_route = ("MulticastParityPeers" if multicast else "DestinationOrPeer")
+    written = any(field.source_name == "cta_group"
+                  for field in variant.modifier_fields)
+    if not written:
+        return f"""    /** Omitted spelling defaults to group one on this tensor load. */
+    std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {{
+      return TensorCtaGroupRole{{
+          .spelled = std::nullopt,
+          .effective = TensorCtaGroup::One,
+          .routing = TensorCtaSignalRouting::{one_route},
+      }};
+    }}"""
+    return f"""    /** Copy the located written group and its mbarrier routing role. */
+    std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {{
+      if (cta_group.locs.empty() ||
+          (cta_group.value != TensorCtaGroup::One &&
+           cta_group.value != TensorCtaGroup::Two))
+        return std::nullopt;
+      return TensorCtaGroupRole{{
+          .spelled = cta_group,
+          .effective = cta_group.value,
+          .routing = cta_group.value == TensorCtaGroup::One
+                         ? TensorCtaSignalRouting::{one_route}
+                         : TensorCtaSignalRouting::{two_route},
+      }};
+    }}"""
 
 
 def _emit_tensor_map_replace_projection(variant: ResolvedVariant) -> str:

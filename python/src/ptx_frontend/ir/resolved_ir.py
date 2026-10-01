@@ -368,6 +368,7 @@ class ResolvedVariant:
     tensor_access_mode: TensorAccessMode | None = None
     tensor_im2col_info_elements: tuple[tuple[str, int], ...] = ()
     tensor_multicast: bool = False
+    tensor_cta_group_applicable: bool = False
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -655,6 +656,9 @@ def _build_variant(
 ) -> ResolvedVariant:
     tensor_access_mode = _build_tensor_access_mode(opcode, variant)
     tensor_multicast = _build_tensor_multicast(variant, tensor_access_mode)
+    tensor_cta_group_applicable = _build_tensor_cta_group(
+        variant, tensor_access_mode, tensor_multicast
+    )
     expected_tensor_rank = _build_expected_tensor_rank(variant, tensor_access_mode)
     active_modifiers = tuple(
         modifier
@@ -750,6 +754,7 @@ def _build_variant(
         ),
         tensor_access_mode=tensor_access_mode,
         tensor_multicast=tensor_multicast,
+        tensor_cta_group_applicable=tensor_cta_group_applicable,
         tensor_im2col_info_elements=(
             tensor_im2col_info_contract(
                 tensor_access_mode,
@@ -860,7 +865,8 @@ def _build_tensor_access_mode(
             expected = (("tensor", OperandKind.TENSOR_OPERAND),
                         ("src", OperandKind.ADDRESS))
         if (set(modifiers) != set(topology) | {mode_name} | (
-                {"multicast"} if "multicast" in modifiers else set())
+                {"multicast"} if "multicast" in modifiers else set()) | (
+                {"cta_group"} if "cta_group" in modifiers else set())
                 or variant.completion_kind is not completion
                 or variant.rule is not None
                 or len(variant.operand_layouts) != 1):
@@ -936,7 +942,8 @@ def _build_tensor_access_mode(
                 raise ValueError(f"variant {variant.name!r}: invalid im2col destination")
             topology["dst_space"] = modifier_spellings(destination)[0]
         if set(modifiers) != set(topology) | {"rank", mode_name} | (
-                {"multicast"} if "multicast" in modifiers else set()):
+                {"multicast"} if "multicast" in modifiers else set()) | (
+                {"cta_group"} if "cta_group" in modifiers else set()):
             raise ValueError(f"variant {variant.name!r}: invalid im2col topology")
         for name, spelling in topology.items():
             modifier = modifiers[name]
@@ -1112,7 +1119,8 @@ def _build_tensor_multicast(
                     "tensor_qualifier": ".tensor",
                     "dst_space": ".shared::cluster", "src_space": ".global",
                     "completion": ".mbarrier::complete_tx::bytes"}
-        if set(modifiers) != set(required) | {"rank", "tile", "multicast"}:
+        if set(modifiers) != set(required) | {"rank", "tile", "multicast"} | (
+                {"cta_group"} if "cta_group" in modifiers else set()):
             raise ValueError(f"variant {variant.name!r}: extra multicast control")
         for name, spelling in required.items():
             modifier = modifiers[name]
@@ -1130,6 +1138,61 @@ def _build_tensor_multicast(
                     ("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),
                 ):
             raise ValueError(f"variant {variant.name!r}: tiled multicast operands")
+    return True
+
+
+def _build_tensor_cta_group(
+    variant: VariantSpec, mode: TensorAccessMode | None, multicast: bool,
+) -> bool:
+    """Validate a written tensor-load CTA group and preserve omitted applicability."""
+
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    group = modifiers.get("cta_group")
+    destination = modifiers.get("dst_space")
+    eligible = (
+        mode in {TensorAccessMode.TILED, TensorAccessMode.TILE_GATHER4,
+                 TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                 TensorAccessMode.IM2COL_W128}
+        and variant.completion_kind is
+        AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+        and destination is not None
+        and modifier_spellings(destination) in
+        ((".shared::cta",), (".shared::cluster",))
+        and "src_space" in modifiers
+        and modifier_spellings(modifiers["src_space"]) == (".global",)
+    )
+    if group is None:
+        return eligible
+    if not eligible or (multicast and
+                        modifier_spellings(destination) != (".shared::cluster",)):
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group topology")
+    if (group.kind is not ModifierKind.CTA_GROUP
+            or group.presence is not ModifierPresence.REQUIRED
+            or group.domain != "tcgen_cta_groups"
+            or tuple(value.value for value in group.values)
+            != ("cta_group::1", "cta_group::2")
+            or modifier_spellings(group)
+            != (".cta_group::1", ".cta_group::2")):
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group domain")
+    names = tuple(modifier.name for modifier in variant.modifiers)
+    if names[-1] != "cta_group" or names.count("cta_group") != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group order")
+    if multicast and names[-2] != "multicast":
+        raise ValueError(f"variant {variant.name!r}: misplaced multicast")
+    if not multicast and names[-2] != "completion":
+        raise ValueError(f"variant {variant.name!r}: misplaced completion")
+    expected_aliases = (
+        (names[:-2] + ("cta_group", "multicast"),) if multicast else ()
+    )
+    if variant.modifier_order_aliases != expected_aliases:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group alias")
+    qualified = {"any_of": [
+        {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+    ]}
+    if variant.availability != qualified:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group target gate")
     return True
 
 

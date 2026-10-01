@@ -64,6 +64,26 @@ enum class AtomicAddressQualifier : uint8_t {
 };
 /** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
+/** Closed written CTA-group size shared by tensor-copy and Tensor Memory syntax. */
+enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Tensor-copy spelling of the closed CTA-group value; no TCGEN body rule follows. */
+using TensorCtaGroup = TcgenCtaGroup;
+/** Signal destination selected by a tensor-copy CTA group and multicast mode. */
+enum class TensorCtaSignalRouting : uint8_t {
+  Destination,
+  DestinationOrPeer,
+  MulticastDestinations,
+  MulticastParityPeers
+};
+/** Owned written group plus effective mbarrier-routing interpretation. */
+struct TensorCtaGroupRole {
+  /** Absent for omitted spelling; present value owns its source locations. */
+  std::optional<WithLocs<TensorCtaGroup>> spelled;
+  /** Omitted spelling defaults to one only on applicable tensor loads. */
+  TensorCtaGroup effective = TensorCtaGroup::One;
+  /** Routing obligation; actual CTA ownership remains unknown at compile time. */
+  TensorCtaSignalRouting routing = TensorCtaSignalRouting::Destination;
+};
 /** Dimension count encoded by a tiled tensor instruction. */
 enum class TensorRank : uint8_t { One = 1, Two, Three, Four, Five };
 /** Tensor transfer interpretation represented by this operand. */
@@ -307,6 +327,7 @@ struct FieldView {
   std::optional<MemoryScope> memory_scope;
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
+  std::optional<TcgenCtaGroup> tcgen_cta_group;
   std::optional<AsyncProxyKind> async_proxy_kind;
   std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
@@ -416,6 +437,7 @@ enum class ModifierValueKind : uint8_t {
   MemoryScope,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -437,6 +459,7 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
@@ -462,6 +485,7 @@ struct ModifierValueDomainDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
 };
@@ -483,6 +507,7 @@ struct ModifierValueView {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;

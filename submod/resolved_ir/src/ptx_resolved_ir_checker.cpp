@@ -279,6 +279,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
     case ModifierValueKind::MbarrierLayout:
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::TcgenCtaGroup:
+      return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
     case ModifierValueKind::AsyncProxyKind:
       return descriptor.async_proxy_kind == actual.async_proxy_kind;
     case ModifierValueKind::ProxyKindPair:
@@ -2793,6 +2795,32 @@ CheckResult check_tensor_map_address_register_width(
 
 CheckResult check_tensor_read_addresses(
     const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
+  CheckDiagnostics diagnostics;
+  for (size_t index = 0; index < tensor.value.coordinates.elements.size();
+       ++index) {
+    const auto* reg = std::get_if<ResolvedRegisterRef>(
+        &tensor.value.coordinates.elements[index]);
+    if (!reg)
+      continue;
+    const bool invalid =
+        reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width.has_value() ||
+        (reg->symbol_id && !reg->declared_type) ||
+        (reg->declared_type &&
+         (!is_integer_type(*reg->declared_type) ||
+          base::scalar_size_of(*reg->declared_type) != 4));
+    if (invalid)
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = index < tensor.value.coordinate_ranges.size()
+                       ? tensor.value.coordinate_ranges[index]
+                       : diagnostic_range(tensor.locs, context),
+          .message = "Tensor read coordinates require scalar 32-bit "
+                     "integer/bit registers.",
+      });
+  }
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
   return check_tensor_map_address_register_width(
       WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
                                 tensor.value.tensor_map.range},
@@ -3063,6 +3091,19 @@ tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
 
 /** Validate the actual owned scalar source independently of operand views. */
 namespace checker {
+/** Reject a damaged written group before any generic field view loses location. */
+CheckResult check_tensor_cta_group(const WithLocs<TensorCtaGroup>& group,
+                                   const Context& context) {
+  if (!group.locs.empty() && (group.value == TensorCtaGroup::One ||
+                              group.value == TensorCtaGroup::Two))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(group.locs, context),
+      .message = "Tensor CTA group requires a located ::1 or ::2 suffix.",
+  }});
+}
+
 CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>& mask,
                                         const Context& context) {
   bool valid = !mask.locs.empty();

@@ -111,6 +111,9 @@ CheckResult check_operands(std::span<const OperandDescriptor>,
 /** Verify that a resolved instruction retained a valid selected layout tag. */
 CheckResult check_operand_layout_tag(std::string_view, uint16_t, size_t,
                                      const Context&);
+/** Recheck the written tensor CTA-group value and its owned token location. */
+CheckResult check_tensor_cta_group(const WithLocs<TensorCtaGroup>&,
+                                   const Context&);
 /** Check target requirements contributed by a selected operand layout. */
 CheckResult check_operand_layout_availability(const VariantDescriptor&,
                                               uint16_t, const Context&);

@@ -2260,6 +2260,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryStateSpace:
     case ResolvedValueKind::MbarrierPhaseType:
     case ResolvedValueKind::MbarrierLayout:
+    case ResolvedValueKind::TcgenCtaGroup:
     case ResolvedValueKind::AsyncProxyKind:
     case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(

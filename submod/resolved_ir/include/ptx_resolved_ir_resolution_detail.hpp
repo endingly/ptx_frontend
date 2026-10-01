@@ -29,7 +29,7 @@ using ResolvedFieldValue = std::variant<
     WithLocs<PrefetchSize>, WithLocs<MemoryConsistency>, WithLocs<MemoryScope>,
     WithLocs<VectorArity>, WithLocs<MemoryStateSpace>,
     WithLocs<MbarrierPhaseType>, WithLocs<MbarrierLayout>,
-    WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
+    WithLocs<TcgenCtaGroup>, WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
     WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedMbarrierStateToken>,
     WithLocs<ResolvedRegisterOrSink>, WithLocs<ResolvedImmediate>,
     WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,

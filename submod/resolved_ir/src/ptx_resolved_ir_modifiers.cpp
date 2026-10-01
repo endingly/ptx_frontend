@@ -264,6 +264,19 @@ resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
   return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
 }
 
+/** Resolve a written CTA-group suffix to its closed typed value. */
+std::expected<WithLocs<TcgenCtaGroup>, ResolveDiagnostic>
+resolve_tcgen_cta_group(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenCtaGroups,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown CTA group '{}'.", modifier.syntax.text),
+    });
+  return WithLocs<TcgenCtaGroup>{*value, modifier.syntax.range};
+}
+
 std::expected<WithLocs<AsyncProxyKind>, ResolveDiagnostic>
 resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
   const auto value = lookup_ptx_suffix(generated_detail::kAsyncProxyKinds,
@@ -367,6 +380,7 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_state_space, resolve_memory_state_space)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_phase_type,
                                  resolve_mbarrier_phase_type)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_layout, resolve_mbarrier_layout)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_cta_group, resolve_tcgen_cta_group)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(async_proxy_kind, resolve_async_proxy_kind)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(proxy_kind_pair, resolve_proxy_kind_pair)
 
@@ -405,6 +419,8 @@ PTX_DEFINE_MODIFIER_DEFAULT(memory_state_space, MemoryStateSpace,
 PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_phase_type, MbarrierPhaseType,
                             mbarrier_phase_type, true)
 PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_layout, MbarrierLayout, mbarrier_layout,
+                            true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_cta_group, TcgenCtaGroup, tcgen_cta_group,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(async_proxy_kind, AsyncProxyKind, async_proxy_kind,
                             true)
@@ -473,6 +489,8 @@ struct ModifierDomainMapping {
     default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)   \
   X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,           \
     default_mbarrier_layout_modifier, "mbarrier layout", Supported)           \
+  X(TcgenCtaGroup, TcgenCtaGroup, parse_tcgen_cta_group_modifier,             \
+    default_tcgen_cta_group_modifier, "CTA group", Supported)                 \
   X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,          \
     default_async_proxy_kind_modifier, "async proxy", Supported)              \
   X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,             \

@@ -70,8 +70,10 @@ supported surface and its exclusions.
   [简体中文版本](docs/zh-han/tensor_async_coverage.md) describe tiled and
   `.im2col_no_offs` tensor writes, im2col tensor reads, four rank-two
   gather/scatter forms, fifteen cluster-load multicast identities with owned
-  16-bit CTA masks, descriptor field replacement, and proxy-fence synchronization. The im2col read coverage
-  distinguishes frontend syntax support from ptxas 13.3.73 compatibility.
+  16-bit CTA masks, explicit tensor-load CTA groups with one declared multicast
+  order alias, descriptor field replacement, and proxy-fence synchronization.
+  The detailed coverage distinguishes frontend syntax from tested ptxas 13.3.73
+  behavior, including optional im2col information and the group-order sample.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

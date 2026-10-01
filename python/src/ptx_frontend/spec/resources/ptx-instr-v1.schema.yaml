@@ -1262,6 +1262,7 @@ $defs:
       - integer_arith.mul
       - memory.ld
       - matrix.mma
+      - data_movement.tensor_reduction
 
   constraint:
     description: >

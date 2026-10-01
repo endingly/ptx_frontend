@@ -46,7 +46,9 @@ from ptx_frontend.spec.model import (
     OperandVectorTypePolicy,
     SemanticRule,
     VariantSpec,
+    modifier_spellings,
 )
+from ptx_frontend.ir.tensor_reduction import TensorReductionOp
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.ir.resolved_value_policy import (
     modifier_value_kind,
@@ -332,6 +334,7 @@ class ResolvedVariant:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
+    tensor_reduction_op: TensorReductionOp | None = None
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -699,7 +702,80 @@ def _build_variant(
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+        tensor_reduction_op=_build_tensor_reduction_op(opcode, variant),
     )
+
+
+def _build_tensor_reduction_op(
+    opcode: str, variant: VariantSpec,
+) -> TensorReductionOp | None:
+    """Lower one checked fixed tiled-reduction operation from canonical flags."""
+
+    if variant.rule is not SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
+        return None
+    if opcode != "cp" or variant.completion_kind is not AsyncCompletionKind.BULK_GROUP:
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction topology")
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    required = {
+        "reduce": ".reduce", "async": ".async", "bulk": ".bulk",
+        "tensor_qualifier": ".tensor", "dst_space": ".global",
+        "src_space": ".shared::cta", "completion": ".bulk_group",
+    }
+    operation_flags = [modifier for modifier in variant.modifiers
+                       if modifier.name.startswith("reduction_")]
+    if len(operation_flags) != 1:
+        raise ValueError(f"variant {variant.name!r}: expected one reduction operation")
+    operation = operation_flags[0]
+    if (len(modifiers) != len(variant.modifiers)
+            or set(modifiers) != set(required) | {"rank", "tile", operation.name}):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction flags")
+    for name, spelling in required.items():
+        modifier = modifiers[name]
+        if (modifier.kind is not ModifierKind.FLAG
+                or modifier.presence is not ModifierPresence.FIXED
+                or modifier.value is not True
+                or modifier_spellings(modifier) != (spelling,)):
+            raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+    rank = modifiers["rank"]
+    if (rank.kind is not ModifierKind.FLAG
+            or rank.presence is not ModifierPresence.FIXED
+            or rank.value is not True
+            or modifier_spellings(rank) not in tuple((f".{n}d",) for n in range(1, 6))):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction rank")
+    tile = modifiers["tile"]
+    if (tile.kind is not ModifierKind.FLAG
+            or tile.presence is not ModifierPresence.OPTIONAL
+            or tile.default is not False
+            or modifier_spellings(tile) != (".tile",)):
+        raise ValueError(f"variant {variant.name!r}: invalid tile flag")
+    if (operation.kind is not ModifierKind.FLAG
+            or operation.presence is not ModifierPresence.FIXED
+            or operation.value is not True):
+        raise ValueError(f"variant {variant.name!r}: reduction operation must be fixed true")
+    matches = [op for op in TensorReductionOp
+               if operation.name == f"reduction_{op.value}"
+               and modifier_spellings(operation) == (f".{op.value}",)]
+    if len(matches) != 1:
+        raise ValueError(f"variant {variant.name!r}: unknown reduction operation")
+    if len(variant.operand_layouts) != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operand layouts")
+    operands = variant.operand_layouts[0].operands
+    if (len(operands) != 2
+            or (operands[0].name, operands[0].kind) != ("tensor", OperandKind.TENSOR_OPERAND)
+            or (operands[1].name, operands[1].kind) != ("src", OperandKind.ADDRESS)):
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operands")
+    tensor, src = operands
+    if (tensor.access is not OperandAccess.READ
+            or src.access is not OperandAccess.READ
+            or tensor.immediate_conversion_policy is not OperandImmediateConversionPolicy.NARROW
+            or tensor.type_expression is None
+            or tensor.type_expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+            or tensor.type_expression.scalar_type != "s32"
+            or {space.value for space in tensor.state_space_values}
+            != {"param", "const", "global"}
+            or {space.value for space in src.state_space_values} != {"shared"}):
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operand roles")
+    return matches[0]
 
 
 def _build_memory_consistency_constraint(

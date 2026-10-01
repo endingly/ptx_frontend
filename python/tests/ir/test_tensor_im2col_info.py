@@ -33,7 +33,8 @@ class TensorIm2colInfoTests(unittest.TestCase):
             for mode in ("im2col", "im2col_w", "im2col_w128")
         }
         selected = {variant.variant_id: variant for variant in resolved.variants
-                    if variant.tensor_im2col_info_elements}
+                    if variant.tensor_im2col_info_elements
+                    and not variant.tensor_multicast}
         self.assertEqual(set(selected), expected)
         self.assertEqual(sum(len(v.operand_layouts) for v in selected.values()), 54)
         for name, variant in selected.items():
@@ -57,7 +58,8 @@ class TensorIm2colInfoTests(unittest.TestCase):
                     )
         old = [v for v in resolved.variants
                if v.tensor_access_mode in {
-                   TensorAccessMode.TILED, TensorAccessMode.IM2COL_NO_OFFS}]
+                   TensorAccessMode.TILED, TensorAccessMode.IM2COL_NO_OFFS}
+               and not v.tensor_multicast]
         self.assertEqual(len(old), 87)
         self.assertTrue(all(not any("im2col_info" == field.name
                                     for layout in variant.operand_layouts

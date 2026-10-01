@@ -85,6 +85,8 @@ enum class TensorGatherScatterCoordinateRole : uint8_t {
   Row2,
   Row3
 };
+/** A scalar mask whose bits select destination CTA ranks for a cluster copy. */
+enum class TensorCtaMaskRole : uint8_t { MulticastCluster };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -283,6 +285,8 @@ struct OperandDescriptor {
   std::optional<TensorAccessMode> expected_tensor_mode;
   /** Fixed instruction tensor dimension, independent of coordinate count. */
   std::optional<TensorRank> expected_tensor_rank;
+  /** Present only for the mask coupled to tensor cluster multicast. */
+  std::optional<TensorCtaMaskRole> tensor_cta_mask_role;
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
       ImmediateConversionPolicy::Narrow;

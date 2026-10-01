@@ -1692,6 +1692,79 @@ bool checkTensorMapReplacementContract() {
 }  // namespace
 
 /** Check the installed public conversion, comparison, and resolved-IR contract. */
+/** Exercise installed multicast mask ownership after parsed syntax is gone. */
+bool checkTensorMulticastContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_110a
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 dst[1024];
+.shared .align 8 .b64 mbar;
+.entry kernel() {
+  .reg .s32 %r<3>;
+  .reg .u16 %info;
+  .reg .b16 %mask;
+  cp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.multicast::cluster
+      [dst], [tensor_map, {%r0}], [mbar], 65536;
+  cp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster
+      [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%info}, %mask;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "multicast fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "multicast fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned multicast module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "both multicast layouts retained"))
+    return false;
+  const auto* first = outer_get_if<ir::Cp>(&body[0]);
+  const auto* second = outer_get_if<ir::Cp>(&body[1]);
+  if (!require(first && second, "multicast Cp instructions retained"))
+    return false;
+  const auto* tile =
+      std::get_if<ir::Cp::AsyncBulkTensor1dSharedClusterMulticast>(
+          &first->variant);
+  const auto* im2col =
+      std::get_if<ir::Cp::AsyncBulkTensor3dSharedClusterIm2colMulticast>(
+          &second->variant);
+  if (!require(
+          tile && im2col && tile->tensor_multicast && im2col->tensor_multicast,
+          "typed multicast variants retained"))
+    return false;
+  const auto* literal =
+      std::get_if<ir::ResolvedImmediate>(&tile->cta_mask.value);
+  const bool literal_ok = literal && literal->bits == 0 &&
+                          literal->integer_source_bits == 65536 &&
+                          literal->type == ptx_frontend::base::ScalarType::U16;
+  const bool info_ok = std::visit(
+      [](const auto& payload) {
+        if constexpr (requires {
+                        payload.im2col_info;
+                        payload.cta_mask;
+                      })
+          return payload.im2col_info.value.elements.size() == 1 &&
+                 std::holds_alternative<ir::ResolvedRegisterRef>(
+                     payload.cta_mask.value);
+        return false;
+      },
+      im2col->operands);
+  return require(literal_ok && info_ok,
+                 "installed multicast U16 source and info ordering retained");
+}
+
 int main() {
   using ptx_frontend::base::RoundingMode;
   using ptx_frontend::base::ScalarType;
@@ -1756,6 +1829,8 @@ int main() {
     return 22;
   if (!checkTensorGatherScatterContract())
     return 23;
+  if (!checkTensorMulticastContract())
+    return 24;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

@@ -3082,6 +3082,34 @@ tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
   return static_cast<TensorGatherScatterCoordinateRole>(index);
 }
 
+/** Validate the actual owned scalar source independently of operand views. */
+namespace checker {
+CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>& mask,
+                                        const Context& context) {
+  bool valid = !mask.locs.empty();
+  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&mask.value)) {
+    valid = valid && reg->register_class == ResolvedRegisterClass::General &&
+            !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+            (!reg->declared_type || (*reg->declared_type == ScalarType::B16 ||
+                                     *reg->declared_type == ScalarType::U16 ||
+                                     *reg->declared_type == ScalarType::S16));
+  } else if (const auto* imm = std::get_if<ResolvedImmediate>(&mask.value)) {
+    valid = valid && imm->type == ScalarType::U16 && imm->integer_source_bits &&
+            imm->bits == (*imm->integer_source_bits & uint64_t{0xffff});
+  } else {
+    valid = false;
+  }
+  if (valid)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(mask.locs, context),
+      .message = "Tensor multicast mask requires a scalar 16-bit integer/bit "
+                 "register or a U16-converted integer literal.",
+  }});
+}
+}  // namespace checker
+
 std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
     const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
     size_t index) {

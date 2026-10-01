@@ -23,6 +23,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandTypeExpressionKind,
     ResolvedVariant,
     ResolvedValueKind,
+    TensorAccessMode,
 )
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value,
@@ -388,6 +389,16 @@ def _emit_operand_binding_descriptor(
                   .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction, backend=backend)},
                   .function_availability = {emit_availability(availability)},
               }},"""
+    tensor_mode = ""
+    if binding.tensor_access_mode is not None:
+        mode_spelling = {
+            TensorAccessMode.TILED: "Tiled",
+            TensorAccessMode.IM2COL_NO_OFFS: "Im2colNoOffs",
+        }[binding.tensor_access_mode]
+        tensor_mode = (
+            "\n              .expected_tensor_mode = "
+            f"TensorAccessMode::{mode_spelling},"
+        )
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
         binding.register_width_policy.value, backend=backend,
@@ -403,7 +414,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{tensor_mode}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 

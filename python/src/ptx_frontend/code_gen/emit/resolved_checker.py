@@ -451,6 +451,10 @@ def _emit_cross_rule_checks(
     if (variant.completion_kind is AsyncCompletionKind.BULK_GROUP and
             any(field.value_kind is ResolvedValueKind.TENSOR_OPERAND
                 for layout in variant.operand_layouts for field in layout.fields)):
+        if not all(
+                {"tensor", "src"} == {field.name for field in layout.fields}
+                for layout in variant.operand_layouts):
+            raise ValueError("tensor bulk-group write requires tensor and source")
         checks += """            for (const auto& operand : operands) {
               if (operand.actual_shape != OperandShape::TensorOperand)
                 continue;
@@ -461,6 +465,14 @@ def _emit_cross_rule_checks(
                                    coordinate_check.error().begin(),
                                    coordinate_check.error().end());
               }
+            }
+            const auto tensor_write_address_check =
+                check_tensor_reduction_addresses(selected.tensor, selected.src,
+                                                 context);
+            if (!tensor_write_address_check) {
+              diagnostics.insert(diagnostics.end(),
+                                 tensor_write_address_check.error().begin(),
+                                 tensor_write_address_check.error().end());
             }
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_CVT:
@@ -507,16 +519,6 @@ def _emit_cross_rule_checks(
             if (!tensor_map_address_check) {
               diagnostics.insert(diagnostics.end(), tensor_map_address_check.error().begin(),
                                  tensor_map_address_check.error().end());
-            }
-"""
-    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
-        checks += """            const auto reduction_address_check =
-                check_tensor_reduction_addresses(selected.tensor, selected.src,
-                                                 context);
-            if (!reduction_address_check) {
-              diagnostics.insert(diagnostics.end(),
-                                 reduction_address_check.error().begin(),
-                                 reduction_address_check.error().end());
             }
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY:

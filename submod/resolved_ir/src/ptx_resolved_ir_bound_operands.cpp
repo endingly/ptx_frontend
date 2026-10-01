@@ -1562,7 +1562,7 @@ resolve_tensor_coordinate(
   return resolved;
 }
 
-/** Resolve both parts of a tiled tensor operand through existing typed paths. */
+/** Resolve both parts of a tensor operand using the selected form's mode. */
 std::expected<WithLocs<ResolvedTensorOperand>, ResolveDiagnostic>
 resolve_tensor_operand(
     const syntax_ast::AstOperand& operand,
@@ -1573,6 +1573,12 @@ resolve_tensor_operand(
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected [tensorMap, {coordinates}] operand."});
+  if (!binding.expected_tensor_mode ||
+      (*binding.expected_tensor_mode != TensorAccessMode::Tiled &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colNoOffs))
+    return std::unexpected(ResolveDiagnostic{
+        .range = tensor->range,
+        .message = "Tensor operand binding has no valid access mode."});
   syntax_ast::AstOperand address_operand{tensor->tensor_map};
   auto map = resolve_address(address_operand, context);
   if (!map)
@@ -1594,7 +1600,7 @@ resolve_tensor_operand(
       .tensor_map = {std::move(map->value), tensor->tensor_map.range},
       .coordinates = std::move(coordinates->value),
       .rank = static_cast<TensorRank>(binding.minimum_elements),
-      .mode = TensorAccessMode::Tiled,
+      .mode = *binding.expected_tensor_mode,
       .coordinate_ranges = std::move(coordinates->locs)};
   return WithLocs<ResolvedTensorOperand>{std::move(resolved), tensor->range};
 }

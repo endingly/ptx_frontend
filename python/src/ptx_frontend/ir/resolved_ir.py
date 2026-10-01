@@ -87,6 +87,8 @@ class TensorAccessMode(Enum):
     IM2COL = "im2col"
     IM2COL_W = "im2col_w"
     IM2COL_W128 = "im2col_w128"
+    TILE_GATHER4 = "tile_gather4"
+    TILE_SCATTER4 = "tile_scatter4"
 
 
 def tensor_im2col_info_contract(
@@ -468,6 +470,7 @@ class ResolvedOperandBinding:
     maximum_elements: int | None = None
     allowed_element_shapes: tuple[ResolvedOperandShape, ...] = ()
     tensor_access_mode: TensorAccessMode | None = None
+    expected_tensor_rank: int | None = None
 
 
 @dataclass(frozen=True)
@@ -649,6 +652,7 @@ def _build_variant(
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
     tensor_access_mode = _build_tensor_access_mode(opcode, variant)
+    expected_tensor_rank = _build_expected_tensor_rank(variant, tensor_access_mode)
     active_modifiers = tuple(
         modifier
         for modifier in variant.modifiers
@@ -670,6 +674,7 @@ def _build_variant(
                 {field.source_name: index for index, field in enumerate(modifier_fields)},
             ),
             tensor_access_mode,
+            expected_tensor_rank,
         )
         for layout in variant.operand_layouts
     )
@@ -743,11 +748,7 @@ def _build_variant(
         tensor_im2col_info_elements=(
             tensor_im2col_info_contract(
                 tensor_access_mode,
-                next(
-                    operand.minimum_elements for operand in
-                    variant.operand_layouts[0].operands
-                    if operand.kind is OperandKind.TENSOR_OPERAND
-                ),
+                expected_tensor_rank,
             )
             if tensor_access_mode in {
                 TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
@@ -773,8 +774,12 @@ def _build_tensor_access_mode(
         modifier.name in {"im2col", "im2col_w", "im2col_w128"}
         for modifier in variant.modifiers
     )
+    has_gather_scatter = any(
+        modifier.name in {"tile_gather4", "tile_scatter4"}
+        for modifier in variant.modifiers
+    )
     if not has_tensor:
-        if has_no_offsets or has_read_im2col:
+        if has_no_offsets or has_read_im2col or has_gather_scatter:
             raise ValueError(f"variant {variant.name!r}: tensor mode lacks tensor operand")
         return None
     if opcode != "cp":
@@ -789,7 +794,12 @@ def _build_tensor_access_mode(
         "im2col_w": TensorAccessMode.IM2COL_W,
         "im2col_w128": TensorAccessMode.IM2COL_W128,
     }
-    selected_modes = [name for name in ("tile", "im2col_no_offs", *read_modes)
+    gather_modes = {
+        "tile_gather4": TensorAccessMode.TILE_GATHER4,
+        "tile_scatter4": TensorAccessMode.TILE_SCATTER4,
+    }
+    selected_modes = [name for name in ("tile", "im2col_no_offs", *read_modes,
+                                      *gather_modes)
                       if name in modifiers]
     if len(selected_modes) != 1:
         raise ValueError(f"variant {variant.name!r}: expected one tensor mode")
@@ -800,6 +810,83 @@ def _build_tensor_access_mode(
                 or modifier_spellings(tile) != (".tile",)):
             raise ValueError(f"variant {variant.name!r}: invalid tile mode")
         return TensorAccessMode.TILED
+
+    if has_gather_scatter:
+        mode_name = selected_modes[0]
+        mode = gather_modes[mode_name]
+        mode_modifier = modifiers[mode_name]
+        token = (".tile::gather4" if mode is TensorAccessMode.TILE_GATHER4
+                 else ".tile::scatter4")
+        if (mode_modifier.kind is not ModifierKind.FLAG
+                or mode_modifier.presence is not ModifierPresence.FIXED
+                or mode_modifier.value is not True
+                or modifier_spellings(mode_modifier) != (token,)):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter mode")
+        gather = mode is TensorAccessMode.TILE_GATHER4
+        prefetch = "prefetch" in modifiers
+        topology = {
+            "async": ".async", "bulk": ".bulk",
+            "tensor_qualifier": ".tensor", "rank": ".2d",
+        }
+        if gather and prefetch:
+            topology.update({"prefetch": ".prefetch", "level": ".L2",
+                             "src_space": ".global"})
+            completion = AsyncCompletionKind.NONE
+            expected = (("tensor", OperandKind.TENSOR_OPERAND),)
+        elif gather:
+            destination = modifiers.get("dst_space")
+            if destination is None or modifier_spellings(destination) not in (
+                    (".shared::cta",), (".shared::cluster",)):
+                raise ValueError(f"variant {variant.name!r}: invalid gather destination")
+            topology.update({"dst_space": modifier_spellings(destination)[0],
+                             "src_space": ".global",
+                             "completion": ".mbarrier::complete_tx::bytes"})
+            completion = AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+            expected = (("dst", OperandKind.ADDRESS),
+                        ("tensor", OperandKind.TENSOR_OPERAND),
+                        ("mbar", OperandKind.ADDRESS))
+        else:
+            topology.update({"dst_space": ".global",
+                             "src_space": ".shared::cta",
+                             "completion": ".bulk_group"})
+            completion = AsyncCompletionKind.BULK_GROUP
+            expected = (("tensor", OperandKind.TENSOR_OPERAND),
+                        ("src", OperandKind.ADDRESS))
+        if (set(modifiers) != set(topology) | {mode_name}
+                or variant.completion_kind is not completion
+                or variant.rule is not None
+                or len(variant.operand_layouts) != 1):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter topology")
+        for name, spelling in topology.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        operands = variant.operand_layouts[0].operands
+        if tuple((operand.name, operand.kind) for operand in operands) != expected:
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter operands")
+        tensor = operands[0 if prefetch or not gather else 1]
+        if (tensor.access is not OperandAccess.READ
+                or tensor.minimum_elements != 5
+                or tensor.maximum_elements != 5
+                or tensor.immediate_conversion_policy is not
+                OperandImmediateConversionPolicy.NARROW
+                or tensor.type_expression is None
+                or tensor.type_expression.kind is not
+                OperandTypeExpressionKind.FIXED_SCALAR
+                or tensor.type_expression.scalar_type != "s32"
+                or {space.value for space in tensor.state_space_values}
+                != {"param", "const", "global"}
+                or set(tensor.element_kinds) !=
+                {OperandKind.REGISTER, OperandKind.IMMEDIATE}):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter coordinates")
+        if not prefetch:
+            address = operands[-1] if not gather else operands[0]
+            if {space.value for space in address.state_space_values} != {"shared"}:
+                raise ValueError(f"variant {variant.name!r}: invalid shared address")
+        return mode
 
     if has_read_im2col:
         mode_name = selected_modes[0]
@@ -965,6 +1052,39 @@ def _build_tensor_access_mode(
     else:
         raise ValueError(f"variant {variant.name!r}: invalid no-offset rule")
     return TensorAccessMode.IM2COL_NO_OFFS
+
+
+def _build_expected_tensor_rank(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> int | None:
+    """Lower the fixed dimension token independently of coordinate arity."""
+
+    if mode is None:
+        return None
+    ranks = {f".{rank}d": rank for rank in range(1, 6)}
+    rank_flags = [modifier for modifier in variant.modifiers
+                  if modifier.name == "rank"]
+    if len(rank_flags) != 1:
+        raise ValueError(f"variant {variant.name!r}: expected one tensor rank")
+    rank_flag = rank_flags[0]
+    spelling = modifier_spellings(rank_flag)
+    if (rank_flag.kind is not ModifierKind.FLAG
+            or rank_flag.presence is not ModifierPresence.FIXED
+            or rank_flag.value is not True
+            or len(spelling) != 1 or spelling[0] not in ranks):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor rank flag")
+    rank = ranks[spelling[0]]
+    if mode in {TensorAccessMode.TILE_GATHER4, TensorAccessMode.TILE_SCATTER4}:
+        if rank != 2:
+            raise ValueError(f"variant {variant.name!r}: gather/scatter rank must be two")
+    else:
+        for layout in variant.operand_layouts:
+            tensors = [operand for operand in layout.operands
+                       if operand.kind is OperandKind.TENSOR_OPERAND]
+            if (len(tensors) != 1 or tensors[0].minimum_elements != rank
+                    or tensors[0].maximum_elements != rank):
+                raise ValueError(f"variant {variant.name!r}: tensor rank/arity mismatch")
+    return rank
 
 
 def _build_tensor_reduction_op(
@@ -1370,6 +1490,7 @@ def _build_operand_layout(
     forbidden_modifiers: tuple[str, ...] = (),
     forbidden_modifier_slots: tuple[int, ...] = (),
     tensor_access_mode: TensorAccessMode | None = None,
+    expected_tensor_rank: int | None = None,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -1446,6 +1567,10 @@ def _build_operand_layout(
                 ),
                 tensor_access_mode=(
                     tensor_access_mode
+                    if operand.kind is OperandKind.TENSOR_OPERAND else None
+                ),
+                expected_tensor_rank=(
+                    expected_tensor_rank
                     if operand.kind is OperandKind.TENSOR_OPERAND else None
                 ),
             )

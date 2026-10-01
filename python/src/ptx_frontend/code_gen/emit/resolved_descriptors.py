@@ -397,10 +397,14 @@ def _emit_operand_binding_descriptor(
             TensorAccessMode.IM2COL: "Im2col",
             TensorAccessMode.IM2COL_W: "Im2colW",
             TensorAccessMode.IM2COL_W128: "Im2colW128",
+            TensorAccessMode.TILE_GATHER4: "TileGather4",
+            TensorAccessMode.TILE_SCATTER4: "TileScatter4",
         }[binding.tensor_access_mode]
         tensor_mode = (
             "\n              .expected_tensor_mode = "
             f"TensorAccessMode::{mode_spelling},"
+            "\n              .expected_tensor_rank = "
+            f"TensorRank::{('One', 'Two', 'Three', 'Four', 'Five')[binding.expected_tensor_rank - 1]},"
         )
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,

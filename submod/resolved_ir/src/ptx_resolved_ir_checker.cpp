@@ -790,13 +790,19 @@ CheckResult check_operands(
       const auto* tensor = operand->tensor_operand;
       const bool invalid_structure =
           tensor == nullptr || !descriptor.expected_tensor_mode ||
+          !descriptor.expected_tensor_rank ||
+          *descriptor.expected_tensor_rank < TensorRank::One ||
+          *descriptor.expected_tensor_rank > TensorRank::Five ||
           (*descriptor.expected_tensor_mode != TensorAccessMode::Tiled &&
            *descriptor.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
            *descriptor.expected_tensor_mode != TensorAccessMode::Im2col &&
            *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW &&
-           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW128) ||
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW128 &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::TileGather4 &&
+           *descriptor.expected_tensor_mode !=
+               TensorAccessMode::TileScatter4) ||
           tensor->mode != *descriptor.expected_tensor_mode ||
-          static_cast<size_t>(tensor->rank) != operand->vector_arity ||
+          tensor->rank != *descriptor.expected_tensor_rank ||
           tensor->coordinate_ranges.size() != operand->vector_arity ||
           tensor->tensor_map.range == SourceRange{};
       if (invalid_structure) {
@@ -2910,6 +2916,48 @@ CheckResult check_tensor_reduction_addresses(
   return check_tensor_map_address_register_width(src, context);
 }
 
+CheckResult check_tensor_gather_scatter_coordinates(
+    const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
+  const auto& value = tensor.value;
+  if ((value.mode != TensorAccessMode::TileGather4 &&
+       value.mode != TensorAccessMode::TileScatter4) ||
+      value.rank != TensorRank::Two || value.coordinates.elements.size() != 5 ||
+      value.coordinate_ranges.size() != 5)
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::RuleViolation,
+                        .range = diagnostic_range(tensor.locs, context),
+                        .message = "Gather/scatter tensor metadata requires "
+                                   "rank two and five coordinates."}});
+  CheckDiagnostics diagnostics;
+  for (size_t index = 0; index < 5; ++index) {
+    const auto& range = value.coordinate_ranges[index];
+    const auto& element = value.coordinates.elements[index];
+    if (range == SourceRange{}) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(tensor.locs, context),
+          .message = "Gather/scatter coordinate has no source range."});
+      continue;
+    }
+    const auto* reg = std::get_if<ResolvedRegisterRef>(&element);
+    if (!reg)
+      continue;
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width || (reg->symbol_id && !reg->declared_type) ||
+        (reg->declared_type &&
+         (!is_integer_type(*reg->declared_type) ||
+          base::scalar_size_of(*reg->declared_type) != 4)))
+      diagnostics.push_back(
+          CheckDiagnostic{.kind = CheckDiagnosticKind::OperandTypeMismatch,
+                          .range = range,
+                          .message = "Gather/scatter coordinates require "
+                                     "scalar 32-bit integer/bit registers."});
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 CheckResult check_cp_async_rule(std::span<const FieldView> fields,
                                 std::span<const OperandView> operands,
                                 const Context& context) {
@@ -3021,6 +3069,18 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
 }  // namespace ptx_frontend::resolved_ir::checker
 
 namespace ptx_frontend::resolved_ir {
+
+std::optional<TensorGatherScatterCoordinateRole>
+tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
+                                      size_t index) noexcept {
+  if ((tensor.mode != TensorAccessMode::TileGather4 &&
+       tensor.mode != TensorAccessMode::TileScatter4) ||
+      tensor.rank != TensorRank::Two ||
+      tensor.coordinates.elements.size() != 5 ||
+      tensor.coordinate_ranges.size() != 5 || index >= 5)
+    return std::nullopt;
+  return static_cast<TensorGatherScatterCoordinateRole>(index);
+}
 
 std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
     const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,

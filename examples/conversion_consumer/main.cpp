@@ -1544,6 +1544,86 @@ bool checkTensorIm2colInfoContract() {
                  "installed im2col U16, roles, and explicit absence retained");
 }
 
+/** Check rank and five ordered roles through installed, AST-released IR. */
+bool checkTensorGatherScatterContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_110a
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 dst[1024];
+.shared .align 16 .b8 src[1024];
+.shared .align 8 .b64 mbar;
+.entry kernel() {
+  .reg .s32 %r<5>;
+  cp.async.bulk.tensor.2d.shared::cluster.global.tile::gather4.mbarrier::complete_tx::bytes
+      [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar];
+  cp.async.bulk.prefetch.tensor.2d.L2.global.tile::gather4
+      [tensor_map, {0, 1, 2, 3, 4}];
+  cp.async.bulk.tensor.2d.global.shared::cta.tile::scatter4.bulk_group
+      [tensor_map, {0, 1, 2, 3, 4}], [src];
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "gather/scatter fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "gather/scatter fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned gather/scatter module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "gather/scatter forms retained"))
+    return false;
+  const auto* first = outer_get_if<ir::Cp>(&body[0]);
+  const auto* second = outer_get_if<ir::Cp>(&body[1]);
+  const auto* third = outer_get_if<ir::Cp>(&body[2]);
+  if (!require(first && second && third, "gather/scatter Cp retained"))
+    return false;
+  const auto* load =
+      std::get_if<ir::Cp::AsyncBulkTensor2dSharedClusterTileGather4>(
+          &first->variant);
+  const auto* prefetch =
+      std::get_if<ir::Cp::AsyncBulkPrefetchTensor2dTileGather4>(
+          &second->variant);
+  const auto* scatter =
+      std::get_if<ir::Cp::AsyncBulkTensor2dGlobalSharedCtaTileScatter4>(
+          &third->variant);
+  if (!require(load && prefetch && scatter,
+               "typed gather/scatter forms retained"))
+    return false;
+  constexpr std::array roles{ir::TensorGatherScatterCoordinateRole::Column,
+                             ir::TensorGatherScatterCoordinateRole::Row0,
+                             ir::TensorGatherScatterCoordinateRole::Row1,
+                             ir::TensorGatherScatterCoordinateRole::Row2,
+                             ir::TensorGatherScatterCoordinateRole::Row3};
+  const auto matches = [&](const ir::ResolvedTensorOperand& tensor,
+                           ir::TensorAccessMode mode) {
+    if (tensor.mode != mode || tensor.rank != ir::TensorRank::Two ||
+        tensor.coordinates.elements.size() != 5 ||
+        tensor.coordinate_ranges.size() != 5)
+      return false;
+    for (size_t index = 0; index < roles.size(); ++index)
+      if (ir::tensor_gather_scatter_coordinate_role(tensor, index) !=
+          roles[index])
+        return false;
+    return !ir::tensor_gather_scatter_coordinate_role(tensor, roles.size());
+  };
+  return require(
+      matches(load->tensor.value, ir::TensorAccessMode::TileGather4) &&
+          matches(prefetch->tensor.value, ir::TensorAccessMode::TileGather4) &&
+          matches(scatter->tensor.value, ir::TensorAccessMode::TileScatter4),
+      "installed rank-two five-coordinate roles retained");
+}
+
 /** Exercise installed tensor-map update projections after syntax ownership ends. */
 bool checkTensorMapReplacementContract() {
   constexpr std::string_view source = R"ptx(
@@ -1674,6 +1754,8 @@ int main() {
     return 21;
   if (!checkTensorIm2colInfoContract())
     return 22;
+  if (!checkTensorGatherScatterContract())
+    return 23;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

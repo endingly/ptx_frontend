@@ -73,7 +73,17 @@ enum class TensorAccessMode : uint8_t {
   Im2colNoOffs,
   Im2col,
   Im2colW,
-  Im2colW128
+  Im2colW128,
+  TileGather4,
+  TileScatter4
+};
+/** Source-order meaning of a gather/scatter coordinate position. */
+enum class TensorGatherScatterCoordinateRole : uint8_t {
+  Column,
+  Row0,
+  Row1,
+  Row2,
+  Row3
 };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
@@ -271,6 +281,8 @@ struct OperandDescriptor {
   ParameterAddressConstraint parameter_constraint;
   /** Required owned tensor mode; absent for every non-tensor operand. */
   std::optional<TensorAccessMode> expected_tensor_mode;
+  /** Fixed instruction tensor dimension, independent of coordinate count. */
+  std::optional<TensorRank> expected_tensor_rank;
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
       ImmediateConversionPolicy::Narrow;
@@ -824,6 +836,11 @@ struct ResolvedTensorOperand {
 std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
     const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
     size_t index);
+
+/** Return a role only for a rank-two, five-coordinate gather/scatter tensor. */
+std::optional<TensorGatherScatterCoordinateRole>
+tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
+                                      size_t index) noexcept;
 
 /** Encoded field identity of a tiled tensor-map replacement. */
 enum class TensorMapReplaceField : uint8_t {

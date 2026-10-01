@@ -1615,12 +1615,16 @@ resolve_tensor_operand(
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected [tensorMap, {coordinates}] operand."});
-  if (!binding.expected_tensor_mode ||
+  if (!binding.expected_tensor_mode || !binding.expected_tensor_rank ||
+      *binding.expected_tensor_rank < TensorRank::One ||
+      *binding.expected_tensor_rank > TensorRank::Five ||
       (*binding.expected_tensor_mode != TensorAccessMode::Tiled &&
        *binding.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
        *binding.expected_tensor_mode != TensorAccessMode::Im2col &&
        *binding.expected_tensor_mode != TensorAccessMode::Im2colW &&
-       *binding.expected_tensor_mode != TensorAccessMode::Im2colW128))
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colW128 &&
+       *binding.expected_tensor_mode != TensorAccessMode::TileGather4 &&
+       *binding.expected_tensor_mode != TensorAccessMode::TileScatter4))
     return std::unexpected(ResolveDiagnostic{
         .range = tensor->range,
         .message = "Tensor operand binding has no valid access mode."});
@@ -1644,7 +1648,7 @@ resolve_tensor_operand(
   ResolvedTensorOperand resolved{
       .tensor_map = {std::move(map->value), tensor->tensor_map.range},
       .coordinates = std::move(coordinates->value),
-      .rank = static_cast<TensorRank>(binding.minimum_elements),
+      .rank = *binding.expected_tensor_rank,
       .mode = *binding.expected_tensor_mode,
       .coordinate_ranges = std::move(coordinates->locs)};
   return WithLocs<ResolvedTensorOperand>{std::move(resolved), tensor->range};

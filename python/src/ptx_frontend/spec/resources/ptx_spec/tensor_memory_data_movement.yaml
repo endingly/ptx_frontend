@@ -1,4 +1,4 @@
-# PTX fifth-generation Tensor Memory allocation, transfers, and synchronization.
+# PTX fifth-generation Tensor Memory data movement and synchronization.
 # yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
 schema: ptx-instr/v1
 ptx_isa: "9.3"
@@ -11,7 +11,8 @@ instructions:
     section: "9.7.17"
     doc: >-
       Allocate, deallocate, and relinquish Tensor Memory permission; transfer
-      registers by load, store, reduction, and matching same-thread waits.
+      registers by load, store, reduction, and matching same-thread waits;
+      copy from shared memory and shift Tensor Memory rows.
       Allocation, warp participation, and completion ordering remain runtime obligations.
       Commit tracks prior same-thread TCGEN work through a cluster mbarrier; specialized fences express ordering obligations.
     syntax: >-
@@ -23,7 +24,9 @@ instructions:
       tcgen05.ld.red.sync.aligned.shape.num.redOp{.abs}{.NaN}.type {r}, redVal, [taddr]{, immHalfSplitoff} |
       tcgen05.wait::{ld|st}.sync.aligned |
       tcgen05.commit.cta_group::{1|2}.mbarrier::arrive::one{.shared::cluster}{.multicast::cluster}.b64 [mbar]{, ctaMask} |
-      tcgen05.fence::{before_thread_sync|after_thread_sync}
+      tcgen05.fence::{before_thread_sync|after_thread_sync} |
+      tcgen05.cp.cta_group::{1|2}.shape{.multicast}{.b8x16.src_fmt} [taddr], s-desc |
+      tcgen05.shift.cta_group::{1|2}.down [taddr]
     variants:
       - name: tcgen05_alloc_generic
         rule: tensor_memory.alloc
@@ -393,3 +396,52 @@ instructions:
         modifiers:
           - {name: fence_direction, kind: flag, presence: required, values: [{value: true, token: .fence::after_thread_sync}]}
         operands: []
+
+      - name: tcgen05_cp
+        section: "9.7.17.9.2"
+        rule: tensor_memory.copy
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: cp, kind: flag, presence: fixed, value: true, token: .cp}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: required, values: [{value: s128x256b, token: .128x256b}, {value: s4x256b, token: .4x256b}, {value: s128x128b, token: .128x128b}, {value: s64x128b, token: .64x128b}, {value: s32x128b, token: .32x128b}]}
+          - {name: warpx2_02_13, kind: flag, presence: optional, default: false, token: .warpx2::02_13}
+          - {name: warpx2_01_23, kind: flag, presence: optional, default: false, token: .warpx2::01_23}
+          - {name: warpx4, kind: flag, presence: optional, default: false, token: .warpx4}
+          - {name: dst_format, kind: flag, presence: optional, default: false, token: .b8x16}
+          - {name: src_b6, kind: flag, presence: optional, default: false, token: .b6x16_p32}
+          - {name: src_b4, kind: flag, presence: optional, default: false, token: .b4x16_p64}
+        tcgen_copy:
+          shape_multicast_pairs:
+            - [s128x256b, none]
+            - [s4x256b, none]
+            - [s128x128b, none]
+            - [s64x128b, warpx2_02_13]
+            - [s64x128b, warpx2_01_23]
+            - [s32x128b, warpx4]
+          format_pairs:
+            - [false, false, false]
+            - [true, true, false]
+            - [true, false, true]
+        operands:
+          - {name: taddr, kind: tensor_memory_address_bracket, role: dst, access: write, type: u32}
+          - {name: s_desc, kind: reg, role: src, access: read, type: b64, register_width: same_width}
+
+      - name: tcgen05_shift
+        section: "9.7.17.9.3"
+        rule: tensor_memory.shift
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 103, target: sm_103a}
+            - {ptx: "9.0", sm: 110, target: sm_110a}
+        modifiers:
+          - {name: shift, kind: flag, presence: fixed, value: true, token: .shift}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: down, kind: flag, presence: required, values: [{value: true, token: .down}]}
+        modifier_order_aliases:
+          - [shift, down, cta_group]
+        operands:
+          - {name: taddr, kind: tensor_memory_address_bracket, role: dst, access: write, type: u32}

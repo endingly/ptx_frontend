@@ -353,6 +353,8 @@ class ResolvedVariant:
     tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
     tcgen_commit_multicast: bool = False
     tcgen_fence_direction: TcgenFenceDirection | None = None
+    tcgen_copy_pairs: tuple[tuple[str, str], ...] = ()
+    tcgen_copy_formats: tuple[tuple[bool, bool, bool], ...] = ()
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -708,6 +710,8 @@ def _build_variant(
         ),
         operand_layouts=operand_layouts,
         matrix=variant.matrix,
+        tcgen_copy_pairs=variant.tcgen_copy_pairs,
+        tcgen_copy_formats=variant.tcgen_copy_formats,
         atomic_address_qualifier_domain=(
             _build_atomic_address_qualifier_domain(atomic_policy, variant)
         ),

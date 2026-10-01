@@ -2077,6 +2077,12 @@ CheckResult check_tcgen_transfer_rule(std::span<const FieldView> fields,
       multiplier = 4;
       maximum_repeat = 32;
       break;
+    case TcgenDataMovementShape::S128x256b:
+    case TcgenDataMovementShape::S4x256b:
+    case TcgenDataMovementShape::S128x128b:
+    case TcgenDataMovementShape::S64x128b:
+    case TcgenDataMovementShape::S32x128b:
+      break;
   }
   if (!multiplier || !repeat || repeat > maximum_repeat ||
       (reduction &&
@@ -2131,6 +2137,76 @@ CheckResult check_tcgen_transfer_address(
           context, "Tensor Memory address lost its 32-bit source conversion.",
           CheckDiagnosticKind::ImmediateValueMismatch);
     }
+  }
+  return {};
+}
+
+CheckResult check_tcgen_copy_descriptor(
+    const WithLocs<ResolvedRegisterRef>& descriptor, const Context& context) {
+  if (tcgen_copy_descriptor_view(descriptor.value))
+    return {};
+  return cvt_rule_violation(
+      context,
+      "Tensor Memory copy descriptor requires a scalar General-class "
+      "b64/u64/s64 register with known type when bound.",
+      CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+CheckResult check_tcgen_copy_rule(
+    std::span<const FieldView> fields,
+    std::span<const TcgenCopyShapePair> allowed_pairs,
+    std::span<const uint8_t> allowed_formats, const Context& context) {
+  const auto* shape = find_field(fields, "shape");
+  if (!shape || !shape->tcgen_shape)
+    return cvt_rule_violation(context, "Tensor Memory copy shape is missing.");
+  const auto flag = [&](std::string_view name) -> std::optional<bool> {
+    const auto* field = find_field(fields, name);
+    return field ? field->bool_value : std::nullopt;
+  };
+  const auto warp_a = flag("warpx2_02_13");
+  const auto warp_b = flag("warpx2_01_23");
+  const auto warp_four = flag("warpx4");
+  const auto dst = flag("dst_format");
+  const auto src_b6 = flag("src_b6");
+  const auto src_b4 = flag("src_b4");
+  if (!warp_a || !warp_b || !warp_four || !dst || !src_b6 || !src_b4)
+    return cvt_rule_violation(
+        context, "Tensor Memory copy qualifier metadata is missing.");
+  const unsigned multicast_count =
+      unsigned(*warp_a) + unsigned(*warp_b) + unsigned(*warp_four);
+  if (multicast_count > 1)
+    return cvt_rule_violation(
+        context, "Tensor Memory copy multicast qualifiers conflict.");
+  const auto multicast = *warp_a      ? TcgenCopyMulticast::WarpX2_02_13
+                         : *warp_b    ? TcgenCopyMulticast::WarpX2_01_23
+                         : *warp_four ? TcgenCopyMulticast::WarpX4
+                                      : TcgenCopyMulticast::None;
+  const bool valid_shape =
+      std::ranges::any_of(allowed_pairs, [&](const TcgenCopyShapePair& pair) {
+        return pair.shape == *shape->tcgen_shape && pair.multicast == multicast;
+      });
+  const uint8_t format =
+      uint8_t(*dst) | (uint8_t(*src_b6) << 1) | (uint8_t(*src_b4) << 2);
+  const bool valid_format =
+      std::ranges::find(allowed_formats, format) != allowed_formats.end();
+  if (!valid_shape || !valid_format)
+    return cvt_rule_violation(
+        context,
+        "Tensor Memory copy shape/multicast or paired format is invalid.");
+  return {};
+}
+
+CheckResult check_tcgen_shift_address(
+    const WithLocs<TensorMemoryAddress>& address, const Context& context) {
+  if (auto result = check_tcgen_transfer_address(address, context); !result)
+    return result;
+  if (const auto* immediate =
+          std::get_if<ResolvedImmediate>(&address.value.value)) {
+    const uint32_t lane = uint32_t((immediate->bits >> 16) & 0xffff);
+    if (lane % 32 != 0)
+      return cvt_rule_violation(
+          context, "Tensor Memory shift lane component must be 32-aligned.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
   }
   return {};
 }

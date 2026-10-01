@@ -332,9 +332,29 @@ syntax_ast::AstInstruction lowerInstructionNode(
       .range = cst.sourceRange(root.token_range),
   };
 
-  ast.modifiers.reserve(root.modifiers.size());
-  for (const auto modifier : root.modifiers)
-    ast.modifiers.push_back({leafSyntax(cst, modifier)});
+  ast.modifiers.reserve(root.modifiers.size() + 1);
+  const bool tcgen_copy = cst.token(root.opcode).text == "tcgen05" &&
+                          !root.modifiers.empty() &&
+                          cst.token(root.modifiers.front()).text == ".cp";
+  for (const auto modifier : root.modifiers) {
+    const auto token = leafSyntax(cst, modifier);
+    // The lexer retains these pairs as one token for other instruction families.
+    // Copy has two independently written format slots and source subranges.
+    if (tcgen_copy && (token.text == ".b8x16.b6x16_p32" ||
+                       token.text == ".b8x16.b4x16_p64")) {
+      constexpr int32_t destination_length = 6;
+      const SourcePos split{token.range.start.line,
+                            token.range.start.column + destination_length};
+      ast.modifiers.push_back(
+          {syntax_ast::AstSyntax{token.text.substr(0, destination_length),
+                                 SourceRange{token.range.start, split}}});
+      ast.modifiers.push_back(
+          {syntax_ast::AstSyntax{token.text.substr(destination_length),
+                                 SourceRange{split, token.range.end}}});
+    } else {
+      ast.modifiers.push_back({token});
+    }
+  }
 
   ast.operands.reserve(root.operands.size());
   for (const auto& operand : root.operands)

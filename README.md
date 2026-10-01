@@ -26,7 +26,11 @@ supported surface and its exclusions.
 - [Tensor Memory transfer coverage](docs/us-en/tensor_memory_transfer_coverage.md)
   and its [简体中文版本](docs/zh-han/tensor_memory_transfer_coverage.md)
   define `tcgen05.ld`, `st`, `ld.red`, and load/store waits, including exact
-  register counts and source-only split offsets. Copy and shift remain open.
+  register counts and source-only split offsets.
+- [Tensor Memory copy and shift coverage](docs/us-en/tensor_memory_copy_shift_coverage.md)
+  and its [简体中文版本](docs/zh-han/tensor_memory_copy_shift_coverage.md)
+  define the closed copy shape/multicast and paired-format tuples, opaque
+  descriptor role, shift aliases, and source-visible alignment checks.
 - [TCGEN specialized synchronization coverage](docs/us-en/tcgen_sync_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_sync_coverage.md) define commit,
   its mbarrier completion identity, and both operand-free fence directions.

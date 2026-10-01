@@ -379,6 +379,34 @@ def _emit_resolved_variant_definition(
             "    inline static constexpr TcgenFenceDirection direction =\n"
             f"        TcgenFenceDirection::{''.join(part.title() for part in direction.name.lower().split('_'))};\n"
         )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COPY:
+        shape_names = {
+            "s128x256b": "S128x256b", "s4x256b": "S4x256b",
+            "s128x128b": "S128x128b", "s64x128b": "S64x128b",
+            "s32x128b": "S32x128b",
+        }
+        multicast_names = {
+            "none": "None", "warpx2_02_13": "WarpX2_02_13",
+            "warpx2_01_23": "WarpX2_01_23", "warpx4": "WarpX4",
+        }
+        pairs = ",\n".join(
+            "        {TcgenDataMovementShape::%s, TcgenCopyMulticast::%s}" %
+            (shape_names[shape], multicast_names[multicast])
+            for shape, multicast in variant.tcgen_copy_pairs
+        )
+        masks = ", ".join(
+            str(sum((1 << index) for index, present in enumerate(row) if present))
+            for row in variant.tcgen_copy_formats
+        )
+        tcgen_contract += (
+            "    /** Canonical copy shape/multicast rows, borrowed for the owned record lifetime. */\n"
+            "    inline static constexpr TcgenCopyShapePair copy_pairs[] = {\n"
+            f"{pairs}\n    }};\n"
+            "    /** Canonical destination/source format masks in field order. */\n"
+            f"    inline static constexpr uint8_t copy_format_masks[] = {{{masks}}};\n"
+            "    /** Distinct opaque Table 43 source role; no descriptor bits are decoded. */\n"
+            "    inline static constexpr bool has_tcgen_copy_descriptor = true;\n"
+        )
     modifier_fields = "\n".join(
         _emit_resolved_field(field, backend) for field in variant.modifier_fields
     )
@@ -386,7 +414,37 @@ def _emit_resolved_variant_definition(
         operand_fields = "\n".join(
             _emit_resolved_field(field, backend) for field in variant.operand_layouts[0].fields
         )
-        body = f"{modifier_fields}\n{operand_fields}"
+        copy_view = (
+            "\n    /** Typed multicast projection; absent on conflicting or illegal source fields. */\n"
+            "    [[nodiscard]] std::optional<TcgenCopyMulticast> multicast_view() const noexcept {\n"
+            "      const unsigned count = unsigned(warpx2_02_13.value) +\n"
+            "          unsigned(warpx2_01_23.value) + unsigned(warpx4.value);\n"
+            "      if (count > 1) return std::nullopt;\n"
+            "      const auto value = warpx2_02_13.value ? TcgenCopyMulticast::WarpX2_02_13 :\n"
+            "          warpx2_01_23.value ? TcgenCopyMulticast::WarpX2_01_23 :\n"
+            "          warpx4.value ? TcgenCopyMulticast::WarpX4 : TcgenCopyMulticast::None;\n"
+            "      for (const auto& pair : copy_pairs)\n"
+            "        if (pair.shape == shape.value && pair.multicast == value) return value;\n"
+            "      return std::nullopt;\n"
+            "    }\n"
+            "    /** Typed decompression projection from the two written format slots. */\n"
+            "    [[nodiscard]] std::optional<TcgenCopyFormat> format_view() const noexcept {\n"
+            "      const uint8_t mask = uint8_t(dst_format.value) |\n"
+            "          (uint8_t(src_b6.value) << 1) | (uint8_t(src_b4.value) << 2);\n"
+            "      for (const auto allowed : copy_format_masks) {\n"
+            "        if (allowed != mask) continue;\n"
+            "        return mask == 0 ? TcgenCopyFormat::None :\n"
+            "            mask == 3 ? TcgenCopyFormat::B6x16P32 : TcgenCopyFormat::B4x16P64;\n"
+            "      }\n"
+            "      return std::nullopt;\n"
+            "    }\n"
+            "\n    /** Borrow a validated opaque Table 43 source role from this copy. */\n"
+            "    [[nodiscard]] std::optional<TcgenCopyDescriptorView> descriptor_view() const noexcept {\n"
+            "      return tcgen_copy_descriptor_view(s_desc.value);\n"
+            "    }\n"
+            if variant.rule is SemanticRule.TENSOR_MEMORY_COPY else ""
+        )
+        body = f"{modifier_fields}\n{operand_fields}{copy_view}"
     else:
         layout_structs = "\n\n".join(
             _emit_operand_layout_definition(layout, backend)

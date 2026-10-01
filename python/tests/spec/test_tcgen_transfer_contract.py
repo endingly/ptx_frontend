@@ -39,7 +39,9 @@ class TcgenTransferContractTests(unittest.TestCase):
             "tcgen05_dealloc", "tcgen05_relinquish_alloc_permit",
             *(name for name, variant in self.variants.items()
               if variant.rule in {SemanticRule.TENSOR_MEMORY_COMMIT,
-                                  SemanticRule.TENSOR_MEMORY_FENCE}),
+                                  SemanticRule.TENSOR_MEMORY_FENCE,
+                                  SemanticRule.TENSOR_MEMORY_COPY,
+                                  SemanticRule.TENSOR_MEMORY_SHIFT}),
         })
         tuples = set()
         for name in TRANSFER_NAMES:

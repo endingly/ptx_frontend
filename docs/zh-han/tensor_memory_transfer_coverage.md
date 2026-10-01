@@ -56,5 +56,5 @@
 前端检查写入形式、已知寄存器声明、精确片段数量、源来源信息、修饰符域和
 目标配置。warp 参与、一致地址值、分配有效性、动态 wait 匹配以及控制流
 中的顺序仍是运行时义务。这里没有 GPU 执行或时间证明。Tensor Memory
-复制与位移仍待完成；[专用 commit 与 fence 行为](tcgen_sync_coverage.md)
-具有独立的完成与排序契约。
+[Tensor Memory 复制与位移](tensor_memory_copy_shift_coverage.md)具有独立的源代码可见契约；
+[专用 commit 与 fence 行为](tcgen_sync_coverage.md)具有独立的完成与排序契约。

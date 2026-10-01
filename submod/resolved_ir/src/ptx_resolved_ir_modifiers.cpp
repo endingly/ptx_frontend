@@ -293,6 +293,16 @@ resolve_tcgen_shape(const syntax_ast::AstModifier& modifier) {
     value = TcgenDataMovementShape::S16x256b;
   else if (spelling == ".16x32bx2")
     value = TcgenDataMovementShape::S16x32bx2;
+  else if (spelling == ".128x256b")
+    value = TcgenDataMovementShape::S128x256b;
+  else if (spelling == ".4x256b")
+    value = TcgenDataMovementShape::S4x256b;
+  else if (spelling == ".128x128b")
+    value = TcgenDataMovementShape::S128x128b;
+  else if (spelling == ".64x128b")
+    value = TcgenDataMovementShape::S64x128b;
+  else if (spelling == ".32x128b")
+    value = TcgenDataMovementShape::S32x128b;
   if (!value)
     return std::unexpected(ResolveDiagnostic{modifier.syntax.range,
                                              "Unknown Tensor Memory shape."});

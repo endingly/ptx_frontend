@@ -718,6 +718,14 @@ Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`.
 
+TCGEN descriptor known-word queries are a separate public layer in
+`ptx_tcgen_descriptors.hpp`. The decoded value and defined-field report own their
+data, while relative-layout spans borrow immutable generated storage. These
+caller-supplied bits are independent of the `TcgenCopyDescriptorView` borrowed
+from an owned copy instruction; supplying bits does not authenticate that
+register's runtime contents. [Descriptor coverage](tcgen_descriptor_coverage.md)
+lists the conditional obligations and unclassified high bits.
+
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
 by module resolution. Scalar `.b128` is rejected by the generated `Mov::Scalar`

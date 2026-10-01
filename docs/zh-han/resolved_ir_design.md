@@ -564,6 +564,12 @@ instruction 约束仍不属于当前 ABI。
 `submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`。
 
+TCGEN descriptor 的已知 word 查询属于 `ptx_tcgen_descriptors.hpp` 中独立的公开层。
+decoded value 与 defined-field report 按值持有数据，relative-layout span 借用不可变的
+generated storage。调用方提供的 bit 与 owned copy instruction 借出的
+`TcgenCopyDescriptorView` 相互独立；提供 bit 不会认证该寄存器在运行期的内容。
+[descriptor 覆盖说明](tcgen_descriptor_coverage.md)列出条件性 obligation 和未分类高位。
+
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
 metadata、由生成的 `Mov::Scalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register

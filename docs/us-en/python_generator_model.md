@@ -301,3 +301,14 @@ coverage. C++ tests cover the real parser/resolver/checker path.
 Extend schema and normalized dataclasses first, then Syntax/Resolved models,
 then emitters and tests. Do not make an emitter read a new raw YAML field: that
 bypasses the consistency boundary.
+
+The fixed TCGEN descriptor bit/layout catalogue lives in
+`ptx_frontend.spec.tcgen_descriptor_domains`. It is independent of instruction
+YAML because these are caller-supplied known-word queries, not new opcode
+spellings. One focused emitter produces a public domain header and private pure
+validator source through the global `GenerationPlan`; the existing output
+manifest, CMake source discovery, header install and Python wheel packaging
+consume those paths. There is no second handwritten C++ field map. The generated
+header includes the existing foundation; the foundation never includes a
+generated descriptor header. [Descriptor coverage](tcgen_descriptor_coverage.md)
+defines the exact checked scope.

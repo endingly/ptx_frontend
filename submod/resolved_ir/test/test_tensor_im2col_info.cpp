@@ -19,9 +19,11 @@ namespace {
 std::string im2col_module(
     std::string_view instruction,
     std::string_view map = ".global .align 64 .b8 tensor_map[128];",
-    std::string_view destination = ".shared .align 16 .b8 dst[1024];") {
-  return ".version 9.3\n.target sm_100a\n.address_size 64\n" +
-         std::string(map) + "\n" + std::string(destination) +
+    std::string_view destination = ".shared .align 16 .b8 dst[1024];",
+    std::string_view version = "9.3", std::string_view target = "sm_100a") {
+  return ".version " + std::string(version) + "\n.target " +
+         std::string(target) + "\n.address_size 64\n" + std::string(map) +
+         "\n" + std::string(destination) +
          "\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n"
          ".reg .s32 %r<5>;\n.reg .u16 %u<3>;\n.reg .b16 %b<2>;\n"
          ".reg .s16 %s<2>;\n.reg .b64 %ptr;\n" +
@@ -43,8 +45,12 @@ checker::Context im2col_context(checker::PtxVersion version = {9, 3},
 }
 
 /** Resolve into owned IR after every syntax object leaves scope. */
-std::optional<ResolvedModule> owned_im2col(std::string_view instruction) {
-  const auto parsed = test_helpers::parseModule(im2col_module(instruction));
+std::optional<ResolvedModule> owned_im2col(
+    std::string_view instruction, std::string_view version = "9.3",
+    std::string_view target = "sm_100a") {
+  const auto parsed = test_helpers::parseModule(
+      im2col_module(instruction, ".global .align 64 .b8 tensor_map[128];",
+                    ".shared .align 16 .b8 dst[1024];", version, target));
   if (!parsed)
     return std::nullopt;
   auto resolved = resolveModuleOnly(*parsed);
@@ -195,7 +201,7 @@ TEST(TensorIm2colInfo, ExactAvailabilityMatrix) {
       Case{"cluster", "im2col::w", {8, 6}, "sm_100a", true},
       Case{"cluster", "im2col::w", {8, 6}, "sm_103a", false},
       Case{"cluster", "im2col::w", {8, 8}, "sm_103f", true},
-      Case{"cluster", "im2col::w", {9, 3}, "sm_110a", false},
+      Case{"cluster", "im2col::w", {9, 3}, "sm_110a", true},
       Case{"prefetch", "im2col::w", {8, 6}, "sm_100", false},
       Case{"prefetch", "im2col::w", {8, 8}, "sm_103a", true},
       Case{"prefetch", "im2col::w", {9, 0}, "sm_110f", true},
@@ -224,6 +230,57 @@ TEST(TensorIm2colInfo, ExactAvailabilityMatrix) {
                   .has_value(),
               item.valid)
         << instruction << " / " << item.target;
+  }
+}
+
+/** Table 63 adds the 110f family to W-cluster on all three tensor ranks. */
+TEST(TensorIm2colInfo, WClusterTable63FamilyEndpoints) {
+  /** A source target and PTX version with the expected W-cluster availability. */
+  struct Case {
+    std::string_view version;
+    checker::PtxVersion parsed_version;
+    std::string_view target;
+    bool valid;
+  };
+  constexpr std::array cases{
+      Case{"8.6", {8, 6}, "sm_100a", true},
+      Case{"8.6", {8, 6}, "sm_103a", false},
+      Case{"8.8", {8, 8}, "sm_103a", true},
+      Case{"8.8", {8, 8}, "sm_103f", true},
+      Case{"8.8", {8, 8}, "sm_110a", false},
+      Case{"8.9", {8, 9}, "sm_110f", false},
+      Case{"9.0", {9, 0}, "sm_110a", true},
+      Case{"9.0", {9, 0}, "sm_110f", true},
+      Case{"9.0", {9, 0}, "sm_110", false},
+      Case{"9.3", {9, 3}, "sm_120a", false},
+      Case{"9.3", {9, 3}, "sm_120f", false},
+  };
+  for (int rank = 3; rank <= 5; ++rank) {
+    std::string coordinates = "0, 0, 0";
+    for (int index = 3; index < rank; ++index)
+      coordinates += ", 0";
+    for (const bool present : {false, true}) {
+      const std::string instruction =
+          "cp.async.bulk.tensor." + std::to_string(rank) +
+          "d.shared::cluster.global.im2col::w."
+          "mbarrier::complete_tx::bytes [dst], [tensor_map, {" +
+          coordinates + "}], [mbar]" + (present ? ", {%u0, %u1}" : "") + ";";
+      for (const auto& item : cases) {
+        auto owned = owned_im2col(instruction, item.version, item.target);
+        ASSERT_TRUE(owned.has_value())
+            << instruction << " / " << item.version << " / " << item.target;
+        const auto& copy =
+            test_ir_access::get<Cp>(owned->functions.front().body.front());
+        const auto context = im2col_context(item.parsed_version, item.target);
+        EXPECT_EQ(checker::check(copy, context).has_value(), item.valid)
+            << instruction << " / " << item.version << " / " << item.target;
+        EXPECT_EQ(validateModule(*owned,
+                                 ModuleValidationPolicy::RequireCompleteContext)
+                      .has_value(),
+                  item.valid)
+            << instruction << " / " << item.version << " / " << item.target;
+      }
+    }
   }
 }
 

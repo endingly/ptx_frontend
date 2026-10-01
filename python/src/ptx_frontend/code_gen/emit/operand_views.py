@@ -60,6 +60,10 @@ def emit_check_modifier_view(
                   .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
                   .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
                   .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
+                  .tcgen_shape = {members[ResolvedValueKind.TCGEN_SHAPE]},
+                  .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
+                  .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
+                  .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .locations = {locations},
@@ -147,6 +151,10 @@ def emit_check_modifier_value_view(
                   .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
                   .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
                   .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
+                  .tcgen_shape = {members[ResolvedValueKind.TCGEN_SHAPE]},
+                  .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
+                  .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
+                  .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .is_present = {is_present},
@@ -580,9 +588,11 @@ def emit_check_operand_view(
                 }};
               }}()"""
     if field.value_kind in {ResolvedValueKind.REG_OR_IMM,
-                            ResolvedValueKind.TENSOR_MEMORY_ADDRESS}:
+                            ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
+                            ResolvedValueKind.TCGEN_BRACKETED_ADDRESS}:
         source = (f"{object_name}.{field.name}.value.value"
-                  if field.value_kind is ResolvedValueKind.TENSOR_MEMORY_ADDRESS
+                  if field.value_kind in {ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
+                                          ResolvedValueKind.TCGEN_BRACKETED_ADDRESS}
                   else f"{object_name}.{field.name}.value")
         return f"""              [&]() -> OperandView {{
                 if (const auto* immediate =
@@ -611,6 +621,12 @@ def emit_check_operand_view(
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
+    if field.value_kind is ResolvedValueKind.TCGEN_HALF_SPLIT_OFFSET:
+        return f"""              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_kind is ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL:
         return f"""              [&]() -> OperandView {{
                 const auto& control = {object_name}.{field.name}.value;

@@ -252,6 +252,14 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
     case ModifierValueKind::TcgenCtaGroup:
       return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
+    case ModifierValueKind::TcgenDataMovementShape:
+      return descriptor.tcgen_shape == actual.tcgen_shape;
+    case ModifierValueKind::TcgenRepeat:
+      return descriptor.tcgen_repeat == actual.tcgen_repeat;
+    case ModifierValueKind::TcgenReductionOp:
+      return descriptor.tcgen_reduction_op == actual.tcgen_reduction_op;
+    case ModifierValueKind::TcgenWaitClass:
+      return descriptor.tcgen_wait_class == actual.tcgen_wait_class;
     case ModifierValueKind::AsyncProxyKind:
       return descriptor.async_proxy_kind == actual.async_proxy_kind;
     case ModifierValueKind::ProxyKindPair:
@@ -1957,6 +1965,146 @@ CheckResult check_tcgen_allocation_result_slot(
                  "scalar General-class b32/s32/u32/b64/s64/u64 pointer "
                  "carrier with known declaration type when bound.",
   }});
+}
+
+/** Decode the closed repeat domain without accepting an invalid enum tag. */
+static size_t tcgen_repeat_count(TcgenRepeat repeat) noexcept {
+  switch (repeat) {
+    case TcgenRepeat::X1:
+      return 1;
+    case TcgenRepeat::X2:
+      return 2;
+    case TcgenRepeat::X4:
+      return 4;
+    case TcgenRepeat::X8:
+      return 8;
+    case TcgenRepeat::X16:
+      return 16;
+    case TcgenRepeat::X32:
+      return 32;
+    case TcgenRepeat::X64:
+      return 64;
+    case TcgenRepeat::X128:
+      return 128;
+  }
+  return 0;
+}
+
+CheckResult check_tcgen_transfer_rule(std::span<const FieldView> fields,
+                                      std::span<const OperandView> operands,
+                                      bool reduction, const Context& context) {
+  const FieldView* shape = find_field(fields, "shape");
+  const FieldView* num = find_field(fields, "num");
+  const OperandView* r = find_operand(operands, "r");
+  if (!shape || !shape->tcgen_shape || !num || !num->tcgen_repeat || !r)
+    return cvt_rule_violation(context,
+                              "Tensor Memory transfer metadata is missing.");
+  const size_t repeat = tcgen_repeat_count(*num->tcgen_repeat);
+  size_t multiplier = 0;
+  size_t maximum_repeat = 128;
+  switch (*shape->tcgen_shape) {
+    case TcgenDataMovementShape::S32x32b:
+    case TcgenDataMovementShape::S16x64b:
+    case TcgenDataMovementShape::S16x32bx2:
+      multiplier = 1;
+      break;
+    case TcgenDataMovementShape::S16x128b:
+      multiplier = 2;
+      maximum_repeat = 64;
+      break;
+    case TcgenDataMovementShape::S16x256b:
+      multiplier = 4;
+      maximum_repeat = 32;
+      break;
+  }
+  if (!multiplier || !repeat || repeat > maximum_repeat ||
+      (reduction &&
+       (repeat == 1 ||
+        (*shape->tcgen_shape != TcgenDataMovementShape::S32x32b &&
+         *shape->tcgen_shape != TcgenDataMovementShape::S16x32bx2))) ||
+      r->vector_arity != multiplier * repeat) {
+    return cvt_rule_violation(context,
+                              "Tensor Memory transfer has an invalid shape, "
+                              "repeat, or fragment cardinality.",
+                              CheckDiagnosticKind::InvalidVectorOperand);
+  }
+  return {};
+}
+
+/** Check a 32-bit General scalar carrier without requiring standalone types. */
+static bool tcgen_scalar_register32(const ResolvedRegisterRef& value) noexcept {
+  return value.register_class == ResolvedRegisterClass::General &&
+         !value.vector_width &&
+         (!value.declared_type
+              ? !value.symbol_id
+              : base::scalar_size_of(*value.declared_type) == 4 &&
+                    base::scalar_types_compatible(*value.declared_type,
+                                                  ScalarType::B32));
+}
+
+CheckResult check_tcgen_transfer_address(
+    const WithLocs<TensorMemoryAddress>& address, const Context& context) {
+  if (!address.value.bracketed)
+    return cvt_rule_violation(
+        context, "Tensor Memory transfer requires bracketed taddr.");
+  if (const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&address.value.value)) {
+    if (register_ref->register_class != ResolvedRegisterClass::General ||
+        register_ref->vector_width ||
+        (register_ref->symbol_id && !register_ref->declared_type) ||
+        (register_ref->declared_type &&
+         (!base::scalar_types_compatible(*register_ref->declared_type,
+                                         ScalarType::U32) ||
+          base::scalar_size_of(*register_ref->declared_type) != 4))) {
+      return cvt_rule_violation(
+          context,
+          "Tensor Memory address requires a scalar General 32-bit register.",
+          CheckDiagnosticKind::OperandTypeMismatch);
+    }
+  } else if (const auto* immediate =
+                 std::get_if<ResolvedImmediate>(&address.value.value)) {
+    if (immediate->type != ScalarType::U32 || !immediate->integer_source_bits ||
+        immediate->bits !=
+            (*immediate->integer_source_bits & uint64_t{0xffffffff})) {
+      return cvt_rule_violation(
+          context, "Tensor Memory address lost its 32-bit source conversion.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
+    }
+  }
+  return {};
+}
+
+CheckResult check_tcgen_transfer_fragment(
+    const WithLocs<ResolvedRegisterVector>& fragment, const Context& context) {
+  for (const auto& lane : fragment.value.elements) {
+    if (!lane || !tcgen_scalar_register32(*lane))
+      return cvt_rule_violation(context,
+                                "Tensor Memory fragment requires scalar "
+                                "General 32-bit registers without sinks.",
+                                CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  return {};
+}
+
+CheckResult check_tcgen_reduction_result(
+    const WithLocs<ResolvedRegisterRef>& result, const Context& context) {
+  if (!tcgen_scalar_register32(result.value))
+    return cvt_rule_violation(context,
+                              "Tensor Memory reduction result requires a "
+                              "scalar General 32-bit register.",
+                              CheckDiagnosticKind::OperandTypeMismatch);
+  return {};
+}
+
+CheckResult check_tcgen_half_split_offset(
+    const WithLocs<TcgenHalfSplitOffset>& offset, const Context& context) {
+  if (offset.value.source_kind != TcgenIntegerSourceKind::Signed &&
+      offset.value.source_kind != TcgenIntegerSourceKind::Unsigned)
+    return cvt_rule_violation(
+        context,
+        "Tensor Memory split offset has invalid integer-source metadata.",
+        CheckDiagnosticKind::ImmediateValueMismatch);
+  return {};
 }
 
 CheckResult check_memory_consistency(

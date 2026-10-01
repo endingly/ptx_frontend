@@ -278,6 +278,60 @@ resolve_tcgen_cta_group(const syntax_ast::AstModifier& modifier) {
   return WithLocs<TcgenCtaGroup>{*value, modifier.syntax.range};
 }
 
+/** Resolve one closed Tensor Memory register-transfer shape suffix. */
+std::expected<WithLocs<TcgenDataMovementShape>, ResolveDiagnostic>
+resolve_tcgen_shape(const syntax_ast::AstModifier& modifier) {
+  std::optional<TcgenDataMovementShape> value;
+  const std::string_view spelling = modifier.syntax.text;
+  if (spelling == ".32x32b")
+    value = TcgenDataMovementShape::S32x32b;
+  else if (spelling == ".16x64b")
+    value = TcgenDataMovementShape::S16x64b;
+  else if (spelling == ".16x128b")
+    value = TcgenDataMovementShape::S16x128b;
+  else if (spelling == ".16x256b")
+    value = TcgenDataMovementShape::S16x256b;
+  else if (spelling == ".16x32bx2")
+    value = TcgenDataMovementShape::S16x32bx2;
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{modifier.syntax.range,
+                                             "Unknown Tensor Memory shape."});
+  return WithLocs<TcgenDataMovementShape>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed Tensor Memory repeat suffix. */
+std::expected<WithLocs<TcgenRepeat>, ResolveDiagnostic> resolve_tcgen_repeat(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value =
+      lookup_ptx_suffix(generated_detail::kTcgenRepeats, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{modifier.syntax.range,
+                                             "Unknown Tensor Memory repeat."});
+  return WithLocs<TcgenRepeat>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed Tensor Memory reduction operation. */
+std::expected<WithLocs<TcgenReductionOp>, ResolveDiagnostic>
+resolve_tcgen_reduction_op(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenReductionOps,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        modifier.syntax.range, "Unknown Tensor Memory reduction."});
+  return WithLocs<TcgenReductionOp>{*value, modifier.syntax.range};
+}
+
+/** Resolve the load or store class selected by a Tensor Memory wait. */
+std::expected<WithLocs<TcgenWaitClass>, ResolveDiagnostic>
+resolve_tcgen_wait_class(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenWaitClasses,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        modifier.syntax.range, "Unknown Tensor Memory wait class."});
+  return WithLocs<TcgenWaitClass>{*value, modifier.syntax.range};
+}
+
 std::expected<WithLocs<AsyncProxyKind>, ResolveDiagnostic>
 resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
   const auto value = lookup_ptx_suffix(generated_detail::kAsyncProxyKinds,
@@ -382,6 +436,10 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_phase_type,
                                  resolve_mbarrier_phase_type)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_layout, resolve_mbarrier_layout)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_cta_group, resolve_tcgen_cta_group)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_shape, resolve_tcgen_shape)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_repeat, resolve_tcgen_repeat)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_reduction_op, resolve_tcgen_reduction_op)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_wait_class, resolve_tcgen_wait_class)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(async_proxy_kind, resolve_async_proxy_kind)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(proxy_kind_pair, resolve_proxy_kind_pair)
 
@@ -423,6 +481,13 @@ PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_layout, MbarrierLayout, mbarrier_layout,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(tcgen_cta_group, TcgenCtaGroup, tcgen_cta_group,
                             true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_shape, TcgenDataMovementShape, tcgen_shape,
+                            true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_repeat, TcgenRepeat, tcgen_repeat, true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_reduction_op, TcgenReductionOp,
+                            tcgen_reduction_op, true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_wait_class, TcgenWaitClass, tcgen_wait_class,
+                            true)
 PTX_DEFINE_MODIFIER_DEFAULT(async_proxy_kind, AsyncProxyKind, async_proxy_kind,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(proxy_kind_pair, ProxyKindPair, proxy_kind_pair,
@@ -459,42 +524,51 @@ struct ModifierDomainMapping {
 };
 
 /** One private table owns modifier kind, parser, and default associations. */
-#define PTX_MODIFIER_DOMAIN_TABLE(X)                                          \
-  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean",        \
-    Supported)                                                                \
-  X(ScalarType, ScalarType, parse_scalar_type_modifier,                       \
-    default_scalar_type_modifier, "scalar-type", Supported)                   \
-  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                 \
-    default_rounding_mode_modifier, "rounding-mode", Supported)               \
-  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,    \
-    "comparison-operator", UnsupportedDomain)                                 \
-  X(TestProperty, None, parse_test_property_modifier, nullptr,                \
-    "test-property", UnsupportedDomain)                                       \
-  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,          \
-    "boolean-operator", UnsupportedDomain)                                    \
-  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,              \
-    default_cache_operator_modifier, "cache-operator", Supported)             \
-  X(EvictionPriority, EvictionPriority, parse_eviction_priority_modifier,     \
-    default_eviction_priority_modifier, "eviction-priority", Supported)       \
-  X(PrefetchSize, PrefetchSize, parse_prefetch_size_modifier,                 \
-    default_prefetch_size_modifier, "prefetch size", Supported)               \
-  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,  \
-    default_memory_consistency_modifier, "memory-consistency", Supported)     \
-  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                    \
-    default_memory_scope_modifier, "memory-scope", Supported)                 \
-  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity",  \
-    NonModifierDomain)                                                        \
-  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,    \
-    default_memory_state_space_modifier, "memory-state-space", Supported)     \
-  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier, \
-    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)   \
-  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,           \
-    default_mbarrier_layout_modifier, "mbarrier layout", Supported)           \
-  X(TcgenCtaGroup, TcgenCtaGroup, parse_tcgen_cta_group_modifier,             \
-    default_tcgen_cta_group_modifier, "Tensor Memory CTA group", Supported)   \
-  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,          \
-    default_async_proxy_kind_modifier, "async proxy", Supported)              \
-  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,             \
+#define PTX_MODIFIER_DOMAIN_TABLE(X)                                           \
+  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean",         \
+    Supported)                                                                 \
+  X(ScalarType, ScalarType, parse_scalar_type_modifier,                        \
+    default_scalar_type_modifier, "scalar-type", Supported)                    \
+  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                  \
+    default_rounding_mode_modifier, "rounding-mode", Supported)                \
+  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,     \
+    "comparison-operator", UnsupportedDomain)                                  \
+  X(TestProperty, None, parse_test_property_modifier, nullptr,                 \
+    "test-property", UnsupportedDomain)                                        \
+  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,           \
+    "boolean-operator", UnsupportedDomain)                                     \
+  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,               \
+    default_cache_operator_modifier, "cache-operator", Supported)              \
+  X(EvictionPriority, EvictionPriority, parse_eviction_priority_modifier,      \
+    default_eviction_priority_modifier, "eviction-priority", Supported)        \
+  X(PrefetchSize, PrefetchSize, parse_prefetch_size_modifier,                  \
+    default_prefetch_size_modifier, "prefetch size", Supported)                \
+  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,   \
+    default_memory_consistency_modifier, "memory-consistency", Supported)      \
+  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                     \
+    default_memory_scope_modifier, "memory-scope", Supported)                  \
+  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity",   \
+    NonModifierDomain)                                                         \
+  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,     \
+    default_memory_state_space_modifier, "memory-state-space", Supported)      \
+  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier,  \
+    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)    \
+  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,            \
+    default_mbarrier_layout_modifier, "mbarrier layout", Supported)            \
+  X(TcgenCtaGroup, TcgenCtaGroup, parse_tcgen_cta_group_modifier,              \
+    default_tcgen_cta_group_modifier, "Tensor Memory CTA group", Supported)    \
+  X(TcgenDataMovementShape, TcgenDataMovementShape,                            \
+    parse_tcgen_shape_modifier, default_tcgen_shape_modifier,                  \
+    "Tensor Memory shape", Supported)                                          \
+  X(TcgenRepeat, TcgenRepeat, parse_tcgen_repeat_modifier,                     \
+    default_tcgen_repeat_modifier, "Tensor Memory repeat", Supported)          \
+  X(TcgenReductionOp, TcgenReductionOp, parse_tcgen_reduction_op_modifier,     \
+    default_tcgen_reduction_op_modifier, "Tensor Memory reduction", Supported) \
+  X(TcgenWaitClass, TcgenWaitClass, parse_tcgen_wait_class_modifier,           \
+    default_tcgen_wait_class_modifier, "Tensor Memory wait", Supported)        \
+  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,           \
+    default_async_proxy_kind_modifier, "async proxy", Supported)               \
+  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,              \
     default_proxy_kind_pair_modifier, "proxy pair", Supported)
 
 /** Number of contiguous modifier domains at the start of ResolvedValueKind. */

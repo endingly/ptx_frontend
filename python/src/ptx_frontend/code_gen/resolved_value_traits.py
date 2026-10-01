@@ -93,6 +93,22 @@ _RESOLVED_MODIFIER_VALUE_TRAITS: dict[
         cpp_domain=CppDomain.TCGEN_CTA_GROUPS,
         descriptor_member="tcgen_cta_group",
     ),
+    ResolvedValueKind.TCGEN_SHAPE: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_DATA_SHAPES,
+        descriptor_member="tcgen_shape",
+    ),
+    ResolvedValueKind.TCGEN_NUM: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_REPEATS,
+        descriptor_member="tcgen_repeat",
+    ),
+    ResolvedValueKind.TCGEN_RED_OP: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_REDUCTION_OPS,
+        descriptor_member="tcgen_reduction_op",
+    ),
+    ResolvedValueKind.TCGEN_WAIT: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_WAIT_CLASSES,
+        descriptor_member="tcgen_wait_class",
+    ),
     ResolvedValueKind.ASYNC_PROXY_KIND: ResolvedValueTraits(
         cpp_domain=CppDomain.ASYNC_PROXY_KINDS,
         descriptor_member="async_proxy_kind",

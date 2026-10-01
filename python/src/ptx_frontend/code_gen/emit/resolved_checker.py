@@ -547,6 +547,46 @@ def _emit_cross_rule_checks(
                                  tcgen_result_slot_check.error().end());
             }
 """
+    if variant.rule in {
+        SemanticRule.TENSOR_MEMORY_LOAD,
+        SemanticRule.TENSOR_MEMORY_STORE,
+        SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION,
+    }:
+        reduction = "true" if variant.rule is SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION else "false"
+        checks += f"""            const auto tcgen_transfer_check = check_tcgen_transfer_rule(
+                fields, operands, {reduction}, context);
+            if (!tcgen_transfer_check) {{
+              diagnostics.insert(diagnostics.end(), tcgen_transfer_check.error().begin(),
+                                 tcgen_transfer_check.error().end());
+            }}
+"""
+        for label, expression in (
+            ("address", "check_tcgen_transfer_address(selected.taddr, context)"),
+            ("fragment", "check_tcgen_transfer_fragment(selected.r, context)"),
+        ):
+            checks += f"""            const auto tcgen_{label}_check = {expression};
+            if (!tcgen_{label}_check) {{
+              diagnostics.insert(diagnostics.end(), tcgen_{label}_check.error().begin(),
+                                 tcgen_{label}_check.error().end());
+            }}
+"""
+        if variant.rule is SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION:
+            checks += """            const auto tcgen_result_check = check_tcgen_reduction_result(
+                selected.redval, context);
+            if (!tcgen_result_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_result_check.error().begin(),
+                                 tcgen_result_check.error().end());
+            }
+"""
+        if any(field.name == "splitoff" for layout in variant.operand_layouts
+               for field in layout.fields):
+            checks += """            const auto tcgen_split_check = check_tcgen_half_split_offset(
+                selected.splitoff, context);
+            if (!tcgen_split_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_split_check.error().begin(),
+                                 tcgen_split_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

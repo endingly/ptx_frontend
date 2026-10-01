@@ -8,6 +8,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
@@ -1947,6 +1948,65 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       address.locs = std::move(value->locs);
       return ResolvedFieldValue{std::move(address)};
     }
+    case ResolvedValueKind::TcgenBracketedAddress: {
+      const auto* source = std::get_if<syntax_ast::AstAddress>(&operand);
+      if (!source || !source->bracketed || source->offset || source->unified) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "Tensor Memory transfer requires a simple [taddr].",
+        });
+      }
+      const syntax_ast::AstOperand base = std::visit(
+          [](const auto& value) -> syntax_ast::AstOperand { return value; },
+          source->base);
+      auto value = resolve_reg_or_imm(base, ScalarType::U32, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<TensorMemoryAddress> address{TensorMemoryAddress{
+          .value = std::move(value->value), .bracketed = true}};
+      address.locs = {source->range};
+      return ResolvedFieldValue{std::move(address)};
+    }
+    case ResolvedValueKind::TcgenHalfSplitOffset: {
+      const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
+      if (!immediate ||
+          (immediate->kind != syntax_ast::AstImmediateKind::DecimalInteger &&
+           immediate->kind != syntax_ast::AstImmediateKind::HexInteger &&
+           immediate->kind != syntax_ast::AstImmediateKind::WarpSize)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "Tensor Memory half-split offset requires an integer "
+                       "immediate.",
+        });
+      }
+      std::string_view text = immediate->syntax.text;
+      bool negative = false;
+      if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
+        negative = text.front() == '-';
+        text.remove_prefix(1);
+      }
+      const auto parsed =
+          immediate->kind == syntax_ast::AstImmediateKind::WarpSize
+              ? std::optional<uint64_t>{32}
+              : base::parseIntegerMagnitude(text);
+      if (!parsed) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = immediate->syntax.range,
+            .message = "Invalid half-split integer source literal.",
+        });
+      }
+      const uint64_t magnitude = *parsed;
+      const bool unsigned_source =
+          text.ends_with('u') || text.ends_with('U') ||
+          magnitude >
+              static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+      return ResolvedFieldValue{WithLocs<TcgenHalfSplitOffset>{
+          TcgenHalfSplitOffset{
+              .source_bits = negative ? uint64_t{0} - magnitude : magnitude,
+              .source_kind = unsigned_source ? TcgenIntegerSourceKind::Unsigned
+                                             : TcgenIntegerSourceKind::Signed},
+          immediate->syntax.range}};
+    }
     case ResolvedValueKind::CpAsyncSourceControl: {
       const auto range = syntax_ast::sourceRange(operand);
       if (const auto* immediate =
@@ -2182,6 +2242,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MbarrierPhaseType:
     case ResolvedValueKind::MbarrierLayout:
     case ResolvedValueKind::TcgenCtaGroup:
+    case ResolvedValueKind::TcgenDataMovementShape:
+    case ResolvedValueKind::TcgenRepeat:
+    case ResolvedValueKind::TcgenReductionOp:
+    case ResolvedValueKind::TcgenWaitClass:
     case ResolvedValueKind::AsyncProxyKind:
     case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(

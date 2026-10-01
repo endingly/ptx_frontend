@@ -28,6 +28,7 @@ class SemanticDomain(Enum):
     MEMORY_STATE_SPACE = "memory_state_space"
     MBARRIER_PHASE_TYPE = "mbarrier_phase_type"
     MBARRIER_LAYOUT = "mbarrier_layout"
+    CTA_GROUP = "cta_group"
     ASYNC_PROXY_KIND = "async_proxy_kind"
     PROXY_KIND_PAIR = "proxy_kind_pair"
     SPECIAL_REGISTER = "special_register"
@@ -50,6 +51,7 @@ MODIFIER_SEMANTIC_DOMAINS = MappingProxyType({
     ModifierKind.STATE_SPACE: SemanticDomain.MEMORY_STATE_SPACE,
     ModifierKind.PHASE_TYPE: SemanticDomain.MBARRIER_PHASE_TYPE,
     ModifierKind.MBARRIER_LAYOUT: SemanticDomain.MBARRIER_LAYOUT,
+    ModifierKind.CTA_GROUP: SemanticDomain.CTA_GROUP,
     ModifierKind.PROXY: SemanticDomain.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: SemanticDomain.PROXY_KIND_PAIR,
 })
@@ -98,6 +100,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
         "phase_type::primary", "phase_type::conditional",
     }),
     SemanticDomain.MBARRIER_LAYOUT: frozenset({"layout::v0", "layout::v1"}),
+    SemanticDomain.CTA_GROUP: frozenset({"cta_group::1", "cta_group::2"}),
     SemanticDomain.ASYNC_PROXY_KIND: frozenset({
         "async", "async.global", "async.shared::cta", "async.shared::cluster",
     }),

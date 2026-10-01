@@ -250,6 +250,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
     case ModifierValueKind::MbarrierLayout:
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::TcgenCtaGroup:
+      return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
     case ModifierValueKind::AsyncProxyKind:
       return descriptor.async_proxy_kind == actual.async_proxy_kind;
     case ModifierValueKind::ProxyKindPair:
@@ -1846,6 +1848,115 @@ CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
     }});
   }
   return {};
+}
+
+/** Revalidate converted allocation scalars and the shared result-slot role. */
+CheckResult check_tcgen_allocation_rule(TcgenAllocationAction action,
+                                        std::span<const OperandView> operands,
+                                        const Context& context) {
+  CheckDiagnostics diagnostics;
+  const auto reject = [&](const OperandView* operand, CheckDiagnosticKind kind,
+                          std::string_view message) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = kind,
+        .range = operand ? diagnostic_range(operand->locations, context)
+                         : context.instruction_range,
+        .message = std::string(message),
+    });
+  };
+  const auto check_scalar = [&](const OperandView* operand,
+                                bool is_column_count) {
+    if (!operand) {
+      reject(nullptr, CheckDiagnosticKind::MissingOperand,
+             "Tensor Memory allocation is missing an operand.");
+      return;
+    }
+    if (operand->actual_shape == OperandShape::Register) {
+      if (operand->register_class != ResolvedRegisterClass::General ||
+          operand->register_vector_width || !operand->register_type ||
+          (*operand->register_type != ScalarType::B32 &&
+           *operand->register_type != ScalarType::U32 &&
+           *operand->register_type != ScalarType::S32)) {
+        reject(operand, CheckDiagnosticKind::OperandTypeMismatch,
+               "Tensor Memory scalar requires a general-class scalar "
+               "b32/u32/s32 register.");
+      }
+      return;
+    }
+    if (operand->actual_shape != OperandShape::Immediate ||
+        operand->immediate_type != ScalarType::U32 ||
+        !operand->immediate_bits || !operand->integer_source_bits ||
+        !operand->immediate_is_negative ||
+        *operand->immediate_bits !=
+            (*operand->integer_source_bits & uint64_t{0xffffffff})) {
+      reject(operand, CheckDiagnosticKind::ImmediateValueMismatch,
+             "Tensor Memory immediate must retain its 32-bit converted "
+             "value and integer source.");
+      return;
+    }
+    if (is_column_count && *operand->immediate_bits != 32 &&
+        *operand->immediate_bits != 64 && *operand->immediate_bits != 128 &&
+        *operand->immediate_bits != 256 && *operand->immediate_bits != 512) {
+      reject(operand, CheckDiagnosticKind::ImmediateValueMismatch,
+             "Tensor Memory column count must convert to 32, 64, 128, "
+             "256, or 512.");
+    }
+  };
+
+  switch (action) {
+    case TcgenAllocationAction::Alloc: {
+      const OperandView* slot = find_operand(operands, "dst");
+      if (!slot || slot->actual_shape != OperandShape::Address ||
+          (slot->address_state_space &&
+           *slot->address_state_space != MemoryStateSpace::Shared)) {
+        reject(slot, CheckDiagnosticKind::AddressStateSpaceMismatch,
+               "Tensor Memory allocation result requires a shared-CTA "
+               "slot or an unresolved generic shared-window pointer.");
+      }
+      check_scalar(find_operand(operands, "ncols"), true);
+      break;
+    }
+    case TcgenAllocationAction::Dealloc:
+      check_scalar(find_operand(operands, "taddr"), false);
+      check_scalar(find_operand(operands, "ncols"), true);
+      break;
+    case TcgenAllocationAction::RelinquishAllocPermit:
+      break;
+    default:
+      reject(nullptr, CheckDiagnosticKind::RuleViolation,
+             "Tensor Memory allocation action is invalid.");
+      break;
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+/** Preserve the allocation slot's scalar pointer contract in owned checking. */
+CheckResult check_tcgen_allocation_result_slot(
+    const WithLocs<ResolvedAddress>& slot, const Context& context) {
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(&slot.value.base);
+  if (!register_ref)
+    return {};
+  const auto type = register_ref->declared_type;
+  const bool scalar_pointer_type =
+      type &&
+      (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+       base::scalar_kind(*type) == base::ScalarKind::Signed ||
+       base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+      (base::scalar_size_of(*type) == 4 || base::scalar_size_of(*type) == 8);
+  if (register_ref->register_class == ResolvedRegisterClass::General &&
+      !register_ref->vector_width &&
+      (scalar_pointer_type || (!type && !register_ref->symbol_id))) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(slot.locs, context),
+      .message = "Tensor Memory allocation result-slot register must be a "
+                 "scalar General-class b32/s32/u32/b64/s64/u64 pointer "
+                 "carrier with known declaration type when bound.",
+  }});
 }
 
 CheckResult check_memory_consistency(

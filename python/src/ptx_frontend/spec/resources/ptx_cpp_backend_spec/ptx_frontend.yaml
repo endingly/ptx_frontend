@@ -237,6 +237,14 @@ domains:
       layout::v0: MbarrierLayout::V0
       layout::v1: MbarrierLayout::V1
 
+  tcgen_cta_groups:
+    cpp_type: TcgenCtaGroup
+    default: TcgenCtaGroup::One
+    runtime_lookup: ptx_suffix
+    values:
+      cta_group::1: TcgenCtaGroup::One
+      cta_group::2: TcgenCtaGroup::Two
+
   async_proxy_kinds:
     cpp_type: AsyncProxyKind
     default: AsyncProxyKind::Async
@@ -295,6 +303,7 @@ domains:
       MemoryStateSpace: MemoryStateSpace
       MbarrierPhaseType: MbarrierPhaseType
       MbarrierLayout: MbarrierLayout
+      TcgenCtaGroup: TcgenCtaGroup
       AsyncProxyKind: AsyncProxyKind
       ProxyKindPair: ProxyKindPair
       Register: ResolvedRegisterRef
@@ -318,6 +327,7 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
+      TensorMemoryAddress: TensorMemoryAddress
       MatrixScaleSelector: ResolvedMatrixScaleSelector
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
@@ -385,6 +395,7 @@ domains:
       MemoryStateSpace: check_end::ResolvedValueKind::MemoryStateSpace
       MbarrierPhaseType: check_end::ResolvedValueKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
+      TcgenCtaGroup: check_end::ResolvedValueKind::TcgenCtaGroup
       AsyncProxyKind: check_end::ResolvedValueKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedValueKind::ProxyKindPair
       MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
@@ -408,6 +419,7 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
+      TensorMemoryAddress: check_end::ResolvedValueKind::TensorMemoryAddress
       MatrixScaleSelector: check_end::ResolvedValueKind::MatrixScaleSelector
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
@@ -474,6 +486,7 @@ domains:
       MemoryStateSpace: check_end::ResolvedModifierDefaultKind::MemoryStateSpace
       MbarrierPhaseType: check_end::ResolvedModifierDefaultKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
+      TcgenCtaGroup: check_end::ResolvedModifierDefaultKind::TcgenCtaGroup
       AsyncProxyKind: check_end::ResolvedModifierDefaultKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedModifierDefaultKind::ProxyKindPair
 
@@ -495,5 +508,6 @@ domains:
       MemoryStateSpace: checker::ModifierValueKind::MemoryStateSpace
       MbarrierPhaseType: checker::ModifierValueKind::MbarrierPhaseType
       MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
+      TcgenCtaGroup: checker::ModifierValueKind::TcgenCtaGroup
       AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
       ProxyKindPair: checker::ModifierValueKind::ProxyKindPair

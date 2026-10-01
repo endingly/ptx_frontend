@@ -3,6 +3,7 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
@@ -454,6 +455,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
@@ -507,6 +509,9 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, RegOrImm>) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, TensorMemoryAddress>) {
+    collect_operand_references(value.value, locations, fallback, uses,
+                               address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedCpAsyncSourceControl>) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
@@ -615,6 +620,7 @@ void collect_owned_reference(detail::OwnedReferenceView view,
   PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedMatrixScaleSelector)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
+  PTX_COLLECT_OWNED_REFERENCE(TensorMemoryAddress)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)
   PTX_COLLECT_OWNED_REFERENCE(ResolvedCallParameterRef)
@@ -863,6 +869,41 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
           }
         },
         copy->variant);
+  }
+}
+
+/** Compare TCGEN CTA groups only within this function's owned body. */
+void check_tcgen_cta_groups(const ResolvedFunction& function,
+                            checker::CheckDiagnostics& diagnostics) {
+  std::optional<TcgenCtaGroup> group;
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    const auto* instruction = instruction_if<Tcgen05>(function.body[index]);
+    if (!instruction)
+      continue;
+    if (instruction->variant.valueless_by_exception()) {
+      append_model_mismatch(diagnostics, function.instruction_ranges[index],
+                            "Tensor Memory instruction has no owned form.");
+      continue;
+    }
+    const auto current = std::visit(
+        [](const auto& selected) -> std::optional<TcgenCtaGroup> {
+          if constexpr (requires { selected.cta_group.value; })
+            return selected.cta_group.value;
+          return std::nullopt;
+        },
+        instruction->variant);
+    if (!current)
+      continue;
+    if (!group) {
+      group = current;
+    } else if (*group != *current) {
+      diagnostics.push_back(checker::CheckDiagnostic{
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = function.instruction_ranges[index],
+          .message = "Tensor Memory CTA group conflicts with another "
+                     "instruction in this function body.",
+      });
+    }
   }
 }
 
@@ -1766,6 +1807,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
+      check_tcgen_cta_groups(function, diagnostics);
       check_cp_async_control_bindings(module, function, diagnostics);
       check_st_bulk_size_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,

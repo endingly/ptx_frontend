@@ -131,6 +131,13 @@ CheckResult check_red_async_release_qualifiers(std::span<const FieldView>,
 /** Gate the 32-bit st.bulk size register at its PTX 9.0 introduction. */
 CheckResult check_st_bulk_size_width(std::span<const OperandView>,
                                      const Context&);
+/** Validate converted Tensor Memory allocation count, address, and slot roles. */
+CheckResult check_tcgen_allocation_rule(TcgenAllocationAction,
+                                        std::span<const OperandView>,
+                                        const Context&);
+/** Recheck the owned allocation result-slot register before view projection. */
+CheckResult check_tcgen_allocation_result_slot(const WithLocs<ResolvedAddress>&,
+                                               const Context&);
 /** Reject `.unified` address suffixes not explicitly admitted by a variant. */
 CheckResult check_unified_address_suffix(const VariantDescriptor&,
                                          std::span<const FieldView>,

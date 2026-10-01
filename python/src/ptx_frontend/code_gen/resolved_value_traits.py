@@ -89,6 +89,10 @@ _RESOLVED_MODIFIER_VALUE_TRAITS: dict[
         cpp_domain=CppDomain.MBARRIER_LAYOUTS,
         descriptor_member="mbarrier_layout",
     ),
+    ResolvedValueKind.CTA_GROUP: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_CTA_GROUPS,
+        descriptor_member="tcgen_cta_group",
+    ),
     ResolvedValueKind.ASYNC_PROXY_KIND: ResolvedValueTraits(
         cpp_domain=CppDomain.ASYNC_PROXY_KINDS,
         descriptor_member="async_proxy_kind",

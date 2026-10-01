@@ -20,6 +20,10 @@ supported surface and its exclusions.
   forms. Logical PTX forms retain individual contracts even when they share
   generated C++ storage. The coverage page records current local build and test
   results; assembler comparisons remain sampled.
+- [Tensor Memory allocation coverage](docs/us-en/tensor_memory_allocation_coverage.md)
+  and its [简体中文版本](docs/zh-han/tensor_memory_allocation_coverage.md)
+  define the `tcgen05` allocation, deallocation, and allocation-permit forms.
+  Load, store, wait, reduction, copy, and shift forms remain outside this slice.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

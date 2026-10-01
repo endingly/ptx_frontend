@@ -11,7 +11,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldStorage, ResolvedInstruction,
     ResolvedOperandLayout, ResolvedVariant,
 )
-from ptx_frontend.spec.model import CodegenUnit
+from ptx_frontend.spec.model import CodegenUnit, SemanticRule
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
 )
@@ -338,6 +338,23 @@ def _emit_resolved_variant_definition(
         "    WithLocs<MatrixInstructionDescriptor> matrix;\n"
         if variant.matrix is not None else ""
     )
+    tcgen_contracts = {
+        SemanticRule.TENSOR_MEMORY_ALLOC: ("Alloc", "RequiresPermit"),
+        SemanticRule.TENSOR_MEMORY_DEALLOC: ("Dealloc", "ReleasesAllocation"),
+        SemanticRule.TENSOR_MEMORY_RELINQUISH_ALLOC_PERMIT:
+            ("RelinquishAllocPermit", "RelinquishesPermit"),
+    }
+    tcgen_contract = ""
+    if variant.rule in tcgen_contracts:
+        action, effect = tcgen_contracts[variant.rule]
+        tcgen_contract = (
+            "    /** Canonical allocation-management action. */\n"
+            "    inline static constexpr TcgenAllocationAction allocation_action =\n"
+            f"        TcgenAllocationAction::{action};\n"
+            "    /** Permission obligation/effect; no CFG state is inferred. */\n"
+            "    inline static constexpr TcgenAllocationPermitEffect permit_effect =\n"
+            f"        TcgenAllocationPermitEffect::{effect};\n"
+        )
     modifier_fields = "\n".join(
         _emit_resolved_field(field, backend) for field in variant.modifier_fields
     )
@@ -371,6 +388,7 @@ def _emit_resolved_variant_definition(
     /** Instruction-local completion identity; no runtime group state is implied. */
     inline static constexpr base::AsyncCompletionKind completion_kind =
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
+{tcgen_contract}\
     ResolvedOperandLayoutTag operand_layout;
 {matrix_contract}\
 {body}

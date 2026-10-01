@@ -393,6 +393,7 @@ def _emit_modifier_value_descriptor(
               .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
               .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
               .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+              .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
               .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
               .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
 {availability}

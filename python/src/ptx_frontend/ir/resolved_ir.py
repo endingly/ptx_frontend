@@ -113,6 +113,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
+    OperandKind.TENSOR_MEMORY_ADDRESS: ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
     OperandKind.MATRIX_SCALE_SELECTOR: ResolvedValueKind.MATRIX_SCALE_SELECTOR,
     OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
     OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
@@ -515,6 +516,10 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
+    OperandKind.TENSOR_MEMORY_ADDRESS: (
+        ResolvedOperandShape.REGISTER,
+        ResolvedOperandShape.IMMEDIATE,
+    ),
     OperandKind.MATRIX_SCALE_SELECTOR: (ResolvedOperandShape.VECTOR,),
     OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
     OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),

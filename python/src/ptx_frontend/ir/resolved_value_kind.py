@@ -21,6 +21,7 @@ class ResolvedValueKind(Enum):
     MEMORY_STATE_SPACE = "MemoryStateSpace"
     MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
     MBARRIER_LAYOUT = "MbarrierLayout"
+    CTA_GROUP = "TcgenCtaGroup"
     ASYNC_PROXY_KIND = "AsyncProxyKind"
     PROXY_KIND_PAIR = "ProxyKindPair"
 
@@ -41,6 +42,7 @@ class ResolvedValueKind(Enum):
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
     TENSOR_COORDINATE = "TensorCoordinate"
+    TENSOR_MEMORY_ADDRESS = "TensorMemoryAddress"
     MATRIX_SCALE_SELECTOR = "MatrixScaleSelector"
     DIRECT_CALL_TARGET = "DirectCallTarget"
     INDIRECT_CALLEE = "IndirectCallee"

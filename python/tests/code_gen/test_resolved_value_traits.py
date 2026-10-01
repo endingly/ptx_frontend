@@ -64,6 +64,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ResolvedValueKind.MEMORY_SCOPE,
                     ResolvedValueKind.MBARRIER_PHASE_TYPE,
                     ResolvedValueKind.MBARRIER_LAYOUT,
+                    ResolvedValueKind.CTA_GROUP,
                     ResolvedValueKind.ASYNC_PROXY_KIND,
                     ResolvedValueKind.PROXY_KIND_PAIR,
                 }
@@ -155,6 +156,12 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ),
                     ModifierValueSpec(value=1),
                 )
+        with self.assertRaisesRegex(ValueError, "CTA group value must be a string"):
+            _build_modifier_value_availability(
+                ModifierSpec(name="cta_group", kind=ModifierKind.CTA_GROUP,
+                             presence=ModifierPresence.REQUIRED),
+                ModifierValueSpec(value=1),
+            )
 
     def test_policy_validates_every_modifier_kind_and_default_contract(self) -> None:
         modifier_kinds = {
@@ -173,6 +180,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             "state_space": ResolvedValueKind.MEMORY_STATE_SPACE,
             "phase_type": ResolvedValueKind.MBARRIER_PHASE_TYPE,
             "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
+            "cta_group": ResolvedValueKind.CTA_GROUP,
             "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
             "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
         }

@@ -52,6 +52,7 @@ enum class ResolvedValueKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
   AsyncProxyKind,
   ProxyKindPair,
   Register,
@@ -74,6 +75,7 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   TensorCoordinate,
+  TensorMemoryAddress,
   MatrixScaleSelector,
   DirectCallTarget,
   IndirectCallee,
@@ -138,6 +140,7 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -155,6 +158,7 @@ struct ResolvedModifierDefaultDescriptor {
   base::MbarrierPhaseType mbarrier_phase_type =
       base::MbarrierPhaseType::Primary;
   base::MbarrierLayout mbarrier_layout = base::MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   base::AsyncProxyKind async_proxy_kind = base::AsyncProxyKind::Async;
   base::ProxyKindPair proxy_kind_pair = base::ProxyKindPair::TensormapToGeneric;
   base::MemoryConsistency memory_consistency = base::MemoryConsistency::Omitted;

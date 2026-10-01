@@ -21,6 +21,7 @@ class ResolvedValueKind(Enum):
     MEMORY_STATE_SPACE = "MemoryStateSpace"
     MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
     MBARRIER_LAYOUT = "MbarrierLayout"
+    CTA_GROUP = "TcgenCtaGroup"
     ASYNC_PROXY_KIND = "AsyncProxyKind"
     PROXY_KIND_PAIR = "ProxyKindPair"
 

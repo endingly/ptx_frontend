@@ -19,7 +19,8 @@ class TensorNoOffsetsTests(unittest.TestCase):
     def test_complete_identity_and_binding_inventory(self) -> None:
         resolved = from_instruction_spec(self.cp)
         modes = {variant.variant_id: variant.tensor_access_mode
-                 for variant in resolved.variants}
+                 for variant in resolved.variants
+                 if not variant.variant_id.endswith("_cta_group")}
         no_offsets = {name for name, mode in modes.items()
                       if mode is TensorAccessMode.IM2COL_NO_OFFS}
         expected = {

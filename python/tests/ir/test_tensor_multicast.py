@@ -19,7 +19,8 @@ class TensorMulticastTests(unittest.TestCase):
     def test_fifteen_identities_and_twenty_four_layouts(self) -> None:
         resolved = from_instruction_spec(self.cp)
         selected = {variant.variant_id: variant for variant in resolved.variants
-                    if variant.tensor_multicast}
+                    if variant.tensor_multicast
+                    and not variant.variant_id.endswith("_cta_group")}
         expected = {
             f"cp_async_bulk_tensor_{rank}d_shared_cluster_multicast"
             for rank in range(1, 6)
@@ -33,10 +34,12 @@ class TensorMulticastTests(unittest.TestCase):
         self.assertEqual(set(selected), expected)
         self.assertEqual(sum(len(v.operand_layouts) for v in selected.values()), 24)
         old = [v for v in resolved.variants if v.tensor_access_mode is not None
-               and not v.tensor_multicast]
+               and not v.tensor_multicast
+               and not v.variant_id.endswith("_cta_group")]
         self.assertEqual(len(old), 118)
         self.assertEqual(sum(len(v.operand_layouts) for v in old), 145)
-        self.assertEqual(len(resolved.variants), 250)
+        self.assertEqual(sum(not v.variant_id.endswith("_cta_group")
+                             for v in resolved.variants), 250)
         for variant in selected.values():
             for layout in variant.operand_layouts:
                 fields = [field.name for field in layout.fields]

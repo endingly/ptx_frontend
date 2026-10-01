@@ -66,6 +66,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ResolvedValueKind.MBARRIER_LAYOUT,
                     ResolvedValueKind.ASYNC_PROXY_KIND,
                     ResolvedValueKind.PROXY_KIND_PAIR,
+                    ResolvedValueKind.CTA_GROUP,
                 }
             ),
         )
@@ -175,6 +176,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
             "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
             "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
+            "cta_group": ResolvedValueKind.CTA_GROUP,
         }
         self.assertEqual(
             frozenset(modifier_kinds.values()),

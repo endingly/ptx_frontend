@@ -49,6 +49,7 @@ REFERENCE_FREE_VALUE_KINDS = frozenset({
     ResolvedValueKind.MEMORY_STATE_SPACE,
     ResolvedValueKind.MBARRIER_PHASE_TYPE,
     ResolvedValueKind.MBARRIER_LAYOUT,
+    ResolvedValueKind.CTA_GROUP,
     ResolvedValueKind.ASYNC_PROXY_KIND,
     ResolvedValueKind.PROXY_KIND_PAIR,
     ResolvedValueKind.IMMEDIATE,

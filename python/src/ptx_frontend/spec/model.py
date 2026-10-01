@@ -111,6 +111,7 @@ class ModifierKind(_SemanticToken):
     LAYOUT = "layout"
     PHASE_TYPE = "phase_type"
     MBARRIER_LAYOUT = "mbarrier_layout"
+    CTA_GROUP = "cta_group"
     MEMORY_ORDER = "memory_order"
     PROXY = "proxy"
     PROXY_PAIR = "proxy_pair"

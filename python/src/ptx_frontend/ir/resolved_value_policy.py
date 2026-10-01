@@ -48,6 +48,7 @@ _MODIFIER_VALUE_KINDS: dict[ModifierKind, ResolvedValueKind] = {
     ModifierKind.STATE_SPACE: ResolvedValueKind.MEMORY_STATE_SPACE,
     ModifierKind.PHASE_TYPE: ResolvedValueKind.MBARRIER_PHASE_TYPE,
     ModifierKind.MBARRIER_LAYOUT: ResolvedValueKind.MBARRIER_LAYOUT,
+    ModifierKind.CTA_GROUP: ResolvedValueKind.CTA_GROUP,
     ModifierKind.PROXY: ResolvedValueKind.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: ResolvedValueKind.PROXY_KIND_PAIR,
 }
@@ -68,6 +69,7 @@ _STRING_POLICIES: dict[ResolvedValueKind, tuple[str, str, str, bool]] = {
     ResolvedValueKind.MEMORY_SCOPE: ("memory scope", "memory scope", "scope", True),
     ResolvedValueKind.MBARRIER_PHASE_TYPE: ("mbarrier phase-type", "mbarrier phase-type", "phase-type", True),
     ResolvedValueKind.MBARRIER_LAYOUT: ("mbarrier layout", "mbarrier layout", "mbarrier-layout", True),
+    ResolvedValueKind.CTA_GROUP: ("CTA group", "CTA group", "CTA-group", False),
     ResolvedValueKind.ASYNC_PROXY_KIND: ("async proxy", "async proxy", "async-proxy", True),
     ResolvedValueKind.PROXY_KIND_PAIR: ("proxy pair", "proxy pair", "proxy-pair", True),
 }

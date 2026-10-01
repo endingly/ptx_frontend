@@ -1765,6 +1765,76 @@ bool checkTensorMulticastContract() {
                  "installed multicast U16 source and info ordering retained");
 }
 
+/** Verify installed tensor group spelling, routing, and alias ownership. */
+bool checkTensorCtaGroupContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_110a
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 dst[1024];
+.shared .align 8 .b64 mbar;
+.entry kernel() {
+  .reg .s32 %r<3>;
+  .reg .u16 %info;
+  .reg .b16 %mask;
+  cp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes
+      [dst], [tensor_map, {%r0}], [mbar];
+  cp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.cta_group::1
+      [dst], [tensor_map, {%r0}], [mbar];
+  cp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.cta_group::2.multicast::cluster
+      [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%info}, %mask;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor group fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor group fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor group module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "mixed tensor group spellings retained"))
+    return false;
+  const auto* old_copy = outer_get_if<ir::Cp>(&body[0]);
+  const auto* one_copy = outer_get_if<ir::Cp>(&body[1]);
+  const auto* two_copy = outer_get_if<ir::Cp>(&body[2]);
+  if (!require(old_copy && one_copy && two_copy,
+               "tensor group Cp instructions retained"))
+    return false;
+  const auto* omitted =
+      std::get_if<ir::Cp::AsyncBulkTensor1dSharedCta>(&old_copy->variant);
+  const auto* one = std::get_if<ir::Cp::AsyncBulkTensor1dSharedCtaCtaGroup>(
+      &one_copy->variant);
+  const auto* two = std::get_if<
+      ir::Cp::AsyncBulkTensor3dSharedClusterIm2colMulticastCtaGroup>(
+      &two_copy->variant);
+  if (!require(omitted && one && two, "typed tensor group forms selected"))
+    return false;
+  const auto omitted_role = omitted->tensor_cta_group_role();
+  const auto one_role = one->tensor_cta_group_role();
+  const auto two_role = two->tensor_cta_group_role();
+  const bool roles_ok =
+      omitted_role && !omitted_role->spelled &&
+      omitted_role->effective == ir::TensorCtaGroup::One && one_role &&
+      one_role->spelled && one_role->spelled->locs.size() == 1 &&
+      one_role->effective == ir::TensorCtaGroup::One && two_role &&
+      two_role->spelled && two_role->spelled->locs.size() == 1 &&
+      two_role->effective == ir::TensorCtaGroup::Two &&
+      two_role->routing == ir::TensorCtaSignalRouting::MulticastParityPeers;
+  return require(
+      roles_ok, "installed tensor group provenance and alias routing retained");
+}
+
 int main() {
   using ptx_frontend::base::RoundingMode;
   using ptx_frontend::base::ScalarType;
@@ -1831,6 +1901,8 @@ int main() {
     return 23;
   if (!checkTensorMulticastContract())
     return 24;
+  if (!checkTensorCtaGroupContract())
+    return 25;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

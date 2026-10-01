@@ -279,6 +279,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
     case ModifierValueKind::MbarrierLayout:
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::TcgenCtaGroup:
+      return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
     case ModifierValueKind::AsyncProxyKind:
       return descriptor.async_proxy_kind == actual.async_proxy_kind;
     case ModifierValueKind::ProxyKindPair:
@@ -3084,6 +3086,19 @@ tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
 
 /** Validate the actual owned scalar source independently of operand views. */
 namespace checker {
+/** Reject a damaged written group before any generic field view loses location. */
+CheckResult check_tensor_cta_group(const WithLocs<TensorCtaGroup>& group,
+                                   const Context& context) {
+  if (!group.locs.empty() && (group.value == TensorCtaGroup::One ||
+                              group.value == TensorCtaGroup::Two))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(group.locs, context),
+      .message = "Tensor CTA group requires a located ::1 or ::2 suffix.",
+  }});
+}
+
 CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>& mask,
                                         const Context& context) {
   bool valid = !mask.locs.empty();

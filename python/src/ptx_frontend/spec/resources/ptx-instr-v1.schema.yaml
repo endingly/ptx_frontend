@@ -435,6 +435,7 @@ $defs:
       - layout
       - phase_type
       - mbarrier_layout
+      - cta_group
       - memory_order
       - proxy
       - proxy_pair
@@ -622,6 +623,7 @@ $defs:
                 - layout
                 - phase_type
                 - mbarrier_layout
+                - cta_group
                 - memory_order
                 - proxy
                 - proxy_pair

@@ -171,6 +171,15 @@ def _emit_check_variant_lambda(
         for slot_index, field in enumerate(modifier_fields)
     )
     operand_check = _emit_check_operand_dispatch(instruction, variant, variant_index, backend)
+    group_check = ""
+    if any(field.source_name == "cta_group" for field in modifier_fields):
+        group_check = """          const auto tensor_group_check = check_tensor_cta_group(
+              selected.cta_group, context);
+          if (!tensor_group_check) {
+            diagnostics.insert(diagnostics.end(), tensor_group_check.error().begin(),
+                               tensor_group_check.error().end());
+          }
+"""
     lambda_name = _check_lambda_name(instruction, variant)
     return f"""  const auto {lambda_name} =
       [&](const {instruction.cpp_name}::{variant.cpp_name}& selected) -> CheckResult {{
@@ -205,6 +214,7 @@ def _emit_check_variant_lambda(
                                modifier_availability.error().begin(),
                                modifier_availability.error().end());
           }}
+{group_check}\
 {operand_check}
           if (diagnostics.empty())
             return CheckResult{{}};
@@ -228,6 +238,20 @@ def _emit_check_operand_dispatch(
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
     cross_rule_checks = _emit_cross_rule_checks(instruction, variant, checker_variant_expr)
+    if (variant.tensor_cta_group_applicable
+            and any(field.source_name == "cta_group"
+                    for field in variant.modifier_fields)
+            and variant.tensor_access_mode is TensorAccessMode.TILED
+            and not variant.tensor_multicast
+            and len(variant.operand_layouts) == 1):
+        cross_rule_checks += """            const auto grouped_pointer_check =
+                check_tensor_read_addresses(selected.tensor, selected.dst,
+                                            selected.mbar, context);
+            if (!grouped_pointer_check) {
+              diagnostics.insert(diagnostics.end(), grouped_pointer_check.error().begin(),
+                                 grouped_pointer_check.error().end());
+            }
+"""
     if variant.tensor_multicast and len(variant.operand_layouts) == 1:
         cross_rule_checks += """            const auto multicast_mask_check =
                 check_tensor_multicast_mask(selected.cta_mask, context);

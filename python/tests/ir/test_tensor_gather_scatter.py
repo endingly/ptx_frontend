@@ -28,13 +28,16 @@ class TensorGatherScatterTests(unittest.TestCase):
                     if variant.tensor_access_mode in {
                         TensorAccessMode.TILE_GATHER4,
                         TensorAccessMode.TILE_SCATTER4,
-                    } and not variant.tensor_multicast}
+                    } and not variant.tensor_multicast
+                    and not variant.variant_id.endswith("_cta_group")}
         self.assertEqual(set(gathered), expected)
-        self.assertEqual(len(resolved.variants), 250)
+        self.assertEqual(sum(not v.variant_id.endswith("_cta_group")
+                             for v in resolved.variants), 250)
         old = [variant for variant in resolved.variants
                if variant.tensor_access_mode is not None
                and variant.variant_id not in gathered
-               and not variant.tensor_multicast]
+               and not variant.tensor_multicast
+               and not variant.variant_id.endswith("_cta_group")]
         self.assertEqual(len(old), 114)
         self.assertEqual(sum(len(variant.operand_layouts) for variant in old), 141)
         for variant in resolved.variants:

@@ -72,6 +72,8 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.checker_descriptors",
         "ptx_frontend.code_gen.emit.syntax_descriptors",
         "ptx_frontend.code_gen.emit.value_domains",
+        "ptx_frontend.code_gen.emit.tensor_map_known_facts",
+        "ptx_frontend.spec.tensor_map_known_facts",
         "ptx_frontend.scripts.gen_all",
         "ptx_frontend.scripts.validate_yaml",
     )
@@ -80,6 +82,30 @@ def check_module_layout() -> None:
     # broken relocated imports are detected by the installed-wheel smoke test.
     for module in packaged_modules:
         import_module(module)
+
+
+def check_tensor_map_known_fact_query() -> None:
+    """Exercise a partial pure result from the freshly installed package."""
+
+    from ptx_frontend.ir.resolved_ir import TensorAccessMode
+    from ptx_frontend.spec.tensor_map_known_facts import (
+        FactStatus,
+        TensorAccessContext,
+        TensorDirection,
+        TensorFactRule,
+        TensorMapKnownFacts,
+        validate_tensor_access_facts,
+    )
+
+    report = validate_tensor_access_facts(
+        TensorAccessContext(
+            direction=TensorDirection.LOAD, mode=TensorAccessMode.TILED,
+            rank=1, selected_variant_available=True,
+            selected_value_available=True,
+        ),
+        TensorMapKnownFacts(),
+    )
+    assert report.outcome(TensorFactRule.SELECTED_AVAILABILITY).status is FactStatus.CHECKED
 
 
 def check_packaged_spec_model() -> None:
@@ -182,6 +208,7 @@ def main() -> None:
     check_distribution_metadata()
     check_packaged_resources()
     check_module_layout()
+    check_tensor_map_known_fact_query()
     check_packaged_spec_model()
     check_packaged_backend_model()
 

@@ -56,6 +56,11 @@ The fixed ptxas 13.3.73 checkpoint comprised 84 records: 83 invocations, 50 acce
 
 ## Tensor-map field replacement and proxy fence
 
+The installed [caller-known tensor-map facts query](tensor_map_known_facts.md)
+reports 22 separate conditional relationships for independently supplied
+descriptor facts and a typed selected tensor access. It does not decode the
+opaque 128-byte descriptor or prove runtime bounds or synchronization.
+
 The `tensormap.replace.tile` subset covers all 11 field names: `global_address`, `rank`, `box_dim`, `global_dim`, `global_stride`, `element_stride`, `elemtype`, `interleave_layout`, `swizzle_mode`, `swizzle_atomicity`, and `fill_mode`. The first six take a `.b32` or `.b64` register or integer literal as specified by the field; the last five take only an immediate Table 33 code. An optional `.global` or `.shared::cta` qualifier must agree with the known destination space. A replacement destination is a writable global or CTA-shared descriptor object, not a const or parameter descriptor. Address registers with known types must be 32- or 64-bit integer/bit registers; the same rule applies to proxy-fence source and destination addresses. The generated variant exposes `replacement_field`, an owned-copy `tensor_map_ref()` preserving address and source identity, and, for encoded fields, an optional field-specific `encoded_value()`. These projections do not decode the 128-byte descriptor.
 
 `rank` encodes dimension count minus one. A register rank remains a runtime obligation; an immediate is converted to `.b32` at use and the resulting code must be 0–4. Other typed `.b32`/`.b64` replacement literals also narrow at use. The optional `ord` selector for dimension and stride fields must be an original-source integer in 0–4. Table 33 codes likewise require an exact original-source value: a multiple of 2³² is not an alias for code zero. The five closed value domains are element type (0–15), interleave layout (0–2), swizzle mode (0–4), swizzle atomicity (0–3), and fill mode (0–1). Element code 15 is one encoded identity whose meaning is `b6x16_p32` on tensor load and `b6p2x16` on tensor store. Source bits, converted bits, and original sign remain in owned IR; the checker revalidates consistency after mutation.

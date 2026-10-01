@@ -74,6 +74,10 @@ supported surface and its exclusions.
   order alias, descriptor field replacement, and proxy-fence synchronization.
   The detailed coverage distinguishes frontend syntax from tested ptxas 13.3.73
   behavior, including optional im2col information and the group-order sample.
+- [Caller-known tensor-map facts](docs/us-en/tensor_map_known_facts.md) and its
+  [简体中文版本](docs/zh-han/tensor_map_known_facts.md) describe the installed
+  per-rule conditional query, its selected-form context projection, and the
+  opaque-descriptor boundary.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

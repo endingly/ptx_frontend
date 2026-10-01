@@ -37,6 +37,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/reference_policy.py",
         "ptx_frontend/ir/resolved_ir.py",
         "ptx_frontend/ir/syntax_ast.py",
+        "ptx_frontend/spec/tensor_map_known_facts.py",
         # The generator is a direct code_gen concern with semantic emitters.
         "ptx_frontend/code_gen/__main__.py",
         "ptx_frontend/code_gen/cli.py",
@@ -53,6 +54,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/emit/checker_descriptors.py",
         "ptx_frontend/code_gen/emit/syntax_descriptors.py",
         "ptx_frontend/code_gen/emit/value_domains.py",
+        "ptx_frontend/code_gen/emit/tensor_map_known_facts.py",
         # Packaged helper scripts.
         "ptx_frontend/scripts/gen_all.py",
         "ptx_frontend/scripts/validate_yaml.py",

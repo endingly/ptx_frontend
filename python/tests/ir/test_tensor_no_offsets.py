@@ -32,9 +32,9 @@ class TensorNoOffsetsTests(unittest.TestCase):
         }
         self.assertEqual(no_offsets, expected)
         self.assertEqual(sum(mode is TensorAccessMode.TILED
-                             for mode in modes.values()), 60)
+                             for mode in modes.values()), 65)
         self.assertEqual(sum(mode is None for mode in modes.values()),
-                         len(modes) - 118)
+                         len(modes) - 133)
         for variant in resolved.variants:
             for layout in variant.operand_layouts:
                 for field, binding in zip(layout.fields, layout.bindings, strict=True):

@@ -28,12 +28,13 @@ class TensorGatherScatterTests(unittest.TestCase):
                     if variant.tensor_access_mode in {
                         TensorAccessMode.TILE_GATHER4,
                         TensorAccessMode.TILE_SCATTER4,
-                    }}
+                    } and not variant.tensor_multicast}
         self.assertEqual(set(gathered), expected)
-        self.assertEqual(len(resolved.variants), 235)
+        self.assertEqual(len(resolved.variants), 250)
         old = [variant for variant in resolved.variants
                if variant.tensor_access_mode is not None
-               and variant.variant_id not in gathered]
+               and variant.variant_id not in gathered
+               and not variant.tensor_multicast]
         self.assertEqual(len(old), 114)
         self.assertEqual(sum(len(variant.operand_layouts) for variant in old), 141)
         for variant in resolved.variants:
@@ -46,7 +47,9 @@ class TensorGatherScatterTests(unittest.TestCase):
                                           variant.tensor_access_mode)
                             self.assertIn(binding.expected_tensor_rank,
                                           range(1, 6))
-                            expected_count = (5 if variant.variant_id in gathered
+                            expected_count = (5 if variant.tensor_access_mode in {
+                                                  TensorAccessMode.TILE_GATHER4,
+                                                  TensorAccessMode.TILE_SCATTER4}
                                               else binding.expected_tensor_rank)
                             self.assertEqual(binding.minimum_elements, expected_count)
                             self.assertEqual(binding.maximum_elements, expected_count)

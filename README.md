@@ -37,8 +37,11 @@ supported surface and its exclusions.
   from the copy instruction's borrowed opaque descriptor-register role.
 - [TCGEN dense f16 MMA coverage](docs/us-en/tcgen_mma_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_coverage.md)
-  describe the first source-visible non-WS MMA kind, its owned operand roles,
-  and independent caller-known operational queries.
+  describe its owned operand roles and independent caller-known query.
+- [TCGEN dense tf32 MMA coverage](docs/us-en/tcgen_mma_tf32_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_tf32_coverage.md)
+  describe the second non-WS source kind, K8/TF32 types and transposed
+  32-bit shared-word rules.
 - [TCGEN specialized synchronization coverage](docs/us-en/tcgen_sync_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_sync_coverage.md) define commit,
   its mbarrier completion identity, and both operand-free fence directions.

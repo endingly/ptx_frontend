@@ -12,7 +12,7 @@ instructions:
     doc: >-
       Allocate, deallocate, and relinquish Tensor Memory permission; transfer
       registers by load, store, reduction, and matching same-thread waits;
-      copy from shared memory and shift Tensor Memory rows.
+      copy from shared memory, shift Tensor Memory rows, and issue dense f16/tf32 MMA.
       Allocation, warp participation, and completion ordering remain runtime obligations.
       Commit tracks prior same-thread TCGEN work through a cluster mbarrier; specialized fences express ordering obligations.
     syntax: >-
@@ -27,7 +27,7 @@ instructions:
       tcgen05.fence::{before_thread_sync|after_thread_sync} |
       tcgen05.cp.cta_group::{1|2}.shape{.multicast}{.b8x16.src_fmt} [taddr], s-desc |
       tcgen05.shift.cta_group::{1|2}.down [taddr] |
-      tcgen05.mma.cta_group::{1|2}.kind::f16 [d], a, b, idesc{, disable-output-lane}, enable-input-d{, scale-input-d}
+      tcgen05.mma.cta_group::{1|2}.kind::{f16|tf32} [d], a, b, idesc{, disable-output-lane}, enable-input-d{, scale-input-d}
     variants:
       - name: tcgen05_alloc_generic
         rule: tensor_memory.alloc
@@ -438,6 +438,87 @@ instructions:
           - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f16}
+        modifier_order_aliases:
+          - [mma, kind, cta_group]
+        operand_layouts:
+          - name: shared_no_mask_no_scale
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_no_mask_scale
+            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
+          - name: shared_mask_no_scale
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_mask_scale
+            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
+          - name: tensor_no_mask_no_scale
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_no_mask_scale
+            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
+          - name: tensor_mask_no_scale
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_mask_scale
+            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
+
+      - name: tcgen05_mma_tf32
+        section: "9.7.17.10.9.1"
+        rule: tensor_memory.mma
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::tf32}
         modifier_order_aliases:
           - [mma, kind, cta_group]
         operand_layouts:

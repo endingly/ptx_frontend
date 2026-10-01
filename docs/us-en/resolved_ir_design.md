@@ -734,13 +734,15 @@ outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 mode
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.
 
-The selected dense f16 `Tcgen05::MmaF16` form keeps eight operand layouts
-inside one owned alternative. `tcgen_mma_f16_view` borrows its selected A/B
+The distinct dense `Tcgen05::MmaF16` and `MmaTf32` forms each keep eight
+operand layouts inside one owned alternative. Their kind-specific
+`tcgen_mma_f16_view` and `tcgen_mma_tf32_view` borrow selected A/B
 shared descriptor registers, Tensor Memory addresses, instruction descriptor,
 predicate, optional mask and scale. It returns absence for non-MMA forms or a
 layout-tag mismatch. Direct and module checks recheck source metadata after
-AST release. The generated `check_tcgen_f16_known_operation` first invokes
-the descriptor defined-field validators, then reports separate operational
+AST release. The generated f16 and tf32 known-operation queries first invoke
+the descriptor defined-field validators, then report separate operational
 violations, checked rules and missing facts for independent caller-known
-words. [MMA coverage](tcgen_mma_coverage.md) names the remaining kinds and
+words. [F16](tcgen_mma_coverage.md) and
+[tf32](tcgen_mma_tf32_coverage.md) name kind-specific rules and remaining
 runtime obligations.

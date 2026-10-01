@@ -91,9 +91,13 @@ int main() {
               std::get<ir::ResolvedPredicate>(*view->enable_d).negated,
           "borrowed selected roles and source controls"))
     return 1;
-  return require(ir::Tcgen05::get_resolved_descriptor().variants.size() == 27 &&
-                     ir::validateModule(*owned).has_value(),
-                 "parent physical forms and AST-independent validation")
+  const auto variants = ir::Tcgen05::get_resolved_descriptor().variants;
+  const bool f16_present =
+      std::find_if(variants.begin(), variants.end(), [](const auto& variant) {
+        return variant.variant_name == "MmaF16";
+      }) != variants.end();
+  return require(f16_present && ir::validateModule(*owned).has_value(),
+                 "f16 identity and AST-independent validation")
              ? 0
              : 1;
 }

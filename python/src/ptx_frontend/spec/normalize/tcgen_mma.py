@@ -74,8 +74,20 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
         raise ValueError("dense f16 MMA requires exactly eight structural layouts")
     for layout in variant.operand_layouts:
         names = tuple(operand.name for operand in layout.operands)
-        mask = "_mask_" in layout.name and "_no_mask_" not in layout.name
-        scale = layout.name.endswith("_scale") and not layout.name.endswith("_no_scale")
+        kinds = {operand.name: operand.kind for operand in layout.operands}
+        a_kind = kinds.get("a")
+        if a_kind is OperandKind.REGISTER:
+            placement = "shared"
+        elif a_kind is OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET:
+            placement = "tensor"
+        else:
+            raise ValueError("dense f16 MMA A operand has unsupported kind")
+        mask = "disable_output_lane" in names
+        scale = "scale_input_d" in names
+        expected_name = (f"{placement}_{'mask' if mask else 'no_mask'}_"
+                         f"{'scale' if scale else 'no_scale'}")
+        if layout.name != expected_name:
+            raise ValueError("dense f16 MMA layout identity disagrees with typed roles")
         required = ("d", "a", "b", "idesc") + (
             ("disable_output_lane",) if mask else ()
         ) + ("enable_input_d",) + (("scale_input_d",) if scale else ())
@@ -83,12 +95,8 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             raise ValueError("dense f16 MMA operand topology changed")
         if layout.availability != (_SCALED_TARGETS if scale else {}):
             raise ValueError("dense f16 MMA scaled target gate changed")
-        kinds = {operand.name: operand.kind for operand in layout.operands}
         if (kinds["d"] is not OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET or
-                kinds["a"] is not (
-                    OperandKind.REGISTER if layout.name.startswith("shared")
-                    else OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET
-                ) or kinds["b"] is not OperandKind.REGISTER or
+                kinds["b"] is not OperandKind.REGISTER or
                 kinds["idesc"] is not OperandKind.REGISTER or
                 kinds["enable_input_d"] is not OperandKind.PREDICATE_SOURCE or
                 (mask and kinds["disable_output_lane"] is not
@@ -96,7 +104,7 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
                 (scale and kinds["scale_input_d"] is not OperandKind.IMMEDIATE)):
             raise ValueError("dense f16 MMA source roles changed")
         expected_types = {"d": "u32", "a": (
-            "b64" if layout.name.startswith("shared") else "u32"),
+            "b64" if placement == "shared" else "u32"),
             "b": "b64", "idesc": "b32", "enable_input_d": None}
         if mask:
             expected_types["disable_output_lane"] = "b32"

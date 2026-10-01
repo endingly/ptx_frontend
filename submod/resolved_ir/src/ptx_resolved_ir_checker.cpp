@@ -2167,8 +2167,24 @@ static bool tcgen_mma_carrier(const ResolvedRegisterRef& value, size_t bytes,
           (permit_float && kind == base::ScalarKind::Float));
 }
 
+/** Validate owned MMA source ranges against scalar or vector cardinality. */
+static bool tcgen_mma_valid_source_ranges(std::span<const SourceRange> ranges,
+                                          size_t expected) noexcept {
+  if (ranges.size() != expected)
+    return false;
+  return std::ranges::all_of(ranges, [](const SourceRange& range) {
+    if (range.start.line <= 0 || range.start.column <= 0 ||
+        range.end.line <= 0 || range.end.column <= 0)
+      return false;
+    return range.end.line > range.start.line ||
+           (range.end.line == range.start.line &&
+            range.end.column >= range.start.column);
+  });
+}
+
 CheckResult check_tcgen_mma_f16_sources(
-    TcgenCtaGroup group, const WithLocs<TensorMemoryAddress>& d,
+    const WithLocs<TcgenCtaGroup>& group_source,
+    const WithLocs<TensorMemoryAddress>& d,
     const WithLocs<TensorMemoryAddress>* a_address,
     const WithLocs<ResolvedRegisterRef>* a_shared,
     const WithLocs<ResolvedRegisterRef>& b,
@@ -2176,11 +2192,27 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedRegisterVector>* mask,
     const WithLocs<ResolvedPredicateSource>& enable_d,
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+  const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
     return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
   if ((a_address == nullptr) == (a_shared == nullptr))
     return cvt_rule_violation(context,
                               "TCGEN MMA requires exactly one A placement.");
+  if (!tcgen_mma_valid_source_ranges(group_source.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(d.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(
+          a_address ? a_address->locs : a_shared->locs, 1) ||
+      !tcgen_mma_valid_source_ranges(b.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(idesc.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(enable_d.locs, 1) ||
+      (mask && !tcgen_mma_valid_source_ranges(
+                   mask->locs, group == TcgenCtaGroup::One ? 4 : 8)) ||
+      (scale && !tcgen_mma_valid_source_ranges(scale->locs, 1)))
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA owned operand source ranges are incomplete or "
+        "malformed.",
+        CheckDiagnosticKind::RuleViolation);
   if (auto result = check_tcgen_transfer_address(d, context); !result)
     return result;
   if (a_address) {

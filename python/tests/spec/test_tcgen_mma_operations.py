@@ -5,13 +5,17 @@ from copy import deepcopy
 import unittest
 
 from ptx_frontend.code_gen.emit import tcgen_mma_operations as emitter
+from ptx_frontend.code_gen.emit.resolved_checker import _emit_check_multi_layout_lambda
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.spec import tcgen_mma_operations as rules
 from ptx_frontend.spec.normalize.tcgen_mma import (
     normalize_f16_known_facts, normalize_f16_source_topology,
 )
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize import normalize_instruction_spec
-from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.resources import packaged_backend_spec, packaged_spec_dir
 from ptx_frontend.spec.model import SemanticRule
 
 
@@ -162,6 +166,33 @@ class TcgenF16OperationTests(unittest.TestCase):
                           for layout in mma.operand_layouts}, {5, 6, 7})
         self.assertEqual(len([layout for layout in mma.operand_layouts
                               if layout.availability]), 4)
+
+    def test_generated_a_role_uses_typed_operand(self) -> None:
+        """A misleading layout label cannot choose register versus tmem A."""
+
+        raw = load_yaml(packaged_spec_dir() /
+                        "tensor_memory_data_movement.yaml")
+        instruction = from_instruction_spec(normalize_instruction_spec(raw)[0])
+        variant_index = next(index for index, item in
+                             enumerate(instruction.variants)
+                             if item.variant_id == "tcgen05_mma_f16")
+        variant = instruction.variants[variant_index]
+        backend = load_cpp_backend(packaged_backend_spec())
+        for index, layout in enumerate(variant.operand_layouts):
+            a_kind = next(field.value_kind for field in layout.fields
+                          if field.name == "a")
+            opposite = ("tensor_" if a_kind is ResolvedValueKind.REGISTER
+                        else "shared_") + layout.layout_id.split("_", 1)[1]
+            renamed = replace(layout, layout_id=opposite)
+            altered = replace(variant, operand_layouts=(
+                *variant.operand_layouts[:index], renamed,
+                *variant.operand_layouts[index + 1:]))
+            generated = _emit_check_multi_layout_lambda(
+                instruction, altered, variant_index, index, backend)
+            expected = ("payload.d, nullptr, &payload.a"
+                        if a_kind is ResolvedValueKind.REGISTER else
+                        "payload.d, &payload.a, nullptr")
+            self.assertIn(expected, generated)
 
     def test_canonical_drift_rejected(self) -> None:
         """Action, alias, operand role and source order stay closed."""

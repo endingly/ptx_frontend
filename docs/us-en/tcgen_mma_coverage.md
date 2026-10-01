@@ -2,7 +2,7 @@
 
 This page describes the first source slice of the four
 [`tcgen05.mma` spellings in fixed PTX 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma).
-The initial slice is dense, non-weight-stationary, unscaled kind f16, with both
+The initial slice is dense, non-weight-stationary kind f16 without block scaling, with both
 CTA groups and both A placements. The optional lane mask and optional D scale
 are source topology choices settled by the fixed manual, a matched complete-module
 assembler corpus and an independent Authority checkpoint. Sparse, weight-stationary,

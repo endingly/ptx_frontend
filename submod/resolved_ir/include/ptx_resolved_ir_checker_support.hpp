@@ -164,7 +164,7 @@ CheckResult check_tcgen_copy_descriptor(const WithLocs<ResolvedRegisterRef>&,
  * null pointers only when the corresponding source operand is absent.
  */
 CheckResult check_tcgen_mma_f16_sources(
-    TcgenCtaGroup, const WithLocs<TensorMemoryAddress>&,
+    const WithLocs<TcgenCtaGroup>&, const WithLocs<TensorMemoryAddress>&,
     const WithLocs<TensorMemoryAddress>*, const WithLocs<ResolvedRegisterRef>*,
     const WithLocs<ResolvedRegisterRef>&, const WithLocs<ResolvedRegisterRef>&,
     const WithLocs<ResolvedRegisterVector>*,

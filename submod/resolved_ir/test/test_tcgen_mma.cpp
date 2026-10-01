@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -101,6 +102,40 @@ TEST(TcgenMmaF16, SourceTopologyAndOneWrittenAlias) {
       "tcgen05.mma.cta_group::1.kind::f16 [%d], %sa, %sb, %si, 1;")));
 }
 
+/** Preserve integer truth after conversion and release of syntax storage. */
+TEST(TcgenMmaF16, OwnedIntegerPredicateTruth) {
+  for (const auto& [source, truth] : {
+           std::pair{"0", false},
+           std::pair{"1", true},
+           std::pair{"2", true},
+           std::pair{"-1", true},
+           std::pair{"4294967296", true},
+       }) {
+    SCOPED_TRACE(source);
+    std::optional<ResolvedModule> owned;
+    {
+      auto ast = parse_mma(mma_source(
+          std::string("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, "
+                      "%i, ") +
+          source + ";"));
+      ASSERT_TRUE(ast);
+      auto result = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(result.has_value()) << result.error().front().message;
+      owned = std::move(*result);
+    }
+    const auto& instruction =
+        *owned->functions.front().body[0].get_if<Tcgen05>();
+    const auto view = tcgen_mma_f16_view(instruction);
+    ASSERT_TRUE(view);
+    ASSERT_TRUE(
+        std::holds_alternative<ResolvedPredicateConstant>(*view->enable_d));
+    EXPECT_EQ(std::get<ResolvedPredicateConstant>(*view->enable_d).value,
+              truth);
+    EXPECT_TRUE(checker::check(instruction, mma_context(*owned)).has_value());
+    EXPECT_TRUE(validateModule(*owned).has_value());
+  }
+}
+
 /** Carrier, predicate, mask, scale and source-grammar negatives stay closed. */
 TEST(TcgenMmaF16, RejectsMalformedSourcesAndTargets) {
   for (std::string_view instruction : {
@@ -173,6 +208,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
             &payload.idesc.value);
   EXPECT_EQ(tcgen_mma_f16_view(instruction)->disable_output_lane,
             &payload.disable_output_lane.value);
+  ASSERT_TRUE(std::holds_alternative<ResolvedPredicate>(
+      *tcgen_mma_f16_view(instruction)->enable_d));
+  EXPECT_TRUE(
+      std::get<ResolvedPredicate>(*tcgen_mma_f16_view(instruction)->enable_d)
+          .negated);
   EXPECT_TRUE(checker::check(instruction, context).has_value());
   EXPECT_TRUE(validateModule(*owned).has_value());
   payload.a.value.register_class = ResolvedRegisterClass::Predicate;
@@ -207,6 +247,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   reject();
   payload.disable_output_lane.value.elements[0]->declared_type =
       ScalarType::B32;
+  ASSERT_TRUE(payload.disable_output_lane.value.elements[0]->symbol_id);
+  payload.disable_output_lane.value.elements[0]->declared_type.reset();
+  reject();
+  payload.disable_output_lane.value.elements[0]->declared_type =
+      ScalarType::B32;
   auto& predicate = std::get<ResolvedPredicate>(payload.enable_input_d.value);
   predicate.register_ref.register_class = ResolvedRegisterClass::General;
   reject();
@@ -217,12 +262,49 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   predicate.register_ref.declared_type = ScalarType::B32;
   reject();
   predicate.register_ref.declared_type = ScalarType::Pred;
+  ASSERT_TRUE(predicate.register_ref.symbol_id);
+  predicate.register_ref.declared_type.reset();
+  reject();
+  predicate.register_ref.declared_type = ScalarType::Pred;
   payload.scale_input_d.value.bits = 16;
   reject();
   payload.scale_input_d.value.bits = 15;
   payload.scale_input_d.value.integer_source_bits = 1ull << 32;
   reject();
   payload.scale_input_d.value.integer_source_bits = 15;
+  payload.scale_input_d.value.integer_source_bits.reset();
+  reject();
+  payload.scale_input_d.value.integer_source_bits = 15;
+  payload.scale_input_d.value.bits = 14;
+  reject();
+  payload.scale_input_d.value.bits = 15;
+  ASSERT_EQ(form.cta_group.locs.size(), 1U);
+  const auto group_range = form.cta_group.locs.front();
+  form.cta_group.locs.clear();
+  reject();
+  form.cta_group.locs.push_back(group_range);
+  ASSERT_EQ(payload.enable_input_d.locs.size(), 1U);
+  const auto predicate_range = payload.enable_input_d.locs.front();
+  payload.enable_input_d.locs.front().start.line = 0;
+  reject();
+  payload.enable_input_d.locs.front() = predicate_range;
+  ASSERT_EQ(payload.disable_output_lane.locs.size(), 4U);
+  const auto mask_range = payload.disable_output_lane.locs.back();
+  payload.disable_output_lane.locs.pop_back();
+  reject();
+  payload.disable_output_lane.locs.push_back(mask_range);
+  ASSERT_EQ(payload.scale_input_d.locs.size(), 1U);
+  const auto scale_range = payload.scale_input_d.locs.front();
+  payload.scale_input_d.locs.front().end.line = 0;
+  reject();
+  payload.scale_input_d.locs.front() = scale_range;
+  ASSERT_EQ(payload.d.locs.size(), 1U);
+  const auto d_range = payload.d.locs.front();
+  payload.d.locs.clear();
+  reject();
+  payload.d.locs.push_back(d_range);
+  EXPECT_TRUE(checker::check(instruction, context).has_value());
+  EXPECT_TRUE(validateModule(*owned).has_value());
   payload.d.value.bracketed = false;
   reject();
   payload.d.value.bracketed = true;
@@ -339,6 +421,185 @@ TEST(TcgenMmaOperations, KnownWordReport) {
   EXPECT_NE(std::find(bad.violations.begin(), bad.violations.end(),
                       TcgenF16Violation::Kind),
             bad.violations.end());
+}
+
+/** Keep field validity, operational shape, and input-pair rules separate. */
+TEST(TcgenMmaOperations, KnownWordFieldAndTypeRules) {
+  const TcgenF16KnownFacts base{
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(4U << 24) | (1U << 17), TcgenMmaKind::F16},
+  };
+  const auto contains = [](const auto& values, const auto value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+  };
+  auto wrong_shape = base;
+  wrong_shape.group = TcgenCtaGroup::Two;
+  const auto shape = check_tcgen_f16_known_operation(wrong_shape);
+  EXPECT_TRUE(shape.instruction_fields.defined_fields_ok());
+  EXPECT_TRUE(contains(shape.checked, TcgenF16Checked::Shape));
+  EXPECT_TRUE(contains(shape.violations, TcgenF16Violation::Shape));
+  auto bad_field = base;
+  bad_field.instruction.bits |= 1U << 6;
+  const auto field = check_tcgen_f16_known_operation(bad_field);
+  EXPECT_FALSE(field.instruction_fields.defined_fields_ok());
+  EXPECT_FALSE(contains(field.violations, TcgenF16Violation::Shape));
+  auto sparse = base;
+  sparse.instruction.bits |= 1U << 2;
+  const auto dense = check_tcgen_f16_known_operation(sparse);
+  EXPECT_TRUE(dense.instruction_fields.defined_fields_ok());
+  EXPECT_TRUE(contains(dense.violations, TcgenF16Violation::DenseSparse));
+  auto wrong_input = base;
+  wrong_input.instruction.bits |= 1U << 7;
+  const auto input = check_tcgen_f16_known_operation(wrong_input);
+  EXPECT_TRUE(input.instruction_fields.defined_fields_ok());
+  EXPECT_TRUE(contains(input.checked, TcgenF16Checked::Types));
+  EXPECT_TRUE(contains(input.violations, TcgenF16Violation::AType));
+  auto mixed = base;
+  mixed.instruction.bits |= (1U << 4) | (1U << 10);
+  const auto pair = check_tcgen_f16_known_operation(mixed);
+  EXPECT_TRUE(pair.instruction_fields.defined_fields_ok());
+  EXPECT_TRUE(contains(pair.missing, TcgenF16Obligation::MixedInputPair));
+  EXPECT_FALSE(contains(pair.violations, TcgenF16Violation::AType));
+  EXPECT_FALSE(contains(pair.violations, TcgenF16Violation::BType));
+  mixed.instruction.bits |= 1U << 7;
+  const auto equal = check_tcgen_f16_known_operation(mixed);
+  EXPECT_FALSE(contains(equal.missing, TcgenF16Obligation::MixedInputPair));
+}
+
+/** Exercise known A/B shared roles independently of their opaque registers. */
+TEST(TcgenMmaOperations, KnownSharedRolesAndContext) {
+  const uint32_t base_bits = (4U << 24) | (1U << 17);
+  const TcgenSharedWord normal{1ULL << 46};
+  const TcgenSharedWord atom32{(1ULL << 46) | (1ULL << 61)};
+  TcgenF16KnownFacts facts{
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = false,
+      .instruction =
+          TcgenInstructionWord{base_bits | (1U << 15), TcgenMmaKind::F16},
+      .a_shared_word = atom32,
+      .b_shared_word = normal,
+      .a_context = {.major = TcgenMajor::MN},
+      .b_context = {.major = TcgenMajor::K},
+  };
+  const auto contains = [](const auto& values, const auto value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+  };
+  const auto a = check_tcgen_f16_known_operation(facts);
+  ASSERT_TRUE(a.a_shared_fields);
+  ASSERT_TRUE(a.b_shared_fields);
+  EXPECT_TRUE(a.a_shared_fields->defined_fields_ok());
+  EXPECT_TRUE(a.b_shared_fields->defined_fields_ok());
+  EXPECT_TRUE(contains(a.checked, TcgenF16Checked::AMajor));
+  EXPECT_TRUE(contains(a.checked, TcgenF16Checked::BSwizzle));
+  EXPECT_TRUE(contains(a.violations, TcgenF16Violation::ASwizzle));
+  EXPECT_FALSE(contains(a.violations, TcgenF16Violation::BSwizzle));
+  facts.instruction.bits = base_bits | (1U << 16);
+  facts.a_shared_word = normal;
+  facts.b_shared_word = atom32;
+  facts.a_context.major = TcgenMajor::K;
+  facts.b_context.major = TcgenMajor::MN;
+  const auto b = check_tcgen_f16_known_operation(facts);
+  EXPECT_FALSE(contains(b.violations, TcgenF16Violation::ASwizzle));
+  EXPECT_TRUE(contains(b.violations, TcgenF16Violation::BSwizzle));
+  facts.b_context.major = TcgenMajor::K;
+  const auto major = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(major.violations, TcgenF16Violation::BMajor));
+  facts.a_in_tmem = true;
+  const auto misplaced = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(
+      contains(misplaced.violations, TcgenF16Violation::APlacementFacts));
+  EXPECT_FALSE(misplaced.a_shared_fields.has_value());
+  facts.a_shared_word.reset();
+  const auto tensor = check_tcgen_f16_known_operation(facts);
+  EXPECT_FALSE(contains(tensor.missing, TcgenF16Obligation::ASharedWord));
+
+  const auto profile = base::find_target_profile("sm_100a");
+  const auto other = base::find_target_profile("sm_100f");
+  ASSERT_TRUE(profile);
+  ASSERT_TRUE(other);
+  facts.target = profile->identity;
+  facts.ptx_version = checker::PtxVersion{9, 3};
+  facts.a_context = {};
+  facts.b_context = {.major = TcgenMajor::K};
+  const auto inherited = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(inherited.checked, TcgenF16Checked::Target));
+  EXPECT_FALSE(
+      contains(inherited.violations, TcgenF16Violation::InvalidContext));
+  facts.b_context.target = other->identity;
+  const auto conflicting = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(
+      contains(conflicting.violations, TcgenF16Violation::InvalidContext));
+  facts.b_context.target = profile->identity;
+  facts.b_context.ptx_version = checker::PtxVersion{8, 6};
+  const auto version = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(version.violations, TcgenF16Violation::InvalidContext));
+}
+
+/** Preserve missing, invalid and disagreeing half-lane facts separately. */
+TEST(TcgenMmaOperations, KnownHalfPathFacts) {
+  TcgenF16KnownFacts facts{
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(4U << 24) | (1U << 17), TcgenMmaKind::F16},
+  };
+  const auto contains = [](const auto& values, const auto value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+  };
+  const auto missing = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(missing.missing, TcgenF16Obligation::ALaneHalf));
+  EXPECT_TRUE(contains(missing.missing, TcgenF16Obligation::DLaneHalf));
+  facts.a_lane_half = 0;
+  facts.d_lane_half = 16;
+  const auto mismatch = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(mismatch.checked, TcgenF16Checked::HalfAlignment));
+  EXPECT_TRUE(contains(mismatch.violations, TcgenF16Violation::HalfAlignment));
+  facts.a_lane_half = 17;
+  facts.d_lane_half = 9;
+  const auto invalid = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(invalid.violations, TcgenF16Violation::ALaneHalf));
+  EXPECT_TRUE(contains(invalid.violations, TcgenF16Violation::DLaneHalf));
+  EXPECT_FALSE(contains(invalid.checked, TcgenF16Checked::HalfAlignment));
+}
+
+/** Match known-word target checks to exact, inherited and scaled gates. */
+TEST(TcgenMmaOperations, KnownTargetIntersections) {
+  TcgenF16KnownFacts facts{
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(4U << 24) | (1U << 17), TcgenMmaKind::F16},
+  };
+  const auto contains = [](const auto& values, const auto value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+  };
+  for (const auto& [name, version, scaled, accepted] : {
+           std::tuple{"sm_100a", checker::PtxVersion{8, 6}, false, true},
+           std::tuple{"sm_100a", checker::PtxVersion{8, 6}, true, true},
+           std::tuple{"sm_100f", checker::PtxVersion{8, 8}, true, true},
+           std::tuple{"sm_103a", checker::PtxVersion{8, 8}, false, true},
+           std::tuple{"sm_103f", checker::PtxVersion{8, 8}, true, true},
+           std::tuple{"sm_110a", checker::PtxVersion{9, 0}, false, true},
+           std::tuple{"sm_110f", checker::PtxVersion{9, 0}, false, true},
+           std::tuple{"sm_110a", checker::PtxVersion{9, 0}, true, false},
+           std::tuple{"sm_110f", checker::PtxVersion{9, 0}, true, false},
+           std::tuple{"sm_100", checker::PtxVersion{9, 3}, false, false},
+           std::tuple{"sm_110", checker::PtxVersion{9, 3}, false, false},
+           std::tuple{"sm_120a", checker::PtxVersion{9, 3}, false, false},
+       }) {
+    SCOPED_TRACE(name);
+    const auto profile = base::find_target_profile(name);
+    ASSERT_TRUE(profile);
+    facts.target = profile->identity;
+    facts.ptx_version = version;
+    facts.scaled_d = scaled;
+    const auto report = check_tcgen_f16_known_operation(facts);
+    EXPECT_TRUE(contains(report.checked, TcgenF16Checked::Target));
+    EXPECT_EQ(!contains(report.violations, TcgenF16Violation::Target),
+              accepted);
+  }
 }
 
 }  // namespace

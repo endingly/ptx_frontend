@@ -172,7 +172,7 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             for operand in variant["operands"]
             if operand["kind"] == "tensor_operand"
         ]
-        self.assertEqual(len(operands), 60)
+        self.assertEqual(len(operands), 87)
         self.assertTrue(
             all(operand["immediate_conversion"] == "narrow" for operand in operands)
         )

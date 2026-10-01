@@ -5,7 +5,7 @@ import unittest
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_model import emit_resolved_instruction_definition
-from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.ir.resolved_ir import TensorAccessMode, from_instruction_spec
 from ptx_frontend.ir.tensor_reduction import (
     TENSOR_REDUCTION_ELEMENT_TYPES, TensorReductionOp,
 )
@@ -36,11 +36,13 @@ class TensorReductionMetadataTests(unittest.TestCase):
     def test_all_rank_operation_identities_and_other_cp_forms(self) -> None:
         resolved = from_instruction_spec(self.cp)
         selected = [v for v in resolved.variants if v.tensor_reduction_op is not None]
-        self.assertEqual(len(selected), 40)
+        self.assertEqual(len(selected), 64)
         self.assertEqual(
             {v.variant_id for v in selected},
             {f"cp_reduce_async_bulk_tensor_{rank}d_{op}"
-             for rank in range(1, 6) for op in EXPECTED_TYPES},
+             for rank in range(1, 6) for op in EXPECTED_TYPES}
+            | {f"cp_reduce_async_bulk_tensor_{rank}d_{op}_im2col_no_offs"
+               for rank in range(3, 6) for op in EXPECTED_TYPES},
         )
         for source, variant in zip(self.cp.variants, resolved.variants, strict=True):
             if source.rule is SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
@@ -48,6 +50,12 @@ class TensorReductionMetadataTests(unittest.TestCase):
                     variant.tensor_reduction_op.value,
                     next(m.token.removeprefix(".") for m in source.modifiers
                          if m.name.startswith("reduction_")),
+                )
+                self.assertIs(
+                    variant.tensor_access_mode,
+                    TensorAccessMode.IM2COL_NO_OFFS
+                    if source.name.endswith("_im2col_no_offs")
+                    else TensorAccessMode.TILED,
                 )
             else:
                 self.assertIsNone(variant.tensor_reduction_op)

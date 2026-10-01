@@ -37,6 +37,10 @@ from ptx_frontend.code_gen.emit.references_private import (
 from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
 )
+from ptx_frontend.code_gen.emit.tcgen_descriptor_domains import (
+    generate_tcgen_descriptor_header,
+    generate_tcgen_descriptor_source,
+)
 
 
 class ArtifactEmitter(Protocol):
@@ -166,6 +170,18 @@ def build_generation_plan(
         GeneratedArtifact(
             path=output_dir / "private/resolved_value_domains.gen.hpp",
             emit=generate_resolved_value_domain_header,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tcgen_descriptor_domains.gen.hpp",
+            emit=generate_tcgen_descriptor_header,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tcgen_descriptor_domains.gen.cpp",
+            emit=generate_tcgen_descriptor_source,
         )
     )
 

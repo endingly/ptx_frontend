@@ -112,6 +112,10 @@ def check_packaged_spec_model() -> None:
     mma = next(item for item in tcgen.variants
                if item.name == "tcgen05_mma_f16")
     assert len(mma.operand_layouts) == 8
+    tf32 = next(item for item in tcgen.variants
+                if item.name == "tcgen05_mma_tf32")
+    assert len(tf32.operand_layouts) == 8
+    assert tf32.modifier_order_aliases == (("mma", "kind", "cta_group"),)
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

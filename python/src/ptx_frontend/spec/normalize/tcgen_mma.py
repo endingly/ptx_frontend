@@ -1,4 +1,4 @@
-"""Normalize caller-known f16 MMA facts without interpreting source grammar.
+"""Normalize caller-known dense MMA facts without interpreting source grammar.
 
 Canonical operands and modifiers remain owned by the shared typed pipeline.
 This adapter only prepares independent facts for the operational catalogue; it
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ptx_frontend.spec.tcgen_mma_operations import (
-    F16KnownFacts, SharedOperandFacts,
+    F16KnownFacts, Tf32KnownFacts, SharedOperandFacts,
 )
 from ptx_frontend.spec.model import (
     AsyncCompletionKind, ModifierKind, ModifierPresence, OperandKind,
@@ -19,6 +19,7 @@ from ptx_frontend.spec.model import (
 )
 
 _FIELDS = frozenset(F16KnownFacts.__dataclass_fields__)
+assert _FIELDS == frozenset(Tf32KnownFacts.__dataclass_fields__)
 _SHARED_FIELDS = frozenset(SharedOperandFacts.__dataclass_fields__)
 _BOOL_FIELDS = frozenset(("sparse", "transpose_a", "transpose_b", "a_shared"))
 _INT_FIELDS = frozenset(("group", "m", "n", "k", "a_lane_half", "d_lane_half"))
@@ -35,7 +36,7 @@ _SCALED_TARGETS = {"any_of": _UNSCALED_TARGETS["any_of"][:2]}
 
 
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
-    """Keep the closed dense f16 source grammar tied to its typed rule.
+    """Keep each closed dense source kind tied to the typed MMA rule.
 
     The eight structural layouts encode A placement and optional operands;
     the written group remains a typed modifier rather than a variant index.
@@ -46,8 +47,10 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
         if "mma" in mods or ("kind" in mods and "cta_group" in mods):
             raise ValueError("Tensor Memory MMA modifiers require its semantic rule")
         return
-    if variant.name != "tcgen05_mma_f16":
-        raise ValueError("only the initial dense f16 MMA source form is supported")
+    kind = {"tcgen05_mma_f16": "f16",
+            "tcgen05_mma_tf32": "tf32"}.get(variant.name)
+    if kind is None:
+        raise ValueError("unsupported dense MMA source kind")
     if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
             or set(mods) != {"mma", "cta_group", "kind"}
             or variant.modifier_order_aliases != (("mma", "kind", "cta_group"),)
@@ -58,7 +61,7 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             mods["mma"].token != ".mma" or mods["mma"].value is not True or
             mods["kind"].kind is not ModifierKind.FLAG or
             mods["kind"].presence is not ModifierPresence.FIXED or
-            mods["kind"].token != ".kind::f16" or mods["kind"].value is not True or
+            mods["kind"].token != f".kind::{kind}" or mods["kind"].value is not True or
             mods["cta_group"].kind is not ModifierKind.CTA_GROUP or
             mods["cta_group"].presence is not ModifierPresence.REQUIRED or
             tuple(value.value for value in mods["cta_group"].values) !=
@@ -204,3 +207,27 @@ def normalize_f16_known_facts(raw: dict[str, Any]) -> F16KnownFacts:
             raise ValueError(f"{name} fact names must be strings")
         values[name] = SharedOperandFacts(**value)
     return F16KnownFacts(**values)
+
+
+@dataclass(frozen=True)
+class Tf32SourceTopology:
+    """Known typed tf32 source placement and original optional values."""
+
+    group: int
+    a_placement: str
+    mask_count: int | None
+    scale_source_value: int | None
+
+
+def normalize_tf32_source_topology(raw: dict[str, Any]) -> Tf32SourceTopology:
+    """Apply the shared dense source bounds to a distinct tf32 fact type."""
+
+    source = normalize_f16_source_topology(raw)
+    return Tf32SourceTopology(**vars(source))
+
+
+def normalize_tf32_known_facts(raw: dict[str, Any]) -> Tf32KnownFacts:
+    """Check optional caller-known tf32 facts without reading live registers."""
+
+    facts = normalize_f16_known_facts(raw)
+    return Tf32KnownFacts(**vars(facts))

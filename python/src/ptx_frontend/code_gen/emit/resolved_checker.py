@@ -396,7 +396,7 @@ def _emit_check_multi_layout_lambda(
             raise ValueError("Tensor Memory MMA A operand has unsupported storage")
         mask = "&payload.disable_output_lane" if "disable_output_lane" in names else "nullptr"
         scale = "&payload.scale_input_d" if "scale_input_d" in names else "nullptr"
-        cross_rule_checks += f"""            const auto mma_source_check = check_tcgen_mma_f16_sources(
+        cross_rule_checks += f"""            const auto mma_source_check = check_tcgen_mma_sources(
                 selected.cta_group, payload.d, {a_address}, {a_shared},
                 payload.b, payload.idesc, {mask}, payload.enable_input_d,
                 {scale}, context);

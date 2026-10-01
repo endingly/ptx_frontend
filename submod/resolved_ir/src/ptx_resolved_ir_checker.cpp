@@ -2182,7 +2182,7 @@ static bool tcgen_mma_valid_source_ranges(std::span<const SourceRange> ranges,
   });
 }
 
-CheckResult check_tcgen_mma_f16_sources(
+CheckResult check_tcgen_mma_sources(
     const WithLocs<TcgenCtaGroup>& group_source,
     const WithLocs<TensorMemoryAddress>& d,
     const WithLocs<TensorMemoryAddress>* a_address,
@@ -2275,6 +2275,20 @@ CheckResult check_tcgen_mma_f16_sources(
           CheckDiagnosticKind::ImmediateValueMismatch);
   }
   return {};
+}
+
+CheckResult check_tcgen_mma_f16_sources(
+    const WithLocs<TcgenCtaGroup>& group_source,
+    const WithLocs<TensorMemoryAddress>& d,
+    const WithLocs<TensorMemoryAddress>* a_address,
+    const WithLocs<ResolvedRegisterRef>* a_shared,
+    const WithLocs<ResolvedRegisterRef>& b,
+    const WithLocs<ResolvedRegisterRef>& idesc,
+    const WithLocs<ResolvedRegisterVector>* mask,
+    const WithLocs<ResolvedPredicateSource>& enable_d,
+    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+  return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
+                                 mask, enable_d, scale, context);
 }
 
 CheckResult check_tcgen_copy_rule(

@@ -265,9 +265,10 @@ CMake source discovery、header install 和 Python wheel packaging 消费这些�
 第二份手写 C++ 字段表。generated header 包含现有 foundation，而 foundation 不反向包含
 generated descriptor header。[descriptor 覆盖说明](tcgen_descriptor_coverage.md)定义精确检查范围。
 
-稠密 f16 MMA 来源语法在单个规范 `tcgen05` variant 中使用八种类型化操作数布局
-和一种明示的 modifier 顺序别名。专用 `tcgen_mma_operations` catalogue 持有
-Table 42 形状与 §9.7.17.10.5 路径行；emitter 将一个公开操作查询头文件和一个
-私有源码加入同一 `GenerationPlan`。该查询调用既有描述符 validator，不复制
-编码字段映射。选中的持有形式和来源检查仍经标准规范 YAML 归一化管线生成。
-[MMA 覆盖范围](tcgen_mma_coverage.md)描述当前首个 kind。
+稠密 f16 与 tf32 MMA 分别是规范 `tcgen05` variant，各有八种类型化操作数布局
+及确切的相邻 modifier 顺序别名。单个 `tcgen_mma_operations` catalogue 持有
+两者的 Table 42 形状与 §9.7.17.10.5 路径行；emitter 将一个公开操作查询头文件
+和一个私有源码加入同一 `GenerationPlan`。两种查询都调用既有描述符 validator，
+不复制编码字段映射。选中的持有形式和共用的源码角色检查经标准 YAML 归一化管线
+生成。[f16](tcgen_mma_coverage.md) 与 [tf32](tcgen_mma_tf32_coverage.md)
+分别说明各 kind 的规则。

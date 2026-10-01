@@ -313,11 +313,12 @@ header includes the existing foundation; the foundation never includes a
 generated descriptor header. [Descriptor coverage](tcgen_descriptor_coverage.md)
 defines the exact checked scope.
 
-Dense f16 MMA source syntax is one canonical `tcgen05` variant with eight
-typed operand layouts and one declared modifier-order alias. The focused
-`tcgen_mma_operations` catalogue owns Table 42 shape and §9.7.17.10.5 path
-rows; its emitter adds one public operational-query header and one private
-source to the same `GenerationPlan`. It calls the existing descriptor
-validators and does not copy their encoded-field map. The selected owned form
-and source checks come from the usual normalized YAML pipeline.
-[MMA coverage](tcgen_mma_coverage.md) describes this initial kind.
+Dense f16 and tf32 MMA are distinct canonical `tcgen05` variants, each with
+eight typed operand layouts and the exact adjacent modifier-order alias.
+The single `tcgen_mma_operations` catalogue owns their Table 42 shape and
+§9.7.17.10.5 path rows; its emitter adds one public operational-query header
+and one private source to the same `GenerationPlan`. Both queries call the
+existing descriptor validators without copying their encoded-field map. The
+selected owned forms and shared source-role checks come from the usual
+normalized YAML pipeline. [F16](tcgen_mma_coverage.md) and
+[tf32](tcgen_mma_tf32_coverage.md) document their kind-specific rules.

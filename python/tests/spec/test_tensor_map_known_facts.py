@@ -206,6 +206,24 @@ class TensorMapKnownFactsTests(unittest.TestCase):
              replace(c, direction=TensorDirection.REDUCE,
                      reduction_op=TensorReductionOp.ADD),
              facts(reduction_interpretation="s64"), FactStatus.VIOLATED),
+            ("R2 no-offset reduction rank one", R.REDUCTION_TYPE,
+             replace(c, direction=TensorDirection.REDUCE,
+                     mode=TensorAccessMode.IM2COL_NO_OFFS, rank=1,
+                     coordinates=(ConvertedInteger(0),),
+                     reduction_op=TensorReductionOp.ADD),
+             facts_at_rank(1, reduction_interpretation="u32"),
+             FactStatus.VIOLATED),
+            ("R2 no-offset reduction rank two", R.REDUCTION_TYPE,
+             replace(c, direction=TensorDirection.REDUCE,
+                     mode=TensorAccessMode.IM2COL_NO_OFFS, rank=2,
+                     coordinates=(ConvertedInteger(0), ConvertedInteger(1)),
+                     reduction_op=TensorReductionOp.ADD),
+             facts_at_rank(2, reduction_interpretation="u32"),
+             FactStatus.VIOLATED),
+            ("R2 valid but unsupported U16 for add", R.REDUCTION_TYPE,
+             replace(c, direction=TensorDirection.REDUCE,
+                     reduction_op=TensorReductionOp.ADD),
+             facts(reduction_interpretation="u16"), FactStatus.VIOLATED),
             ("R2 bitwise bridge unproved", R.REDUCTION_TYPE,
              replace(c, direction=TensorDirection.REDUCE,
                      reduction_op=TensorReductionOp.AND),
@@ -366,8 +384,10 @@ class TensorMapKnownFactsTests(unittest.TestCase):
             ("R11 shared address unknown", R.SWIZZLE_ALIGNMENT,
              active, replace(sw128, shared_destination_address_bytes=None),
              FactStatus.UNRESOLVED),
-            ("R11 other swizzle N/A", R.SWIZZLE_ALIGNMENT,
-             active, f, FactStatus.NOT_APPLICABLE),
+            ("R11 contradictory no-swizzle use quarantined", R.SWIZZLE_ALIGNMENT,
+             active, f, FactStatus.UNRESOLVED),
+            ("R11 other swizzle valid N/A", R.SWIZZLE_ALIGNMENT,
+             c, f, FactStatus.NOT_APPLICABLE),
             ("R12 repeating pattern boundary", R.PATTERN_BASE_OFFSET,
              c, facts(swizzle=field("bytes32", 1),
                       shared_destination_address_bytes=256), FactStatus.CHECKED),
@@ -390,8 +410,10 @@ class TensorMapKnownFactsTests(unittest.TestCase):
             ("R13 missing box byte fact", R.SWIZZLE_96,
              active, replace(sw96, inner_box_bytes=None),
              FactStatus.UNRESOLVED),
-            ("R13 other swizzle N/A", R.SWIZZLE_96,
-             active, f, FactStatus.NOT_APPLICABLE),
+            ("R13 contradictory no-swizzle use quarantined", R.SWIZZLE_96,
+             active, f, FactStatus.UNRESOLVED),
+            ("R13 other swizzle valid N/A", R.SWIZZLE_96,
+             c, f, FactStatus.NOT_APPLICABLE),
             ("R14 applied tile load", R.FLIP_8,
              active, flip, FactStatus.CHECKED),
             ("R14 store prohibited", R.FLIP_8,
@@ -403,8 +425,10 @@ class TensorMapKnownFactsTests(unittest.TestCase):
             ("R14 selected use unknown", R.FLIP_8,
              replace(active, active_atomicity_use=None),
              flip, FactStatus.UNRESOLVED),
-            ("R14 other pair N/A", R.FLIP_8,
-             active, f, FactStatus.NOT_APPLICABLE),
+            ("R14 contradictory no-swizzle use quarantined", R.FLIP_8,
+             active, f, FactStatus.UNRESOLVED),
+            ("R14 other pair valid N/A", R.FLIP_8,
+             c, f, FactStatus.NOT_APPLICABLE),
             ("R15 exact 48-byte override", R.SM103A_PACKED_STORE,
              exact, override, FactStatus.CHECKED),
             ("R15 exact 96-byte alternative", R.SM103A_PACKED_STORE,
@@ -938,6 +962,17 @@ class TensorMapKnownFactsTests(unittest.TestCase):
              "rank", R.IM2COL_SHAPE),
             ("different known rank", context(), facts(rank=2),
              "facts.rank", R.GATHER_SCATTER),
+            ("isolated invalid descriptor rank", context(),
+             TensorMapKnownFacts(rank=0, element=field("u32", 2)),
+             "facts.rank", R.ELEMENT_IDENTITY),
+            ("isolated mismatched descriptor rank", context(),
+             TensorMapKnownFacts(rank=2, element=field("u32", 2)),
+             "facts.rank", R.ELEMENT_IDENTITY),
+            ("invalid reduction scalar enum",
+             context(direction=TensorDirection.REDUCE,
+                     reduction_op=TensorReductionOp.ADD),
+             facts(reduction_interpretation="invalid_scalar"),
+             "reduction_interpretation", R.REDUCTION_TYPE),
             ("invalid projected field", context(),
              facts(swizzle=ProjectedField(1, "bytes32", False)),
              "swizzle", R.SWIZZLE_ATOMICITY),
@@ -968,6 +1003,10 @@ class TensorMapKnownFactsTests(unittest.TestCase):
             ("invalid availability claim",
              context(selected_value_available="yes"), facts(),
              "selected_value_available", R.SELECTED_AVAILABILITY),  # type: ignore[arg-type]
+            ("invalid atomicity use",
+             context(active_atomicity_use="bad"),
+             facts(swizzle=field("bytes96", 4), inner_box_bytes=96),
+             "active_atomicity_use", R.SWIZZLE_96),  # type: ignore[arg-type]
             ("contradictory no-swizzle use",
              context(active_atomicity_use=True), facts(),
              "active_atomicity_use", R.SWIZZLE_ATOMICITY),
@@ -984,6 +1023,37 @@ class TensorMapKnownFactsTests(unittest.TestCase):
                 self.assertEqual(report.outcome(rule).status,
                                  FactStatus.UNRESOLVED)
 
+    def test_isolated_descriptor_rank_damage_is_global(self) -> None:
+        """A rank error alone quarantines every rule, including element identity."""
+
+        for known_rank in (0, 2):
+            with self.subTest(known_rank=known_rank):
+                report = validate_tensor_access_facts(
+                    context(), TensorMapKnownFacts(
+                        rank=known_rank, element=field("u32", 2)))
+                self.assertEqual({d.field for d in report.diagnostics},
+                                 {"facts.rank"})
+                self.assertEqual(len(report.outcomes), 22)
+                self.assertTrue(all(item.status is FactStatus.UNRESOLVED
+                                    for item in report.outcomes))
+
+    def test_malformed_atomicity_use_quarantines_each_dependent_rule(self) -> None:
+        """The sole catalog must track every rule reading active use."""
+
+        supplied = facts(swizzle=field("bytes96", 4), inner_box_bytes=96)
+        report = validate_tensor_access_facts(
+            context(active_atomicity_use="bad"), supplied)  # type: ignore[arg-type]
+        self.assertEqual({d.field for d in report.diagnostics},
+                         {"active_atomicity_use"})
+        dependent = (R.SWIZZLE_ATOMICITY, R.SWIZZLE_ALIGNMENT,
+                     R.SWIZZLE_96, R.FLIP_8, R.SM103A_PACKED_STORE,
+                     R.SM120A_CLUSTER, R.W_PROFILE)
+        for rule in dependent:
+            self.assertIn("active_atomicity_use", RULE_CATALOG[rule].inputs)
+            self.assertIs(report.outcome(rule).status, FactStatus.UNRESOLVED)
+        self.assertIs(report.outcome(R.SELECTED_AVAILABILITY).status,
+                      FactStatus.CHECKED)
+
 
 def _matrix_cases() -> tuple[tuple[str, R, TensorAccessContext,
                                    TensorMapKnownFacts, FactStatus], ...]:
@@ -996,8 +1066,8 @@ def _matrix_cases() -> tuple[tuple[str, R, TensorAccessContext,
     collector.test_rule_matrix_01_08()
     collector.test_rule_matrix_09_16()
     collector.test_rule_matrix_17_22()
-    if len(rows) != 128 or {rule for _, rule, _, _, _ in rows} != set(R):
-        raise ValueError("literal parity matrix must cover 128 cells and 22 rules")
+    if len(rows) != 134 or {rule for _, rule, _, _, _ in rows} != set(R):
+        raise ValueError("literal parity matrix must cover 134 cells and 22 rules")
     return tuple(rows)
 
 
@@ -1124,7 +1194,9 @@ def render_cpp_known_fact_parity_fixtures() -> str:
     """Prepare C++ assertions from independent literal Python fixture inputs.
 
     This text is test-only, generated as a private include outside the
-    production plan. Its 128 expected cells are literal fixture expectations.
+    production plan. Its 134 expected cells retain all 128 baseline inputs,
+    correct three contradictory-use outcomes, and add three valid N/A controls
+    plus three reduction boundaries.
     """
 
     blocks = ["/** Compare literal cross-language rule expectations. */",
@@ -1147,13 +1219,15 @@ def render_cpp_known_fact_parity_fixtures() -> str:
         "TEST(TensorMapKnownFacts, GeneratedMalformedParityCases) {",
     ))
     malformed = TensorMapKnownFactsTests()._malformed_cases()
-    if len(malformed) != 15:
-        raise ValueError("malformed fixture inventory must contain 15 cases")
+    if len(malformed) != 19:
+        raise ValueError("malformed fixture inventory must contain 19 cases")
     for label, selected, supplied, diagnostic, rule in malformed:
-        if label == "invalid availability claim":
+        if label in ("invalid availability claim", "invalid atomicity use"):
+            field_name = ("selected_value_available" if label ==
+                          "invalid availability claim" else "active_atomicity_use")
             blocks.extend((
                 "  static_assert(!std::is_assignable_v<",
-                "      decltype(TensorKnownAccessContext{}.selected_value_available)&,",
+                f"      decltype(TensorKnownAccessContext{{}}.{field_name})&,",
                 "      std::string>);",
             ))
             continue
@@ -1168,6 +1242,11 @@ def render_cpp_known_fact_parity_fixtures() -> str:
         elif label == "invalid projection code":
             typed_supplied = replace(supplied, element=field("u32", 2))
             fixups = ("f.element->code = UINT64_MAX;",)
+        elif label == "invalid reduction scalar enum":
+            typed_supplied = replace(supplied, reduction_interpretation="u32")
+            fixups = (
+                "f.reduction_interpretation = static_cast<base::ScalarType>(255);",
+            )
         elif label == "invalid coordinate container":
             typed_selected = replace(selected, coordinates=context().coordinates)
             fixups = ("c.coordinate_arity = 6;",)
@@ -1194,6 +1273,9 @@ def render_cpp_known_fact_parity_fixtures() -> str:
             f"    const auto* item = outcome(report, {rule.value});",
             "    ASSERT_NE(item, nullptr);",
             "    EXPECT_EQ(item->status, TensorKnownFactStatus::Unresolved);",
+            *(('    for (const auto& outcome : report.outcomes)',
+               '      EXPECT_EQ(outcome.status, TensorKnownFactStatus::Unresolved);')
+              if label.startswith("isolated ") else ()),
             "  }",
         ))
     blocks.append("}")

@@ -304,8 +304,10 @@ TensorKnownFactsReport validate_tensor_access_facts(
   };
   const auto diagnose = [&](std::string_view name, std::string_view detail) {
     report.diagnostics.push_back(std::string(name) + ": " + std::string(detail));
-    mark_damaged(name);
-    if (name == "direction" || name == "mode" || name == "rank")
+    const auto dependency = name == "facts.rank" ? std::string_view{"rank"} : name;
+    mark_damaged(dependency);
+    if (dependency == "direction" || dependency == "mode" ||
+        dependency == "rank")
       global_context_damaged = true;
   };
   const auto decode = [&](const auto& claim, TensorMapReplaceField field,
@@ -378,6 +380,9 @@ TensorKnownFactsReport validate_tensor_access_facts(
     diagnose("reduction_op", "invalid enum");
   if (c.group && !in_range(*c.group, 0, 1))
     diagnose("group", "invalid enum");
+  if (f.reduction_interpretation &&
+      !base::find_scalar_type_metadata(*f.reduction_interpretation))
+    diagnose("reduction_interpretation", "invalid scalar interpretation");
   if (f.rank && (number(*f.rank) < 1 || number(*f.rank) > 5))
     diagnose("facts.rank", "invalid descriptor rank");
   if (f.rank && rank >= 1 && rank <= 5 && number(*f.rank) != rank)
@@ -482,9 +487,10 @@ TensorKnownFactsReport validate_tensor_access_facts(
         if (!c.reduction_op || !f.reduction_interpretation) {
           item = unresolved(id, "reduction op or scalar interpretation absent"); break;
         }
-        if (mode != TensorAccessMode::Tiled &&
-            mode != TensorAccessMode::Im2colNoOffs) {
-          item = violated(id, "unsupported tensor-reduction mode"); break;
+        if ((mode != TensorAccessMode::Tiled &&
+             mode != TensorAccessMode::Im2colNoOffs) ||
+            (mode == TensorAccessMode::Im2colNoOffs && rank < 3)) {
+          item = violated(id, "unsupported tensor-reduction mode/rank"); break;
         }
         if (!tensor_reduction_accepts_element_type(*c.reduction_op,
                                                    *f.reduction_interpretation)) {

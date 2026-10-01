@@ -44,9 +44,10 @@ The frontend checks instruction-local types, known values, source provenance,
 target gates, and per-body group consistency. It cannot prove peer CTA
 participation, runtime allocation size evolution, deallocation before exit,
 permission after relinquishment, or consistency across device-function calls.
-Tensor Memory `ld`, `st`, `wait`, `ld.red`, `cp`, and `shift`, and specialized
-commit/fence operations have separate, still-open contracts. No GPU execution
-or numerical result is modelled here.
+Tensor Memory register `ld`, `st`, `ld.red`, and matching waits have a
+[separate transfer contract](tensor_memory_transfer_coverage.md). Copy, shift,
+and specialized commit/fence operations remain open. No GPU execution or
+numerical result is modelled here.
 
 The local Clang 21 Debug build compiled the four generated forms and passed
 1151/1151 C++ CTests, including six dedicated allocation tests. The packaged

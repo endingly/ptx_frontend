@@ -37,9 +37,9 @@ shared-CTA 槽的四字节值，并非直接写入寄存器的分配 token。
 
 前端检查单条指令的类型、已知值、源码来源、目标门槛和每个 body 的 group 一致性。
 前端不能证明对等 CTA 的参与、运行时分配大小变化、退出前释放、 relinquish 后的
-许可状态或跨 device-function call 的一致性。Tensor Memory 的 `ld`、`st`、
-`wait`、`ld.red`、`cp`、`shift` 以及专用 commit/fence 操作仍有独立且未完成的
-契约。此处不建模 GPU 执行或数值结果。
+许可状态或跨 device-function call 的一致性。Tensor Memory 寄存器 `ld`、
+`st`、`ld.red` 和相应 wait 有[独立传输契约](tensor_memory_transfer_coverage.md)。
+复制、位移及专用 commit/fence 操作仍未覆盖。此处不建模 GPU 执行或数值结果。
 
 本地 Clang 21 Debug 构建编译了四个生成 form；C++ CTest 1151/1151 通过，
 其中包含六个专门的分配测试。Packaged Python 规格和生成器测试 411/411

@@ -23,7 +23,10 @@ supported surface and its exclusions.
 - [Tensor Memory allocation coverage](docs/us-en/tensor_memory_allocation_coverage.md)
   and its [简体中文版本](docs/zh-han/tensor_memory_allocation_coverage.md)
   define the `tcgen05` allocation, deallocation, and allocation-permit forms.
-  Load, store, wait, reduction, copy, and shift forms remain outside this slice.
+- [Tensor Memory transfer coverage](docs/us-en/tensor_memory_transfer_coverage.md)
+  and its [简体中文版本](docs/zh-han/tensor_memory_transfer_coverage.md)
+  define `tcgen05.ld`, `st`, `ld.red`, and load/store waits, including exact
+  register counts and source-only split offsets. Copy and shift remain open.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

@@ -11,6 +11,9 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldStorage, ResolvedInstruction,
     ResolvedOperandLayout, ResolvedVariant,
 )
+from ptx_frontend.ir.tensor_reduction import (
+    TENSOR_REDUCTION_ELEMENT_TYPES, TensorReductionOp,
+)
 from ptx_frontend.spec.model import CodegenUnit
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
@@ -261,6 +264,12 @@ using InstructionUnion = std::variant<{alternatives}>;
 def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
     """Emit one opcode-level C++ resolved instruction struct."""
 
+    has_tensor_reduction = any(
+        variant.tensor_reduction_op is not None for variant in instruction.variants
+    )
+    reduction_domain = (
+        _emit_tensor_reduction_domain() if has_tensor_reduction else ""
+    )
     variant_names = ", ".join(variant.cpp_name for variant in instruction.variants)
     variant_enum_values = "\n".join(
         f"    {variant.cpp_name}," for variant in instruction.variants
@@ -270,7 +279,8 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backe
         for variant in instruction.variants
     )
     variant_definitions = "\n\n".join(
-        _emit_resolved_variant_definition(variant, backend) for variant in instruction.variants
+        _emit_resolved_variant_definition(variant, backend, has_tensor_reduction)
+        for variant in instruction.variants
     )
 
     atomic_qualifier = (
@@ -279,6 +289,7 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backe
         if instruction.atomic_address_qualifier is not None else ""
     )
     definition = f"""\
+{reduction_domain}
 struct {instruction.cpp_name} {{
   enum class VariantType {{
 {variant_enum_values}
@@ -328,7 +339,48 @@ struct {instruction.cpp_name} {{
     return definition
 
 
-def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: CodegenUnit) -> str:
+def _emit_tensor_reduction_domain() -> str:
+    """Emit the closed operation and conditional descriptor-type query once."""
+
+    enum_members = "\n".join(
+        f"  {file_stem_to_pascal_case(op.value)}," for op in TensorReductionOp
+    )
+    cases = "\n".join(
+        "    case TensorReductionOp::"
+        f"{file_stem_to_pascal_case(op.value)}:\n"
+        "      switch (element_type) {\n"
+        + "\n".join(
+            f"        case base::ScalarType::{scalar.upper()}:"
+            for scalar in TENSOR_REDUCTION_ELEMENT_TYPES[op]
+        )
+        + "\n          return true;\n"
+        "        default:\n          return false;\n      }"
+        for op in TensorReductionOp
+    )
+    return f"""\
+/** Encoded tiled tensor-reduction operation; descriptor contents remain opaque. */
+enum class TensorReductionOp : uint8_t {{
+{enum_members}
+}};
+
+/** Whether an operation permits a descriptor element type if that type is known.
+ * This does not inspect or validate a tensor-map descriptor instance.
+ */
+constexpr bool tensor_reduction_accepts_element_type(
+    TensorReductionOp operation, base::ScalarType element_type) noexcept {{
+  switch (operation) {{
+{cases}
+    default:
+      return false;
+  }}
+}}
+"""
+
+
+def _emit_resolved_variant_definition(
+    variant: ResolvedVariant, backend: CodegenUnit,
+    has_tensor_reduction: bool = False,
+) -> str:
     modifier_fields = "\n".join(
         _emit_resolved_field(field, backend) for field in variant.modifier_fields
     )
@@ -353,6 +405,17 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
     Operands operands;"""
 
     tensor_map_projection = _emit_tensor_map_replace_projection(variant)
+    reduction_identity = ""
+    if has_tensor_reduction:
+        value = (
+            f"TensorReductionOp::{file_stem_to_pascal_case(variant.tensor_reduction_op.value)}"
+            if variant.tensor_reduction_op is not None else "std::nullopt"
+        )
+        reduction_identity = (
+            "    /** Static tiled reduction operation, absent on other Cp forms. */\n"
+            "    inline static constexpr std::optional<TensorReductionOp> "
+            f"tensor_reduction_op = {value};\n"
+        )
     return f"""\
   // YAML: {variant.variant_id}
   struct {variant.cpp_name} {{
@@ -362,6 +425,7 @@ def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: Codegen
     /** Instruction-local completion identity; no runtime group state is implied. */
     inline static constexpr base::AsyncCompletionKind completion_kind =
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
+{reduction_identity}\
     ResolvedOperandLayoutTag operand_layout;
 {body}
 {tensor_map_projection}

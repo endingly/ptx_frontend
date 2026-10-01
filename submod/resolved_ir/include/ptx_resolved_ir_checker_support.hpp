@@ -125,6 +125,10 @@ CheckResult check_tensor_map_cp_fenceproxy_rule(std::span<const OperandView>,
 /** Require a known tensor-map address-register type to have 32 or 64 bits. */
 CheckResult check_tensor_map_address_register_width(
     const WithLocs<ResolvedAddress>&, const Context&);
+/** Recheck both owned scalar pointer bases of a tiled tensor reduction. */
+CheckResult check_tensor_reduction_addresses(
+    const WithLocs<ResolvedTensorOperand>&, const WithLocs<ResolvedAddress>&,
+    const Context&);
 /** Check typed non-bulk copy source control and statically known zero-fill size. */
 CheckResult check_cp_async_rule(std::span<const FieldView>,
                                 std::span<const OperandView>, const Context&);

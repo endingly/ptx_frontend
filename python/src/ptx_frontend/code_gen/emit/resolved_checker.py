@@ -9,6 +9,7 @@ from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.matrix_storage import matrix_storage_plan
 from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedVariant
+from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.spec.model import CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
@@ -381,6 +382,29 @@ def _emit_check_multi_layout_lambda(
         instruction, variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
     )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_MMA:
+        names = {field.name for field in layout.fields}
+        a_fields = [field for field in layout.fields if field.name == "a"]
+        if len(a_fields) != 1:
+            raise ValueError("Tensor Memory MMA requires exactly one typed A operand")
+        a_kind = a_fields[0].value_kind
+        if a_kind is ResolvedValueKind.TCGEN_BRACKETED_ADDRESS:
+            a_address, a_shared = "&payload.a", "nullptr"
+        elif a_kind is ResolvedValueKind.REGISTER:
+            a_address, a_shared = "nullptr", "&payload.a"
+        else:
+            raise ValueError("Tensor Memory MMA A operand has unsupported storage")
+        mask = "&payload.disable_output_lane" if "disable_output_lane" in names else "nullptr"
+        scale = "&payload.scale_input_d" if "scale_input_d" in names else "nullptr"
+        cross_rule_checks += f"""            const auto mma_source_check = check_tcgen_mma_f16_sources(
+                selected.cta_group, payload.d, {a_address}, {a_shared},
+                payload.b, payload.idesc, {mask}, payload.enable_input_d,
+                {scale}, context);
+            if (!mma_source_check) {{
+              diagnostics.insert(diagnostics.end(), mma_source_check.error().begin(),
+                                 mma_source_check.error().end());
+            }}
+"""
     if cross_rule_checks:
         cross_rule_return = f"""
             const auto operand_check = check_operands(

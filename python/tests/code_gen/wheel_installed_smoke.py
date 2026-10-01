@@ -14,6 +14,9 @@ from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.spec.tcgen_descriptor_domains import (
     RELATIVE_LAYOUTS, ZERO_COLUMN, validate_catalogue,
 )
+from ptx_frontend.spec.tcgen_mma_operations import (
+    F16_SHAPES, validate_catalogue as validate_mma_catalogue,
+)
 from ptx_frontend.spec.resources import (
     packaged_backend_spec,
     packaged_backend_spec_schema,
@@ -44,7 +47,10 @@ def check_packaged_resources() -> None:
     assert packaged_backend_spec().is_file()
     assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
     validate_catalogue()
+    validate_mma_catalogue()
     assert len(RELATIVE_LAYOUTS) == 8
+    assert len(F16_SHAPES) == 4
+    assert packaged_spec_dir().joinpath("tensor_memory_data_movement.yaml").is_file()
     assert ZERO_COLUMN.unclassified == 0xC000000000000000
 
 
@@ -78,6 +84,8 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.checker_descriptors",
         "ptx_frontend.code_gen.emit.syntax_descriptors",
         "ptx_frontend.code_gen.emit.value_domains",
+        "ptx_frontend.code_gen.emit.tcgen_mma_operations",
+        "ptx_frontend.spec.normalize.tcgen_mma",
         "ptx_frontend.scripts.gen_all",
         "ptx_frontend.scripts.validate_yaml",
     )
@@ -99,6 +107,11 @@ def check_packaged_spec_model() -> None:
     assert all(isinstance(item, InstructionSpec) for item in database.instructions)
 
     assert any(item.opcode == "add" for item in database.instructions)
+    tcgen = next(item for item in database.instructions
+                 if item.opcode == "tcgen05")
+    mma = next(item for item in tcgen.variants
+               if item.name == "tcgen05_mma_f16")
+    assert len(mma.operand_layouts) == 8
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

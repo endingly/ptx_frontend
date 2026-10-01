@@ -237,6 +237,7 @@ class SemanticRule(_SemanticToken):
     TENSOR_MEMORY_FENCE = "tensor_memory.fence"
     TENSOR_MEMORY_COPY = "tensor_memory.copy"
     TENSOR_MEMORY_SHIFT = "tensor_memory.shift"
+    TENSOR_MEMORY_MMA = "tensor_memory.mma"
     MIXED_PRECISION_ADD = "mixed_precision.add"
     MIXED_PRECISION_SUB = "mixed_precision.sub"
     PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"

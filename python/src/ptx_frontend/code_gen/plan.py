@@ -41,6 +41,10 @@ from ptx_frontend.code_gen.emit.tcgen_descriptor_domains import (
     generate_tcgen_descriptor_header,
     generate_tcgen_descriptor_source,
 )
+from ptx_frontend.code_gen.emit.tcgen_mma_operations import (
+    generate_tcgen_mma_header,
+    generate_tcgen_mma_source,
+)
 
 
 class ArtifactEmitter(Protocol):
@@ -182,6 +186,18 @@ def build_generation_plan(
         GeneratedArtifact(
             path=output_dir / "private/resolved_ir_tcgen_descriptor_domains.gen.cpp",
             emit=generate_tcgen_descriptor_source,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tcgen_mma_operations.gen.hpp",
+            emit=generate_tcgen_mma_header,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tcgen_mma_operations.gen.cpp",
+            emit=generate_tcgen_mma_source,
         )
     )
 

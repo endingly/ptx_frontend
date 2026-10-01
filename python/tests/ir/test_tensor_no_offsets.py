@@ -34,7 +34,7 @@ class TensorNoOffsetsTests(unittest.TestCase):
         self.assertEqual(sum(mode is TensorAccessMode.TILED
                              for mode in modes.values()), 60)
         self.assertEqual(sum(mode is None for mode in modes.values()),
-                         len(modes) - 87)
+                         len(modes) - 114)
         for variant in resolved.variants:
             for layout in variant.operand_layouts:
                 for field, binding in zip(layout.fields, layout.bindings, strict=True):

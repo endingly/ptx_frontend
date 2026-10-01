@@ -1462,6 +1462,88 @@ bool checkTensorNoOffsetsContract() {
       "installed fixed tensor mode, operation, and coordinate provenance");
 }
 
+/** Exercise installed im2col mode, optional info, and semantic roles. */
+bool checkTensorIm2colInfoContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_100a
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 dst[1024];
+.shared .align 8 .b64 mbar;
+.entry kernel() {
+  .reg .s32 %r<5>;
+  .reg .u16 %u<3>;
+  cp.async.bulk.tensor.4d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes
+      [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {65537, %u0};
+  cp.async.bulk.prefetch.tensor.3d.L2.global.im2col::w::128
+      [tensor_map, {%r0, %r1, %r2}];
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor im2col fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor im2col fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor im2col module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "tensor im2col forms retained"))
+    return false;
+  const auto* first = outer_get_if<ir::Cp>(&body[0]);
+  const auto* second = outer_get_if<ir::Cp>(&body[1]);
+  if (!require(first && second, "tensor im2col Cp identities retained"))
+    return false;
+  const auto* load = std::get_if<ir::Cp::AsyncBulkTensor4dSharedClusterIm2col>(
+      &first->variant);
+  const auto* prefetch =
+      std::get_if<ir::Cp::AsyncBulkPrefetchTensor3dIm2colW128>(
+          &second->variant);
+  if (!require(load && prefetch, "typed im2col alternatives retained"))
+    return false;
+  bool load_info_valid = false;
+  std::visit(
+      [&](const auto& payload) {
+        if constexpr (requires {
+                        payload.im2col_info;
+                        payload.tensor;
+                      }) {
+          const auto& info = payload.im2col_info.value;
+          const auto* first_value =
+              std::get_if<ir::ResolvedImmediate>(&info.elements.front());
+          load_info_valid =
+              info.elements.size() == 2 && first_value &&
+              first_value->type == ptx_frontend::base::ScalarType::U16 &&
+              first_value->bits == 1 &&
+              first_value->integer_source_bits == 65537 &&
+              ir::tensor_im2col_info_role(payload.tensor.value, info, 0) ==
+                  ir::TensorIm2colInfoRole::OffsetW &&
+              ir::tensor_im2col_info_role(payload.tensor.value, info, 1) ==
+                  ir::TensorIm2colInfoRole::OffsetH;
+        }
+      },
+      load->operands);
+  bool prefetch_absent = false;
+  std::visit(
+      [&](const auto& payload) {
+        if constexpr (!requires { payload.im2col_info; })
+          prefetch_absent =
+              payload.tensor.value.mode == ir::TensorAccessMode::Im2colW128;
+      },
+      prefetch->operands);
+  return require(load_info_valid && prefetch_absent,
+                 "installed im2col U16, roles, and explicit absence retained");
+}
+
 /** Exercise installed tensor-map update projections after syntax ownership ends. */
 bool checkTensorMapReplacementContract() {
   constexpr std::string_view source = R"ptx(
@@ -1590,6 +1672,8 @@ int main() {
     return 20;
   if (!checkTensorNoOffsetsContract())
     return 21;
+  if (!checkTensorIm2colInfoContract())
+    return 22;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

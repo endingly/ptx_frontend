@@ -112,7 +112,7 @@ EXPECTED_SECTIONS = {
         "cvt": {"9.7.9.22", "9.7.9.23"},
         "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3",
                "9.7.9.26.4.1", "9.7.9.26.4.2", "9.7.9.26.4.3",
-               "9.7.9.26.5.2", "9.7.9.26.5.4", "9.7.9.26.6.1",
+               "9.7.9.26.5.2", "9.7.9.26.5.3", "9.7.9.26.5.4", "9.7.9.26.6.1",
                "9.7.9.26.6.2", "9.7.14.16.18"},
         "tensormap": {"9.7.9.27", "9.7.14.17"},
     },
@@ -166,12 +166,13 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             for instruction in spec["instructions"]
             for variant in instruction["variants"]
             if variant["name"].startswith(
-                ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_")
+                ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_",
+                 "cp_reduce_async_bulk_tensor_")
             )
             for operand in variant["operands"]
             if operand["kind"] == "tensor_operand"
         ]
-        self.assertEqual(len(operands), 20)
+        self.assertEqual(len(operands), 60)
         self.assertTrue(
             all(operand["immediate_conversion"] == "narrow" for operand in operands)
         )

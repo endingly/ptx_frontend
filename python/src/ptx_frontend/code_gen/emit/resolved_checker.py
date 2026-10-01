@@ -509,6 +509,16 @@ def _emit_cross_rule_checks(
                                  tensor_map_address_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
+        checks += """            const auto reduction_address_check =
+                check_tensor_reduction_addresses(selected.tensor, selected.src,
+                                                 context);
+            if (!reduction_address_check) {
+              diagnostics.insert(diagnostics.end(),
+                                 reduction_address_check.error().begin(),
+                                 reduction_address_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY:
         checks += """            const auto tensor_map_fence_check = check_tensor_map_cp_fenceproxy_rule(
                 operands, context);

@@ -558,7 +558,7 @@ CheckResult check_tensor_store_coordinates(const OperandView& operand,
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
       .range = diagnostic_range(operand.locations, context),
-      .message = "Tensor store coordinates must not be statically negative."}});
+      .message = "Tensor write coordinates must not be statically negative."}});
 }
 
 bool is_available(const AvailabilityDescriptor& availability,
@@ -2771,6 +2771,19 @@ CheckResult check_tensor_map_address_register_width(
           "Tensor-map address requires a scalar 32- or 64-bit integer/bit "
           "register.",
   }});
+}
+
+/** Preserve address-register shape and width after syntax ownership ends. */
+CheckResult check_tensor_reduction_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedAddress>& src, const Context& context) {
+  const auto map_check = check_tensor_map_address_register_width(
+      WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
+                                tensor.value.tensor_map.range},
+      context);
+  if (!map_check)
+    return map_check;
+  return check_tensor_map_address_register_width(src, context);
 }
 
 CheckResult check_cp_async_rule(std::span<const FieldView> fields,

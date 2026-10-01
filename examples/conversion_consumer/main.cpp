@@ -1350,6 +1350,61 @@ bool checkTensorAsyncContract() {
       "installed tensor map, rank, tile, and completion identities");
 }
 
+/** Check an installed tiled reduction's owned operation and descriptor query. */
+bool checkTensorReductionContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 src[1024];
+.entry kernel() {
+  cp.reduce.async.bulk.tensor.2d.global.shared::cta.add.tile.bulk_group
+      [tensor_map, {4294967296, 1}], [src];
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor reduction fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor reduction fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor reduction validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 1, "tensor reduction retained"))
+    return false;
+  const auto* reduction = std::get_if<ir::Cp::ReduceAsyncBulkTensor2dAdd>(
+      &outer_get<ir::Cp>(body[0]).variant);
+  const auto* coordinate =
+      reduction && reduction->tensor.value.coordinates.elements.size() == 2
+          ? std::get_if<ir::ResolvedImmediate>(
+                &reduction->tensor.value.coordinates.elements[0])
+          : nullptr;
+  return require(
+      reduction &&
+          reduction->tensor_reduction_op == ir::TensorReductionOp::Add &&
+          reduction->completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
+          reduction->tile.value && !reduction->tile.locs.empty() &&
+          coordinate && coordinate->bits == 0 &&
+          coordinate->integer_source_bits == 0x100000000ULL &&
+          ir::tensor_reduction_accepts_element_type(
+              ir::TensorReductionOp::Add,
+              ptx_frontend::base::ScalarType::F32) &&
+          !ir::tensor_reduction_accepts_element_type(
+              ir::TensorReductionOp::Add, ptx_frontend::base::ScalarType::B32),
+      "installed typed reduction, completion, and narrowed coordinate");
+}
+
 /** Exercise installed tensor-map update projections after syntax ownership ends. */
 bool checkTensorMapReplacementContract() {
   constexpr std::string_view source = R"ptx(
@@ -1474,6 +1529,8 @@ int main() {
     return 18;
   if (!checkTensorMapReplacementContract())
     return 19;
+  if (!checkTensorReductionContract())
+    return 20;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

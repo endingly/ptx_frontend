@@ -68,7 +68,8 @@ supported surface and its exclusions.
   scope, restricted forms, alias-proxy ordering, and target limits.
 - [Tensor-map coverage](docs/us-en/tensor_async_coverage.md) and its
   [简体中文版本](docs/zh-han/tensor_async_coverage.md) describe tiled and
-  `.im2col_no_offs` tensor writes, im2col tensor reads, descriptor field
+  `.im2col_no_offs` tensor writes, im2col tensor reads, four rank-two
+  gather/scatter forms, descriptor field
   replacement, and proxy-fence synchronization. The im2col read coverage
   distinguishes frontend syntax support from ptxas 13.3.73 compatibility.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution

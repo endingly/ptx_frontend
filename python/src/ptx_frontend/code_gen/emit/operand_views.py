@@ -243,6 +243,11 @@ def emit_check_operand_view(
                 }}
                 return view;
               }}()"""
+    if field.value_kind is ResolvedValueKind.TENSOR_IM2COL_INFO:
+        return (
+            f'              project_tensor_im2col_info("{field.name}", '
+            f'{object_name}.{field.name})'
+        )
     if field.value_kind is ResolvedValueKind.TENSOR_OPERAND:
         return (
             f'              project_tensor_operand("{field.name}", '

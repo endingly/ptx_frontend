@@ -238,7 +238,7 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     element_kinds: tuple[OperandKind, ...] = ()
-    if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.TENSOR_OPERAND, OperandKind.MATRIX_FRAGMENT}:
+    if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.TENSOR_IM2COL_INFO, OperandKind.TENSOR_OPERAND, OperandKind.MATRIX_FRAGMENT}:
         cardinality = raw.get("cardinality")
         if not isinstance(cardinality, dict):
             raise ValueError(f"{raw['kind']} operand requires cardinality")
@@ -264,7 +264,7 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
             raise ValueError(f"{raw['kind']} element_kinds contain an unsupported kind") from error
         expected_element_kinds = (
             (OperandKind.REGISTER, OperandKind.IMMEDIATE)
-            if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.TENSOR_OPERAND}
+            if raw["kind"] in {OperandKind.TENSOR_COORDINATE, OperandKind.TENSOR_IM2COL_INFO, OperandKind.TENSOR_OPERAND}
             else (OperandKind.REGISTER,)
         )
         if set(element_kinds) != set(expected_element_kinds) or len(
@@ -455,6 +455,7 @@ def _normalize_immediate_conversion(
             OperandKind.IMMEDIATE,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.TENSOR_COORDINATE,
+            OperandKind.TENSOR_IM2COL_INFO,
             OperandKind.TENSOR_OPERAND,
         }
     ):

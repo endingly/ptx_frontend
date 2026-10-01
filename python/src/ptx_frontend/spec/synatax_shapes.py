@@ -67,6 +67,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.TENSOR_COORDINATE: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
     OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.DIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,

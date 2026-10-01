@@ -334,6 +334,35 @@ def _emit_check_multi_layout_lambda(
         instruction, variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
     )
+    if variant.tensor_im2col_info_elements:
+        pointer_arguments = (
+            "payload.tensor, payload.dst, payload.mbar, context"
+            if any(field.name == "dst" for field in layout.fields)
+            else "payload.tensor, context"
+        )
+        cross_rule_checks += f"""            const auto tensor_pointer_check =
+                check_tensor_read_addresses({pointer_arguments});
+            if (!tensor_pointer_check) {{
+              diagnostics.insert(diagnostics.end(),
+                                 tensor_pointer_check.error().begin(),
+                                 tensor_pointer_check.error().end());
+            }}
+"""
+        if any(field.value_kind is ResolvedValueKind.TENSOR_IM2COL_INFO
+               for field in layout.fields):
+            bounds = ", ".join(
+                str(bound) for _, bound in variant.tensor_im2col_info_elements
+            )
+            cross_rule_checks += f"""            const std::array<uint16_t, {len(variant.tensor_im2col_info_elements)}>
+                info_maximum_values = {{{bounds}}};
+            const auto tensor_info_check = check_tensor_im2col_info(
+                payload.tensor, payload.im2col_info, info_maximum_values, context);
+            if (!tensor_info_check) {{
+              diagnostics.insert(diagnostics.end(),
+                                 tensor_info_check.error().begin(),
+                                 tensor_info_check.error().end());
+            }}
+"""
     if cross_rule_checks:
         cross_rule_return = f"""
             const auto operand_check = check_operands(

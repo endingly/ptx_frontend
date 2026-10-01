@@ -84,6 +84,26 @@ class TensorAccessMode(Enum):
 
     TILED = "tile"
     IM2COL_NO_OFFS = "im2col_no_offs"
+    IM2COL = "im2col"
+    IM2COL_W = "im2col_w"
+    IM2COL_W128 = "im2col_w128"
+
+
+def tensor_im2col_info_contract(
+    mode: TensorAccessMode, rank: int,
+) -> tuple[tuple[str, int], ...]:
+    """Return semantic element roles and inclusive U16-use bounds for a read."""
+
+    if rank not in (3, 4, 5):
+        raise ValueError("im2col information requires rank 3, 4, or 5")
+    if mode is TensorAccessMode.IM2COL:
+        bound = {3: 65535, 4: 255, 5: 31}[rank]
+        return tuple((role, bound) for role in ("OffsetW", "OffsetH", "OffsetD")[:rank - 2])
+    if mode is TensorAccessMode.IM2COL_W:
+        return (("Halo", 511), ("Offset", 31))
+    if mode is TensorAccessMode.IM2COL_W128:
+        return (("Halo", 31), ("Offset", 31))
+    raise ValueError("tensor mode does not carry im2col information")
 
 
 @dataclass(frozen=True)
@@ -121,6 +141,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
+    OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
     OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
     OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
@@ -343,6 +364,7 @@ class ResolvedVariant:
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tensor_reduction_op: TensorReductionOp | None = None
     tensor_access_mode: TensorAccessMode | None = None
+    tensor_im2col_info_elements: tuple[tuple[str, int], ...] = ()
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -526,6 +548,7 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
+    OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
     OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
     OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),
@@ -717,6 +740,20 @@ def _build_variant(
             opcode, variant, tensor_access_mode
         ),
         tensor_access_mode=tensor_access_mode,
+        tensor_im2col_info_elements=(
+            tensor_im2col_info_contract(
+                tensor_access_mode,
+                next(
+                    operand.minimum_elements for operand in
+                    variant.operand_layouts[0].operands
+                    if operand.kind is OperandKind.TENSOR_OPERAND
+                ),
+            )
+            if tensor_access_mode in {
+                TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                TensorAccessMode.IM2COL_W128,
+            } else ()
+        ),
     )
 
 
@@ -732,8 +769,12 @@ def _build_tensor_access_mode(
     has_no_offsets = any(
         modifier.name == "im2col_no_offs" for modifier in variant.modifiers
     )
+    has_read_im2col = any(
+        modifier.name in {"im2col", "im2col_w", "im2col_w128"}
+        for modifier in variant.modifiers
+    )
     if not has_tensor:
-        if has_no_offsets:
+        if has_no_offsets or has_read_im2col:
             raise ValueError(f"variant {variant.name!r}: tensor mode lacks tensor operand")
         return None
     if opcode != "cp":
@@ -743,7 +784,14 @@ def _build_tensor_access_mode(
         raise ValueError(f"variant {variant.name!r}: duplicate tensor mode/flag")
     tile = modifiers.get("tile")
     no_offsets = modifiers.get("im2col_no_offs")
-    if (tile is None) == (no_offsets is None):
+    read_modes = {
+        "im2col": TensorAccessMode.IM2COL,
+        "im2col_w": TensorAccessMode.IM2COL_W,
+        "im2col_w128": TensorAccessMode.IM2COL_W128,
+    }
+    selected_modes = [name for name in ("tile", "im2col_no_offs", *read_modes)
+                      if name in modifiers]
+    if len(selected_modes) != 1:
         raise ValueError(f"variant {variant.name!r}: expected one tensor mode")
     if tile is not None:
         if (tile.kind is not ModifierKind.FLAG
@@ -752,6 +800,108 @@ def _build_tensor_access_mode(
                 or modifier_spellings(tile) != (".tile",)):
             raise ValueError(f"variant {variant.name!r}: invalid tile mode")
         return TensorAccessMode.TILED
+
+    if has_read_im2col:
+        mode_name = selected_modes[0]
+        mode = read_modes[mode_name]
+        mode_modifier = modifiers[mode_name]
+        token = {
+            TensorAccessMode.IM2COL: ".im2col",
+            TensorAccessMode.IM2COL_W: ".im2col::w",
+            TensorAccessMode.IM2COL_W128: ".im2col::w::128",
+        }[mode]
+        if (mode_modifier.kind is not ModifierKind.FLAG
+                or mode_modifier.presence is not ModifierPresence.FIXED
+                or mode_modifier.value is not True
+                or modifier_spellings(mode_modifier) != (token,)):
+            raise ValueError(f"variant {variant.name!r}: invalid im2col mode flag")
+        rank_modifier = modifiers.get("rank")
+        ranks = {f".{count}d": count for count in (3, 4, 5)}
+        if (rank_modifier is None or rank_modifier.kind is not ModifierKind.FLAG
+                or rank_modifier.presence is not ModifierPresence.FIXED
+                or rank_modifier.value is not True
+                or modifier_spellings(rank_modifier) not in
+                tuple((spelling,) for spelling in ranks)):
+            raise ValueError(f"variant {variant.name!r}: invalid im2col rank")
+        rank = ranks[modifier_spellings(rank_modifier)[0]]
+        prefetch = "prefetch" in modifiers
+        topology = (
+            {"async": ".async", "bulk": ".bulk", "prefetch": ".prefetch",
+             "tensor_qualifier": ".tensor", "level": ".L2",
+             "src_space": ".global"}
+            if prefetch else
+            {"async": ".async", "bulk": ".bulk",
+             "tensor_qualifier": ".tensor", "src_space": ".global",
+             "completion": ".mbarrier::complete_tx::bytes"}
+        )
+        if not prefetch:
+            destination = modifiers.get("dst_space")
+            if destination is None or modifier_spellings(destination) not in (
+                    (".shared::cta",), (".shared::cluster",)):
+                raise ValueError(f"variant {variant.name!r}: invalid im2col destination")
+            topology["dst_space"] = modifier_spellings(destination)[0]
+        if set(modifiers) != set(topology) | {"rank", mode_name}:
+            raise ValueError(f"variant {variant.name!r}: invalid im2col topology")
+        for name, spelling in topology.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        if prefetch:
+            if variant.completion_kind is not AsyncCompletionKind.NONE:
+                raise ValueError(f"variant {variant.name!r}: prefetch has completion")
+        elif variant.completion_kind is not AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES:
+            raise ValueError(f"variant {variant.name!r}: invalid im2col completion")
+        if variant.rule is not None or len(variant.operand_layouts) != 2:
+            raise ValueError(f"variant {variant.name!r}: invalid im2col rule/layout count")
+        required_layouts = {"without_info", "with_info"}
+        if {layout.name for layout in variant.operand_layouts} != required_layouts:
+            raise ValueError(f"variant {variant.name!r}: invalid info layout names")
+        expected_prefix = (
+            (("tensor", OperandKind.TENSOR_OPERAND),) if prefetch else
+            (("dst", OperandKind.ADDRESS),
+             ("tensor", OperandKind.TENSOR_OPERAND),
+             ("mbar", OperandKind.ADDRESS))
+        )
+        expected_arity = len(tensor_im2col_info_contract(mode, rank))
+        for layout in variant.operand_layouts:
+            operands = layout.operands
+            expected = expected_prefix + (
+                (("im2col_info", OperandKind.TENSOR_IM2COL_INFO),)
+                if layout.name == "with_info" else ()
+            )
+            if tuple((operand.name, operand.kind) for operand in operands) != expected:
+                raise ValueError(f"variant {variant.name!r}: invalid im2col operands")
+            tensor = operands[0 if prefetch else 1]
+            if (tensor.access is not OperandAccess.READ
+                    or tensor.minimum_elements != rank
+                    or tensor.maximum_elements != rank
+                    or tensor.immediate_conversion_policy is not
+                    OperandImmediateConversionPolicy.NARROW
+                    or tensor.type_expression is None
+                    or tensor.type_expression.kind is not
+                    OperandTypeExpressionKind.FIXED_SCALAR
+                    or tensor.type_expression.scalar_type != "s32"
+                    or {space.value for space in tensor.state_space_values}
+                    != {"param", "const", "global"}):
+                raise ValueError(f"variant {variant.name!r}: invalid tensor read")
+            if layout.name == "with_info":
+                info = operands[-1]
+                if (info.access is not OperandAccess.READ
+                        or info.minimum_elements != expected_arity
+                        or info.maximum_elements != expected_arity
+                        or info.immediate_conversion_policy is not
+                        OperandImmediateConversionPolicy.NARROW
+                        or info.type_expression is None
+                        or info.type_expression.kind is not
+                        OperandTypeExpressionKind.FIXED_SCALAR
+                        or info.type_expression.scalar_type != "u16"
+                        or set(info.element_kinds) !=
+                        {OperandKind.REGISTER, OperandKind.IMMEDIATE}):
+                    raise ValueError(f"variant {variant.name!r}: invalid info binding")
+        return mode
 
     assert no_offsets is not None
     if (no_offsets.kind is not ModifierKind.FLAG

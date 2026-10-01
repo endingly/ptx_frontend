@@ -402,6 +402,72 @@ TEST(TensorIm2colInfo, OwnedImmediateMutation) {
           .has_value());
 }
 
+/** Both info layouts retain scalar coordinate identity after syntax lifetime. */
+TEST(TensorIm2colInfo, OwnedCoordinateRegisterShapesAcrossReadLayouts) {
+  for (const bool prefetch : {false, true}) {
+    for (const bool with_info : {false, true}) {
+      const std::string instruction =
+          prefetch ? "cp.async.bulk.prefetch.tensor.3d.L2.global.im2col "
+                     "[tensor_map, {%r0, %r1, %r2}]"
+                   : "cp.async.bulk.tensor.3d.shared::cluster.global.im2col."
+                     "mbarrier::complete_tx::bytes [dst], "
+                     "[tensor_map, {%r0, %r1, %r2}], [mbar]";
+      auto owned = owned_im2col(instruction + (with_info ? ", {%u0};" : ";"));
+      ASSERT_TRUE(owned.has_value()) << instruction;
+      auto& copy =
+          test_ir_access::get<Cp>(owned->functions.front().body.front());
+      const auto context = im2col_context();
+      auto check_payload = [&](auto& payload) {
+        auto& coordinate = std::get<ResolvedRegisterRef>(
+            payload.tensor.value.coordinates.elements.front());
+        ASSERT_TRUE(coordinate.symbol_id);
+        ASSERT_EQ(coordinate.declared_type, ScalarType::S32);
+        ASSERT_TRUE(checker::check(copy, context).has_value());
+        ASSERT_TRUE(validateModule(
+                        *owned, ModuleValidationPolicy::RequireCompleteContext)
+                        .has_value());
+        const auto saved = coordinate;
+        auto check_damage = [&] {
+          EXPECT_FALSE(checker::check(copy, context).has_value());
+          EXPECT_FALSE(
+              validateModule(*owned,
+                             ModuleValidationPolicy::RequireCompleteContext)
+                  .has_value());
+        };
+        coordinate.vector_width = 2;
+        check_damage();
+        coordinate = saved;
+        coordinate.register_class = ResolvedRegisterClass::Predicate;
+        check_damage();
+        coordinate = saved;
+        coordinate.declared_type = ScalarType::B16;
+        check_damage();
+        coordinate = saved;
+        coordinate.declared_type.reset();
+        check_damage();
+        coordinate = saved;
+        EXPECT_TRUE(checker::check(copy, context).has_value());
+        EXPECT_TRUE(validateModule(
+                        *owned, ModuleValidationPolicy::RequireCompleteContext)
+                        .has_value());
+        coordinate.symbol_id.reset();
+        coordinate.declared_type.reset();
+        EXPECT_TRUE(checker::check(copy, context).has_value());
+        coordinate = saved;
+      };
+      if (prefetch) {
+        auto& selected =
+            std::get<Cp::AsyncBulkPrefetchTensor3dIm2col>(copy.variant);
+        std::visit(check_payload, selected.operands);
+      } else {
+        auto& selected =
+            std::get<Cp::AsyncBulkTensor3dSharedClusterIm2col>(copy.variant);
+        std::visit(check_payload, selected.operands);
+      }
+    }
+  }
+}
+
 /** New read forms recheck all pointer roles before lossy operand projection. */
 TEST(TensorIm2colInfo, OwnedReadPointerMutation) {
   auto owned = owned_im2col(

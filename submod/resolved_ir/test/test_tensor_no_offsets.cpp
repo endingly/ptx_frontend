@@ -217,6 +217,70 @@ TEST(TensorNoOffsets, OwnedModeCoordinatesAndReferences) {
           .has_value());
 }
 
+/** Store and reduction coordinate register shape remains checked after AST death. */
+TEST(TensorNoOffsets, OwnedWriteCoordinateRegisterShapes) {
+  for (const bool reduction : {false, true}) {
+    const std::string instruction =
+        "cp." + std::string(reduction ? "reduce." : "") +
+        "async.bulk.tensor.3d.global.shared::cta." + (reduction ? "add." : "") +
+        "im2col_no_offs.bulk_group [tensor_map, {%r0, 1, 2}], [src];";
+    std::optional<ResolvedModule> owned;
+    {
+      const auto parsed =
+          test_helpers::parseModule(no_offset_module(instruction));
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      auto resolved = resolveModuleOnly(*parsed);
+      ASSERT_TRUE(resolved.has_value()) << instruction;
+      owned.emplace(std::move(*resolved));
+    }
+    auto& copy = test_ir_access::get<Cp>(owned->functions.front().body.front());
+    const auto context = no_offset_context();
+    auto check_selected = [&](auto& selected) {
+      auto& coordinate = std::get<ResolvedRegisterRef>(
+          selected.tensor.value.coordinates.elements.front());
+      ASSERT_TRUE(coordinate.symbol_id);
+      ASSERT_EQ(coordinate.declared_type, base::ScalarType::S32);
+      ASSERT_TRUE(checker::check(copy, context).has_value());
+      ASSERT_TRUE(
+          validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+              .has_value());
+      const auto saved = coordinate;
+      auto check_damage = [&] {
+        EXPECT_FALSE(checker::check(copy, context).has_value());
+        EXPECT_FALSE(validateModule(
+                         *owned, ModuleValidationPolicy::RequireCompleteContext)
+                         .has_value());
+      };
+      coordinate.vector_width = 2;
+      check_damage();
+      coordinate = saved;
+      coordinate.register_class = ResolvedRegisterClass::Predicate;
+      check_damage();
+      coordinate = saved;
+      coordinate.declared_type = base::ScalarType::B16;
+      check_damage();
+      coordinate = saved;
+      coordinate.declared_type.reset();
+      check_damage();
+      coordinate = saved;
+      EXPECT_TRUE(checker::check(copy, context).has_value());
+      EXPECT_TRUE(
+          validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
+              .has_value());
+      coordinate.symbol_id.reset();
+      coordinate.declared_type.reset();
+      EXPECT_TRUE(checker::check(copy, context).has_value());
+      coordinate = saved;
+    };
+    if (reduction)
+      check_selected(
+          std::get<Cp::ReduceAsyncBulkTensor3dAddIm2colNoOffs>(copy.variant));
+    else
+      check_selected(std::get<Cp::AsyncBulkTensor3dGlobalSharedCtaIm2colNoOffs>(
+          copy.variant));
+  }
+}
+
 /** Resolver reports a malformed generated binding before constructing IR. */
 TEST(TensorNoOffsets, MissingOrInvalidBindingModeDiagnosed) {
   const auto parsed = test_helpers::parseInstruction(

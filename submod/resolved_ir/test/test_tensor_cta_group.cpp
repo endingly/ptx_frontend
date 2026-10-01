@@ -331,9 +331,28 @@ TEST(TensorCtaGroup, ReleasedAstCompositeMutationsRejectAndRestore) {
                   auto& coordinate = std::get<ResolvedRegisterRef>(
                       payload.tensor.value.coordinates.elements.front());
                   const auto saved_coordinate = coordinate;
+                  ASSERT_TRUE(coordinate.symbol_id);
+                  auto reject_coordinate = [&] {
+                    EXPECT_FALSE(direct());
+                    EXPECT_FALSE(module());
+                  };
                   coordinate.vector_width = 2;
-                  EXPECT_FALSE(direct());
-                  EXPECT_FALSE(module());
+                  reject_coordinate();
+                  coordinate = saved_coordinate;
+                  coordinate.register_class = ResolvedRegisterClass::Predicate;
+                  reject_coordinate();
+                  coordinate = saved_coordinate;
+                  coordinate.declared_type = ScalarType::B16;
+                  reject_coordinate();
+                  coordinate = saved_coordinate;
+                  coordinate.declared_type.reset();
+                  reject_coordinate();
+                  coordinate = saved_coordinate;
+                  EXPECT_TRUE(direct());
+                  EXPECT_TRUE(module());
+                  coordinate.symbol_id.reset();
+                  coordinate.declared_type.reset();
+                  EXPECT_TRUE(direct());
                   coordinate = saved_coordinate;
                 }
               },

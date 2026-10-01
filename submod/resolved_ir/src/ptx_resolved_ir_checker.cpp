@@ -826,6 +826,29 @@ CheckResult check_operands(
       if (tensor != nullptr) {
         for (size_t index = 0; index < tensor->coordinates.elements.size();
              ++index) {
+          const SourceRange range =
+              index < tensor->coordinate_ranges.size() &&
+                      tensor->coordinate_ranges[index] != SourceRange{}
+                  ? tensor->coordinate_ranges[index]
+                  : diagnostic_range(operand->locations, context);
+          const auto* reg = std::get_if<ResolvedRegisterRef>(
+              &tensor->coordinates.elements[index]);
+          if (reg) {
+            const bool valid =
+                reg->register_class == ResolvedRegisterClass::General &&
+                !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+                (!reg->declared_type ||
+                 (is_integer_type(*reg->declared_type) &&
+                  base::scalar_size_of(*reg->declared_type) == 4));
+            if (!valid)
+              diagnostics.push_back(CheckDiagnostic{
+                  .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                  .range = range,
+                  .message = "Tensor coordinates require scalar 32-bit "
+                             "integer/bit registers.",
+              });
+            continue;
+          }
           const auto* immediate = std::get_if<ResolvedImmediate>(
               &tensor->coordinates.elements[index]);
           if (!immediate)
@@ -839,9 +862,7 @@ CheckResult check_operands(
             continue;
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::OperandTypeMismatch,
-              .range = index < tensor->coordinate_ranges.size()
-                           ? tensor->coordinate_ranges[index]
-                           : diagnostic_range(operand->locations, context),
+              .range = range,
               .message = "Tensor coordinate immediate has invalid signed "
                          "32-bit metadata."});
         }
@@ -2795,32 +2816,6 @@ CheckResult check_tensor_map_address_register_width(
 
 CheckResult check_tensor_read_addresses(
     const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
-  CheckDiagnostics diagnostics;
-  for (size_t index = 0; index < tensor.value.coordinates.elements.size();
-       ++index) {
-    const auto* reg = std::get_if<ResolvedRegisterRef>(
-        &tensor.value.coordinates.elements[index]);
-    if (!reg)
-      continue;
-    const bool invalid =
-        reg->register_class != ResolvedRegisterClass::General ||
-        reg->vector_width.has_value() ||
-        (reg->symbol_id && !reg->declared_type) ||
-        (reg->declared_type &&
-         (!is_integer_type(*reg->declared_type) ||
-          base::scalar_size_of(*reg->declared_type) != 4));
-    if (invalid)
-      diagnostics.push_back(CheckDiagnostic{
-          .kind = CheckDiagnosticKind::OperandTypeMismatch,
-          .range = index < tensor.value.coordinate_ranges.size()
-                       ? tensor.value.coordinate_ranges[index]
-                       : diagnostic_range(tensor.locs, context),
-          .message = "Tensor read coordinates require scalar 32-bit "
-                     "integer/bit registers.",
-      });
-  }
-  if (!diagnostics.empty())
-    return std::unexpected(std::move(diagnostics));
   return check_tensor_map_address_register_width(
       WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
                                 tensor.value.tensor_map.range},

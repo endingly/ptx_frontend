@@ -426,6 +426,8 @@ def _emit_resolved_variant_definition(
     inline static constexpr base::AsyncCompletionKind completion_kind =
         base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
 {reduction_identity}\
+    /** Fixed cluster-multicast identity selected by canonical metadata. */
+    inline static constexpr bool tensor_multicast = {str(variant.tensor_multicast).lower()};
     ResolvedOperandLayoutTag operand_layout;
 {body}
 {tensor_map_projection}

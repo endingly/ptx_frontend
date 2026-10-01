@@ -406,6 +406,11 @@ def _emit_operand_binding_descriptor(
             "\n              .expected_tensor_rank = "
             f"TensorRank::{('One', 'Two', 'Three', 'Four', 'Five')[binding.expected_tensor_rank - 1]},"
         )
+    tensor_mask_role = (
+        "\n              .tensor_cta_mask_role = "
+        "TensorCtaMaskRole::MulticastCluster,"
+        if binding.tensor_cta_mask else ""
+    )
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
         binding.register_width_policy.value, backend=backend,
@@ -421,7 +426,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{tensor_mode}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{tensor_mode}{tensor_mask_role}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 

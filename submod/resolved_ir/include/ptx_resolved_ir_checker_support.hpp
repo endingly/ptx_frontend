@@ -149,6 +149,9 @@ CheckResult check_tensor_reduction_addresses(
 /** Recheck all five scalar coordinate carriers after syntax ownership ends. */
 CheckResult check_tensor_gather_scatter_coordinates(
     const WithLocs<ResolvedTensorOperand>&, const Context&);
+/** Recheck a multicast mask's owned scalar carrier and U16 source conversion. */
+CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>&,
+                                        const Context&);
 /** Check typed non-bulk copy source control and statically known zero-fill size. */
 CheckResult check_cp_async_rule(std::span<const FieldView>,
                                 std::span<const OperandView>, const Context&);

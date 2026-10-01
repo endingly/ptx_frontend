@@ -367,6 +367,7 @@ class ResolvedVariant:
     tensor_reduction_op: TensorReductionOp | None = None
     tensor_access_mode: TensorAccessMode | None = None
     tensor_im2col_info_elements: tuple[tuple[str, int], ...] = ()
+    tensor_multicast: bool = False
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -471,6 +472,7 @@ class ResolvedOperandBinding:
     allowed_element_shapes: tuple[ResolvedOperandShape, ...] = ()
     tensor_access_mode: TensorAccessMode | None = None
     expected_tensor_rank: int | None = None
+    tensor_cta_mask: bool = False
 
 
 @dataclass(frozen=True)
@@ -652,6 +654,7 @@ def _build_variant(
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
     tensor_access_mode = _build_tensor_access_mode(opcode, variant)
+    tensor_multicast = _build_tensor_multicast(variant, tensor_access_mode)
     expected_tensor_rank = _build_expected_tensor_rank(variant, tensor_access_mode)
     active_modifiers = tuple(
         modifier
@@ -675,6 +678,7 @@ def _build_variant(
             ),
             tensor_access_mode,
             expected_tensor_rank,
+            tensor_multicast,
         )
         for layout in variant.operand_layouts
     )
@@ -745,6 +749,7 @@ def _build_variant(
             opcode, variant, tensor_access_mode
         ),
         tensor_access_mode=tensor_access_mode,
+        tensor_multicast=tensor_multicast,
         tensor_im2col_info_elements=(
             tensor_im2col_info_contract(
                 tensor_access_mode,
@@ -845,6 +850,8 @@ def _build_tensor_access_mode(
             expected = (("dst", OperandKind.ADDRESS),
                         ("tensor", OperandKind.TENSOR_OPERAND),
                         ("mbar", OperandKind.ADDRESS))
+            if "multicast" in modifiers:
+                expected += (("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),)
         else:
             topology.update({"dst_space": ".global",
                              "src_space": ".shared::cta",
@@ -852,7 +859,8 @@ def _build_tensor_access_mode(
             completion = AsyncCompletionKind.BULK_GROUP
             expected = (("tensor", OperandKind.TENSOR_OPERAND),
                         ("src", OperandKind.ADDRESS))
-        if (set(modifiers) != set(topology) | {mode_name}
+        if (set(modifiers) != set(topology) | {mode_name} | (
+                {"multicast"} if "multicast" in modifiers else set())
                 or variant.completion_kind is not completion
                 or variant.rule is not None
                 or len(variant.operand_layouts) != 1):
@@ -927,7 +935,8 @@ def _build_tensor_access_mode(
                     (".shared::cta",), (".shared::cluster",)):
                 raise ValueError(f"variant {variant.name!r}: invalid im2col destination")
             topology["dst_space"] = modifier_spellings(destination)[0]
-        if set(modifiers) != set(topology) | {"rank", mode_name}:
+        if set(modifiers) != set(topology) | {"rank", mode_name} | (
+                {"multicast"} if "multicast" in modifiers else set()):
             raise ValueError(f"variant {variant.name!r}: invalid im2col topology")
         for name, spelling in topology.items():
             modifier = modifiers[name]
@@ -959,6 +968,8 @@ def _build_tensor_access_mode(
                 (("im2col_info", OperandKind.TENSOR_IM2COL_INFO),)
                 if layout.name == "with_info" else ()
             )
+            if "multicast" in modifiers:
+                expected += (("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),)
             if tuple((operand.name, operand.kind) for operand in operands) != expected:
                 raise ValueError(f"variant {variant.name!r}: invalid im2col operands")
             tensor = operands[0 if prefetch else 1]
@@ -975,7 +986,7 @@ def _build_tensor_access_mode(
                     != {"param", "const", "global"}):
                 raise ValueError(f"variant {variant.name!r}: invalid tensor read")
             if layout.name == "with_info":
-                info = operands[-1]
+                info = operands[-2] if "multicast" in modifiers else operands[-1]
                 if (info.access is not OperandAccess.READ
                         or info.minimum_elements != expected_arity
                         or info.maximum_elements != expected_arity
@@ -1052,6 +1063,74 @@ def _build_tensor_access_mode(
     else:
         raise ValueError(f"variant {variant.name!r}: invalid no-offset rule")
     return TensorAccessMode.IM2COL_NO_OFFS
+
+
+def _build_tensor_multicast(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> bool:
+    """Lower a paired cluster-load multicast qualifier and mask role."""
+
+    if mode is None:
+        return False
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    multicast = modifiers.get("multicast")
+    has_mask = any(operand.name == "cta_mask"
+                   for layout in variant.operand_layouts
+                   for operand in layout.operands)
+    if multicast is None:
+        if has_mask:
+            raise ValueError(f"variant {variant.name!r}: mask without multicast")
+        return False
+    destination = modifiers.get("dst_space")
+    if (mode not in {TensorAccessMode.TILED, TensorAccessMode.TILE_GATHER4,
+                     TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                     TensorAccessMode.IM2COL_W128}
+            or variant.completion_kind is not
+            AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+            or multicast.kind is not ModifierKind.FLAG
+            or multicast.presence is not ModifierPresence.FIXED
+            or multicast.value is not True
+            or modifier_spellings(multicast) != (".multicast::cluster",)
+            or destination is None
+            or modifier_spellings(destination) != (".shared::cluster",)):
+        raise ValueError(f"variant {variant.name!r}: invalid multicast topology")
+    for layout in variant.operand_layouts:
+        if not layout.operands or layout.operands[-1].name != "cta_mask":
+            raise ValueError(f"variant {variant.name!r}: multicast mask ordering")
+        mask = layout.operands[-1]
+        if (mask.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+                or mask.access is not OperandAccess.READ
+                or mask.immediate_conversion_policy is not
+                OperandImmediateConversionPolicy.NARROW
+                or mask.type_expression is None
+                or mask.type_expression.kind is not
+                OperandTypeExpressionKind.FIXED_SCALAR
+                or mask.type_expression.scalar_type != "u16"):
+            raise ValueError(f"variant {variant.name!r}: invalid multicast mask")
+    if mode is TensorAccessMode.TILED:
+        required = {"async": ".async", "bulk": ".bulk",
+                    "tensor_qualifier": ".tensor",
+                    "dst_space": ".shared::cluster", "src_space": ".global",
+                    "completion": ".mbarrier::complete_tx::bytes"}
+        if set(modifiers) != set(required) | {"rank", "tile", "multicast"}:
+            raise ValueError(f"variant {variant.name!r}: extra multicast control")
+        for name, spelling in required.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        if len(variant.operand_layouts) != 1 or tuple(
+                (operand.name, operand.kind)
+                for operand in variant.operand_layouts[0].operands) != (
+                    ("dst", OperandKind.ADDRESS),
+                    ("tensor", OperandKind.TENSOR_OPERAND),
+                    ("mbar", OperandKind.ADDRESS),
+                    ("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),
+                ):
+            raise ValueError(f"variant {variant.name!r}: tiled multicast operands")
+    return True
 
 
 def _build_expected_tensor_rank(
@@ -1491,6 +1570,7 @@ def _build_operand_layout(
     forbidden_modifier_slots: tuple[int, ...] = (),
     tensor_access_mode: TensorAccessMode | None = None,
     expected_tensor_rank: int | None = None,
+    tensor_multicast: bool = False,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -1573,6 +1653,7 @@ def _build_operand_layout(
                     expected_tensor_rank
                     if operand.kind is OperandKind.TENSOR_OPERAND else None
                 ),
+                tensor_cta_mask=(tensor_multicast and operand.name == "cta_mask"),
             )
             for operand, field in zip(operands, fields, strict=True)
         ),

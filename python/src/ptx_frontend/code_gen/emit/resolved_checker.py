@@ -228,6 +228,23 @@ def _emit_check_operand_dispatch(
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]"
     )
     cross_rule_checks = _emit_cross_rule_checks(instruction, variant, checker_variant_expr)
+    if variant.tensor_multicast and len(variant.operand_layouts) == 1:
+        cross_rule_checks += """            const auto multicast_mask_check =
+                check_tensor_multicast_mask(selected.cta_mask, context);
+            if (!multicast_mask_check) {
+              diagnostics.insert(diagnostics.end(), multicast_mask_check.error().begin(),
+                                 multicast_mask_check.error().end());
+            }
+"""
+        if variant.tensor_access_mode is TensorAccessMode.TILED:
+            cross_rule_checks += """            const auto multicast_pointer_check =
+                check_tensor_read_addresses(selected.tensor, selected.dst,
+                                            selected.mbar, context);
+            if (!multicast_pointer_check) {
+              diagnostics.insert(diagnostics.end(), multicast_pointer_check.error().begin(),
+                                 multicast_pointer_check.error().end());
+            }
+"""
     if len(variant.operand_layouts) == 1:
         operand_views = ",\n".join(
             emit_check_operand_view(field, "selected", backend)
@@ -362,6 +379,14 @@ def _emit_check_multi_layout_lambda(
                                  tensor_info_check.error().begin(),
                                  tensor_info_check.error().end());
             }}
+"""
+    if variant.tensor_multicast:
+        cross_rule_checks += """            const auto multicast_mask_check =
+                check_tensor_multicast_mask(payload.cta_mask, context);
+            if (!multicast_mask_check) {
+              diagnostics.insert(diagnostics.end(), multicast_mask_check.error().begin(),
+                                 multicast_mask_check.error().end());
+            }
 """
     if cross_rule_checks:
         cross_rule_return = f"""

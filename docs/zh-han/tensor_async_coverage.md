@@ -56,6 +56,10 @@ Reduction 的固定操作由生成的 `TensorReductionOp` 标识；`tensor_reduc
 
 ## Tensor-map 字段替换与 proxy fence
 
+已安装的[调用者已知 tensor-map 事实查询](tensor_map_known_facts.md)针对独立提供的
+descriptor 事实与类型化选中 tensor 访问分别报告 22 项条件关系。它不解码不透明的
+128 字节 descriptor，也不证明运行时边界或同步。
+
 `tensormap.replace.tile` 支持全部 11 个字段：`global_address`、`rank`、`box_dim`、`global_dim`、`global_stride`、`element_stride`、`elemtype`、`interleave_layout`、`swizzle_mode`、`swizzle_atomicity`、`fill_mode`。前六个按字段类型接受 `.b32` 或 `.b64` 寄存器或整数常量；后五个只接受 Table 33 的立即数编码。可选 `.global` 或 `.shared::cta` 限定符必须与已知目的地址空间一致。替换目的地须为可写 global 或 CTA shared descriptor，不能沿用 const 或 param 的只读权限。已知类型的地址寄存器须为 32 或 64 位整数/位类型；proxy fence 的源与目的地址同样适用。生成的 variant 提供 `replacement_field`、保留地址和源码身份的自有拷贝 `tensor_map_ref()`，编码字段还提供按字段类型返回 optional 的 `encoded_value()`。这些投影不解码 128 字节 descriptor 内容。
 
 `rank` 编码为维数减一。寄存器 rank 留待运行时验证；立即数在使用处转换为 `.b32`，转换后的编码必须为 0–4。其他有类型 `.b32`/`.b64` 替换常量同样在使用处窄化。维度及 stride 的可选 `ord` 要求原始源码整数为 0–4。Table 33 编码也要求原始源码值精确匹配；2³² 的倍数不能当作零编码的别名。五个封闭值域是元素类型（0–15）、interleave layout（0–2）、swizzle mode（0–4）、swizzle atomicity（0–3）、fill mode（0–1）。元素编码 15 是一个编码身份，在 tensor load 时解释为 `b6x16_p32`，在 tensor store 时解释为 `b6p2x16`。原始源码位、转换后位及原始符号保留在 owned IR，checker 可在修改后重新验证一致性。

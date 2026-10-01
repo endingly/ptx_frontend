@@ -91,6 +91,13 @@ class TensorAccessMode(Enum):
     TILE_SCATTER4 = "tile_scatter4"
 
 
+class TensorDestination(Enum):
+    """Fixed shared-memory destination topology of a selected tensor load."""
+
+    CTA = "cta"
+    CLUSTER = "cluster"
+
+
 def tensor_im2col_info_contract(
     mode: TensorAccessMode, rank: int,
 ) -> tuple[tuple[str, int], ...]:
@@ -366,6 +373,7 @@ class ResolvedVariant:
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tensor_reduction_op: TensorReductionOp | None = None
     tensor_access_mode: TensorAccessMode | None = None
+    tensor_destination: TensorDestination | None = None
     tensor_im2col_info_elements: tuple[tuple[str, int], ...] = ()
     tensor_multicast: bool = False
     tensor_cta_group_applicable: bool = False
@@ -655,6 +663,7 @@ def _build_variant(
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
     tensor_access_mode = _build_tensor_access_mode(opcode, variant)
+    tensor_destination = _build_tensor_destination(variant, tensor_access_mode)
     tensor_multicast = _build_tensor_multicast(variant, tensor_access_mode)
     tensor_cta_group_applicable = _build_tensor_cta_group(
         variant, tensor_access_mode, tensor_multicast
@@ -753,6 +762,7 @@ def _build_variant(
             opcode, variant, tensor_access_mode
         ),
         tensor_access_mode=tensor_access_mode,
+        tensor_destination=tensor_destination,
         tensor_multicast=tensor_multicast,
         tensor_cta_group_applicable=tensor_cta_group_applicable,
         tensor_im2col_info_elements=(
@@ -766,6 +776,37 @@ def _build_variant(
             } else ()
         ),
     )
+
+
+def _build_tensor_destination(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> TensorDestination | None:
+    """Lower one exact fixed shared destination after canonical mode checks."""
+
+    if mode is None:
+        return None
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    source = modifiers.get("src_space")
+    destination = modifiers.get("dst_space")
+    if variant.completion_kind is not AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES:
+        if destination is not None and any(
+            spelling in (".shared::cta", ".shared::cluster")
+            for spelling in modifier_spellings(destination)
+        ):
+            raise ValueError(f"variant {variant.name!r}: tensor load completion is inconsistent")
+        return None
+    if source is None or modifier_spellings(source) != (".global",):
+        raise ValueError(f"variant {variant.name!r}: tensor load lacks global source")
+    if (destination is None or destination.kind is not ModifierKind.FLAG
+            or destination.presence is not ModifierPresence.FIXED
+            or destination.value is not True):
+        raise ValueError(f"variant {variant.name!r}: tensor load lacks fixed shared destination")
+    spelling = modifier_spellings(destination)
+    if spelling == (".shared::cta",):
+        return TensorDestination.CTA
+    if spelling == (".shared::cluster",):
+        return TensorDestination.CLUSTER
+    raise ValueError(f"variant {variant.name!r}: unsupported tensor load destination")
 
 
 def _build_tensor_access_mode(

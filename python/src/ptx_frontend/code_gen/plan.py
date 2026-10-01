@@ -29,6 +29,10 @@ from ptx_frontend.code_gen.emit.resolved_resolver import (
     generate_resolved_ir_resolution_category_declarations_header,
     generate_resolved_ir_resolution_declarations_header,
 )
+from ptx_frontend.code_gen.emit.tensor_map_known_facts import (
+    generate_tensor_map_known_fact_query,
+    generate_tensor_map_known_fact_rules,
+)
 from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
 )
@@ -161,6 +165,18 @@ def build_generation_plan(
         GeneratedArtifact(
             path=output_dir / "private/resolved_value_domains.gen.hpp",
             emit=generate_resolved_value_domain_header,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tensor_map_known_facts.gen.hpp",
+            emit=generate_tensor_map_known_fact_rules,
+        )
+    )
+    artifacts.append(
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tensor_map_known_facts.gen.cpp",
+            emit=generate_tensor_map_known_fact_query,
         )
     )
 

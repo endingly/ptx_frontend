@@ -221,6 +221,13 @@ class GenerationPlanTests(unittest.TestCase):
             output = Path(directory) / "generated"
             plan = build_generation_plan(context, output)
             self.assertEqual(len(plan.paths), len(set(plan.paths)))
+            known_fact_paths = {
+                output / "public/ptx_frontend/resolved_ir/tensor_map_known_facts.gen.hpp",
+                output / "private/resolved_ir_tensor_map_known_facts.gen.cpp",
+            }
+            self.assertTrue(known_fact_paths.issubset(set(plan.paths)))
+            self.assertTrue(known_fact_paths.issubset(
+                {artifact.path for artifact in plan.global_artifacts}))
             self.assertTrue(
                 all(
                     path.relative_to(output).parts[:3]
@@ -253,7 +260,7 @@ class GenerationPlanTests(unittest.TestCase):
                 artifact.path: artifact for artifact in plan.artifacts
                 if artifact.path.suffix == ".cpp"
                 and artifact.path.name.startswith("resolved_ir_")
-                and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
+                and artifact.category is not None
             }
             self.assertEqual(len(sources), len(context.entries))
             for entry in context.entries:

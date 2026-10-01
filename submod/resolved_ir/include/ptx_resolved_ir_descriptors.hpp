@@ -53,6 +53,10 @@ enum class ResolvedValueKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair,
   Register,
@@ -76,6 +80,8 @@ enum class ResolvedValueKind : uint8_t {
   RegisterVector,
   TensorCoordinate,
   TensorMemoryAddress,
+  TcgenBracketedAddress,
+  TcgenHalfSplitOffset,
   MatrixScaleSelector,
   DirectCallTarget,
   IndirectCallee,
@@ -141,6 +147,10 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -159,6 +169,10 @@ struct ResolvedModifierDefaultDescriptor {
       base::MbarrierPhaseType::Primary;
   base::MbarrierLayout mbarrier_layout = base::MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   base::AsyncProxyKind async_proxy_kind = base::AsyncProxyKind::Async;
   base::ProxyKindPair proxy_kind_pair = base::ProxyKindPair::TensormapToGeneric;
   base::MemoryConsistency memory_consistency = base::MemoryConsistency::Omitted;

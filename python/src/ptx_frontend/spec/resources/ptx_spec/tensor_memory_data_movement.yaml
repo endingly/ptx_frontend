@@ -1,4 +1,4 @@
-# PTX fifth-generation Tensor Memory allocation and permit management.
+# PTX fifth-generation Tensor Memory allocation and register transfers.
 # yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
 schema: ptx-instr/v1
 ptx_isa: "9.3"
@@ -8,14 +8,19 @@ section: "9.7.17"
 
 instructions:
   - opcode: tcgen05
-    section: "9.7.17.7.1"
+    section: "9.7.17"
     doc: >-
-      Allocate, deallocate, and relinquish Tensor Memory allocation permission.
-      Allocation and peer-CTA participation remain runtime obligations.
+      Allocate, deallocate, and relinquish Tensor Memory permission; transfer
+      registers by load, store, reduction, and matching same-thread waits.
+      Allocation, warp participation, and completion ordering remain runtime obligations.
     syntax: >-
       tcgen05.alloc.cta_group::{1|2}.sync.aligned{.shared::cta}.b32 [dst], nCols |
       tcgen05.dealloc.cta_group::{1|2}.sync.aligned.b32 taddr, nCols |
-      tcgen05.relinquish_alloc_permit.cta_group::{1|2}.sync.aligned
+      tcgen05.relinquish_alloc_permit.cta_group::{1|2}.sync.aligned |
+      tcgen05.ld.sync.aligned.shape.num{.pack::16b}.b32 {r}, [taddr]{, immHalfSplitoff} |
+      tcgen05.st.sync.aligned.shape.num{.unpack::16b}.b32 [taddr]{, immHalfSplitoff}, {r} |
+      tcgen05.ld.red.sync.aligned.shape.num.redOp{.abs}{.NaN}.type {r}, redVal, [taddr]{, immHalfSplitoff} |
+      tcgen05.wait::{ld|st}.sync.aligned
     variants:
       - name: tcgen05_alloc_generic
         rule: tensor_memory.alloc
@@ -72,3 +77,168 @@ instructions:
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
           - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+      - name: tcgen05_ld
+        rule: tensor_memory.load
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_alloc_availability
+        modifiers: &tcgen_load_modifiers
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: required, values: [{value: s32x32b, token: .32x32b}, {value: s16x64b, token: .16x64b}, {value: s16x128b, token: .16x128b}, {value: s16x256b, token: .16x256b}]}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x1, x2, x4, x8, x16, x32, x64, x128]}
+          - {name: pack, kind: flag, presence: optional, default: false, token: .pack::16b}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands: &tcgen_load_operands
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 1, max: 128}, element_kinds: [reg]}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+      - name: tcgen05_ld_split
+        rule: tensor_memory.load
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s16x32bx2, token: .16x32bx2}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x1, x2, x4, x8, x16, x32, x64, x128]}
+          - {name: pack, kind: flag, presence: optional, default: false, token: .pack::16b}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 1, max: 128}, element_kinds: [reg]}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+          - {name: splitoff, kind: tcgen_half_split_offset, role: src, access: read}
+      - name: tcgen05_st
+        rule: tensor_memory.store
+        completion_kind: tcgen_store_wait
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: st, kind: flag, presence: fixed, value: true, token: .st}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: required, values: [{value: s32x32b, token: .32x32b}, {value: s16x64b, token: .16x64b}, {value: s16x128b, token: .16x128b}, {value: s16x256b, token: .16x256b}]}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x1, x2, x4, x8, x16, x32, x64, x128]}
+          - {name: unpack, kind: flag, presence: optional, default: false, token: .unpack::16b}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: taddr, kind: tensor_memory_address_bracket, role: dst, access: write, type: u32}
+          - {name: r, kind: matrix_fragment, role: src, access: read, type: b32, cardinality: {min: 1, max: 128}, element_kinds: [reg]}
+      - name: tcgen05_st_split
+        rule: tensor_memory.store
+        completion_kind: tcgen_store_wait
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: st, kind: flag, presence: fixed, value: true, token: .st}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s16x32bx2, token: .16x32bx2}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x1, x2, x4, x8, x16, x32, x64, x128]}
+          - {name: unpack, kind: flag, presence: optional, default: false, token: .unpack::16b}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: taddr, kind: tensor_memory_address_bracket, role: dst, access: write, type: u32}
+          - {name: splitoff, kind: tcgen_half_split_offset, role: src, access: read}
+          - {name: r, kind: matrix_fragment, role: src, access: read, type: b32, cardinality: {min: 1, max: 128}, element_kinds: [reg]}
+      - name: tcgen05_ld_red_float
+        rule: tensor_memory.load_reduction
+        completion_kind: tcgen_load_wait
+        availability: &tcgen_reduction_availability
+          any_of:
+            - {ptx: "8.8", sm: 103, family: sm_103f}
+            - {ptx: "9.0", sm: 110, family: sm_110f}
+        modifiers: &tcgen_reduction_float_modifiers
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: red, kind: flag, presence: fixed, value: true, token: .red}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s32x32b, token: .32x32b}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x2, x4, x8, x16, x32, x64, x128]}
+          - {name: red_op, kind: tcgen_red_op, domain: tcgen_reduction_ops, presence: required, values: [min, max]}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        modifier_order_aliases:
+          - [ld, red, sync, aligned, shape, num, type, red_op, abs, nan]
+        operands:
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 2, max: 128}, element_kinds: [reg]}
+          - {name: redval, kind: reg, role: dst, access: write, type: f32}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+      - name: tcgen05_ld_red_float_split
+        rule: tensor_memory.load_reduction
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_reduction_availability
+        modifiers:
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: red, kind: flag, presence: fixed, value: true, token: .red}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s16x32bx2, token: .16x32bx2}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x2, x4, x8, x16, x32, x64, x128]}
+          - {name: red_op, kind: tcgen_red_op, domain: tcgen_reduction_ops, presence: required, values: [min, max]}
+          - {name: abs, kind: flag, presence: optional, default: false, token: .abs}
+          - {name: nan, kind: flag, presence: optional, default: false, token: ".NaN"}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        modifier_order_aliases:
+          - [ld, red, sync, aligned, shape, num, type, red_op, abs, nan]
+        operands:
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 2, max: 128}, element_kinds: [reg]}
+          - {name: redval, kind: reg, role: dst, access: write, type: f32}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+          - {name: splitoff, kind: tcgen_half_split_offset, role: src, access: read}
+      - name: tcgen05_ld_red_integer
+        rule: tensor_memory.load_reduction
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_reduction_availability
+        modifiers:
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: red, kind: flag, presence: fixed, value: true, token: .red}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s32x32b, token: .32x32b}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x2, x4, x8, x16, x32, x64, x128]}
+          - {name: red_op, kind: tcgen_red_op, domain: tcgen_reduction_ops, presence: required, values: [min, max]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        modifier_order_aliases:
+          - [ld, red, sync, aligned, shape, num, type, red_op]
+        operands:
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 2, max: 128}, element_kinds: [reg]}
+          - {name: redval, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+      - name: tcgen05_ld_red_integer_split
+        rule: tensor_memory.load_reduction
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_reduction_availability
+        modifiers:
+          - {name: ld, kind: flag, presence: fixed, value: true, token: .ld}
+          - {name: red, kind: flag, presence: fixed, value: true, token: .red}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shape, kind: tcgen_shape, domain: tcgen_data_shapes, presence: fixed, value: s16x32bx2, token: .16x32bx2}
+          - {name: num, kind: tcgen_num, domain: tcgen_repeats, presence: required, values: [x2, x4, x8, x16, x32, x64, x128]}
+          - {name: red_op, kind: tcgen_red_op, domain: tcgen_reduction_ops, presence: required, values: [min, max]}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32]}
+        modifier_order_aliases:
+          - [ld, red, sync, aligned, shape, num, type, red_op]
+        operands:
+          - {name: r, kind: matrix_fragment, role: dst, access: write, type: b32, cardinality: {min: 2, max: 128}, element_kinds: [reg]}
+          - {name: redval, kind: reg, role: dst, access: write, type: {expr: "modifier(type)"}}
+          - {name: taddr, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+          - {name: splitoff, kind: tcgen_half_split_offset, role: src, access: read}
+      - name: tcgen05_wait_ld
+        rule: tensor_memory.wait
+        completion_kind: tcgen_load_wait
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: wait, kind: tcgen_wait, domain: tcgen_wait_classes, presence: fixed, value: "wait::ld"}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+        operands: []
+      - name: tcgen05_wait_st
+        rule: tensor_memory.wait
+        completion_kind: tcgen_store_wait
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: wait, kind: tcgen_wait, domain: tcgen_wait_classes, presence: fixed, value: "wait::st"}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+        operands: []

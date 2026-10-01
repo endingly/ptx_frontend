@@ -438,6 +438,10 @@ $defs:
       - phase_type
       - mbarrier_layout
       - cta_group
+      - tcgen_shape
+      - tcgen_num
+      - tcgen_red_op
+      - tcgen_wait
       - memory_order
       - proxy
       - proxy_pair
@@ -626,6 +630,10 @@ $defs:
                 - phase_type
                 - mbarrier_layout
                 - cta_group
+                - tcgen_shape
+                - tcgen_num
+                - tcgen_red_op
+                - tcgen_wait
                 - memory_order
                 - proxy
                 - proxy_pair
@@ -696,6 +704,8 @@ $defs:
       - tuple
       - tensor_coordinate
       - tensor_memory_address
+      - tensor_memory_address_bracket
+      - tcgen_half_split_offset
       - matrix_fragment
       - matrix_scale_selector
       - descriptor
@@ -996,7 +1006,7 @@ $defs:
             cardinality:
               properties:
                 max:
-                  maximum: 64
+                  maximum: 128
             element_kinds:
               minItems: 1
               maxItems: 1
@@ -1611,7 +1621,7 @@ $defs:
       completion_kind:
         description: "Instruction-local asynchronous completion mechanism."
         type: string
-        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes]
+        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, tcgen_load_wait, tcgen_store_wait]
 
       matrix:
         $ref: "#/$defs/matrix"

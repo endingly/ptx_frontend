@@ -245,6 +245,46 @@ domains:
       cta_group::1: TcgenCtaGroup::One
       cta_group::2: TcgenCtaGroup::Two
 
+  tcgen_data_shapes:
+    cpp_type: TcgenDataMovementShape
+    default: TcgenDataMovementShape::S32x32b
+    values:
+      s32x32b: TcgenDataMovementShape::S32x32b
+      s16x64b: TcgenDataMovementShape::S16x64b
+      s16x128b: TcgenDataMovementShape::S16x128b
+      s16x256b: TcgenDataMovementShape::S16x256b
+      s16x32bx2: TcgenDataMovementShape::S16x32bx2
+
+  tcgen_repeats:
+    cpp_type: TcgenRepeat
+    default: TcgenRepeat::X1
+    runtime_lookup: ptx_suffix
+    values:
+      x1: TcgenRepeat::X1
+      x2: TcgenRepeat::X2
+      x4: TcgenRepeat::X4
+      x8: TcgenRepeat::X8
+      x16: TcgenRepeat::X16
+      x32: TcgenRepeat::X32
+      x64: TcgenRepeat::X64
+      x128: TcgenRepeat::X128
+
+  tcgen_reduction_ops:
+    cpp_type: TcgenReductionOp
+    default: TcgenReductionOp::Min
+    runtime_lookup: ptx_suffix
+    values:
+      min: TcgenReductionOp::Min
+      max: TcgenReductionOp::Max
+
+  tcgen_wait_classes:
+    cpp_type: TcgenWaitClass
+    default: TcgenWaitClass::Load
+    runtime_lookup: ptx_suffix
+    values:
+      wait::ld: TcgenWaitClass::Load
+      wait::st: TcgenWaitClass::Store
+
   async_proxy_kinds:
     cpp_type: AsyncProxyKind
     default: AsyncProxyKind::Async
@@ -304,6 +344,10 @@ domains:
       MbarrierPhaseType: MbarrierPhaseType
       MbarrierLayout: MbarrierLayout
       TcgenCtaGroup: TcgenCtaGroup
+      TcgenDataMovementShape: TcgenDataMovementShape
+      TcgenRepeat: TcgenRepeat
+      TcgenReductionOp: TcgenReductionOp
+      TcgenWaitClass: TcgenWaitClass
       AsyncProxyKind: AsyncProxyKind
       ProxyKindPair: ProxyKindPair
       Register: ResolvedRegisterRef
@@ -328,6 +372,8 @@ domains:
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
       TensorMemoryAddress: TensorMemoryAddress
+      TcgenBracketedAddress: TensorMemoryAddress
+      TcgenHalfSplitOffset: TcgenHalfSplitOffset
       MatrixScaleSelector: ResolvedMatrixScaleSelector
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
@@ -396,6 +442,10 @@ domains:
       MbarrierPhaseType: check_end::ResolvedValueKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedValueKind::TcgenCtaGroup
+      TcgenDataMovementShape: check_end::ResolvedValueKind::TcgenDataMovementShape
+      TcgenRepeat: check_end::ResolvedValueKind::TcgenRepeat
+      TcgenReductionOp: check_end::ResolvedValueKind::TcgenReductionOp
+      TcgenWaitClass: check_end::ResolvedValueKind::TcgenWaitClass
       AsyncProxyKind: check_end::ResolvedValueKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedValueKind::ProxyKindPair
       MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
@@ -420,6 +470,8 @@ domains:
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       TensorMemoryAddress: check_end::ResolvedValueKind::TensorMemoryAddress
+      TcgenBracketedAddress: check_end::ResolvedValueKind::TcgenBracketedAddress
+      TcgenHalfSplitOffset: check_end::ResolvedValueKind::TcgenHalfSplitOffset
       MatrixScaleSelector: check_end::ResolvedValueKind::MatrixScaleSelector
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
@@ -487,6 +539,10 @@ domains:
       MbarrierPhaseType: check_end::ResolvedModifierDefaultKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedModifierDefaultKind::TcgenCtaGroup
+      TcgenDataMovementShape: check_end::ResolvedModifierDefaultKind::TcgenDataMovementShape
+      TcgenRepeat: check_end::ResolvedModifierDefaultKind::TcgenRepeat
+      TcgenReductionOp: check_end::ResolvedModifierDefaultKind::TcgenReductionOp
+      TcgenWaitClass: check_end::ResolvedModifierDefaultKind::TcgenWaitClass
       AsyncProxyKind: check_end::ResolvedModifierDefaultKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedModifierDefaultKind::ProxyKindPair
 
@@ -509,5 +565,9 @@ domains:
       MbarrierPhaseType: checker::ModifierValueKind::MbarrierPhaseType
       MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
       TcgenCtaGroup: checker::ModifierValueKind::TcgenCtaGroup
+      TcgenDataMovementShape: checker::ModifierValueKind::TcgenDataMovementShape
+      TcgenRepeat: checker::ModifierValueKind::TcgenRepeat
+      TcgenReductionOp: checker::ModifierValueKind::TcgenReductionOp
+      TcgenWaitClass: checker::ModifierValueKind::TcgenWaitClass
       AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
       ProxyKindPair: checker::ModifierValueKind::ProxyKindPair

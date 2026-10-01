@@ -69,6 +69,8 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TENSOR_MEMORY_ADDRESS: (
         OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
     ),
+    OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: OperandSyntaxShape.ADDRESS,
+    OperandKind.TCGEN_HALF_SPLIT_OFFSET: OperandSyntaxShape.IMMEDIATE,
     OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.MATRIX_SCALE_SELECTOR: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.DIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,

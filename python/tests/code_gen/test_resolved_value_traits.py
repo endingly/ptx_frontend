@@ -65,6 +65,10 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ResolvedValueKind.MBARRIER_PHASE_TYPE,
                     ResolvedValueKind.MBARRIER_LAYOUT,
                     ResolvedValueKind.CTA_GROUP,
+                    ResolvedValueKind.TCGEN_SHAPE,
+                    ResolvedValueKind.TCGEN_NUM,
+                    ResolvedValueKind.TCGEN_RED_OP,
+                    ResolvedValueKind.TCGEN_WAIT,
                     ResolvedValueKind.ASYNC_PROXY_KIND,
                     ResolvedValueKind.PROXY_KIND_PAIR,
                 }
@@ -181,6 +185,10 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             "phase_type": ResolvedValueKind.MBARRIER_PHASE_TYPE,
             "mbarrier_layout": ResolvedValueKind.MBARRIER_LAYOUT,
             "cta_group": ResolvedValueKind.CTA_GROUP,
+            "tcgen_shape": ResolvedValueKind.TCGEN_SHAPE,
+            "tcgen_num": ResolvedValueKind.TCGEN_NUM,
+            "tcgen_red_op": ResolvedValueKind.TCGEN_RED_OP,
+            "tcgen_wait": ResolvedValueKind.TCGEN_WAIT,
             "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
             "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
         }

@@ -39,14 +39,16 @@ class TcgenAllocationContractTests(unittest.TestCase):
     def test_allocation_trio_and_two_written_slot_forms(self) -> None:
         """Preserve every first-slice action and the optional shared qualifier."""
 
-        self.assertEqual(set(self.variants), {
+        allocation_names = {
             "tcgen05_alloc_generic",
             "tcgen05_alloc_shared_cta",
             "tcgen05_dealloc",
             "tcgen05_relinquish_alloc_permit",
-        })
+        }
+        self.assertTrue(allocation_names <= set(self.variants))
+        allocation = {name: self.variants[name] for name in allocation_names}
         self.assertEqual(
-            {name: variant.rule for name, variant in self.variants.items()},
+            {name: variant.rule for name, variant in allocation.items()},
             {
                 "tcgen05_alloc_generic": SemanticRule.TENSOR_MEMORY_ALLOC,
                 "tcgen05_alloc_shared_cta": SemanticRule.TENSOR_MEMORY_ALLOC,
@@ -57,7 +59,7 @@ class TcgenAllocationContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {name: len(variant.operand_layouts[0].operands)
-             for name, variant in self.variants.items()},
+             for name, variant in allocation.items()},
             {
                 "tcgen05_alloc_generic": 2,
                 "tcgen05_alloc_shared_cta": 2,
@@ -65,7 +67,7 @@ class TcgenAllocationContractTests(unittest.TestCase):
                 "tcgen05_relinquish_alloc_permit": 0,
             },
         )
-        for variant in self.variants.values():
+        for variant in allocation.values():
             with self.subTest(variant=variant.name):
                 self.assertEqual(variant.availability, EXPECTED_AVAILABILITY)
                 group = next(modifier for modifier in variant.modifiers

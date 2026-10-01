@@ -138,6 +138,22 @@ CheckResult check_tcgen_allocation_rule(TcgenAllocationAction,
 /** Recheck the owned allocation result-slot register before view projection. */
 CheckResult check_tcgen_allocation_result_slot(const WithLocs<ResolvedAddress>&,
                                                const Context&);
+/** Enforce exact register-transfer shape, repeat, and reduction cardinality. */
+CheckResult check_tcgen_transfer_rule(std::span<const FieldView>,
+                                      std::span<const OperandView>, bool,
+                                      const Context&);
+/** Recheck the owned simple bracket address after checker view projection. */
+CheckResult check_tcgen_transfer_address(const WithLocs<TensorMemoryAddress>&,
+                                         const Context&);
+/** Recheck all actual fragment register lanes and reject writable sinks. */
+CheckResult check_tcgen_transfer_fragment(
+    const WithLocs<ResolvedRegisterVector>&, const Context&);
+/** Recheck a separate reduction result's scalar register metadata. */
+CheckResult check_tcgen_reduction_result(const WithLocs<ResolvedRegisterRef>&,
+                                         const Context&);
+/** Reject invalid owned split-offset source-kind structure. */
+CheckResult check_tcgen_half_split_offset(const WithLocs<TcgenHalfSplitOffset>&,
+                                          const Context&);
 /** Reject `.unified` address suffixes not explicitly admitted by a variant. */
 CheckResult check_unified_address_suffix(const VariantDescriptor&,
                                          std::span<const FieldView>,

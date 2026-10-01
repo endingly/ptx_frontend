@@ -394,6 +394,10 @@ def _emit_modifier_value_descriptor(
               .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
               .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
               .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
+              .tcgen_shape = {members[ResolvedValueKind.TCGEN_SHAPE]},
+              .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
+              .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
+              .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
               .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
               .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
 {availability}

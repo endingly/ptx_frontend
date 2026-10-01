@@ -65,6 +65,20 @@ enum class AtomicAddressQualifier : uint8_t {
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 /** Number of CTAs participating in one Tensor Memory instruction. */
 enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Closed register-transfer shape, distinct from an MMA matrix shape. */
+enum class TcgenDataMovementShape : uint8_t {
+  S32x32b,
+  S16x64b,
+  S16x128b,
+  S16x256b,
+  S16x32bx2
+};
+/** Number of repeated transfer shapes selected by the written `.xN` suffix. */
+enum class TcgenRepeat : uint8_t { X1, X2, X4, X8, X16, X32, X64, X128 };
+/** Reduction applied to each lane's loaded columns. */
+enum class TcgenReductionOp : uint8_t { Min, Max };
+/** Same-thread register-transfer completion class. */
+enum class TcgenWaitClass : uint8_t { Load, Store };
 /** Allocation-management action, independent of written opcode modifiers. */
 enum class TcgenAllocationAction : uint8_t {
   Alloc,
@@ -360,7 +374,8 @@ enum class AddressBaseKind : uint8_t { Unknown, Register, Immediate, Symbol };
 enum class AddressOffsetDomain : uint8_t { Unrestricted, Signed32 };
 enum class MbarrierStateTokenForm : uint8_t { Register, RegisterOrSink, Sink };
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
-inline constexpr size_t kMaxOperandElements = 64;
+/** Largest explicit register fragment; ordinary operand limits remain narrower. */
+inline constexpr size_t kMaxOperandElements = 128;
 /** Semantic constraints for one generated operand position. */
 struct OperandDescriptor {
   std::string_view target_field_id;
@@ -418,6 +433,10 @@ struct FieldView {
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
   std::optional<TcgenCtaGroup> tcgen_cta_group;
+  std::optional<TcgenDataMovementShape> tcgen_shape;
+  std::optional<TcgenRepeat> tcgen_repeat;
+  std::optional<TcgenReductionOp> tcgen_reduction_op;
+  std::optional<TcgenWaitClass> tcgen_wait_class;
   std::optional<AsyncProxyKind> async_proxy_kind;
   std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
@@ -532,6 +551,10 @@ enum class ModifierValueKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -554,6 +577,10 @@ struct ModifierValueAvailabilityDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
@@ -580,6 +607,10 @@ struct ModifierValueDomainDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
 };
@@ -602,6 +633,10 @@ struct ModifierValueView {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
@@ -924,8 +959,24 @@ using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
 struct TensorMemoryAddress {
   /** Register or converted immediate; source locations live in its WithLocs owner. */
   RegOrImm value;
+  /** True only when the transfer source spelled the required simple brackets. */
+  bool bracketed = false;
   /** Compare the exact source payload after the syntax tree is released. */
   bool operator==(const TensorMemoryAddress&) const = default;
+};
+/** Evaluated integer source for a split Tensor Memory transfer.
+ *
+ * The ISA does not select a public use width for this immediate, so these
+ * bits must not be interpreted as a converted offset or byte count.
+ */
+enum class TcgenIntegerSourceKind : uint8_t { Signed, Unsigned };
+/** Owned source-only split offset, with no fabricated use conversion. */
+struct TcgenHalfSplitOffset {
+  /** Two's-complement evaluated integer source bits. */
+  uint64_t source_bits = 0;
+  /** Whether the source literal is signed or unsigned. */
+  TcgenIntegerSourceKind source_kind = TcgenIntegerSourceKind::Signed;
+  bool operator==(const TcgenHalfSplitOffset&) const = default;
 };
 /** Owned block-scale selector pair in PTX byte-ID then thread-ID order. */
 struct ResolvedMatrixScaleSelector {

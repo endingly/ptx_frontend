@@ -21,6 +21,7 @@ from .availability import normalize_availability
 from .layout import normalize_operand_layouts
 from .matrix import normalize_matrix
 from .tcgen_allocation import validate_tcgen_allocation_variant
+from .tcgen_load_store import validate_tcgen_transfer_variant
 from .modifiers import (
     normalize_modifier,
     normalize_modifier_order_aliases,
@@ -115,6 +116,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     ),
                 )
             validate_tcgen_allocation_variant(variant)
+            validate_tcgen_transfer_variant(variant)
             variants.append(variant)
 
         instructions.append(

@@ -49,6 +49,10 @@ _MODIFIER_VALUE_KINDS: dict[ModifierKind, ResolvedValueKind] = {
     ModifierKind.PHASE_TYPE: ResolvedValueKind.MBARRIER_PHASE_TYPE,
     ModifierKind.MBARRIER_LAYOUT: ResolvedValueKind.MBARRIER_LAYOUT,
     ModifierKind.CTA_GROUP: ResolvedValueKind.CTA_GROUP,
+    ModifierKind.TCGEN_SHAPE: ResolvedValueKind.TCGEN_SHAPE,
+    ModifierKind.TCGEN_NUM: ResolvedValueKind.TCGEN_NUM,
+    ModifierKind.TCGEN_RED_OP: ResolvedValueKind.TCGEN_RED_OP,
+    ModifierKind.TCGEN_WAIT: ResolvedValueKind.TCGEN_WAIT,
     ModifierKind.PROXY: ResolvedValueKind.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: ResolvedValueKind.PROXY_KIND_PAIR,
 }
@@ -70,6 +74,10 @@ _STRING_POLICIES: dict[ResolvedValueKind, tuple[str, str, str, bool]] = {
     ResolvedValueKind.MBARRIER_PHASE_TYPE: ("mbarrier phase-type", "mbarrier phase-type", "phase-type", True),
     ResolvedValueKind.MBARRIER_LAYOUT: ("mbarrier layout", "mbarrier layout", "mbarrier-layout", True),
     ResolvedValueKind.CTA_GROUP: ("CTA group", "CTA group", "CTA-group", False),
+    ResolvedValueKind.TCGEN_SHAPE: ("Tensor Memory shape", "Tensor Memory shape", "shape", False),
+    ResolvedValueKind.TCGEN_NUM: ("Tensor Memory repeat", "Tensor Memory repeat", "repeat", False),
+    ResolvedValueKind.TCGEN_RED_OP: ("Tensor Memory reduction", "Tensor Memory reduction", "reduction", False),
+    ResolvedValueKind.TCGEN_WAIT: ("Tensor Memory wait", "Tensor Memory wait", "wait", False),
     ResolvedValueKind.ASYNC_PROXY_KIND: ("async proxy", "async proxy", "async-proxy", True),
     ResolvedValueKind.PROXY_KIND_PAIR: ("proxy pair", "proxy pair", "proxy-pair", True),
 }

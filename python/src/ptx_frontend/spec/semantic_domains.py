@@ -29,6 +29,10 @@ class SemanticDomain(Enum):
     MBARRIER_PHASE_TYPE = "mbarrier_phase_type"
     MBARRIER_LAYOUT = "mbarrier_layout"
     CTA_GROUP = "cta_group"
+    TCGEN_SHAPE = "tcgen_shape"
+    TCGEN_NUM = "tcgen_num"
+    TCGEN_RED_OP = "tcgen_red_op"
+    TCGEN_WAIT = "tcgen_wait"
     ASYNC_PROXY_KIND = "async_proxy_kind"
     PROXY_KIND_PAIR = "proxy_kind_pair"
     SPECIAL_REGISTER = "special_register"
@@ -52,6 +56,10 @@ MODIFIER_SEMANTIC_DOMAINS = MappingProxyType({
     ModifierKind.PHASE_TYPE: SemanticDomain.MBARRIER_PHASE_TYPE,
     ModifierKind.MBARRIER_LAYOUT: SemanticDomain.MBARRIER_LAYOUT,
     ModifierKind.CTA_GROUP: SemanticDomain.CTA_GROUP,
+    ModifierKind.TCGEN_SHAPE: SemanticDomain.TCGEN_SHAPE,
+    ModifierKind.TCGEN_NUM: SemanticDomain.TCGEN_NUM,
+    ModifierKind.TCGEN_RED_OP: SemanticDomain.TCGEN_RED_OP,
+    ModifierKind.TCGEN_WAIT: SemanticDomain.TCGEN_WAIT,
     ModifierKind.PROXY: SemanticDomain.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: SemanticDomain.PROXY_KIND_PAIR,
 })
@@ -101,6 +109,10 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     }),
     SemanticDomain.MBARRIER_LAYOUT: frozenset({"layout::v0", "layout::v1"}),
     SemanticDomain.CTA_GROUP: frozenset({"cta_group::1", "cta_group::2"}),
+    SemanticDomain.TCGEN_SHAPE: frozenset({"s32x32b", "s16x64b", "s16x128b", "s16x256b", "s16x32bx2"}),
+    SemanticDomain.TCGEN_NUM: frozenset({"x1", "x2", "x4", "x8", "x16", "x32", "x64", "x128"}),
+    SemanticDomain.TCGEN_RED_OP: frozenset({"min", "max"}),
+    SemanticDomain.TCGEN_WAIT: frozenset({"wait::ld", "wait::st"}),
     SemanticDomain.ASYNC_PROXY_KIND: frozenset({
         "async", "async.global", "async.shared::cta", "async.shared::cluster",
     }),

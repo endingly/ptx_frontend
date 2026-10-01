@@ -355,7 +355,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 )
 
     def test_brace_pack_cardinality_boundaries_and_boolean_rejection(self) -> None:
-        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 64)):
+        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 128)):
             for minimum, maximum in (
                 (0, 1),
                 (2, 1),
@@ -372,6 +372,22 @@ class OperandNormalizationTests(unittest.TestCase):
                         ValueError,
                         f"{kind} cardinality must be within 1..{ceiling} with min <= max",
                     )
+
+    def test_matrix_fragment_explicit_ceiling_preserves_default(self) -> None:
+        """Explicit transfer fragments reach 128; omitted maxima stay at 64."""
+
+        self.assertEqual(normalize_operand(_pack("matrix_fragment")).maximum_elements, 64)
+        for maximum in (63, 64, 65, 127, 128):
+            with self.subTest(maximum=maximum):
+                operand = normalize_operand(
+                    _pack("matrix_fragment", cardinality={"min": 1, "max": maximum})
+                )
+                self.assertEqual(operand.maximum_elements, maximum)
+        self.assert_rejected(
+            _pack("matrix_fragment", cardinality={"min": 1, "max": 129}),
+            ValueError,
+            "matrix_fragment cardinality must be within 1..128 with min <= max",
+        )
 
     def test_brace_pack_element_kinds_require_exact_members_without_duplicates(
         self,

@@ -1967,6 +1967,67 @@ CheckResult check_tcgen_allocation_result_slot(
   }});
 }
 
+/** Keep commit's mbarrier pointer contract after lossy operand projection. */
+CheckResult check_tcgen_commit_address(const WithLocs<ResolvedAddress>& address,
+                                       const Context& context) {
+  if (const auto* pointer =
+          std::get_if<ResolvedRegisterRef>(&address.value.base)) {
+    const auto type = pointer->declared_type;
+    const bool compatible =
+        type &&
+        (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+         base::scalar_kind(*type) == base::ScalarKind::Signed ||
+         base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+        (base::scalar_size_of(*type) == 4 || base::scalar_size_of(*type) == 8);
+    if (pointer->register_class != ResolvedRegisterClass::General ||
+        pointer->vector_width ||
+        (!compatible && (type || pointer->symbol_id))) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = diagnostic_range(address.locs, context),
+          .message = "TCGEN commit requires a scalar General-class 32/64-bit "
+                     "integer or bit mbarrier pointer with known type when "
+                     "bound.",
+      }});
+    }
+  } else if (const auto* symbol =
+                 std::get_if<ResolvedSymbolRef>(&address.value.base)) {
+    if (symbol->address_state_space &&
+        *symbol->address_state_space != base::DeclarationStateSpace::Shared) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = diagnostic_range(address.locs, context),
+          .message =
+              "TCGEN commit mbarrier must reside in cluster shared memory.",
+      }});
+    }
+  }
+  return {};
+}
+
+/** Preserve register class, width, and binding metadata of a CTA mask. */
+CheckResult check_tcgen_commit_mask(const WithLocs<ResolvedRegisterRef>& mask,
+                                    const Context& context) {
+  const auto& value = mask.value;
+  const auto type = value.declared_type;
+  const bool compatible =
+      type &&
+      (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+       base::scalar_kind(*type) == base::ScalarKind::Signed ||
+       base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+      base::scalar_size_of(*type) == 2;
+  if (value.register_class == ResolvedRegisterClass::General &&
+      !value.vector_width && (compatible || (!type && !value.symbol_id))) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(mask.locs, context),
+      .message = "TCGEN multicast mask requires a scalar General-class "
+                 "b16/u16/s16 register with known type when bound.",
+  }});
+}
+
 /** Decode the closed repeat domain without accepting an invalid enum tag. */
 static size_t tcgen_repeat_count(TcgenRepeat repeat) noexcept {
   switch (repeat) {

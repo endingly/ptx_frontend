@@ -78,6 +78,20 @@ class AtomicAddressQualifierValue(Enum):
     SHARED_CLUSTER = "shared::cluster"
 
 
+class TcgenCommitAddressSpelling(Enum):
+    """Written TCGEN commit barrier-address qualifier, independent of proxy."""
+
+    GENERIC = "generic"
+    SHARED_CLUSTER = "shared::cluster"
+
+
+class TcgenFenceDirection(Enum):
+    """Closed ordering direction of one specialized TCGEN fence."""
+
+    BEFORE_THREAD_SYNC = "before_thread_sync"
+    AFTER_THREAD_SYNC = "after_thread_sync"
+
+
 @dataclass(frozen=True)
 class ResolvedAtomicAddressQualifierPolicy:
     """Resolved field identities shared by an instruction's atomic variants."""
@@ -336,6 +350,9 @@ class ResolvedVariant:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
+    tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
+    tcgen_commit_multicast: bool = False
+    tcgen_fence_direction: TcgenFenceDirection | None = None
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -545,6 +562,7 @@ _OPERAND_ROLES = {
     OperandRole.SOURCE_3: ResolvedOperandRole.SOURCE,
     OperandRole.SOURCE_4: ResolvedOperandRole.SOURCE,
     OperandRole.METADATA: ResolvedOperandRole.SOURCE,
+    OperandRole.MASK: ResolvedOperandRole.SOURCE,
     OperandRole.IMMEDIATE: ResolvedOperandRole.SOURCE,
     OperandRole.ADDRESS: ResolvedOperandRole.ADDRESS,
     OperandRole.PREDICATE: ResolvedOperandRole.PREDICATE,
@@ -634,6 +652,19 @@ def _build_variant(
         for modifier in variant.modifiers
         if modifier.presence != ModifierPresence.ABSENT
     )
+    sync_names = {modifier.name for modifier in active_modifiers}
+    fence_direction = None
+    if variant.rule is SemanticRule.TENSOR_MEMORY_FENCE:
+        token = next(modifier.values[0].token for modifier in active_modifiers
+                     if modifier.name == "fence_direction")
+        assert token is not None
+        fence_direction = TcgenFenceDirection(token.removeprefix(".fence::"))
+    commit_address_spelling = None
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        commit_address_spelling = (
+            TcgenCommitAddressSpelling.SHARED_CLUSTER
+            if "shared_cluster" in sync_names else TcgenCommitAddressSpelling.GENERIC
+        )
     legacy_matrix_forms = {
         "mma_sync_aligned_m16n8k8_row_col_f32_f16_f16_f32",
         "ldmatrix_sync_aligned_m8n8_x2_shared_b16",
@@ -724,6 +755,9 @@ def _build_variant(
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+        tcgen_commit_address_spelling=commit_address_spelling,
+        tcgen_commit_multicast="multicast_cluster" in sync_names,
+        tcgen_fence_direction=fence_direction,
     )
 
 

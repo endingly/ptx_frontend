@@ -26,6 +26,7 @@ class AsyncCompletionKind(Enum):
     MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
     TCGEN_LOAD_WAIT = "tcgen_load_wait"
     TCGEN_STORE_WAIT = "tcgen_store_wait"
+    TCGEN_MBARRIER_ARRIVE_ONE = "tcgen_mbarrier_arrive_one"
 
 
 class MatrixFamily(Enum):
@@ -232,6 +233,8 @@ class SemanticRule(_SemanticToken):
     TENSOR_MEMORY_STORE = "tensor_memory.store"
     TENSOR_MEMORY_LOAD_REDUCTION = "tensor_memory.load_reduction"
     TENSOR_MEMORY_WAIT = "tensor_memory.wait"
+    TENSOR_MEMORY_COMMIT = "tensor_memory.commit"
+    TENSOR_MEMORY_FENCE = "tensor_memory.fence"
     MIXED_PRECISION_ADD = "mixed_precision.add"
     MIXED_PRECISION_SUB = "mixed_precision.sub"
     PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"

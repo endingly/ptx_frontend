@@ -236,6 +236,7 @@ enum class AsyncCompletionKind : uint8_t {
   MbarrierCompleteTxBytes,
   TcgenLoadWait,
   TcgenStoreWait,
+  TcgenMbarrierArriveOne,
 };
 
 /** Semantic value of a PTX mbarrier .phase_type qualifier. */

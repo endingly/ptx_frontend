@@ -79,6 +79,15 @@ enum class TcgenRepeat : uint8_t { X1, X2, X4, X8, X16, X32, X64, X128 };
 enum class TcgenReductionOp : uint8_t { Min, Max };
 /** Same-thread register-transfer completion class. */
 enum class TcgenWaitClass : uint8_t { Load, Store };
+
+/** Written commit address qualifier; access still uses the generic proxy. */
+enum class TcgenCommitAddressSpelling : uint8_t { Generic, SharedCluster };
+
+/** Ordering direction of an operand-free specialized TCGEN fence. */
+enum class TcgenFenceDirection : uint8_t {
+  BeforeThreadSync,
+  AfterThreadSync,
+};
 /** Allocation-management action, independent of written opcode modifiers. */
 enum class TcgenAllocationAction : uint8_t {
   Alloc,

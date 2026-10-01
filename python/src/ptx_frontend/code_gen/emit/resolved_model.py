@@ -355,6 +355,30 @@ def _emit_resolved_variant_definition(
             "    inline static constexpr TcgenAllocationPermitEffect permit_effect =\n"
             f"        TcgenAllocationPermitEffect::{effect};\n"
         )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        address = variant.tcgen_commit_address_spelling
+        assert address is not None
+        tcgen_contract += (
+            "    /** Written address qualifier; barrier access uses generic proxy. */\n"
+            "    inline static constexpr TcgenCommitAddressSpelling address_spelling =\n"
+            f"        TcgenCommitAddressSpelling::{''.join(part.title() for part in address.name.lower().split('_'))};\n"
+            "    /** Whether the 16-bit register mask selects peer-CTA barriers. */\n"
+            f"    inline static constexpr bool multicast = {'true' if variant.tcgen_commit_multicast else 'false'};\n"
+            "    /** Cluster-scoped arrive-on count fixed by the completion contract. */\n"
+            "    inline static constexpr uint8_t arrive_count = 1;\n"
+            "    /** Mbarrier signal scope; no runtime arrival is inferred. */\n"
+            "    inline static constexpr base::MemoryScope signal_scope = base::MemoryScope::Cluster;\n"
+            "    /** The barrier is accessed through the generic proxy. */\n"
+            "    inline static constexpr bool generic_proxy_access = true;\n"
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_FENCE:
+        direction = variant.tcgen_fence_direction
+        assert direction is not None
+        tcgen_contract += (
+            "    /** Specialized ordering direction; this fence does not complete work. */\n"
+            "    inline static constexpr TcgenFenceDirection direction =\n"
+            f"        TcgenFenceDirection::{''.join(part.title() for part in direction.name.lower().split('_'))};\n"
+        )
     modifier_fields = "\n".join(
         _emit_resolved_field(field, backend) for field in variant.modifier_fields
     )

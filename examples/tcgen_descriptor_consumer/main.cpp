@@ -82,6 +82,12 @@ int main() {
                    ir::tcgen_zero_partition(32, 256)->active_masks == 4,
                "zero-column defined fields and unclassified high bits"))
     return 1;
+  if (!require(
+          !ir::decode_tcgen_zero_column(zero).generate_mask &&
+              ir::decode_tcgen_zero_column({zero.bits | (uint64_t{1} << 39)})
+                  .generate_mask,
+          "bit 39 enables pattern generation only when set"))
+    return 1;
   return require(ir::validateModule(*owned).has_value(),
                  "owned source still validates after AST release")
              ? 0

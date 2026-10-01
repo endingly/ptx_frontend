@@ -168,7 +168,8 @@ struct TcgenInstructionFields {
 struct TcgenZeroColumnFields {
   std::array<uint8_t, 4> start_counts;
   std::array<bool, 4> first_span;
-  bool zero_all;
+  /** Encoded bit 39: true generates the pattern; false yields an all-zero mask. */
+  bool generate_mask;
   uint16_t skip_span_columns;
   uint16_t use_span_columns;
   uint8_t shift_columns;
@@ -554,8 +555,10 @@ TcgenDefinedFieldReport validate_tcgen_shared_defined_fields(
         need(report, TcgenDescriptorObligation::PatternStart);
       else {
         const auto start = *context.bytes.repeating_pattern_start;
-        const auto required = (start % boundary == 0) ? 0 : ((start >> 7) & 7);
-        if (decoded.base_code != required)
+        const bool at_boundary = start % boundary == 0;
+        const auto required = at_boundary ? 0 : ((start >> 7) & 7);
+        if (decoded.base_code != required ||
+            (!at_boundary && decoded.base_code == 0))
           add(report, TcgenDescriptorViolation::PatternBase,
               mask(*field(table, "base")));
       }
@@ -656,7 +659,7 @@ TcgenZeroColumnFields decode_tcgen_zero_column(TcgenZeroColumnWord word) noexcep
             static_cast<uint8_t>(get(word.bits, table, "sc3"))}},
           {{get(word.bits, table, "fs0") != 0, get(word.bits, table, "fs1") != 0,
             get(word.bits, table, "fs2") != 0, get(word.bits, table, "fs3") != 0}},
-          get(word.bits, table, "zero_all") != 0,
+          get(word.bits, table, "generate_mask") != 0,
           static_cast<uint16_t>(get(word.bits, table, "skip_span") + 1),
           static_cast<uint16_t>(get(word.bits, table, "use_span") + 1),
           static_cast<uint8_t>(get(word.bits, table, "shift")),

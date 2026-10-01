@@ -158,7 +158,7 @@ ZERO_COLUMN = Word("zero_column", 64, (
     Field("sc2", 16, 8), Field("sc3", 24, 8),
     Field("fs0", 32, 1), Field("fs1", 33, 1),
     Field("fs2", 34, 1), Field("fs3", 35, 1),
-    Field("reserved_36", 36, 3, 0), Field("zero_all", 39, 1),
+    Field("reserved_36", 36, 3, 0), Field("generate_mask", 39, 1),
     Field("skip_span", 40, 8), Field("use_span", 48, 8),
     Field("shift", 56, 6),
 ), unclassified=3 << 62)

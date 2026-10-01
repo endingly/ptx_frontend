@@ -19,6 +19,8 @@ class TcgenDescriptorDomainTests(unittest.TestCase):
                           domain.SHARED.field("leading").width), (16, 14))
         self.assertEqual(domain.SHARED.field("fixed_code").fixed, 1)
         self.assertEqual(domain.SHARED.field("swizzle").first, 61)
+        self.assertEqual(domain.ZERO_COLUMN.field("generate_mask").first, 39)
+        self.assertIsNone(domain.ZERO_COLUMN.field("generate_mask").fixed)
         self.assertEqual(domain.ZERO_COLUMN.field("shift").first, 56)
         self.assertEqual(domain.ZERO_COLUMN.unclassified, 0xC000000000000000)
         self.assertEqual({code for code, _ in domain.SWIZZLES},

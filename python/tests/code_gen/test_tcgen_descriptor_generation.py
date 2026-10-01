@@ -49,6 +49,8 @@ class TcgenDescriptorGenerationTests(unittest.TestCase):
                              (first_header, first_source))
             self.assertIn(b"TcgenMmaKind", first_header)
             self.assertIn(b"TcgenZeroPartition", first_header)
+            self.assertIn(b"bool generate_mask;", first_header)
+            self.assertNotIn(b"zero_all", first_header + first_source)
             self.assertIn(b"0x3ffffULL", first_source)
             self.assertIn(b"sm_103a", first_source)
             self.assertIn(b"std::array<TcgenRelativeLayoutRow, 8>", first_source)

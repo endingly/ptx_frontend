@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -93,6 +95,50 @@ TEST(TcgenDescriptorDomains, SharedFixedBitsAndPatternContext) {
   EXPECT_TRUE(special.defined_fields_ok());
   EXPECT_TRUE(
       has_obligation(special, TcgenDescriptorObligation::PatternApplicability));
+}
+
+TEST(TcgenDescriptorDomains, OrdinaryPatternBoundaryAndNonzeroBase) {
+  constexpr uint64_t fixed = 1ULL << 46;
+  constexpr std::array<std::pair<uint64_t, uint64_t>, 3> patterns{{
+      {2, 1024},
+      {4, 512},
+      {6, 256},
+  }};
+  for (const auto [code, boundary] : patterns) {
+    SCOPED_TRACE(code);
+    const TcgenSharedWord base_zero{fixed | (code << 61)};
+    const TcgenSharedWord base_one{base_zero.bits | (1ULL << 49)};
+    TcgenSharedContext context;
+    context.major = TcgenMajor::MN;
+    EXPECT_TRUE(
+        has_obligation(validate_tcgen_shared_defined_fields(base_zero, context),
+                       TcgenDescriptorObligation::PatternStart));
+    context.bytes.repeating_pattern_start = boundary;
+    EXPECT_FALSE(
+        has_violation(validate_tcgen_shared_defined_fields(base_zero, context),
+                      TcgenDescriptorViolation::PatternBase));
+    EXPECT_TRUE(
+        has_violation(validate_tcgen_shared_defined_fields(base_one, context),
+                      TcgenDescriptorViolation::PatternBase));
+    context.bytes.repeating_pattern_start = 128;
+    EXPECT_FALSE(
+        has_violation(validate_tcgen_shared_defined_fields(base_one, context),
+                      TcgenDescriptorViolation::PatternBase));
+    EXPECT_TRUE(
+        has_violation(validate_tcgen_shared_defined_fields(base_zero, context),
+                      TcgenDescriptorViolation::PatternBase));
+    context.bytes.repeating_pattern_start = 129;
+    EXPECT_FALSE(
+        has_violation(validate_tcgen_shared_defined_fields(base_one, context),
+                      TcgenDescriptorViolation::PatternBase));
+    context.bytes.repeating_pattern_start = 16;
+    EXPECT_TRUE(
+        has_violation(validate_tcgen_shared_defined_fields(base_zero, context),
+                      TcgenDescriptorViolation::PatternBase));
+    EXPECT_TRUE(
+        has_violation(validate_tcgen_shared_defined_fields(base_one, context),
+                      TcgenDescriptorViolation::PatternBase));
+  }
 }
 
 TEST(TcgenDescriptorDomains, AllSwizzleCodesAndEightStaticRows) {
@@ -286,7 +332,14 @@ TEST(TcgenDescriptorDomains, ZeroMaskPartitionsAndUnclassifiedBits) {
   EXPECT_EQ(independent.start_counts, (std::array<uint8_t, 4>{1, 2, 3, 4}));
   EXPECT_EQ(independent.first_span,
             (std::array<bool, 4>{false, true, false, true}));
-  EXPECT_TRUE(independent.zero_all);
+  EXPECT_TRUE(independent.generate_mask);
+  const auto mask_disabled = decode_tcgen_zero_column(
+      {0x04030201ULL | (0xAULL << 32) | (255ULL << 48)});
+  EXPECT_FALSE(mask_disabled.generate_mask);
+  EXPECT_EQ(mask_disabled.start_counts, independent.start_counts);
+  EXPECT_TRUE(
+      validate_tcgen_zero_defined_fields({word.bits | (1ULL << 39)}, {32, 256})
+          .defined_fields_ok());
   EXPECT_EQ(independent.use_span_columns, 256U);
   EXPECT_TRUE(has_violation(
       validate_tcgen_zero_defined_fields({word.bits | (1ULL << 37)}, {32, 255}),
@@ -294,6 +347,10 @@ TEST(TcgenDescriptorDomains, ZeroMaskPartitionsAndUnclassifiedBits) {
   EXPECT_FALSE(has_violation(validate_tcgen_zero_defined_fields(
                                  {word.bits | (uint64_t{32} << 56)}, {64, 256}),
                              TcgenDescriptorViolation::ZeroShift));
+  EXPECT_TRUE(
+      has_violation(validate_tcgen_zero_defined_fields(
+                        {word.bits | (1ULL << 39) | (1ULL << 36)}, {128, 256}),
+                    TcgenDescriptorViolation::FixedField));
 }
 
 }  // namespace

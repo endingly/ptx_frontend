@@ -375,6 +375,31 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
         syntax_cst::CstAddressOffset{op, std::move(*magnitude), {op, last + 1}};
   }
 
+  if (token(peek()).kind == TokenKind::Comma) {
+    const TokenId comma = consume();
+    auto brace = expect(TokenKind::LBrace, "'{' in tensor coordinates");
+    if (!brace)
+      return std::unexpected(brace.error());
+    auto parsed = parseVectorPack(*brace);
+    if (!parsed)
+      return std::unexpected(parsed.error());
+    auto close = expect(TokenKind::RBracket, "']' after tensor coordinates");
+    if (!close)
+      return std::unexpected(close.error());
+    return syntax_cst::CstOperand{syntax_cst::CstTensorOperand{
+        open,
+        syntax_cst::CstAddress{std::nullopt,
+                               std::move(base),
+                               std::move(offset),
+                               std::nullopt,
+                               std::nullopt,
+                               {open + 1, comma}},
+        comma,
+        std::get<syntax_cst::CstVectorPack>(std::move(*parsed)),
+        *close,
+        {open, *close + 1}}};
+  }
+
   auto close = expect(TokenKind::RBracket, "']'");
   if (!close)
     return std::unexpected(close.error());

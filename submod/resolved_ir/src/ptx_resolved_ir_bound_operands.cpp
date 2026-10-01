@@ -1562,6 +1562,43 @@ resolve_tensor_coordinate(
   return resolved;
 }
 
+/** Resolve both parts of a tiled tensor operand through existing typed paths. */
+std::expected<WithLocs<ResolvedTensorOperand>, ResolveDiagnostic>
+resolve_tensor_operand(
+    const syntax_ast::AstOperand& operand,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+  const auto* tensor = std::get_if<syntax_ast::AstTensorOperand>(&operand);
+  if (tensor == nullptr)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected [tensorMap, {coordinates}] operand."});
+  syntax_ast::AstOperand address_operand{tensor->tensor_map};
+  auto map = resolve_address(address_operand, context);
+  if (!map)
+    return std::unexpected(map.error());
+  syntax_ast::AstOperand coordinates_operand{tensor->coordinates};
+  auto coordinates =
+      resolve_tensor_coordinate(coordinates_operand, binding, fields, context);
+  if (!coordinates)
+    return std::unexpected(coordinates.error());
+  if (coordinates->value.elements.size() != binding.minimum_elements ||
+      binding.minimum_elements != binding.maximum_elements) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = tensor->coordinates.range,
+        .message =
+            fmt::format("Tensor operand requires exactly {} coordinates.",
+                        binding.minimum_elements)});
+  }
+  ResolvedTensorOperand resolved{
+      .tensor_map = {std::move(map->value), tensor->tensor_map.range},
+      .coordinates = std::move(coordinates->value),
+      .rank = static_cast<TensorRank>(binding.minimum_elements),
+      .mode = TensorAccessMode::Tiled,
+      .coordinate_ranges = std::move(coordinates->locs)};
+  return WithLocs<ResolvedTensorOperand>{std::move(resolved), tensor->range};
+}
+
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
@@ -2112,6 +2149,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::TensorCoordinate: {
       auto value = resolve_tensor_coordinate(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TensorOperand: {
+      auto value = resolve_tensor_operand(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

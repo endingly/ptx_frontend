@@ -4,8 +4,6 @@
 #include <string_view>
 
 #include <fmt/core.h>
-#include <magic_enum/magic_enum.hpp>
-
 #include <ptx_frontend/common/utils.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
@@ -28,8 +26,7 @@ std::expected<typename T::VariantType, ResolveDiagnostic> selectVariant(
       select_variant_name(ast, T::get_syntax_descriptor());
   if (!variant_name)
     return std::unexpected(variant_name.error());
-  const auto variant =
-      magic_enum::enum_cast<typename T::VariantType>(*variant_name);
+  const auto variant = T::variant_type_from_name(*variant_name);
   if (!variant) {
     throw ResolveException(fmt::format(
         "Descriptor variant '{}.{}' has no matching VariantType enumerator.",

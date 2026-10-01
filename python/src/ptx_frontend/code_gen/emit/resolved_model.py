@@ -108,10 +108,13 @@ def generate_resolved_ir_opcode_header(
 #pragma once
 
 #include <concepts>
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -262,6 +265,10 @@ def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backe
     variant_enum_values = "\n".join(
         f"    {variant.cpp_name}," for variant in instruction.variants
     )
+    variant_name_entries = "\n".join(
+        f'      {{VariantType::{variant.cpp_name}, "{variant.cpp_name}"}},'
+        for variant in instruction.variants
+    )
     variant_definitions = "\n\n".join(
         _emit_resolved_variant_definition(variant, backend) for variant in instruction.variants
     )
@@ -276,6 +283,33 @@ struct {instruction.cpp_name} {{
   enum class VariantType {{
 {variant_enum_values}
   }};
+
+  /** Exact generated enum/name pairs, independent of reflection scan limits. */
+  inline static constexpr std::array<
+      std::pair<VariantType, std::string_view>, {len(instruction.variants)}>
+      variant_name_map{{{{
+{variant_name_entries}
+      }}}};
+
+  /** Find the generated enumerator for a descriptor name. */
+  static constexpr std::optional<VariantType> variant_type_from_name(
+      std::string_view name) noexcept {{
+    for (const auto& [variant, spelling] : variant_name_map) {{
+      if (spelling == name)
+        return variant;
+    }}
+    return std::nullopt;
+  }}
+
+  /** Return the descriptor name of a generated enumerator, or empty if invalid. */
+  static constexpr std::string_view variant_type_name(
+      VariantType value) noexcept {{
+    for (const auto& [variant, spelling] : variant_name_map) {{
+      if (variant == value)
+        return spelling;
+    }}
+    return {{}};
+  }}
 
 {variant_definitions}
 

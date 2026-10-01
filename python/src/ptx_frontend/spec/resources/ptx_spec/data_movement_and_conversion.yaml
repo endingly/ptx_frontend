@@ -6365,6 +6365,466 @@ instructions:
           - {kind: address_alignment, address_operand: src, alignment: 16}
           - {kind: immediate_multiple_of, operand: size, divisor: 16}
 
+  - opcode: cp
+    section: "9.7.9.26.5.2"
+    doc: "Tiled tensor-map copy from global tensor data into shared memory."
+    syntax: "cp.async.bulk.tensor.{1d|2d|3d|4d|5d}.shared::{cluster|cta}.global{.tile}.mbarrier::complete_tx::bytes [dst], [tensorMap, {coords}], [mbar]"
+    variants:
+      - name: cp_async_bulk_tensor_1d_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .1d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.1d.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_2d_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .2d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_3d_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_4d_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_5d_shared_cluster
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cluster}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_1d_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .1d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.1d.shared::cta.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_2d_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .2d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.2d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_3d_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.3d.shared::cta.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.3d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_4d_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.4d.shared::cta.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.4d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar];", valid: true}
+
+      - name: cp_async_bulk_tensor_5d_shared_cta
+        completion_kind: mbarrier_complete_tx_bytes
+        availability: {ptx: "8.6", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.5d.shared::cta.global.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.5d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar];", valid: true}
+
+  - opcode: cp
+    section: "9.7.9.26.5.2"
+    doc: "Tiled tensor-map store from CTA shared memory into global tensor data."
+    syntax: "cp.async.bulk.tensor.{1d|2d|3d|4d|5d}.global.shared::cta{.tile}.bulk_group [tensorMap, {coords}], [src]"
+    variants:
+      - name: cp_async_bulk_tensor_1d_global_shared_cta
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .1d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.1d.global.shared::cta.bulk_group [tensor_map, {%r0}], [src];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {%r0}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_2d_global_shared_cta
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .2d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.2d.global.shared::cta.bulk_group [tensor_map, {%r0, %r1}], [src];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.2d.global.shared::cta.tile.bulk_group [tensor_map, {%r0, %r1}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_3d_global_shared_cta
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.3d.global.shared::cta.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.3d.global.shared::cta.tile.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_4d_global_shared_cta
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.4d.global.shared::cta.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.4d.global.shared::cta.tile.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_5d_global_shared_cta
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.5d.global.shared::cta.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+          - {ptx: "cp.async.bulk.tensor.5d.global.shared::cta.tile.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+  - opcode: cp
+    section: "9.7.9.26.5.4"
+    doc: "Tiled tensor-map prefetch from global tensor data into L2."
+    syntax: "cp.async.bulk.prefetch.tensor.{1d|2d|3d|4d|5d}.L2.global{.tile} [tensorMap, {coords}]"
+    variants:
+      - name: cp_async_bulk_prefetch_tensor_1d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .1d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 1, max: 1}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {%r0}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.1d.L2.global.tile [tensor_map, {%r0}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_2d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .2d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 2, max: 2}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map, {%r0, %r1}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%r0, %r1}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_3d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global [tensor_map, {%r0, %r1, %r2}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.3d.L2.global.tile [tensor_map, {%r0, %r1, %r2}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_4d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global [tensor_map, {%r0, %r1, %r2, %r3}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.4d.L2.global.tile [tensor_map, {%r0, %r1, %r2, %r3}];", valid: true}
+
+      - name: cp_async_bulk_prefetch_tensor_5d
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: prefetch, kind: flag, presence: fixed, value: true, token: .prefetch}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: level, kind: flag, presence: fixed, value: true, token: .L2}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: tile, kind: flag, presence: optional, default: false, token: .tile}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: src, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+        examples:
+          - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global [tensor_map, {%r0, %r1, %r2, %r3, %r4}];", valid: true}
+          - {ptx: "cp.async.bulk.prefetch.tensor.5d.L2.global.tile [tensor_map, {%r0, %r1, %r2, %r3, %r4}];", valid: true}
+
   - opcode: st
     section: "9.7.9.11"
     doc: >

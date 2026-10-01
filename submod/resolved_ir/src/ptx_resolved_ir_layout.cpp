@@ -25,6 +25,8 @@ OperandSyntaxShape get_operand_syntax_shape(
           return OperandSyntaxShape::Address;
         else if constexpr (std::same_as<Item, syntax_ast::AstVectorPack>)
           return OperandSyntaxShape::VectorPack;
+        else if constexpr (std::same_as<Item, syntax_ast::AstTensorOperand>)
+          return OperandSyntaxShape::TensorOperand;
         else if constexpr (std::same_as<Item, syntax_ast::AstVectorMember>)
           return OperandSyntaxShape::VectorMember;
         else if constexpr (std::same_as<Item, syntax_ast::AstCallParameterList>)

@@ -312,6 +312,7 @@ domains:
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
       TensorCoordinate: ResolvedTensorCoordinate
+      TensorOperand: ResolvedTensorOperand
       DirectCallTarget: ResolvedFunctionRef
       IndirectCallee: ResolvedIndirectCallee
       BranchTargetSet: ResolvedBranchTargetSet
@@ -358,6 +359,7 @@ domains:
       BRANCH_TARGET: check_end::OperandSyntaxShape::BranchTarget
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
       REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
+      TENSOR_OPERAND: check_end::OperandSyntaxShape::TensorOperand
       NEGATED_IMMEDIATE: check_end::OperandSyntaxShape::NegatedImmediate
 
   resolved_value_kinds:
@@ -401,6 +403,7 @@ domains:
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
+      TensorOperand: check_end::ResolvedValueKind::TensorOperand
       DirectCallTarget: check_end::ResolvedValueKind::DirectCallTarget
       IndirectCallee: check_end::ResolvedValueKind::IndirectCallee
       BranchTargetSet: check_end::ResolvedValueKind::BranchTargetSet
@@ -435,6 +438,7 @@ domains:
       Address: check_end::OperandShape::Address
       Symbol: check_end::OperandShape::Symbol
       Vector: check_end::OperandShape::Vector
+      TensorOperand: check_end::OperandShape::TensorOperand
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
       DirectCallTarget: check_end::OperandShape::DirectCallTarget

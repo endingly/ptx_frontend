@@ -129,10 +129,15 @@ resolve<{instruction.cpp_name}>(const syntax_ast::AstInstruction& ast,
   if (!selected_variant)
     return std::unexpected(selected_variant.error());
 
+  const auto selected_variant_name =
+      {instruction.cpp_name}::variant_type_name(*selected_variant);
+  if (selected_variant_name.empty())
+    throw ResolveException("Selected {instruction.cpp_name} variant has no generated name mapping.");
+
   auto fields = resolve_fields(
       ast, {instruction.cpp_name}::get_syntax_descriptor(),
       {instruction.cpp_name}::get_resolved_descriptor(),
-      magic_enum::enum_name(*selected_variant), context);
+      selected_variant_name, context);
   if (!fields)
     return std::unexpected(fields.error());
 

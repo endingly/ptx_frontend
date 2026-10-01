@@ -112,7 +112,8 @@ EXPECTED_SECTIONS = {
         "cvt": {"9.7.9.22", "9.7.9.23"},
         "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3",
                "9.7.9.26.4.1", "9.7.9.26.4.2", "9.7.9.26.4.3",
-               "9.7.9.26.6.1", "9.7.9.26.6.2", "9.7.14.16.18"},
+               "9.7.9.26.5.2", "9.7.9.26.5.4", "9.7.9.26.6.1",
+               "9.7.9.26.6.2", "9.7.14.16.18"},
     },
     "control_flow.yaml": {
         "bra": {"9.7.13.3"},
@@ -156,6 +157,24 @@ EXPECTED_SECTIONS = {
 
 
 class PtxSpecTaxonomyTests(unittest.TestCase):
+    def test_tiled_tensor_coordinates_narrow_at_operand_use(self) -> None:
+        """Keep every tiled tensor rank and direction on PTX integer conversion."""
+        spec = load_yaml(SPEC_DIR / "data_movement_and_conversion.yaml")
+        operands = [
+            operand
+            for instruction in spec["instructions"]
+            for variant in instruction["variants"]
+            if variant["name"].startswith(
+                ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_")
+            )
+            for operand in variant["operands"]
+            if operand["kind"] == "tensor_operand"
+        ]
+        self.assertEqual(len(operands), 20)
+        self.assertTrue(
+            all(operand["immediate_conversion"] == "narrow" for operand in operands)
+        )
+
     def test_ptx_93_taxonomy_files_and_sections(self) -> None:
         paths = {
             entry.name

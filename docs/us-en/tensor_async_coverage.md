@@ -1,4 +1,4 @@
-# Tiled tensor asynchronous data movement
+# Tensor asynchronous data movement
 
 The frontend resolves tiled tensor-map forms in [PTX ISA 9.3 §5.5 and §9.7.9.26.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html). The composite `[tensorMap, {coords}]` keeps its nested address, coordinate elements, punctuation, and source ranges through CST and AST lowering. Resolved IR owns a `ResolvedTensorMapRef` and a rank 1–5 `ResolvedTensorOperand`. The 20 copy/prefetch variants and 40 reduction variants accept omitted or explicit `.tile`; the `tile` field records whether it was written.
 
@@ -9,6 +9,10 @@ The frontend resolves tiled tensor-map forms in [PTX ISA 9.3 §5.5 and §9.7.9.2
 | `cp.async.bulk.tensor.{1d…5d}.shared::cta.global{.tile}.mbarrier::complete_tx::bytes` | Same operands, CTA shared destination | 8.6 / SM 90 |
 | `cp.async.bulk.tensor.{1d…5d}.global.shared::cta{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`; existing bulk-group commit/wait | 8.0 / SM 90 |
 | `cp.reduce.async.bulk.tensor.{1d…5d}.global.shared::cta.{add,min,max,inc,dec,and,or,xor}{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`; existing bulk-group commit/wait | 8.0 / SM 90 |
+| `cp.async.bulk.tensor.{3d…5d}.global.shared::cta.im2col_no_offs.bulk_group` | `[tensorMap, {coords}], [src]`; existing bulk-group commit/wait | 8.0 / SM 90 |
+| `cp.reduce.async.bulk.tensor.{3d…5d}.global.shared::cta.{add,min,max,inc,dec,and,or,xor}.im2col_no_offs.bulk_group` | Same operands and completion, with the existing conditional reduction-type contract | 8.0 / SM 90 |
+
+The 27 no-offset store/reduction forms use the explicit fixed `.im2col_no_offs` mode. The generated binding carries a closed expected `TensorAccessMode`, and the owned tensor operand retains that mode after the syntax tree is destroyed. The original 60 tiled forms still have `Tiled`, including when `.tile` is omitted; non-tensor forms have no tensor mode. The selected no-offset form and owned mode preserve fixed qualifier identity, but there is no separate source location for that fixed token and no byte-for-byte source reconstruction claim. No `im2colInfo` operand is present for this mode.
 
 `tensorMap` is a generic pointer to an opaque 128-byte descriptor. A direct descriptor symbol may reside in kernel `.param`, `.const`, or `.global` storage; its declaration identity, storage space, alignment, and source range stay in owned IR. A register pointer retains its register identity, while its runtime storage and alignment remain unknown. Tensor data direction is modeled separately: load reads global tensor data into shared memory; store reads CTA shared memory and writes global tensor data.
 
@@ -16,7 +20,7 @@ The checker requires exactly one signed-32 coordinate per rank and accepts compa
 
 For reduction, a generated `TensorReductionOp` identifies the fixed operation and `tensor_reduction_accepts_element_type` reports conditional descriptor compatibility. `add` accepts U32/S32/U64/F32/F16/BF16; `min` and `max` accept U32/S32/U64/S64/F16/BF16; `inc` and `dec` accept U32; bitwise `and`, `or`, and `xor` accept B32/B64. The query does not read descriptor contents, so its result cannot prove that an opaque descriptor has the queried type. Reduction retains bulk-group completion, with no mbarrier operand or byte accounting; descriptor content, operation/type agreement, swizzle, stride, bounds, and runtime ordering remain caller obligations. The PTX syntax and completion paragraph specify bulk-group here despite a conflicting mbarrier sentence in the descriptive prose.
 
-Descriptor contents, rank consistency with descriptor bytes, swizzle, stride, bounds, barrier locality, and runtime synchronization cannot be proven from this slice. Im2col, gather/scatter, multicast, explicit CTA group, and cache policies or hints remain outside this supported subset. Unsupported adjacent spellings fail selection.
+All 72 tensor-write forms recheck the owned map and CTA source as scalar 32/64-bit integer/bit pointer carriers, including vector shape and known type. Known map-read storage remains global/const/kernel input param with 64-byte alignment; known CTA shared source storage requires 16-byte alignment. Unknown pointer storage and alignment remain runtime obligations. Descriptor contents, rank consistency with descriptor bytes, swizzle, stride, bounds, barrier locality, and runtime synchronization cannot be proven from this slice. Other im2col load/prefetch modes with their info operand, gather/scatter, multicast, explicit CTA group, and cache policies or hints remain outside this supported subset. Unsupported adjacent spellings fail selection.
 
 ## Tensor-map field replacement and proxy fence
 

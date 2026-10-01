@@ -6,6 +6,7 @@ Frontend 支持 [PTX ISA 9.3 §5.5 与 §9.7.9.26.5](https://docs.nvidia.com/cud
 | --- | --- | --- |
 | `cp.async.bulk.prefetch.tensor.{1d…5d}.L2.global{.tile}` | `[tensorMap, {coords}]`；无 completion 操作数 | 8.0 / SM 90 |
 | `cp.async.bulk.tensor.{1d…5d}.shared::cluster.global{.tile}.mbarrier::complete_tx::bytes` | `[dst], [tensorMap, {coords}], [mbar]`；mbarrier complete-tx-bytes | 8.0 / SM 90 |
+| `cp.async.bulk.tensor.{1d…5d}.shared::cluster.global{.tile|.tile::gather4 (2d)|.im2col* (3d…5d)}.mbarrier::complete_tx::bytes.multicast::cluster` | `[dst], [tensorMap, {coords}], [mbar]{, im2colInfo}, ctaMask`；必须提供 mask，若有 info 则 mask 位于其后 | 基础门槛 8.0 / SM 90；仍需满足各模式的限定门槛 |
 | `cp.async.bulk.tensor.{1d…5d}.shared::cta.global{.tile}.mbarrier::complete_tx::bytes` | 相同操作数，CTA shared 目的地 | 8.6 / SM 90 |
 | `cp.async.bulk.tensor.{1d…5d}.global.shared::cta{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`；复用 bulk-group commit/wait | 8.0 / SM 90 |
 | `cp.reduce.async.bulk.tensor.{1d…5d}.global.shared::cta.{add,min,max,inc,dec,and,or,xor}{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`；复用 bulk-group commit/wait | 8.0 / SM 90 |
@@ -37,7 +38,11 @@ Checker 分别比较 owned rank 与生成的固定 rank、以及准确的坐标�
 
 Reduction 的固定操作由生成的 `TensorReductionOp` 标识；`tensor_reduction_accepts_element_type` 查询 descriptor 元素类型的条件兼容性。`add` 允许 U32/S32/U64/F32/F16/BF16；`min` 与 `max` 允许 U32/S32/U64/S64/F16/BF16；`inc` 与 `dec` 仅允许 U32；位操作 `and`、`or`、`xor` 允许 B32/B64。查询不读取 descriptor 内容，因此不能证明某个 opaque descriptor 的实际类型。Reduction 复用 bulk-group 完成机制，没有 mbarrier 操作数或字节计数。Descriptor 内容、操作与类型的一致性、swizzle、stride、bounds 及运行时排序仍由调用方保证。PTX 语法与 completion 段落规定 bulk-group，尽管描述性文字中另有一处与之冲突的 mbarrier 语句。
 
-全部 73 个 tensor-write 形式、27 个 im2col read 身份及三个 gather read 重新检查 owned 指针载体是否为标量 32/64 位整数/位类型，包括向量形状及已知类型。Gather/scatter 还在 AST 销毁后重新检查全部五个标量坐标载体。已知 map read 可来自 global/const/kernel input param，要求 64 字节对齐；已知 shared 数据和 mbarrier 地址分别要求 16 与 8 字节对齐。未知指针的存储空间和对齐仍是运行时义务。此切片无法静态证明 descriptor 内容、descriptor 内 rank 一致性、swizzle、stride、bounds、barrier locality 或运行时同步。Multicast、显式 CTA group、cache policy/hint 尚不在支持范围；相邻但未支持的拼写会在形式选择时失败。
+全部 73 个 tensor-write 形式、27 个 im2col read 身份、三个 gather read 与 15 个 multicast cluster read 重新检查 owned 指针载体是否为标量 32/64 位整数/位类型，包括向量形状及已知类型。Gather/scatter 还在 AST 销毁后重新检查全部五个标量坐标载体。已知 map read 可来自 global/const/kernel input param，要求 64 字节对齐；已知 shared 数据和 mbarrier 地址分别要求 16 与 8 字节对齐。未知指针的存储空间和对齐仍是运行时义务。此切片无法静态证明 descriptor 内容、descriptor 内 rank 一致性、swizzle、stride、bounds、barrier locality 或运行时同步。显式 CTA group、cache policy/hint 尚不在支持范围；相邻但未支持的拼写会在形式选择时失败。
+
+15 个 cluster-load multicast 身份对应 24 个物理布局：五个 tiled rank、一个 rank-two gather，以及 rank 3–5 的三个 im2col 模式（各有 info 存在/省略两种布局）。固定 multicast 限定符必须带有末尾的 16 位 `ctaMask`；没有限定符时不能带 mask。每一位选择一个目标 `%cluster_ctarank`，数据复制到所选 CTA shared 内存的相同偏移。生成的 variant 保留固定 multicast 身份，操作数 descriptor 标注自有 mask 角色。前端接受标量 B16/U16/S16 mask 和在 U16 使用处窄化的整数字面量，并保留原始 64 位源码位与符号。已知 B32/B64 寄存器声明以及向量、predicate 寄存器均被拒绝。动态 mask 内容、所选 CTA 的存在性、barrier 本地性及 descriptor 内容仍是运行时义务；前端不静态禁止零或超出当前 cluster 的位。现有模式、rank、坐标、info pack、已知 64/16/8 字节对齐及 complete-tx-bytes 检查继续适用。ISA 的优化目标列表是性能建议，不是额外的可用性门槛。显式 CTA group 和 L2 cache hint/policy 仍在本子集之外。
+
+官方 ptxas 13.3.73 另外接受所测的 B64 源：普通 im2col rank 3（PTX 8.0 / sm_90）、im2col::w rank 3（8.6 / sm_100a）和 im2col::w::128 rank 3（8.8 / sm_103f）；tile rank 1（8.0 / sm_90）及 gather rank 2（8.6 / sm_100a）则被拒绝。前端仍遵守规定的 16 位寄存器契约。汇编通过不能证明较宽源在运行时如何被使用。原始 corpus 有 103 条记录：102 次汇编调用及一条因错误 prefetch 对照而跳过的配对项；后续八次调用修正了普通 tiled-prefetch 对照，并确认 prefetch 上的 multicast 被拒绝。原始九条 im2col-info 省略拒绝属于既有正式语法/工具差异，不是 mask 失败。该 corpus 不能证明 GPU 执行或更宽寄存器的穷尽行为。
 
 ## Tensor-map 字段替换与 proxy fence
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ptx_frontend.base.utils import generated_at_comment
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedValueKind, ResolvedVariant
+from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldOrigin, ResolvedInstruction, ResolvedOperandLayout, ResolvedValueKind, ResolvedVariant, TensorAccessMode
 from ptx_frontend.spec.model import AsyncCompletionKind, CodegenUnit, SemanticRule
 from .operand_views import emit_check_modifier_view, emit_check_modifier_value_view, emit_check_operand_view
 
@@ -503,6 +503,30 @@ def _emit_cross_rule_checks(
                                  tensor_write_address_check.error().begin(),
                                  tensor_write_address_check.error().end());
             }
+"""
+    if variant.tensor_access_mode in {
+        TensorAccessMode.TILE_GATHER4, TensorAccessMode.TILE_SCATTER4,
+    }:
+        checks += """            const auto gather_scatter_coordinates =
+                check_tensor_gather_scatter_coordinates(selected.tensor, context);
+            if (!gather_scatter_coordinates) {
+              diagnostics.insert(diagnostics.end(),
+                                 gather_scatter_coordinates.error().begin(),
+                                 gather_scatter_coordinates.error().end());
+            }
+"""
+        if variant.tensor_access_mode is TensorAccessMode.TILE_GATHER4:
+            has_destination = any(
+                field.name == "dst" for field in variant.operand_layouts[0].fields
+            )
+            arguments = ("selected.tensor, selected.dst, selected.mbar, context"
+                         if has_destination else "selected.tensor, context")
+            checks += f"""            const auto gather_addresses =
+                check_tensor_read_addresses({arguments});
+            if (!gather_addresses) {{
+              diagnostics.insert(diagnostics.end(), gather_addresses.error().begin(),
+                                 gather_addresses.error().end());
+            }}
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_CVT:
         checks += """            const auto cvt_rule_check = check_cvt_rule(

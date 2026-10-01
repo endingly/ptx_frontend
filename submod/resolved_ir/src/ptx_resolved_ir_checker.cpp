@@ -762,7 +762,11 @@ CheckResult check_operands(
     if (operand->actual_shape == OperandShape::TensorOperand) {
       const auto* tensor = operand->tensor_operand;
       const bool invalid_structure =
-          tensor == nullptr || tensor->mode != TensorAccessMode::Tiled ||
+          tensor == nullptr || !descriptor.expected_tensor_mode ||
+          (*descriptor.expected_tensor_mode != TensorAccessMode::Tiled &&
+           *descriptor.expected_tensor_mode !=
+               TensorAccessMode::Im2colNoOffs) ||
+          tensor->mode != *descriptor.expected_tensor_mode ||
           static_cast<size_t>(tensor->rank) != operand->vector_arity ||
           tensor->coordinate_ranges.size() != operand->vector_arity ||
           tensor->tensor_map.range == SourceRange{};

@@ -1,4 +1,4 @@
-# Tiled tensor 异步数据移动
+# Tensor 异步数据移动
 
 Frontend 支持 [PTX ISA 9.3 §5.5 与 §9.7.9.26.5](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html) 中的 tiled tensor-map 形式。复合操作数 `[tensorMap, {coords}]` 在 CST 与 AST 中保留嵌套地址、坐标元素、标点及源码范围。Resolved IR 自有 `ResolvedTensorMapRef` 和 rank 1–5 的 `ResolvedTensorOperand`。20 个 copy/prefetch variant 和 40 个 reduction variant 都接受省略或显式 `.tile`；`tile` 字段保留源码是否写出该限定符。
 
@@ -9,6 +9,10 @@ Frontend 支持 [PTX ISA 9.3 §5.5 与 §9.7.9.26.5](https://docs.nvidia.com/cud
 | `cp.async.bulk.tensor.{1d…5d}.shared::cta.global{.tile}.mbarrier::complete_tx::bytes` | 相同操作数，CTA shared 目的地 | 8.6 / SM 90 |
 | `cp.async.bulk.tensor.{1d…5d}.global.shared::cta{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`；复用 bulk-group commit/wait | 8.0 / SM 90 |
 | `cp.reduce.async.bulk.tensor.{1d…5d}.global.shared::cta.{add,min,max,inc,dec,and,or,xor}{.tile}.bulk_group` | `[tensorMap, {coords}], [src]`；复用 bulk-group commit/wait | 8.0 / SM 90 |
+| `cp.async.bulk.tensor.{3d…5d}.global.shared::cta.im2col_no_offs.bulk_group` | `[tensorMap, {coords}], [src]`；复用 bulk-group commit/wait | 8.0 / SM 90 |
+| `cp.reduce.async.bulk.tensor.{3d…5d}.global.shared::cta.{add,min,max,inc,dec,and,or,xor}.im2col_no_offs.bulk_group` | 相同操作数和完成机制，沿用 reduction 类型的条件约束 | 8.0 / SM 90 |
+
+新增的 27 个 no-offset store/reduction 形式使用显式固定的 `.im2col_no_offs` 模式。生成的绑定携带封闭的预期 `TensorAccessMode`，owned tensor 操作数在语法树销毁后仍保留该模式。原有 60 个 tiled 形式即使省略 `.tile` 也保持 `Tiled`；非 tensor 形式没有 tensor 模式。选中的 no-offset 形式及 owned 模式保留固定限定符的身份，但不单独提供该固定 token 的源码位置，也不承诺逐字节重建源码。该模式没有 `im2colInfo` 操作数。
 
 `tensorMap` 是指向 opaque 128 字节 descriptor 的 generic pointer。直接 descriptor 符号可位于 kernel `.param`、`.const` 或 `.global`，其声明身份、存储空间、对齐及源码范围保留在 owned IR。寄存器指针保留寄存器身份，但运行时来源与对齐未知。Tensor 数据方向单独建模：load 将 global tensor 数据写入 shared，store 从 CTA shared 读取并写入 global tensor 数据。
 
@@ -16,7 +20,7 @@ Checker 要求坐标数量恰好等于 rank，每个坐标具有 signed-32 语�
 
 Reduction 的固定操作由生成的 `TensorReductionOp` 标识；`tensor_reduction_accepts_element_type` 查询 descriptor 元素类型的条件兼容性。`add` 允许 U32/S32/U64/F32/F16/BF16；`min` 与 `max` 允许 U32/S32/U64/S64/F16/BF16；`inc` 与 `dec` 仅允许 U32；位操作 `and`、`or`、`xor` 允许 B32/B64。查询不读取 descriptor 内容，因此不能证明某个 opaque descriptor 的实际类型。Reduction 复用 bulk-group 完成机制，没有 mbarrier 操作数或字节计数。Descriptor 内容、操作与类型的一致性、swizzle、stride、bounds 及运行时排序仍由调用方保证。PTX 语法与 completion 段落规定 bulk-group，尽管描述性文字中另有一处与之冲突的 mbarrier 语句。
 
-此切片无法静态证明 descriptor 内容、descriptor 内 rank 一致性、swizzle、stride、bounds、barrier locality 或运行时同步。im2col、gather/scatter、multicast、显式 CTA group、cache policy/hint 尚不在支持范围；相邻但未支持的拼写会在形式选择时失败。
+全部 72 个 tensor-write 形式会重新检查 owned map 和 CTA source 是否为标量 32/64 位整数/位类型指针载体，包括向量形状及已知类型。已知 map read 可来自 global/const/kernel input param，要求 64 字节对齐；已知 CTA shared source 要求 16 字节对齐。未知指针的存储空间和对齐仍是运行时义务。此切片无法静态证明 descriptor 内容、descriptor 内 rank 一致性、swizzle、stride、bounds、barrier locality 或运行时同步。带 info 操作数的其他 im2col load/prefetch 模式、gather/scatter、multicast、显式 CTA group、cache policy/hint 尚不在支持范围；相邻但未支持的拼写会在形式选择时失败。
 
 ## Tensor-map 字段替换与 proxy fence
 

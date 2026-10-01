@@ -66,9 +66,10 @@ supported surface and its exclusions.
 - [Ordinary `fence` coverage](docs/us-en/fence_coverage.md) and its
   [简体中文版本](docs/zh-han/fence_coverage.md) describe ordinary semantics,
   scope, restricted forms, alias-proxy ordering, and target limits.
-- [Tiled tensor-map coverage](docs/us-en/tensor_async_coverage.md) and its
-  [简体中文版本](docs/zh-han/tensor_async_coverage.md) describe tiled bulk copies
-  and reductions, descriptor field replacement, and proxy-fence synchronization.
+- [Tensor-map coverage](docs/us-en/tensor_async_coverage.md) and its
+  [简体中文版本](docs/zh-han/tensor_async_coverage.md) describe tiled and
+  `.im2col_no_offs` bulk tensor forms, descriptor field replacement, and
+  proxy-fence synchronization.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.

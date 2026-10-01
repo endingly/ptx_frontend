@@ -79,6 +79,13 @@ class AtomicAddressQualifierValue(Enum):
     SHARED_CLUSTER = "shared::cluster"
 
 
+class TensorAccessMode(Enum):
+    """Closed instruction-local interpretation of an owned tensor operand."""
+
+    TILED = "tile"
+    IM2COL_NO_OFFS = "im2col_no_offs"
+
+
 @dataclass(frozen=True)
 class ResolvedAtomicAddressQualifierPolicy:
     """Resolved field identities shared by an instruction's atomic variants."""
@@ -335,6 +342,7 @@ class ResolvedVariant:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tensor_reduction_op: TensorReductionOp | None = None
+    tensor_access_mode: TensorAccessMode | None = None
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -437,6 +445,7 @@ class ResolvedOperandBinding:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     allowed_element_shapes: tuple[ResolvedOperandShape, ...] = ()
+    tensor_access_mode: TensorAccessMode | None = None
 
 
 @dataclass(frozen=True)
@@ -616,6 +625,7 @@ def _build_variant(
     opcode: str, variant: VariantSpec,
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
+    tensor_access_mode = _build_tensor_access_mode(opcode, variant)
     active_modifiers = tuple(
         modifier
         for modifier in variant.modifiers
@@ -636,6 +646,7 @@ def _build_variant(
                 layout.forbidden_modifiers,
                 {field.source_name: index for index, field in enumerate(modifier_fields)},
             ),
+            tensor_access_mode,
         )
         for layout in variant.operand_layouts
     )
@@ -702,12 +713,113 @@ def _build_variant(
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
-        tensor_reduction_op=_build_tensor_reduction_op(opcode, variant),
+        tensor_reduction_op=_build_tensor_reduction_op(
+            opcode, variant, tensor_access_mode
+        ),
+        tensor_access_mode=tensor_access_mode,
     )
+
+
+def _build_tensor_access_mode(
+    opcode: str, variant: VariantSpec,
+) -> TensorAccessMode | None:
+    """Lower a checked canonical mode for each tensor operand binding."""
+
+    has_tensor = any(
+        operand.kind is OperandKind.TENSOR_OPERAND
+        for layout in variant.operand_layouts for operand in layout.operands
+    )
+    has_no_offsets = any(
+        modifier.name == "im2col_no_offs" for modifier in variant.modifiers
+    )
+    if not has_tensor:
+        if has_no_offsets:
+            raise ValueError(f"variant {variant.name!r}: tensor mode lacks tensor operand")
+        return None
+    if opcode != "cp":
+        raise ValueError(f"variant {variant.name!r}: unsupported tensor opcode")
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    if len(modifiers) != len(variant.modifiers):
+        raise ValueError(f"variant {variant.name!r}: duplicate tensor mode/flag")
+    tile = modifiers.get("tile")
+    no_offsets = modifiers.get("im2col_no_offs")
+    if (tile is None) == (no_offsets is None):
+        raise ValueError(f"variant {variant.name!r}: expected one tensor mode")
+    if tile is not None:
+        if (tile.kind is not ModifierKind.FLAG
+                or tile.presence is not ModifierPresence.OPTIONAL
+                or tile.default is not False
+                or modifier_spellings(tile) != (".tile",)):
+            raise ValueError(f"variant {variant.name!r}: invalid tile mode")
+        return TensorAccessMode.TILED
+
+    assert no_offsets is not None
+    if (no_offsets.kind is not ModifierKind.FLAG
+            or no_offsets.presence is not ModifierPresence.FIXED
+            or no_offsets.value is not True
+            or modifier_spellings(no_offsets) != (".im2col_no_offs",)
+            or variant.completion_kind is not AsyncCompletionKind.BULK_GROUP):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset mode")
+    required = {
+        "async": ".async", "bulk": ".bulk", "tensor_qualifier": ".tensor",
+        "dst_space": ".global", "src_space": ".shared::cta",
+        "completion": ".bulk_group",
+    }
+    for name, spelling in required.items():
+        modifier = modifiers.get(name)
+        if (modifier is None or modifier.kind is not ModifierKind.FLAG
+                or modifier.presence is not ModifierPresence.FIXED
+                or modifier.value is not True
+                or modifier_spellings(modifier) != (spelling,)):
+            raise ValueError(f"variant {variant.name!r}: invalid {name} topology")
+    rank = modifiers.get("rank")
+    ranks = {f".{value}d": value for value in range(3, 6)}
+    if (rank is None or rank.kind is not ModifierKind.FLAG
+            or rank.presence is not ModifierPresence.FIXED
+            or rank.value is not True
+            or modifier_spellings(rank) not in tuple((name,) for name in ranks)):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset rank")
+    count = ranks[modifier_spellings(rank)[0]]
+    if len(variant.operand_layouts) != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset layout")
+    operands = variant.operand_layouts[0].operands
+    if (len(operands) != 2
+            or (operands[0].name, operands[0].kind) !=
+            ("tensor", OperandKind.TENSOR_OPERAND)
+            or (operands[1].name, operands[1].kind) !=
+            ("src", OperandKind.ADDRESS)
+            or operands[0].access is not OperandAccess.READ
+            or operands[1].access is not OperandAccess.READ
+            or operands[0].minimum_elements != count
+            or operands[0].maximum_elements != count
+            or operands[0].immediate_conversion_policy is not
+            OperandImmediateConversionPolicy.NARROW
+            or operands[0].type_expression is None
+            or operands[0].type_expression.kind is not
+            OperandTypeExpressionKind.FIXED_SCALAR
+            or operands[0].type_expression.scalar_type != "s32"
+            or {space.value for space in operands[0].state_space_values}
+            != {"param", "const", "global"}
+            or {space.value for space in operands[1].state_space_values}
+            != {"shared"}):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset operands")
+    core = set(required) | {"rank", "im2col_no_offs"}
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
+        reduction_flags = {name for name in modifiers if name.startswith("reduction_")}
+        if (len(reduction_flags) != 1 or "reduce" not in modifiers
+                or set(modifiers) != core | {"reduce"} | reduction_flags):
+            raise ValueError(f"variant {variant.name!r}: invalid reduction mode flags")
+    elif variant.rule is None:
+        if set(modifiers) != core:
+            raise ValueError(f"variant {variant.name!r}: invalid store mode flags")
+    else:
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset rule")
+    return TensorAccessMode.IM2COL_NO_OFFS
 
 
 def _build_tensor_reduction_op(
     opcode: str, variant: VariantSpec,
+    tensor_access_mode: TensorAccessMode | None,
 ) -> TensorReductionOp | None:
     """Lower one checked fixed tiled-reduction operation from canonical flags."""
 
@@ -726,8 +838,13 @@ def _build_tensor_reduction_op(
     if len(operation_flags) != 1:
         raise ValueError(f"variant {variant.name!r}: expected one reduction operation")
     operation = operation_flags[0]
-    if (len(modifiers) != len(variant.modifiers)
-            or set(modifiers) != set(required) | {"rank", "tile", operation.name}):
+    mode_name = (
+        "tile" if tensor_access_mode is TensorAccessMode.TILED
+        else "im2col_no_offs" if tensor_access_mode is TensorAccessMode.IM2COL_NO_OFFS
+        else ""
+    )
+    if (not mode_name or len(modifiers) != len(variant.modifiers)
+            or set(modifiers) != set(required) | {"rank", mode_name, operation.name}):
         raise ValueError(f"variant {variant.name!r}: invalid tensor reduction flags")
     for name, spelling in required.items():
         modifier = modifiers[name]
@@ -742,12 +859,13 @@ def _build_tensor_reduction_op(
             or rank.value is not True
             or modifier_spellings(rank) not in tuple((f".{n}d",) for n in range(1, 6))):
         raise ValueError(f"variant {variant.name!r}: invalid tensor reduction rank")
-    tile = modifiers["tile"]
-    if (tile.kind is not ModifierKind.FLAG
-            or tile.presence is not ModifierPresence.OPTIONAL
-            or tile.default is not False
-            or modifier_spellings(tile) != (".tile",)):
-        raise ValueError(f"variant {variant.name!r}: invalid tile flag")
+    if tensor_access_mode is TensorAccessMode.TILED:
+        tile = modifiers["tile"]
+        if (tile.kind is not ModifierKind.FLAG
+                or tile.presence is not ModifierPresence.OPTIONAL
+                or tile.default is not False
+                or modifier_spellings(tile) != (".tile",)):
+            raise ValueError(f"variant {variant.name!r}: invalid tile flag")
     if (operation.kind is not ModifierKind.FLAG
             or operation.presence is not ModifierPresence.FIXED
             or operation.value is not True):
@@ -1101,6 +1219,7 @@ def _build_operand_layout(
     modifier_field_ids: dict[str, str],
     forbidden_modifiers: tuple[str, ...] = (),
     forbidden_modifier_slots: tuple[int, ...] = (),
+    tensor_access_mode: TensorAccessMode | None = None,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -1174,6 +1293,10 @@ def _build_operand_layout(
                         else ResolvedOperandShape.IMMEDIATE
                     )
                     for kind in operand.element_kinds
+                ),
+                tensor_access_mode=(
+                    tensor_access_mode
+                    if operand.kind is OperandKind.TENSOR_OPERAND else None
                 ),
             )
             for operand, field in zip(operands, fields, strict=True)

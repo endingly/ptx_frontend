@@ -6725,6 +6725,70 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.global.shared::cta.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
           - {ptx: "cp.async.bulk.tensor.5d.global.shared::cta.tile.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
 
+      - name: cp_async_bulk_tensor_3d_global_shared_cta_im2col_no_offs
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.3d.global.shared::cta.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_4d_global_shared_cta_im2col_no_offs
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.4d.global.shared::cta.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_async_bulk_tensor_5d_global_shared_cta_im2col_no_offs
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.async.bulk.tensor.5d.global.shared::cta.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+
   - opcode: cp
     section: "9.7.9.26.5.3"
     doc: "Tiled tensor reduction from CTA shared memory into the global tensor described by an opaque map."
@@ -7729,6 +7793,583 @@ instructions:
         examples:
           - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.xor.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
           - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.xor.tile.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_add_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_add, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.add.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_min_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.min.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_max_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.max.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_inc_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_inc, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.inc.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_dec_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_dec, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.dec.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_and_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_and, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.and.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_or_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_or, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.or.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_3d_xor_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .3d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_xor, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 3, max: 3}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.3d.global.shared::cta.xor.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_add_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_add, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.add.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_min_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.min.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_max_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.max.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_inc_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_inc, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.inc.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_dec_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_dec, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.dec.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_and_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_and, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.and.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_or_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_or, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.or.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_4d_xor_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .4d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_xor, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 4, max: 4}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.4d.global.shared::cta.xor.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_add_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_add, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.add.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_min_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_min, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.min.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_max_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_max, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.max.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_inc_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_inc, kind: flag, presence: fixed, value: true, token: .inc}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.inc.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_dec_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_dec, kind: flag, presence: fixed, value: true, token: .dec}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.dec.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_and_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_and, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.and.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_or_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_or, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.or.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
+      - name: cp_reduce_async_bulk_tensor_5d_xor_im2col_no_offs
+        rule: data_movement.tensor_reduction
+        completion_kind: bulk_group
+        availability: {ptx: "8.0", sm: 90}
+        modifiers:
+          - {name: reduce, kind: flag, presence: fixed, value: true, token: .reduce}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
+          - {name: tensor_qualifier, kind: flag, presence: fixed, value: true, token: .tensor}
+          - {name: rank, kind: flag, presence: fixed, value: true, token: .5d}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .global}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: reduction_xor, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: im2col_no_offs, kind: flag, presence: fixed, value: true, token: .im2col_no_offs}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .bulk_group}
+        operands:
+          - {name: tensor, kind: tensor_operand, role: addr, access: read, type: s32, immediate_conversion: narrow, cardinality: {min: 5, max: 5}, element_kinds: [reg, imm], state_space: [param, const, global]}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: tensor, alignment: 64}
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+        examples:
+          - {ptx: "cp.reduce.async.bulk.tensor.5d.global.shared::cta.xor.im2col_no_offs.bulk_group [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [src];", valid: true}
+
 
   - opcode: cp
     section: "9.7.9.26.5.4"

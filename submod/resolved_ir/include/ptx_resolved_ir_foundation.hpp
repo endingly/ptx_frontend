@@ -67,7 +67,8 @@ enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 /** Dimension count encoded by a tiled tensor instruction. */
 enum class TensorRank : uint8_t { One = 1, Two, Three, Four, Five };
 /** Tensor transfer interpretation represented by this operand. */
-enum class TensorAccessMode : uint8_t { Tiled };
+/** Instruction-selected interpretation of a tensor coordinate vector. */
+enum class TensorAccessMode : uint8_t { Tiled, Im2colNoOffs };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -262,6 +263,8 @@ struct OperandDescriptor {
   AddressBasePolicy address_base_policy = AddressBasePolicy::Any;
   AddressOffsetDomain address_offset_domain = AddressOffsetDomain::Unrestricted;
   ParameterAddressConstraint parameter_constraint;
+  /** Required owned tensor mode; absent for every non-tensor operand. */
+  std::optional<TensorAccessMode> expected_tensor_mode;
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
       ImmediateConversionPolicy::Narrow;

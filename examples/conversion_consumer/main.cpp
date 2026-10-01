@@ -1405,6 +1405,63 @@ bool checkTensorReductionContract() {
       "installed typed reduction, completion, and narrowed coordinate");
 }
 
+/** Exercise installed fixed no-offset store and reduction mode ownership. */
+bool checkTensorNoOffsetsContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 16 .b8 src[1024];
+.entry kernel() {
+  cp.async.bulk.tensor.3d.global.shared::cta.im2col_no_offs.bulk_group
+      [tensor_map, {4294967296, 1, 2}], [src];
+  cp.reduce.async.bulk.tensor.5d.global.shared::cta.xor.im2col_no_offs.bulk_group
+      [tensor_map, {0, 1, 2, 3, 4}], [src];
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor no-offset fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor no-offset fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor no-offset module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 2, "tensor no-offset forms retained"))
+    return false;
+  const auto* store =
+      std::get_if<ir::Cp::AsyncBulkTensor3dGlobalSharedCtaIm2colNoOffs>(
+          &outer_get<ir::Cp>(body[0]).variant);
+  const auto* reduction =
+      std::get_if<ir::Cp::ReduceAsyncBulkTensor5dXorIm2colNoOffs>(
+          &outer_get<ir::Cp>(body[1]).variant);
+  const auto* first = store ? std::get_if<ir::ResolvedImmediate>(
+                                  &store->tensor.value.coordinates.elements[0])
+                            : nullptr;
+  return require(
+      store && reduction &&
+          store->tensor.value.mode == ir::TensorAccessMode::Im2colNoOffs &&
+          reduction->tensor.value.mode == ir::TensorAccessMode::Im2colNoOffs &&
+          store->tensor.value.rank == ir::TensorRank::Three &&
+          reduction->tensor.value.rank == ir::TensorRank::Five &&
+          reduction->tensor_reduction_op == ir::TensorReductionOp::Xor &&
+          store->completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
+          first && first->bits == 0 &&
+          first->integer_source_bits == 0x100000000ULL,
+      "installed fixed tensor mode, operation, and coordinate provenance");
+}
+
 /** Exercise installed tensor-map update projections after syntax ownership ends. */
 bool checkTensorMapReplacementContract() {
   constexpr std::string_view source = R"ptx(
@@ -1531,6 +1588,8 @@ int main() {
     return 19;
   if (!checkTensorReductionContract())
     return 20;
+  if (!checkTensorNoOffsetsContract())
+    return 21;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

@@ -71,7 +71,28 @@ enum class TcgenDataMovementShape : uint8_t {
   S16x64b,
   S16x128b,
   S16x256b,
-  S16x32bx2
+  S16x32bx2,
+  S128x256b,
+  S4x256b,
+  S128x128b,
+  S64x128b,
+  S32x128b
+};
+/** Closed multicast topology written by a Tensor Memory copy. */
+enum class TcgenCopyMulticast : uint8_t {
+  None,
+  WarpX2_02_13,
+  WarpX2_01_23,
+  WarpX4,
+};
+/** Copy decompression selected by both destination and source format tokens. */
+enum class TcgenCopyFormat : uint8_t { None, B6x16P32, B4x16P64 };
+/** Canonical legal copy shape and multicast pair. */
+struct TcgenCopyShapePair {
+  /** Written movement shape. */
+  TcgenDataMovementShape shape;
+  /** Written multicast topology or its unicast omission. */
+  TcgenCopyMulticast multicast;
 };
 /** Number of repeated transfer shapes selected by the written `.xN` suffix. */
 enum class TcgenRepeat : uint8_t { X1, X2, X4, X8, X16, X32, X64, X128 };
@@ -775,6 +796,29 @@ struct ResolvedRegisterRef {
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
+/** Borrowed opaque Table 43 source register selected by one Tensor Memory copy.
+ *  The pointer remains valid only while its owning instruction payload lives.
+ *  Encoded descriptor contents and shared-memory layout are runtime obligations.
+ */
+struct TcgenCopyDescriptorView {
+  /** Scalar 64-bit source register, borrowed from the owning copy form. */
+  const ResolvedRegisterRef* source;
+};
+/** Validate a source register's known carrier metadata before exposing its role. */
+inline std::optional<TcgenCopyDescriptorView> tcgen_copy_descriptor_view(
+    const ResolvedRegisterRef& source) noexcept {
+  if (source.register_class != ResolvedRegisterClass::General ||
+      source.vector_width || (source.symbol_id && !source.declared_type))
+    return std::nullopt;
+  if (source.declared_type) {
+    const auto kind = base::scalar_kind(*source.declared_type);
+    if (base::scalar_size_of(*source.declared_type) != 8 ||
+        (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
+         kind != base::ScalarKind::Unsigned))
+      return std::nullopt;
+  }
+  return TcgenCopyDescriptorView{&source};
+}
 struct ResolvedMbarrierStateToken {
   std::optional<ResolvedRegisterRef> register_ref;
   bool operator==(const ResolvedMbarrierStateToken&) const = default;

@@ -603,6 +603,34 @@ def _emit_cross_rule_checks(
                                  tcgen_split_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COPY:
+        checks += """            const auto tcgen_copy_check = check_tcgen_copy_rule(
+                fields, selected.copy_pairs, selected.copy_format_masks, context);
+            if (!tcgen_copy_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_copy_check.error().begin(),
+                                 tcgen_copy_check.error().end());
+            }
+            const auto tcgen_address_check = check_tcgen_transfer_address(
+                selected.taddr, context);
+            if (!tcgen_address_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_address_check.error().begin(),
+                                 tcgen_address_check.error().end());
+            }
+            const auto tcgen_descriptor_check = check_tcgen_copy_descriptor(
+                selected.s_desc, context);
+            if (!tcgen_descriptor_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_descriptor_check.error().begin(),
+                                 tcgen_descriptor_check.error().end());
+            }
+"""
+    if variant.rule is SemanticRule.TENSOR_MEMORY_SHIFT:
+        checks += """            const auto tcgen_shift_check = check_tcgen_shift_address(
+                selected.taddr, context);
+            if (!tcgen_shift_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_shift_check.error().begin(),
+                                 tcgen_shift_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

@@ -254,6 +254,11 @@ domains:
       s16x128b: TcgenDataMovementShape::S16x128b
       s16x256b: TcgenDataMovementShape::S16x256b
       s16x32bx2: TcgenDataMovementShape::S16x32bx2
+      s128x256b: TcgenDataMovementShape::S128x256b
+      s4x256b: TcgenDataMovementShape::S4x256b
+      s128x128b: TcgenDataMovementShape::S128x128b
+      s64x128b: TcgenDataMovementShape::S64x128b
+      s32x128b: TcgenDataMovementShape::S32x128b
 
   tcgen_repeats:
     cpp_type: TcgenRepeat

@@ -235,6 +235,8 @@ class SemanticRule(_SemanticToken):
     TENSOR_MEMORY_WAIT = "tensor_memory.wait"
     TENSOR_MEMORY_COMMIT = "tensor_memory.commit"
     TENSOR_MEMORY_FENCE = "tensor_memory.fence"
+    TENSOR_MEMORY_COPY = "tensor_memory.copy"
+    TENSOR_MEMORY_SHIFT = "tensor_memory.shift"
     MIXED_PRECISION_ADD = "mixed_precision.add"
     MIXED_PRECISION_SUB = "mixed_precision.sub"
     PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"
@@ -692,6 +694,8 @@ class VariantSpec:
     # The canonical order remains ``modifiers``; each alias includes absent
     # slots so it can be validated as a permutation of that order.
     modifier_order_aliases: tuple[tuple[str, ...], ...] = ()
+    tcgen_copy_pairs: tuple[tuple[str, str], ...] = ()
+    tcgen_copy_formats: tuple[tuple[bool, bool, bool], ...] = ()
 
 
 @dataclass(frozen=True)

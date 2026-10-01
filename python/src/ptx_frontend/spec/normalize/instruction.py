@@ -23,6 +23,7 @@ from .matrix import normalize_matrix
 from .tcgen_allocation import validate_tcgen_allocation_variant
 from .tcgen_load_store import validate_tcgen_transfer_variant
 from .tcgen_sync import validate_tcgen_sync_variant
+from .tcgen_copy_shift import normalize_tcgen_copy_contract, validate_tcgen_copy_shift_variant
 from .modifiers import (
     normalize_modifier,
     normalize_modifier_order_aliases,
@@ -72,6 +73,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             )
             _validate_modifier_type_expressions(modifiers, operand_layouts)
             _validate_modifier_state_space_expressions(modifiers, operand_layouts)
+            copy_pairs, copy_formats = normalize_tcgen_copy_contract(raw_variant)
             variant = VariantSpec(
                     name=raw_variant["name"],
                     completion_kind=AsyncCompletionKind(
@@ -85,6 +87,8 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     operand_layouts=operand_layouts,
                     matrix=normalize_matrix(raw_variant.get("matrix"), modifiers, operand_layouts),
                     modifier_order_aliases=modifier_order_aliases,
+                    tcgen_copy_pairs=copy_pairs,
+                    tcgen_copy_formats=copy_formats,
                     rule=_normalize_semantic_rule(raw_variant.get("rule")),
                     operand_type_compatibilities=(
                         _normalize_operand_type_compatibilities(
@@ -119,6 +123,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_allocation_variant(variant)
             validate_tcgen_transfer_variant(variant)
             validate_tcgen_sync_variant(variant)
+            validate_tcgen_copy_shift_variant(variant)
             variants.append(variant)
 
         instructions.append(

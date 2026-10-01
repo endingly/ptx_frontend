@@ -109,7 +109,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     }),
     SemanticDomain.MBARRIER_LAYOUT: frozenset({"layout::v0", "layout::v1"}),
     SemanticDomain.CTA_GROUP: frozenset({"cta_group::1", "cta_group::2"}),
-    SemanticDomain.TCGEN_SHAPE: frozenset({"s32x32b", "s16x64b", "s16x128b", "s16x256b", "s16x32bx2"}),
+    SemanticDomain.TCGEN_SHAPE: frozenset({"s32x32b", "s16x64b", "s16x128b", "s16x256b", "s16x32bx2", "s128x256b", "s4x256b", "s128x128b", "s64x128b", "s32x128b"}),
     SemanticDomain.TCGEN_NUM: frozenset({"x1", "x2", "x4", "x8", "x16", "x32", "x64", "x128"}),
     SemanticDomain.TCGEN_RED_OP: frozenset({"min", "max"}),
     SemanticDomain.TCGEN_WAIT: frozenset({"wait::ld", "wait::st"}),

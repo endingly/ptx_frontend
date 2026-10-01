@@ -151,6 +151,16 @@ CheckResult check_tcgen_transfer_rule(std::span<const FieldView>,
 /** Recheck the owned simple bracket address after checker view projection. */
 CheckResult check_tcgen_transfer_address(const WithLocs<TensorMemoryAddress>&,
                                          const Context&);
+/** Validate emitted copy shape/multicast and paired destination/source formats. */
+CheckResult check_tcgen_copy_rule(std::span<const FieldView>,
+                                  std::span<const TcgenCopyShapePair>,
+                                  std::span<const uint8_t>, const Context&);
+/** Recheck the owned opaque Table 43 register after lossy operand projection. */
+CheckResult check_tcgen_copy_descriptor(const WithLocs<ResolvedRegisterRef>&,
+                                        const Context&);
+/** Recheck known converted lane alignment for Tensor Memory row shift. */
+CheckResult check_tcgen_shift_address(const WithLocs<TensorMemoryAddress>&,
+                                      const Context&);
 /** Recheck all actual fragment register lanes and reject writable sinks. */
 CheckResult check_tcgen_transfer_fragment(
     const WithLocs<ResolvedRegisterVector>&, const Context&);

@@ -1626,6 +1626,36 @@ $defs:
       matrix:
         $ref: "#/$defs/matrix"
 
+      tcgen_copy:
+        description: "Closed source-visible copy shape/multicast and format pairs."
+        type: object
+        additionalProperties: false
+        required: [shape_multicast_pairs, format_pairs]
+        properties:
+          shape_multicast_pairs:
+            type: array
+            minItems: 6
+            maxItems: 6
+            items:
+              type: array
+              prefixItems:
+                - {enum: [s128x256b, s4x256b, s128x128b, s64x128b, s32x128b]}
+                - {enum: [none, warpx2_02_13, warpx2_01_23, warpx4]}
+              minItems: 2
+              maxItems: 2
+          format_pairs:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: array
+              prefixItems:
+                - {type: boolean}
+                - {type: boolean}
+                - {type: boolean}
+              minItems: 3
+              maxItems: 3
+
       name:
         $ref: "#/$defs/schema_identifier"
 

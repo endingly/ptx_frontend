@@ -65,5 +65,6 @@ The frontend checks written forms, known register declarations, exact
 fragment counts, source provenance, modifier domains, and target profiles.
 Warp participation, uniform address values, allocation validity, matching
 dynamic waits, and ordering through control flow remain runtime obligations.
-There is no GPU execution or timing proof. Tensor Memory copy and shift, and
-specialized commit/fence behavior, remain separate open contracts.
+There is no GPU execution or timing proof. Tensor Memory copy and shift remain
+open; [specialized commit and fence behavior](tcgen_sync_coverage.md) has its
+own completion and ordering contract.

@@ -1,4 +1,4 @@
-# PTX fifth-generation Tensor Memory allocation and register transfers.
+# PTX fifth-generation Tensor Memory allocation, transfers, and synchronization.
 # yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
 schema: ptx-instr/v1
 ptx_isa: "9.3"
@@ -13,6 +13,7 @@ instructions:
       Allocate, deallocate, and relinquish Tensor Memory permission; transfer
       registers by load, store, reduction, and matching same-thread waits.
       Allocation, warp participation, and completion ordering remain runtime obligations.
+      Commit tracks prior same-thread TCGEN work through a cluster mbarrier; specialized fences express ordering obligations.
     syntax: >-
       tcgen05.alloc.cta_group::{1|2}.sync.aligned{.shared::cta}.b32 [dst], nCols |
       tcgen05.dealloc.cta_group::{1|2}.sync.aligned.b32 taddr, nCols |
@@ -20,7 +21,9 @@ instructions:
       tcgen05.ld.sync.aligned.shape.num{.pack::16b}.b32 {r}, [taddr]{, immHalfSplitoff} |
       tcgen05.st.sync.aligned.shape.num{.unpack::16b}.b32 [taddr]{, immHalfSplitoff}, {r} |
       tcgen05.ld.red.sync.aligned.shape.num.redOp{.abs}{.NaN}.type {r}, redVal, [taddr]{, immHalfSplitoff} |
-      tcgen05.wait::{ld|st}.sync.aligned
+      tcgen05.wait::{ld|st}.sync.aligned |
+      tcgen05.commit.cta_group::{1|2}.mbarrier::arrive::one{.shared::cluster}{.multicast::cluster}.b64 [mbar]{, ctaMask} |
+      tcgen05.fence::{before_thread_sync|after_thread_sync}
     variants:
       - name: tcgen05_alloc_generic
         rule: tensor_memory.alloc
@@ -241,4 +244,152 @@ instructions:
           - {name: wait, kind: tcgen_wait, domain: tcgen_wait_classes, presence: fixed, value: "wait::st"}
           - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
           - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+        operands: []
+
+      - name: tcgen05_commit_group1_generic_single
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group1_generic_multicast
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: multicast_cluster, kind: flag, presence: required, values: [{value: true, token: .multicast::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: cta_mask, kind: reg, role: mask, access: read, type: u16, register_width: same_width}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group1_shared_cluster_single
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: shared_cluster, kind: flag, presence: required, values: [{value: true, token: .shared::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group1_shared_cluster_multicast
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: shared_cluster, kind: flag, presence: required, values: [{value: true, token: .shared::cluster}]}
+          - {name: multicast_cluster, kind: flag, presence: required, values: [{value: true, token: .multicast::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: cta_mask, kind: reg, role: mask, access: read, type: u16, register_width: same_width}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group2_generic_single
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::2"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group2_generic_multicast
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::2"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: multicast_cluster, kind: flag, presence: required, values: [{value: true, token: .multicast::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: cta_mask, kind: reg, role: mask, access: read, type: u16, register_width: same_width}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group2_shared_cluster_single
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::2"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: shared_cluster, kind: flag, presence: required, values: [{value: true, token: .shared::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_commit_group2_shared_cluster_multicast
+        section: "9.7.17.12.1"
+        rule: tensor_memory.commit
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: commit, kind: flag, presence: fixed, value: true, token: .commit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::2"]}
+          - {name: arrive_one, kind: flag, presence: fixed, value: true, token: .mbarrier::arrive::one}
+          - {name: shared_cluster, kind: flag, presence: required, values: [{value: true, token: .shared::cluster}]}
+          - {name: multicast_cluster, kind: flag, presence: required, values: [{value: true, token: .multicast::cluster}]}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b64}
+        operands:
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: cta_mask, kind: reg, role: mask, access: read, type: u16, register_width: same_width}
+        constraints:
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+
+      - name: tcgen05_fence_before_thread_sync
+        section: "9.7.17.11.1"
+        rule: tensor_memory.fence
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: fence_direction, kind: flag, presence: required, values: [{value: true, token: .fence::before_thread_sync}]}
+        operands: []
+
+      - name: tcgen05_fence_after_thread_sync
+        section: "9.7.17.11.1"
+        rule: tensor_memory.fence
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: fence_direction, kind: flag, presence: required, values: [{value: true, token: .fence::after_thread_sync}]}
         operands: []

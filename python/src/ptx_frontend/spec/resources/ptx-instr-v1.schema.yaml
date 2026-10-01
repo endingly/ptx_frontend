@@ -1621,7 +1621,7 @@ $defs:
       completion_kind:
         description: "Instruction-local asynchronous completion mechanism."
         type: string
-        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, tcgen_load_wait, tcgen_store_wait]
+        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
 
       matrix:
         $ref: "#/$defs/matrix"

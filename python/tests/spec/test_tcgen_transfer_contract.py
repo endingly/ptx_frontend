@@ -37,6 +37,9 @@ class TcgenTransferContractTests(unittest.TestCase):
         self.assertEqual(set(TRANSFER_NAMES), set(self.variants) - {
             "tcgen05_alloc_generic", "tcgen05_alloc_shared_cta",
             "tcgen05_dealloc", "tcgen05_relinquish_alloc_permit",
+            *(name for name, variant in self.variants.items()
+              if variant.rule in {SemanticRule.TENSOR_MEMORY_COMMIT,
+                                  SemanticRule.TENSOR_MEMORY_FENCE}),
         })
         tuples = set()
         for name in TRANSFER_NAMES:

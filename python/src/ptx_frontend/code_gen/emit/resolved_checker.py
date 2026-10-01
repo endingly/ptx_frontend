@@ -547,6 +547,22 @@ def _emit_cross_rule_checks(
                                  tcgen_result_slot_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        checks += """            const auto tcgen_barrier_check = check_tcgen_commit_address(
+                selected.mbar, context);
+            if (!tcgen_barrier_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_barrier_check.error().begin(),
+                                 tcgen_barrier_check.error().end());
+            }
+"""
+        if variant.tcgen_commit_multicast:
+            checks += """            const auto tcgen_mask_check = check_tcgen_commit_mask(
+                selected.cta_mask, context);
+            if (!tcgen_mask_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_mask_check.error().begin(),
+                                 tcgen_mask_check.error().end());
+            }
+"""
     if variant.rule in {
         SemanticRule.TENSOR_MEMORY_LOAD,
         SemanticRule.TENSOR_MEMORY_STORE,

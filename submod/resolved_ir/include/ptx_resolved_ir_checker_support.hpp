@@ -138,6 +138,12 @@ CheckResult check_tcgen_allocation_rule(TcgenAllocationAction,
 /** Recheck the owned allocation result-slot register before view projection. */
 CheckResult check_tcgen_allocation_result_slot(const WithLocs<ResolvedAddress>&,
                                                const Context&);
+/** Recheck the owned TCGEN commit mbarrier address and its known shared role. */
+CheckResult check_tcgen_commit_address(const WithLocs<ResolvedAddress>&,
+                                       const Context&);
+/** Recheck the owned multicast mask's scalar 16-bit register domain. */
+CheckResult check_tcgen_commit_mask(const WithLocs<ResolvedRegisterRef>&,
+                                    const Context&);
 /** Enforce exact register-transfer shape, repeat, and reduction cardinality. */
 CheckResult check_tcgen_transfer_rule(std::span<const FieldView>,
                                       std::span<const OperandView>, bool,

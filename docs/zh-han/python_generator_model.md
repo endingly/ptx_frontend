@@ -256,3 +256,11 @@ ABI 片段。C++ 测试则验证真实 parser、resolver 与 checker 闭环。
 
 推荐顺序：先扩展 schema 与 normalized dataclass，再扩展 Syntax/Resolved model，最后
 修改 emitter 与测试。不要让 emitter 从原始 YAML 读取新字段，这会绕过一致性检查。
+
+固定的 TCGEN descriptor bit/layout catalogue 位于
+`ptx_frontend.spec.tcgen_descriptor_domains`。它独立于 instruction YAML，因为这里
+查询的是调用方提供的已知 word，而非新增 opcode spelling。一个专用 emitter 通过全局
+`GenerationPlan` 生成公开 domain header 与私有纯 validator source；现有 output manifest、
+CMake source discovery、header install 和 Python wheel packaging 消费这些路径。不存在
+第二份手写 C++ 字段表。generated header 包含现有 foundation，而 foundation 不反向包含
+generated descriptor header。[descriptor 覆盖说明](tcgen_descriptor_coverage.md)定义精确检查范围。

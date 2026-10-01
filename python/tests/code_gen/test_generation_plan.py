@@ -325,6 +325,7 @@ class GenerationPlanTests(unittest.TestCase):
             sources = {
                 artifact.path: artifact for artifact in plan.artifacts
                 if artifact.path.suffix == ".cpp"
+                and artifact.category is not None
                 and artifact.path.name.startswith("resolved_ir_")
                 and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
                 and "_matrix_references_" not in artifact.path.name

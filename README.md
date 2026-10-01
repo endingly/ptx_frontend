@@ -31,6 +31,10 @@ supported surface and its exclusions.
   and its [简体中文版本](docs/zh-han/tensor_memory_copy_shift_coverage.md)
   define the closed copy shape/multicast and paired-format tuples, opaque
   descriptor role, shift aliases, and source-visible alignment checks.
+- [TCGEN descriptor field and layout coverage](docs/us-en/tcgen_descriptor_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_descriptor_coverage.md)
+  describe pure queries for caller-supplied known descriptor words, separately
+  from the copy instruction's borrowed opaque descriptor-register role.
 - [TCGEN specialized synchronization coverage](docs/us-en/tcgen_sync_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_sync_coverage.md) define commit,
   its mbarrier completion identity, and both operand-free fence directions.

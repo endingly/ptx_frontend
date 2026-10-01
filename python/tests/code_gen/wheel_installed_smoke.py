@@ -11,6 +11,9 @@ from ptx_frontend.code_gen.model import (
 from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 from ptx_frontend.spec.model import OperandKind
+from ptx_frontend.spec.tcgen_descriptor_domains import (
+    RELATIVE_LAYOUTS, ZERO_COLUMN, validate_catalogue,
+)
 from ptx_frontend.spec.resources import (
     packaged_backend_spec,
     packaged_backend_spec_schema,
@@ -40,6 +43,9 @@ def check_packaged_resources() -> None:
     assert packaged_backend_spec_schema().is_file()
     assert packaged_backend_spec().is_file()
     assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
+    validate_catalogue()
+    assert len(RELATIVE_LAYOUTS) == 8
+    assert ZERO_COLUMN.unclassified == 0xC000000000000000
 
 
 def check_module_layout() -> None:

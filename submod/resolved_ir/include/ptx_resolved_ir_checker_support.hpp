@@ -158,6 +158,18 @@ CheckResult check_tcgen_copy_rule(std::span<const FieldView>,
 /** Recheck the owned opaque Table 43 register after lossy operand projection. */
 CheckResult check_tcgen_copy_descriptor(const WithLocs<ResolvedRegisterRef>&,
                                         const Context&);
+/** Recheck selected dense f16 MMA sources before lossy operand views.
+ *
+ * Exactly one A role is supplied. Optional mask and scale are represented by
+ * null pointers only when the corresponding source operand is absent.
+ */
+CheckResult check_tcgen_mma_f16_sources(
+    TcgenCtaGroup, const WithLocs<TensorMemoryAddress>&,
+    const WithLocs<TensorMemoryAddress>*, const WithLocs<ResolvedRegisterRef>*,
+    const WithLocs<ResolvedRegisterRef>&, const WithLocs<ResolvedRegisterRef>&,
+    const WithLocs<ResolvedRegisterVector>*,
+    const WithLocs<ResolvedPredicateSource>&,
+    const WithLocs<ResolvedImmediate>*, const Context&);
 /** Recheck known converted lane alignment for Tensor Memory row shift. */
 CheckResult check_tcgen_shift_address(const WithLocs<TensorMemoryAddress>&,
                                       const Context&);

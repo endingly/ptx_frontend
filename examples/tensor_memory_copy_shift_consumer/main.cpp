@@ -72,8 +72,8 @@ int main() {
               shift->completion_kind == copy->completion_kind,
           "typed roles and both written format locations remain stable"))
     return 1;
-  if (!require(ir::Tcgen05::get_resolved_descriptor().variants.size() == 26,
-               "parent forms plus two compact actions are installed"))
+  if (!require(ir::Tcgen05::get_resolved_descriptor().variants.size() == 27,
+               "parent forms remain installed beside dense MMA"))
     return 1;
   return require(ir::validateModule(*owned).has_value(),
                  "AST-independent module validation succeeds")

@@ -26,6 +26,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/spec/model.py",
         "ptx_frontend/spec/database.py",
         "ptx_frontend/spec/tcgen_descriptor_domains.py",
+        "ptx_frontend/spec/tcgen_mma_operations.py",
         "ptx_frontend/spec/resources/__init__.py",
         "ptx_frontend/spec/normalize/__init__.py",
         "ptx_frontend/spec/load_yaml.py",
@@ -48,6 +49,8 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/emit/resolved_resolver.py",
         "ptx_frontend/code_gen/emit/resolved_checker.py",
         "ptx_frontend/code_gen/emit/tcgen_descriptor_domains.py",
+        "ptx_frontend/code_gen/emit/tcgen_mma_operations.py",
+        "ptx_frontend/spec/normalize/tcgen_mma.py",
         "ptx_frontend/code_gen/emit/category_source.py",
         "ptx_frontend/code_gen/emit/references.py",
         "ptx_frontend/code_gen/emit/resolved_dispatch.py",
@@ -63,6 +66,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml",
         "ptx_frontend/spec/resources/" "ptx_cpp_backend_spec/ptx_frontend.yaml",
         "ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml",
+        "ptx_frontend/spec/resources/ptx_spec/tensor_memory_data_movement.yaml",
         # Distribution metadata.
         f"ptx_frontend-{EXPECTED_VERSION}.dist-info/METADATA",
     )

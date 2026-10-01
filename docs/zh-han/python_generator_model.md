@@ -264,3 +264,10 @@ ABI 片段。C++ 测试则验证真实 parser、resolver 与 checker 闭环。
 CMake source discovery、header install 和 Python wheel packaging 消费这些路径。不存在
 第二份手写 C++ 字段表。generated header 包含现有 foundation，而 foundation 不反向包含
 generated descriptor header。[descriptor 覆盖说明](tcgen_descriptor_coverage.md)定义精确检查范围。
+
+稠密 f16 MMA 来源语法在单个规范 `tcgen05` variant 中使用八种类型化操作数布局
+和一种明示的 modifier 顺序别名。专用 `tcgen_mma_operations` catalogue 持有
+Table 42 形状与 §9.7.17.10.5 路径行；emitter 将一个公开操作查询头文件和一个
+私有源码加入同一 `GenerationPlan`。该查询调用既有描述符 validator，不复制
+编码字段映射。选中的持有形式和来源检查仍经标准规范 YAML 归一化管线生成。
+[MMA 覆盖范围](tcgen_mma_coverage.md)描述当前首个 kind。

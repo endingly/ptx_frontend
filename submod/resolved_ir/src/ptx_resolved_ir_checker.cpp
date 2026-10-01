@@ -2152,6 +2152,99 @@ CheckResult check_tcgen_copy_descriptor(
       CheckDiagnosticKind::OperandTypeMismatch);
 }
 
+/** Check one known MMA register carrier without interpreting its bits. */
+static bool tcgen_mma_carrier(const ResolvedRegisterRef& value, size_t bytes,
+                              bool permit_float = false) noexcept {
+  if (value.register_class != ResolvedRegisterClass::General ||
+      value.vector_width || (value.symbol_id && !value.declared_type))
+    return false;
+  if (!value.declared_type)
+    return true;
+  const auto kind = base::scalar_kind(*value.declared_type);
+  return base::scalar_size_of(*value.declared_type) == bytes &&
+         (kind == base::ScalarKind::Bit || kind == base::ScalarKind::Signed ||
+          kind == base::ScalarKind::Unsigned ||
+          (permit_float && kind == base::ScalarKind::Float));
+}
+
+CheckResult check_tcgen_mma_f16_sources(
+    TcgenCtaGroup group, const WithLocs<TensorMemoryAddress>& d,
+    const WithLocs<TensorMemoryAddress>* a_address,
+    const WithLocs<ResolvedRegisterRef>* a_shared,
+    const WithLocs<ResolvedRegisterRef>& b,
+    const WithLocs<ResolvedRegisterRef>& idesc,
+    const WithLocs<ResolvedRegisterVector>* mask,
+    const WithLocs<ResolvedPredicateSource>& enable_d,
+    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+  if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
+    return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
+  if ((a_address == nullptr) == (a_shared == nullptr))
+    return cvt_rule_violation(context,
+                              "TCGEN MMA requires exactly one A placement.");
+  if (auto result = check_tcgen_transfer_address(d, context); !result)
+    return result;
+  if (a_address) {
+    if (auto result = check_tcgen_transfer_address(*a_address, context);
+        !result)
+      return result;
+  } else if (!tcgen_mma_carrier(a_shared->value, 8)) {
+    return cvt_rule_violation(
+        context, "TCGEN MMA shared A requires scalar General b64/u64/s64.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  if (!tcgen_mma_carrier(b.value, 8))
+    return cvt_rule_violation(
+        context, "TCGEN MMA shared B requires scalar General b64/u64/s64.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (!tcgen_mma_carrier(idesc.value, 4))
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA instruction descriptor requires scalar General "
+        "b32/u32/s32.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (mask) {
+    const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
+    if (mask->value.elements.size() != expected)
+      return cvt_rule_violation(
+          context,
+          "TCGEN MMA output-lane mask cardinality disagrees "
+          "with its CTA group.");
+    for (const auto& element : mask->value.elements) {
+      if (!element || !tcgen_mma_carrier(*element, 4, true))
+        return cvt_rule_violation(
+            context,
+            "TCGEN MMA output-lane mask requires scalar General "
+            "b32/u32/s32/f32 register entries.",
+            CheckDiagnosticKind::OperandTypeMismatch);
+    }
+  }
+  if (const auto* predicate = std::get_if<ResolvedPredicate>(&enable_d.value)) {
+    const auto& value = predicate->register_ref;
+    if (value.register_class != ResolvedRegisterClass::Predicate ||
+        value.vector_width || (value.symbol_id && !value.declared_type) ||
+        (value.declared_type && *value.declared_type != ScalarType::Pred))
+      return cvt_rule_violation(
+          context, "TCGEN MMA enable-D requires a scalar predicate register.",
+          CheckDiagnosticKind::OperandTypeMismatch);
+  } else if (!std::holds_alternative<ResolvedPredicateConstant>(
+                 enable_d.value)) {
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA enable-D requires a predicate or integer truth constant.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  if (scale) {
+    const auto& value = scale->value;
+    if (value.type != ScalarType::U32 || value.is_negative ||
+        !value.integer_source_bits || *value.integer_source_bits > 15 ||
+        value.bits != *value.integer_source_bits)
+      return cvt_rule_violation(
+          context, "TCGEN MMA D scale requires original integer 0..15.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  return {};
+}
+
 CheckResult check_tcgen_copy_rule(
     std::span<const FieldView> fields,
     std::span<const TcgenCopyShapePair> allowed_pairs,

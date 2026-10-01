@@ -381,6 +381,21 @@ def _emit_check_multi_layout_lambda(
         instruction, variant,
         f"{instruction.cpp_name}::get_checker_descriptor().variants[{variant_index}]",
     )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_MMA:
+        names = {field.name for field in layout.fields}
+        a_address = "&payload.a" if layout.layout_id.startswith("tensor_") else "nullptr"
+        a_shared = "&payload.a" if layout.layout_id.startswith("shared_") else "nullptr"
+        mask = "&payload.disable_output_lane" if "disable_output_lane" in names else "nullptr"
+        scale = "&payload.scale_input_d" if "scale_input_d" in names else "nullptr"
+        cross_rule_checks += f"""            const auto mma_source_check = check_tcgen_mma_f16_sources(
+                selected.cta_group.value, payload.d, {a_address}, {a_shared},
+                payload.b, payload.idesc, {mask}, payload.enable_input_d,
+                {scale}, context);
+            if (!mma_source_check) {{
+              diagnostics.insert(diagnostics.end(), mma_source_check.error().begin(),
+                                 mma_source_check.error().end());
+            }}
+"""
     if cross_rule_checks:
         cross_rule_return = f"""
             const auto operand_check = check_operands(

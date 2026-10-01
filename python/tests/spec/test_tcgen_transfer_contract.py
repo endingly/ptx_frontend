@@ -41,7 +41,8 @@ class TcgenTransferContractTests(unittest.TestCase):
               if variant.rule in {SemanticRule.TENSOR_MEMORY_COMMIT,
                                   SemanticRule.TENSOR_MEMORY_FENCE,
                                   SemanticRule.TENSOR_MEMORY_COPY,
-                                  SemanticRule.TENSOR_MEMORY_SHIFT}),
+                                  SemanticRule.TENSOR_MEMORY_SHIFT,
+                                  SemanticRule.TENSOR_MEMORY_MMA}),
         })
         tuples = set()
         for name in TRANSFER_NAMES:

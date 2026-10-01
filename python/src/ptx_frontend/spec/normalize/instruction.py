@@ -24,6 +24,7 @@ from .tcgen_allocation import validate_tcgen_allocation_variant
 from .tcgen_load_store import validate_tcgen_transfer_variant
 from .tcgen_sync import validate_tcgen_sync_variant
 from .tcgen_copy_shift import normalize_tcgen_copy_contract, validate_tcgen_copy_shift_variant
+from .tcgen_mma import validate_tcgen_mma_variant
 from .modifiers import (
     normalize_modifier,
     normalize_modifier_order_aliases,
@@ -124,6 +125,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_transfer_variant(variant)
             validate_tcgen_sync_variant(variant)
             validate_tcgen_copy_shift_variant(variant)
+            validate_tcgen_mma_variant(variant)
             variants.append(variant)
 
         instructions.append(

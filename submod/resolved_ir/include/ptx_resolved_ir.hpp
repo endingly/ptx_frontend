@@ -9,3 +9,4 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_tcgen_descriptors.hpp>
 #include <ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp>
+#include <ptx_frontend/resolved_ir/tcgen_mma_operations.gen.hpp>

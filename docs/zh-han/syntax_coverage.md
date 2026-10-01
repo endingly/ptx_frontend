@@ -35,6 +35,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | PTX 9.3 `atom` / `red` | 支持子集 | 同步标量与向量操作/类型组合，语义与 scope 可独立省略；向量形式要求 global 内存及 PTX 8.1 / SM 90。`red.async` 有独立的 shared-completion（PTX 8.1 / SM 90）和 global-release（PTX 8.7 / SM 100）组合。具体组合与契约详见[原子与归约覆盖范围](atomic_reduction_coverage.md)。 |
 | PTX 9.3 非 tensor bulk async | 支持子集 | 按方向区分的 `cp.async.bulk` copy、`cp.reduce.async.bulk`、L2 prefetch、bulk-group 完成、shared/global `st.async` 及 `st.bulk` 清零，包括 PTX 9.3 限定符目标门槛。详见 [bulk async 覆盖范围](bulk_async_coverage.md)。Tensor 与 multimem 形式有独立契约。 |
 | tiled tensor bulk async | 支持子集 | 支持 rank 1–5 的 tensor prefetch、global→shared load 与 shared→global store，并保留自有 tensor-map 坐标。详见 [tensor async 覆盖范围](tensor_async_coverage.md)。 |
+| Tensor-map 替换与 proxy fence | 支持子集 | 11 个 `.replace.tile` 字段及类型化编码值，`cp_fenceproxy` 支持 CTA/cluster/GPU/system release scope。详见 [tensor async 覆盖范围](tensor_async_coverage.md)。 |
 | PTX 9.3 `ldu` | 支持 | 支持 generic 或显式 `.global` 寻址的标量、v2/v4 uniform global load，以及文档规定的类型集合、目标与操作数检查。参见 [`ldu` 覆盖范围](ldu_coverage.md)。 |
 | PTX 9.3 `prefetch` / `prefetchu` | 支持 | 支持普通的 generic/global/local L1/L2、global L2 eviction priority、generic/const/param tensor-map 形式，以及 uniform-cache L1。参见 [预取覆盖范围](prefetch_coverage.md)。 |
 | PTX 9.3 `applypriority` / `discard` | 支持 | 支持 generic 与显式 global 的 L2 形式，并检查固定的 128 字节范围、对齐及目标条件。参见 [缓存范围覆盖范围](applypriority_discard_coverage.md)。 |

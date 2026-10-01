@@ -697,6 +697,8 @@ An oversized payload is never narrowed or clamped into a valid vector. This
 guarantee covers vector projection sizes, not every possible malformed-IR
 invariant or cross-instruction constraint.
 
+Tensor-map replacement keeps `WithLocs<ResolvedAddress>` as the canonical operand. Generated field variants expose a closed `replacement_field`, an optional owned-copy `ResolvedTensorMapRef` projection, and, for Table 33 fields, an optional field-specific encoded enum. The projection checks owned source/code consistency and preserves symbol identity and source range; the checker independently validates malformed public IR. No sequential descriptor state is inferred from replacements. The proxy fence reuses the ordinary owned source/destination addresses and memory-scope/proxy-pair domains.
+
 `rule_id` is reserved for typed instruction-specific rules. Register visibility
 and `.reg` state space are checked during module resolution; the common checker
 handles generated address-space constraints, while cross-instruction

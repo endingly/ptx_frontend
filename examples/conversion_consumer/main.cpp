@@ -1349,6 +1349,72 @@ bool checkTensorAsyncContract() {
               ptx_frontend::base::AsyncCompletionKind::BulkGroup,
       "installed tensor map, rank, tile, and completion identities");
 }
+
+/** Exercise installed tensor-map update projections after syntax ownership ends. */
+bool checkTensorMapReplacementContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_100a
+.address_size 64
+.global .align 128 .b8 tensor_map[128];
+.shared .align 128 .b8 shared_map[128];
+.entry kernel() {
+  tensormap.replace.tile.rank.global.b1024.b32 [tensor_map], 4294967297;
+  tensormap.replace.tile.elemtype.shared::cta.b1024.b32 [shared_map], 15;
+  tensormap.cp_fenceproxy.global.shared::cta.tensormap::generic.release.gpu.sync.aligned [tensor_map], [shared_map], 128;
+}
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor-map update fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor-map update fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor-map update module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 3, "tensor-map updates retained"))
+    return false;
+  const auto* rank = std::get_if<ir::Tensormap::ReplaceTileRank>(
+      &outer_get<ir::Tensormap>(body[0]).variant);
+  const auto* element = std::get_if<ir::Tensormap::ReplaceTileElemtype>(
+      &outer_get<ir::Tensormap>(body[1]).variant);
+  const auto* fence = std::get_if<ir::Tensormap::CpFenceproxyOrdinary>(
+      &outer_get<ir::Tensormap>(body[2]).variant);
+  const auto rank_ref = rank ? rank->tensor_map_ref() : std::nullopt;
+  const auto element_ref = element ? element->tensor_map_ref() : std::nullopt;
+  const auto* rank_symbol =
+      rank_ref ? std::get_if<ir::ResolvedSymbolRef>(&rank_ref->address.base)
+               : nullptr;
+  const auto* element_symbol =
+      element_ref
+          ? std::get_if<ir::ResolvedSymbolRef>(&element_ref->address.base)
+          : nullptr;
+  return require(
+      rank && element && fence && rank_symbol && element_symbol &&
+          rank_symbol->spelling == "tensor_map" &&
+          element_symbol->spelling == "shared_map" && rank_symbol->symbol_id &&
+          element_symbol->symbol_id &&
+          std::get<ir::ResolvedImmediate>(rank->new_val.value).bits == 1 &&
+          std::get<ir::ResolvedImmediate>(rank->new_val.value)
+                  .integer_source_bits == 0x100000001ULL &&
+          element->encoded_value() ==
+              ir::TensorMapElementType::B6x16P32OrB6p2x16 &&
+          fence->scope.value == ir::MemoryScope::Gpu &&
+          fence->proxy_pair == ir::ProxyKindPair::TensormapToGeneric &&
+          fence->size.value.bits == 128 &&
+          ir::Tensormap::ReplaceTileRank::replacement_field ==
+              ir::TensorMapReplaceField::Rank,
+      "installed typed update, source code, and reference identity");
+}
 }  // namespace
 
 /** Check the installed public conversion, comparison, and resolved-IR contract. */
@@ -1406,6 +1472,8 @@ int main() {
     return 17;
   if (!checkTensorAsyncContract())
     return 18;
+  if (!checkTensorMapReplacementContract())
+    return 19;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

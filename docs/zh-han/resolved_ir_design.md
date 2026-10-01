@@ -545,6 +545,8 @@ availability 被拒绝。
 不会因窄化或截断而变成合法向量。这项保证仅涵盖向量投影长度，不代表覆盖全部
 非法 IR invariant 或跨指令约束。
 
+Tensor-map 替换继续以 `WithLocs<ResolvedAddress>` 为 canonical operand。生成的字段 variant 暴露封闭的 `replacement_field`、可选的自有拷贝 `ResolvedTensorMapRef` 投影；Table 33 字段还暴露可选的字段专属编码 enum。投影检查 owned source/code 一致性并保留符号身份及源码范围；checker 独立验证已修改的公开 IR。字段替换不推断连续的 descriptor 状态。Proxy fence 复用普通 owned 源/目的地址与 memory-scope/proxy-pair domain。
+
 `rule_id` 留给指令特有规则的 typed wrapper。寄存器符号可见性与 `.reg` state-space 在
 module resolution 阶段检查；公共 checker 已处理生成的 address-space constraint，跨
 instruction 约束仍不属于当前 ABI。

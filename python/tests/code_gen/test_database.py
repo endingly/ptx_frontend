@@ -677,7 +677,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             {"any_of": [{"target": "sm_90b"}]},
             {"any_of": [{"family": "sm_90a"}]},
             {"any_of": [{"capabilities": []}]},
-            {"any_of": [{"sm": 90}] * 6},
+            {"any_of": [{"sm": 90}] * 7},
         ):
             with self.assertRaises((TypeError, ValueError)):
                 normalize_availability(availability)
@@ -721,12 +721,12 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
         self.assertEqual(
-            list(validator.iter_errors({"any_of": [{"sm": 100}] * 5})), []
+            list(validator.iter_errors({"any_of": [{"sm": 100}] * 6})), []
         )
         self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
         self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
-                             {"any_of": [{"sm": 100}] * 6},
+                             {"any_of": [{"sm": 100}] * 7},
                              {"sm": 4294967296}, {"sm": True},
                              {"family": "sm_90a"},
                              {"any_of": [{"family": "sm_90a"}]},
@@ -743,6 +743,85 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn("TargetFlavor::ArchitectureSpecific", source)
         self.assertIn('.required_family = "sm_120f",', source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_six_clause_target_catalog_emits_every_arm(self) -> None:
+        """Preserve exact and family target paths in a bounded availability."""
+        clauses = [
+            {"ptx": "8.3", "sm": 90, "target": "sm_90a"},
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+            {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
+        ]
+        source = emit_availability(normalize_availability({"any_of": clauses}))
+        self.assertIn(".any_of_count = 6", source)
+        for major, minor in ((8, 3), (8, 6), (8, 7), (8, 8), (9, 0)):
+            self.assertIn(f".minimum_ptx_version = {{{major}, {minor}}}", source)
+        for architecture in (90, 100, 110, 120):
+            self.assertIn(f".minimum_sm_version = {architecture}", source)
+        for architecture in (90, 100, 120):
+            self.assertIn(
+                f".exact_target_architecture = {{{architecture}}}", source
+            )
+        for family in ("sm_100f", "sm_110f", "sm_120f"):
+            self.assertIn(f'.required_family = "{family}"', source)
+
+    def test_tensor_map_replacement_catalog_keeps_distinct_value_domains(self) -> None:
+        """Ensure the canonical field inventory preserves use-versus-source rules."""
+        spec = load_yaml(
+            REPO_ROOT
+            / "python/src/ptx_frontend/spec/resources/ptx_spec"
+            / "data_movement_and_conversion.yaml"
+        )
+        blocks = [
+            instruction
+            for instruction in spec["instructions"]
+            if instruction["opcode"] == "tensormap"
+        ]
+        self.assertEqual(len(blocks), 2)
+        replacements, fences = blocks
+        self.assertEqual(len(replacements["variants"]), 11)
+        self.assertEqual(len(fences["variants"]), 2)
+        for variant in replacements["variants"]:
+            fields = [
+                modifier["name"]
+                for modifier in variant["modifiers"]
+                if modifier["name"].startswith("field_")
+            ]
+            self.assertEqual(len(fields), 1)
+            self.assertEqual(len(variant["availability"]["any_of"]), 6)
+            self.assertIn(
+                {"kind": "address_alignment", "address_operand": "tensor_map", "alignment": 128},
+                variant["constraints"],
+            )
+            value = next(
+                operand for operand in variant["operands"]
+                if operand["name"] == "new_val"
+            )
+            if fields[0] in {
+                "field_elemtype", "field_interleave_layout", "field_swizzle_mode",
+                "field_swizzle_atomicity", "field_fill_mode",
+            }:
+                self.assertEqual(value["kind"], "imm")
+                self.assertEqual(value["immediate_conversion"], "require_target_range")
+            else:
+                self.assertEqual(value["kind"], "reg_or_imm")
+                self.assertEqual(value["immediate_conversion"], "narrow")
+            ordinal = next(
+                (operand for operand in variant["operands"]
+                 if operand["name"] == "ord"), None
+            )
+            if ordinal:
+                self.assertEqual(ordinal["immediate_conversion"], "require_target_range")
+        for variant in fences["variants"]:
+            self.assertEqual(variant["rule"], "data_movement.tensormap_cp_fenceproxy")
+            self.assertEqual(
+                {constraint["address_operand"]: constraint["alignment"]
+                 for constraint in variant["constraints"]
+                 if constraint["kind"] == "address_alignment"},
+                {"dst": 128, "src": 128},
+            )
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
         source = emit_availability(normalize_availability({"any_of": [

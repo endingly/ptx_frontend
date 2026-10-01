@@ -165,7 +165,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 /** Fixed DNF capacity shared by generated availability descriptors. */
-inline constexpr size_t kMaxAvailabilityClauses = 5;
+inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 /** One AND-clause in a bounded generated target-availability expression. */
@@ -794,6 +794,145 @@ struct ResolvedTensorOperand {
   /** Coordinate element ranges, independent of the enclosing operand range. */
   std::vector<SourceRange> coordinate_ranges;
 };
+
+/** Encoded field identity of a tiled tensor-map replacement. */
+enum class TensorMapReplaceField : uint8_t {
+  GlobalAddress,
+  Rank,
+  BoxDim,
+  GlobalDim,
+  GlobalStride,
+  ElementStride,
+  Elemtype,
+  InterleaveLayout,
+  SwizzleMode,
+  SwizzleAtomicity,
+  FillMode,
+};
+
+/** Table 33 element encoding; code 15 has direction-dependent interpretation. */
+enum class TensorMapElementType : uint8_t {
+  U8,
+  U16,
+  U32,
+  S32,
+  U64,
+  S64,
+  F16,
+  F32,
+  F32Ftz,
+  F64,
+  BF16,
+  TF32,
+  TF32Ftz,
+  B4x16,
+  B4x16P64,
+  B6x16P32OrB6p2x16,
+};
+/** Table 33 interleave-layout encoding. */
+enum class TensorMapInterleaveLayout : uint8_t { None, Bytes16, Bytes32 };
+/** Table 33 swizzle-mode encoding. */
+enum class TensorMapSwizzleMode : uint8_t {
+  None,
+  Bytes32,
+  Bytes64,
+  Bytes128,
+  Bytes96,
+};
+/** Table 33 swizzle-atomicity encoding. */
+enum class TensorMapSwizzleAtomicity : uint8_t {
+  Bytes16,
+  Bytes32,
+  Bytes32Flip8,
+  Bytes64,
+};
+/** Table 33 out-of-bounds fill encoding. */
+enum class TensorMapFillMode : uint8_t { Zero, OobNan };
+
+/** One exact field/code association shared by public projections and checks. */
+struct TensorMapEncodedCode {
+  /** Encoded descriptor field, independent of descriptor contents. */
+  TensorMapReplaceField field;
+  /** Original integer source code, before any operand-width conversion. */
+  uint8_t code;
+  /** Field-specific interpretation of that code. */
+  std::variant<TensorMapElementType, TensorMapInterleaveLayout,
+               TensorMapSwizzleMode, TensorMapSwizzleAtomicity,
+               TensorMapFillMode>
+      value;
+};
+
+/** Closed PTX 9.3 Table 33 code set; one row is one valid field/code pair. */
+inline constexpr std::array<TensorMapEncodedCode, 30> tensor_map_encoded_codes{{
+    {TensorMapReplaceField::Elemtype, 0, TensorMapElementType::U8},
+    {TensorMapReplaceField::Elemtype, 1, TensorMapElementType::U16},
+    {TensorMapReplaceField::Elemtype, 2, TensorMapElementType::U32},
+    {TensorMapReplaceField::Elemtype, 3, TensorMapElementType::S32},
+    {TensorMapReplaceField::Elemtype, 4, TensorMapElementType::U64},
+    {TensorMapReplaceField::Elemtype, 5, TensorMapElementType::S64},
+    {TensorMapReplaceField::Elemtype, 6, TensorMapElementType::F16},
+    {TensorMapReplaceField::Elemtype, 7, TensorMapElementType::F32},
+    {TensorMapReplaceField::Elemtype, 8, TensorMapElementType::F32Ftz},
+    {TensorMapReplaceField::Elemtype, 9, TensorMapElementType::F64},
+    {TensorMapReplaceField::Elemtype, 10, TensorMapElementType::BF16},
+    {TensorMapReplaceField::Elemtype, 11, TensorMapElementType::TF32},
+    {TensorMapReplaceField::Elemtype, 12, TensorMapElementType::TF32Ftz},
+    {TensorMapReplaceField::Elemtype, 13, TensorMapElementType::B4x16},
+    {TensorMapReplaceField::Elemtype, 14, TensorMapElementType::B4x16P64},
+    {TensorMapReplaceField::Elemtype, 15,
+     TensorMapElementType::B6x16P32OrB6p2x16},
+    {TensorMapReplaceField::InterleaveLayout, 0,
+     TensorMapInterleaveLayout::None},
+    {TensorMapReplaceField::InterleaveLayout, 1,
+     TensorMapInterleaveLayout::Bytes16},
+    {TensorMapReplaceField::InterleaveLayout, 2,
+     TensorMapInterleaveLayout::Bytes32},
+    {TensorMapReplaceField::SwizzleMode, 0, TensorMapSwizzleMode::None},
+    {TensorMapReplaceField::SwizzleMode, 1, TensorMapSwizzleMode::Bytes32},
+    {TensorMapReplaceField::SwizzleMode, 2, TensorMapSwizzleMode::Bytes64},
+    {TensorMapReplaceField::SwizzleMode, 3, TensorMapSwizzleMode::Bytes128},
+    {TensorMapReplaceField::SwizzleMode, 4, TensorMapSwizzleMode::Bytes96},
+    {TensorMapReplaceField::SwizzleAtomicity, 0,
+     TensorMapSwizzleAtomicity::Bytes16},
+    {TensorMapReplaceField::SwizzleAtomicity, 1,
+     TensorMapSwizzleAtomicity::Bytes32},
+    {TensorMapReplaceField::SwizzleAtomicity, 2,
+     TensorMapSwizzleAtomicity::Bytes32Flip8},
+    {TensorMapReplaceField::SwizzleAtomicity, 3,
+     TensorMapSwizzleAtomicity::Bytes64},
+    {TensorMapReplaceField::FillMode, 0, TensorMapFillMode::Zero},
+    {TensorMapReplaceField::FillMode, 1, TensorMapFillMode::OobNan},
+}};
+
+/** Decode an exact source code only when the owned .b32 value is consistent. */
+constexpr std::optional<TensorMapEncodedCode> tensor_map_encoded_code(
+    TensorMapReplaceField field, const ResolvedImmediate& immediate) noexcept {
+  if (immediate.type != ScalarType::B32 || !immediate.integer_source_bits ||
+      immediate.is_negative ||
+      immediate.bits != (*immediate.integer_source_bits & uint64_t{0xffffffff}))
+    return std::nullopt;
+  for (const auto& entry : tensor_map_encoded_codes)
+    if (entry.field == field && entry.code == *immediate.integer_source_bits)
+      return entry;
+  return std::nullopt;
+}
+
+/** Project one field3 source code into its closed, field-specific enum. */
+template <typename Value>
+  requires(std::same_as<Value, TensorMapElementType> ||
+           std::same_as<Value, TensorMapInterleaveLayout> ||
+           std::same_as<Value, TensorMapSwizzleMode> ||
+           std::same_as<Value, TensorMapSwizzleAtomicity> ||
+           std::same_as<Value, TensorMapFillMode>)
+constexpr std::optional<Value> project_tensor_map_encoded_value(
+    TensorMapReplaceField field, const ResolvedImmediate& immediate) noexcept {
+  const auto decoded = tensor_map_encoded_code(field, immediate);
+  if (!decoded)
+    return std::nullopt;
+  if (const auto* value = std::get_if<Value>(&decoded->value))
+    return *value;
+  return std::nullopt;
+}
 struct ResolvedShflSyncDestination {
   std::optional<WithLoc<ResolvedRegisterRef>> data;
   std::optional<WithLoc<ResolvedPredicate>> predicate;

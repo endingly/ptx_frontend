@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include <fmt/format.h>
 
@@ -145,6 +146,34 @@ std::pair<uint64_t, bool> integer_constraint_value(
     const OperandView& operand) noexcept {
   return {operand.integer_source_bits.value_or(*operand.immediate_bits),
           operand.immediate_is_negative.value_or(false)};
+}
+
+/**
+ * Recheck the use-width bits of a source-backed integer immediate.
+ * Fixed integer constraints use the original source value for legality, while
+ * consumers observe the converted bits; both representations must agree.
+ */
+CheckResult check_integer_immediate_consistency(const OperandView& operand,
+                                                const Context& context) {
+  if (!operand.integer_source_bits || !operand.immediate_bits ||
+      !operand.immediate_type || !is_integer_type(*operand.immediate_type))
+    return {};
+  const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
+  if (byte_width == 0 || byte_width > sizeof(uint64_t))
+    return {};
+  const uint8_t bit_width = byte_width * 8;
+  const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max()
+                                        : (uint64_t{1} << bit_width) - 1;
+  if (*operand.immediate_bits == (*operand.integer_source_bits & mask))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand.locations, context),
+      .message = fmt::format(
+          "Immediate operand '{}' has bits inconsistent with its integer "
+          "source value.",
+          operand.field_id),
+  }});
 }
 
 void append_value_availability_diagnostics(const OperandView& operand,
@@ -2392,6 +2421,9 @@ CheckResult check_immediate_value(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
                        descriptor.allowed_values.end()) {
@@ -2439,6 +2471,9 @@ CheckResult check_immediate_multiple_of(
                         descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value % descriptor.divisor == 0) {
     return {};
@@ -2476,6 +2511,9 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value >= descriptor.minimum &&
       (!descriptor.has_maximum || value <= descriptor.maximum)) {
@@ -2559,6 +2597,179 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
       .kind = CheckDiagnosticKind::ImmediateValueMismatch,
       .range = diagnostic_range(primary->locations, context),
       .message = "createpolicy primary size exceeds total size.",
+  }});
+}
+
+/** Apply encoded-field and source-versus-use rules to one tensor-map update. */
+CheckResult check_tensor_map_replace_rule(std::span<const FieldView> fields,
+                                          std::span<const OperandView> operands,
+                                          const Context& context) {
+  constexpr std::array field_ids{
+      std::pair{std::string_view{"field_global_address"},
+                TensorMapReplaceField::GlobalAddress},
+      std::pair{std::string_view{"field_rank"}, TensorMapReplaceField::Rank},
+      std::pair{std::string_view{"field_box_dim"},
+                TensorMapReplaceField::BoxDim},
+      std::pair{std::string_view{"field_global_dim"},
+                TensorMapReplaceField::GlobalDim},
+      std::pair{std::string_view{"field_global_stride"},
+                TensorMapReplaceField::GlobalStride},
+      std::pair{std::string_view{"field_element_stride"},
+                TensorMapReplaceField::ElementStride},
+      std::pair{std::string_view{"field_elemtype"},
+                TensorMapReplaceField::Elemtype},
+      std::pair{std::string_view{"field_interleave_layout"},
+                TensorMapReplaceField::InterleaveLayout},
+      std::pair{std::string_view{"field_swizzle_mode"},
+                TensorMapReplaceField::SwizzleMode},
+      std::pair{std::string_view{"field_swizzle_atomicity"},
+                TensorMapReplaceField::SwizzleAtomicity},
+      std::pair{std::string_view{"field_fill_mode"},
+                TensorMapReplaceField::FillMode},
+  };
+  std::optional<TensorMapReplaceField> replacement_field;
+  for (const auto& [name, field] : field_ids) {
+    const FieldView* selected = find_field(fields, name);
+    if (selected == nullptr)
+      continue;
+    if (!selected->bool_value.value_or(false) || replacement_field)
+      return cvt_rule_violation(context, "Invalid tensor-map field identity.");
+    replacement_field = field;
+  }
+  if (!replacement_field)
+    return cvt_rule_violation(context, "Missing tensor-map field identity.");
+
+  const OperandView* address = find_operand(operands, "tensor_map");
+  const FieldView* space = find_field(fields, "state_space");
+  if (!address || !space || !space->memory_state_space)
+    return cvt_rule_violation(context, "Missing tensor-map address or space.");
+  if (space->memory_state_space != MemoryStateSpace::Generic &&
+      address->address_state_space &&
+      *space->memory_state_space != *address->address_state_space)
+    return cvt_rule_violation(
+        context, "Tensor-map address and explicit state space differ.");
+
+  const auto valid_immediate = [](const OperandView& value,
+                                  ScalarType type) noexcept {
+    const uint64_t mask = type == ScalarType::B32 || type == ScalarType::U32
+                              ? uint64_t{0xffffffff}
+                              : ~uint64_t{0};
+    return value.actual_shape == OperandShape::Immediate &&
+           value.immediate_type == type && value.immediate_bits &&
+           value.integer_source_bits &&
+           *value.immediate_bits == (*value.integer_source_bits & mask);
+  };
+  if (const OperandView* ordinal = find_operand(operands, "ord")) {
+    if (!valid_immediate(*ordinal, ScalarType::U32) ||
+        ordinal->immediate_is_negative.value_or(false) ||
+        *ordinal->integer_source_bits > 4)
+      return cvt_rule_violation(context, "Tensor-map ordinal must be 0..4.",
+                                CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  const OperandView* value = find_operand(operands, "new_val");
+  if (!value)
+    return cvt_rule_violation(context, "Missing tensor-map replacement value.");
+  const bool wide =
+      *replacement_field == TensorMapReplaceField::GlobalAddress ||
+      *replacement_field == TensorMapReplaceField::GlobalStride;
+  const ScalarType type = wide ? ScalarType::B64 : ScalarType::B32;
+  const bool field3 =
+      *replacement_field == TensorMapReplaceField::Elemtype ||
+      *replacement_field == TensorMapReplaceField::InterleaveLayout ||
+      *replacement_field == TensorMapReplaceField::SwizzleMode ||
+      *replacement_field == TensorMapReplaceField::SwizzleAtomicity ||
+      *replacement_field == TensorMapReplaceField::FillMode;
+  if (value->actual_shape == OperandShape::Register) {
+    if (!field3)
+      return {};
+    return cvt_rule_violation(context,
+                              "Tensor-map field code must be an immediate.");
+  }
+  if (!valid_immediate(*value, type))
+    return cvt_rule_violation(
+        context, "Tensor-map replacement immediate has invalid owned bits.");
+  if (*replacement_field == TensorMapReplaceField::Rank) {
+    if (*value->immediate_bits <= 4)
+      return {};
+    return cvt_rule_violation(context, "Encoded tensor rank must be 0..4.",
+                              CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  if (*replacement_field == TensorMapReplaceField::GlobalAddress ||
+      *replacement_field == TensorMapReplaceField::BoxDim ||
+      *replacement_field == TensorMapReplaceField::GlobalDim ||
+      *replacement_field == TensorMapReplaceField::GlobalStride ||
+      *replacement_field == TensorMapReplaceField::ElementStride)
+    return {};
+
+  const ResolvedImmediate encoded{
+      .bits = *value->immediate_bits,
+      .type = type,
+      .is_negative = value->immediate_is_negative.value_or(false),
+      .integer_source_bits = value->integer_source_bits};
+  const auto code = tensor_map_encoded_code(*replacement_field, encoded);
+  if (!code)
+    return cvt_rule_violation(context, "Invalid tensor-map field code.",
+                              CheckDiagnosticKind::ImmediateValueMismatch);
+  const auto exact_90a = context.target.identity &&
+                         context.target.identity->architecture.number == 90 &&
+                         context.target.identity->flavor ==
+                             base::TargetFlavor::ArchitectureSpecific;
+  if ((*replacement_field == TensorMapReplaceField::SwizzleAtomicity &&
+       (context.target.ptx_version < PtxVersion{8, 6} || exact_90a)) ||
+      (*replacement_field == TensorMapReplaceField::Elemtype &&
+       code->code >= 13 &&
+       (context.target.ptx_version < PtxVersion{8, 7} || exact_90a)))
+    return cvt_rule_violation(
+        context, "Tensor-map field code is unavailable on this target.");
+  if (*replacement_field == TensorMapReplaceField::SwizzleMode &&
+      code->code == 4 &&
+      (context.target.ptx_version < PtxVersion{8, 8} ||
+       !context.target.identity ||
+       context.target.identity->architecture.number != 103 ||
+       context.target.identity->flavor !=
+           base::TargetFlavor::ArchitectureSpecific))
+    return cvt_rule_violation(context,
+                              "96B swizzle requires PTX 8.8 and sm_103a.");
+  return {};
+}
+
+/** Recheck owned source provenance for the fixed tensor-map proxy-copy size. */
+CheckResult check_tensor_map_cp_fenceproxy_rule(
+    std::span<const OperandView> operands, const Context& context) {
+  const OperandView* size = find_operand(operands, "size");
+  if (!size || size->actual_shape != OperandShape::Immediate ||
+      size->immediate_type != ScalarType::U32 || !size->immediate_bits ||
+      !size->integer_source_bits ||
+      size->immediate_is_negative.value_or(false) ||
+      *size->immediate_bits != uint64_t{128} ||
+      *size->integer_source_bits != uint64_t{128})
+    return cvt_rule_violation(
+        context, "Tensor-map proxy copy requires source-exact 128-byte size.",
+        CheckDiagnosticKind::ImmediateValueMismatch);
+  return {};
+}
+
+/** Check a tensor-map address without changing ordinary address semantics. */
+CheckResult check_tensor_map_address_register_width(
+    const WithLocs<ResolvedAddress>& address, const Context& context) {
+  const auto* reg = std::get_if<ResolvedRegisterRef>(&address.value.base);
+  if (!reg)
+    return {};
+  const bool invalid = reg->register_class != ResolvedRegisterClass::General ||
+                       reg->vector_width.has_value() ||
+                       (reg->symbol_id && !reg->declared_type) ||
+                       (reg->declared_type &&
+                        (!is_integer_type(*reg->declared_type) ||
+                         (base::scalar_size_of(*reg->declared_type) != 4 &&
+                          base::scalar_size_of(*reg->declared_type) != 8)));
+  if (!invalid)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(address.locs, context),
+      .message =
+          "Tensor-map address requires a scalar 32- or 64-bit integer/bit "
+          "register.",
   }});
 }
 

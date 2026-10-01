@@ -325,6 +325,87 @@ TEST(TensorAsync, RevalidatesOwnedTensorMetadata) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
 }
 
+/** Scalar tensor coordinates retain carrier checks after syntax destruction. */
+TEST(TensorAsync, OwnedCoordinateRegisterShapesAcrossTiledDirections) {
+  constexpr std::array<std::string_view, 3> instructions{
+      "cp.async.bulk.tensor.1d.shared::cta.global.tile."
+      "mbarrier::complete_tx::bytes [tile_data], "
+      "[tensor_map, {%r0}], [barrier];",
+      "cp.async.bulk.prefetch.tensor.1d.L2.global.tile "
+      "[tensor_map, {%r0}];",
+      "cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group "
+      "[tensor_map, {%r0}], [tile_data];",
+  };
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  for (const auto type : {"b32", "u32", "s32"}) {
+    for (const auto instruction : instructions) {
+      SCOPED_TRACE(std::string(type) + ": " + std::string(instruction));
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n"
+          ".global .align 64 .b8 tensor_map[128];\n"
+          ".shared .align 16 .b8 tile_data[1024];\n"
+          ".shared .align 8 .b64 barrier;\n.entry kernel() {\n"
+          ".reg ." +
+          std::string(type) + " %r<5>;\n" + std::string(instruction) + "\n}\n";
+      std::optional<ResolvedModule> owned;
+      {
+        const auto parsed = test_helpers::parseModule(source);
+        ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+        auto resolved = resolveModuleOnly(*parsed);
+        ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+        owned.emplace(std::move(*resolved));
+      }
+      auto& copy =
+          test_ir_access::get<Cp>(owned->functions.front().body.front());
+      auto direct = [&] {
+        return checker::check(copy, context);
+      };
+      auto module = [&] {
+        return validateModule(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
+      };
+      ResolvedRegisterRef* coordinate = nullptr;
+      std::visit(
+          [&](auto& selected) {
+            if constexpr (requires { selected.tensor; })
+              coordinate = std::get_if<ResolvedRegisterRef>(
+                  &selected.tensor.value.coordinates.elements.front());
+          },
+          copy.variant);
+      ASSERT_NE(coordinate, nullptr);
+      ASSERT_TRUE(coordinate->symbol_id);
+      ASSERT_TRUE(direct());
+      ASSERT_TRUE(module());
+      const auto saved = *coordinate;
+      coordinate->vector_width = 2;
+      EXPECT_FALSE(direct());
+      EXPECT_FALSE(module());
+      *coordinate = saved;
+      coordinate->register_class = ResolvedRegisterClass::Predicate;
+      EXPECT_FALSE(direct());
+      EXPECT_FALSE(module());
+      *coordinate = saved;
+      coordinate->declared_type = base::ScalarType::B16;
+      EXPECT_FALSE(direct());
+      EXPECT_FALSE(module());
+      *coordinate = saved;
+      coordinate->declared_type.reset();
+      EXPECT_FALSE(direct());
+      EXPECT_FALSE(module());
+      *coordinate = saved;
+      EXPECT_TRUE(direct());
+      EXPECT_TRUE(module());
+      coordinate->symbol_id.reset();
+      coordinate->declared_type.reset();
+      EXPECT_TRUE(direct());
+      *coordinate = saved;
+      EXPECT_TRUE(direct());
+      EXPECT_TRUE(module());
+    }
+  }
+}
+
 /** Narrowed coordinates retain original source provenance in owned IR. */
 TEST(TensorAsync, SignedCoordinateBoundariesAndOwnedMutation) {
   std::optional<ResolvedModule> owned;

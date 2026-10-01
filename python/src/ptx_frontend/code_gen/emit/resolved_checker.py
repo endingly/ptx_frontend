@@ -527,6 +527,18 @@ def _emit_cross_rule_checks(
                                  cp_async_rule_check.error().end());
             }
 """
+    if variant.rule in {
+        SemanticRule.TENSOR_MEMORY_ALLOC,
+        SemanticRule.TENSOR_MEMORY_DEALLOC,
+        SemanticRule.TENSOR_MEMORY_RELINQUISH_ALLOC_PERMIT,
+    }:
+        checks += """            const auto tcgen_allocation_check = check_tcgen_allocation_rule(
+                selected.allocation_action, operands, context);
+            if (!tcgen_allocation_check) {
+              diagnostics.insert(diagnostics.end(), tcgen_allocation_check.error().begin(),
+                                 tcgen_allocation_check.error().end());
+            }
+"""
     if variant.rule is SemanticRule.PARALLEL_SYNC_AND_COMMUNICATION_RED_ASYNC_RELEASE:
         checks += """            const auto async_release_check = check_red_async_release_qualifiers(
                 fields, context);

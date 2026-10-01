@@ -1,0 +1,74 @@
+# PTX fifth-generation Tensor Memory allocation and permit management.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+schema: ptx-instr/v1
+ptx_isa: "9.3"
+category: tensor_memory_data_movement
+codegen_category: tensor_memory
+section: "9.7.17"
+
+instructions:
+  - opcode: tcgen05
+    section: "9.7.17.7.1"
+    doc: >-
+      Allocate, deallocate, and relinquish Tensor Memory allocation permission.
+      Allocation and peer-CTA participation remain runtime obligations.
+    syntax: >-
+      tcgen05.alloc.cta_group::{1|2}.sync.aligned{.shared::cta}.b32 [dst], nCols |
+      tcgen05.dealloc.cta_group::{1|2}.sync.aligned.b32 taddr, nCols |
+      tcgen05.relinquish_alloc_permit.cta_group::{1|2}.sync.aligned
+    variants:
+      - name: tcgen05_alloc_generic
+        rule: tensor_memory.alloc
+        availability: &tcgen_alloc_availability
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "8.8", sm: 100, family: sm_100f}
+            - {ptx: "9.0", sm: 110, target: sm_110a}
+            - {ptx: "9.0", sm: 110, family: sm_110f}
+        modifiers:
+          - {name: alloc, kind: flag, presence: fixed, value: true, token: .alloc}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: dst, kind: addr, role: dst, access: write}
+          - {name: ncols, kind: reg_or_imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 4}
+      - name: tcgen05_alloc_shared_cta
+        rule: tensor_memory.alloc
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: alloc, kind: flag, presence: fixed, value: true, token: .alloc}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: shared_cta, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: dst, kind: addr, role: dst, access: write, state_space: [shared]}
+          - {name: ncols, kind: reg_or_imm, role: src, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 4}
+      - name: tcgen05_dealloc
+        rule: tensor_memory.dealloc
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: dealloc, kind: flag, presence: fixed, value: true, token: .dealloc}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands:
+          - {name: taddr, kind: tensor_memory_address, role: src, access: read, type: u32}
+          - {name: ncols, kind: reg_or_imm, role: src, access: read, type: u32}
+      - name: tcgen05_relinquish_alloc_permit
+        rule: tensor_memory.relinquish_alloc_permit
+        availability: *tcgen_alloc_availability
+        operands: []
+        modifiers:
+          - {name: relinquish_alloc_permit, kind: flag, presence: fixed, value: true, token: .relinquish_alloc_permit}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+          - {name: aligned, kind: flag, presence: fixed, value: true, token: .aligned}

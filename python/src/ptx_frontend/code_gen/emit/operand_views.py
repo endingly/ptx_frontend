@@ -59,6 +59,7 @@ def emit_check_modifier_view(
                   .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
                   .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
                   .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+                  .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .locations = {locations},
@@ -145,6 +146,7 @@ def emit_check_modifier_value_view(
                   .memory_scope = {members[ResolvedValueKind.MEMORY_SCOPE]},
                   .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
                   .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
+                  .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .is_present = {is_present},
@@ -577,10 +579,14 @@ def emit_check_operand_view(
                   .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
-    if field.value_kind is ResolvedValueKind.REG_OR_IMM:
+    if field.value_kind in {ResolvedValueKind.REG_OR_IMM,
+                            ResolvedValueKind.TENSOR_MEMORY_ADDRESS}:
+        source = (f"{object_name}.{field.name}.value.value"
+                  if field.value_kind is ResolvedValueKind.TENSOR_MEMORY_ADDRESS
+                  else f"{object_name}.{field.name}.value")
         return f"""              [&]() -> OperandView {{
                 if (const auto* immediate =
-                        std::get_if<ResolvedImmediate>(&{object_name}.{field.name}.value)) {{
+                        std::get_if<ResolvedImmediate>(&{source})) {{
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")},
@@ -593,12 +599,15 @@ def emit_check_operand_view(
                   }};
                 }}
                 const auto& register_ref =
-                    std::get<ResolvedRegisterRef>({object_name}.{field.name}.value);
+                    std::get<ResolvedRegisterRef>({source});
                 return OperandView{{
                     .field_id = "{field.name}",
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                     .immediate_type = std::nullopt,
                     .register_type = register_ref.declared_type,
+                    .register_symbol_id = register_ref.symbol_id,
+                    .register_class = register_ref.register_class,
+                    .register_vector_width = register_ref.vector_width,
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""

@@ -1938,6 +1938,15 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::TensorMemoryAddress: {
+      auto value = resolve_reg_or_imm(operand, ScalarType::U32, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<TensorMemoryAddress> address{
+          TensorMemoryAddress{.value = std::move(value->value)}};
+      address.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(address)};
+    }
     case ResolvedValueKind::CpAsyncSourceControl: {
       const auto range = syntax_ast::sourceRange(operand);
       if (const auto* immediate =
@@ -2172,6 +2181,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryStateSpace:
     case ResolvedValueKind::MbarrierPhaseType:
     case ResolvedValueKind::MbarrierLayout:
+    case ResolvedValueKind::TcgenCtaGroup:
     case ResolvedValueKind::AsyncProxyKind:
     case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(

@@ -63,6 +63,28 @@ enum class AtomicAddressQualifier : uint8_t {
 };
 /** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
+/** Number of CTAs participating in one Tensor Memory instruction. */
+enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Allocation-management action, independent of written opcode modifiers. */
+enum class TcgenAllocationAction : uint8_t {
+  Alloc,
+  Dealloc,
+  RelinquishAllocPermit
+};
+/** Local permission effect; execution ordering remains a runtime obligation. */
+enum class TcgenAllocationPermitEffect : uint8_t {
+  RequiresPermit,
+  ReleasesAllocation,
+  RelinquishesPermit
+};
+/** Number of participating warps issuing an allocation-management operation. */
+enum class TcgenIssueGranularity : uint8_t { OneWarp, WarpPair };
+/** Map an instruction's CTA-group modifier to its participating-warp count. */
+constexpr TcgenIssueGranularity tcgen_issue_granularity(
+    TcgenCtaGroup group) noexcept {
+  return group == TcgenCtaGroup::Two ? TcgenIssueGranularity::WarpPair
+                                     : TcgenIssueGranularity::OneWarp;
+}
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -395,6 +417,7 @@ struct FieldView {
   std::optional<MemoryScope> memory_scope;
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
+  std::optional<TcgenCtaGroup> tcgen_cta_group;
   std::optional<AsyncProxyKind> async_proxy_kind;
   std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
@@ -420,6 +443,8 @@ struct OperandView {
   std::optional<binding::SymbolId> register_symbol_id;
   /** Resolved register category, independent of an unknown declaration type. */
   std::optional<ResolvedRegisterClass> register_class;
+  /** Declared vector lane count; scalar TCGEN sources require absence. */
+  std::optional<uint8_t> register_vector_width;
   /** A cp.async fourth operand is an explicit cache policy, not source size. */
   bool cp_async_cache_policy = false;
   bool is_sink = false;
@@ -506,6 +531,7 @@ enum class ModifierValueKind : uint8_t {
   MemoryScope,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -527,6 +553,7 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
@@ -552,6 +579,7 @@ struct ModifierValueDomainDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
 };
@@ -573,6 +601,7 @@ struct ModifierValueView {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
@@ -891,6 +920,13 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Owned 32-bit Tensor Memory address source, without allocation provenance. */
+struct TensorMemoryAddress {
+  /** Register or converted immediate; source locations live in its WithLocs owner. */
+  RegOrImm value;
+  /** Compare the exact source payload after the syntax tree is released. */
+  bool operator==(const TensorMemoryAddress&) const = default;
+};
 /** Owned block-scale selector pair in PTX byte-ID then thread-ID order. */
 struct ResolvedMatrixScaleSelector {
   RegOrImm byte_id;

@@ -437,6 +437,7 @@ $defs:
       - layout
       - phase_type
       - mbarrier_layout
+      - cta_group
       - memory_order
       - proxy
       - proxy_pair
@@ -624,6 +625,7 @@ $defs:
                 - layout
                 - phase_type
                 - mbarrier_layout
+                - cta_group
                 - memory_order
                 - proxy
                 - proxy_pair
@@ -693,6 +695,7 @@ $defs:
       - vector
       - tuple
       - tensor_coordinate
+      - tensor_memory_address
       - matrix_fragment
       - matrix_scale_selector
       - descriptor

@@ -27,6 +27,9 @@ supported surface and its exclusions.
   and its [简体中文版本](docs/zh-han/tensor_memory_transfer_coverage.md)
   define `tcgen05.ld`, `st`, `ld.red`, and load/store waits, including exact
   register counts and source-only split offsets. Copy and shift remain open.
+- [TCGEN specialized synchronization coverage](docs/us-en/tcgen_sync_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_sync_coverage.md) define commit,
+  its mbarrier completion identity, and both operand-free fence directions.
 - [Conversion coverage](docs/us-en/conversion_coverage.md) and its
   [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
   `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`

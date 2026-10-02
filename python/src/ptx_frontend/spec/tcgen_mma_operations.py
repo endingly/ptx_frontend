@@ -1,4 +1,4 @@
-"""Known-value dense f16/tf32 TCGEN MMA rules beyond descriptor fields.
+"""Known-value dense f16/tf32/i8 TCGEN MMA rules beyond descriptor fields.
 
 These facts apply to caller-supplied values, never to opaque live source
 registers. Table 43 and Tables 45–48 remain owned by tcgen_descriptor_domains.
@@ -117,6 +117,45 @@ class Tf32OperationalReport(F16OperationalReport):
     """Known tf32 violations and facts still owed by the caller."""
 
 
+@dataclass(frozen=True)
+class I8ShapeRow:
+    """One dense i8 Table 42 row with K in elements and M/N in rows/columns.
+
+    ``n_small`` lists exceptional N values before the inclusive regular
+    ``n_first``/``n_step``/``n_last`` grid. ``a_types`` and ``b_types`` are
+    independent defined domains; they do not settle mixed signedness.
+    """
+
+    group: int
+    d_type: str
+    m_values: tuple[int, ...]
+    n_small: tuple[int, ...]
+    n_first: int
+    n_step: int
+    n_last: int
+    k: int
+    a_types: tuple[str, ...]
+    b_types: tuple[str, ...]
+
+    def contains(self, m: int, n: int, k: int) -> bool:
+        """Check the irregular group-one N prefix without widening its grid."""
+
+        return (m in self.m_values and k == self.k and
+                (n in self.n_small or
+                 (self.n_first <= n <= self.n_last and
+                  (n - self.n_first) % self.n_step == 0)))
+
+
+@dataclass(frozen=True)
+class I8KnownFacts(F16KnownFacts):
+    """Caller-known i8 operational facts, independent of source registers."""
+
+
+@dataclass(frozen=True)
+class I8OperationalReport(F16OperationalReport):
+    """Proven i8 violations and facts or pair rules still owed."""
+
+
 F16_SHAPES = (
     F16ShapeRow(1, "F16", (64, 128), 8, 8, 256, 16, ("F16",), ("F16",)),
     F16ShapeRow(1, "F32", (64, 128), 8, 8, 256, 16,
@@ -152,6 +191,20 @@ TF32_SHAPES = (
 )
 TF32_PATHS = F16_PATHS
 TF32_TARGET_GATES = F16_TARGET_GATES
+
+I8_SHAPES = (
+    I8ShapeRow(1, "S32", (64, 128), (8, 16, 24, 32), 48, 16, 256, 32,
+               ("U8", "S8"), ("U8", "S8")),
+    I8ShapeRow(2, "S32", (128, 256), (), 32, 32, 256, 32,
+               ("U8", "S8"), ("U8", "S8")),
+)
+# Table 54 uses the same group/M-selected non-WS path as the accepted kinds.
+I8_PATHS = F16_PATHS
+# Exact identities only; the current target catalogue lacks historical 101a.
+I8_TARGET_GATES = (
+    F16TargetGate("sm_100a", True, 8, 6, False),
+    F16TargetGate("sm_110a", True, 9, 0, False),
+)
 
 # Table 57 applies to each 16-bit shared operand independently. The accepted
 # descriptor catalogue remains the only owner of swizzle encoded values.
@@ -203,6 +256,27 @@ def validate_catalogue() -> None:
             {name.upper() for _, name in tf32.b_types} != {"TF32"} or
             {name.upper() for _, name in tf32.d_types} != {"F32"}):
         raise ValueError("dense tf32 rows drifted from Table 42 or fields")
+    i8 = next((kind for kind in descriptor.KINDS if kind.name == "I8"), None)
+    if i8 is None:
+        raise ValueError("accepted descriptor kind I8 is missing")
+    if (len(I8_SHAPES) != 2 or
+            {(row.group, row.d_type, row.m_values, row.n_small,
+              row.n_first, row.n_step, row.n_last, row.k,
+              row.a_types, row.b_types) for row in I8_SHAPES} != {
+                  (1, "S32", (64, 128), (8, 16, 24, 32), 48, 16, 256,
+                   32, ("U8", "S8"), ("U8", "S8")),
+                  (2, "S32", (128, 256), (), 32, 32, 256, 32,
+                   ("U8", "S8"), ("U8", "S8"))} or
+            I8_PATHS != F16_PATHS or
+            {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor,
+              gate.scaled_d) for gate in I8_TARGET_GATES} != {
+                  ("sm_100a", True, 8, 6, False),
+                  ("sm_110a", True, 9, 0, False)} or
+            {name.upper() for _, name in i8.a_types} != {"U8", "S8"} or
+            {name.upper() for _, name in i8.b_types} != {"U8", "S8"} or
+            {name.upper() for _, name in i8.d_types} != {"S32"} or
+            not i8.saturation or i8.negate):
+        raise ValueError("dense i8 rows drifted from Tables 42/45 or fields")
 
 
 def _check_shared(role: str, transpose: bool | None,
@@ -348,3 +422,66 @@ def check_tf32_known_facts(facts: Tf32KnownFacts) -> Tf32OperationalReport:
             violations.append("half_path_alignment")
     return Tf32OperationalReport(tuple(violations), tuple(obligations),
                                  path.layout if path else None)
+
+
+def check_i8_known_facts(facts: I8KnownFacts) -> I8OperationalReport:
+    """Check dense i8 Table 42/55/57 facts without reading source registers."""
+
+    violations: list[str] = []
+    obligations: list[str] = []
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group_invalid")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    if (facts.group in (1, 2) and facts.m is not None and
+            facts.n is not None and facts.k is not None and
+            facts.d_type is not None and not any(
+                row.group == facts.group and row.d_type == facts.d_type and
+                row.contains(facts.m, facts.n, facts.k)
+                for row in I8_SHAPES)):
+        violations.append("shape_or_output_type")
+    if facts.d_type is not None and facts.d_type != "S32":
+        violations.append("output_type")
+    for role in ("a", "b"):
+        value = getattr(facts, f"{role}_type")
+        if value is not None and value not in ("U8", "S8"):
+            violations.append(f"{role}_type")
+    if (facts.a_type in ("U8", "S8") and
+            facts.b_type in ("U8", "S8") and
+            facts.a_type != facts.b_type):
+        obligations.append("mixed_i8_signedness_pair_rule")
+    if facts.sparse is None:
+        obligations.append("dense_sparsity_bit")
+    elif facts.sparse:
+        violations.append("dense_sparse_bit")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        _check_shared("a", facts.transpose_a, facts.a_shared_facts,
+                      violations, obligations)
+    _check_shared("b", facts.transpose_b, facts.b_shared_facts,
+                  violations, obligations)
+    if (facts.transpose_b and facts.group in (1, 2) and
+            facts.n is not None and not (
+                (facts.group == 1 and 16 <= facts.n <= 256 and
+                 facts.n % 16 == 0) or
+                (facts.group == 2 and 32 <= facts.n <= 256 and
+                 facts.n % 32 == 0))):
+        violations.append("b_transpose_n")
+    path = next((row for row in I8_PATHS
+                 if row.group == facts.group and row.m == facts.m), None)
+    if path and path.half_path and facts.a_shared is False:
+        for name in ("a_lane_half", "d_lane_half"):
+            value = getattr(facts, name)
+            if value is None:
+                obligations.append(name)
+            elif value not in (0, 16):
+                violations.append(f"{name}_invalid")
+        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
+                and facts.a_lane_half != facts.d_lane_half):
+            violations.append("half_path_alignment")
+    return I8OperationalReport(tuple(violations), tuple(obligations),
+                               path.layout if path else None)

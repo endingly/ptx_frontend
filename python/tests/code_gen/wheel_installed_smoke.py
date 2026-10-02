@@ -15,7 +15,8 @@ from ptx_frontend.spec.tcgen_descriptor_domains import (
     RELATIVE_LAYOUTS, ZERO_COLUMN, validate_catalogue,
 )
 from ptx_frontend.spec.tcgen_mma_operations import (
-    F16_SHAPES, validate_catalogue as validate_mma_catalogue,
+    F16_SHAPES, I8_SHAPES, I8_TARGET_GATES, I8KnownFacts,
+    check_i8_known_facts, validate_catalogue as validate_mma_catalogue,
 )
 from ptx_frontend.spec.resources import (
     packaged_backend_spec,
@@ -50,6 +51,14 @@ def check_packaged_resources() -> None:
     validate_mma_catalogue()
     assert len(RELATIVE_LAYOUTS) == 8
     assert len(F16_SHAPES) == 4
+    assert len(I8_SHAPES) == 2
+    assert I8_SHAPES[0].contains(64, 24, 32)
+    assert not I8_SHAPES[0].contains(64, 40, 32)
+    assert {(gate.feature, gate.exact) for gate in I8_TARGET_GATES} == {
+        ("sm_100a", True), ("sm_110a", True)}
+    assert "mixed_i8_signedness_pair_rule" in check_i8_known_facts(
+        I8KnownFacts(a_type="S8", b_type="U8")
+    ).obligations
     assert packaged_spec_dir().joinpath("tensor_memory_data_movement.yaml").is_file()
     assert ZERO_COLUMN.unclassified == 0xC000000000000000
 
@@ -116,6 +125,12 @@ def check_packaged_spec_model() -> None:
                 if item.name == "tcgen05_mma_tf32")
     assert len(tf32.operand_layouts) == 8
     assert tf32.modifier_order_aliases == (("mma", "kind", "cta_group"),)
+    i8 = next(item for item in tcgen.variants
+              if item.name == "tcgen05_mma_i8")
+    assert len(i8.operand_layouts) == 4
+    assert i8.modifier_order_aliases == (("mma", "kind", "cta_group"),)
+    assert all("scale_input_d" not in {operand.name for operand in layout.operands}
+               for layout in i8.operand_layouts)
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

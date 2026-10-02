@@ -576,12 +576,13 @@ metadata、由生成的 `Mov::Scalar` type domain 拒绝的 scalar `.b128` 与 w
 所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 
-稠密 `Tcgen05::MmaF16` 与 `MmaTf32` 是不同的持有形式，各在一个 alternative 中
-保留八种操作数布局。`tcgen_mma_f16_view` 与 `tcgen_mma_tf32_view` 分别借用
-选中形式的 A/B 共享描述符寄存器、Tensor Memory 地址、
-指令描述符、谓词及可选掩码和缩放；对非 MMA 形式或布局标签不符返回空值。
-直接检查和模块检查在 AST 销毁后重新检查来源元数据。生成的
-f16 与 tf32 已知操作查询先调用描述符已定义字段检查，再分别报告
-独立调用方已知 word 的操作违规、已完成检查和缺失事实。
-[f16](tcgen_mma_coverage.md) 与 [tf32](tcgen_mma_tf32_coverage.md)
-分别列出各 kind 的规则与运行期义务。
+稠密 `Tcgen05::MmaF16`、`MmaTf32` 与 `MmaI8` 是不同的持有形式：
+f16/tf32 各有八种布局，i8 有四种布局，每种 kind 均保留两个类型化 CTA group。
+`tcgen_mma_f16_view`、`tcgen_mma_tf32_view` 与 `tcgen_mma_i8_view` 分别借用
+选中形式的 A/B 共享描述符寄存器、Tensor Memory 地址、指令描述符、谓词及
+可选掩码；f16/tf32 还可借用可选 D 缩放，i8 没有源码缩放。遇到其他形式或
+布局标签不符时，视图返回空值。直接检查和模块检查在 AST 销毁后重新检查
+来源元数据。生成的各 kind 已知操作查询先调用描述符已定义字段检查，
+再报告独立调用方已知 word 的操作违规、已完成检查和缺失事实。
+[f16](tcgen_mma_coverage.md)、[tf32](tcgen_mma_tf32_coverage.md) 与
+[i8](tcgen_mma_i8_coverage.md) 分别列出其规则与运行期义务。

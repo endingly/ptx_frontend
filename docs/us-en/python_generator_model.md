@@ -313,12 +313,13 @@ header includes the existing foundation; the foundation never includes a
 generated descriptor header. [Descriptor coverage](tcgen_descriptor_coverage.md)
 defines the exact checked scope.
 
-Dense f16 and tf32 MMA are distinct canonical `tcgen05` variants, each with
-eight typed operand layouts and the exact adjacent modifier-order alias.
-The single `tcgen_mma_operations` catalogue owns their Table 42 shape and
-§9.7.17.10.5 path rows; its emitter adds one public operational-query header
-and one private source to the same `GenerationPlan`. Both queries call the
-existing descriptor validators without copying their encoded-field map. The
-selected owned forms and shared source-role checks come from the usual
-normalized YAML pipeline. [F16](tcgen_mma_coverage.md) and
-[tf32](tcgen_mma_tf32_coverage.md) document their kind-specific rules.
+Dense f16, tf32 and i8 MMA are distinct canonical `tcgen05` variants with
+the exact adjacent modifier-order alias. F16/tf32 have eight typed operand
+layouts each; i8 has four without a source D scale. The single
+`tcgen_mma_operations` catalogue owns their Table 42 shape and non-WS path
+rows; its emitter adds one public operational-query header and one private
+source to the same `GenerationPlan`. Each query calls the existing descriptor
+validators without copying their encoded-field map. The selected owned forms
+and shared source-role checks come from the usual normalized YAML pipeline.
+[F16](tcgen_mma_coverage.md), [tf32](tcgen_mma_tf32_coverage.md) and
+[i8](tcgen_mma_i8_coverage.md) document their distinct operational rules.

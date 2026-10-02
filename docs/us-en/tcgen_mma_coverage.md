@@ -6,8 +6,9 @@ The initial slice is dense, non-weight-stationary kind f16 without block scaling
 CTA groups and both A placements. The optional lane mask and optional D scale
 are source topology choices settled by the fixed manual, a matched complete-module
 assembler corpus and an independent Authority checkpoint. The distinct
-[dense tf32 form](tcgen_mma_tf32_coverage.md) is also covered. Sparse,
-weight-stationary, later dense kinds, collectors, block scaling and
+[dense tf32 form](tcgen_mma_tf32_coverage.md) and distinct
+[dense i8 form](tcgen_mma_i8_coverage.md) are also covered. Sparse,
+weight-stationary, other dense kinds, collectors, block scaling and
 convolution remain open.
 
 Shared A/B descriptors use scalar General B64/U64/S64 **registers**; the

@@ -42,6 +42,10 @@ supported surface and its exclusions.
   and its [简体中文版本](docs/zh-han/tcgen_mma_tf32_coverage.md)
   describe the second non-WS source kind, K8/TF32 types and transposed
   32-bit shared-word rules.
+- [TCGEN dense i8 MMA coverage](docs/us-en/tcgen_mma_i8_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_i8_coverage.md)
+  describe K32/S8-U8 inputs, encoded saturation, and the independent
+  known-word and source-role checks.
 - [TCGEN specialized synchronization coverage](docs/us-en/tcgen_sync_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_sync_coverage.md) define commit,
   its mbarrier completion identity, and both operand-free fence directions.

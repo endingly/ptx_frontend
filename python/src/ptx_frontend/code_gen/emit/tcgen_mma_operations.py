@@ -1,4 +1,4 @@
-"""Generate immutable dense f16/tf32 MMA operational rows.
+"""Generate immutable dense f16/tf32/i8 MMA operational rows.
 
 The global artifact plan registers these outputs. This emitter contains no
 descriptor bit-field map and no source grammar.
@@ -66,7 +66,7 @@ struct TcgenF16PathRow {
                                           uint16_t m, uint16_t n,
                                           uint16_t k) noexcept;
 }  // namespace ptx_frontend::resolved_ir
-''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header()
+''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header()
 
 
 def render_tcgen_mma_source() -> str:
@@ -175,7 +175,62 @@ bool tcgen_tf32_row_contains(const TcgenTf32ShapeRow& row,
                     .replace("__TARGET_ROWS__", tf32_targets)
                     .replace("__TARGET_COUNT__",
                              str(len(operations.TF32_TARGET_GATES))))
-    return f16_source + tf32_source
+    i8_shape_rows = []
+    for row in operations.I8_SHAPES:
+        group = "One" if row.group == 1 else "Two"
+        small = ", ".join(str(value) for value in
+                          row.n_small + (0,) * (4 - len(row.n_small)))
+        i8_shape_rows.append(
+            f'  TcgenI8ShapeRow{{TcgenCtaGroup::{group}, '
+            f'MatrixElementType::{row.d_type}, '
+            f'{{{{{row.m_values[0]}, {row.m_values[1]}}}}}, '
+            f'{{{{{small}}}}}, {row.n_first}, {row.n_step}, '
+            f'{row.n_last}, {row.k}}}')
+    i8_paths = []
+    for row in operations.I8_PATHS:
+        group = "One" if row.group == 1 else "Two"
+        half = "true" if row.half_path else "false"
+        i8_paths.append(
+            f"  TcgenI8PathRow{{TcgenCtaGroup::{group}, {row.m}, "
+            f"'{row.layout}', {half}}}")
+    i8_targets = ",\n".join(
+        '  TcgenI8TargetGate{"%s", %s, {%d, %d}}' % (
+            gate.feature, "true" if gate.exact else "false",
+            gate.ptx_major, gate.ptx_minor)
+        for gate in operations.I8_TARGET_GATES)
+    i8_shape_text = ",\n".join(i8_shape_rows)
+    i8_path_text = ",\n".join(i8_paths)
+    i8_source = f'''
+namespace ptx_frontend::resolved_ir {{
+namespace {{
+constexpr std::array<TcgenI8ShapeRow, {len(i8_shape_rows)}> kI8Shapes = {{{{
+{i8_shape_text}
+}}}};
+constexpr std::array<TcgenI8PathRow, {len(i8_paths)}> kI8Paths = {{{{
+{i8_path_text}
+}}}};
+}}  // namespace
+std::span<const TcgenI8ShapeRow> tcgen_i8_shape_rows() noexcept {{
+  return kI8Shapes;
+}}
+std::span<const TcgenI8PathRow> tcgen_i8_path_rows() noexcept {{
+  return kI8Paths;
+}}
+bool tcgen_i8_row_contains(const TcgenI8ShapeRow& row,
+                           uint16_t m, uint16_t n, uint16_t k) noexcept {{
+  const bool small = n != 0 &&
+      std::find(row.n_small.begin(), row.n_small.end(), n) != row.n_small.end();
+  return (m == row.m_values[0] || m == row.m_values[1]) && k == row.k &&
+         (small || (n >= row.n_first && n <= row.n_last &&
+                    (n - row.n_first) % row.n_step == 0));
+}}
+}}  // namespace ptx_frontend::resolved_ir
+'''
+    i8_source += (_i8_query_source()
+                  .replace("__TARGET_ROWS__", i8_targets)
+                  .replace("__TARGET_COUNT__",
+                           str(len(operations.I8_TARGET_GATES))))
+    return f16_source + tf32_source + i8_source
 
 
 def generate_tcgen_mma_header(_context: object, *, output_path: Path) -> None:
@@ -544,4 +599,138 @@ def _tf32_query_source() -> str:
     source = source.replace("transpose && *decoded.swizzle == TcgenSwizzle::B128Atom32",
                             "transpose && *decoded.swizzle != TcgenSwizzle::B128Atom32")
     source = source.replace("per-operand 16-bit Table 57", "per-operand 32-bit Table 57")
+    return source
+
+
+_I8_ROW_HEADER = r'''
+namespace ptx_frontend::resolved_ir {
+/** One dense i8 Table 42 shape row, including group one's short N prefix. */
+struct TcgenI8ShapeRow {
+  /** Number of CTAs selected by the written group. */
+  TcgenCtaGroup group;
+  /** Output element type from a caller-known instruction word. */
+  MatrixElementType d_type;
+  /** Closed legal M values in rows. */
+  std::array<uint16_t, 2> m_values;
+  /** Zero-padded exceptional small N values in columns. */
+  std::array<uint16_t, 4> n_small;
+  /** First N value in the regular grid, in columns. */
+  uint16_t n_first;
+  /** Grid stride in columns. */
+  uint16_t n_step;
+  /** Last grid N value in columns. */
+  uint16_t n_last;
+  /** Implicit K dimension in elements. */
+  uint16_t k;
+};
+/** One dense i8 Tensor Memory path selected by group and M. */
+struct TcgenI8PathRow {
+  /** Written CTA group. */
+  TcgenCtaGroup group;
+  /** M dimension in rows. */
+  uint16_t m;
+  /** Selected A, B, D, or F path layout. */
+  char layout;
+  /** Whether known A/D lane halves must agree. */
+  bool half_path;
+};
+/** Borrow immutable dense i8 Table 42 shape rows. */
+[[nodiscard]] std::span<const TcgenI8ShapeRow> tcgen_i8_shape_rows() noexcept;
+/** Borrow immutable dense i8 Tensor Memory path rows. */
+[[nodiscard]] std::span<const TcgenI8PathRow> tcgen_i8_path_rows() noexcept;
+/** Check known dimensions without authenticating source words. */
+[[nodiscard]] bool tcgen_i8_row_contains(const TcgenI8ShapeRow& row,
+                                         uint16_t m, uint16_t n,
+                                         uint16_t k) noexcept;
+}  // namespace ptx_frontend::resolved_ir
+'''
+
+
+def _i8_query_header() -> str:
+    """Render the no-scale i8 known-facts API beside preserved F16/TF32 APIs."""
+
+    header = (_QUERY_HEADER.replace("TcgenF16", "TcgenI8")
+              .replace("tcgen_f16", "tcgen_i8")
+              .replace("dense f16", "dense i8")
+              .replace("  AMajor, BMajor, ASwizzle, BSwizzle, Datapath,",
+                       "  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, Datapath,")
+              .replace("  AMajor, BMajor, ASwizzle, BSwizzle, ALaneHalf,",
+                       "  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, ALaneHalf,"))
+    scale = '''  /** Whether the optional D scaling immediate is present. */
+  bool scaled_d;
+'''
+    if header.count(scale) != 1:
+        raise ValueError("f16 known-facts scale field changed")
+    return header.replace(scale, "")
+
+
+def _i8_query_source() -> str:
+    """Reuse defined-field and shared-word mechanics with closed i8 rules."""
+
+    source = _QUERY_SOURCE
+    old_types = '''    const bool output_f16 = *decoded.d_type == MatrixElementType::F16;
+    const bool output_f32 = *decoded.d_type == MatrixElementType::F32;
+    const auto input_allowed = [output_f16, output_f32](MatrixElementType type) {
+      return (output_f16 && type == MatrixElementType::F16) ||
+             (output_f32 && (type == MatrixElementType::F16 ||
+                             type == MatrixElementType::BF16));
+    };
+    if (!input_allowed(*decoded.a_type))
+      report.violations.push_back(TcgenF16Violation::AType);
+    if (!input_allowed(*decoded.b_type))
+      report.violations.push_back(TcgenF16Violation::BType);
+    if (output_f32 && input_allowed(*decoded.a_type) &&
+        input_allowed(*decoded.b_type) &&
+        *decoded.a_type != *decoded.b_type)
+      report.missing.push_back(TcgenF16Obligation::MixedInputPair);'''
+    new_types = '''    const bool output_s32 = *decoded.d_type == MatrixElementType::S32;
+    const auto input_allowed = [](MatrixElementType type) {
+      return type == MatrixElementType::S8 || type == MatrixElementType::U8;
+    };
+    if (!output_s32 || !input_allowed(*decoded.a_type))
+      report.violations.push_back(TcgenF16Violation::AType);
+    if (!output_s32 || !input_allowed(*decoded.b_type))
+      report.violations.push_back(TcgenF16Violation::BType);
+    if (output_s32 && input_allowed(*decoded.a_type) &&
+        input_allowed(*decoded.b_type) &&
+        *decoded.a_type != *decoded.b_type)
+      report.missing.push_back(TcgenF16Obligation::MixedInputPair);'''
+    old_target_field = '''  /** Whether this row applies only when D scaling is present. */
+  bool scaled_d;
+'''
+    old_target_check = '''    if (gate.scaled_d != facts.scaled_d ||
+        *facts.ptx_version < gate.minimum_ptx) continue;'''
+    old_shape = "tcgen_f16_row_contains(row, decoded.m, decoded.n, 16)"
+    old_placement = '''  if (facts.a_in_tmem) {
+    if (facts.a_shared_word)'''
+    b_transpose = '''  if (decoded.transpose_b) {
+    const bool allowed_n = facts.group == TcgenCtaGroup::One
+        ? decoded.n >= 16 && decoded.n <= 256 && decoded.n % 16 == 0
+        : decoded.n >= 32 && decoded.n <= 256 && decoded.n % 32 == 0;
+    if (!allowed_n)
+      report.violations.push_back(TcgenF16Violation::BTransposeN);
+    report.checked.push_back(TcgenF16Checked::BTransposeN);
+  }
+'''
+    for old in (old_types, old_target_field, old_target_check,
+                old_shape, old_placement):
+        if source.count(old) != 1:
+            raise ValueError("f16 query changed; review i8 derivation")
+    source = source.replace(old_types, new_types)
+    source = source.replace(old_target_field, "")
+    source = source.replace(old_target_check,
+                            "    if (*facts.ptx_version < gate.minimum_ptx) continue;")
+    source = source.replace(old_shape,
+                            "tcgen_i8_row_contains(row, decoded.m, decoded.n, 32)")
+    source = source.replace(old_placement, b_transpose + old_placement)
+    source = source.replace("TcgenF16", "TcgenI8")
+    source = source.replace("tcgen_f16", "tcgen_i8")
+    source = source.replace("TcgenMmaKind::F16", "TcgenMmaKind::I8")
+    for old, new in (("kShapes", "kI8Shapes"),
+                     ("kPaths", "kI8Paths"),
+                     ("kTargetGates", "kI8TargetGates"),
+                     ("accepts_target", "accepts_i8_target"),
+                     ("check_shared_operand", "check_i8_shared_operand")):
+        source = source.replace(old, new)
+    source = source.replace("per-operand 16-bit Table 57", "per-operand 8-bit Table 57")
     return source

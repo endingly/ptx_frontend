@@ -399,3 +399,65 @@ Mbarrier sources remain material compile costs. Their 7.8 and 5.8 MiB
 generated definitions contain descriptors, resolver, checker, and owner
 bridges together; this experiment does not establish a safe or faster
 generation-topology split.
+
+## 2026-10-04 descriptor partition prototype
+
+The preceding final layout at `125615b3ba48a0b45030d8806a5f76796a26396f`
+was the baseline for an uncommitted prototype that has since been withdrawn.
+The experimental `PTX_RESOLVED_IR_DESCRIPTOR_PARTITION_OPCODES` CMake cache list selected
+canonical opcodes for separate private syntax, resolved, and checker descriptor
+storage. Its default was empty. Only `cp` and `mbarrier` were selected for these
+measurements; the generator also passed a selection test with `add`. Existing
+public typed descriptor getters retained their signatures and forwarded to private
+accessors for selected opcodes. The six emitted storage struct bodies for the
+two samples were byte-identical to the baseline bodies.
+
+The baseline and selected builds used Clang 21.1.8, Ninja, Debug `-g0`, the
+same vcpkg dependency tree, disabled ccache, six jobs, and the
+`test_resolved_ir` target. Tests additionally used `-gline-tables-only`.
+Configuration is excluded. Baseline artifacts are in
+`/tmp/ptx-compile-narrow.dBDSvt`; prototype artifacts, compiler traces, and
+logs are in `/tmp/ptx-descriptor-proto.JZ9pyk`. These are local temporary
+paths, not portable reproduction inputs.
+
+| Clean target | Baseline | Selected prototype |
+| --- | ---: | ---: |
+| One-run wall time | 254.40 s | 246.89 s |
+| C++ objects / Ninja steps | 263 / 280 | 266 / 283 |
+| Resolved IR tests | 910 / 133 suites | 911 / 134 suites |
+
+The prototype adds two descriptor objects and one opcode-descriptor lifetime
+test object. All original 910 tests remain in the discovered list; the new
+test also passes. The whole-target wall difference is one run on a shared
+host and cannot be attributed to the split: the new test object and changed
+build scheduling also affect it. Both selected-op object pairs were examined
+with isolated sequential compiler invocations using their respective
+`compile_commands.json` entries and scratch object outputs:
+
+| Opcode | Baseline source | Prototype typed + descriptor sources | Isolated typed-source peak RSS, baseline → prototype |
+| --- | ---: | ---: | ---: |
+| Cp | 25.974 s | 24.105 + 2.863 = 26.968 s | 1,468,576 → 1,446,336 KiB |
+| Mbarrier | 22.698 s | 22.070 + 2.561 = 24.631 s | 1,263,028 → 1,213,404 KiB |
+
+The separate descriptor compiler processes peaked at 249,664 KiB for Cp and
+240,652 KiB for Mbarrier. The table's RSS figures are single-process high-water
+marks, not a six-job or whole-build memory peak. Serialized combined compile
+time increased by 0.994 s for Cp and 1.933 s for Mbarrier. Separate Clang
+`-ftime-trace` runs likewise recorded `ExecuteCompiler` times of 29.631 s
+baseline versus 27.065 + 2.907 = 29.972 s for Cp, and 25.899 s versus
+24.131 + 2.741 = 26.872 s for Mbarrier. The trace's top function
+instantiations still include `std::expected<T>` construction and nested
+`std::variant` move/copy visitors at roughly 2–2.5 s per event. Nested trace
+events overlap and must not be summed as independent work.
+
+The selected build passed all 911 tests, a second build did no work, and an
+installed `examples/conversion_consumer` configured, linked, and ran. Private
+accessor headers were absent from the install. Switching a separate build from
+selected to empty regenerated the original layout and removed all four
+partition artifacts from both the output manifest and the generated directory.
+The measured samples do not support enabling descriptor partitioning by
+default. All prototype code, tests, build changes, and lexer filename changes
+have been withdrawn; only this paired measurement record is retained. The
+experimental option is not available in the current code. Any future layout
+proposal needs new measurements and core review. The `.gen.hpp` / `.gen.cpp`
+naming requirement applies to Python-generated files, not Flex lexer outputs.

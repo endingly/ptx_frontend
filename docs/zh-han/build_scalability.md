@@ -329,3 +329,53 @@ Resolved IR 的 119 个 Python 测试和 generation-plan 的 25 个测试也通�
 的情形。单 opcode 的 Cp 与 Mbarrier 源文件仍是明显编译成本：其 7.8 和
 5.8 MiB 的生成定义合并了描述符、resolver、checker 与 owner bridge。
 本实验尚不能证明拆分生成文件拓扑是安全或更快的方案。
+
+## 2026-10-04 Descriptor 分区原型
+
+本次以此前最终布局的 `125615b3ba48a0b45030d8806a5f76796a26396f` 为基线，
+测量了一个尚未提交、现已撤回的通用原型。当时的实验性 CMake cache 列表
+`PTX_RESOLVED_IR_DESCRIPTOR_PARTITION_OPCODES` 显式选择 canonical opcode，
+将其 syntax、resolved、checker descriptor storage 放入单独的私有源文件；默认
+列表为空。本次只选取 `cp` 与 `mbarrier` 测量，生成器测试还用 `add` 验证了
+同一机制。选中 opcode 的公开强类型 getter 保持原签名，转发至私有 accessor。
+两条指令生成的六个 storage struct 正文与基线逐字节相同。
+
+基线与原型都使用 Clang 21.1.8、Ninja、Debug `-g0`、相同 vcpkg 依赖树、
+禁用 ccache、6 个并行任务，以及 `test_resolved_ir` 目标。测试另加
+`-gline-tables-only`。配置时间不计入构建。基线输出在
+`/tmp/ptx-compile-narrow.dBDSvt`；原型输出、编译器 trace 与日志在
+`/tmp/ptx-descriptor-proto.JZ9pyk`。这些临时路径不是可移植的复现输入。
+
+| 清洁目标构建 | 基线 | 选中分区的原型 |
+| --- | ---: | ---: |
+| 单次墙钟耗时 | 254.40 秒 | 246.89 秒 |
+| C++ object / Ninja 步骤 | 263 / 280 | 266 / 283 |
+| Resolved IR 测试 | 910 / 133 suite | 911 / 134 suite |
+
+原型增加两个 descriptor object 和一个 descriptor 生命周期测试 object。
+原有 910 个测试全部保留在发现列表中，新增测试也通过。完整目标的墙钟差异
+只来自共享主机上的单次运行，不能归因于分区：新测试 object 和构建调度也有影响。
+另按各自 `compile_commands.json` 用临时 object 输出，串行单独编译所选对象：
+
+| 指令 | 基线源文件 | 原型强类型源文件 + descriptor 源文件 | 单独编译的强类型源文件 RSS 峰值：基线 → 原型 |
+| --- | ---: | ---: | ---: |
+| Cp | 25.974 秒 | 24.105 + 2.863 = 26.968 秒 | 1,468,576 → 1,446,336 KiB |
+| Mbarrier | 22.698 秒 | 22.070 + 2.561 = 24.631 秒 | 1,263,028 → 1,213,404 KiB |
+
+两个独立 descriptor 编译进程的 RSS 峰值分别为 249,664 KiB 与
+240,652 KiB。表内 RSS 是单进程高水位，不是 6 并行或完整构建的内存峰值。
+串行合计编译时间对 Cp 增加 0.994 秒，对 Mbarrier 增加 1.933 秒。
+另外的 Clang `-ftime-trace` 记录：Cp 的 `ExecuteCompiler` 从基线
+29.631 秒变为 27.065 + 2.907 = 29.972 秒；Mbarrier 从 25.899 秒
+变为 24.131 + 2.741 = 26.872 秒。耗时靠前的函数实例化仍包含
+`std::expected<T>` 构造及嵌套的 `std::variant` 移动/拷贝 visitor，
+单项约 2–2.5 秒。嵌套 trace 事件会重叠，不能独立相加。
+
+选中分区的构建通过全部 911 个测试；再次构建没有工作。已安装的
+`examples/conversion_consumer` 配置、链接和运行均通过，私有 accessor 头
+未被安装。在另一构建目录中将选项从选中切换为空后，生成器恢复原布局，
+四个分区文件从输出清单和生成目录中删除。这两个测量样本不支持默认启用
+descriptor 分区。本次原型的代码、测试、构建改动及 lexer 文件命名改动均已撤回，
+仅保留这份中英文测量记录；当前代码不提供上述实验选项。今后的布局方案需要
+新的测量结果与 core review。`.gen.hpp` / `.gen.cpp` 命名要求仅适用于
+Python 生成的文件，不适用于 Flex lexer 输出。

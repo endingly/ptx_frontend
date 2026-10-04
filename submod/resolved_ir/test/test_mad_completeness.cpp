@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -154,12 +154,7 @@ TEST(MadCompleteness, ChecksExplicitFloatingAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return resolved->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
                           .sm_version = availability.minimum_sm})

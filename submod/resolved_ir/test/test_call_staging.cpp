@@ -5,8 +5,9 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/model/control_flow.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "test_module_projection.hpp"

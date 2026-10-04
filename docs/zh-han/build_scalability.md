@@ -269,3 +269,63 @@ RSS 数字是每秒采样一次并求和：GCC 统计 `cc1plus`，Clang 统计
 `clang++-21` 与 `clang-21`。共享页可能重复计算，这不是完整进程树或
 cgroup 峰值。这些本机单次结果不能证明 CI 上的最佳并行度或内存安全，
 也不能证明单 op 文件布局在 Clang 下快于 main。
+
+## 2026-10-04 OwnedInstruction 编译后续测量
+
+本次以 #216 之后的 main `386aebb` 为基线，对比同一源码工作树中尚未提交的
+测试局部优化和私有生成器优化。每次 `test_resolved_ir` 构建均从独立的空 Ninja
+目录开始，使用 Clang 21.1.8、Debug、6 个并行任务、禁用 ccache、相同的
+已安装 vcpkg 依赖，以及 C/C++ Debug 选项 `-g0`。测试目标另追加
+`-gline-tables-only`；生成代码与库对象仍使用 `-g0`。计时包含生成、263 个
+C++ 对象编译及链接，不包含配置；测量期间没有其他并发编译。
+
+| 源码 | 测试目标清洁构建 | C++ 对象数 | Ninja 步骤数 |
+| --- | ---: | ---: | ---: |
+| Main 基线 | 279.37 秒 | 263 | 280 |
+| 仅缩小测试 checker 调用及头文件依赖 | 278.26 秒 | 263 | 280 |
+| 再加入按家族过滤的 owned 投影及立即实例化的索引式引用访问器（中间方案） | 277.22 秒 | 263 | 280 |
+| 最终方案：延迟实例化的索引访问器与精确 opcode 测试头文件 | 254.40 秒 | 263 | 280 |
+
+前两个候选方案与基线间约 1–2 秒的差异落在单次运行波动范围内。最终方案
+在这次匹配的单次测量中快 24.97 秒（8.9%）。测试对象编译时间区间从
+142.37 秒缩短到 119.86 秒；Resolved IR 库对象区间仍约为 90 秒。
+Ninja 中可重叠的各对象墙钟时长之和从 1,245.89 秒降至 1,112.25 秒；
+该和既不是 CPU 用时，也不是完整构建用时。测试改动删除了仅为调用既有
+`OwnedInstruction::check` 而实例化所有 opcode 的访问器。typed 投影测试
+改为复制选中家族的既有 `OwnedInstruction` owner，在未选中的源码位置保留
+空 owner，从而避开对所选 opcode record 类型构成的 variant 深拷贝。
+部分普通测试改为包含精确 opcode 头文件，不再依赖类别或聚合头；显式验证
+公开头文件兼容性的测试仍保留这些头文件。生成引用访问器在受限的泛型 lambda
+中按规范 variant 与 operand-layout 索引分派，保持回调顺序及
+`std::bad_variant_access` 兜底分支。
+
+使用同一构建的 `compile_commands.json`、将对象写入临时路径，并串行单独
+编译所得的归因数据如下：
+
+| 编译单元 | 改动前 | 改动后 |
+| --- | ---: | ---: |
+| collective typed 投影测试 | 27.52 秒 | 2.75 秒 |
+| module typed 投影测试 | 20.75 秒 | 2.60 秒 |
+| 生成的 Cp 源文件 | 28.73 秒 | 26.51 秒 |
+| 生成的 Mbarrier 源文件 | 26.03 秒 | 24.03 秒 |
+
+投影对比的前后两次都使用基线生成头文件；生成源文件对比则仅在两次编译间
+重新生成引用访问器。最初的直接索引切换使两个未改动的聚合头测试编译
+分别从 5.34 秒升至 8.29 秒、从 5.34 秒升至 8.24 秒。让切换分支依赖
+精确 opcode 后，两者恢复到 5.58 秒和 5.53 秒，同时保留生成源文件的
+编译收益。最终清洁构建的 Ninja 日志中，最长对象为 Cp（28.59 秒）、
+Mbarrier（24.73 秒）和 instruction-variants 测试（16.83 秒）；
+两个投影对象不再居首。最终构建与基线一样发现 133 个
+suite、910 个测试，GTest 列表哈希相同，且 910 个测试全部通过。
+Resolved IR 的 119 个 Python 测试和 generation-plan 的 25 个测试也通过。
+本次未采样可比的完整构建编译器 RSS 和 cgroup 内存峰值。
+本地日志位于 `/tmp/ptx-compile-baseline.hfBBvj`、
+`/tmp/ptx-compile-candidate.Yarq9p`、`/tmp/ptx-compile-measured.IDV8uT`
+和 `/tmp/ptx-compile-narrow.dBDSvt`；这些临时路径不可移植。
+
+这些数据只覆盖当前 main，不覆盖待合并的 matrix 或 tensor 分支。合并
+引用访问器生成逻辑时，共享物理存储的 matrix layout 必须保留逻辑 variant
+到存储 variant 的映射；当前 main 的直接索引只适用于逻辑与物理备选项一致
+的情形。单 opcode 的 Cp 与 Mbarrier 源文件仍是明显编译成本：其 7.8 和
+5.8 MiB 的生成定义合并了描述符、resolver、checker 与 owner bridge。
+本实验尚不能证明拆分生成文件拓扑是安全或更快的方案。

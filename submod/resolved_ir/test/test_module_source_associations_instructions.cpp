@@ -1,6 +1,8 @@
 #include "test_instruction_access.hpp"
 #include "test_module_source_associations_support.hpp"
 
+#include <ptx_frontend/resolved_ir/model/control_flow/ret.gen.hpp>
+
 namespace ptx_frontend::resolved_ir {
 namespace {
 

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -136,11 +136,7 @@ TEST(IntegerArithmeticCompleteness, ResolvesAndChecksAllScalarAndPackedForms) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto checked = test_ir_access::visit(
-        [&context](const auto& concrete) {
-          return checker::check(concrete, context);
-        },
-        instruction);
+    const auto checked = instruction.check(context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
 }
@@ -294,11 +290,7 @@ TEST(IntegerArithmeticCompleteness, EnforcesNewFormTargetFloors) {
     const auto resolved = resolveInstruction(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value());
     const auto check = [&resolved](const checker::Context& context) {
-      return test_ir_access::visit(
-          [&context](const auto& concrete) {
-            return checker::check(concrete, context);
-          },
-          *resolved);
+      return resolved->check(context);
     };
     const auto old_ptx = check(target_case.old_ptx);
     ASSERT_FALSE(old_ptx.has_value());

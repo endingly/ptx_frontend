@@ -6,7 +6,7 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace ptx_frontend::resolved_ir::module_source_test_support {

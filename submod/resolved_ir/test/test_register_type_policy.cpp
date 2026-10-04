@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -362,11 +362,7 @@ TEST(RegisterTypePolicy, TargetedKernelUsesSameWideMultiplyPolicy) {
   const checker::Context target_context{
       .target = {.ptx_version = {8, 0}, .sm_version = 80}};
   for (const OwnedInstruction& instruction : body) {
-    const auto checked = test_ir_access::visit(
-        [&target_context](const auto& concrete) {
-          return checker::check(concrete, target_context);
-        },
-        instruction);
+    const auto checked = instruction.check(target_context);
     expectAccepted(checked);
   }
 }

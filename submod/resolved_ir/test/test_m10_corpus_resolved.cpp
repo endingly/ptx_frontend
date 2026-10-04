@@ -7,9 +7,10 @@
 #include <stdexcept>
 #include <string>
 
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/matrix.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/atom.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/vote.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

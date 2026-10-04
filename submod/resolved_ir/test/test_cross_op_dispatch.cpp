@@ -6,7 +6,14 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/and.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/not.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/or.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/shl.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/shr.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sub.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/xor.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/setp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/exit.gen.hpp>

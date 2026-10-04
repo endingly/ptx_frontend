@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -126,12 +126,7 @@ TEST(TestpCopysignCompleteness, ChecksAvailabilityForBothTypesAndOpcodes) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return resolved->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = {2, 0}, .sm_version = 20}).has_value());

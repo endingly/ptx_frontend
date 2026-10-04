@@ -6,9 +6,8 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -34,7 +33,7 @@ const syntax_ast::AstImmediate& immediateOperand(
 
 /** Return the immediate source held by a scalar move instruction. */
 const ResolvedImmediate& scalarMovImmediate(
-    const std::variant<std::monostate, Mov>& instruction) {
+    const OwnedInstruction& instruction) {
   const auto& mov = test_ir_access::get<Mov>(instruction);
   const auto& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
   const auto& operands =

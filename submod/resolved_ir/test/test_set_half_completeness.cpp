@@ -7,9 +7,7 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"

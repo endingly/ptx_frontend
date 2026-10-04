@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -360,14 +360,8 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_EQ(body.size(), 10u);
   const auto check = [&ast](const OwnedInstruction& instruction,
                             const checker::TargetInfo& target) {
-    return test_ir_access::visit(
-        [&target, &ast](const auto& resolved_instruction) {
-          return checker::check(
-              resolved_instruction,
-              checker::Context{.target = target,
-                               .instruction_range = ast.range});
-        },
-        instruction);
+    return instruction.check(checker::Context{.target = target,
+                                              .instruction_range = ast.range});
   };
   const auto sm100a = base::find_target_profile("sm_100a");
   ASSERT_TRUE(sm100a.has_value());

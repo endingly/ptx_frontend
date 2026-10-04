@@ -65,29 +65,36 @@ def _reference_payload_types(
 
 
 def emit_reference_visitor(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
-    """Emit typed operand visitation without a hand-maintained opcode switch."""
+    """Emit index-based operand visitation in canonical variant order."""
 
     variant_cases: list[str] = []
-    for variant in instruction.variants:
+    for variant_index, variant in enumerate(instruction.variants):
         if len(variant.operand_layouts) == 1:
             body = _emit_reference_fields(variant.operand_layouts[0], "selected")
         else:
             layouts = "\n".join(
-                f"        if constexpr (std::same_as<Payload, {instruction.cpp_name}::{variant.cpp_name}::{layout.cpp_name}Operands>) {{\n"
-                f"{_emit_reference_fields(layout, 'payload')}\n        }}"
-                for layout in variant.operand_layouts
+                f"      case {layout_index}: {{\n"
+                f"        const auto& payload = std::get<{layout_index}>(selected.operands);\n"
+                f"{_emit_reference_fields(layout, 'payload')}\n"
+                "        break;\n      }"
+                for layout_index, layout in enumerate(variant.operand_layouts)
             )
-            body = f"""      std::visit([&]<typename Payload>(const Payload& payload) {{
+            body = f"""      switch (selected.operands.index()) {{
 {layouts}
-      }}, selected.operands);"""
+      default:
+        throw std::bad_variant_access{{}};
+      }}"""
         variant_cases.append(
-            f"    if constexpr (std::same_as<Variant, {instruction.cpp_name}::{variant.cpp_name}>) {{\n{body}\n    }}"
+            f"    case {variant_index}: {{\n"
+            f"      const auto& selected = std::get<{variant_index}>(value.variant);\n"
+            f"{body}\n      break;\n    }}"
         )
     visitor_requirements = " &&\n         ".join(
         "std::invocable<Visitor&, const "
         f"{payload}&, std::span<const SourceRange>, checker::AddressSymbolResolutionPolicy>"
         for payload in _reference_payload_types(instruction, backend)
     )
+    cases = "\n".join(variant_cases)
     return f"""/**
  * Visit every binding-bearing operand selected by this resolved instruction.
  *
@@ -102,7 +109,13 @@ void visit_instruction_references(const {instruction.cpp_name}& instruction,
   if (instruction.execution_predicate)
     visitor(instruction.execution_predicate->value, instruction.execution_predicate->locs,
             checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
-  std::visit([&]<typename Variant>(const Variant& selected) {{
-{" else ".join(variant_cases)}
-  }}, instruction.variant);
+  const auto dispatch = [&]<typename Instruction>(const Instruction& value)
+      requires std::same_as<Instruction, {instruction.cpp_name}> {{
+  switch (value.variant.index()) {{
+{cases}
+    default:
+      throw std::bad_variant_access{{}};
+  }}
+  }};
+  dispatch(instruction);
 }}"""

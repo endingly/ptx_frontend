@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -187,13 +187,8 @@ TEST(MinMaxCompleteness, RejectsModifiersForbiddenByTheSelectedLayout) {
     // that the chosen layout rejects the spelled modifier.
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = test_ir_access::visit(
-        [](const auto& instruction) {
-          return checker::check(
-              instruction, checker::Context{.target = {.ptx_version = {9, 3},
-                                                       .sm_version = 100}});
-        },
-        *resolved);
+    const auto checked = resolved->check(
+        checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
@@ -223,13 +218,8 @@ TEST(MinMaxCompleteness, ReportsForbiddenModifierOwnRange) {
   const auto& variant = test_ir_access::get<Min::F32>(
       test_ir_access::get<Min>(*resolved).variant);
   ASSERT_FALSE(variant.abs.locs.empty());
-  const auto checked = test_ir_access::visit(
-      [](const auto& instruction) {
-        return checker::check(instruction,
-                              checker::Context{.target = {.ptx_version = {9, 3},
-                                                          .sm_version = 100}});
-      },
-      *resolved);
+  const auto checked = resolved->check(
+      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
@@ -247,13 +237,8 @@ TEST(MinMaxCompleteness, MatchesForbiddenSlotAfterLocationsAreCleared) {
   auto& variant = test_ir_access::get<Min::F32>(
       test_ir_access::get<Min>(*resolved).variant);
   variant.abs.locs.clear();
-  const auto checked = test_ir_access::visit(
-      [](const auto& instruction) {
-        return checker::check(instruction,
-                              checker::Context{.target = {.ptx_version = {9, 3},
-                                                          .sm_version = 100}});
-      },
-      *resolved);
+  const auto checked = resolved->check(
+      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
@@ -318,12 +303,7 @@ TEST(MinMaxCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return resolved->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = item.ptx, .sm_version = item.sm}).has_value());

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <expected>
 #include <optional>
@@ -8,9 +8,9 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rcp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt.gen.hpp>
 
 #include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"

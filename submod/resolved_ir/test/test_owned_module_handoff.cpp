@@ -12,7 +12,12 @@
 #include <vector>
 
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvt.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/isspacep.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/prmt.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/shfl.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/vote.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "test_syntax_parse_helpers.hpp"

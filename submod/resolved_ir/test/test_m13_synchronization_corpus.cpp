@@ -10,8 +10,10 @@
 #include <string_view>
 
 #include <ptx_frontend/base/ptx_target.hpp>
-#include <ptx_frontend/resolved_ir/checker/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/barrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/clusterlaunchcontrol.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/fence.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 

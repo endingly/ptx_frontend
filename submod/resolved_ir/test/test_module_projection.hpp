@@ -2,9 +2,9 @@
 
 #include <expected>
 #include <string>
-#include <variant>
 #include <vector>
 
+#include <ptx_frontend/resolved_ir/ptx_owned_instruction.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 
 #include "test_module_snapshot.hpp"
@@ -21,8 +21,8 @@ struct TypedFunctionSnapshot {
   binding::SymbolId symbol_id;
   /** Source function name retained for assertion output. */
   std::string name;
-  /** Instructions in source order; monostate marks an unrequested family. */
-  std::vector<std::variant<std::monostate, Instructions...>> body;
+  /** Independently owned instructions in source order; empty marks an unrequested family. */
+  std::vector<OwnedInstruction> body;
   /** Owned source ranges parallel to body. */
   std::vector<SourceRange> instruction_ranges;
 };

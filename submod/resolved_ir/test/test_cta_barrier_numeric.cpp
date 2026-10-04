@@ -10,8 +10,8 @@
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/checker/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/barrier.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -502,10 +502,8 @@ TEST(CtaBarrierNumeric, DistinguishesBarAndBarrierArriveOpcodes) {
   ASSERT_TRUE(standalone.has_value()) << standalone.error().front().message;
   EXPECT_TRUE(test_ir_access::holds_alternative<Bar>(
       legacy->functions.front().body[0]));
-  EXPECT_TRUE(test_ir_access::holds_alternative<std::monostate>(
-      legacy->functions.front().body[1]));
-  EXPECT_TRUE(test_ir_access::holds_alternative<std::monostate>(
-      standalone->functions.front().body[0]));
+  EXPECT_FALSE(legacy->functions.front().body[1]);
+  EXPECT_FALSE(standalone->functions.front().body[0]);
   EXPECT_TRUE(test_ir_access::holds_alternative<Barrier>(
       standalone->functions.front().body[1]));
 }

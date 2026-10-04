@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/model/control_flow.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/brx.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "test_module_projection.hpp"

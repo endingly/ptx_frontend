@@ -328,3 +328,74 @@ and `clang-21` for Clang. Shared pages can be counted more than once; they
 are not process-tree or cgroup peaks. These single local runs do not establish
 the best parallelism or memory safety for CI, nor do they show that the per-op
 layout is faster than main under Clang.
+
+## 2026-10-04 owned-instruction compile follow-up
+
+This follow-up measures current main `386aebb` after #216 against uncommitted,
+test-local and generator-emitted visitor optimizations on the same source checkout.
+Each `test_resolved_ir` build started in a separate empty Ninja directory with
+Clang 21.1.8, Debug, six jobs, disabled ccache, the same installed vcpkg tree,
+and C/C++ Debug flags `-g0`. The test target additionally appends
+`-gline-tables-only`; generated and library objects retain `-g0`. The timed
+build includes generation, 263 C++ object compilations, and linking, but not
+configuration. No other compilation ran concurrently.
+
+| Source | Clean target build | C++ objects | Ninja steps |
+| --- | ---: | ---: | ---: |
+| Main baseline | 279.37 s | 263 | 280 |
+| Test checker/include narrowing only | 278.26 s | 263 | 280 |
+| Above plus filtered owned projections and eager index-based reference visitors (intermediate) | 277.22 s | 263 | 280 |
+| Final: lazy index-based visitors and exact-op test includes | 254.40 s | 263 | 280 |
+
+The first two candidate-to-baseline differences are within single-run noise.
+The final candidate is 24.97 seconds (8.9%) faster in this matched single run.
+Its test-object compilation interval fell from 142.37 to 119.86 seconds;
+the resolved-library object interval stayed near 90 seconds. Summed object
+wall durations from the overlapping Ninja jobs fell from 1,245.89 to
+1,112.25 seconds. Those sums are neither CPU time nor total build time.
+The test-only change removed an all-opcode visitor instantiated merely to
+call the existing `OwnedInstruction::check`. Typed projection tests now copy
+selected `OwnedInstruction` owners and leave an empty owner at each
+unselected source position, avoiding a deep-copying variant of the selected
+opcode record types. Selected ordinary tests include exact opcode leaves instead of
+category or aggregate headers, while explicit public-header compatibility
+tests retain those headers. The generated reference visitor dispatches by
+canonical variant and operand-layout index inside a constrained generic
+lambda, retaining callback order and the `std::bad_variant_access` fallback.
+
+Isolated, sequential compiles using the same build's `compile_commands.json`
+and a scratch object output show where the cost changed:
+
+| Translation unit | Before | After |
+| --- | ---: | ---: |
+| Typed collective projection test | 27.52 s | 2.75 s |
+| Typed module projection test | 20.75 s | 2.60 s |
+| Generated Cp source | 28.73 s | 26.51 s |
+| Generated Mbarrier source | 26.03 s | 24.03 s |
+
+The projection comparison used baseline generated headers on both sides of
+the test helper edit. The generated-source comparison regenerated only the
+new reference visitors between compiles. The initial direct index switch
+made two unchanged aggregate-header tests slower (5.34 to 8.29 seconds and
+5.34 to 8.24 seconds). Making the switch body dependent on the exact opcode
+restored them to 5.58 and 5.53 seconds, while retaining the generated-source
+improvement. The final clean-build Ninja log's longest objects were Cp
+(28.59 s), Mbarrier (24.73 s), and the instruction variants test (16.83 s);
+the two projection objects no longer lead that list.
+The final build discovers the same 910 tests in 133 suites as baseline, with
+an identical GTest-list hash, and all 910 pass. The 119 resolved-IR Python
+tests and 25 generation-plan tests also pass. Comparable whole-build
+compiler RSS and cgroup memory peaks were not sampled in this follow-up.
+The local build logs are under `/tmp/ptx-compile-baseline.hfBBvj`,
+`/tmp/ptx-compile-candidate.Yarq9p`, `/tmp/ptx-compile-measured.IDV8uT`,
+and `/tmp/ptx-compile-narrow.dBDSvt`; these temporary paths are not portable.
+
+These measurements cover current main, not the pending matrix or tensor
+branches. A matrix layout with shared physical storage must retain its
+logical-to-storage variant mapping when reconciling the reference
+visitor generator; current main's direct variant index applies only where
+logical and physical alternatives coincide. The single-opcode Cp and
+Mbarrier sources remain material compile costs. Their 7.8 and 5.8 MiB
+generated definitions contain descriptors, resolver, checker, and owner
+bridges together; this experiment does not establish a safe or faster
+generation-topology split.

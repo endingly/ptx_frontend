@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -2286,11 +2286,7 @@ TEST(ResolvedModule, ChecksIssue144LogicAndShiftFormsAfterAstLifetime) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   for (const auto& instruction : body) {
-    EXPECT_TRUE(test_ir_access::visit(
-        [&context](const auto& operation) {
-          return checker::check(operation, context).has_value();
-        },
-        instruction));
+    EXPECT_TRUE(instruction.check(context).has_value());
   }
 }
 
@@ -2327,11 +2323,7 @@ TEST(ResolvedModule, ChecksIssue144LogicAndShiftWidthAndCountContracts) {
     const auto resolved = resolveModule(*parsed_module);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     ASSERT_EQ(resolved->functions.front().body.size(), 1u);
-    EXPECT_EQ(test_ir_access::visit(
-                  [&context](const auto& operation) {
-                    return checker::check(operation, context).has_value();
-                  },
-                  resolved->functions.front().body.front()),
+    EXPECT_EQ(resolved->functions.front().body.front().check(context).has_value(),
               expected_valid);
   }
 }

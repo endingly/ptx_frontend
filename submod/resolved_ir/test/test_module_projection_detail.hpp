@@ -1,6 +1,5 @@
 #pragma once
 
-#include "test_instruction_access.hpp"
 #include "test_module_projection.hpp"
 
 #include <functional>
@@ -37,15 +36,10 @@ resolveTypedModule(const syntax_ast::AstModule& ast, ModulePipeline pipeline) {
           projected.instruction_ranges = function.instruction_ranges;
           projected.body.reserve(function.body.size());
           for (const auto& instruction : function.body) {
-            std::variant<std::monostate, Instructions...> selected;
-            (
-                [&] {
-                  if (const auto* value =
-                          test_ir_access::get_if<Instructions>(&instruction))
-                    selected = *value;
-                }(),
-                ...);
-            projected.body.push_back(std::move(selected));
+            if (((instruction.get_if<Instructions>() != nullptr) || ...))
+              projected.body.push_back(instruction);
+            else
+              projected.body.emplace_back();
           }
           snapshot.functions.push_back(std::move(projected));
         }

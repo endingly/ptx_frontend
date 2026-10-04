@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -872,20 +872,12 @@ TEST(ResolvedModule, ChecksBoundLoadStoreRegisterWidthPolicy) {
   };
 
   for (size_t index = 0; index < 8; ++index) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& instruction) {
-          return checker::check(instruction, context);
-        },
-        body[index]);
+    const auto checked = body[index].check(context);
     EXPECT_TRUE(checked.has_value());
   }
 
   for (size_t index = 8; index < body.size(); ++index) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& instruction) {
-          return checker::check(instruction, context);
-        },
-        body[index]);
+    const auto checked = body[index].check(context);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1u);
     EXPECT_EQ(checked.error().front().kind,
@@ -953,9 +945,7 @@ TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& value) { return checker::check(value, current); },
-        instruction);
+    const auto checked = instruction.check(current);
     EXPECT_TRUE(checked.has_value());
   }
 
@@ -1003,19 +993,11 @@ TEST(ResolvedModule, ChecksBoundAndImmediateAddressAlignment) {
       .instruction_range = ast.range,
   };
   for (const size_t index : {0u, 2u, 4u, 6u, 7u}) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& instruction) {
-          return checker::check(instruction, context);
-        },
-        body[index]);
+    const auto checked = body[index].check(context);
     EXPECT_TRUE(checked.has_value());
   }
   for (const size_t index : {1u, 3u, 5u}) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& instruction) {
-          return checker::check(instruction, context);
-        },
-        body[index]);
+    const auto checked = body[index].check(context);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1u);
     EXPECT_EQ(checked.error().front().kind,
@@ -1215,9 +1197,7 @@ TEST(ResolvedModule, KeepsNonMemoryRegisterWidthChecksStrict) {
   };
 
   for (const auto& instruction : body) {
-    const auto checked = test_ir_access::visit(
-        [&](const auto& value) { return checker::check(value, context); },
-        instruction);
+    const auto checked = instruction.check(context);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1u);
     EXPECT_EQ(checked.error().front().kind,

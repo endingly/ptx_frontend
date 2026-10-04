@@ -1,5 +1,5 @@
 #include "test_module_snapshot.hpp"
-#include "test_instruction_visit.hpp"
+#include "test_instruction_access.hpp"
 #include "test_module_projection_detail.hpp"
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/abs.gen.hpp>
@@ -124,9 +124,7 @@ resolveAndCheckInstructionSnapshot(const syntax_ast::AstModule& ast,
     return std::unexpected(std::move(resolved.error()));
   for (const auto& function : resolved->functions) {
     for (const auto& instruction : function.body) {
-      const auto checked = test_ir_access::visit(
-          [&](const auto& value) { return checker::check(value, context); },
-          instruction);
+      const auto checked = instruction.check(context);
       if (!checked) {
         std::vector<ResolveDiagnostic> diagnostics;
         diagnostics.reserve(checked.error().size());

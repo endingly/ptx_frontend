@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <cstdint>
@@ -9,10 +8,10 @@
 
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
@@ -28,17 +27,13 @@ SyntaxInstructionParseResult parseImmediate(std::string_view spelling) {
 /** Return the second operand after the caller has verified the parsed instruction. */
 const syntax_ast::AstImmediate& immediateOperand(
     const syntax_ast::AstInstruction& instruction) {
-  return test_ir_access::get<syntax_ast::AstImmediate>(instruction.operands[1]);
+  return std::get<syntax_ast::AstImmediate>(instruction.operands[1]);
 }
 
-/** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(
-    const OwnedInstruction& instruction) {
-  const auto& mov = test_ir_access::get<Mov>(instruction);
-  const auto& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
-  const auto& operands =
-      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
-  return test_ir_access::get<ResolvedImmediate>(operands.src.value);
+/** Return the resolved source literal from a scalar move layout. */
+const ResolvedImmediate& scalarMovImmediate(const Instruction& instruction) {
+  const auto& mov = dynamic_cast<const MovScalar&>(instruction);
+  return std::get<ResolvedImmediate>(mov.src_mov_source.value().value);
 }
 
 /** Accept equivalent signs while retaining exact decimal floating bit patterns. */
@@ -174,16 +169,15 @@ TEST(DecimalFloatSigns, ResolvesSignedDecimalMovesInSourceModule) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = test_support::resolveTypedModule<Mov>(
-      *module, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 5u);
-  EXPECT_EQ(scalarMovImmediate(body[0]).bits, 0x3f800000u);
-  EXPECT_EQ(scalarMovImmediate(body[1]).bits, 0x80000000u);
-  EXPECT_EQ(scalarMovImmediate(body[2]).bits, 0x3ff0000000000000ULL);
-  EXPECT_EQ(scalarMovImmediate(body[3]).bits, 0x8000000000000000ULL);
+  EXPECT_EQ(scalarMovImmediate(*body[0]).bits, 0x3f800000u);
+  EXPECT_EQ(scalarMovImmediate(*body[1]).bits, 0x80000000u);
+  EXPECT_EQ(scalarMovImmediate(*body[2]).bits, 0x3ff0000000000000ULL);
+  EXPECT_EQ(scalarMovImmediate(*body[3]).bits, 0x8000000000000000ULL);
 }
 
 }  // namespace

@@ -8,6 +8,10 @@ is embedded with `add_subdirectory`. The underlying source-build targets use
 the `ptx_frontend_` prefix, so they do not collide with generic target names in
 the parent project; those implementation names are not a public API.
 
+The active resolved-IR target is `ptx_frontend::resolved_ir`.
+`ptx_frontend::ptx_frontend` links this target. Its interface uses direct
+semantic-form classes and `std::unique_ptr<Instruction>` ownership.
+
 ## `ptx_spec`
 
 Consumers can request the generic PTX ISA specification with:
@@ -46,9 +50,8 @@ database = load_packaged_spec_database()
 
 ## Test profiles
 
-`BUILD_TESTING=ON` builds the C++ test suites, including `test_resolved_ir`.
-The GCC and Clang Debug/Release presets enable this option. GitHub Actions
-currently uses the Clang 21 presets for ordinary C++ coverage and independently
-builds an installed-package consumer from `examples/conversion_consumer` in the
-PR Debug and release-tag jobs. The consumer build uses its own CMake directory
-and the package installed from the matching Clang Debug build.
+`BUILD_TESTING=ON` builds the active C++ suites, including
+`resolved_ir_smoke` and `test_resolved_ir`. The GCC and Clang Debug/Release presets enable
+testing. Check the installed `resolved_ir` component with
+`examples/resolved_ir_consumer` in a separate build directory and installed
+package prefix.

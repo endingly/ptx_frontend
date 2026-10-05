@@ -379,3 +379,109 @@ descriptor 分区。本次原型的代码、测试、构建改动及 lexer 文�
 仅保留这份中英文测量记录；当前代码不提供上述实验选项。今后的布局方案需要
 新的测量结果与 core review。`.gen.hpp` / `.gen.cpp` 命名要求仅适用于
 Python 生成的文件，不适用于 Flex lexer 输出。
+
+## 2026-10-05 活跃 Resolved IR 迁移测量
+
+本节保留直接类模块仍使用 `resolved_ir_experiment` 名称时的测量记录。当前模块已使用
+规范的 `resolved_ir` 路径与目标；下方命令和产物名称按测量当时保留。
+`tools/owned_ir_experiment/README.md` 的早期运行期数字使用不同的测试程序、
+工作负载、处理流程及驱动，不能与本节的 Google Benchmark 测量直接比较。
+
+本节测量基于 `5f8d639` 的未提交活跃 `resolved_ir_experiment` 迁移，
+以 10 月 4 日最终构建的**历史记录**为参照；未重新构建或运行旧实现。
+两次清洁测试目标构建均使用 Clang 21.1.8、Ninja、C/C++ Debug `-g0`、
+仅测试目标附加 `-gline-tables-only`、6 个并行任务、禁用 ccache、相同的
+已有 vcpkg 依赖目录，以及 CMake 4.3.3。新目标通过临时
+`CMAKE_PROJECT_TOP_LEVEL_INCLUDES` 延迟 hook 附加测试标志。配置时间
+不计入，生成、编译、归档和链接计入。新目标从空构建目录开始，期间没有
+其他构建。历史记录没有足够信息确认主机硬件和负载相同；两个墙钟时间
+都只是单次观测。
+
+| 清洁 Debug 目标指标 | 历史 `test_resolved_ir` | 活跃 `resolved_ir_experiment_tests` |
+| --- | ---: | ---: |
+| 目标构建墙钟时间 | 254.40 秒 | 270.85 秒 |
+| C++ object / Ninja 步骤 | 263 / 280 | 263 / 274 |
+| 生成输出边的墙钟跨度 | 57.17 秒 | 105.61 秒 |
+| Resolved 库 object / 编译区间 | 102 / 90.28 秒 | 103 / 66.83 秒 |
+| 测试 object / 编译区间 | 150 / 119.86 秒 | 149 / 96.64 秒 |
+| 可重叠的 C++ object 墙钟时间之和 | 1,112.25 秒 | 949.65 秒 |
+| 列出的 GTest case / suite | 910 / 133 | 914 / 134 |
+
+新目标总耗时多 16.45 秒（6.5%），因此这次结果未显示清洁构建提速。
+库和测试的编译区间较短，但生成跨度长 48.44 秒。旧生成器有 7 条
+可重叠输出边，新生成器有 1 条；表内跨度是经过的时间，不是可相加的
+CPU 时间。编译区间也彼此重叠。模型大小与测试清单均已变化，不能把
+总耗时差额归因于单一源码。新目标的 914 个测试只通过
+`--gtest_list_tests` 列出，本次测量未运行。新 Ninja 日志中耗时最长的
+object 是生成的 Cp（13.99 秒）、Mbarrier（12.05 秒）和
+instruction-variants 测试（6.85 秒）。
+
+活跃模块新增可选、不会安装的 `frontend_experiment_symbol_table_scaling`
+benchmark 目标，由默认 `OFF` 的既有 `PTX_FRONTEND_BUILD_BENCHMARKS`
+选项控制。驱动保留历史 fixture 生成、case 名称、校验和 checksum；
+仅 Resolved IR 头文件路径与可执行文件错误标签不同。历史模块和驱动未改动。
+计时前在单独的临时 vcpkg 目录安装 Google Benchmark 1.9.5。新 Release
+目标使用 Clang 21.1.8、`-O3 -DNDEBUG`、禁用 ccache，构建并行度为 6；
+清洁构建耗时 196.71 秒，这是准备成本。运行时主机为 AMD Ryzen 9
+5950X，可见 32 个逻辑 CPU、约 23 GiB 内存，cgroup 无 CPU 或内存限额。
+
+下表为 Google Benchmark 5 次重复的**每次迭代 real time 中位数，单位毫秒**；
+每次重复至少采样 0.1 秒。每个生成样本有 N 条有效 `mov.u32` 指令和
+2N 个已绑定 operand 引用。普通单 scope 样本存储 N+1 个 symbol，紧凑
+单 scope 样本存储 2 个；nested 样本使用 2 个函数和词法 block。
+`parse` 解析完整源码并验证 AST；`resolve_module` 从预解析 AST 开始，
+包含自身的绑定、解析、检查、结果验证和析构。两项耗时不是互不重叠的
+阶段。选中的 34 个 case（16 种形状 × 2 种操作，另加 2 个 corpus
+case）共 170 条重复记录，全部通过校验，无 benchmark 错误。每次重复
+的迭代数为 2 至 4,815。
+
+| 逻辑寄存器数 | 声明 | Scope | Parse | Resolve module |
+| ---: | --- | --- | ---: | ---: |
+| 1,000 | ordinary | single | 1.334 | 5.799 |
+| 1,000 | ordinary | nested | 1.284 | 6.029 |
+| 1,000 | compact | single | 0.766 | 3.362 |
+| 1,000 | compact | nested | 0.787 | 3.425 |
+| 2,000 | ordinary | single | 2.810 | 12.303 |
+| 2,000 | ordinary | nested | 2.594 | 11.891 |
+| 2,000 | compact | single | 1.525 | 6.591 |
+| 2,000 | compact | nested | 1.467 | 6.656 |
+| 4,000 | ordinary | single | 6.257 | 28.724 |
+| 4,000 | ordinary | nested | 6.294 | 25.023 |
+| 4,000 | compact | single | 3.083 | 15.989 |
+| 4,000 | compact | nested | 2.996 | 14.018 |
+| 8,000 | ordinary | single | 22.624 | 55.134 |
+| 8,000 | ordinary | nested | 12.525 | 52.340 |
+| 8,000 | compact | single | 6.692 | 28.600 |
+| 8,000 | compact | nested | 7.108 | 28.875 |
+| M12 `natural_kernel_sm80.ptx` corpus | — | — | 0.029 | 0.193 |
+
+共享主机的采样噪声明显：ordinary/single N1000 的 parse real time 变异系数
+为 24.43%，N8000 为 20.83%。没有更多受控重复实验时，不应把表内布局
+差异直接解释为因果效果。
+
+在受检索的受控历史记录和历史测量输出中，没有旧 benchmark 驱动的运行时
+JSON、CSV 或数字计时汇总。因此表内数据仅是新模块的运行时基线，
+**不能**作为旧版到新版的运行时提速数据。单迭代预检、多迭代 JSON、
+日志、Ninja 日志、编译命令及临时测试标志 hook 保存在
+`/tmp/ptx-resolved-measure.qC5wI0`；该路径仅是本机临时记录，不可移植。
+Release 运行命令为：
+
+```sh
+timeout 300s /tmp/ptx-resolved-measure.qC5wI0/release/submod/resolved_ir_experiment/benchmark/frontend_experiment_symbol_table_scaling \
+  --benchmark_filter='symbol_table_scaling/(parse|resolve_module|corpus_parse|corpus_resolve_module)/' \
+  --benchmark_min_time=0.1s --benchmark_repetitions=5 \
+  --benchmark_out=/tmp/ptx-resolved-measure.qC5wI0/runtime-parse-resolve-sampled.json \
+  --benchmark_out_format=json
+```
+
+按上述标志另行完成配置后，实际计时的构建命令为：
+
+```sh
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/debug \
+  --parallel 6 --target resolved_ir_experiment_tests
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
+  --parallel 6 --target frontend_experiment_symbol_table_scaling
+```
+
+两个构建的准确配置缓存和临时测试标志 hook 均保存在 artifact 目录。
+依赖安装与配置在计时命令之前完成。

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,10 +24,10 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolvePopc, SelectsBothBitWidths) {
   for (const auto source : {"popc.b32 %r0, 1;", "popc.b64 %r0, %rd1;"}) {
-    const auto popc = resolve<Popc>(parse_instruction(source));
+    const auto popc = resolvePopc(parse_instruction(source));
     ASSERT_TRUE(popc.has_value()) << popc.error().message;
-    EXPECT_TRUE(test_ir_access::holds_alternative<Popc::B32>(popc->variant) ||
-                test_ir_access::holds_alternative<Popc::B64>(popc->variant));
+    EXPECT_TRUE(dynamic_cast<PopcB32*>(popc->get()) != nullptr ||
+                dynamic_cast<PopcB64*>(popc->get()) != nullptr);
   }
 }
 
@@ -42,22 +41,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedPopcAvailability) {
   PtxSyntaxParser parser("popc.b32 %r0, %r1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto popc = resolve<Popc>(*ast);
+  const auto popc = resolvePopc(*ast);
   ASSERT_TRUE(popc.has_value()) << popc.error().message;
   const auto old_ptx =
-      check(*popc, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+      (*popc)->check(Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
                            .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_sm =
-      check(*popc, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+      (*popc)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
                            .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      check(*popc, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+      (*popc)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                            .instruction_range = ast->range})
           .has_value());
 }

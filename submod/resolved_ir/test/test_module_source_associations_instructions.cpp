@@ -1,5 +1,7 @@
-#include "test_instruction_access.hpp"
 #include "test_module_source_associations_support.hpp"
+
+#include <memory>
+#include <vector>
 
 #include <ptx_frontend/resolved_ir/model/control_flow/ret.gen.hpp>
 
@@ -9,6 +11,7 @@ namespace {
 using module_source_test_support::hasCheckerKind;
 using module_source_test_support::parseModule;
 
+/** Source association rejects a removed instruction or an extra exact clone. */
 TEST(ModuleValidationContract, ReportsMissingAndExtraInstructions) {
   const auto ast = parseModule(R"ptx(
 .func first() {
@@ -30,11 +33,12 @@ TEST(ModuleValidationContract, ReportsMissingAndExtraInstructions) {
   auto extra = resolveModule(*ast);
   ASSERT_TRUE(extra.has_value()) << extra.error().front().message;
   auto& function = extra->functions.front();
-  const auto& original_return = test_ir_access::get<Ret>(function.body.front());
-  /** Preserve two concrete returns without copying the full instruction union. */
-  std::vector<OwnedInstruction> duplicated_body(2);
-  duplicated_body[0] = OwnedInstruction{original_return};
-  duplicated_body[1] = OwnedInstruction{original_return};
+  const auto& original_return =
+      dynamic_cast<const RetBare&>(*function.body.front());
+  /** Independent exact clones make body cardinality the only mismatch. */
+  std::vector<std::unique_ptr<Instruction>> duplicated_body;
+  duplicated_body.push_back(original_return.clone());
+  duplicated_body.push_back(original_return.clone());
   function.body.swap(duplicated_body);
   function.instruction_ranges.push_back(function.instruction_ranges.front());
   function.instruction_opcodes.push_back(function.instruction_opcodes.front());

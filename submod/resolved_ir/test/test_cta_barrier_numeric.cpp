@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,11 +11,8 @@
 
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/barrier.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
-
-#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -54,20 +50,19 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
     const auto ast = parse_module(source);
     ASSERT_TRUE(ast.has_value());
     const auto& body =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back()).body;
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body;
     const auto bar = std::find_if(
         body.begin(), body.end(),
         [](const syntax_ast::AstFunctionBodyItem& item) {
           const auto* instruction =
-              test_ir_access::get_if<syntax_ast::AstInstruction>(&item);
+              std::get_if<syntax_ast::AstInstruction>(&item);
           return instruction != nullptr &&
                  instruction->opcode.syntax.text == "bar";
         });
     ASSERT_NE(bar, body.end());
     const auto& syntax_instruction =
-        test_ir_access::get<syntax_ast::AstInstruction>(*bar);
-    const auto resolved = test_support::resolveTypedModule<Bar>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+        std::get<syntax_ast::AstInstruction>(*bar);
+    const auto resolved = resolveModule(*ast);
 
     ASSERT_FALSE(resolved.has_value());
     ASSERT_EQ(resolved.error().size(), expected_diagnostic_count);
@@ -131,8 +126,7 @@ TEST(CtaBarrierNumeric, AcceptsStaticBoundariesAndOptionalLayouts) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto resolved = test_support::resolveTypedModule<Bar>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
@@ -159,8 +153,7 @@ TEST(CtaBarrierNumeric, LeavesRegisterValueContractsDynamic) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto resolved = test_support::resolveTypedModule<Bar>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 }
@@ -172,13 +165,11 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 .entry k() { bar.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(legacy_ast.has_value());
-  const auto legacy = test_support::resolveTypedModule<Bar>(
-      *legacy_ast, test_support::ModulePipeline::AvailableContext);
+  const auto legacy = resolveModule(*legacy_ast);
   ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
-  const auto& legacy_instruction =
-      test_ir_access::get<Bar>(legacy->functions.front().body.front());
-  EXPECT_TRUE(checker::check(
-                  legacy_instruction,
+  const auto& legacy_instruction = *legacy->functions.front().body.front();
+  EXPECT_EQ(legacy_instruction.instruction_kind(), InstructionKind::BarSync);
+  EXPECT_TRUE(legacy_instruction.check(
                   checker::Context{
                       .target = {.ptx_version = {1, 0}, .sm_version = 10},
                       .instruction_range =
@@ -193,9 +184,7 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 .entry k() { bar.cta.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(cta_before_introduction_ast.has_value());
-  const auto cta_before_introduction = test_support::resolveTypedModule<Bar>(
-      *cta_before_introduction_ast,
-      test_support::ModulePipeline::AvailableContext);
+  const auto cta_before_introduction = resolveModule(*cta_before_introduction_ast);
   ASSERT_FALSE(cta_before_introduction.has_value());
   ASSERT_EQ(cta_before_introduction.error().size(), 1U);
   EXPECT_EQ(cta_before_introduction.error().front().checker_kind,
@@ -222,37 +211,34 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneSyncWithOwnedAlignedMetadata) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  auto resolved = test_support::resolveTypedModule<Barrier>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  auto resolved = resolveModule(*ast);
   ast.reset();
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& function = resolved->functions.front();
   ASSERT_EQ(function.body.size(), 9U);
 
   for (std::size_t index = 0; index < 8; ++index) {
-    const auto& barrier = test_ir_access::get<Barrier>(function.body[index]);
+    const auto& barrier = *function.body[index];
     const auto context = checker::Context{
         .target = {.ptx_version = {7, 8}, .sm_version = 80},
         .instruction_range = function.instruction_ranges[index],
     };
-    EXPECT_TRUE(checker::check(barrier, context).has_value()) << index;
+    EXPECT_TRUE(barrier.check(context).has_value()) << index;
     if (index < 4) {
-      const auto& sync = test_ir_access::get<Barrier::Sync>(barrier.variant);
+      const auto& sync = dynamic_cast<const BarrierSync&>(barrier);
       EXPECT_EQ(sync.aligned.value, index % 2 == 1);
       EXPECT_EQ(sync.aligned.locs.empty(), index % 2 == 0);
     } else {
-      const auto& sync = test_ir_access::get<Barrier::CtaSync>(barrier.variant);
+      const auto& sync = dynamic_cast<const BarrierCtaSync&>(barrier);
       EXPECT_EQ(sync.aligned.value, index % 2 == 1);
       EXPECT_EQ(sync.aligned.locs.empty(), index % 2 == 0);
     }
   }
 
-  auto& first = test_ir_access::get<Barrier::Sync>(
-      test_ir_access::get<Barrier>(function.body.front()).variant);
+  auto& first = dynamic_cast<BarrierSync&>(*function.body.front());
   const auto original_layout = first.operand_layout;
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = checker::check(
-      test_ir_access::get<Barrier>(function.body.front()),
+  const auto corrupted = function.body.front()->check(
       checker::Context{
           .target = {.ptx_version = {7, 8}, .sm_version = 80},
           .instruction_range = function.instruction_ranges.front(),
@@ -275,13 +261,10 @@ TEST(CtaBarrierNumeric, AcceptsStandaloneSyncAtMinimumTarget) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto resolved = test_support::resolveTypedModule<Barrier>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& barrier =
-      test_ir_access::get<Barrier>(resolved->functions.front().body.front());
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<Barrier::Sync>(barrier.variant));
+  const auto& barrier = *resolved->functions.front().body.front();
+  EXPECT_EQ(barrier.instruction_kind(), InstructionKind::BarrierSync);
 }
 
 /** Reject unsupported standalone CTA barriers and statically known bad operands. */
@@ -302,8 +285,7 @@ TEST(CtaBarrierNumeric, RejectsStandaloneSyncInvalidForms) {
 )ptx";
     const auto ast = parse_module(source);
     ASSERT_TRUE(ast.has_value());
-    const auto resolved = test_support::resolveTypedModule<Barrier>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+    const auto resolved = resolveModule(*ast);
     EXPECT_FALSE(resolved.has_value()) << instruction;
   };
 
@@ -346,39 +328,34 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneArriveWithOwnedAlignedMetadata) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  auto resolved = test_support::resolveTypedModule<Barrier>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  auto resolved = resolveModule(*ast);
   ast.reset();
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& function = resolved->functions.front();
   ASSERT_EQ(function.body.size(), 9U);
 
   for (std::size_t index = 0; index < 8; ++index) {
-    const auto& barrier = test_ir_access::get<Barrier>(function.body[index]);
+    const auto& barrier = *function.body[index];
     const auto context = checker::Context{
         .target = {.ptx_version = {7, 8}, .sm_version = 80},
         .instruction_range = function.instruction_ranges[index],
     };
-    EXPECT_TRUE(checker::check(barrier, context).has_value()) << index;
+    EXPECT_TRUE(barrier.check(context).has_value()) << index;
     if (index < 4) {
-      const auto& arrive =
-          test_ir_access::get<Barrier::Arrive>(barrier.variant);
+      const auto& arrive = dynamic_cast<const BarrierArrive&>(barrier);
       EXPECT_EQ(arrive.aligned.value, index % 2 == 1);
       EXPECT_EQ(arrive.aligned.locs.empty(), index % 2 == 0);
     } else {
-      const auto& arrive =
-          test_ir_access::get<Barrier::CtaArrive>(barrier.variant);
+      const auto& arrive = dynamic_cast<const BarrierCtaArrive&>(barrier);
       EXPECT_EQ(arrive.aligned.value, index % 2 == 1);
       EXPECT_EQ(arrive.aligned.locs.empty(), index % 2 == 0);
     }
   }
 
-  auto& first = test_ir_access::get<Barrier::Arrive>(
-      test_ir_access::get<Barrier>(function.body.front()).variant);
+  auto& first = dynamic_cast<BarrierArrive&>(*function.body.front());
   const auto original_layout = first.operand_layout;
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = checker::check(
-      test_ir_access::get<Barrier>(function.body.front()),
+  const auto corrupted = function.body.front()->check(
       checker::Context{
           .target = {.ptx_version = {7, 8}, .sm_version = 80},
           .instruction_range = function.instruction_ranges.front(),
@@ -409,9 +386,7 @@ TEST(CtaBarrierNumeric, ChecksStandaloneArriveTargetsAndOperands) {
     const auto ast = parse_module(source);
     if (!ast)
       return false;
-    return test_support::resolveTypedModule<Barrier>(
-               *ast, test_support::ModulePipeline::AvailableContext)
-        .has_value();
+    return resolveModule(*ast).has_value();
   };
 
   EXPECT_TRUE(resolve_one("6.0", "sm_30", "barrier.arrive 0, 32;"));
@@ -459,11 +434,10 @@ TEST(CtaBarrierNumeric, RejectsStandaloneArriveImmediateAtOperand) {
     const auto ast = parse_module(source);
     ASSERT_TRUE(ast.has_value());
     const auto& body =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back()).body;
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body;
     const auto& syntax_instruction =
-        test_ir_access::get<syntax_ast::AstInstruction>(body.front());
-    const auto resolved = test_support::resolveTypedModule<Barrier>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+        std::get<syntax_ast::AstInstruction>(body.front());
+    const auto resolved = resolveModule(*ast);
     ASSERT_FALSE(resolved.has_value());
     ASSERT_EQ(resolved.error().size(), 1U);
     EXPECT_EQ(resolved.error().front().checker_kind,
@@ -494,18 +468,12 @@ TEST(CtaBarrierNumeric, DistinguishesBarAndBarrierArriveOpcodes) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  const auto legacy = test_support::resolveTypedModule<Bar>(
-      *ast, test_support::ModulePipeline::AvailableContext);
-  const auto standalone = test_support::resolveTypedModule<Barrier>(
-      *ast, test_support::ModulePipeline::AvailableContext);
-  ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
-  ASSERT_TRUE(standalone.has_value()) << standalone.error().front().message;
-  EXPECT_TRUE(test_ir_access::holds_alternative<Bar>(
-      legacy->functions.front().body[0]));
-  EXPECT_FALSE(legacy->functions.front().body[1]);
-  EXPECT_FALSE(standalone->functions.front().body[0]);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Barrier>(
-      standalone->functions.front().body[1]));
+  const auto resolved = resolveModule(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 3U);
+  EXPECT_EQ(body[0]->instruction_kind(), InstructionKind::BarArrive);
+  EXPECT_EQ(body[1]->instruction_kind(), InstructionKind::BarrierArrive);
 }
 
 /** Retain six standalone reduction forms, their layouts, and source metadata. */
@@ -533,66 +501,68 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneReductionsAfterAstRelease) {
 }
 )ptx");
   ASSERT_TRUE(ast.has_value());
-  auto resolved = test_support::resolveTypedModule<Barrier>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  auto resolved = resolveModule(*ast);
   ast.reset();
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& function = resolved->functions.front();
   ASSERT_EQ(function.body.size(), 13U);
-  const std::array<Barrier::VariantType, 12> expected{
-      Barrier::VariantType::RedPopcU32,    Barrier::VariantType::RedPopcU32,
-      Barrier::VariantType::CtaRedPopcU32, Barrier::VariantType::CtaRedPopcU32,
-      Barrier::VariantType::RedAndPred,    Barrier::VariantType::RedAndPred,
-      Barrier::VariantType::CtaRedAndPred, Barrier::VariantType::CtaRedAndPred,
-      Barrier::VariantType::RedOrPred,     Barrier::VariantType::RedOrPred,
-      Barrier::VariantType::CtaRedOrPred,  Barrier::VariantType::CtaRedOrPred,
+  const std::array<InstructionKind, 12> expected{
+      InstructionKind::BarrierRedPopcU32,    InstructionKind::BarrierRedPopcU32,
+      InstructionKind::BarrierCtaRedPopcU32, InstructionKind::BarrierCtaRedPopcU32,
+      InstructionKind::BarrierRedAndPred,    InstructionKind::BarrierRedAndPred,
+      InstructionKind::BarrierCtaRedAndPred, InstructionKind::BarrierCtaRedAndPred,
+      InstructionKind::BarrierRedOrPred,     InstructionKind::BarrierRedOrPred,
+      InstructionKind::BarrierCtaRedOrPred,  InstructionKind::BarrierCtaRedOrPred,
   };
   for (std::size_t index = 0; index < expected.size(); ++index) {
-    const auto& barrier = test_ir_access::get<Barrier>(function.body[index]);
-    EXPECT_EQ(barrier.variant.index(),
-              static_cast<std::size_t>(expected[index]))
-        << index;
-    const auto checked = checker::check(
-        barrier, checker::Context{
+    const auto& barrier = *function.body[index];
+    EXPECT_EQ(barrier.instruction_kind(), expected[index]) << index;
+    const auto checked = barrier.check(checker::Context{
                      .target = {.ptx_version = {7, 8}, .sm_version = 80},
                      .instruction_range = function.instruction_ranges[index],
                  });
     EXPECT_TRUE(checked.has_value()) << index;
-    test_ir_access::visit(
-        [index](const auto& reduction) {
-          if constexpr (requires { reduction.reduction; }) {
-            EXPECT_EQ(reduction.aligned.value, index % 2 == 1);
-            EXPECT_EQ(reduction.aligned.locs.empty(), index % 2 == 0);
-            EXPECT_EQ(reduction.operand_layout.value,
-                      index % 4 == 1 || index % 4 == 2 ? 1U : 0U);
-          }
-        },
-        barrier.variant);
+    const auto check_metadata = [index](const auto& reduction) {
+      EXPECT_EQ(reduction.aligned.value, index % 2 == 1);
+      EXPECT_EQ(reduction.aligned.locs.empty(), index % 2 == 0);
+      EXPECT_EQ(reduction.operand_layout.value,
+                index % 4 == 1 || index % 4 == 2 ? 1U : 0U);
+    };
+    switch (expected[index]) {
+      case InstructionKind::BarrierRedPopcU32:
+        check_metadata(dynamic_cast<const BarrierRedPopcU32&>(barrier)); break;
+      case InstructionKind::BarrierCtaRedPopcU32:
+        check_metadata(dynamic_cast<const BarrierCtaRedPopcU32&>(barrier)); break;
+      case InstructionKind::BarrierRedAndPred:
+        check_metadata(dynamic_cast<const BarrierRedAndPred&>(barrier)); break;
+      case InstructionKind::BarrierCtaRedAndPred:
+        check_metadata(dynamic_cast<const BarrierCtaRedAndPred&>(barrier)); break;
+      case InstructionKind::BarrierRedOrPred:
+        check_metadata(dynamic_cast<const BarrierRedOrPred&>(barrier)); break;
+      case InstructionKind::BarrierCtaRedOrPred:
+        check_metadata(dynamic_cast<const BarrierCtaRedOrPred&>(barrier)); break;
+      default: FAIL() << "Unexpected reduction form";
+    }
   }
-  const auto& and_reduction = test_ir_access::get<Barrier::RedAndPred>(
-      test_ir_access::get<Barrier>(function.body[5]).variant);
-  const auto& and_operands =
-      test_ir_access::get<Barrier::RedAndPred::WithThreadCountOperands>(
-          and_reduction.operands);
-  EXPECT_EQ(and_operands.dst.value.register_ref.register_class,
+  const auto& and_reduction = dynamic_cast<const BarrierRedAndPred&>(*function.body[5]);
+  EXPECT_TRUE(and_reduction.thread_count.has_value());
+  EXPECT_EQ(and_reduction.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
-  EXPECT_FALSE(and_operands.dst.value.negated);
-  EXPECT_TRUE(and_operands.predicate.value.negated);
-  EXPECT_EQ(and_operands.predicate.value.register_ref.spelling, "%p1");
-  EXPECT_FALSE(and_operands.predicate.locs.empty());
+  EXPECT_FALSE(and_reduction.dst.value.negated);
+  EXPECT_TRUE(and_reduction.predicate.value.negated);
+  EXPECT_EQ(and_reduction.predicate.value.register_ref.spelling, "%p1");
+  EXPECT_FALSE(and_reduction.predicate.locs.empty());
   EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(and_operands.barrier.value).bits,
+      std::get<ResolvedImmediate>(and_reduction.barrier.value).bits,
       15U);
   EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(and_operands.thread_count.value)
+      std::get<ResolvedImmediate>(and_reduction.thread_count->value)
           .bits,
       64U);
 
-  auto& first = test_ir_access::get<Barrier::RedPopcU32>(
-      test_ir_access::get<Barrier>(function.body.front()).variant);
+  auto& first = dynamic_cast<BarrierRedPopcU32&>(*function.body.front());
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = checker::check(
-      test_ir_access::get<Barrier>(function.body.front()),
+  const auto corrupted = function.body.front()->check(
       checker::Context{
           .target = {.ptx_version = {7, 8}, .sm_version = 80},
           .instruction_range = function.instruction_ranges.front(),
@@ -624,9 +594,7 @@ TEST(CtaBarrierNumeric, ChecksStandaloneReductionTargetsAndOperands) {
     auto ast = parser.parseModule();
     if (!ast)
       return false;
-    return test_support::resolveTypedModule<Barrier>(
-               *ast, test_support::ModulePipeline::AvailableContext)
-        .has_value();
+    return resolveModule(*ast).has_value();
   };
 
   for (const std::string_view instruction : {

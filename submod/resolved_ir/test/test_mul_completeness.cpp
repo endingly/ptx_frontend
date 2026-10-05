@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string_view>
@@ -8,9 +7,8 @@
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/mul.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
@@ -64,8 +62,7 @@ TEST(MulCompleteness, ResolvesAndChecksEveryPtx93FormWithDeclaredOperands) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  const auto resolved = test_support::resolveTypedModule<Mul>(
-      *parsed_module, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*parsed_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 1u);
   ASSERT_EQ(resolved->functions.front().body.size(), 24u);
@@ -75,8 +72,7 @@ TEST(MulCompleteness, ResolvesAndChecksEveryPtx93FormWithDeclaredOperands) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& mul = test_ir_access::get<Mul>(instruction);
-    const auto checked = checker::check(mul, context);
+    const auto checked = instruction->check(context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
 }
@@ -98,10 +94,9 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
     SCOPED_TRACE(source);
     const auto parsed_instruction = parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
-    const auto resolved = resolve<Mul>(*parsed_instruction);
+    const auto resolved = resolveMul(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = checker::check(
-        *resolved,
+    const auto checked = (*resolved)->check(
         checker::Context{.target = target,
                          .instruction_range = parsed_instruction->range});
     ASSERT_FALSE(checked.has_value());
@@ -120,16 +115,13 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  auto resolved = test_support::resolveTypedModule<Mul>(
-      *parsed_module, test_support::ModulePipeline::AvailableContext);
+  auto resolved = resolveModule(*parsed_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = test_ir_access::get<Mul::F32x2>(
-      test_ir_access::get<Mul>(resolved->functions.front().body.front())
-          .variant);
+  auto& packed = dynamic_cast<MulF32x2&>(
+      *resolved->functions.front().body.front());
   ASSERT_EQ(packed.dst.value.declared_type, ScalarType::B64);
   packed.dst.value.declared_type = ScalarType::B32;
-  const auto checked = checker::check(
-      test_ir_access::get<Mul>(resolved->functions.front().body.front()),
+  const auto checked = resolved->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {8, 6}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -161,7 +153,7 @@ TEST(MulCompleteness, RejectsIllegalModesModifiersAndPackedImmediates) {
     SCOPED_TRACE(source);
     const auto parsed_instruction = parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
-    EXPECT_FALSE(resolve<Mul>(*parsed_instruction).has_value());
+    EXPECT_FALSE(resolveMul(*parsed_instruction).has_value());
   }
 }
 

@@ -1,32 +1,27 @@
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
-
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
 
 #include <gtest/gtest.h>
 
 namespace ptx_frontend::resolved_ir {
 
-/** Verify category headers expose model and specialization declarations alone. */
+/** A narrow arithmetic leaf exposes its final form, checker, and resolver. */
 TEST(ResolvedIrCategoryHeaders, ArithmeticCompilesWithoutAggregateModel) {
-  static_assert(requires(const Add& instruction,
+  static_assert(requires(const AddIntegerNoSat& instruction,
                          const checker::Context& context,
                          const syntax_ast::AstInstruction& ast) {
-    checker::check(instruction, context);
-    resolve<Add>(ast);
+    instruction.check(context);
+    resolveAdd(ast);
   });
 }
 
-/** Comparison instructions can use their category declarations directly. */
+/** A narrow comparison leaf needs no aggregate generated declarations. */
 TEST(ResolvedIrCategoryHeaders, ComparisonCompilesWithoutAggregateModel) {
-  static_assert(requires(const Set& instruction,
+  static_assert(requires(const SetUnsigned& instruction,
                          const checker::Context& context,
                          const syntax_ast::AstInstruction& ast) {
-    checker::check(instruction, context);
-    resolve<Set>(ast);
+    instruction.check(context);
+    resolveSet(ast);
   });
 }
 

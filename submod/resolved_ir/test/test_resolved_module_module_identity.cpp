@@ -1,11 +1,12 @@
 #include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/bra.gen.hpp>
@@ -21,33 +22,16 @@ namespace {
 
 using test_helpers::parseModule;
 
-const Add::IntegerNoSat& resolvedIntegerAdd(
-    const OwnedInstruction& instruction) {
-  return test_ir_access::get<Add::IntegerNoSat>(
-      test_ir_access::get<Add>(instruction).variant);
+/** Query the exact integer-add class in an owned instruction slot. */
+const AddIntegerNoSat& resolvedIntegerAdd(
+    const std::unique_ptr<Instruction>& instruction) {
+  return dynamic_cast<const AddIntegerNoSat&>(*instruction);
 }
 
-const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov::Scalar& mov) {
-  return test_ir_access::get<Mov::Scalar::ScalarOperands>(mov.operands);
-}
-
-const Mov::Scalar::ScalarOperands& scalarMovOperands(const Mov& mov) {
-  return scalarMovOperands(test_ir_access::get<Mov::Scalar>(mov.variant));
-}
-
-const Mov::Scalar::PackOperands& packMovOperands(const Mov& mov) {
-  return test_ir_access::get<Mov::Scalar::PackOperands>(
-      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
-}
-
-Mov::Scalar::PackOperands& packMovOperands(Mov& mov) {
-  return test_ir_access::get<Mov::Scalar::PackOperands>(
-      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
-}
-
-const Mov::Scalar::UnpackOperands& unpackMovOperands(const Mov& mov) {
-  return test_ir_access::get<Mov::Scalar::UnpackOperands>(
-      test_ir_access::get<Mov::Scalar>(mov.variant).operands);
+/** Return a scalar move source from its selected typed optional field. */
+const WithLocs<ResolvedMovSource>& scalarMovSource(const Instruction& instruction) {
+  const auto& mov = dynamic_cast<const MovScalar&>(instruction);
+  return mov.src_mov_source.value();
 }
 
 TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
@@ -82,12 +66,12 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   EXPECT_TRUE(resolved->symbols.symbol(function.symbol_id).function_is_entry);
   ASSERT_EQ(function.body.size(), 1u);
 
-  const Add::IntegerNoSat& add = resolvedIntegerAdd(function.body.front());
+  const AddIntegerNoSat& add = resolvedIntegerAdd(function.body.front());
   EXPECT_FALSE(
-      test_ir_access::get<Add>(function.body.front()).execution_predicate);
+      function.body.front()->execution_predicate);
   const ResolvedRegisterRef& dst = add.dst.value;
-  const auto& src1 = test_ir_access::get<ResolvedRegisterRef>(add.src1.value);
-  const auto& src2 = test_ir_access::get<ResolvedRegisterRef>(add.src2.value);
+  const auto& src1 = std::get<ResolvedRegisterRef>(add.src1.value);
+  const auto& src2 = std::get<ResolvedRegisterRef>(add.src2.value);
 
   ASSERT_TRUE(dst.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*dst.symbol_id).name, "%named");
@@ -148,12 +132,9 @@ trailing:
     EXPECT_EQ(label.name, label_names[index]);
   }
 
-  const auto& first = test_ir_access::get<Bra::Direct>(
-      test_ir_access::get<Bra>(function.body[0]).variant);
-  const auto& nested = test_ir_access::get<Bra::Direct>(
-      test_ir_access::get<Bra>(function.body[1]).variant);
-  const auto& before_final = test_ir_access::get<Bra::Direct>(
-      test_ir_access::get<Bra>(function.body[2]).variant);
+  const auto& first = dynamic_cast<const BraDirect&>(*function.body[0]);
+  const auto& nested = dynamic_cast<const BraDirect&>(*function.body[1]);
+  const auto& before_final = dynamic_cast<const BraDirect&>(*function.body[2]);
   ASSERT_TRUE(first.target.value.symbol_id.has_value());
   ASSERT_TRUE(nested.target.value.symbol_id.has_value());
   ASSERT_TRUE(before_final.target.value.symbol_id.has_value());
@@ -238,22 +219,18 @@ branches: .branchtargets label;
            .owned_scope;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
-  const auto& branch = test_ir_access::get<Bra::Direct>(
-      test_ir_access::get<Bra>(body[0]).variant);
+  const auto& branch = dynamic_cast<const BraDirect&>(*body[0]);
   ASSERT_TRUE(branch.target.value.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*branch.target.value.symbol_id).scope,
             function_scope);
-  const auto& indexed =
-      test_ir_access::get<Brx::Idx>(test_ir_access::get<Brx>(body[1]).variant);
+  const auto& indexed = dynamic_cast<const BrxIdx&>(*body[1]);
   ASSERT_TRUE(indexed.tlist.value.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*indexed.tlist.value.symbol_id).scope,
             function_scope);
-  const auto& call = test_ir_access::get<Call::Direct::TargetMetadataOperands>(
-      test_ir_access::get<Call::Direct>(
-          test_ir_access::get<Call>(body[2]).variant)
-          .operands);
+  const auto& call = dynamic_cast<const CallDirect&>(*body[2]);
+  EXPECT_TRUE(call.metadata.has_value());
   const auto& metadata =
-      test_ir_access::get<ResolvedIndirectMetadataRef>(call.metadata.value);
+      std::get<ResolvedIndirectMetadataRef>(call.metadata->value);
   ASSERT_TRUE(metadata.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*metadata.symbol_id).scope,
             function_scope);
@@ -317,12 +294,11 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
   const auto resolved = resolveModule(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& mov =
-      test_ir_access::get<Mov>(resolved->functions.front().body.front());
-  const auto& u32 = test_ir_access::get<Mov::Scalar>(mov.variant);
-  const auto& scalar = scalarMovOperands(u32);
+  const auto& mov = dynamic_cast<const MovScalar&>(
+      *resolved->functions.front().body.front());
+  const auto& scalar = mov.src_mov_source.value();
   const auto& special =
-      test_ir_access::get<ResolvedSpecialRegisterRef>(scalar.src.value);
+      std::get<ResolvedSpecialRegisterRef>(scalar.value);
   EXPECT_EQ(special.spelling, "%laneid");
   EXPECT_EQ(special.id.kind, base::SpecialRegisterKind::LaneId);
   EXPECT_FALSE(special.component.has_value());
@@ -339,9 +315,9 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
               .ptx_version = checker::PtxVersion{1, 2},
               .sm_version = 10,
           },
-      .instruction_range = scalar.src.locs.front(),
+      .instruction_range = scalar.locs.front(),
   };
-  const auto rejected = checker::check(mov, too_old);
+  const auto rejected = mov.check(too_old);
   ASSERT_FALSE(rejected.has_value());
   ASSERT_EQ(rejected.error().size(), 1u);
   EXPECT_EQ(rejected.error().front().kind,
@@ -352,7 +328,7 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
 
   checker::Context supported = too_old;
   supported.target.ptx_version = checker::PtxVersion{1, 3};
-  EXPECT_TRUE(checker::check(mov, supported).has_value());
+  EXPECT_TRUE(mov.check(supported).has_value());
 }
 
 TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
@@ -362,10 +338,10 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
       << cluster_ast.diagnostics.front().message;
   const auto cluster_resolved = resolveInstruction(*cluster_ast);
   ASSERT_TRUE(cluster_resolved.has_value()) << cluster_resolved.error().message;
-  const auto& cluster_mov = test_ir_access::get<Mov>(*cluster_resolved);
+  const auto& cluster_mov =
+      dynamic_cast<const MovScalar&>(**cluster_resolved);
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
-  const auto cluster_check = checker::check(
-      cluster_mov, checker::Context{
+  const auto cluster_check = cluster_mov.check(checker::Context{
                        .target =
                            checker::TargetInfo{
                                .ptx_version = checker::PtxVersion{7, 8},
@@ -384,7 +360,7 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   ASSERT_TRUE(timer_ast.has_value()) << timer_ast.diagnostics.front().message;
   const auto timer_resolved = resolveInstruction(*timer_ast);
   ASSERT_TRUE(timer_resolved.has_value()) << timer_resolved.error().message;
-  const auto& timer_mov = test_ir_access::get<Mov>(*timer_resolved);
+  const auto& timer_mov = dynamic_cast<const MovScalar&>(**timer_resolved);
   const checker::Context timer_too_old_ptx{
       .target =
           checker::TargetInfo{
@@ -393,19 +369,19 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
           },
       .instruction_range = timer_ast->range,
   };
-  const auto timer_ptx_rejected = checker::check(timer_mov, timer_too_old_ptx);
+  const auto timer_ptx_rejected = timer_mov.check(timer_too_old_ptx);
   ASSERT_FALSE(timer_ptx_rejected.has_value());
   EXPECT_EQ(timer_ptx_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   auto timer_too_old_sm = timer_too_old_ptx;
   timer_too_old_sm.target.ptx_version = checker::PtxVersion{3, 1};
   timer_too_old_sm.target.sm_version = 20;
-  const auto timer_sm_rejected = checker::check(timer_mov, timer_too_old_sm);
+  const auto timer_sm_rejected = timer_mov.check(timer_too_old_sm);
   ASSERT_FALSE(timer_sm_rejected.has_value());
   EXPECT_EQ(timer_sm_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   timer_too_old_sm.target.sm_version = 30;
-  EXPECT_TRUE(checker::check(timer_mov, timer_too_old_sm).has_value());
+  EXPECT_TRUE(timer_mov.check(timer_too_old_sm).has_value());
 
   PtxSyntaxParser wide_parser("mov.u32 %r0, %clock64;");
   const auto wide_ast = wide_parser.parseInstruction();
@@ -413,8 +389,7 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   const auto wide_resolved = resolveInstruction(*wide_ast);
   ASSERT_TRUE(wide_resolved.has_value()) << wide_resolved.error().message;
   const auto wide_check =
-      checker::check(test_ir_access::get<Mov>(*wide_resolved),
-                     checker::Context{
+      (*wide_resolved)->check(checker::Context{
                          .target =
                              checker::TargetInfo{
                                  .ptx_version = checker::PtxVersion{9, 3},
@@ -466,8 +441,8 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
       "%current_graph_exec",
   };
   for (size_t index = 0; index < spellings.size(); ++index) {
-    const auto& special = test_ir_access::get<ResolvedSpecialRegisterRef>(
-        scalarMovOperands(test_ir_access::get<Mov>(body[index])).src.value);
+    const auto& special = std::get<ResolvedSpecialRegisterRef>(
+        scalarMovSource(*body[index]).value);
     EXPECT_EQ(special.spelling, spellings[index]);
     ASSERT_TRUE(base::lookup(spellings[index]).has_value());
     EXPECT_EQ(special.id, base::lookup(spellings[index])->id);
@@ -475,8 +450,7 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
 
   const auto check_at = [&](size_t index, checker::PtxVersion version,
                             uint32_t sm) {
-    return checker::check(test_ir_access::get<Mov>(body[index]),
-                          checker::Context{
+    return body[index]->check(checker::Context{
                               .target =
                                   checker::TargetInfo{
                                       .ptx_version = version,
@@ -504,12 +478,9 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
     const auto ptx_rejected = check_at(
         boundary.instruction, boundary.too_old_ptx, boundary.minimum_sm);
     ASSERT_FALSE(ptx_rejected.has_value());
-    const auto info =
-        base::metadata(test_ir_access::get<ResolvedSpecialRegisterRef>(
-                           scalarMovOperands(test_ir_access::get<Mov>(
-                                                 body[boundary.instruction]))
-                               .src.value)
-                           .id);
+    const auto info = base::metadata(
+        std::get<ResolvedSpecialRegisterRef>(
+            scalarMovSource(*body[boundary.instruction]).value).id);
     EXPECT_EQ(ptx_rejected.error().front().kind,
               info.required_capability.empty()
                   ? checker::CheckDiagnosticKind::UnsupportedPtxVersion
@@ -537,9 +508,8 @@ TEST(ResolvedModule, ResolvesScalarSpecialRegisterComponentsOnly) {
   const auto component_resolved = resolveInstruction(*component_ast);
   ASSERT_TRUE(component_resolved.has_value())
       << component_resolved.error().message;
-  const auto& component = test_ir_access::get<ResolvedSpecialRegisterRef>(
-      scalarMovOperands(test_ir_access::get<Mov>(*component_resolved))
-          .src.value);
+  const auto& component = std::get<ResolvedSpecialRegisterRef>(
+      scalarMovSource(**component_resolved).value);
   EXPECT_EQ(component.spelling, "%tid.x");
   EXPECT_EQ(component.id.kind, base::SpecialRegisterKind::Tid);
   EXPECT_EQ(component.component, base::VectorComponent::X);

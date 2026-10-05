@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -24,10 +23,9 @@ using test_helpers::parseModule;
 void expect_load(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Ld>(*ast);
+  const auto resolved = resolveLd(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range});
   ASSERT_TRUE(checked.has_value())
       << (checked.error().empty() ? "load checker rejected without a diagnostic"
@@ -38,11 +36,10 @@ void expect_load(std::string_view source, checker::TargetInfo target) {
 void expect_load_rejected(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Ld>(*ast);
+  const auto resolved = resolveLd(*ast);
   if (!resolved)
     return;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -51,10 +48,9 @@ void expect_load_unavailable(std::string_view source,
                              checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Ld>(*ast);
+  const auto resolved = resolveLd(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -321,10 +317,9 @@ TEST(LdCompleteness, MaterializesOptionalCacheControlDefaults) {
       "ld.global.L2::evict_first.v8.u32 "
       "{%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7}, [%rd0];");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  auto resolved = resolve<Ld>(*ast);
+  auto resolved = resolveLd(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* load =
-      test_ir_access::get_if<Ld::GlobalL2EvictVector>(&resolved->variant);
+  const auto* load = dynamic_cast<LdGlobalL2EvictVector*>(resolved->get());
   ASSERT_NE(load, nullptr);
   EXPECT_EQ(load->l1_eviction_priority.value, EvictionPriority::Invalid);
   EXPECT_EQ(load->prefetch_size.value, PrefetchSize::None);
@@ -332,20 +327,19 @@ TEST(LdCompleteness, MaterializesOptionalCacheControlDefaults) {
   const auto l1_ast =
       parseInstruction("ld.global.L1::evict_first.u32 %r0, [%rd0];");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(l1_ast);
-  auto l1_resolved = resolve<Ld>(*l1_ast);
+  auto l1_resolved = resolveLd(*l1_ast);
   ASSERT_TRUE(l1_resolved.has_value()) << l1_resolved.error().message;
-  auto* l1_load =
-      test_ir_access::get_if<Ld::GlobalU32L1Evict>(&l1_resolved->variant);
+  auto* l1_load = dynamic_cast<LdGlobalU32L1Evict*>(l1_resolved->get());
   ASSERT_NE(l1_load, nullptr);
   EXPECT_EQ(l1_load->prefetch_size.value, PrefetchSize::None);
   const checker::Context sm75{
       .target = {.ptx_version = {9, 3}, .sm_version = 75},
       .instruction_range = l1_ast->range,
   };
-  EXPECT_TRUE(checker::check(*l1_resolved, sm75));
+  EXPECT_TRUE((*l1_resolved)->check(sm75));
 
   l1_load->prefetch_size.value = PrefetchSize::Bytes256;
-  EXPECT_FALSE(checker::check(*l1_resolved, sm75));
+  EXPECT_FALSE((*l1_resolved)->check(sm75));
 }
 
 /** Unified addresses are load-only, global/generic, and target-qualified. */
@@ -396,11 +390,11 @@ TEST(LdCompleteness, EnforcesUnifiedAddressPolicyWithoutAffectingMov) {
 
   const auto mov_suffix = parseInstruction("mov.u64 %rd0, [%rd1].unified;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(mov_suffix);
-  const auto mov = resolve<Mov>(*mov_suffix);
+  const auto mov = resolveMov(*mov_suffix);
   if (mov) {
-    EXPECT_FALSE(checker::check(
-        *mov, checker::Context{.target = current,
-                               .instruction_range = mov_suffix->range}));
+    EXPECT_FALSE((*mov)->check(
+        checker::Context{.target = current,
+                         .instruction_range = mov_suffix->range}));
   }
 }
 

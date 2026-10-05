@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -25,25 +25,25 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveSet, SelectsOrdinaryTypedFamilies) {
   const auto eq =
-      resolve<Set>(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
+      resolveSet(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
   ASSERT_TRUE(eq.has_value()) << eq.error().message;
   const auto* unsigned_result =
-      test_ir_access::get_if<Set::Unsigned>(&eq->variant);
+      dynamic_cast<SetUnsigned*>(eq->get());
   ASSERT_NE(unsigned_result, nullptr);
   EXPECT_EQ(unsigned_result->comparison.value, ComparisonOperator::Eq);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
       unsigned_result->src2.value));
 
   const auto lt_and =
-      resolve<Set>(parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
+      resolveSet(parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
   ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
   const auto* signed_boolean =
-      test_ir_access::get_if<Set::SignedBoolean>(&lt_and->variant);
+      dynamic_cast<SetSignedBoolean*>(lt_and->get());
   ASSERT_NE(signed_boolean, nullptr);
   EXPECT_EQ(signed_boolean->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(signed_boolean->boolean.value, BooleanOperator::And);
   EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicate>(signed_boolean->combine.value)
+      std::get<ResolvedPredicate>(signed_boolean->combine.value)
           .negated);
 }
 
@@ -54,7 +54,7 @@ TEST(ResolveSet, RejectsInvalidOrdinaryModifierDomains) {
            "set.eq.ftz.u32.f64 %r0, %r1, %r2;",
            "set.eq.u16.u32 %r0, %r1, %r2;",
        }) {
-    const auto selected = selectVariant<Set>(parse_instruction(source));
+    const auto selected = select_variant_name(parse_instruction(source), set_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -74,16 +74,16 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto set = resolve<Set>(*ast);
+    const auto set = resolveSet(*ast);
     ASSERT_TRUE(set.has_value()) << set.error().message;
     const auto rejected =
-        check(*set, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+        (*set)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
                             .instruction_range = ast->range});
     ASSERT_FALSE(rejected.has_value());
     EXPECT_EQ(rejected.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        check(*set, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*set)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }

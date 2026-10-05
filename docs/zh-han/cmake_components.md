@@ -4,6 +4,10 @@
 
 每个 C++ component 在 `find_package` 后和通过 `add_subdirectory` 嵌入源码树时都使用稳定的公开 target 名称 `ptx_frontend::<component>`。源码构建的实际 target 使用 `ptx_frontend_` 前缀，因此不会与 parent project 的通用 target 名称冲突；这些实现名称不是公共 API。
 
+活跃的 Resolved IR 目标为 `ptx_frontend::resolved_ir`，
+`ptx_frontend::ptx_frontend` 会链接它。接口使用直接语义形式类和
+`std::unique_ptr<Instruction>` 所有权。
+
 ## `ptx_spec`
 
 consumer 可以通过以下方式请求通用 PTX ISA specification：
@@ -42,8 +46,7 @@ database = load_packaged_spec_database()
 
 ## 测试 profile
 
-`BUILD_TESTING=ON` 会构建包括 `test_resolved_ir` 在内的 C++ 测试套件。
-GCC 和 Clang 的 Debug/Release preset 都启用该选项。GitHub Actions 当前使用
-Clang 21 preset 运行常规 C++ 测试，并在 PR Debug 和发布标签任务中独立构建
-`examples/conversion_consumer` 的安装包 consumer。consumer 使用独立的 CMake
-构建目录，以及对应 Clang Debug 构建安装的 package。
+`BUILD_TESTING=ON` 会构建活跃的 C++ 测试套件，包括
+`resolved_ir_smoke` 和 `test_resolved_ir`。
+GCC 和 Clang 的 Debug/Release preset 都启用该选项。可在独立构建目录中通过
+`examples/resolved_ir_consumer` 检查已安装的 `resolved_ir` 组件。

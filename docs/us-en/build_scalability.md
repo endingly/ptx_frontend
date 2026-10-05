@@ -461,3 +461,120 @@ have been withdrawn; only this paired measurement record is retained. The
 experimental option is not available in the current code. Any future layout
 proposal needs new measurements and core review. The `.gen.hpp` / `.gen.cpp`
 naming requirement applies to Python-generated files, not Flex lexer outputs.
+
+## 2026-10-05 active resolved-IR migration measurement
+
+This section preserves measurements taken while the direct-class module used
+the `resolved_ir_experiment` names. The module now occupies the canonical
+`resolved_ir` path and target; command and artifact names below remain as
+measured. Earlier owned-IR runtime numbers in
+`tools/owned_ir_experiment/README.md` used a separate harness, workload,
+pipeline, and driver and are not directly comparable to these Google Benchmark
+measurements.
+
+This records the uncommitted active `resolved_ir_experiment` migration on top of
+`5f8d639`, using the October 4 final build as a **recorded** reference. The old
+implementation was not rebuilt or run. Both clean test-target builds used
+Clang 21.1.8, Ninja, Debug C/C++ `-g0`, test-only `-gline-tables-only`, six
+jobs, disabled ccache, the same existing vcpkg dependency tree, and CMake
+4.3.3. A temporary `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` deferred hook supplied
+the test-only flag for the new target. Configuration is excluded; generation,
+compilation, archiving, and linking are included. The new build began in an
+empty directory without a competing build. The old record does not establish
+matching host hardware or load; these are single wall-time observations.
+
+| Clean Debug target measure | Historical `test_resolved_ir` | Active `resolved_ir_experiment_tests` |
+| --- | ---: | ---: |
+| Target build wall time | 254.40 s | 270.85 s |
+| C++ objects / Ninja steps | 263 / 280 | 263 / 274 |
+| Generation output-edge wall span | 57.17 s | 105.61 s |
+| Resolved-library objects / compilation interval | 102 / 90.28 s | 103 / 66.83 s |
+| Test objects / compilation interval | 150 / 119.86 s | 149 / 96.64 s |
+| Sum of overlapping C++ object wall durations | 1,112.25 s | 949.65 s |
+| Listed GTest cases / suites | 910 / 133 | 914 / 134 |
+
+The new full target took 16.45 s (6.5%) longer, so this run does not show a
+clean-build improvement. Library and test compilation intervals are shorter;
+generation spans 48.44 s longer. The old generator used seven overlapping
+output edges and the new generator one, so their spans are elapsed time rather
+than additive CPU time. Compiler intervals also overlap. Changed model size
+and test inventory prevent attributing the wall difference to one source.
+The 914 new GTest cases were listed, not executed, in this measurement. The
+longest new objects were generated Cp (13.99 s), generated Mbarrier (12.05 s),
+and the instruction-variants test (6.85 s).
+
+The active module now has an optional, uninstalled
+`frontend_experiment_symbol_table_scaling` target under the existing
+default-`OFF` `PTX_FRONTEND_BUILD_BENCHMARKS` option. Its driver preserves the
+historical fixture generation, case names, validation, and checksums; only the
+resolved-IR header path and executable error label differ. The old module and
+driver remain unchanged. Google Benchmark 1.9.5 was installed into a separate
+temporary vcpkg tree before timing. The new Release target used Clang 21.1.8,
+`-O3 -DNDEBUG`, disabled ccache, and six build jobs; its clean build took
+196.71 s as preparation. The runtime host exposed an AMD Ryzen 9 5950X,
+32 logical CPUs, about 23 GiB RAM, and no cgroup CPU or memory cap.
+
+These are median **real-time milliseconds per iteration** from five Google
+Benchmark repetitions with a 0.1 s minimum per repetition. Each generated
+source has N valid `mov.u32` instructions and 2N bound operand references.
+Ordinary single-scope sources store N+1 symbols; compact single-scope sources
+store two. Nested sources use two functions and lexical blocks. `parse` parses
+and validates a complete source. `resolve_module` starts from a pre-parsed AST
+and includes its own binding, resolution, checks, result validation, and
+destruction. Their times are not disjoint stages. All 34 selected cases
+(16 shapes × 2 operations plus two corpus cases), with 170 repetition records,
+passed validation without errors. Repetitions used 2–4,815 iterations each.
+
+| Logical registers | Declarations | Scopes | Parse | Resolve module |
+| ---: | --- | --- | ---: | ---: |
+| 1,000 | ordinary | single | 1.334 | 5.799 |
+| 1,000 | ordinary | nested | 1.284 | 6.029 |
+| 1,000 | compact | single | 0.766 | 3.362 |
+| 1,000 | compact | nested | 0.787 | 3.425 |
+| 2,000 | ordinary | single | 2.810 | 12.303 |
+| 2,000 | ordinary | nested | 2.594 | 11.891 |
+| 2,000 | compact | single | 1.525 | 6.591 |
+| 2,000 | compact | nested | 1.467 | 6.656 |
+| 4,000 | ordinary | single | 6.257 | 28.724 |
+| 4,000 | ordinary | nested | 6.294 | 25.023 |
+| 4,000 | compact | single | 3.083 | 15.989 |
+| 4,000 | compact | nested | 2.996 | 14.018 |
+| 8,000 | ordinary | single | 22.624 | 55.134 |
+| 8,000 | ordinary | nested | 12.525 | 52.340 |
+| 8,000 | compact | single | 6.692 | 28.600 |
+| 8,000 | compact | nested | 7.108 | 28.875 |
+| M12 `natural_kernel_sm80.ptx` corpus | — | — | 0.029 | 0.193 |
+
+Shared-host sampling noise is material: the parse real-time coefficient of
+variation was 24.43% for ordinary/single N1000 and 20.83% for
+ordinary/single N8000. Individual layout differences in this table should not
+be treated as causal effects without repeated controlled runs.
+
+No numeric old-driver runtime JSON, CSV, or timing summary was found in the
+tracked history or inspected historical artifacts. These are new-module
+runtime baselines, **not** measured old-to-new speedups. The single-iteration
+sanity output, sampled JSON, logs, Ninja logs, compile commands, and temporary
+test-flag hook are under `/tmp/ptx-resolved-measure.qC5wI0`; this is a local,
+nonportable path. The Release runtime command was:
+
+```sh
+timeout 300s /tmp/ptx-resolved-measure.qC5wI0/release/submod/resolved_ir_experiment/benchmark/frontend_experiment_symbol_table_scaling \
+  --benchmark_filter='symbol_table_scaling/(parse|resolve_module|corpus_parse|corpus_resolve_module)/' \
+  --benchmark_min_time=0.1s --benchmark_repetitions=5 \
+  --benchmark_out=/tmp/ptx-resolved-measure.qC5wI0/runtime-parse-resolve-sampled.json \
+  --benchmark_out_format=json
+```
+
+After separate configuration with the flags above, the measured build commands
+were:
+
+```sh
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/debug \
+  --parallel 6 --target resolved_ir_experiment_tests
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
+  --parallel 6 --target frontend_experiment_symbol_table_scaling
+```
+
+Both exact configure caches and the temporary test-flag hook are retained in
+the artifact directory. Dependency installation and configuration precede the
+timed commands.

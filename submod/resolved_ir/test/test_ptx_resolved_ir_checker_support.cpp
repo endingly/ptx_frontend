@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+#include <variant>
+
 
 #include <array>
 #include <cstdint>
@@ -441,7 +442,7 @@ TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
   ASSERT_TRUE(high_word_ast.has_value())
       << high_word_ast.diagnostics.front().message;
   const auto high_word =
-      resolve_immediate_literal(test_ir_access::get<syntax_ast::AstImmediate>(
+      resolve_immediate_literal(std::get<syntax_ast::AstImmediate>(
                                     high_word_ast->operands.back()),
                                 ScalarType::U32);
   ASSERT_TRUE(high_word.has_value()) << high_word.error().message;
@@ -475,7 +476,7 @@ TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
   ASSERT_TRUE(minus_zero_ast.has_value())
       << minus_zero_ast.diagnostics.front().message;
   const auto minus_zero =
-      resolve_immediate_literal(test_ir_access::get<syntax_ast::AstImmediate>(
+      resolve_immediate_literal(std::get<syntax_ast::AstImmediate>(
                                     minus_zero_ast->operands.back()),
                                 ScalarType::U32);
   ASSERT_TRUE(minus_zero.has_value()) << minus_zero.error().message;

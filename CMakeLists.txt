@@ -82,6 +82,7 @@ install_project_targets(
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/binding/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/semantic/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/resolved_ir/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/submod/resolved_ir/generated/public/ptx_frontend/resolved_ir"
     INCLUDE_DESTINATIONS
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/common"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/base"
@@ -90,6 +91,7 @@ install_project_targets(
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/syntax"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/binding"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/semantic"
+        "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/resolved_ir"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/resolved_ir"
     DEPENDENCIES
         "fmt CONFIG"

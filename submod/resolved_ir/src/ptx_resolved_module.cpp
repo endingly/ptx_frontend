@@ -23,8 +23,6 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::resolved_ir {
-/** Optional generated opcode type used by the call ABI resolver. */
-struct Call;
 namespace {
 
 using call_argument_compatibility::CallArgumentCompatibility;
@@ -554,29 +552,16 @@ std::string_view compatibility_message(
   return "incompatible";
 }
 
-/** Borrow a call record only when the outer instruction has that exact opcode. */
-Call* call_record(OwnedInstruction& instruction) {
-  return instruction.get_if<Call>();
+/** Borrow only the exact final call form, never an opcode-family approximation. */
+CallDirect* call_record(std::unique_ptr<Instruction>& instruction) {
+  return dynamic_cast<CallDirect*>(instruction.get());
 }
 
 /** Return the input argument group owned by a resolved call, when it has one. */
-ResolvedCallArguments* resolved_call_arguments(OwnedInstruction& instruction) {
-  ResolvedCallArguments* arguments = nullptr;
-  if (auto* candidate = call_record(instruction)) {
-    std::visit(
-        [&](auto& selected) {
-          if constexpr (requires { selected.operands; }) {
-            std::visit(
-                [&](auto& operands) {
-                  if constexpr (requires { operands.arguments.value.values; })
-                    arguments = &operands.arguments.value;
-                },
-                selected.operands);
-          }
-        },
-        candidate->variant);
-  }
-  return arguments;
+ResolvedCallArguments* resolved_call_arguments(
+    std::unique_ptr<Instruction>& instruction) {
+  auto* call = call_record(instruction);
+  return call && call->arguments ? &call->arguments->value : nullptr;
 }
 
 /**
@@ -587,7 +572,7 @@ ResolvedCallArguments* resolved_call_arguments(OwnedInstruction& instruction) {
  * can be destroyed.
  */
 void check_call_abi(const syntax_ast::AstInstruction& call,
-                    OwnedInstruction& resolved_call,
+                    std::unique_ptr<Instruction>& resolved_call,
                     const binding::SymbolTable& symbols, binding::ScopeId scope,
                     const FunctionSignatureIndex& signatures,
                     const CallArgumentPropertyIndex& properties,
@@ -1247,13 +1232,12 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
         .function_is_entry = function->is_entry,
         .unified_storage_symbols = unified_storage_symbols,
     };
-    ResolvedFunction resolved_function{
-        .symbol_id = symbol.id,
-        .name = symbol.name,
-        .is_entry = function->is_entry,
-        .is_prototype = function->is_prototype,
-        .contract =
-            {
+    ResolvedFunction resolved_function;
+    resolved_function.symbol_id = symbol.id;
+    resolved_function.name = symbol.name;
+    resolved_function.is_entry = function->is_entry;
+    resolved_function.is_prototype = function->is_prototype;
+    resolved_function.contract = ResolvedFunctionContract{
                 .signature =
                     declaration_semantics::functionSignature(*function),
                 .linkage = symbol.linkage,
@@ -1270,18 +1254,17 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
                     function->language
                         ? std::optional<std::vector<std::string>>{std::in_place}
                         : std::nullopt,
-            },
-        .range = function->range,
-        .declaration_scope = scope,
-        .source_target =
-            header.regions[active_region].target_options.empty()
-                ? std::nullopt
-                : std::optional<std::string>{header.regions[active_region]
-                                                 .target_options.front()},
-        .source_version = header.regions[active_region].version,
-        .source_region = active_region,
-        .source_identity = detail::function_source_identity(*function),
-    };
+            };
+    resolved_function.range = function->range;
+    resolved_function.declaration_scope = scope;
+    resolved_function.source_target =
+        header.regions[active_region].target_options.empty()
+            ? std::nullopt
+            : std::optional<std::string>{header.regions[active_region]
+                                             .target_options.front()};
+    resolved_function.source_version = header.regions[active_region].version;
+    resolved_function.source_region = active_region;
+    resolved_function.source_identity = detail::function_source_identity(*function);
     if (function->language) {
       auto& language_values = *resolved_function.contract.language_values;
       language_values.reserve(function->language->values.size());

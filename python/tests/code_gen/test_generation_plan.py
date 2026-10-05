@@ -21,8 +21,17 @@ from ptx_frontend.code_gen.context import (
     GenerationInstruction,
     build_generation_context,
 )
-from ptx_frontend.code_gen.emit.category_source import (
-    generate_resolved_ir_opcode_source,
+from ptx_frontend.code_gen.emit.resolved_model import (
+    REFERENCE_TYPES,
+    generate_resolved_opcode_header,
+    method_name,
+)
+from ptx_frontend.code_gen.resolved_layout import (
+    operand_slot_for_field,
+    operand_slots,
+)
+from ptx_frontend.code_gen.emit.resolved_source import (
+    generate_resolved_opcode_source,
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
@@ -53,6 +62,33 @@ class GenerationPlanTests(unittest.TestCase):
         cls.database = load_codegen_database(spec_dir=SPEC_DIR)
         cls.backend = load_cpp_backend(BACKEND_SPEC)
 
+    def test_full_direct_class_corpus_and_layout_slots(self) -> None:
+        """Plan every form once and keep overloaded fields typed by layout."""
+
+        context = build_generation_context(self.database, self.backend)
+        forms = tuple(
+            variant for entry in context.entries for variant in entry.resolved.variants
+        )
+        self.assertEqual((len(context.entries), len(forms)), (92, 965))
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 1205)
+        self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 194)
+        for form in forms:
+            slots = operand_slots(form, self.backend)
+            self.assertEqual(len({slot.member_name for slot in slots}), len(slots))
+            for index, layout in enumerate(form.operand_layouts):
+                for field in layout.fields:
+                    slot = operand_slot_for_field(slots, field, self.backend)
+                    self.assertIn(index, slot.layout_indices)
+                    self.assertEqual(
+                        slot.optional,
+                        len(slot.layout_indices) != len(form.operand_layouts),
+                    )
+        with tempfile.TemporaryDirectory() as directory:
+            plan = build_generation_plan(context, Path(directory))
+            self.assertEqual(len(plan.paths), 4 + 2 * len(context.entries))
+            self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
+                                for path in plan.paths))
+
     def test_context_lowers_and_projects_each_instruction_once(self) -> None:
         with (
             patch(
@@ -79,8 +115,8 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertEqual(lower.call_count, len(self.database.instructions))
         self.assertEqual(project.call_count, len(self.database.instructions))
 
-    def test_owned_bridges_cover_current_reference_payloads(self) -> None:
-        """Every generated reference kind has a foundation collector after erasure."""
+    def test_typed_observer_covers_current_reference_payloads(self) -> None:
+        """Every reference kind has a fixed typed callback and module collector."""
         context = build_generation_context(self.database, self.backend)
         collector = (
             ROOT / "submod/resolved_ir/src/ptx_module_availability.cpp"
@@ -94,21 +130,23 @@ class GenerationPlanTests(unittest.TestCase):
             if field.value_kind in REFERENCE_VALUE_KINDS
         }
         payload_types.add("ResolvedPredicate")
-        for payload_type in payload_types:
-            self.assertIn(f"PTX_COLLECT_OWNED_REFERENCE({payload_type})", collector)
+        self.assertTrue(payload_types <= set(REFERENCE_TYPES))
+        for payload_type in REFERENCE_TYPES:
+            self.assertIn(f"void {method_name(payload_type)}(const {payload_type}&", collector)
         self.assertGreater(len(payload_types), 10)
         with tempfile.TemporaryDirectory() as directory:
             for entry in context.entries:
                 output = Path(directory) / f"{entry.specification.opcode}.gen.cpp"
-                generate_resolved_ir_opcode_source(
+                generate_resolved_opcode_source(
                     context,
                     category=entry.specification.codegen_category,
                     opcode=entry.specification.opcode,
                     output_path=output,
                 )
                 source = output.read_text()
-                self.assertIn(f"OwnedInstruction box_instruction({entry.cpp_name}", source)
-                self.assertIn(f"resolve_owned_{entry.cpp_name}(", source)
+                self.assertIn(f"resolve{entry.cpp_name}(", source)
+                self.assertNotIn("OwnedInstruction", source)
+                self.assertNotIn("box_instruction", source)
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -134,7 +172,7 @@ class GenerationPlanTests(unittest.TestCase):
             generate_syntax_descriptor_source(
                 reordered, category="arithmetic", output_path=syntax_path
             )
-            generate_resolved_ir_opcode_source(
+            generate_resolved_opcode_source(
                 reordered, category="arithmetic",
                 opcode=arithmetic.specification.opcode, output_path=category_path
             )
@@ -145,8 +183,8 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertNotIn(
                 f'Opcode_name = "{control_flow.specification.opcode}"', syntax
             )
-            self.assertIn(f"resolve<{arithmetic.resolved.cpp_name}>", category)
-            self.assertNotIn(f"resolve<{control_flow.resolved.cpp_name}>", category)
+            self.assertIn(f"resolve{arithmetic.resolved.cpp_name}(", category)
+            self.assertNotIn(f"resolve{control_flow.resolved.cpp_name}(", category)
 
     def test_entry_rejects_resolved_model_from_another_opcode(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -188,12 +226,13 @@ class GenerationPlanTests(unittest.TestCase):
                 if isinstance(node, ast.ImportFrom)
             }
 
-        self.assertNotIn("resolved_checker", imported_modules("resolved_resolver.py"))
-        self.assertNotIn("resolved_dispatch", imported_modules("resolved_model.py"))
-        self.assertNotIn("references", imported_modules("resolved_dispatch.py"))
-        category_imports = imported_modules("category_source.py")
-        self.assertIn("resolved_resolver", category_imports)
-        self.assertIn("resolved_checker", category_imports)
+        model_imports = imported_modules("resolved_model.py")
+        source_imports = imported_modules("resolved_source.py")
+        dispatch_imports = imported_modules("resolved_dispatch.py")
+        self.assertFalse(any(name.endswith("resolved_source") for name in model_imports))
+        self.assertTrue(any(name.endswith("resolved_model") for name in source_imports))
+        self.assertFalse(any(name.endswith("resolved_source") for name in dispatch_imports))
+        self.assertFalse(any(name.endswith("category_source") for name in dispatch_imports))
 
     def test_plan_is_the_only_artifact_inventory(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -245,128 +284,65 @@ class GenerationPlanTests(unittest.TestCase):
                 artifact.emit(context, output_path=path)
                 source = path.read_text(encoding="utf-8")
                 self.assertIn(f"model/{category}/{opcode}.gen.hpp", source)
-                self.assertIn(f"resolve<{entry.cpp_name}>", source)
-                self.assertIn(f"CheckResult check<{entry.cpp_name}>", source)
-                self.assertIn(f"{entry.cpp_name}::get_syntax_descriptor()", source)
-                self.assertIn(f"{entry.cpp_name}::get_resolved_descriptor()", source)
-                self.assertIn(f"{entry.cpp_name}::get_checker_descriptor()", source)
+                self.assertIn(f"resolve{entry.cpp_name}(", source)
+                self.assertIn(f"{opcode}_syntax_descriptor()", source)
+                self.assertIn(f"{opcode}_resolved_descriptor()", source)
+                self.assertIn(f"{opcode}_checker_descriptor()", source)
+                for variant in entry.resolved.variants:
+                    self.assertIn(
+                        f"{entry.cpp_name}{variant.cpp_name}::check(", source
+                    )
                 for other in context.entries:
                     if other is not entry:
-                        self.assertNotIn(f"resolve<{other.cpp_name}>", source)
-
-    def test_opcode_headers_and_category_wrappers_have_stable_ownership(self) -> None:
+                        self.assertNotIn(f"resolve{other.cpp_name}(", source)
+    def test_opcode_headers_have_stable_direct_class_ownership(self) -> None:
         context = build_generation_context(self.database, self.backend)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             plan = build_generation_plan(context, output)
             public = output / "public/ptx_frontend/resolved_ir"
-            categories = {
-                entry.specification.codegen_category for entry in context.entries
-            }
-            full_leaves = [
-                path for path in plan.paths
-                if path.is_relative_to(public / "model")
-                and len(path.relative_to(public / "model").parts) == 2
-                and path.suffix == ".hpp"
-                and path.name != "model.gen.hpp"
-            ]
-            narrow_leaves = [
-                path for path in plan.paths
-                if path.name == "model.gen.hpp"
-                and len(path.relative_to(public).parts) == 4
-            ]
-            self.assertEqual(len(full_leaves), len(context.entries))
-            self.assertEqual(len(narrow_leaves), len(context.entries))
-            self.assertFalse(any(
-                path.name in ("resolution.gen.hpp", "checker.gen.hpp")
-                and len(path.relative_to(public).parts) == 4
-                for path in plan.paths if path.is_relative_to(public)
-            ))
-            for category in sorted(categories):
-                opcodes = tuple(
-                    entry.specification.opcode for entry in context.entries
-                    if entry.specification.codegen_category == category
+            leaves = tuple(
+                (entry, public / (
+                    f"model/{entry.specification.codegen_category}/"
+                    f"{entry.specification.opcode}.gen.hpp"
+                ))
+                for entry in context.entries
+            )
+            self.assertEqual(
+                {path for path in plan.paths if path.is_relative_to(public / "model")},
+                {path for _, path in leaves},
+            )
+            self.assertIn(public / "ptx_instruction_base.gen.hpp", plan.paths)
+            aggregate = public / "ptx_resolved_ir.gen.hpp"
+            self.assertIn(aggregate, plan.paths)
+            self.assertFalse(any("union" in path.name or "owner" in path.name
+                                 for path in plan.paths))
+            artifacts = {artifact.path: artifact for artifact in plan.artifacts}
+            artifacts[aggregate].emit(context, output_path=aggregate)
+            aggregate_source = aggregate.read_text(encoding="utf-8")
+            for entry, path in leaves:
+                self.assertEqual(artifacts[path].category,
+                                 entry.specification.codegen_category)
+                self.assertIn(
+                    f"model/{entry.specification.codegen_category}/"
+                    f"{entry.specification.opcode}.gen.hpp",
+                    aggregate_source,
                 )
-                narrow_wrapper_path = public / f"model/{category}/model.gen.hpp"
-                narrow_wrapper = next(
-                    artifact for artifact in plan.artifacts
-                    if artifact.path == narrow_wrapper_path
-                )
-                narrow_wrapper.emit(context, output_path=narrow_wrapper_path)
-                narrow_includes = [
-                    line for line in narrow_wrapper_path.read_text().splitlines()
-                    if line.startswith("#include")
-                ]
-                self.assertEqual(narrow_includes, [
-                    f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp>"
-                    for opcode in opcodes
-                ])
-                for kind in ("model", "resolution"):
-                    wrapper_path = public / kind / f"{category}.gen.hpp"
-                    wrapper = next(
-                        artifact for artifact in plan.artifacts
-                        if artifact.path == wrapper_path
-                    )
-                    wrapper.emit(context, output_path=wrapper.path)
-                    includes = [line for line in wrapper.path.read_text().splitlines()
-                                if line.startswith("#include")]
-                    self.assertEqual(includes, [
-                        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp>"
-                        for opcode in opcodes
-                    ])
-                checker_path = public / f"checker/{category}.gen.hpp"
-                checker_artifact = next(
-                    artifact for artifact in plan.artifacts
-                    if artifact.path == checker_path
-                )
-                checker_artifact.emit(context, output_path=checker_path)
-                checker_source = checker_path.read_text(encoding="utf-8")
-                self.assertEqual(
-                    [line for line in checker_source.splitlines()
-                     if line.startswith("#include")],
-                    [
-                        "#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>",
-                        f"#include <ptx_frontend/resolved_ir/model/{category}/model.gen.hpp>",
-                    ],
-                )
-                self.assertNotIn("ptx_resolved_ir_selection.hpp", checker_source)
-                self.assertNotIn("ptx_syntax_ast.hpp", checker_source)
-                for entry in context.entries:
-                    if entry.specification.codegen_category == category:
-                        self.assertIn(
-                            f"CheckResult check<{entry.cpp_name}>(", checker_source
-                        )
-
-            for name in ("resolved_ir.gen.hpp", "resolved_instruction_union.gen.hpp"):
-                path = public / name
-                artifact = next(item for item in plan.artifacts if item.path == path)
-                artifact.emit(context, output_path=path)
-                source = path.read_text()
-                for category in categories:
-                    self.assertIn(f"model/{category}/model.gen.hpp", source)
-                    self.assertNotIn(f"model/{category}.gen.hpp", source)
-
-            for category, opcode, cpp_name in (
-                ("arithmetic", "add", "Add"),
+            for category, opcode, class_name in (
+                ("arithmetic", "add", "AddIntegerNoSat"),
                 ("data_movement", "cvt", "Cvt"),
-                ("parallel_synchronization_and_communication", "mbarrier", "Mbarrier"),
+                ("control_flow", "call", "CallDirect"),
                 ("comparison_and_selection", "setp", "Setp"),
             ):
-                full = public / f"model/{category}/{opcode}.gen.hpp"
-                narrow = public / f"model/{category}/{opcode}/model.gen.hpp"
-                for path in (full, narrow):
-                    artifact = next(item for item in plan.artifacts if item.path == path)
-                    artifact.emit(context, output_path=path)
-                full_source = full.read_text(encoding="utf-8")
-                narrow_source = narrow.read_text(encoding="utf-8")
-                self.assertIn(f"struct {cpp_name} {{", narrow_source)
-                self.assertIn(f"visit_instruction_references(const {cpp_name}&", narrow_source)
-                self.assertNotIn("ptx_resolved_ir_selection.hpp", narrow_source)
-                self.assertNotIn("ptx_resolved_ir_resolution_support.hpp", narrow_source)
-                self.assertIn(f"model/{category}/{opcode}/model.gen.hpp", full_source)
-                self.assertIn("ptx_resolved_ir_selection.hpp", full_source)
-                self.assertIn(f"resolve<{cpp_name}>", full_source)
-                self.assertIn(f"check<{cpp_name}>", full_source)
+                leaf = public / f"model/{category}/{opcode}.gen.hpp"
+                artifacts[leaf].emit(context, output_path=leaf)
+                source = leaf.read_text(encoding="utf-8")
+                self.assertIn(" final : public Instruction", source)
+                if class_name != "Cvt" and class_name != "Setp":
+                    self.assertIn(f"class {class_name} final", source)
+                self.assertNotIn("using Variant =", source)
+                self.assertNotIn("struct Operands", source)
+                self.assertNotIn("box_instruction", source)
 
     def test_new_opcode_changes_only_owned_leaves_and_aggregates(self) -> None:
         context = build_generation_context(self.database, self.backend)
@@ -386,7 +362,6 @@ class GenerationPlanTests(unittest.TestCase):
             local_paths = (
                 output / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
                 output / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp",
-                output / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp",
             )
             first_category_artifacts = {
                 artifact.path: artifact
@@ -411,7 +386,7 @@ class GenerationPlanTests(unittest.TestCase):
                 expanded_local[path].emit(expanded, output_path=path)
                 self.assertEqual(path.read_bytes(), previous)
             self.assertEqual(
-                len(expanded_plan.paths) - len(first_plan.paths), 3
+                len(expanded_plan.paths) - len(first_plan.paths), 2
             )
 
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
@@ -538,6 +513,11 @@ class GenerationPlanTests(unittest.TestCase):
             unrelated = retired_leaf.with_name("notes.txt")
             old_public = output / "public/resolved_ir.gen.hpp"
             old_category = output / "public/resolved_ir/model/arithmetic.gen.hpp"
+            experimental_aggregate = (
+                output / "public/ptx_frontend/resolved_ir_experiment/"
+                "ptx_resolved_ir_experiment.gen.hpp"
+            )
+            experimental_leaf = experimental_aggregate.parent / "model/arithmetic/add.gen.hpp"
             active.parent.mkdir(parents=True)
             active.write_text("active", encoding="utf-8")
             retired_opcode.write_text("retired", encoding="utf-8")
@@ -555,6 +535,10 @@ class GenerationPlanTests(unittest.TestCase):
             old_public.write_text("old layout", encoding="utf-8")
             old_category.parent.mkdir(parents=True)
             old_category.write_text("old layout", encoding="utf-8")
+            experimental_aggregate.parent.mkdir(parents=True, exist_ok=True)
+            experimental_aggregate.write_text("retired", encoding="utf-8")
+            experimental_leaf.parent.mkdir(parents=True, exist_ok=True)
+            experimental_leaf.write_text("retired", encoding="utf-8")
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
                 "private/resolved_ir_arithmetic.gen.cpp\n"
                 "private/resolved_ir_arithmetic_add.gen.cpp\n"
@@ -574,6 +558,8 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(unrelated.read_text(encoding="utf-8"), "preserve")
             self.assertFalse(old_public.exists())
             self.assertFalse(old_category.exists())
+            self.assertFalse(experimental_aggregate.exists())
+            self.assertFalse(experimental_leaf.exists())
             (output / ".ptx_resolved_ir_outputs.txt").write_text(
                 "../outside.gen.hpp\n", encoding="utf-8"
             )
@@ -815,7 +801,7 @@ class GenerationPlanTests(unittest.TestCase):
             third_path = root / "third.hpp"
             first_plan = build_generation_plan(first, root / "one")
             second_plan = build_generation_plan(second, root / "two")
-            leaf = Path("public/ptx_frontend/resolved_ir/model/arithmetic/add/model.gen.hpp")
+            leaf = Path("public/ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp")
             first_artifact = next(
                 artifact for artifact in first_plan.artifacts
                 if artifact.path.relative_to(root / "one") == leaf

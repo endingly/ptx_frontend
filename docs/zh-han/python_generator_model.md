@@ -119,8 +119,8 @@ helper 在输出时投影这些表示。
 
 ## C++ emitter 与产物
 
-`python/scripts/gen_all.py` 原子生成 Resolved IR 阶段所需的公共声明、运行期映射、
-dispatch、按 category 分片的实现以及 descriptor：
+`python -m ptx_frontend.code_gen` 生成 Resolved IR 所需的直接类公共声明、
+运行期映射、dispatch 及按 category 分片的实现：
 
 一次 generation run 中，`GenerationContext` 保存唯一的有序 binding 序列：每个
 normalized `InstructionSpec` 都与其一次 lowered、backend-projected 的
@@ -138,40 +138,33 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 model、variant 选择适配器及 resolver/checker 声明 |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | 不依赖完整 syntax AST 的窄 model 与 reference visitor 头 |
-| `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | 供 model 与 union API 使用、聚合窄 opcode model 头的纯 include 头 |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | 聚合该 category 完整 opcode 头的纯 include 头 |
-| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | 供显式完整 model consumer 使用、保持 canonical 顺序的 `InstructionUnion` |
-| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | 聚合窄 category model 头与 union 的 model-only 头 |
-| `public/ptx_frontend/resolved_ir/resolution/<category>.gen.hpp` | `emit.resolved_resolver` | resolver 声明的 category 纯 include 头 |
-| `public/ptx_frontend/resolved_ir/checker/<category>.gen.hpp` | `emit.resolved_checker` | checker support、窄 category model 与 checker 特化声明，不依赖完整 Syntax AST |
-| `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | 为完整 model consumer 保留的聚合兼容 wrapper |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、准确形式 identity 与 observer 契约 |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 final 语义形式类、selector 与 resolver 声明 |
+| `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | 全部 opcode 头的聚合 |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 通过窄 per-op owner 桥接实现 opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | 单个 opcode 的三类 descriptor、out-of-line resolver/checker 定义及强类型 owner 生命周期、checker、reference 和 resolver 桥接 |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 跨 opcode 的解析分发 |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 单个 opcode 的 out-of-line 解析、检查、克隆及引用遍历定义 |
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
 `generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
-私有生成源码和支持头保留在 `generated/private`，不安装。`submod/resolved_ir`
-include 工程级的 `cmake/generate_ptx_frontend.cmake`；
-该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
-target。顶层只提供 submodule 编排与 facade target。
+私有生成源码和支持头保留在 `generated/private`，不安装。
+`submod/resolved_ir/CMakeLists.txt` 使用 Python codegen CLI 的 `--list-outputs`
+模式发现产物，再生成并将私有源码编译进 `resolved_ir`。生成规则依赖两份 schema、
+backend mapping、规格文件以及 generator Python 源码。
 
 Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
 供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker
 descriptor storage 共用一个私有源文件。
 
-生成的 owner 路径不改变 YAML schema 或 normalized instruction model。每个 opcode
-的现有生成 `.cpp` 拥有不可变操作表，并装箱该 opcode 的强类型解析记录。中央 dispatch
-只通过窄声明调用 per-op resolver，不包含完整 union。新出现的带 reference 的
-foundation payload 必须有显式 module collector；生成器测试对照当前输出类型与 collector，
-生成的 owner 桥接还以 payload concept 做编译期检查。owner 保留现有的内层 typed
-variant 和 checker 逻辑。
+直接类路径保留 YAML schema 与 normalized instruction model。每个语义形式是
+`Instruction` 的 final 子类：公共字段是直接成员，layout 专有字段是带类型的
+optional。解析返回 `std::unique_ptr<Instruction>`。每个 opcode 的生成 `.cpp`
+定义 out-of-line 解析、检查、克隆和引用遍历方法。中央 dispatch 调用逐 opcode
+解析器，不使用 instruction union。
 
 完整 opcode 公共头不包含生成的 resolver/checker 函数体。小型手写
-`ptx_resolved_ir_selection.hpp` 提供通用选择适配器；窄 opcode 与 category model 头仍可在 syntax AST
-不完整时使用。model 聚合头与 instruction union 包含这些窄 category 头。
+`ptx_resolved_ir_selection.hpp` 提供通用选择适配器；单个 opcode model 头仍可在 syntax AST
+不完整时使用。安装的 `ptx_resolved_ir.hpp` 包含生成聚合头和 module 解析 API。
 生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
 `codegen_category`，生成脚本据此为每个 opcode 产生稳定的私有源文件，
@@ -179,13 +172,10 @@ variant 和 checker 逻辑。
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
 生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
-output manifest）时保留 modification time。whole-module API 继续包含聚合 model 与完整
-union；category-local consumer 可包含自己的完整 opcode 头或 category 聚合头。
+output manifest）时保留 modification time。consumer 可包含聚合头或单个 opcode 头。
 
-比较与选择规范现在单独生成 `comparison_and_selection` 分区。通过分类头使用 `Set`、
-`Setp`、`Selp` 或 `Slct` 的代码，需要把原来的 `arithmetic.gen.hpp` 路径改为
-`model/comparison_and_selection.gen.hpp` 及对应的 `resolution/`、`checker/` 头。
-已安装的聚合头仍提供完整的指令模型。
+比较与选择规范生成 `comparison_and_selection` 分区。窄 consumer 可包含
+`model/comparison_and_selection/set.gen.hpp` 等单个头；聚合头提供所有形式。
 
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker

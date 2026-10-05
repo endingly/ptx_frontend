@@ -7,31 +7,18 @@ from pathlib import Path
 from typing import Protocol
 
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.code_gen.emit.category_source import (
-    generate_resolved_ir_opcode_source,
-)
-from ptx_frontend.code_gen.emit.resolved_checker import (
-    generate_resolved_ir_checker_category_declarations_header,
-    generate_resolved_ir_checker_declarations_header,
-)
 from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
-    generate_resolved_instruction_union_header,
-    generate_resolved_ir_category_header,
-    generate_resolved_ir_category_model_header,
-    generate_resolved_ir_header,
-    generate_resolved_ir_opcode_full_header,
-    generate_resolved_ir_opcode_header,
+    generate_resolved_base_header,
+    generate_resolved_opcode_header,
+    generate_resolved_umbrella_header,
 )
-from ptx_frontend.code_gen.emit.resolved_resolver import (
-    generate_resolved_ir_resolution_category_declarations_header,
-    generate_resolved_ir_resolution_declarations_header,
+from ptx_frontend.code_gen.emit.resolved_source import (
+    generate_resolved_opcode_source,
 )
-from ptx_frontend.code_gen.emit.value_domains import (
-    generate_resolved_value_domain_header,
-)
+from ptx_frontend.code_gen.emit.value_domains import generate_resolved_value_domain_header
 
 
 class ArtifactEmitter(Protocol):
@@ -148,170 +135,51 @@ def build_generation_plan(
     context: GenerationContext,
     output_dir: Path,
 ) -> GenerationPlan:
-    """Build every generated artifact exactly once in deterministic order."""
+    """Plan the complete direct-class resolved IR artifact set."""
 
-    categories = instruction_categories(context)
-    artifacts: list[GeneratedArtifact] = []
-
-    # ------------------------------------------------------------------
-    # Backend/global support artifacts.
-    # ------------------------------------------------------------------
-
-    artifacts.append(
+    artifacts: list[GeneratedArtifact] = [
         GeneratedArtifact(
             path=output_dir / "private/resolved_value_domains.gen.hpp",
             emit=generate_resolved_value_domain_header,
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Category-local Resolved IR model declarations.
-    # ------------------------------------------------------------------
-
-    for category in categories:
-        artifacts.append(
-            _category_artifact(
-                path=(output_dir / f"public/ptx_frontend/resolved_ir/model/{category}.gen.hpp"),
-                category=category,
-                emitter=generate_resolved_ir_category_header,
-            )
-        )
-        artifacts.append(
-            _category_artifact(
-                path=(output_dir / f"public/ptx_frontend/resolved_ir/model/{category}/model.gen.hpp"),
-                category=category,
-                emitter=generate_resolved_ir_category_model_header,
-            )
-        )
-        artifacts.extend(
-            _opcode_artifact(
-                path=(
-                    output_dir
-                    / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp"
-                ),
-                category=category,
-                opcode=opcode,
-                emitter=generate_resolved_ir_opcode_full_header,
-            )
-            for opcode in _category_opcodes(context, category)
-        )
-        artifacts.extend(
-            _opcode_artifact(
-                path=(
-                    output_dir
-                    / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp"
-                ),
-                category=category,
-                opcode=opcode,
-                emitter=generate_resolved_ir_opcode_header,
-            )
-            for opcode in _category_opcodes(context, category)
-        )
-
-    # ------------------------------------------------------------------
-    # Aggregate model compatibility layer.
-    # ------------------------------------------------------------------
-
-    artifacts.append(
+        ),
         GeneratedArtifact(
-            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp"),
-            emit=generate_resolved_instruction_union_header,
-        )
-    )
-
-    artifacts.append(
+            path=output_dir / "public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp",
+            emit=generate_resolved_base_header,
+        ),
         GeneratedArtifact(
-            path=output_dir / "public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp",
-            emit=generate_resolved_ir_header,
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Category-local resolver declarations.
-    # ------------------------------------------------------------------
-
-    for category in categories:
-        artifacts.append(
-            _category_artifact(
-                path=(
-                    output_dir / "public/ptx_frontend/resolved_ir/resolution" / f"{category}.gen.hpp"
-                ),
-                category=category,
-                emitter=(generate_resolved_ir_resolution_category_declarations_header),
-            )
-        )
-
-    # Aggregate resolver compatibility header.
-    artifacts.append(
+            path=output_dir / "public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp",
+            emit=generate_resolved_umbrella_header,
+        ),
         GeneratedArtifact(
-            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp"),
-            emit=generate_resolved_ir_resolution_declarations_header,
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Category-local checker declarations.
-    # ------------------------------------------------------------------
-
-    for category in categories:
-        artifacts.append(
-            _category_artifact(
-                path=(
-                    output_dir / "public/ptx_frontend/resolved_ir/checker" / f"{category}.gen.hpp"
-                ),
-                category=category,
-                emitter=(generate_resolved_ir_checker_category_declarations_header),
-            )
-        )
-
-    # Aggregate checker compatibility header.
-    artifacts.append(
-        GeneratedArtifact(
-            path=(output_dir / "public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp"),
-            emit=generate_resolved_ir_checker_declarations_header,
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Whole-model dispatch.
-    # ------------------------------------------------------------------
-
-    artifacts.append(
-        GeneratedArtifact(
-            path=(output_dir / "private/resolved_ir_dispatch.gen.cpp"),
+            path=output_dir / "private/resolved_ir_dispatch.gen.cpp",
             emit=generate_resolved_dispatch_source,
-        )
-    )
-
-    # ------------------------------------------------------------------
-    # Opcode-local descriptors and resolver/checker implementation.
-    # ------------------------------------------------------------------
-
-    for category in categories:
-        artifacts.extend(
-            _opcode_artifact(
-                path=output_dir / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
-                category=category,
-                opcode=opcode,
-                emitter=generate_resolved_ir_opcode_source,
+        ),
+    ]
+    for category in instruction_categories(context):
+        for opcode in _category_opcodes(context, category):
+            artifacts.append(
+                _opcode_artifact(
+                    path=output_dir / (
+                        f"public/ptx_frontend/resolved_ir/model/"
+                        f"{category}/{opcode}.gen.hpp"
+                    ),
+                    category=category,
+                    opcode=opcode,
+                    emitter=generate_resolved_opcode_header,
+                )
             )
-            for opcode in _category_opcodes(context, category)
-        )
-
-    # ------------------------------------------------------------------
-    # Ownership sanity check.
-    # ------------------------------------------------------------------
-
+            artifacts.append(
+                _opcode_artifact(
+                    path=output_dir / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
+                    category=category,
+                    opcode=opcode,
+                    emitter=generate_resolved_opcode_source,
+                )
+            )
     paths = tuple(artifact.path for artifact in artifacts)
-
     if len(paths) != len(set(paths)):
         raise ValueError("generation plan contains duplicate artifact paths")
-
-    return GenerationPlan(
-        artifacts=tuple(artifacts),
-    )
-
-
+    return GenerationPlan(artifacts=tuple(artifacts))
 def _bind_category_emitter(
     emitter: CategoryArtifactEmitter,
     *,

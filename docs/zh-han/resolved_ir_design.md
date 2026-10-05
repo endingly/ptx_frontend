@@ -27,40 +27,39 @@ qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改
 `ResolvedIndirectCallee` 为 non-predicate `.reg` indirect target 或已绑定的 function-local
 `.callprototype`/`.calltargets` label 提供 descriptor-independent identity；所属
 `ResolvedFunction` 另行拥有对应的有序 metadata payload 与 normalized ABI，operand 因而保持紧凑，
-但 metadata 不会丢失。generated `Call::Direct` 现有三个额外的 `IndirectCall` layout
+但 metadata 不会丢失。final 类 `CallDirect` 现有三个额外的 `IndirectCall` layout
 （target/metadata、target/input/metadata、return/target/input/metadata），均要求 PTX 2.1 / SM 20；
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
-公共 model 入口是 `<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`，
-它聚合手写 foundation、生成的强类型指令记录、外层 `OwnedInstruction` 值，以及手写 module
-container。较窄的 `ptx_resolved_ir_module.hpp` 只包含 foundation 与 owner 头。
-这些 model 头提供 owned data 和只读 descriptor，不要求完整 Syntax AST。
-解析入口位于 `ptx_resolved_ir_resolution.hpp`，检查入口位于
-`ptx_resolved_ir_checker.hpp`；`ptx_resolved_ir.hpp` 仍是宽聚合头。
+活跃的公共入口是
+`<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`，
+聚合手写 foundation、module container 和生成的 final 语义形式类。逐 opcode
+窄头位于 `model/<category>/<opcode>.gen.hpp`。model 头提供 owned data 和
+只读 descriptor、完整的拥有值诊断与 selector 声明，不要求完整 Syntax AST。
+调用独立指令 resolver 时另行包含语法解析头；module 或绑定上下文解析需包含
+`ptx_resolved_ir_resolution.hpp`。解析入口位于
+`ptx_resolved_ir_resolution.hpp`；检查通过虚函数 `Instruction::check`
+及手写支持头 `ptx_resolved_ir_checker_support.hpp` 提供。
 
 公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp
-std::expected<OwnedInstruction, ResolveDiagnostic>
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
-`OwnedInstruction` 是唯一的外层指令值，也是 `ResolvedFunction::body` 的元素类型。
-owner 不隐式兼容 `std::visit` 或 `std::get_if`。宽聚合头仍为显式完整 model consumer
-提供强类型 opcode 记录和 `InstructionUnion`；module 实现、中央 dispatch 与 module
-availability 只包含所需的窄头。
-
-owner 拥有一个堆分配的强类型 opcode 记录，并指向该 opcode 现有生成翻译单元中的不可变
-操作表。双指针 handle 深拷贝记录；移动不搬动 payload；默认构造或移出后为空态。
-`get_if<T>()` 检查精确记录类型，不匹配或空态时返回 null。借用的 typed 指针在 owner
-移动或 vector 扩容后仍有效，在 payload 替换或销毁后失效。module validation 会拒绝
-body 中的空 owner。内部 reference 遍历仅在不可变 validation 期间借用 foundation payload，
-遍历及其后续校验不得重入修改 payload；位置 span 同步消费。源码位置、内层强类型 variant、symbol identity、Call literal
-归一化，以及 resolution-only 与最终验证的原有保证继续适用。owner 不确立稳定的公共 visitor 政策。
+`ResolvedFunction::body` 是 `unique_ptr<Instruction>` 的 vector。965 个语义
+形式各有独立 final 类；活跃 API 没有 opcode owner 包装、instruction union 或
+layout payload variant。精确类查询对 final 类使用 `dynamic_cast`，不能仅凭 opcode
+身份；module 实现为此提供受约束的私有辅助函数。复制 `ResolvedFunction` 时克隆所有非空指令及全部元数据，保留空槽供校验
+拒绝。借用的指针在 vector 扩容与函数移动后仍有效，在指令销毁或替换后失效。
+内部 `IReferenceObserver` 回调同步借用强类型 foundation 值及位置 span；校验
+期间禁止重入修改载荷。源码位置、symbol identity、Call literal 归一化以及
+resolution-only 与最终校验的不同保证继续适用。
 
 各模块入口的成功契约明确区分如下：
 
@@ -144,8 +143,9 @@ resolver 原生错误的三个类别字段均为空，阶段为 `Resolution`，�
 这些信息仍然有效。诊断顺序和原有提前返回边界不变。既有 aggregate 字段保持原顺序，
 新增可选类别字段追加在末尾。
 
-`resolveInstruction` 根据指令数据库生成，并分发到现有的 `resolve<T>` 特化。调用者不再
-需要手写 opcode 分派，同时每个 opcode 仍保留强类型结构。`resolveModule` 先建立
+`resolveInstruction` 根据指令数据库生成，分发到 `resolveAdd` 等逐 opcode
+函数并构造精确的 final 语义形式类。调用者无需手写 opcode 分派。
+`resolveModule` 先建立
 `SymbolTable`，再为每个 function scope 构造显式 `ResolveContext`；返回的
 `ResolvedModule` 拥有 symbol table，`ResolvedFunction` 以函数 `SymbolId` 标识。每个
 function 以唯一的 `parameter_declarations` 表拥有通过验证的 `.param` 声明。
@@ -153,7 +153,7 @@ function 以唯一的 `parameter_declarations` 表拥有通过验证的 `.param`
 `ResolvedFunction::label_positions` 以已绑定的 `SymbolId` 和 source-order 的 instruction
 boundary 记录每个 function label；boundary 基于递归展平的 body，首条 instruction 前为零、
 连续 label 共用一个 boundary、末尾 label 为 `body.size()`。standalone `resolveInstruction`
-与 `resolve<T>` 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
+与逐 opcode resolver 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
 Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段；刻意保留的
 例外是拥有值的、已规范化 parameter 与 storage metadata。`.file` 与
 `.debug_str` identity 会在那里验证 `.loc` metadata，
@@ -383,28 +383,23 @@ unknown context 不触发。该上下文规则不会修改 `ResolvedSymbolRef::a
 
 ## 按 opcode 生成的结构
 
-每个 opcode 生成一个外层 struct，并用 `VariantType` 和 `std::variant` 表示由
-modifier 组合唯一确定的 variant：
+每个语义形式生成一个继承 `Instruction` 的 final 类。每个 opcode 的窄生成头
+包含该 opcode 的所有形式、descriptor 访问器和 resolver，例如：
 
 ```cpp
-struct Add {
-  enum class VariantType { IntegerNoSat, Sat, PackedOptionalSat };
-
-  struct IntegerNoSat {
-    ResolvedOperandLayoutTag operand_layout;
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterRef> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-
-  using Variant = std::variant<IntegerNoSat /* ... */>;
-  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
-  Variant variant;
+class AddIntegerNoSat final : public Instruction {
+public:
+  ResolvedOperandLayoutTag operand_layout;
+  WithLocs<ScalarType> type;
+  WithLocs<ResolvedRegisterRef> dst;
+  WithLocs<RegOrImm> src1;
+  WithLocs<RegOrImm> src2;
 };
 ```
 
-fixed modifier 不作为每个 instruction instance 的可写状态保存。合并后的 `Add::Sat`
+可选的 `execution_predicate` 与虚函数从 `Instruction` 继承。
+
+fixed modifier 不作为每个 instruction instance 的可写状态保存。`AddSat`
 中，`.sat` 固定，而 type 是带独立 availability 的 allowed value，因此生成：
 
 ```cpp
@@ -422,28 +417,26 @@ variant-local 的，因此 `.f32` 在普通 Add 中可以绑定 `type`，在 mix
 
 ## 一个 variant 内的多个 operand layout
 
-modifier 组合相同但 operand 形态不同，不应人为拆成多个 modifier variant。此时生成
-一个 layout tag 和嵌套 payload variant。`bar.sync a{, b}` 的形式为：
+modifier 组合相同但 operand 形态不同，不应人为拆成多个语义形式。final 类
+保留一个 layout tag；所有 layout 都存在的字段直接存放，仅部分 layout 存在的
+字段使用强类型 optional。`bar.sync a{, b}` 的形式近似为：
 
 ```cpp
-struct Bar::Sync {
+class BarSync final : public Instruction {
+public:
   ResolvedOperandLayoutTag operand_layout;
   inline static constexpr bool sync = true;
-
-  struct BarrierOperands { WithLocs<RegOrImm> barrier; };
-  struct BarrierAndThreadCountOperands {
-    WithLocs<RegOrImm> barrier;
-    WithLocs<RegOrImm> thread_count;
-  };
-  using Operands = std::variant<BarrierOperands,
-                                BarrierAndThreadCountOperands>;
-  Operands operands;
+  std::optional<WithLocs<ResolvedImmediate>> barrier_immediate;
+  std::optional<WithLocs<RegOrImm>> barrier_reg_or_imm;
+  std::optional<WithLocs<RegOrImm>> thread_count;
 };
 ```
 
-`ResolvedOperandLayoutTag` 是生成 descriptor 中 layout 的索引。checker 必须同时验证
-tag 合法、tag 与 payload alternative 一致，以及 payload 的每个 operand binding。
-tag/payload 不一致是损坏的 resolved IR，诊断种类为
+`ResolvedOperandLayoutTag` 是生成 descriptor 中 layout 的索引。checker 在解引用
+layout 专有字段前验证 tag 合法性、必需和禁止 optional 的存在性，以及每个 operand
+binding。同一个 descriptor 字段 ID 如有不同 C++ 值类型，成员名添加确定性的
+value-kind 后缀，例如 `barrier_immediate` 和 `barrier_reg_or_imm`。不一致是损坏的
+resolved IR，诊断种类为
 `OperandLayoutPayloadMismatch`。
 
 `Flat` 用于逗号分隔、位置固定的 operand slot。唯一新增的 layout algorithm 是 `Call`：它识别
@@ -452,14 +445,13 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
 
 ## Resolution 协议
 
-`resolve<T>(const AstInstruction&)` 与带 `ResolveContext` 的重载共享生成的 opcode 专用
-实现，公共逻辑依次执行：
+逐 opcode resolver 及其带 `ResolveContext` 的重载共享生成实现，公共逻辑依次执行：
 
 1. 公共 matcher 先用全部 syntax descriptor 诊断真正未知的 spelling，再分别在每个
    候选 variant 内把 spelling 绑定到有序 slot。required/fixed slot 可以通过位置
    消除共享 spelling 的歧义；database 会拒绝涉及 optional slot 的重复 spelling。
    重复占用一个 slot 会被诊断。
-2. `selectVariant<T>` 只依据上述 variant-local 绑定选择唯一 variant。`absent`、
+2. `select_variant_name` 只依据上述 form-local 绑定选择唯一语义形式。`absent`、
    `optional`、`required/fixed` 都按 slot、允许值和规范或显式别名顺序匹配。
    顺序别名不产生新的语义 variant，也不改变 field 绑定。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
@@ -467,24 +459,18 @@ tag/payload 不一致是损坏的 resolved IR，诊断种类为
    operand 转换为带位置的 resolved 值；有 binding context 时，guard 必须绑定到 `.pred`
    register，普通寄存器必须解析到当前 lexical scope 的 `.reg` declaration，两者都会写入
    `SymbolId` 与声明类型，direct branch target 必须绑定到当前 function 的 label。
-5. 生成的 builder 将字段放入对应 C++ struct 或 layout payload。
+5. 生成的 builder 构造精确 final 类并填充直接字段与 optional 字段。
 
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
 对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
-`selectVariant<T>` 是小型手写 `ptx_resolved_ir_selection.hpp` 头中的通用模板适配器，任何满足 `PtxOperator`
-concept 的类型都可以直接使用；它把 descriptor 交给 out-of-line 的非模板 matcher，
-再把选中的 variant name 转成对应 `VariantType`。opcode struct 以及
-`resolve<T>`、`check<T>` 的显式特化声明共用按 YAML `codegen_category` 生成的完整 opcode 头。
-需要不完整 syntax AST 的 consumer 仍可包含独立的窄 opcode 或 category model 头；model 聚合头与 instruction union 也包含窄 category 头。
-聚合 `ptx_frontend/resolved_ir/resolved_ir.gen.hpp`、
-`ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` 与
-`ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` 保留完整 model 的公开 API；category-local consumer
-可以只包含所属 opcode 的完整头或 category 聚合头。显式 `InstructionUnion`
-仍在独立的聚合头中，且保持 canonical instruction 顺序。特化定义不使用 `inline`，而是
-与三类 descriptor 一起生成到 `resolved_ir_<category>_<opcode>.gen.cpp` 并编译进库。这一边界把体积小且通用的类型适配
-留在模板中，同时避免每个 consumer translation unit 重复解析 variant matcher、大型
-resolve builder 与 checker visit/lambda。
+`select_variant_name` 是非模板 descriptor matcher；resolver 边界只将所选名字映射
+一次到强类型形式索引，后续构造使用强类型 dispatch。按 YAML
+`codegen_category` 生成的逐 opcode 完整头包含 final 类定义及 resolver 声明；
+只需 model 的调用者可使用生成的 base 头。聚合
+`ptx_resolved_ir.gen.hpp` 包含全部 opcode 头。非 inline 的
+resolver、checker、clone 与 observer 定义按 opcode 生成到 `.gen.cpp` 并编入库。
+内部固定引用域 observer 不是公开的全家族 visitor 模板。
 
 ## 三份 descriptor
 
@@ -509,7 +495,7 @@ alias 只在 code generation 时应用。例如语义 IR 中的 `.sat` field 保
 
 ## Checker 契约
 
-`checker::check<T>` 是每个 opcode 的生成 wrapper，公共 checker 至少检查：
+每个 final 形式的虚函数 `Instruction::check` override 使用公共 checker 检查：
 
 - 每个 projected dynamic modifier value 是否属于已选 variant 生成的 semantic domain。此检查
   不依赖 source location 或 modifier 在源码中是否出现：省略 optional modifier 时检查该字段声明的
@@ -518,7 +504,7 @@ alias 只在 code generation 时应用。例如语义 IR 中的 `.sat` field 保
   `ModifierValueDomainMismatch` 表示 value 不在该 domain 内。
 - variant、已选 operand layout 与实际 modifier value 的最低 PTX 版本、SM 版本与 target family；
 - layout tag 的范围；
-- layout tag/payload 一致性；
+- layout tag 与必需/禁止 optional 字段的一致性；
 - operand 字段 ID、resolved shape，以及由结构化 descriptor 约束的 immediate 或已绑定
   register 声明类型。
 - special-register intrinsic 元数据，以及由当前 instruction width 选择的上下文类型兼容与
@@ -529,7 +515,7 @@ alias 只在 code generation 时应用。例如语义 IR 中的 `.sat` field 保
 - 由 generated operand constraint 描述的 explicit `.param` input/return direction 与
   function-context availability；方向错误优先于上下文 availability。
 
-单条 instruction 的 `checker::check<T>` 由调用方提供 `checker::Context::target` 与
+调用单条 instruction 的虚函数 `check` 时，由调用方提供 `checker::Context::target` 与
 `instruction_range`；编辑字段没有保留 source provenance 时，后者是稳定的 diagnostic range 回退。
 
 semantic-domain membership 与 target availability 是两个独立问题。domain 由 normalized variant
@@ -559,8 +545,8 @@ instruction 约束仍不属于当前 ABI。
 - 新的多 layout 指令必须测试正常 resolution、非法 layout、以及 tag/payload 不一致。
 
 实现入口见 `submod/resolved_ir/include/ptx_resolved_ir.hpp`、
-`submod/resolved_ir/include/ptx_resolved_ir_checker.hpp` 与生成的
-`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`。
+`submod/resolved_ir/include/ptx_resolved_ir_checker_support.hpp` 与生成的
+`ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp`。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call

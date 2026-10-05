@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -7,8 +6,9 @@
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/div.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -37,45 +37,35 @@ TEST(DivCompleteness, ResolvesExplicitFloatingModesAndOperands) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Div>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  const auto& approx = test_ir_access::get<Div::ApproxF32>(
-      test_ir_access::get<Div>(body[0]).variant);
-  EXPECT_TRUE(Div::ApproxF32::approx);
+  const auto& approx = dynamic_cast<const DivApproxF32&>(*body[0]);
+  EXPECT_TRUE(DivApproxF32::approx);
   EXPECT_TRUE(approx.ftz.value);
-  const auto& full = test_ir_access::get<Div::FullF32>(
-      test_ir_access::get<Div>(body[1]).variant);
-  EXPECT_TRUE(Div::FullF32::full);
+  const auto& full = dynamic_cast<const DivFullF32&>(*body[1]);
+  EXPECT_TRUE(DivFullF32::full);
   EXPECT_FALSE(full.ftz.value);
-  const auto& rn_f32 = test_ir_access::get<Div::RnF32>(
-      test_ir_access::get<Div>(body[2]).variant);
+  const auto& rn_f32 = dynamic_cast<const DivRnF32&>(*body[2]);
   EXPECT_TRUE(rn_f32.ftz.value);
-  EXPECT_EQ(Div::RnF32::rounding, RoundingMode::Rn);
-  EXPECT_EQ(test_ir_access::get<Div::DirectedF32>(
-                test_ir_access::get<Div>(body[3]).variant)
+  EXPECT_EQ(DivRnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[3])
                 .rounding.value,
             RoundingMode::Rz);
-  EXPECT_TRUE(test_ir_access::get<Div::DirectedF32>(
-                  test_ir_access::get<Div>(body[4]).variant)
+  EXPECT_TRUE(dynamic_cast<const DivDirectedF32&>(*body[4])
                   .ftz.value);
-  EXPECT_EQ(test_ir_access::get<Div::DirectedF32>(
-                test_ir_access::get<Div>(body[5]).variant)
+  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[5])
                 .rounding.value,
             RoundingMode::Rp);
-  EXPECT_EQ(Div::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
-                test_ir_access::get<Div>(body[7]).variant)
+  EXPECT_EQ(DivRnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[7])
                 .rounding.value,
             RoundingMode::Rz);
-  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
-                test_ir_access::get<Div>(body[8]).variant)
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[8])
                 .rounding.value,
             RoundingMode::Rm);
-  EXPECT_EQ(test_ir_access::get<Div::DirectedF64>(
-                test_ir_access::get<Div>(body[9]).variant)
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[9])
                 .rounding.value,
             RoundingMode::Rp);
 }
@@ -99,7 +89,7 @@ TEST(DivCompleteness, RejectsInvalidExplicitForms) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolve<Div>(*parsed).has_value());
+    EXPECT_FALSE(resolveDiv(*parsed).has_value());
   }
 }
 
@@ -147,10 +137,10 @@ TEST(DivCompleteness, ChecksIndependentExplicitAvailability) {
     SCOPED_TRACE(availability.source);
     const auto parsed = test_helpers::parseInstruction(availability.source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Div>(*parsed);
+    const auto resolved = resolveDiv(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return checker::check(*resolved, checker::Context{.target = target});
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
                           .sm_version = availability.minimum_sm})

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+
 
 #include <optional>
 #include <string>
@@ -50,34 +50,28 @@ TEST(TranscendentalCompleteness, ResolvesTypedApproxAndLowPrecisionCohorts) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 17u);
 
-  EXPECT_TRUE(Sin::ApproxF32::approx);
-  EXPECT_FALSE(test_ir_access::get<Sin::ApproxF32>(
-                   test_ir_access::get<Sin>(body[0]).variant)
-                   .ftz.value);
-  EXPECT_TRUE(test_ir_access::get<Sin::ApproxF32>(
-                  test_ir_access::get<Sin>(body[1]).variant)
-                  .ftz.value);
-  EXPECT_TRUE(Cos::ApproxF32::approx);
-  EXPECT_TRUE(Lg2::ApproxF32::approx);
-  EXPECT_TRUE(test_ir_access::get<Ex2::ApproxF32>(
-                  test_ir_access::get<Ex2>(body[7]).variant)
-                  .ftz.value);
-  EXPECT_TRUE(Tanh::ApproxF32::approx);
-  EXPECT_EQ(Tanh::ApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(SinApproxF32::approx);
+  EXPECT_FALSE(dynamic_cast<const SinApproxF32&>(*body[0]).ftz.value);
+  EXPECT_TRUE(dynamic_cast<const SinApproxF32&>(*body[1]).ftz.value);
+  EXPECT_TRUE(CosApproxF32::approx);
+  EXPECT_TRUE(Lg2ApproxF32::approx);
+  EXPECT_TRUE(dynamic_cast<const Ex2ApproxF32&>(*body[7]).ftz.value);
+  EXPECT_TRUE(TanhApproxF32::approx);
+  EXPECT_EQ(TanhApproxF32::type, ScalarType::F32);
 
   // The half cohorts carry no FTZ field at all and bind register operands only.
-  EXPECT_EQ(Ex2::ApproxF16::type, ScalarType::F16);
-  EXPECT_EQ(Ex2::ApproxF16x2::type, ScalarType::F16x2);
-  EXPECT_TRUE(Ex2::ApproxFtzBf16::approx);
-  EXPECT_TRUE(Ex2::ApproxFtzBf16::ftz);
-  EXPECT_EQ(Ex2::ApproxFtzBf16::type, ScalarType::BF16);
-  EXPECT_TRUE(Ex2::ApproxFtzBf16x2::ftz);
-  EXPECT_EQ(Ex2::ApproxFtzBf16x2::type, ScalarType::BF16x2);
+  EXPECT_EQ(Ex2ApproxF16::type, ScalarType::F16);
+  EXPECT_EQ(Ex2ApproxF16x2::type, ScalarType::F16x2);
+  EXPECT_TRUE(Ex2ApproxFtzBf16::approx);
+  EXPECT_TRUE(Ex2ApproxFtzBf16::ftz);
+  EXPECT_EQ(Ex2ApproxFtzBf16::type, ScalarType::BF16);
+  EXPECT_TRUE(Ex2ApproxFtzBf16x2::ftz);
+  EXPECT_EQ(Ex2ApproxFtzBf16x2::type, ScalarType::BF16x2);
 
-  EXPECT_EQ(Tanh::ApproxF16::type, ScalarType::F16);
-  EXPECT_EQ(Tanh::ApproxF16x2::type, ScalarType::F16x2);
-  EXPECT_EQ(Tanh::ApproxBf16::type, ScalarType::BF16);
-  EXPECT_EQ(Tanh::ApproxBf16x2::type, ScalarType::BF16x2);
+  EXPECT_EQ(TanhApproxF16::type, ScalarType::F16);
+  EXPECT_EQ(TanhApproxF16x2::type, ScalarType::F16x2);
+  EXPECT_EQ(TanhApproxBf16::type, ScalarType::BF16);
+  EXPECT_EQ(TanhApproxBf16x2::type, ScalarType::BF16x2);
 }
 
 /** Reject legacy shorthand, forbidden modifiers, missing FTZ, and wrong arity. */
@@ -206,7 +200,7 @@ TEST(TranscendentalCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return resolved->check(checker::Context{.target = target});
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = item.ptx, .sm_version = item.sm}).has_value());
@@ -244,11 +238,11 @@ TEST(TranscendentalCompleteness, OwnsSourcesAndRevalidatesBoundWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& bf16 = test_ir_access::get<Ex2::ApproxFtzBf16>(
-      test_ir_access::get<Ex2>(owned->functions.front().body[1]).variant);
+  auto& bf16 = dynamic_cast<Ex2ApproxFtzBf16&>(
+      *owned->functions.front().body[1]);
   const auto packed =
-      test_ir_access::get<Ex2::ApproxF16x2>(
-          test_ir_access::get<Ex2>(owned->functions.front().body[0]).variant)
+      dynamic_cast<const Ex2ApproxF16x2&>(
+          *owned->functions.front().body[0])
           .src.value;
   bf16.src.value = packed;
   const auto invalid =

@@ -1,7 +1,6 @@
 #include <array>
 #include <iostream>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -94,26 +93,6 @@ constexpr std::string_view kFixture = R"ptx(
 
 namespace ir = ptx_frontend::resolved_ir;
 
-/** Borrow an exact opcode record from a const owner. */
-template <ir::PtxOperator T>
-const T* outer_get_if(const ir::OwnedInstruction* instruction) {
-  return instruction ? instruction->get_if<T>() : nullptr;
-}
-
-/** Borrow an exact opcode record from a mutable owner. */
-template <ir::PtxOperator T>
-T* outer_get_if(ir::OwnedInstruction* instruction) {
-  return instruction ? instruction->get_if<T>() : nullptr;
-}
-
-/** Require an exact opcode record and report mismatches as variant access errors. */
-template <ir::PtxOperator T>
-const T& outer_get(const ir::OwnedInstruction& instruction) {
-  if (const auto* value = outer_get_if<T>(&instruction))
-    return *value;
-  throw std::bad_variant_access();
-}
-
 /** Report a failed public-contract check in both Debug and Release builds. */
 bool require(bool condition, std::string_view description) {
   if (!condition)
@@ -173,45 +152,39 @@ bool checkBarrierSyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 7, "CTA barrier instructions retained"))
     return false;
-  const auto* ordinary = outer_get_if<ir::Barrier>(&body[0]);
-  const auto* qualified = outer_get_if<ir::Barrier>(&body[1]);
+  const auto* ordinary = body[0].get();
+  const auto* qualified = body[1].get();
   const auto* sync =
-      ordinary ? std::get_if<ir::Barrier::Sync>(&ordinary->variant) : nullptr;
+      ordinary ? dynamic_cast<const ir::BarrierSync*>(ordinary) : nullptr;
   const auto* cta_sync =
-      qualified ? std::get_if<ir::Barrier::CtaSync>(&qualified->variant)
-                : nullptr;
-  const auto* ordinary_arrive = outer_get_if<ir::Barrier>(&body[2]);
-  const auto* qualified_arrive = outer_get_if<ir::Barrier>(&body[3]);
+      qualified ? dynamic_cast<const ir::BarrierCtaSync*>(qualified) : nullptr;
+  const auto* ordinary_arrive = body[2].get();
+  const auto* qualified_arrive = body[3].get();
   const auto* arrive =
-      ordinary_arrive
-          ? std::get_if<ir::Barrier::Arrive>(&ordinary_arrive->variant)
-          : nullptr;
+      ordinary_arrive ? dynamic_cast<const ir::BarrierArrive*>(ordinary_arrive)
+                      : nullptr;
   const auto* cta_arrive =
       qualified_arrive
-          ? std::get_if<ir::Barrier::CtaArrive>(&qualified_arrive->variant)
+          ? dynamic_cast<const ir::BarrierCtaArrive*>(qualified_arrive)
           : nullptr;
-  const auto* popc_instruction = outer_get_if<ir::Barrier>(&body[4]);
+  const auto* popc_instruction = body[4].get();
   const auto* popc =
       popc_instruction
-          ? std::get_if<ir::Barrier::RedPopcU32>(&popc_instruction->variant)
+          ? dynamic_cast<const ir::BarrierRedPopcU32*>(popc_instruction)
           : nullptr;
-  const auto* and_instruction = outer_get_if<ir::Barrier>(&body[5]);
+  const auto* and_instruction = body[5].get();
   const auto* and_reduction =
       and_instruction
-          ? std::get_if<ir::Barrier::CtaRedAndPred>(&and_instruction->variant)
+          ? dynamic_cast<const ir::BarrierCtaRedAndPred*>(and_instruction)
           : nullptr;
-  const auto* popc_operands =
-      popc ? std::get_if<ir::Barrier::RedPopcU32::WithThreadCountOperands>(
-                 &popc->operands)
-           : nullptr;
   return require(
       sync && cta_sync && sync->aligned.value && !sync->aligned.locs.empty() &&
           !cta_sync->aligned.value && cta_sync->aligned.locs.empty() &&
           arrive && cta_arrive && !arrive->aligned.value &&
           arrive->aligned.locs.empty() && cta_arrive->aligned.value &&
           !cta_arrive->aligned.locs.empty() && popc && popc->aligned.value &&
-          !popc->aligned.locs.empty() && popc_operands &&
-          popc_operands->predicate.value.negated && and_reduction &&
+          !popc->aligned.locs.empty() && popc->thread_count.has_value() &&
+          popc->predicate.value.negated && and_reduction &&
           !and_reduction->aligned.value && and_reduction->aligned.locs.empty(),
       "public CTA barrier variant and aligned metadata");
 }
@@ -242,16 +215,15 @@ bool checkMembarLevelsContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 4, "all membar levels retained"))
     return false;
-  const auto* cta = outer_get_if<ir::Membar>(&body[0]);
-  const auto* gl = outer_get_if<ir::Membar>(&body[1]);
-  const auto* sys = outer_get_if<ir::Membar>(&body[2]);
-  return require(
-      cta && gl && sys &&
-          std::holds_alternative<ir::Membar::Cta>(cta->variant) &&
-          std::holds_alternative<ir::Membar::Gl>(gl->variant) &&
-          std::holds_alternative<ir::Membar::Sys>(sys->variant) &&
-          std::get<ir::Membar::Gl>(gl->variant).scope == ir::MemoryScope::Gpu,
-      "public membar levels and typed GPU scope");
+  const auto* cta = body[0].get();
+  const auto* gl = body[1].get();
+  const auto* sys = body[2].get();
+  return require(cta && gl && sys &&
+                     dynamic_cast<const ir::MembarCta*>(cta) != nullptr &&
+                     dynamic_cast<const ir::MembarGl*>(gl) != nullptr &&
+                     dynamic_cast<const ir::MembarSys*>(sys) != nullptr &&
+                     ir::MembarGl::scope == ir::MemoryScope::Gpu,
+                 "public membar levels and typed GPU scope");
 }
 
 /** Check the installed alias-proxy barrier after the syntax AST is released. */
@@ -280,9 +252,9 @@ bool checkMembarProxyAliasContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "membar proxy-alias retained"))
     return false;
-  const auto* instruction = outer_get_if<ir::Membar>(&body.front());
-  return require(instruction && std::holds_alternative<ir::Membar::ProxyAlias>(
-                                    instruction->variant),
+  const auto* instruction = body.front().get();
+  return require(instruction && dynamic_cast<const ir::MembarProxyAlias*>(
+                                    instruction) != nullptr,
                  "public membar proxy-alias variant");
 }
 
@@ -312,9 +284,9 @@ bool checkFenceProxyAliasContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "fence proxy-alias retained"))
     return false;
-  const auto* instruction = outer_get_if<ir::Fence>(&body.front());
+  const auto* instruction = body.front().get();
   const auto* alias =
-      instruction ? std::get_if<ir::Fence::ProxyAlias>(&instruction->variant)
+      instruction ? dynamic_cast<const ir::FenceProxyAlias*>(instruction)
                   : nullptr;
   return require(alias && alias->proxy && alias->alias,
                  "public fence proxy-alias variant and controls");
@@ -356,20 +328,20 @@ bool checkMembarProxyAsyncContract() {
                                 ir::AsyncProxyKind::AsyncGlobal,
                                 ir::AsyncProxyKind::AsyncSharedCta};
   for (size_t i = 0; i < expected.size(); ++i) {
-    const auto* instruction = outer_get_if<ir::Membar>(&body[i]);
+    const auto* instruction = body[i].get();
     const auto* async =
-        instruction ? std::get_if<ir::Membar::ProxyAsync>(&instruction->variant)
+        instruction ? dynamic_cast<const ir::MembarProxyAsync*>(instruction)
                     : nullptr;
     if (!require(async && async->proxy_kind.value == expected[i] &&
                      !async->proxy_kind.locs.empty(),
                  "public membar async-proxy space"))
       return false;
   }
-  const auto* instruction = outer_get_if<ir::Membar>(&body[3]);
-  const auto* cluster = instruction
-                            ? std::get_if<ir::Membar::ProxyAsyncSharedCluster>(
-                                  &instruction->variant)
-                            : nullptr;
+  const auto* instruction = body[3].get();
+  const auto* cluster =
+      instruction
+          ? dynamic_cast<const ir::MembarProxyAsyncSharedCluster*>(instruction)
+          : nullptr;
   return require(
       cluster &&
           cluster->proxy_kind.value == ir::AsyncProxyKind::AsyncSharedCluster &&
@@ -412,10 +384,10 @@ bool checkOrdinaryFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 8, "ordinary fence forms retained"))
     return false;
-  const auto* omitted_instruction = outer_get_if<ir::Fence>(&body[0]);
+  const auto* omitted_instruction = body[0].get();
   const auto* omitted =
       omitted_instruction
-          ? std::get_if<ir::Fence::OrdinaryCta>(&omitted_instruction->variant)
+          ? dynamic_cast<const ir::FenceOrdinaryCta*>(omitted_instruction)
           : nullptr;
   if (!require(omitted &&
                    omitted->semantics.value == ir::MemoryConsistency::Omitted &&
@@ -423,9 +395,9 @@ bool checkOrdinaryFenceContract() {
                "public omitted ordinary fence semantics"))
     return false;
   for (size_t i : {1U, 2U}) {
-    const auto* instruction = outer_get_if<ir::Fence>(&body[i]);
+    const auto* instruction = body[i].get();
     const auto* sc =
-        instruction ? std::get_if<ir::Fence::OrdinaryCta>(&instruction->variant)
+        instruction ? dynamic_cast<const ir::FenceOrdinaryCta*>(instruction)
                     : nullptr;
     if (!require(sc && sc->semantics.value == ir::MemoryConsistency::Sc &&
                      !sc->semantics.locs.empty(),
@@ -433,22 +405,22 @@ bool checkOrdinaryFenceContract() {
       return false;
   }
   for (size_t i : {3U, 4U}) {
-    const auto* instruction = outer_get_if<ir::Fence>(&body[i]);
-    if (!require(instruction && std::holds_alternative<ir::Fence::AcqRelCta>(
-                                    instruction->variant),
+    const auto* instruction = body[i].get();
+    if (!require(instruction && dynamic_cast<const ir::FenceAcqRelCta*>(
+                                    instruction) != nullptr,
                  "public legacy acquire-release CTA variant"))
       return false;
   }
-  const auto* gpu_instruction = outer_get_if<ir::Fence>(&body[5]);
+  const auto* gpu_instruction = body[5].get();
   const auto* gpu =
       gpu_instruction
-          ? std::get_if<ir::Fence::OrdinaryGpuSys>(&gpu_instruction->variant)
+          ? dynamic_cast<const ir::FenceOrdinaryGpuSys*>(gpu_instruction)
           : nullptr;
-  const auto* cluster_instruction = outer_get_if<ir::Fence>(&body[6]);
-  const auto* cluster = cluster_instruction
-                            ? std::get_if<ir::Fence::OrdinaryCluster>(
-                                  &cluster_instruction->variant)
-                            : nullptr;
+  const auto* cluster_instruction = body[6].get();
+  const auto* cluster =
+      cluster_instruction
+          ? dynamic_cast<const ir::FenceOrdinaryCluster*>(cluster_instruction)
+          : nullptr;
   return require(gpu && cluster &&
                      gpu->semantics.value == ir::MemoryConsistency::AcqRel &&
                      gpu->scope.value == ir::MemoryScope::Gpu &&
@@ -482,10 +454,10 @@ bool checkMbarrierInitFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "mbarrier-init fence retained"))
     return false;
-  const auto* instruction = outer_get_if<ir::Fence>(&body.front());
+  const auto* instruction = body.front().get();
   const auto* restricted =
-      instruction ? std::get_if<ir::Fence::MbarrierInitReleaseCluster>(
-                        &instruction->variant)
+      instruction ? dynamic_cast<const ir::FenceMbarrierInitReleaseCluster*>(
+                        instruction)
                   : nullptr;
   return require(restricted && restricted->op_restrict &&
                      restricted->semantics == ir::MemoryConsistency::Release &&
@@ -523,17 +495,17 @@ bool checkSharedSyncRestrictedFenceContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 2, "shared restricted fences retained"))
     return false;
-  const auto* acquire_instruction = outer_get_if<ir::Fence>(&body[0]);
-  const auto* release_instruction = outer_get_if<ir::Fence>(&body[1]);
+  const auto* acquire_instruction = body[0].get();
+  const auto* release_instruction = body[1].get();
   const auto* acquire =
       acquire_instruction
-          ? std::get_if<ir::Fence::AcquireSyncRestrictSharedCluster>(
-                &acquire_instruction->variant)
+          ? dynamic_cast<const ir::FenceAcquireSyncRestrictSharedCluster*>(
+                acquire_instruction)
           : nullptr;
   const auto* release =
       release_instruction
-          ? std::get_if<ir::Fence::ReleaseSyncRestrictSharedCta>(
-                &release_instruction->variant)
+          ? dynamic_cast<const ir::FenceReleaseSyncRestrictSharedCta*>(
+                release_instruction)
           : nullptr;
   return require(acquire && release &&
                      acquire->semantics == ir::MemoryConsistency::Acquire &&
@@ -581,18 +553,19 @@ bool checkMbarrierTestWaitContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 3, "paired mbarrier wait forms retained"))
     return false;
-  const auto* first_instruction = outer_get_if<ir::Mbarrier>(&body[0]);
-  const auto* second_instruction = outer_get_if<ir::Mbarrier>(&body[1]);
+  const auto* first_instruction = body[0].get();
+  const auto* second_instruction = body[1].get();
   const auto* first =
       first_instruction
-          ? std::get_if<ir::Mbarrier::TestWaitTokenSemanticsGenericOrShared>(
-                &first_instruction->variant)
+          ? dynamic_cast<
+                const ir::MbarrierTestWaitTokenSemanticsGenericOrShared*>(
+                first_instruction)
           : nullptr;
   const auto* second =
       second_instruction
-          ? std::get_if<
-                ir::Mbarrier::TestWaitParityConditionalSemanticsSharedCta>(
-                &second_instruction->variant)
+          ? dynamic_cast<
+                const ir::MbarrierTestWaitParityConditionalSemanticsSharedCta*>(
+                second_instruction)
           : nullptr;
   return require(
       first && second &&
@@ -642,29 +615,27 @@ bool checkMbarrierTryWaitContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 3, "paired mbarrier try-wait forms retained"))
     return false;
-  const auto* first_instruction = outer_get_if<ir::Mbarrier>(&body[0]);
-  const auto* second_instruction = outer_get_if<ir::Mbarrier>(&body[1]);
+  const auto* first_instruction = body[0].get();
+  const auto* second_instruction = body[1].get();
   const auto* first =
       first_instruction
-          ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared>(
-                &first_instruction->variant)
+          ? dynamic_cast<
+                const ir::MbarrierTryWaitTokenSemanticsGenericOrShared*>(
+                first_instruction)
           : nullptr;
   const auto* second =
       second_instruction
-          ? std::get_if<
-                ir::Mbarrier::TryWaitParityConditionalSemanticsSharedCta>(
-                &second_instruction->variant)
+          ? dynamic_cast<
+                const ir::MbarrierTryWaitParityConditionalSemanticsSharedCta*>(
+                second_instruction)
           : nullptr;
-  const auto* hint =
-      first ? std::get_if<ir::Mbarrier::TryWaitTokenSemanticsGenericOrShared::
-                              WithHintOperands>(&first->operands)
-            : nullptr;
   return require(
-      first && second && hint &&
+      first && second && first->time_hint.has_value() &&
           first->semantics.value == ir::MemoryConsistency::Acquire &&
           first->scope.value == ir::MemoryScope::Cta &&
           !first->semantics.locs.empty() && !first->scope.locs.empty() &&
-          std::get<ir::ResolvedImmediate>(hint->time_hint.value).bits == 16U &&
+          std::get<ir::ResolvedImmediate>(first->time_hint->value).bits ==
+              16U &&
           second->semantics.value == ir::MemoryConsistency::Relaxed &&
           second->scope.value == ir::MemoryScope::Cluster &&
           !second->semantics.locs.empty() && !second->scope.locs.empty(),
@@ -679,35 +650,32 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   if (!require(body.size() == 47, "all conversion and atomic instructions"))
     return false;
 
-  auto* atom_instruction = outer_get_if<ir::Atom>(&body[27]);
-  auto* atom =
-      atom_instruction
-          ? std::get_if<ir::Atom::GlobalAddU32>(&atom_instruction->variant)
+  auto* atom_instruction = body[27].get();
+  auto* atom = atom_instruction
+                   ? dynamic_cast<ir::AtomGlobalAddU32*>(atom_instruction)
+                   : nullptr;
+  auto* red_instruction = body[28].get();
+  auto* red = red_instruction
+                  ? dynamic_cast<ir::RedGlobalAddU32*>(red_instruction)
+                  : nullptr;
+  auto* legacy_cas_instruction = body[29].get();
+  auto* legacy_cas =
+      legacy_cas_instruction
+          ? dynamic_cast<ir::AtomGlobalCasB32*>(legacy_cas_instruction)
           : nullptr;
-  auto* red_instruction = outer_get_if<ir::Red>(&body[28]);
-  auto* red =
-      red_instruction
-          ? std::get_if<ir::Red::GlobalAddU32>(&red_instruction->variant)
+  auto* modern_cas_instruction = body[30].get();
+  auto* modern_cas =
+      modern_cas_instruction
+          ? dynamic_cast<ir::AtomGlobalCasB32*>(modern_cas_instruction)
           : nullptr;
-  auto* legacy_cas_instruction = outer_get_if<ir::Atom>(&body[29]);
-  auto* legacy_cas = legacy_cas_instruction
-                         ? std::get_if<ir::Atom::GlobalCasB32>(
-                               &legacy_cas_instruction->variant)
-                         : nullptr;
-  auto* modern_cas_instruction = outer_get_if<ir::Atom>(&body[30]);
-  auto* modern_cas = modern_cas_instruction
-                         ? std::get_if<ir::Atom::GlobalCasB32>(
-                               &modern_cas_instruction->variant)
-                         : nullptr;
   if (!require(
           atom && red && legacy_cas && modern_cas &&
-              std::get<0>(atom->operands).dst.value.register_ref.has_value() &&
+              atom->dst.value.register_ref.has_value() &&
               legacy_cas->dst.value.register_ref.has_value() &&
               modern_cas->dst.value.register_ref.has_value() &&
               std::holds_alternative<ir::ResolvedRegisterRef>(
-                  std::get<0>(atom->operands).src.value) &&
-              std::holds_alternative<ir::ResolvedImmediate>(
-                  std::get<0>(red->operands).src.value) &&
+                  atom->src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(red->src.value) &&
               std::holds_alternative<ir::ResolvedImmediate>(
                   legacy_cas->compare.value) &&
               std::holds_alternative<ir::ResolvedRegisterRef>(
@@ -719,179 +687,157 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "owned atomic register and immediate sources"))
     return false;
 
-  const auto* inc_instruction = outer_get_if<ir::Atom>(&body[31]);
-  const auto* inc =
-      inc_instruction
-          ? std::get_if<ir::Atom::GlobalIncU32>(&inc_instruction->variant)
-          : nullptr;
-  const auto* exch_instruction = outer_get_if<ir::Atom>(&body[32]);
+  auto* inc_instruction = body[31].get();
+  const auto* inc = inc_instruction
+                        ? dynamic_cast<ir::AtomGlobalIncU32*>(inc_instruction)
+                        : nullptr;
+  auto* exch_instruction = body[32].get();
   const auto* exch =
-      exch_instruction
-          ? std::get_if<ir::Atom::GlobalExchB32>(&exch_instruction->variant)
-          : nullptr;
-  const auto* xor_instruction = outer_get_if<ir::Red>(&body[33]);
+      exch_instruction ? dynamic_cast<ir::AtomGlobalExchB32*>(exch_instruction)
+                       : nullptr;
+  auto* xor_instruction = body[33].get();
   const auto* xor_red =
-      xor_instruction
-          ? std::get_if<ir::Red::GlobalXorB32>(&xor_instruction->variant)
-          : nullptr;
-  if (!require(inc && exch && xor_red &&
-                   std::holds_alternative<ir::ResolvedRegisterRef>(
-                       std::get<0>(inc->operands).src.value) &&
-                   std::holds_alternative<ir::ResolvedImmediate>(
-                       std::get<0>(exch->operands).src.value) &&
-                   std::holds_alternative<ir::ResolvedRegisterRef>(
-                       std::get<0>(xor_red->operands).src.value),
-               "owned expanded atomic and reduction variants"))
+      xor_instruction ? dynamic_cast<ir::RedGlobalXorB32*>(xor_instruction)
+                      : nullptr;
+  if (!require(
+          inc && exch && xor_red &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(inc->src.value) &&
+              std::holds_alternative<ir::ResolvedImmediate>(exch->src.value) &&
+              std::holds_alternative<ir::ResolvedRegisterRef>(
+                  xor_red->src.value),
+          "owned expanded atomic and reduction variants"))
     return false;
 
-  const auto* add_64_instruction = outer_get_if<ir::Atom>(&body[34]);
+  auto* add_64_instruction = body[34].get();
   const auto* add_64 =
       add_64_instruction
-          ? std::get_if<ir::Atom::GlobalAddU64>(&add_64_instruction->variant)
+          ? dynamic_cast<ir::AtomGlobalAddU64*>(add_64_instruction)
           : nullptr;
-  const auto* min_64_instruction = outer_get_if<ir::Atom>(&body[35]);
+  auto* min_64_instruction = body[35].get();
   const auto* min_64 =
       min_64_instruction
-          ? std::get_if<ir::Atom::GlobalMinS64>(&min_64_instruction->variant)
+          ? dynamic_cast<ir::AtomGlobalMinS64*>(min_64_instruction)
           : nullptr;
-  const auto* cas_64_instruction = outer_get_if<ir::Atom>(&body[36]);
+  auto* cas_64_instruction = body[36].get();
   const auto* cas_64 =
       cas_64_instruction
-          ? std::get_if<ir::Atom::GlobalCasB64>(&cas_64_instruction->variant)
+          ? dynamic_cast<ir::AtomGlobalCasB64*>(cas_64_instruction)
           : nullptr;
-  const auto* red_64_instruction = outer_get_if<ir::Red>(&body[37]);
+  auto* red_64_instruction = body[37].get();
   const auto* red_64 =
       red_64_instruction
-          ? std::get_if<ir::Red::GlobalXorB64>(&red_64_instruction->variant)
+          ? dynamic_cast<ir::RedGlobalXorB64*>(red_64_instruction)
           : nullptr;
   if (!require(add_64 && min_64 && cas_64 && red_64 &&
                    std::holds_alternative<ir::ResolvedRegisterRef>(
-                       std::get<0>(add_64->operands).src.value) &&
+                       add_64->src.value) &&
                    std::holds_alternative<ir::ResolvedImmediate>(
-                       std::get<0>(min_64->operands).src.value) &&
+                       min_64->src.value) &&
                    std::holds_alternative<ir::ResolvedRegisterRef>(
                        cas_64->compare.value) &&
                    std::holds_alternative<ir::ResolvedImmediate>(
                        cas_64->swap.value) &&
                    std::holds_alternative<ir::ResolvedRegisterRef>(
-                       std::get<0>(red_64->operands).src.value),
+                       red_64->src.value),
                "owned 64-bit atomic and reduction variants"))
     return false;
 
-  const auto* float_atom = outer_get_if<ir::Atom>(&body[38]);
-  const auto* float_red = outer_get_if<ir::Red>(&body[39]);
-  const auto* double_atom = outer_get_if<ir::Atom>(&body[40]);
-  const auto* double_red = outer_get_if<ir::Red>(&body[41]);
-  if (!require(float_atom && float_red && double_atom && double_red &&
-                   std::holds_alternative<ir::Atom::GlobalAddF32>(
-                       float_atom->variant) &&
-                   std::holds_alternative<ir::Red::GlobalAddF32>(
-                       float_red->variant) &&
-                   std::holds_alternative<ir::Atom::GlobalAddF64>(
-                       double_atom->variant) &&
-                   std::holds_alternative<ir::Red::GlobalAddF64>(
-                       double_red->variant),
-               "owned float atomic and reduction variants"))
+  const auto* float_atom = body[38].get();
+  const auto* float_red = body[39].get();
+  const auto* double_atom = body[40].get();
+  const auto* double_red = body[41].get();
+  if (!require(
+          float_atom && float_red && double_atom && double_red &&
+              dynamic_cast<const ir::AtomGlobalAddF32*>(float_atom) !=
+                  nullptr &&
+              dynamic_cast<const ir::RedGlobalAddF32*>(float_red) != nullptr &&
+              dynamic_cast<const ir::AtomGlobalAddF64*>(double_atom) !=
+                  nullptr &&
+              dynamic_cast<const ir::RedGlobalAddF64*>(double_red) != nullptr,
+          "owned float atomic and reduction variants"))
     return false;
 
-  const auto* vector_atom_instruction = outer_get_if<ir::Atom>(&body[42]);
-  const auto* vector_atom = vector_atom_instruction
-                                ? std::get_if<ir::Atom::VectorAddNoftzF16>(
-                                      &vector_atom_instruction->variant)
-                                : nullptr;
-  const auto* vector_red_instruction = outer_get_if<ir::Red>(&body[43]);
-  const auto* vector_red = vector_red_instruction
-                               ? std::get_if<ir::Red::VectorAddNoftzF16>(
-                                     &vector_red_instruction->variant)
-                               : nullptr;
+  auto* vector_atom_instruction = body[42].get();
+  const auto* vector_atom =
+      vector_atom_instruction
+          ? dynamic_cast<ir::AtomVectorAddNoftzF16*>(vector_atom_instruction)
+          : nullptr;
+  auto* vector_red_instruction = body[43].get();
+  const auto* vector_red =
+      vector_red_instruction
+          ? dynamic_cast<ir::RedVectorAddNoftzF16*>(vector_red_instruction)
+          : nullptr;
   if (!require(vector_atom && vector_red &&
                    vector_atom->vector.value == ir::VectorArity::V2 &&
                    vector_red->vector.value == ir::VectorArity::V2 &&
                    vector_atom->cache_hint.value &&
                    vector_red->cache_hint.value &&
-                   !std::get<1>(vector_atom->operands)
-                        .dst.value.elements.front()
-                        .has_value() &&
-                   std::get<1>(vector_atom->operands)
-                           .cache_policy.value.declared_type ==
+                   !vector_atom->dst.value.elements.front().has_value() &&
+                   vector_atom->cache_policy.has_value() &&
+                   vector_atom->cache_policy->value.declared_type ==
                        ptx_frontend::base::ScalarType::B64,
                "owned vector atomic and reduction policy layout"))
     return false;
 
-  const auto* shared_async = outer_get_if<ir::Red>(&body[44]);
-  const auto* release_async = outer_get_if<ir::Red>(&body[45]);
+  const auto* shared_async =
+      dynamic_cast<const ir::RedAsyncSharedAddU32*>(body[44].get());
+  const auto* release_async =
+      dynamic_cast<const ir::RedAsyncReleaseAddU64*>(body[45].get());
   if (!require(shared_async && release_async &&
-                   std::holds_alternative<ir::Red::AsyncSharedAddU32>(
-                       shared_async->variant) &&
-                   std::holds_alternative<ir::Red::AsyncReleaseAddU64>(
-                       release_async->variant) &&
                    shared_async->address_qualifier.value ==
                        ir::AtomicAddressQualifier::SharedCluster &&
                    release_async->address_qualifier.value ==
                        ir::AtomicAddressQualifier::Global &&
-                   std::get<ir::Red::AsyncReleaseAddU64>(release_async->variant)
-                       .mmio.value,
+                   release_async->mmio.value,
                "owned asynchronous reduction modes"))
     return false;
 
-  auto* testp = outer_get_if<ir::Testp>(&body[8]);
-  auto* property =
-      testp ? std::get_if<ir::Testp::F32>(&testp->variant) : nullptr;
+  auto* testp = body[8].get();
+  auto* property = testp ? dynamic_cast<ir::TestpF32*>(testp) : nullptr;
   if (!require(property && property->property.value ==
                                ptx_frontend::base::TestProperty::Normal,
                "typed testp.normal.f32 property"))
     return false;
-  const auto* copysign = outer_get_if<ir::Copysign>(&body[9]);
-  if (!require(copysign &&
-                   std::holds_alternative<ir::Copysign::F32>(copysign->variant),
-               "typed copysign.f32 variant"))
+  const auto* copysign = body[9].get();
+  if (!require(
+          copysign && dynamic_cast<const ir::CopysignF32*>(copysign) != nullptr,
+          "typed copysign.f32 variant"))
     return false;
-  const auto* sin = outer_get_if<ir::Sin>(&body[10]);
+  const auto* sin = body[10].get();
   const auto* sin_f32 =
-      sin ? std::get_if<ir::Sin::ApproxF32>(&sin->variant) : nullptr;
+      sin ? dynamic_cast<const ir::SinApproxF32*>(sin) : nullptr;
   if (!require(sin_f32 && sin_f32->ftz.value,
                "typed transcendental approximation and FTZ"))
     return false;
-  const auto* ex2 = outer_get_if<ir::Ex2>(&body[11]);
-  if (!require(
-          ex2 && std::holds_alternative<ir::Ex2::ApproxFtzBf16>(ex2->variant),
-          "typed BF16 transcendental variant"))
+  const auto* ex2 = body[11].get();
+  if (!require(ex2 && dynamic_cast<const ir::Ex2ApproxFtzBf16*>(ex2) != nullptr,
+               "typed BF16 transcendental variant"))
     return false;
 
-  auto* min_binary_instruction = outer_get_if<ir::Min>(&body[12]);
-  auto* min_ternary_instruction = outer_get_if<ir::Min>(&body[13]);
-  auto* max_binary_instruction = outer_get_if<ir::Max>(&body[14]);
-  auto* max_ternary_instruction = outer_get_if<ir::Max>(&body[15]);
-  auto* min_binary =
-      min_binary_instruction
-          ? std::get_if<ir::Min::F32>(&min_binary_instruction->variant)
-          : nullptr;
-  auto* min_ternary =
-      min_ternary_instruction
-          ? std::get_if<ir::Min::F32>(&min_ternary_instruction->variant)
-          : nullptr;
-  auto* max_binary =
-      max_binary_instruction
-          ? std::get_if<ir::Max::F32>(&max_binary_instruction->variant)
-          : nullptr;
-  auto* max_ternary =
-      max_ternary_instruction
-          ? std::get_if<ir::Max::F32>(&max_ternary_instruction->variant)
-          : nullptr;
+  auto* min_binary_instruction = body[12].get();
+  auto* min_ternary_instruction = body[13].get();
+  auto* max_binary_instruction = body[14].get();
+  auto* max_ternary_instruction = body[15].get();
+  auto* min_binary = min_binary_instruction
+                         ? dynamic_cast<ir::MinF32*>(min_binary_instruction)
+                         : nullptr;
+  auto* min_ternary = min_ternary_instruction
+                          ? dynamic_cast<ir::MinF32*>(min_ternary_instruction)
+                          : nullptr;
+  auto* max_binary = max_binary_instruction
+                         ? dynamic_cast<ir::MaxF32*>(max_binary_instruction)
+                         : nullptr;
+  auto* max_ternary = max_ternary_instruction
+                          ? dynamic_cast<ir::MaxF32*>(max_ternary_instruction)
+                          : nullptr;
   if (!require(
           min_binary && min_ternary && max_binary && max_ternary &&
               min_binary->operand_layout == ir::ResolvedOperandLayoutTag{0} &&
               min_ternary->operand_layout == ir::ResolvedOperandLayoutTag{1} &&
               max_binary->operand_layout == ir::ResolvedOperandLayoutTag{0} &&
               max_ternary->operand_layout == ir::ResolvedOperandLayoutTag{1} &&
-              std::holds_alternative<ir::Min::F32::BinaryOperands>(
-                  min_binary->operands) &&
-              std::holds_alternative<ir::Min::F32::TernaryOperands>(
-                  min_ternary->operands) &&
-              std::holds_alternative<ir::Max::F32::BinaryOperands>(
-                  max_binary->operands) &&
-              std::holds_alternative<ir::Max::F32::TernaryOperands>(
-                  max_ternary->operands) &&
+              !min_binary->src3.has_value() && min_ternary->src3.has_value() &&
+              !max_binary->src3.has_value() && max_ternary->src3.has_value() &&
               min_binary->ftz.value && min_binary->nan.value &&
               min_binary->xorsign_abs.value && !min_binary->abs.value &&
               min_ternary->ftz.value && min_ternary->nan.value &&
@@ -901,25 +847,25 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed MIN/MAX modifier and operand layouts"))
     return false;
 
-  auto* add_register_instruction = outer_get_if<ir::Add>(&body[16]);
-  auto* add_immediate_instruction = outer_get_if<ir::Add>(&body[17]);
-  auto* sub_register_instruction = outer_get_if<ir::Sub>(&body[18]);
-  auto* sub_immediate_instruction = outer_get_if<ir::Sub>(&body[19]);
+  auto* add_register_instruction = body[16].get();
+  auto* add_immediate_instruction = body[17].get();
+  auto* sub_register_instruction = body[18].get();
+  auto* sub_immediate_instruction = body[19].get();
   auto* add_register =
       add_register_instruction
-          ? std::get_if<ir::Add::MixedF32>(&add_register_instruction->variant)
+          ? dynamic_cast<ir::AddMixedF32*>(add_register_instruction)
           : nullptr;
   auto* add_immediate =
       add_immediate_instruction
-          ? std::get_if<ir::Add::MixedF32>(&add_immediate_instruction->variant)
+          ? dynamic_cast<ir::AddMixedF32*>(add_immediate_instruction)
           : nullptr;
   auto* sub_register =
       sub_register_instruction
-          ? std::get_if<ir::Sub::MixedF32>(&sub_register_instruction->variant)
+          ? dynamic_cast<ir::SubMixedF32*>(sub_register_instruction)
           : nullptr;
   auto* sub_immediate =
       sub_immediate_instruction
-          ? std::get_if<ir::Sub::MixedF32>(&sub_immediate_instruction->variant)
+          ? dynamic_cast<ir::SubMixedF32*>(sub_immediate_instruction)
           : nullptr;
   if (!require(add_register && add_immediate && sub_register && sub_immediate &&
                    add_register->input_type.value ==
@@ -956,21 +902,19 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "mixed register and floating-immediate values"))
     return false;
 
-  auto* set_instruction = outer_get_if<ir::Set>(&body[20]);
-  auto* set_float =
-      set_instruction
-          ? std::get_if<ir::Set::FloatBoolean>(&set_instruction->variant)
-          : nullptr;
-  auto* selp_scalar_instruction = outer_get_if<ir::Selp>(&body[21]);
+  auto* set_instruction = body[20].get();
+  auto* set_float = set_instruction
+                        ? dynamic_cast<ir::SetFloatBoolean*>(set_instruction)
+                        : nullptr;
+  auto* selp_scalar_instruction = body[21].get();
   auto* selp_scalar =
       selp_scalar_instruction
-          ? std::get_if<ir::Selp::Scalar>(&selp_scalar_instruction->variant)
+          ? dynamic_cast<ir::SelpScalar*>(selp_scalar_instruction)
           : nullptr;
-  auto* selp_u32_instruction = outer_get_if<ir::Selp>(&body[22]);
-  auto* selp_u32 =
-      selp_u32_instruction
-          ? std::get_if<ir::Selp::U32>(&selp_u32_instruction->variant)
-          : nullptr;
+  auto* selp_u32_instruction = body[22].get();
+  auto* selp_u32 = selp_u32_instruction
+                       ? dynamic_cast<ir::SelpU32*>(selp_u32_instruction)
+                       : nullptr;
   if (!require(
           set_float &&
               set_float->comparison.value ==
@@ -989,15 +933,15 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed SET and both SELP public alternatives"))
     return false;
 
-  auto* set_half_instruction = outer_get_if<ir::Set>(&body[23]);
-  auto* set_half = set_half_instruction
-                       ? std::get_if<ir::Set::HalfNativeF16x2Boolean>(
-                             &set_half_instruction->variant)
-                       : nullptr;
-  auto* set_bfloat_instruction = outer_get_if<ir::Set>(&body[24]);
+  auto* set_half_instruction = body[23].get();
+  auto* set_half =
+      set_half_instruction
+          ? dynamic_cast<ir::SetHalfNativeF16x2Boolean*>(set_half_instruction)
+          : nullptr;
+  auto* set_bfloat_instruction = body[24].get();
   auto* set_bfloat =
       set_bfloat_instruction
-          ? std::get_if<ir::Set::HalfBf16F16>(&set_bfloat_instruction->variant)
+          ? dynamic_cast<ir::SetHalfBf16F16*>(set_bfloat_instruction)
           : nullptr;
   if (!require(
           set_half && set_half->ftz.value &&
@@ -1013,15 +957,15 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
           "typed half/bfloat SET alternatives and owned operands"))
     return false;
 
-  auto* slct_integer_instruction = outer_get_if<ir::Slct>(&body[25]);
+  auto* slct_integer_instruction = body[25].get();
   auto* slct_integer =
       slct_integer_instruction
-          ? std::get_if<ir::Slct::S32>(&slct_integer_instruction->variant)
+          ? dynamic_cast<ir::SlctS32*>(slct_integer_instruction)
           : nullptr;
-  auto* slct_floating_instruction = outer_get_if<ir::Slct>(&body[26]);
+  auto* slct_floating_instruction = body[26].get();
   auto* slct_floating =
       slct_floating_instruction
-          ? std::get_if<ir::Slct::F32>(&slct_floating_instruction->variant)
+          ? dynamic_cast<ir::SlctF32*>(slct_floating_instruction)
           : nullptr;
   if (!require(slct_integer &&
                    slct_integer->dtype.value ==
@@ -1052,14 +996,12 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
   max_ternary->xorsign_abs.value = false;
   if (!forbidden_ternary_modifier)
     return false;
-  const auto original_abs = min_ternary->abs;
-  min_ternary->abs = ptx_frontend::WithLocs<bool>{false};
-  min_ternary->operand_layout = ir::ResolvedOperandLayoutTag{0};
+  const auto original_src3 = min_ternary->src3;
+  min_ternary->src3.reset();
   const bool mismatched_layout = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch,
       "MIN rejects a layout tag/payload mismatch");
-  min_ternary->operand_layout = ir::ResolvedOperandLayoutTag{1};
-  min_ternary->abs = original_abs;
+  min_ternary->src3 = original_src3;
   if (!mismatched_layout)
     return false;
   property->property.value = ptx_frontend::base::TestProperty::Invalid;
@@ -1184,21 +1126,21 @@ bool checkCpAsyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() >= 3, "non-bulk copy forms retained"))
     return false;
-  const auto* original_instruction = outer_get_if<ir::Cp>(&body[0]);
-  const auto* original = original_instruction
-                             ? std::get_if<ir::Cp::AsyncCaSharedGlobal>(
-                                   &original_instruction->variant)
-                             : nullptr;
+  const auto* original_instruction = body[0].get();
+  const auto* original =
+      original_instruction
+          ? dynamic_cast<const ir::CpAsyncCaSharedGlobal*>(original_instruction)
+          : nullptr;
   if (!require(original && !original->dst.locs.empty() &&
                    !original->src.locs.empty() &&
                    original->cp_size.value.bits == 4,
                "original three-operand public copy fields remain available"))
     return false;
-  const auto* policy_instruction = outer_get_if<ir::Cp>(&body[1]);
+  const auto* policy_instruction = body[1].get();
   const auto* policy =
       policy_instruction
-          ? std::get_if<ir::Cp::AsyncCaSharedGlobalCacheHintControl>(
-                &policy_instruction->variant)
+          ? dynamic_cast<const ir::CpAsyncCaSharedGlobalCacheHintControl*>(
+                policy_instruction)
           : nullptr;
   return require(
       policy &&
@@ -1246,25 +1188,26 @@ bool checkBulkAsyncContract() {
   const auto& body = owned->functions.front().body;
   if (!require(body.size() == 5, "bulk async forms retained"))
     return false;
-  const auto* copy = outer_get_if<ir::Cp>(&body[0]);
+  const auto* copy = body[0].get();
   const auto* mbar =
-      copy ? std::get_if<ir::Cp::AsyncBulkGlobalSharedCta>(&copy->variant)
+      copy ? dynamic_cast<const ir::CpAsyncBulkGlobalSharedCta*>(copy)
            : nullptr;
-  const auto* group = outer_get_if<ir::Cp>(&body[1]);
+  const auto* group = body[1].get();
   const auto* bulk_group =
-      group ? std::get_if<ir::Cp::AsyncBulkSharedCtaGlobal>(&group->variant)
+      group ? dynamic_cast<const ir::CpAsyncBulkSharedCtaGlobal*>(group)
             : nullptr;
-  return require(mbar && bulk_group &&
-                     ir::Cp::AsyncBulkGlobalSharedCta::completion_kind ==
+  const auto* commit =
+      dynamic_cast<const ir::CpAsyncBulkCommitGroup*>(body[2].get());
+  const auto* wait =
+      dynamic_cast<const ir::CpAsyncBulkWaitGroup*>(body[3].get());
+  const auto* zero_fill = dynamic_cast<const ir::StBulkZero*>(body[4].get());
+  return require(mbar && bulk_group && commit && wait && zero_fill &&
+                     ir::CpAsyncBulkGlobalSharedCta::completion_kind ==
                          ptx_frontend::base::AsyncCompletionKind::
                              MbarrierCompleteTxBytes &&
-                     ir::Cp::AsyncBulkSharedCtaGlobal::completion_kind ==
+                     ir::CpAsyncBulkSharedCtaGlobal::completion_kind ==
                          ptx_frontend::base::AsyncCompletionKind::BulkGroup &&
-                     std::holds_alternative<ir::Cp::AsyncBulkCommitGroup>(
-                         outer_get<ir::Cp>(body[2]).variant) &&
-                     std::get<ir::Cp::AsyncBulkWaitGroup>(
-                         outer_get<ir::Cp>(body[3]).variant)
-                         .read.value,
+                     wait->read.value,
                  "public bulk async completion and group controls");
 }
 

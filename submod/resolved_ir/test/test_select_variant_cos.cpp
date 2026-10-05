@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,12 +24,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveCos, SelectsFrozenApproxVariant) {
   const auto resolved =
-      resolve<Cos>(parse_instruction("cos.approx.f32 %f0, %f1;"));
+      resolveCos(parse_instruction("cos.approx.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(test_ir_access::get_if<Cos::ApproxF32>(&resolved->variant),
+  ASSERT_NE(dynamic_cast<CosApproxF32*>(resolved->get()),
             nullptr);
-  EXPECT_EQ(Cos::ApproxF32::type, ScalarType::F32);
-  EXPECT_TRUE(Cos::ApproxF32::approx);
+  EXPECT_EQ(CosApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(CosApproxF32::approx);
 }
 
 TEST(ResolveCos, RejectsInvalidForms) {
@@ -38,7 +37,7 @@ TEST(ResolveCos, RejectsInvalidForms) {
        {"cos.f32 %f0, %f1;", "cos.approx.f64 %d0, %d1;",
         "cos.approx.f32x2 %f0, %f1;", "cos.rz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Cos>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), cos_syntax_descriptor()).has_value());
   }
 }
 

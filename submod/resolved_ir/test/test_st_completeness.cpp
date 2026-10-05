@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string_view>
@@ -22,10 +21,9 @@ using test_helpers::parseModule;
 void expect_store(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<St>(*ast);
+  const auto resolved = resolveSt(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range});
   ASSERT_TRUE(checked.has_value())
       << (checked.error().empty()
@@ -38,11 +36,10 @@ void expect_store_rejected(std::string_view source,
                            checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<St>(*ast);
+  const auto resolved = resolveSt(*ast);
   if (!resolved)
     return;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -51,10 +48,9 @@ void expect_store_unavailable(std::string_view source,
                               checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<St>(*ast);
+  const auto resolved = resolveSt(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -231,10 +227,9 @@ TEST(StCompleteness, MaterializesOptionalL1EvictionDefault) {
       "st.global.L2::evict_first.v8.u32 [%rd0], "
       "{%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7};");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<St>(*ast);
+  const auto resolved = resolveSt(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* store =
-      test_ir_access::get_if<St::GlobalL2EvictVector>(&resolved->variant);
+  const auto* store = dynamic_cast<StGlobalL2EvictVector*>(resolved->get());
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->l1_eviction_priority.value, EvictionPriority::Invalid);
 }
@@ -314,12 +309,12 @@ TEST(StCompleteness, PreservesParameterPolicyAndRevalidatesMutation) {
   const auto mmio_ast =
       parseInstruction("st.global.mmio.release.sys.u32 [%rd0], %r0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(mmio_ast);
-  auto mmio = resolve<St>(*mmio_ast);
+  auto mmio = resolveSt(*mmio_ast);
   ASSERT_TRUE(mmio.has_value()) << mmio.error().message;
-  auto& store = test_ir_access::get<St::ExplicitScalar>(mmio->variant);
-  store.semantics.value = MemoryConsistency::Acquire;
-  const auto checked = checker::check(
-      *mmio,
+  auto* store = dynamic_cast<StExplicitScalar*>(mmio->get());
+  ASSERT_NE(store, nullptr);
+  store->semantics.value = MemoryConsistency::Acquire;
+  const auto checked = (*mmio)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
                        .instruction_range = mmio_ast->range});
   EXPECT_FALSE(checked);

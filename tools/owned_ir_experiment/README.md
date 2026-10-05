@@ -1,5 +1,13 @@
 # Resolved instruction ownership measurements
 
+This file preserves historical measurements from the former variant-based and
+owned-instruction prototypes. The standalone runtime consumer and comparison
+script described below were retired with the canonical direct-class IR
+promotion; their commands are historical records and no longer run from this
+tree. The nanosecond measurements below used a different harness, workload,
+pipeline, and driver from the Google Benchmark symbol-table measurements in
+`docs/us-en/build_scalability.md`, so their numbers are not directly comparable.
+
 ## Historical matched cold library build
 
 One fresh `ptx_frontend_resolved_ir` build per configuration used Clang 21,

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -9,9 +8,10 @@
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -73,17 +73,15 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
     const auto bound = binding::bindSymbols(*ast);
     ASSERT_TRUE(bound.diagnostics.empty());
 
-    const auto resolved = test_support::resolveTypedModule<Add>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+    const auto resolved = resolveModule(*ast);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
     ASSERT_EQ(resolved->functions.size(), 1u);
     ASSERT_EQ(resolved->functions.front().body.size(), 2u);
-    const Add& add =
-        test_ir_access::get<Add>(resolved->functions.front().body.front());
-    EXPECT_TRUE(checker::check(add, context).has_value());
+    const Instruction& add = *resolved->functions.front().body.front();
+    EXPECT_TRUE(add.check(context).has_value());
 
     const auto& syntax_function =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
+        std::get<syntax_ast::AstFunction>(ast->items.back());
     const auto function_scope =
         bound.table.functionScope(syntax_function.range);
     ASSERT_TRUE(function_scope.has_value());
@@ -98,19 +96,19 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
 
     if (test_case.scalar_type == ScalarType::F32) {
       const auto* float_add =
-          test_ir_access::get_if<Add::FloatF32>(&add.variant);
+          dynamic_cast<const AddFloatF32*>(&add);
       ASSERT_NE(float_add, nullptr);
       expectBoundFormalMetadata(
           float_add->dst.value,
-          test_ir_access::get<ResolvedRegisterRef>(float_add->src1.value),
+          std::get<ResolvedRegisterRef>(float_add->src1.value),
           test_case, *result_symbol, *input_symbol);
     } else {
       const auto* integer_add =
-          test_ir_access::get_if<Add::IntegerNoSat>(&add.variant);
+          dynamic_cast<const AddIntegerNoSat*>(&add);
       ASSERT_NE(integer_add, nullptr);
       expectBoundFormalMetadata(
           integer_add->dst.value,
-          test_ir_access::get<ResolvedRegisterRef>(integer_add->src1.value),
+          std::get<ResolvedRegisterRef>(integer_add->src1.value),
           test_case, *result_symbol, *input_symbol);
     }
   }
@@ -131,22 +129,17 @@ TEST(RegisterFormals, ResolvePredicateReadAndWrite) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   ASSERT_TRUE(ast.diagnostics.empty());
 
-  const auto resolved = test_support::resolveTypedModule<Bar>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
-  const auto& bar =
-      test_ir_access::get<Bar>(resolved->functions.front().body.front());
-  const auto& reduction = test_ir_access::get<Bar::RedAndPred>(bar.variant);
-  const auto& operands =
-      test_ir_access::get<Bar::RedAndPred::WithoutThreadCountOperands>(
-          reduction.operands);
-  EXPECT_EQ(operands.dst.value.register_ref.register_class,
+  const auto& reduction = dynamic_cast<const BarRedAndPred&>(
+      *resolved->functions.front().body.front());
+  EXPECT_EQ(reduction.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
-  EXPECT_EQ(operands.predicate.value.register_ref.register_class,
+  EXPECT_EQ(reduction.predicate.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
-  EXPECT_EQ(operands.dst.value.register_ref.declared_type, ScalarType::Pred);
-  EXPECT_EQ(operands.predicate.value.register_ref.declared_type,
+  EXPECT_EQ(reduction.dst.value.register_ref.declared_type, ScalarType::Pred);
+  EXPECT_EQ(reduction.predicate.value.register_ref.declared_type,
             ScalarType::Pred);
 }
 

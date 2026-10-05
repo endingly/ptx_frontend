@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/rem.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -24,18 +24,18 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 }
 
 TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
-  const auto s32 = resolve<Rem>(parse_instruction("rem.s32 %r0, %r1, 0;"));
+  const auto s32 = resolveRem(parse_instruction("rem.s32 %r0, %r1, 0;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  const auto* signed_rem = test_ir_access::get_if<Rem::S32>(&s32->variant);
+  const auto* signed_rem = dynamic_cast<RemS32*>(s32->get());
   ASSERT_NE(signed_rem, nullptr);
-  EXPECT_EQ(Rem::S32::type, ScalarType::S32);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
+  EXPECT_EQ(RemS32::type, ScalarType::S32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
       signed_rem->src2.value));
 
-  const auto u32 = resolve<Rem>(parse_instruction("rem.u32 %r0, %r1, %r2;"));
+  const auto u32 = resolveRem(parse_instruction("rem.u32 %r0, %r1, %r2;"));
   ASSERT_TRUE(u32.has_value()) << u32.error().message;
-  ASSERT_NE(test_ir_access::get_if<Rem::U32>(&u32->variant), nullptr);
-  EXPECT_EQ(Rem::U32::type, ScalarType::U32);
+  ASSERT_NE(dynamic_cast<RemU32*>(u32->get()), nullptr);
+  EXPECT_EQ(RemU32::type, ScalarType::U32);
 }
 
 }  // namespace
@@ -48,16 +48,16 @@ TEST(ResolvedIrChecker, ChecksGeneratedRemAvailability) {
   PtxSyntaxParser parser("rem.s32 %r0, %r1, 0;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto rem = resolve<Rem>(*ast);
+  const auto rem = resolveRem(*ast);
   ASSERT_TRUE(rem.has_value()) << rem.error().message;
   const auto rejected =
-      check(*rem, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+      (*rem)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
                           .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*rem, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*rem)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

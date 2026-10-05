@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,12 +24,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveLg2, SelectsFrozenApproxVariant) {
   const auto resolved =
-      resolve<Lg2>(parse_instruction("lg2.approx.ftz.f32 %f0, %f1;"));
+      resolveLg2(parse_instruction("lg2.approx.ftz.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(test_ir_access::get_if<Lg2::ApproxF32>(&resolved->variant),
+  ASSERT_NE(dynamic_cast<Lg2ApproxF32*>(resolved->get()),
             nullptr);
-  EXPECT_EQ(Lg2::ApproxF32::type, ScalarType::F32);
-  EXPECT_TRUE(Lg2::ApproxF32::approx);
+  EXPECT_EQ(Lg2ApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(Lg2ApproxF32::approx);
 }
 
 TEST(ResolveLg2, RejectsInvalidForms) {
@@ -38,7 +37,7 @@ TEST(ResolveLg2, RejectsInvalidForms) {
        {"lg2.f32 %f0, %f1;", "lg2.approx.f64 %d0, %d1;",
         "lg2.approx.f32x2 %f0, %f1;", "lg2.approx.sat.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Lg2>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), lg2_syntax_descriptor()).has_value());
   }
 }
 

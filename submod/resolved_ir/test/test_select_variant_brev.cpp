@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,10 +24,10 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveBrev, SelectsBothBitWidths) {
   for (const auto source : {"brev.b32 %r0, 1;", "brev.b64 %rd0, %rd1;"}) {
-    const auto brev = resolve<Brev>(parse_instruction(source));
+    const auto brev = resolveBrev(parse_instruction(source));
     ASSERT_TRUE(brev.has_value()) << brev.error().message;
-    EXPECT_TRUE(test_ir_access::holds_alternative<Brev::B32>(brev->variant) ||
-                test_ir_access::holds_alternative<Brev::B64>(brev->variant));
+    EXPECT_TRUE((dynamic_cast<BrevB32*>(brev->get()) != nullptr) ||
+                (dynamic_cast<BrevB64*>(brev->get()) != nullptr));
   }
 }
 
@@ -42,22 +41,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedBrevAvailability) {
   PtxSyntaxParser parser("brev.b32 %r0, %r1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto brev = resolve<Brev>(*ast);
+  const auto brev = resolveBrev(*ast);
   ASSERT_TRUE(brev.has_value()) << brev.error().message;
   const auto old_ptx =
-      check(*brev, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+      (*brev)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
                            .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_sm =
-      check(*brev, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+      (*brev)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
                            .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      check(*brev, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+      (*brev)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                            .instruction_range = ast->range})
           .has_value());
 }

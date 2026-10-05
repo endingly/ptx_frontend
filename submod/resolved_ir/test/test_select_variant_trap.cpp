@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,27 +24,27 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveTrap, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
   const auto bare_ast = parse_instruction("trap;");
-  const auto bare = resolve<Trap>(bare_ast);
+  const auto bare = resolveTrap(bare_ast);
   ASSERT_TRUE(bare.has_value()) << bare.error().message;
-  EXPECT_TRUE(test_ir_access::holds_alternative<Trap::Bare>(bare->variant));
-  EXPECT_FALSE(bare->execution_predicate.has_value());
+  EXPECT_TRUE((dynamic_cast<TrapBare*>(bare->get()) != nullptr));
+  EXPECT_FALSE((*bare)->execution_predicate.has_value());
 
   const auto predicated_ast = parse_instruction("@%p0 trap;");
-  const auto predicated = resolve<Trap>(predicated_ast);
+  const auto predicated = resolveTrap(predicated_ast);
   ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
   EXPECT_TRUE(
-      test_ir_access::holds_alternative<Trap::Bare>(predicated->variant));
-  EXPECT_TRUE(predicated->execution_predicate.has_value());
+      (dynamic_cast<TrapBare*>(predicated->get()) != nullptr));
+  EXPECT_TRUE((*predicated)->execution_predicate.has_value());
 
   const auto modifier_ast = parse_instruction("trap.uni;");
-  const auto modifier = resolve<Trap>(modifier_ast);
+  const auto modifier = resolveTrap(modifier_ast);
   ASSERT_FALSE(modifier.has_value());
   EXPECT_EQ(modifier.error().range,
             modifier_ast.modifiers.front().syntax.range);
   EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
 
   const auto operand_ast = parse_instruction("trap %r0;");
-  const auto operand = resolve<Trap>(operand_ast);
+  const auto operand = resolveTrap(operand_ast);
   ASSERT_FALSE(operand.has_value());
   EXPECT_EQ(operand.error().range, operand_ast.range);
   EXPECT_EQ(operand.error().message,
@@ -62,14 +61,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareTrapAvailability) {
   PtxSyntaxParser parser("trap;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto trap = resolve<Trap>(*ast);
+  const auto trap = resolveTrap(*ast);
   ASSERT_TRUE(trap.has_value()) << trap.error().message;
 
   const Context old_target{
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = check(*trap, old_target);
+  const auto unavailable = (*trap)->check( old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -80,7 +79,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareTrapAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE(check(*trap, supported_target).has_value());
+  EXPECT_TRUE((*trap)->check( supported_target).has_value());
 }
 
 }  // namespace

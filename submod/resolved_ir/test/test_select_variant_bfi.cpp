@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,13 +27,13 @@ TEST(ResolveBfi, SelectsBothBitWidthsAndControlShapes) {
        {"bfi.b32 %r0, 1, 2, 0, 8;", "bfi.b64 %rd0, %rd1, %rd2, 255, 255;",
         "bfi.b32 %r0, %r1, %r2, %r3, %r4;"}) {
     SCOPED_TRACE(source);
-    const auto resolved = resolve<Bfi>(parse_instruction(source));
+    const auto resolved = resolveBfi(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     EXPECT_TRUE(
-        test_ir_access::holds_alternative<Bfi::B32>(resolved->variant) ||
-        test_ir_access::holds_alternative<Bfi::B64>(resolved->variant));
+        (dynamic_cast<BfiB32*>(resolved->get()) != nullptr) ||
+        (dynamic_cast<BfiB64*>(resolved->get()) != nullptr));
   }
-  EXPECT_FALSE(resolve<Bfi>(parse_instruction("bfi.u32 %r0, %r1, %r2, 0, 8;"))
+  EXPECT_FALSE(resolveBfi(parse_instruction("bfi.u32 %r0, %r1, %r2, 0, 8;"))
                    .has_value());
 }
 
@@ -51,22 +50,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto bfi = resolve<Bfi>(*ast);
+    const auto bfi = resolveBfi(*ast);
     ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
     const auto old_ptx =
-        check(*bfi, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+        (*bfi)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
                             .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     const auto old_sm =
-        check(*bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
                             .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        check(*bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -77,10 +76,10 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto bfi = resolve<Bfi>(*ast);
+    const auto bfi = resolveBfi(*ast);
     ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
     const auto checked =
-        check(*bfi, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                             .instruction_range = ast->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,

@@ -2,11 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_owned_instruction.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_base.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
@@ -224,6 +225,16 @@ struct ResolvedLabelPosition {
 
 /** Owns one resolved entry, device function, or declaration-only prototype. */
 struct ResolvedFunction {
+  /** Construct an empty, independently owned resolved function. */
+  ResolvedFunction() = default;
+  /** Clone each non-null body instruction and copy every metadata field. */
+  ResolvedFunction(const ResolvedFunction&);
+  /** Replace this function by a strong-exception-safe deep copy. */
+  ResolvedFunction& operator=(const ResolvedFunction&);
+  /** Transfer body and metadata ownership. */
+  ResolvedFunction(ResolvedFunction&&) noexcept = default;
+  /** Transfer body and metadata ownership. */
+  ResolvedFunction& operator=(ResolvedFunction&&) noexcept = default;
   /** Function identity in the owning module's symbol table. */
   binding::SymbolId symbol_id;
   /** Owned source spelling of the function name. */
@@ -241,7 +252,7 @@ struct ResolvedFunction {
   /** Function-local indirect-call prototype metadata in lexical source order. */
   std::vector<ResolvedCallPrototypeContract> call_prototypes;
   /** Owned flattened instructions, ordered as they occur in the function body. */
-  std::vector<OwnedInstruction> body;
+  std::vector<std::unique_ptr<Instruction>> body;
   /** Bound label locations whose offsets index ``body``. */
   std::vector<ResolvedLabelPosition> label_positions;
   /** Source extent of this function declaration and body. */

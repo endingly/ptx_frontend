@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+#include <algorithm>
+
 
 #include <cstdint>
 #include <optional>
@@ -24,7 +25,7 @@ TEST(CarryCompleteness, RejectsInvalidFormsAndRevalidatesType) {
   const auto duplicate =
       test_helpers::parseInstruction("addc.cc.cc.u32 %r0, %r1, %r2;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(duplicate);
-  EXPECT_FALSE(resolve<Addc>(*duplicate));
+  EXPECT_FALSE(resolveAddc(*duplicate));
   for (const auto source :
        {"mad.cc.u32 %r0, %r1, %r2, %r3;", "madc.u32 %r0, %r1, %r2, %r3;",
         "madc.cc.u32 %r0, %r1, %r2, %r3;"}) {
@@ -46,22 +47,18 @@ TEST(CarryCompleteness, RejectsInvalidFormsAndRevalidatesType) {
   }
   const auto ast = test_helpers::parseInstruction("addc.u32 %r0, %r1, 1;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  auto resolved = resolve<Addc>(*ast);
+  auto resolved = resolveAddc(*ast);
   ASSERT_TRUE(resolved);
-  test_ir_access::get<Addc::Plain32>(resolved->variant).type.value =
-      ScalarType::U64;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  dynamic_cast<AddcPlain32&>(**resolved).type.value = ScalarType::U64;
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}}));
   const auto ordinary = test_helpers::parseInstruction("add.u32 %r0, %r1, 1;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ordinary);
-  const auto add = resolve<Add>(*ordinary);
+  const auto add = resolveAdd(*ordinary);
   ASSERT_TRUE(add);
-  EXPECT_EQ(
-      test_ir_access::visit(
-          [](const auto& variant) { return variant.condition_code_effect; },
-          add->variant),
-      ConditionCodeEffect::None);
+  ASSERT_NE(dynamic_cast<AddIntegerNoSat*>(add->get()), nullptr);
+  EXPECT_EQ(AddIntegerNoSat::condition_code_effect,
+            ConditionCodeEffect::None);
 }
 
 /** Retain immutable CC metadata after AST release and reject mutable type drift. */
@@ -83,25 +80,25 @@ TEST(CarryCompleteness, RetainsOwnedMultiplyAddCarryContract) {
     owned_module.emplace(std::move(*resolved));
   }
 
-  const auto& madc =
-      test_ir_access::get<Madc>(owned_module->functions.front().body.front());
-  const auto* variant = test_ir_access::get_if<Madc::LoCc32>(&madc.variant);
+  const auto* variant = dynamic_cast<const MadcLoCc32*>(
+      owned_module->functions.front().body.front().get());
   ASSERT_NE(variant, nullptr);
   EXPECT_EQ(variant->condition_code_effect, ConditionCodeEffect::CarryInOut);
-  EXPECT_EQ(Madc::get_resolved_descriptor()
-                .variants[madc.variant.index()]
-                .condition_code_effect,
-            variant->condition_code_effect);
+  const auto& descriptor = madc_resolved_descriptor();
+  const auto selected = std::ranges::find_if(descriptor.variants, [](const auto& item) {
+    return item.variant_name == "LoCc32";
+  });
+  ASSERT_NE(selected, descriptor.variants.end());
+  EXPECT_EQ(selected->condition_code_effect, variant->condition_code_effect);
   static_assert(
-      !std::is_assignable_v<decltype(Madc::LoCc32::condition_code_effect),
+      !std::is_assignable_v<decltype(MadcLoCc32::condition_code_effect),
                             ConditionCodeEffect>);
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
 
-  auto& mutable_variant = test_ir_access::get<Madc::LoCc32>(
-      test_ir_access::get<Madc>(owned_module->functions.front().body.front())
-          .variant);
+  auto& mutable_variant = dynamic_cast<MadcLoCc32&>(
+      *owned_module->functions.front().body.front());
   mutable_variant.type.value = ScalarType::U64;
   EXPECT_FALSE(validateModule(*owned_module,
                               ModuleValidationPolicy::RequireCompleteContext)

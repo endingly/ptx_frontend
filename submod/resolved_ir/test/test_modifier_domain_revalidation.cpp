@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
@@ -8,10 +7,9 @@
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -31,7 +29,7 @@ syntax_ast::AstModule parse_module(std::string_view source) {
 
 /** Resolve one source-valid floating Add and retain its checker context. */
 struct ResolvedFloatAdd {
-  Add instruction;
+  AddFloatF32 instruction;
   checker::Context context;
 };
 
@@ -56,8 +54,7 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
 }
 )ptx";
   const auto ast = parse_module(source);
-  const auto resolved = test_support::resolveTypedModule<Add>(
-      ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(ast);
   if (!resolved) {
     ADD_FAILURE() << resolved.error().front().message;
     return {};
@@ -69,8 +66,8 @@ ResolvedFloatAdd resolve_float_add(std::string_view rounding_suffix = ".rn") {
         << "The valid module did not retain its expected Add body entry.";
     return {};
   }
-  const auto* add =
-      test_ir_access::get_if<Add>(&resolved->functions.front().body[2]);
+  const auto* add = dynamic_cast<const AddFloatF32*>(
+      resolved->functions.front().body[2].get());
   if (add == nullptr) {
     ADD_FAILURE() << "The selected source instruction did not resolve as Add.";
     return {};
@@ -99,14 +96,13 @@ void expect_domain_failure(const checker::CheckResult& checked,
 /** Edited public IR must reject a named rounding enum outside the Add domain. */
 TEST(ModifierDomainRevalidation, RejectsMutatedFloatingAddRzi) {
   auto candidate = resolve_float_add();
-  auto* selected =
-      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected = &candidate.instruction;
   ASSERT_NE(selected, nullptr);
   selected->rounding.value = RoundingMode::Rzi;
   ASSERT_FALSE(selected->rounding.locs.empty());
 
   expect_domain_failure(
-      checker::check(candidate.instruction, candidate.context),
+      candidate.instruction.check(candidate.context),
       selected->rounding.locs.front());
 }
 
@@ -117,29 +113,27 @@ TEST(ModifierDomainRevalidation, PreservesLegalFloatingAddRoundingValues) {
                   RoundingMode::Rp}) {
     SCOPED_TRACE(static_cast<int>(rounding));
     auto candidate = resolve_float_add();
-    auto* selected =
-        test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
+    auto* selected = &candidate.instruction;
     ASSERT_NE(selected, nullptr);
     selected->rounding.value = rounding;
     EXPECT_TRUE(
-        checker::check(candidate.instruction, candidate.context).has_value());
+        candidate.instruction.check(candidate.context).has_value());
   }
 }
 
 /** Omitted rounding retains its per-field default, while missing locs do not relax domain checks. */
 TEST(ModifierDomainRevalidation, UsesDefaultAndFallbackRangeWithoutProvenance) {
   auto candidate = resolve_float_add("");
-  auto* selected =
-      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected = &candidate.instruction;
   ASSERT_NE(selected, nullptr);
   EXPECT_EQ(selected->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(selected->rounding.locs.empty());
   EXPECT_TRUE(
-      checker::check(candidate.instruction, candidate.context).has_value());
+      candidate.instruction.check(candidate.context).has_value());
 
   selected->rounding.value = RoundingMode::Rzi;
   expect_domain_failure(
-      checker::check(candidate.instruction, candidate.context),
+      candidate.instruction.check(candidate.context),
       candidate.context.instruction_range);
 }
 
@@ -151,8 +145,7 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
       SCOPED_TRACE(static_cast<int>(rounding));
       SCOPED_TRACE(retain_provenance);
       auto candidate = resolve_float_add();
-      auto* selected =
-          test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
+      auto* selected = &candidate.instruction;
       ASSERT_NE(selected, nullptr);
       selected->rounding.value = rounding;
       ASSERT_FALSE(selected->rounding.locs.empty());
@@ -162,7 +155,7 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
       if (!retain_provenance)
         selected->rounding.locs.clear();
       expect_domain_failure(
-          checker::check(candidate.instruction, candidate.context),
+          candidate.instruction.check(candidate.context),
           expected_range);
     }
   }
@@ -171,13 +164,12 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
 /** Domain membership does not replace target availability for a legal value. */
 TEST(ModifierDomainRevalidation, RetainsLegalRoundingAvailabilityChecks) {
   auto candidate = resolve_float_add(".rm");
-  auto* selected =
-      test_ir_access::get_if<Add::FloatF32>(&candidate.instruction.variant);
+  auto* selected = &candidate.instruction;
   ASSERT_NE(selected, nullptr);
   ASSERT_FALSE(selected->rounding.locs.empty());
   candidate.context.target.sm_version = 10;
 
-  const auto checked = checker::check(candidate.instruction, candidate.context);
+  const auto checked = candidate.instruction.check(candidate.context);
   ASSERT_FALSE(checked.has_value());
   ASSERT_EQ(checked.error().size(), 1U);
   EXPECT_EQ(checked.error().front().kind,
@@ -190,7 +182,7 @@ TEST(ModifierDomainRevalidation, SourceTextStillRejectsAddRzi) {
   PtxSyntaxParser parser("add.rzi.f32 %f0, %f1, %f2;");
   const auto parsed = parser.parseInstruction();
   ASSERT_TRUE(parsed.has_value()) << parsed.diagnostics.front().message;
-  EXPECT_FALSE(resolve<Add>(*parsed).has_value());
+  EXPECT_FALSE(resolveAdd(*parsed).has_value());
 }
 
 }  // namespace

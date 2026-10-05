@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -8,9 +7,9 @@
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/ld.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -79,33 +78,31 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
     SCOPED_TRACE(body);
     const auto ast = parseCallModule(body);
     ASSERT_TRUE(ast);
-    const auto module = test_support::resolveTypedModule<Call, Ld, St>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+    const auto module = resolveModule(*ast);
     ASSERT_TRUE(module) << module.error().front().message;
     ASSERT_EQ(module->functions.size(), 2u);
     const auto& function = module->functions.back();
     ASSERT_EQ(function.body.size(), 5u);
-    EXPECT_TRUE(test_ir_access::holds_alternative<St>(function.body[0]));
-    EXPECT_TRUE(test_ir_access::holds_alternative<St>(function.body[1]));
-    EXPECT_TRUE(test_ir_access::holds_alternative<Ld>(function.body[3]));
-    EXPECT_TRUE(test_ir_access::holds_alternative<Ld>(function.body[4]));
-    const auto* call = test_ir_access::get_if<Call>(&function.body[2]);
+    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[0].get()) != nullptr);
+    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[1].get()) != nullptr);
+    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[3].get()) != nullptr);
+    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[4].get()) != nullptr);
+    const auto* call = dynamic_cast<const CallDirect*>(function.body[2].get());
     ASSERT_NE(call, nullptr);
-    const auto& operands =
-        test_ir_access::get<Call::Direct::ReturnTargetInputOperands>(
-            test_ir_access::get<Call::Direct>(call->variant).operands);
+    ASSERT_TRUE(call->return_value.has_value());
+    ASSERT_TRUE(call->arguments.has_value());
     const auto scope = module->symbols.symbol(function.symbol_id).owned_scope;
     ASSERT_TRUE(scope);
     const auto result = module->symbols.lookup(*scope, "result");
     ASSERT_TRUE(result);
-    EXPECT_EQ(operands.return_value.value.symbol_id, result->symbol);
-    ASSERT_EQ(operands.arguments.value.values.size(), 2u);
+    EXPECT_EQ(call->return_value->value.symbol_id, result->symbol);
+    ASSERT_EQ(call->arguments->value.values.size(), 2u);
     for (size_t index = 0; index < 2; ++index) {
       const auto symbol =
           module->symbols.lookup(*scope, index == 0 ? "a" : "b");
       ASSERT_TRUE(symbol);
-      const auto& argument = test_ir_access::get<ResolvedCallParameterRef>(
-          operands.arguments.value.values[index].value);
+      const auto& argument = std::get<ResolvedCallParameterRef>(
+          call->arguments->value.values[index].value);
       EXPECT_EQ(argument.symbol_id, symbol->symbol);
     }
   }
@@ -129,18 +126,17 @@ TEST(CallStaging, RejectsInstructionAndControlBoundaries) {
       const auto ast = parseCallModule(body);
       ASSERT_TRUE(ast);
       const auto& function =
-          test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
+          std::get<syntax_ast::AstFunction>(ast->items.back());
       std::optional<SourceRange> offending_range;
       for (const auto& item : function.body) {
         const auto* instruction =
-            test_ir_access::get_if<syntax_ast::AstInstruction>(&item);
+            std::get_if<syntax_ast::AstInstruction>(&item);
         if (instruction &&
             instruction->opcode.syntax.text == (before_call ? "st" : "ld"))
           offending_range = instruction->range;
       }
       ASSERT_TRUE(offending_range);
-      const auto module = test_support::resolveTypedModule<Call, Ld, St>(
-          *ast, test_support::ModulePipeline::AvailableContext);
+      const auto module = resolveModule(*ast);
       ASSERT_FALSE(module);
       ASSERT_EQ(module.error().size(), 1u);
       EXPECT_EQ(module.error().front().stage(),
@@ -170,17 +166,16 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
     const auto ast = parseCallModule(body);
     ASSERT_TRUE(ast);
     const auto& function =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
+        std::get<syntax_ast::AstFunction>(ast->items.back());
     std::optional<SourceRange> predicate_range;
     for (const auto& item : function.body) {
       if (const auto* instruction =
-              test_ir_access::get_if<syntax_ast::AstInstruction>(&item);
+              std::get_if<syntax_ast::AstInstruction>(&item);
           instruction && instruction->predicate)
         predicate_range = instruction->predicate->range;
     }
     ASSERT_TRUE(predicate_range);
-    const auto module = test_support::resolveTypedModule<Call, Ld, St>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+    const auto module = resolveModule(*ast);
     ASSERT_FALSE(module);
     ASSERT_EQ(module.error().size(), 1u);
     EXPECT_EQ(module.error().front().stage(),
@@ -207,8 +202,7 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   }
 )ptx");
   ASSERT_TRUE(ast);
-  const auto module = test_support::resolveTypedModule<Call, Ld, St>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto module = resolveModule(*ast);
   ASSERT_TRUE(module) << module.error().front().message;
   const auto& function = module->functions.back();
   ASSERT_EQ(function.body.size(), 3u);
@@ -216,18 +210,14 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   ASSERT_TRUE(scope);
   const auto outer = module->symbols.lookup(*scope, "result");
   ASSERT_TRUE(outer);
-  const auto& operands =
-      test_ir_access::get<Call::Direct::ReturnTargetInputOperands>(
-          test_ir_access::get<Call::Direct>(
-              test_ir_access::get<Call>(function.body[1]).variant)
-              .operands);
-  ASSERT_TRUE(operands.return_value.value.symbol_id);
-  EXPECT_NE(operands.return_value.value.symbol_id, outer->symbol);
-  const auto& load = test_ir_access::get<Ld::ExplicitScalar>(
-      test_ir_access::get<Ld>(function.body[2]).variant);
+  const auto& call = dynamic_cast<const CallDirect&>(*function.body[1]);
+  ASSERT_TRUE(call.return_value.has_value());
+  ASSERT_TRUE(call.return_value->value.symbol_id);
+  EXPECT_NE(call.return_value->value.symbol_id, outer->symbol);
+  const auto& load = dynamic_cast<const LdExplicitScalar&>(*function.body[2]);
   EXPECT_EQ(
-      test_ir_access::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
-      operands.return_value.value.symbol_id);
+      std::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
+      call.return_value->value.symbol_id);
 
   const auto crossed_ast = parseCallModule(R"ptx(
   .param .b32 a, b, result;
@@ -238,18 +228,17 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   }
 )ptx");
   ASSERT_TRUE(crossed_ast);
-  const auto crossed = test_support::resolveTypedModule<Call, Ld, St>(
-      *crossed_ast, test_support::ModulePipeline::AvailableContext);
+  const auto crossed = resolveModule(*crossed_ast);
   ASSERT_FALSE(crossed);
   ASSERT_EQ(crossed.error().size(), 1u);
   const auto& crossed_function =
-      test_ir_access::get<syntax_ast::AstFunction>(crossed_ast->items.back());
+      std::get<syntax_ast::AstFunction>(crossed_ast->items.back());
   const auto& block =
-      *test_ir_access::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
           crossed_function.body.back());
   EXPECT_EQ(
       crossed.error().front().range,
-      test_ir_access::get<syntax_ast::AstInstruction>(block.body.back()).range);
+      std::get<syntax_ast::AstInstruction>(block.body.back()).range);
   EXPECT_EQ(crossed.error().front().stage(),
             ResolveDiagnosticStage::Resolution);
   EXPECT_EQ(crossed.error().front().message,

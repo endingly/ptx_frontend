@@ -24,28 +24,28 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Clusterlaunchcontrol::VariantType expected) {
+                                 std::string_view expected) {
     const auto selected =
-        selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+        select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
   expect_variant(
       "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes.b128 "
       "[%rd0], [%rd1];",
-      Clusterlaunchcontrol::VariantType::TryCancelAsyncGeneric);
+      "TryCancelAsyncGeneric");
   expect_variant(
       "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx:"
       ":bytes.b128 [%rd0], [%rd1];",
-      Clusterlaunchcontrol::VariantType::TryCancelAsyncSharedCta);
+      "TryCancelAsyncSharedCta");
   expect_variant(
       "clusterlaunchcontrol.try_cancel.async.mbarrier::complete_tx::bytes."
       "multicast::cluster::all.b128 [%rd0], [%rd1];",
-      Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastGeneric);
+      "TryCancelAsyncMulticastGeneric");
   expect_variant(
       "clusterlaunchcontrol.try_cancel.async.shared::cta.mbarrier::complete_tx:"
       ":bytes.multicast::cluster::all.b128 [%rd0], [%rd1];",
-      Clusterlaunchcontrol::VariantType::TryCancelAsyncMulticastSharedCta);
+      "TryCancelAsyncMulticastSharedCta");
 
   for (const std::string_view source : {
            "clusterlaunchcontrol.try_cancel.async.b128 [%rd0], [%rd1];",
@@ -57,35 +57,35 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
            "b32 [%rd0], [%rd1];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source))
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor())
                      .has_value());
   }
 }
 
 TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Clusterlaunchcontrol::VariantType expected) {
+                                 std::string_view expected) {
     const auto selected =
-        selectVariant<Clusterlaunchcontrol>(parse_instruction(source));
+        select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
   expect_variant(
       "clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %q0;",
-      Clusterlaunchcontrol::VariantType::QueryCancelIsCanceledPred);
+      "QueryCancelIsCanceledPred");
   expect_variant(
       "clusterlaunchcontrol.query_cancel.get_first_ctaid.v4.b32.b128 {%r0, "
       "%r1, %r2, _}, %q0;",
-      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidV4);
+      "QueryCancelGetFirstCtaidV4");
   expect_variant(
       "clusterlaunchcontrol.query_cancel.get_first_ctaid::x.b32.b128 %r0, %q0;",
-      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidX);
+      "QueryCancelGetFirstCtaidX");
   expect_variant(
       "clusterlaunchcontrol.query_cancel.get_first_ctaid::y.b32.b128 %r0, %q0;",
-      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidY);
+      "QueryCancelGetFirstCtaidY");
   expect_variant(
       "clusterlaunchcontrol.query_cancel.get_first_ctaid::z.b32.b128 %r0, %q0;",
-      Clusterlaunchcontrol::VariantType::QueryCancelGetFirstCtaidZ);
+      "QueryCancelGetFirstCtaidZ");
 
   for (const std::string_view source : {
            "clusterlaunchcontrol.query_cancel.is_canceled.b128 %p0, %q0;",
@@ -97,7 +97,7 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
            "{%r0, %r1, %r2, _}, %q0;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Clusterlaunchcontrol>(parse_instruction(source))
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor())
                      .has_value());
   }
 }

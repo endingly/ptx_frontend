@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+
 
 #include <optional>
 #include <string>
@@ -44,61 +44,52 @@ TEST(MinMaxCompleteness, ResolvesBinaryAndTernaryCohortsByArity) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 14u);
 
-  const auto& binary =
-      test_ir_access::get<Min::F32>(test_ir_access::get<Min>(body[0]).variant);
+  const auto& binary = dynamic_cast<const MinF32&>(*body[0]);
   EXPECT_EQ(binary.operand_layout, (ResolvedOperandLayoutTag{0}));
   EXPECT_FALSE(binary.ftz.value);
   EXPECT_FALSE(binary.nan.value);
   EXPECT_FALSE(binary.xorsign_abs.value);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Min::F32::BinaryOperands>(
-      binary.operands));
+  EXPECT_FALSE(binary.src3.has_value());
 
-  const auto& nan =
-      test_ir_access::get<Min::F32>(test_ir_access::get<Min>(body[1]).variant);
+  const auto& nan = dynamic_cast<const MinF32&>(*body[1]);
   EXPECT_TRUE(nan.nan.value);
   EXPECT_FALSE(nan.xorsign_abs.value);
 
-  const auto& paired =
-      test_ir_access::get<Min::F32>(test_ir_access::get<Min>(body[2]).variant);
+  const auto& paired = dynamic_cast<const MinF32&>(*body[2]);
   EXPECT_TRUE(paired.ftz.value);
   EXPECT_TRUE(paired.nan.value);
   EXPECT_TRUE(paired.xorsign_abs.value);
   EXPECT_FALSE(paired.abs.value);
   EXPECT_EQ(paired.operand_layout, (ResolvedOperandLayoutTag{0}));
 
-  const auto& ternary =
-      test_ir_access::get<Min::F32>(test_ir_access::get<Min>(body[3]).variant);
+  const auto& ternary = dynamic_cast<const MinF32&>(*body[3]);
   EXPECT_EQ(ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
   EXPECT_TRUE(ternary.abs.value);
   EXPECT_FALSE(ternary.xorsign_abs.value);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Min::F32::TernaryOperands>(
-      ternary.operands));
+  EXPECT_TRUE(ternary.src3.has_value());
 
-  const auto& ternary_nan =
-      test_ir_access::get<Min::F32>(test_ir_access::get<Min>(body[4]).variant);
+  const auto& ternary_nan = dynamic_cast<const MinF32&>(*body[4]);
   EXPECT_TRUE(ternary_nan.abs.value);
   EXPECT_TRUE(ternary_nan.nan.value);
   EXPECT_EQ(ternary_nan.operand_layout, (ResolvedOperandLayoutTag{1}));
 
-  EXPECT_EQ(Min::F64::type, ScalarType::F64);
-  EXPECT_EQ(Min::F16::type, ScalarType::F16);
-  EXPECT_EQ(Min::F16x2::type, ScalarType::F16x2);
-  EXPECT_EQ(Min::Bf16::type, ScalarType::BF16);
-  EXPECT_EQ(Min::Bf16x2::type, ScalarType::BF16x2);
+  EXPECT_EQ(MinF64::type, ScalarType::F64);
+  EXPECT_EQ(MinF16::type, ScalarType::F16);
+  EXPECT_EQ(MinF16x2::type, ScalarType::F16x2);
+  EXPECT_EQ(MinBf16::type, ScalarType::BF16);
+  EXPECT_EQ(MinBf16x2::type, ScalarType::BF16x2);
 
-  const auto& max_paired =
-      test_ir_access::get<Max::F32>(test_ir_access::get<Max>(body[11]).variant);
+  const auto& max_paired = dynamic_cast<const MaxF32&>(*body[11]);
   EXPECT_TRUE(max_paired.xorsign_abs.value);
   EXPECT_EQ(max_paired.operand_layout, (ResolvedOperandLayoutTag{0}));
-  const auto& max_ternary =
-      test_ir_access::get<Max::F32>(test_ir_access::get<Max>(body[12]).variant);
+  const auto& max_ternary = dynamic_cast<const MaxF32&>(*body[12]);
   EXPECT_TRUE(max_ternary.abs.value);
   EXPECT_EQ(max_ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
 
   // Pin the generated descriptor's per-layout rejection sets. Slots are
   // addressed by their variant-local index: ftz=0, nan=1, xorsign_abs=2,
   // abs=3, type=4.
-  const auto& f32 = Min::get_checker_descriptor().variants[1];
+  const auto& f32 = min_checker_descriptor().variants[1];
   ASSERT_EQ(f32.operand_layouts.size(), 2u);
   EXPECT_EQ(f32.operand_layouts[0].layout_name, "binary");
   EXPECT_EQ(f32.operand_layouts[1].layout_name, "ternary");
@@ -187,7 +178,7 @@ TEST(MinMaxCompleteness, RejectsModifiersForbiddenByTheSelectedLayout) {
     // that the chosen layout rejects the spelled modifier.
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = resolved->check(
+    const auto checked = (*resolved)->check(
         checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
@@ -215,10 +206,9 @@ TEST(MinMaxCompleteness, ReportsForbiddenModifierOwnRange) {
   const auto resolved = resolveInstruction(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
 
-  const auto& variant = test_ir_access::get<Min::F32>(
-      test_ir_access::get<Min>(*resolved).variant);
+  const auto& variant = dynamic_cast<const MinF32&>(**resolved);
   ASSERT_FALSE(variant.abs.locs.empty());
-  const auto checked = resolved->check(
+  const auto checked = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -234,10 +224,9 @@ TEST(MinMaxCompleteness, MatchesForbiddenSlotAfterLocationsAreCleared) {
   auto resolved = resolveInstruction(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
 
-  auto& variant = test_ir_access::get<Min::F32>(
-      test_ir_access::get<Min>(*resolved).variant);
+  auto& variant = dynamic_cast<MinF32&>(**resolved);
   variant.abs.locs.clear();
-  const auto checked = resolved->check(
+  const auto checked = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -303,7 +292,7 @@ TEST(MinMaxCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return resolved->check(checker::Context{.target = target});
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = item.ptx, .sm_version = item.sm}).has_value());
@@ -344,14 +333,22 @@ TEST(MinMaxCompleteness, OwnsLayoutSelectionAndRevalidatesTag) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
 
-  auto& ternary = test_ir_access::get<Min::F32>(
-      test_ir_access::get<Min>(owned->functions.front().body[1]).variant);
+  auto& ternary = dynamic_cast<MinF32&>(
+      *owned->functions.front().body[1]);
   EXPECT_EQ(ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
   ternary.operand_layout = ResolvedOperandLayoutTag{0};
   const auto invalid =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind,
+            checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch);
+
+  ternary.operand_layout = ResolvedOperandLayoutTag{1};
+  ternary.src3.reset();
+  const auto missing_required = validateModule(
+      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(missing_required.has_value());
+  EXPECT_EQ(missing_required.error().front().kind,
             checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch);
 }
 

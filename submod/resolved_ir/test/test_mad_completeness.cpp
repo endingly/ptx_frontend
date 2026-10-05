@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+
 
 #include <optional>
 #include <string>
@@ -37,41 +37,38 @@ TEST(MadCompleteness, ResolvesEveryExplicitFloatingRoundingForm) {
   const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 8u);
-  const auto& rn_f32 = test_ir_access::get<Mad::RnF32>(
-      test_ir_access::get<Mad>(resolved->functions.front().body[0]).variant);
+  const auto& rn_f32 =
+      dynamic_cast<const MadRnF32&>(*resolved->functions.front().body[0]);
   EXPECT_TRUE(rn_f32.ftz.value);
   EXPECT_TRUE(rn_f32.saturate.value);
-  const auto& rz_f32 = test_ir_access::get<Mad::DirectedF32>(
-      test_ir_access::get<Mad>(resolved->functions.front().body[1]).variant);
+  const auto& rz_f32 =
+      dynamic_cast<const MadDirectedF32&>(*resolved->functions.front().body[1]);
   EXPECT_EQ(rz_f32.rounding.value, RoundingMode::Rz);
   EXPECT_FALSE(rz_f32.ftz.value);
   EXPECT_FALSE(rz_f32.saturate.value);
-  const auto& rm_f32 = test_ir_access::get<Mad::DirectedF32>(
-      test_ir_access::get<Mad>(resolved->functions.front().body[2]).variant);
+  const auto& rm_f32 =
+      dynamic_cast<const MadDirectedF32&>(*resolved->functions.front().body[2]);
   EXPECT_EQ(rm_f32.rounding.value, RoundingMode::Rm);
   EXPECT_TRUE(rm_f32.ftz.value);
   EXPECT_FALSE(rm_f32.saturate.value);
-  const auto& rp_f32 = test_ir_access::get<Mad::DirectedF32>(
-      test_ir_access::get<Mad>(resolved->functions.front().body[3]).variant);
+  const auto& rp_f32 =
+      dynamic_cast<const MadDirectedF32&>(*resolved->functions.front().body[3]);
   EXPECT_EQ(rp_f32.rounding.value, RoundingMode::Rp);
   EXPECT_FALSE(rp_f32.ftz.value);
   EXPECT_TRUE(rp_f32.saturate.value);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Mad::RnF64>(
-      test_ir_access::get<Mad>(resolved->functions.front().body[4]).variant));
-  EXPECT_EQ(Mad::RnF64::rounding, RoundingMode::Rn);
+  EXPECT_NE(dynamic_cast<const MadRnF64*>(
+                resolved->functions.front().body[4].get()), nullptr);
+  EXPECT_EQ(MadRnF64::rounding, RoundingMode::Rn);
   EXPECT_EQ(
-      test_ir_access::get<Mad::DirectedF64>(
-          test_ir_access::get<Mad>(resolved->functions.front().body[5]).variant)
+      dynamic_cast<const MadDirectedF64&>(*resolved->functions.front().body[5])
           .rounding.value,
       RoundingMode::Rz);
   EXPECT_EQ(
-      test_ir_access::get<Mad::DirectedF64>(
-          test_ir_access::get<Mad>(resolved->functions.front().body[6]).variant)
+      dynamic_cast<const MadDirectedF64&>(*resolved->functions.front().body[6])
           .rounding.value,
       RoundingMode::Rm);
   EXPECT_EQ(
-      test_ir_access::get<Mad::DirectedF64>(
-          test_ir_access::get<Mad>(resolved->functions.front().body[7]).variant)
+      dynamic_cast<const MadDirectedF64&>(*resolved->functions.front().body[7])
           .rounding.value,
       RoundingMode::Rp);
 }
@@ -154,7 +151,7 @@ TEST(MadCompleteness, ChecksExplicitFloatingAvailability) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return resolved->check(checker::Context{.target = target});
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
                           .sm_version = availability.minimum_sm})
@@ -198,11 +195,10 @@ TEST(MadCompleteness, OwnsBoundSourcesAndRevalidatesWrongWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& f32 = test_ir_access::get<Mad::RnF32>(
-      test_ir_access::get<Mad>(owned->functions.front().body.front()).variant);
+  auto& f32 =
+      dynamic_cast<MadRnF32&>(*owned->functions.front().body.front());
   const auto f64_source =
-      test_ir_access::get<Mad::RnF64>(
-          test_ir_access::get<Mad>(owned->functions.front().body[1]).variant)
+      dynamic_cast<const MadRnF64&>(*owned->functions.front().body[1])
           .src2.value;
   f32.src2.value = f64_source;
   const auto invalid =

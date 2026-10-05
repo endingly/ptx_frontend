@@ -1,14 +1,15 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+
 
 #include <string>
 #include <utility>
 #include <vector>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/control_flow/brx.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -32,8 +33,7 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     const auto ast = parser.parseModule();
     ASSERT_TRUE(ast);
     ASSERT_TRUE(ast.diagnostics.empty());
-    const auto resolved = test_support::resolveTypedModule<Brx>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+    const auto resolved = resolveModule(*ast);
     ASSERT_TRUE(resolved) << resolved.error().front().message;
     const auto& function = resolved->functions.front();
     const auto scope = resolved->symbols.symbol(function.symbol_id).owned_scope;
@@ -41,15 +41,14 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
     const auto table_symbol = resolved->symbols.lookup(*scope, "targets");
     ASSERT_TRUE(table_symbol);
     ASSERT_EQ(function.body.size(), 4u);
-    const auto& branch = test_ir_access::get<Brx::Idx>(
-        test_ir_access::get<Brx>(function.body[1]).variant);
+    const auto& branch = dynamic_cast<const BrxIdx&>(*function.body[1]);
     EXPECT_EQ(branch.tlist.value.symbol_id, table_symbol->symbol);
     EXPECT_EQ(resolved->symbols.symbol(table_symbol->symbol).kind,
               binding::SymbolKind::BranchTargetSet);
 
     const auto& syntax_function =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back());
-    const auto& table = test_ir_access::get<syntax_ast::AstBranchTargets>(
+        std::get<syntax_ast::AstFunction>(ast->items.back());
+    const auto& table = std::get<syntax_ast::AstBranchTargets>(
         syntax_function.body[1]);
     // Expand only in this assertion: the public AST retains compact entries.
     std::vector<std::string> expanded;
@@ -91,11 +90,10 @@ TEST(BranchTargetRepetition, RejectsMissingAndForeignLabels) {
     ASSERT_TRUE(ast);
     ASSERT_TRUE(ast.diagnostics.empty());
     const auto& function =
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.front());
+        std::get<syntax_ast::AstFunction>(ast->items.front());
     const auto& table =
-        test_ir_access::get<syntax_ast::AstBranchTargets>(function.body[1]);
-    const auto resolved = test_support::resolveTypedModule<Brx>(
-        *ast, test_support::ModulePipeline::AvailableContext);
+        std::get<syntax_ast::AstBranchTargets>(function.body[1]);
+    const auto resolved = resolveModule(*ast);
     ASSERT_FALSE(resolved);
     ASSERT_EQ(resolved.error().size(), 2u);
     for (size_t index = 0; index < 2; ++index) {
@@ -119,8 +117,7 @@ L0: ret;
   const auto ast = parser.parseModule();
   ASSERT_TRUE(ast);
   ASSERT_TRUE(ast.diagnostics.empty());
-  const auto resolved = test_support::resolveTypedModule<Brx>(
-      *ast, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*ast);
   ASSERT_FALSE(resolved);
   ASSERT_EQ(resolved.error().size(), 1u);
   EXPECT_EQ(resolved.error().front().binding_kind,

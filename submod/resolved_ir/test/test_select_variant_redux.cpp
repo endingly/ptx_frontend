@@ -24,24 +24,24 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
   const auto expect_variant = [](std::string_view source,
-                                 Redux::VariantType expected) {
-    const auto selected = selectVariant<Redux>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(parse_instruction(source), redux_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
   expect_variant("redux.sync.add.u32 %r0, %r1, 0xffffffff;",
-                 Redux::VariantType::SyncAdd);
+                 "SyncAdd");
   expect_variant("redux.sync.min.s32 %r0, %r1, %r2;",
-                 Redux::VariantType::SyncMin);
+                 "SyncMin");
   expect_variant("redux.sync.max.u32 %r0, %r1, %r2;",
-                 Redux::VariantType::SyncMax);
+                 "SyncMax");
   for (const std::string_view source : {
            "redux.sync.and.b32 %r0, %r1, 0xffffffff;",
            "redux.sync.or.b32 %r0, %r1, 0xffffffff;",
            "redux.sync.xor.b32 %r0, %r1, 0xffffffff;",
        }) {
-    expect_variant(source, Redux::VariantType::SyncBoolean);
+    expect_variant(source, "SyncBoolean");
   }
   for (const std::string_view source : {
            "redux.sync.min.f32 %f0, %f1, 0xffffffff;",
@@ -49,10 +49,10 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
            "redux.sync.min.NaN.f32 %f0, %f1, 0xffffffff;",
            "redux.sync.min.abs.NaN.f32 %f0, %f1, 0xffffffff;",
        }) {
-    expect_variant(source, Redux::VariantType::SyncMinF32);
+    expect_variant(source, "SyncMinF32");
   }
   expect_variant("redux.sync.max.abs.NaN.f32 %f0, %f1, 0xffffffff;",
-                 Redux::VariantType::SyncMaxF32);
+                 "SyncMaxF32");
 
   for (const std::string_view source : {
            "redux.sync.add.b32 %r0, %r1, 0xffffffff;",
@@ -61,7 +61,7 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
            "redux.sync.add.abs.u32 %r0, %r1, 0xffffffff;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Redux>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), redux_syntax_descriptor()).has_value());
   }
 }
 

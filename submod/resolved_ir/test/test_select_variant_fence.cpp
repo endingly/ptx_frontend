@@ -24,8 +24,8 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
   const auto expect_variant = [](std::string_view source,
-                                 Fence::VariantType expected) {
-    const auto selected = selectVariant<Fence>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(parse_instruction(source), fence_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -35,30 +35,30 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
            "fence.proxy.async.global;",
            "fence.proxy.async.shared::cta;",
        }) {
-    expect_variant(source, Fence::VariantType::ProxyAsync);
+    expect_variant(source, "ProxyAsync");
   }
   expect_variant("fence.proxy.async.shared::cluster;",
-                 Fence::VariantType::ProxyAsyncSharedCluster);
+                 "ProxyAsyncSharedCluster");
 
   for (const std::string_view scope : {"cta", "gpu", "sys"}) {
     expect_variant(std::string("fence.proxy.tensormap::generic.release.") +
                        std::string(scope) + ";",
-                   Fence::VariantType::ProxyTensormapGenericRelease);
+                   "ProxyTensormapGenericRelease");
     expect_variant(std::string("fence.proxy.tensormap::generic.acquire.") +
                        std::string(scope) + " [%rd0], 128;",
-                   Fence::VariantType::ProxyTensormapGenericAcquire);
+                   "ProxyTensormapGenericAcquire");
   }
   expect_variant("fence.proxy.tensormap::generic.release.cluster;",
-                 Fence::VariantType::ProxyTensormapGenericReleaseCluster);
+                 "ProxyTensormapGenericReleaseCluster");
   expect_variant("fence.proxy.tensormap::generic.acquire.cluster [%rd0], 128;",
-                 Fence::VariantType::ProxyTensormapGenericAcquireCluster);
+                 "ProxyTensormapGenericAcquireCluster");
   expect_variant(
       "fence.proxy.async::generic.acquire.sync_restrict::shared::cluster."
       "cluster;",
-      Fence::VariantType::ProxyAsyncGenericAcquireSyncRestrictSharedCluster);
+      "ProxyAsyncGenericAcquireSyncRestrictSharedCluster");
   expect_variant(
       "fence.proxy.async::generic.release.sync_restrict::shared::cta.cluster;",
-      Fence::VariantType::ProxyAsyncGenericReleaseSyncRestrictSharedCta);
+      "ProxyAsyncGenericReleaseSyncRestrictSharedCta");
 
   for (const std::string_view source : {
            "fence.proxy.generic::tensormap.release.gpu;",
@@ -68,28 +68,28 @@ TEST(SelectVariantFence, SelectsModernProxyFormsAndRejectsNeighbors) {
            "cluster;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), fence_syntax_descriptor()).has_value());
   }
 }
 
 /** Keep ordinary fence order aliases on disjoint semantic/scope variants. */
 TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
   const auto expect_variant = [](std::string_view source,
-                                 Fence::VariantType expected) {
-    const auto selected = selectVariant<Fence>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(parse_instruction(source), fence_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << source;
     EXPECT_EQ(*selected, expected);
   };
   for (const std::string_view scope : {"cta", "gpu", "sys", "cluster"}) {
-    const auto variant = scope == "cta" ? Fence::VariantType::OrdinaryCta
+    const auto variant = scope == "cta" ? "OrdinaryCta"
                          : scope == "cluster"
-                             ? Fence::VariantType::OrdinaryCluster
-                             : Fence::VariantType::OrdinaryGpuSys;
+                             ? "OrdinaryCluster"
+                             : "OrdinaryGpuSys";
     expect_variant(std::string("fence.") + std::string(scope) + ";", variant);
     for (const std::string_view semantics :
          {"sc", "acq_rel", "acquire", "release"}) {
       const auto expected = scope == "cta" && semantics == "acq_rel"
-                                ? Fence::VariantType::AcqRelCta
+                                ? "AcqRelCta"
                                 : variant;
       expect_variant(std::string("fence.") + std::string(semantics) + "." +
                          std::string(scope) + ";",
@@ -106,28 +106,28 @@ TEST(SelectVariantFence, SelectsOrdinaryFenceSemanticsAndScopes) {
            "fence.weak.gpu;",
            "fence.cta.acquire.release;",
        }) {
-    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), fence_syntax_descriptor()).has_value())
         << source;
   }
 }
 
 /** Keep the restricted mbarrier-init fence separate from ordinary fences. */
 TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
-  const auto selected = selectVariant<Fence>(
-      parse_instruction("fence.mbarrier_init.release.cluster;"));
+  const auto selected = select_variant_name(
+      parse_instruction("fence.mbarrier_init.release.cluster;"), fence_syntax_descriptor());
   ASSERT_TRUE(selected.has_value()) << selected.error().message;
-  EXPECT_EQ(*selected, Fence::VariantType::MbarrierInitReleaseCluster);
+  EXPECT_EQ(*selected, "MbarrierInitReleaseCluster");
   const auto ordinary =
-      selectVariant<Fence>(parse_instruction("fence.release.cluster;"));
+      select_variant_name(parse_instruction("fence.release.cluster;"), fence_syntax_descriptor());
   ASSERT_TRUE(ordinary.has_value()) << ordinary.error().message;
-  EXPECT_EQ(*ordinary, Fence::VariantType::OrdinaryCluster);
+  EXPECT_EQ(*ordinary, "OrdinaryCluster");
   for (const std::string_view source : {
            "fence.mbarrier_init.cluster;",
            "fence.mbarrier_init.acquire.cluster;",
            "fence.mbarrier_init.release.cta;",
            "fence.release.mbarrier_init.cluster;",
        }) {
-    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), fence_syntax_descriptor()).has_value())
         << source;
   }
 }
@@ -136,10 +136,10 @@ TEST(SelectVariantFence, SelectsMbarrierInitReleaseCluster) {
 TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
   for (const auto& [source, expected] :
        {std::pair{"fence.acquire.sync_restrict::shared::cluster.cluster;",
-                  Fence::VariantType::AcquireSyncRestrictSharedCluster},
+                  "AcquireSyncRestrictSharedCluster"},
         std::pair{"fence.release.sync_restrict::shared::cta.cluster;",
-                  Fence::VariantType::ReleaseSyncRestrictSharedCta}}) {
-    const auto selected = selectVariant<Fence>(parse_instruction(source));
+                  "ReleaseSyncRestrictSharedCta"}}) {
+    const auto selected = select_variant_name(parse_instruction(source), fence_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   }
@@ -151,7 +151,7 @@ TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
            "fence.sync_restrict::shared::cluster.acquire.cluster;",
            "fence.acquire.cluster.sync_restrict::shared::cluster;",
        }) {
-    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), fence_syntax_descriptor()).has_value())
         << source;
   }
 }
@@ -159,16 +159,16 @@ TEST(SelectVariantFence, SelectsSharedSyncRestrictedForms) {
 /** Select the fixed alias-proxy fence without accepting incomplete suffixes. */
 TEST(SelectVariantFence, SelectsFixedProxyAlias) {
   const auto selected =
-      selectVariant<Fence>(parse_instruction("fence.proxy.alias;"));
+      select_variant_name(parse_instruction("fence.proxy.alias;"), fence_syntax_descriptor());
   ASSERT_TRUE(selected.has_value()) << selected.error().message;
-  EXPECT_EQ(*selected, Fence::VariantType::ProxyAlias);
+  EXPECT_EQ(*selected, "ProxyAlias");
   for (const std::string_view source : {
            "fence.proxy;",
            "fence.alias;",
            "fence.proxy.alias.cta;",
            "fence.alias.proxy;",
        }) {
-    EXPECT_FALSE(selectVariant<Fence>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source), fence_syntax_descriptor()).has_value())
         << source;
   }
 }

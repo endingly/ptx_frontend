@@ -31,13 +31,13 @@ TEST(ResolvePrmt, SelectsGenericAndSpecializedVariants) {
         "prmt.b32.b4e %r0, %r1, 2, 0xffff;", "prmt.b32.rc8 %r0, %r1, %r2, %r3;",
         "prmt.b32.ecl %r0, 1, 2, 4;", "prmt.b32.ecr %r0, %r1, %r2, 0xffff;",
         "prmt.b32.rc16 %r0, 1, %r2, 4;"})
-    EXPECT_TRUE(resolve<Prmt>(parse_instruction(source)).has_value()) << source;
+    EXPECT_TRUE(resolvePrmt(parse_instruction(source)).has_value()) << source;
 }
 
 /** `prmt` accepts only its documented selector mode tokens. */
 TEST(ResolvePrmt, RejectsUnknownSelectorMode) {
   EXPECT_FALSE(
-      selectVariant<Prmt>(parse_instruction("prmt.b32.b4x %r0, %r1, %r2, %r3;"))
+      select_variant_name(parse_instruction("prmt.b32.b4x %r0, %r1, %r2, %r3;"), prmt_syntax_descriptor())
           .has_value());
 }
 
@@ -58,15 +58,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value());
-    const auto prmt = resolve<Prmt>(*ast);
+    const auto prmt = resolvePrmt(*ast);
     ASSERT_TRUE(prmt.has_value());
-    EXPECT_TRUE(check(*prmt, Context{.target = {.ptx_version = {2, 0},
+    EXPECT_TRUE((*prmt)->check( Context{.target = {.ptx_version = {2, 0},
                                                 .sm_version = 20}})
                     .has_value());
-    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {1, 9},
+    EXPECT_FALSE((*prmt)->check( Context{.target = {.ptx_version = {1, 9},
                                                  .sm_version = 20}})
                      .has_value());
-    EXPECT_FALSE(check(*prmt, Context{.target = {.ptx_version = {2, 0},
+    EXPECT_FALSE((*prmt)->check( Context{.target = {.ptx_version = {2, 0},
                                                  .sm_version = 19}})
                      .has_value());
   }

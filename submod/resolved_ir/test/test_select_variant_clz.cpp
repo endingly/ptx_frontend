@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,14 +23,16 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 }
 
 TEST(ResolveClz, SelectsFrozenBitWidthVariantsAndRejectsUnfrozenType) {
-  const auto b32 = resolve<Clz>(parse_instruction("clz.b32 %r0, 1;"));
+  const auto b32 = resolveClz(parse_instruction("clz.b32 %r0, 1;"));
   ASSERT_TRUE(b32.has_value()) << b32.error().message;
-  EXPECT_NE(test_ir_access::get_if<Clz::B32>(&b32->variant), nullptr);
-  const auto b64 = resolve<Clz>(parse_instruction("clz.b64 %r0, %rd1;"));
+  EXPECT_NE(dynamic_cast<ClzB32*>(b32->get()), nullptr);
+  const auto b64 = resolveClz(parse_instruction("clz.b64 %r0, %rd1;"));
   ASSERT_TRUE(b64.has_value()) << b64.error().message;
-  EXPECT_NE(test_ir_access::get_if<Clz::B64>(&b64->variant), nullptr);
+  EXPECT_NE(dynamic_cast<ClzB64*>(b64->get()), nullptr);
   EXPECT_FALSE(
-      selectVariant<Clz>(parse_instruction("clz.u32 %r0, %r1;")).has_value());
+      select_variant_name(parse_instruction("clz.u32 %r0, %r1;"),
+                          clz_syntax_descriptor())
+          .has_value());
 }
 
 }  // namespace
@@ -45,22 +46,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedClzAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto clz = resolve<Clz>(*ast);
+    const auto clz = resolveClz(*ast);
     ASSERT_TRUE(clz.has_value()) << clz.error().message;
     const auto old_ptx =
-        check(*clz, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+        (*clz)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
                             .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     const auto old_sm =
-        check(*clz, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+        (*clz)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
                             .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        check(*clz, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+        (*clz)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                             .instruction_range = ast->range})
             .has_value());
   }

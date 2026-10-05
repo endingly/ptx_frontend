@@ -1,10 +1,8 @@
 #pragma once
 
 #include <expected>
-#include <functional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <vector>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
@@ -51,13 +49,6 @@ struct CheckDiagnostic {
 };
 using CheckDiagnostics = std::vector<CheckDiagnostic>;
 using CheckResult = std::expected<void, CheckDiagnostics>;
-
-namespace detail {
-template <typename Function, typename Variant>
-concept VariantCheckFunction =
-    std::invocable<Function&, const Variant&> &&
-    std::same_as<std::invoke_result_t<Function&, const Variant&>, CheckResult>;
-}  // namespace detail
 
 /** Caller-owned context for checking a single resolved instruction. */
 struct Context {
@@ -152,9 +143,5 @@ CheckResult check_immediate_multiple_of(
 CheckResult check_immediate_range(
     const VariantDescriptor::ImmediateRangeDescriptor&,
     std::span<const OperandView>, const Context&);
-
-/** Check one generated resolved instruction specialization. */
-template <typename T>
-CheckResult check(const T& instruction, const Context& context);
 
 }  // namespace ptx_frontend::resolved_ir::checker

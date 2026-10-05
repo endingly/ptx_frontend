@@ -248,6 +248,8 @@ def remove_obsolete_generated_files(
         "public/ptx_frontend/resolved_ir/model/*/*/model.gen.hpp",
         "public/ptx_frontend/resolved_ir/model/*/*/resolution.gen.hpp",
         "public/ptx_frontend/resolved_ir/model/*/*/checker.gen.hpp",
+        "public/ptx_frontend/resolved_ir_experiment/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir_experiment/model/*/*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
         "private/resolved_ir_*.gen.cpp",

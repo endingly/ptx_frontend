@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+
 
 #include <array>
 #include <optional>
@@ -9,7 +9,7 @@
 #include <ptx_frontend/resolved_ir/model/arithmetic/dp4a.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/fns.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/min.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
@@ -136,7 +136,7 @@ TEST(IntegerArithmeticCompleteness, ResolvesAndChecksAllScalarAndPackedForms) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto checked = instruction.check(context);
+    const auto checked = instruction->check(context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
 }
@@ -183,21 +183,20 @@ TEST(IntegerArithmeticCompleteness,
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
 
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& minimum = test_ir_access::get<Min>(instruction);
-    ASSERT_NE(test_ir_access::get_if<Min::ReluS16x2>(&minimum.variant),
-              nullptr);
-    EXPECT_TRUE(Min::ReluS16x2::relu);
-    EXPECT_EQ(Min::ReluS16x2::type, ScalarType::S16x2);
-    EXPECT_TRUE(checker::check(
-                    minimum, checker::Context{.target = {.ptx_version = {8, 0},
+    const auto* minimum = dynamic_cast<const MinReluS16x2*>(instruction.get());
+    ASSERT_NE(minimum, nullptr);
+    EXPECT_TRUE(MinReluS16x2::relu);
+    EXPECT_EQ(MinReluS16x2::type, ScalarType::S16x2);
+    EXPECT_TRUE(instruction->check(
+                    checker::Context{.target = {.ptx_version = {8, 0},
                                                          .sm_version = 90}})
                     .has_value());
-    EXPECT_FALSE(checker::check(
-                     minimum, checker::Context{.target = {.ptx_version = {7, 9},
+    EXPECT_FALSE(instruction->check(
+                     checker::Context{.target = {.ptx_version = {7, 9},
                                                           .sm_version = 90}})
                      .has_value());
-    EXPECT_FALSE(checker::check(
-                     minimum, checker::Context{.target = {.ptx_version = {8, 0},
+    EXPECT_FALSE(instruction->check(
+                     checker::Context{.target = {.ptx_version = {8, 0},
                                                           .sm_version = 80}})
                      .has_value());
   }
@@ -290,7 +289,7 @@ TEST(IntegerArithmeticCompleteness, EnforcesNewFormTargetFloors) {
     const auto resolved = resolveInstruction(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value());
     const auto check = [&resolved](const checker::Context& context) {
-      return resolved->check(context);
+      return (*resolved)->check(context);
     };
     const auto old_ptx = check(target_case.old_ptx);
     ASSERT_FALSE(old_ptx.has_value());
@@ -324,8 +323,7 @@ TEST(IntegerArithmeticCompleteness,
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_fns);
   const auto resolved_fns = resolveInstruction(*parsed_fns);
   ASSERT_TRUE(resolved_fns.has_value());
-  const auto checked = checker::check(
-      test_ir_access::get<Fns>(*resolved_fns),
+  const auto checked = (*resolved_fns)->check(
       checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 30}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -356,10 +354,9 @@ TEST(IntegerArithmeticCompleteness, RetainsOwnedOperandsAndRejectsMutation) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& dp4a = test_ir_access::get<Dp4a::U32S32>(
-      test_ir_access::get<Dp4a>(owned_module->functions.front().body[1])
-          .variant);
-  test_ir_access::get<ResolvedRegisterRef>(dp4a.accumulator.value)
+  auto& dp4a = dynamic_cast<Dp4aU32S32&>(
+      *owned_module->functions.front().body[1]);
+  std::get<ResolvedRegisterRef>(dp4a.accumulator.value)
       .declared_type = ScalarType::U64;
   const auto invalid = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);

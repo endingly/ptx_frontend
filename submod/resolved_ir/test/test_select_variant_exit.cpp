@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,27 +24,27 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveExit, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
   const auto bare_ast = parse_instruction("exit;");
-  const auto bare = resolve<Exit>(bare_ast);
+  const auto bare = resolveExit(bare_ast);
   ASSERT_TRUE(bare.has_value()) << bare.error().message;
-  EXPECT_TRUE(test_ir_access::holds_alternative<Exit::Bare>(bare->variant));
-  EXPECT_FALSE(bare->execution_predicate.has_value());
+  EXPECT_TRUE((dynamic_cast<ExitBare*>(bare->get()) != nullptr));
+  EXPECT_FALSE((*bare)->execution_predicate.has_value());
 
   const auto predicated_ast = parse_instruction("@%p0 exit;");
-  const auto predicated = resolve<Exit>(predicated_ast);
+  const auto predicated = resolveExit(predicated_ast);
   ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
   EXPECT_TRUE(
-      test_ir_access::holds_alternative<Exit::Bare>(predicated->variant));
-  EXPECT_TRUE(predicated->execution_predicate.has_value());
+      (dynamic_cast<ExitBare*>(predicated->get()) != nullptr));
+  EXPECT_TRUE((*predicated)->execution_predicate.has_value());
 
   const auto modifier_ast = parse_instruction("exit.uni;");
-  const auto modifier = resolve<Exit>(modifier_ast);
+  const auto modifier = resolveExit(modifier_ast);
   ASSERT_FALSE(modifier.has_value());
   EXPECT_EQ(modifier.error().range,
             modifier_ast.modifiers.front().syntax.range);
   EXPECT_EQ(modifier.error().message, "Unknown modifier '.uni'.");
 
   const auto operand_ast = parse_instruction("exit %r0;");
-  const auto operand = resolve<Exit>(operand_ast);
+  const auto operand = resolveExit(operand_ast);
   ASSERT_FALSE(operand.has_value());
   EXPECT_EQ(operand.error().range, operand_ast.range);
   EXPECT_EQ(operand.error().message,
@@ -62,14 +61,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareExitAvailability) {
   PtxSyntaxParser parser("exit;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto exit_instruction = resolve<Exit>(*ast);
+  const auto exit_instruction = resolveExit(*ast);
   ASSERT_TRUE(exit_instruction.has_value()) << exit_instruction.error().message;
 
   const Context old_target{
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = check(*exit_instruction, old_target);
+  const auto unavailable = (*exit_instruction)->check( old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -80,7 +79,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareExitAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE(check(*exit_instruction, supported_target).has_value());
+  EXPECT_TRUE((*exit_instruction)->check( supported_target).has_value());
 }
 
 }  // namespace

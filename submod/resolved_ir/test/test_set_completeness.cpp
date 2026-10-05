@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -7,8 +6,8 @@
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -45,31 +44,20 @@ TEST(SetCompleteness, ResolvesOrdinaryFamilies) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Set>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Bit>(
-      test_ir_access::get<Set>(body[0]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::BitBoolean>(
-      test_ir_access::get<Set>(body[1]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Signed>(
-      test_ir_access::get<Set>(body[2]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::SignedBoolean>(
-      test_ir_access::get<Set>(body[3]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Unsigned>(
-      test_ir_access::get<Set>(body[4]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::UnsignedBoolean>(
-      test_ir_access::get<Set>(body[5]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::Float>(
-      test_ir_access::get<Set>(body[6]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatBoolean>(
-      test_ir_access::get<Set>(body[7]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatF64>(
-      test_ir_access::get<Set>(body[8]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Set::FloatF64Boolean>(
-      test_ir_access::get<Set>(body[9]).variant));
+  EXPECT_NE(dynamic_cast<const SetBit*>(body[0].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetBitBoolean*>(body[1].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetSigned*>(body[2].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetSignedBoolean*>(body[3].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetUnsigned*>(body[4].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetUnsignedBoolean*>(body[5].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetFloat*>(body[6].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetFloatBoolean*>(body[7].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetFloatF64*>(body[8].get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetFloatF64Boolean*>(body[9].get()), nullptr);
 }
 
 /** Reject comparison suffixes outside each source family and illegal FTZ use. */
@@ -87,7 +75,7 @@ TEST(SetCompleteness, RejectsInvalidOrdinaryModifiers) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolve<Set>(*parsed).has_value());
+    EXPECT_FALSE(resolveSet(*parsed).has_value());
   }
 }
 
@@ -110,7 +98,7 @@ TEST(SetCompleteness, RejectsWrongDeclaredTypesAndSourceImmediate) {
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
     EXPECT_FALSE(
-        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
+        resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -119,15 +107,14 @@ TEST(SetCompleteness, EnforcesF64TargetMinimum) {
   const auto parsed =
       test_helpers::parseInstruction("set.eq.u32.f64 %r0, %fd0, %fd1;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolve<Set>(*parsed);
+  const auto resolved = resolveSet(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto old_target = checker::check(
-      *resolved,
+  const auto old_target = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 12}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(checker::check(*resolved,
+  EXPECT_TRUE((*resolved)->check(
                              checker::Context{.target = {.ptx_version = {1, 0},
                                                          .sm_version = 13}})
                   .has_value());
@@ -138,38 +125,36 @@ TEST(SetCompleteness, RejectsMutatedTypedFields) {
   const auto parsed =
       test_helpers::parseInstruction("set.eq.u32.b32 %r0, %r1, %r2;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-  auto resolved = resolve<Set>(*parsed);
+  auto resolved = resolveSet(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& bit = test_ir_access::get<Set::Bit>(resolved->variant);
+  auto& bit = dynamic_cast<SetBit&>(**resolved);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   bit.comparison.value = ComparisonOperator::Lt;
-  EXPECT_FALSE(checker::check(*resolved, context).has_value());
+  EXPECT_FALSE((*resolved)->check(context).has_value());
   bit.comparison.value = ComparisonOperator::Eq;
   bit.dtype.value = ScalarType::U16;
-  EXPECT_FALSE(checker::check(*resolved, context).has_value());
+  EXPECT_FALSE((*resolved)->check( context).has_value());
 }
 
 /** Recheck typed operands and predicate truth after source and AST destruction. */
 TEST(SetCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
-  std::optional<Set> owned;
+  std::unique_ptr<Instruction> owned;
   {
     const std::string source = "set.nan.xor.f32.f32 %f0, %f1, %f2, !0;";
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Set>(*parsed);
+    auto resolved = resolveSet(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    owned = *resolved;
+    owned = std::move(*resolved);
   }
-  ASSERT_TRUE(owned.has_value());
-  const auto& variant = test_ir_access::get<Set::FloatBoolean>(owned->variant);
+  ASSERT_NE(owned, nullptr);
+  const auto& variant = dynamic_cast<const SetFloatBoolean&>(*owned);
   EXPECT_EQ(variant.comparison.value, ComparisonOperator::Nan);
+  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(variant.combine.value).value);
   EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicateConstant>(variant.combine.value)
-          .value);
-  EXPECT_TRUE(
-      checker::check(*owned, checker::Context{.target = {.ptx_version = {9, 3},
-                                                         .sm_version = 100}})
+      owned->check(checker::Context{.target = {.ptx_version = {9, 3},
+                                               .sm_version = 100}})
           .has_value());
 }
 

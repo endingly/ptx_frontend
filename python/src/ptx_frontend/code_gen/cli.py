@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from pathlib import Path
 import stat
@@ -44,6 +45,14 @@ def parse_arguments() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Generated output directory.",
+    )
+
+    parser.add_argument(
+        "--jobs",
+        type=positive_integer,
+        default=6,
+        metavar="N",
+        help="Maximum concurrent artifact writers (default: 6).",
     )
 
     parser.add_argument(
@@ -157,15 +166,48 @@ def main() -> None:
         artifacts = plan.artifacts
         remove_obsolete_generated_files(output_dir, plan.paths)
 
-    for artifact in artifacts:
-        write_formatted_artifact(
-            context,
-            artifact.emit,
-            artifact.path,
-        )
+    write_artifacts(context, artifacts, args.jobs)
 
     if full_generation or args.global_artifacts:
         write_output_manifest(output_dir, plan.paths)
+
+
+def positive_integer(value: str) -> int:
+    """Parse a strictly positive worker count for the command line."""
+
+    try:
+        jobs = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "--jobs must be a positive integer"
+        ) from error
+    if jobs < 1:
+        raise argparse.ArgumentTypeError("--jobs must be a positive integer")
+    return jobs
+
+
+def write_artifacts(context, artifacts, jobs: int) -> None:
+    """Write independent planned artifacts, joining all workers on failure."""
+
+    if jobs == 1:
+        for artifact in artifacts:
+            write_formatted_artifact(context, artifact.emit, artifact.path)
+        return
+
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = [
+            executor.submit(
+                write_formatted_artifact, context, artifact.emit, artifact.path
+            )
+            for artifact in artifacts
+        ]
+        try:
+            for future in as_completed(futures):
+                future.result()
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
 
 
 def validate_directory(path: Path, option: str) -> None:

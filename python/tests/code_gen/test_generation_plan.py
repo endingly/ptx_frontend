@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 import argparse
 import ast
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import sys
+import threading
 from pathlib import Path
 import tempfile
 import time
@@ -54,6 +55,167 @@ from ptx_frontend.spec.database import (
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_DIR = ROOT / "instructions/ptx_spec"
 BACKEND_SPEC = ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+
+
+class GeneratorJobsTests(unittest.TestCase):
+    """Exercise worker-count parsing and independent artifact writing."""
+
+    def test_jobs_must_be_positive_integer(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        base = [
+            "codegen",
+            "--spec-dir",
+            str(SPEC_DIR),
+            "--backend-spec",
+            str(BACKEND_SPEC),
+            "--output",
+            str(SPEC_DIR / "generated"),
+        ]
+        for value in ("0", "-1", "1.5", "many"):
+            with self.subTest(value=value), patch.object(
+                sys, "argv", base + ["--jobs", value]
+            ):
+                with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as error:
+                    cli.parse_arguments()
+                self.assertEqual(error.exception.code, 2)
+        with patch.object(sys, "argv", base):
+            self.assertEqual(cli.parse_arguments().jobs, 6)
+        with patch.object(sys, "argv", base + ["--jobs", "1"]):
+            self.assertEqual(cli.parse_arguments().jobs, 1)
+
+    def test_parallel_artifacts_match_serial_bytes_and_stable_manifest(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            serial = root / "serial"
+            parallel = root / "parallel"
+            barrier = threading.Barrier(2)
+            parallel_execution = False
+
+            def emitter(index: int):
+                """Build one deterministic test emitter."""
+
+                def emit(_context, *, output_path: Path) -> None:
+                    """Write one candidate after synchronizing parallel writers."""
+
+                    if parallel_execution and index < 2:
+                        barrier.wait(timeout=5)
+                    output_path.write_text(f"artifact {index}\n", encoding="utf-8")
+                return emit
+
+            def artifacts(output: Path) -> tuple[GeneratedArtifact, ...]:
+                """Plan identical artifact names below one output root."""
+
+                return tuple(
+                    GeneratedArtifact(
+                        output / f"private/artifact_{index}.gen.cpp", emitter(index) # pyright: ignore[reportArgumentType]
+                    )
+                    for index in range(3)
+                )
+
+            with patch("ptx_frontend.code_gen.cli.format_file_inplace"):
+                with patch("ptx_frontend.code_gen.cli.ThreadPoolExecutor") as executor:
+                    cli.write_artifacts(None, artifacts(serial), 1)
+                    executor.assert_not_called()
+                parallel_execution = True
+                cli.write_artifacts(None, artifacts(parallel), 2)
+
+            cli.write_output_manifest(
+                serial, tuple(item.path for item in artifacts(serial))
+            )
+            cli.write_output_manifest(
+                parallel, tuple(item.path for item in artifacts(parallel))
+            )
+            self.assertEqual(
+                (serial / ".ptx_resolved_ir_outputs.txt").read_bytes(),
+                (parallel / ".ptx_resolved_ir_outputs.txt").read_bytes(),
+            )
+            for index in range(3):
+                relative = f"private/artifact_{index}.gen.cpp"
+                self.assertEqual(
+                    (serial / relative).read_bytes(), (parallel / relative).read_bytes()
+                )
+
+    def test_failure_cancels_pending_work_joins_workers_and_skips_manifest(self) -> None:
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec_dir = root / "spec"
+            spec_dir.mkdir()
+            backend_spec = root / "backend.yaml"
+            backend_spec.write_text("backend\n", encoding="utf-8")
+            output = root / "generated"
+            output.mkdir()
+            manifest = output / ".ptx_resolved_ir_outputs.txt"
+            manifest.write_text("previous\n", encoding="utf-8")
+            running = threading.Event()
+            release = threading.Event()
+            def fail(_context, *, output_path: Path) -> None:
+                """Fail after another worker starts its candidate."""
+
+                self.assertTrue(running.wait(timeout=5))
+                raise RuntimeError("emission failed")
+
+            def finish(_context, *, output_path: Path) -> None:
+                """Finish an in-flight candidate before the CLI returns."""
+
+                running.set()
+                self.assertTrue(release.wait(timeout=5))
+                output_path.write_text("finished\n", encoding="utf-8")
+
+            def queued(_context, *, output_path: Path) -> None:
+                """Provide pending work for cancellation after failure."""
+
+                output_path.write_text("unexpected\n", encoding="utf-8")
+
+            plan = GenerationPlan(
+                (
+                    GeneratedArtifact(output / "private/failed.gen.cpp", fail), # pyright: ignore[reportArgumentType]
+                    GeneratedArtifact(output / "private/running.gen.cpp", finish), # pyright: ignore[reportArgumentType]
+                    GeneratedArtifact(output / "private/queued.gen.cpp", queued), # pyright: ignore[reportArgumentType]
+                )
+            )
+            arguments = argparse.Namespace(
+                spec_dir=spec_dir,
+                backend_spec=backend_spec,
+                output=output,
+                spec_file=[],
+                category=None,
+                global_artifacts=False,
+                list_outputs=False,
+                describe_build=False,
+                jobs=2,
+            )
+            with (
+                patch(
+                    "ptx_frontend.code_gen.cli.parse_arguments", return_value=arguments
+                ),
+                patch("ptx_frontend.code_gen.cli.load_codegen_database"),
+                patch("ptx_frontend.code_gen.cli.load_cpp_backend"),
+                patch(
+                    "ptx_frontend.code_gen.cli.build_generation_context",
+                    return_value=object(),
+                ),
+                patch(
+                    "ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan
+                ),
+                patch("ptx_frontend.code_gen.cli.format_file_inplace"),
+            ):
+                timer = threading.Timer(0.2, release.set)
+                timer.start()
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "emission failed"):
+                        cli.main()
+                finally:
+                    release.set()
+                    timer.join()
+            self.assertEqual(manifest.read_text(encoding="utf-8"), "previous\n")
+            self.assertEqual((output / "private/running.gen.cpp").read_text(), "finished\n")
+            self.assertFalse((output / "private/failed.gen.cpp").exists())
+            self.assertEqual(list(output.rglob(".*.gen.cpp")), [])
 
 
 class GenerationPlanTests(unittest.TestCase):
@@ -599,6 +761,7 @@ class GenerationPlanTests(unittest.TestCase):
                 global_artifacts=False,
                 list_outputs=False,
                 describe_build=False,
+                jobs=6,
             )
             with (
                 patch(

@@ -172,6 +172,12 @@ installed. `submod/resolved_ir/CMakeLists.txt` uses the Python codegen CLI's
 `--list-outputs` mode to discover artifacts, then generates them before compiling
 private sources into `resolved_ir`. The generation rule depends on both schemas,
 the backend mapping, specification files, and generator Python sources.
+The CLI defaults to six concurrent artifact writers (`--jobs 6`); `--jobs 1`
+retains serial emission. The CMake source build passes
+`PTX_FRONTEND_CODEGEN_JOBS` (default `6`) to the CLI. The plan and output listing
+remain ordered, and the manifest is written only after all selected artifacts
+succeed. Each artifact uses a sibling candidate and atomic replacement; a failed
+run may leave successfully written artifacts, but does not publish a new manifest.
 
 Syntax descriptor storage implements getters on generated Resolved IR opcode
 types and is consumed by variant selection and resolution. It shares each

@@ -2,6 +2,12 @@
 find_package(fmt CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+set(PTX_FRONTEND_CODEGEN_JOBS "6" CACHE STRING
+    "Maximum concurrent Resolved IR generator artifact writers")
+if(NOT PTX_FRONTEND_CODEGEN_JOBS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "PTX_FRONTEND_CODEGEN_JOBS must be a positive integer")
+endif()
+
 set(resolved_spec_dir "${PROJECT_SOURCE_DIR}/instructions/ptx_spec")
 set(resolved_backend
     "${PROJECT_SOURCE_DIR}/instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
@@ -30,7 +36,8 @@ set(resolved_codegen_command
     "${Python3_EXECUTABLE}" -m ptx_frontend.code_gen
     --spec-dir "${resolved_spec_dir}"
     --backend-spec "${resolved_backend}"
-    --output "${resolved_generated_root}")
+    --output "${resolved_generated_root}"
+    --jobs "${PTX_FRONTEND_CODEGEN_JOBS}")
 execute_process(
     COMMAND ${resolved_codegen_command} --list-outputs
     OUTPUT_VARIABLE resolved_generated_list

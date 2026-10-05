@@ -151,6 +151,10 @@ rendering 或 filesystem 失败。
 `submod/resolved_ir/CMakeLists.txt` 使用 Python codegen CLI 的 `--list-outputs`
 模式发现产物，再生成并将私有源码编译进 `resolved_ir`。生成规则依赖两份 schema、
 backend mapping、规格文件以及 generator Python 源码。
+CLI 默认使用六个并发产物 writer（`--jobs 6`）；`--jobs 1` 保持串行生成。
+CMake 源码构建将 `PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）传给 CLI。plan 与
+output listing 保持有序，全部选定产物成功后才写入 manifest。每个产物使用同目录
+candidate 并原子替换；失败的运行可能留下已成功写入的产物，但不会发布新的 manifest。
 
 Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
 供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker

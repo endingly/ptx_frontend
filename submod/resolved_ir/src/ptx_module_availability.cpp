@@ -922,12 +922,13 @@ void check_module_references(const ResolvedModule& module,
   }
 }
 
-/** Compare a copy-control register's cached type with its owned declaration. */
-void check_cp_async_register_binding(const ResolvedModule& module,
-                                     const ResolvedRegisterRef& register_ref,
-                                     std::span<const SourceRange> locations,
-                                     SourceRange fallback,
-                                     checker::CheckDiagnostics& diagnostics) {
+/** Compare a borrowed register's cached scalar type with its owned declaration. */
+void check_cached_register_binding(const ResolvedModule& module,
+                                   const ResolvedRegisterRef& register_ref,
+                                   std::span<const SourceRange> locations,
+                                   SourceRange fallback,
+                                   std::string_view operand_name,
+                                   checker::CheckDiagnostics& diagnostics) {
   if (!register_ref.symbol_id)
     return;  // The general reference validator reports missing identities.
   const auto* symbol = owned_symbol(module, *register_ref.symbol_id);
@@ -939,7 +940,8 @@ void check_cp_async_register_binding(const ResolvedModule& module,
   if (!declared || register_ref.declared_type != declared) {
     append_model_mismatch(
         diagnostics, reference_range(locations, fallback),
-        "cp.async control register type disagrees with its owned declaration.");
+        fmt::format("{} register type disagrees with its owned declaration.",
+                    operand_name));
   }
 }
 
@@ -957,8 +959,8 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
     void reg(const ResolvedRegisterRef& value,
              std::span<const SourceRange> locations,
              checker::AddressSymbolResolutionPolicy) override {
-      check_cp_async_register_binding(module, value, locations, fallback,
-                                      diagnostics);
+      check_cached_register_binding(module, value, locations, fallback,
+                                    "cp.async control", diagnostics);
     }
     /** Borrowed module whose symbol table owns every identity. */
     const ResolvedModule& module;
@@ -973,6 +975,65 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
     TypeObserver observer(module, function.instruction_ranges[index],
                           diagnostics);
     detail::visit_cp_control_registers(*function.body[index], observer);
+  }
+}
+
+/** Revalidate tensor coordinate cached types against owned register declarations. */
+void check_tensor_coordinate_bindings(const ResolvedModule& module,
+                                      const ResolvedFunction& function,
+                                      checker::CheckDiagnostics& diagnostics) {
+  /** Borrow tensor payloads only during each synchronous reference visit. */
+  struct TypeObserver final : detail::IReferenceObserver {
+    /** Borrow the owned symbol table and diagnostic sink for one instruction. */
+    TypeObserver(const ResolvedModule& owner, SourceRange range,
+                 checker::CheckDiagnostics& output)
+        : module(owner), fallback(range), diagnostics(output) {}
+
+    /** Check a standalone coordinate tuple at its operand source location. */
+    void tensor_coordinate(const ResolvedTensorCoordinate& value,
+                           std::span<const SourceRange> locations,
+                           checker::AddressSymbolResolutionPolicy) override {
+      for (const auto& element : value.elements) {
+        if (const auto* coordinate = std::get_if<ResolvedRegisterRef>(&element))
+          check_cached_register_binding(module, *coordinate, locations,
+                                        fallback, "Tensor coordinate",
+                                        diagnostics);
+      }
+    }
+
+    /** Check each nested coordinate at its own preserved source range. */
+    void tensor_operand(const ResolvedTensorOperand& value,
+                        std::span<const SourceRange>,
+                        checker::AddressSymbolResolutionPolicy) override {
+      for (size_t index = 0; index < value.coordinates.elements.size();
+           ++index) {
+        const auto* coordinate = std::get_if<ResolvedRegisterRef>(
+            &value.coordinates.elements[index]);
+        if (!coordinate)
+          continue;
+        const std::array<SourceRange, 1> range{
+            index < value.coordinate_ranges.size()
+                ? value.coordinate_ranges[index]
+                : fallback};
+        check_cached_register_binding(module, *coordinate, range, fallback,
+                                      "Tensor coordinate", diagnostics);
+      }
+    }
+
+    /** Borrowed module whose symbol table owns all observed identities. */
+    const ResolvedModule& module;
+    /** Owned instruction range for coordinates without element provenance. */
+    SourceRange fallback;
+    /** Borrowed destination for declaration mismatch diagnostics. */
+    checker::CheckDiagnostics& diagnostics;
+  };
+
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    if (!function.body[index])
+      continue;
+    TypeObserver observer(module, function.instruction_ranges[index],
+                          diagnostics);
+    function.body[index]->visit_references(observer);
   }
 }
 
@@ -1889,6 +1950,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
       check_cp_async_control_bindings(module, function, diagnostics);
+      check_tensor_coordinate_bindings(module, function, diagnostics);
       check_st_bulk_size_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);

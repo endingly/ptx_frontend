@@ -18,8 +18,14 @@ set(resolved_instruction_schema
 set(resolved_generated_root "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(resolved_generated_private "${resolved_generated_root}/private")
 set(resolved_generated_public "${resolved_generated_root}/public")
-file(GLOB resolved_spec_files CONFIGURE_DEPENDS
+file(GLOB_RECURSE resolved_spec_files CONFIGURE_DEPENDS
     "${resolved_spec_dir}/*.yaml")
+list(FILTER resolved_spec_files EXCLUDE REGEX "\\.schema\\.yaml$")
+set(resolved_spec_inputs_manifest
+    "${CMAKE_CURRENT_BINARY_DIR}/resolved_spec_inputs.txt")
+string(JOIN "\n" resolved_spec_inputs_text ${resolved_spec_files})
+file(GENERATE OUTPUT "${resolved_spec_inputs_manifest}"
+    CONTENT "${resolved_spec_inputs_text}\n")
 file(GLOB_RECURSE resolved_codegen_python CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/base/*.py"
     "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/*.py"
@@ -58,7 +64,8 @@ list(FILTER resolved_generated_sources INCLUDE REGEX "\\.gen\\.cpp$")
 add_custom_command(
     OUTPUT ${resolved_generated_outputs}
     COMMAND ${resolved_codegen_command}
-    DEPENDS ${resolved_spec_files} "${resolved_instruction_schema}"
+    DEPENDS ${resolved_spec_files} "${resolved_spec_inputs_manifest}"
+        "${resolved_instruction_schema}"
         "${resolved_backend}" "${resolved_backend_schema}"
         ${resolved_codegen_python}
     COMMENT "Generating direct resolved IR forms and descriptors"

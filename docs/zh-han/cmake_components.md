@@ -23,7 +23,7 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 - `ptx_frontend_PTX_CPP_BACKEND_SPEC`：已安装的 C++ backend 映射 YAML 路径；
 - `ptx_frontend_PTX_CPP_BACKEND_SCHEMA`：已安装的 backend schema 路径。
 
-PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库输入目录。
+PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库输入目录。源码生成递归追踪该目录中的 YAML，并与 Python loader 一样排除 `.schema.yaml` 文件。文件集合变化也会使生成失效，避免移除输入后遗留过时产物。
 
 C++ backend 映射以 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 为源码输入，安装至 `share/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml`；schema 安装至 `share/ptx_frontend/ptx-cpp-backend-v2.schema.yaml`。请求 `ptx_spec` 时会检查四项资源，导出路径相对于 package 的安装前缀计算，因此安装目录可整体迁移。
 

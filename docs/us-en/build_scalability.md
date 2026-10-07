@@ -578,3 +578,81 @@ CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
 Both exact configure caches and the temporary test-flag hook are retained in
 the artifact directory. Dependency installation and configuration precede the
 timed commands.
+
+## Direct-class variant addition on the review branch
+
+This separate, single-run incremental experiment used parent revision
+`63369f8bc16f284662ffda4da1848e2d726edc8d` with the recursive-input and
+owned-coordinate repairs in this change. It did not repeat the historical clean
+builds above. The source build was Debug with Ninja 1.13.2, CMake 4.3.3,
+Clang 21.1.8, three concurrent compile jobs, and six generator artifact
+writers. Production used `-g0 -std=gnu++23`; the resolved-IR test target added
+`-gline-tables-only`. Both used ccache 4.12.3 and the existing `x64-linux`
+dependency tree. The 5 GiB compiler cache was near capacity. Other builds were
+not run concurrently.
+
+Both `ptx_frontend_resolved_ir` and `test_resolved_ir` were built to a no-op
+baseline first. A **temporary synthetic** `abs_s8` variant was then inserted
+after `abs_s16` in `instructions/ptx_spec/arithmetic.yaml`:
+
+```yaml
+      - name: abs_s8
+        availability: {ptx: "9.3", sm: 120}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8}]
+        examples: [{ptx: "abs.s8 %b0, %b1;", valid: true}]
+```
+
+This is a real generator input that produced an `AbsS8` final class and an
+`InstructionKind::AbsS8` enumerator. It is not a claim that `abs.s8` is a
+supported PTX form, and the probe is absent from the delivered source. The
+normal `resolved_ir_codegen` build performed CMake reconfiguration and
+generation before the two timed target builds. Ninja's actual compiler steps,
+not the number of declared target sources, give these counts:
+
+| Incremental step | Wall time | C++ objects compiled |
+| --- | ---: | ---: |
+| No-op baseline, both targets | No work | 0 |
+| Reconfigure and `resolved_ir_codegen` | 38.003 s | 0 |
+| `ptx_frontend_resolved_ir` | 142.840 s | 96: 93 generated, 3 handwritten |
+| `test_resolved_ir`, after production | 176.301 s | 129 test objects |
+
+The production and test compilations added 225 ccache misses and zero hits.
+The generated common base header changed, so otherwise unchanged opcode units
+such as `resolved_ir_data_movement_cvta.gen.cpp` and
+`resolved_ir_parallel_synchronization_and_communication_bar.gen.cpp` were
+compiled. Unrelated test units including `test_select_variant_cp.cpp` and
+`test_select_variant_xor.cpp` were also compiled. These target-specific sets
+show the cost of retaining the global `InstructionKind` catalog in the public
+base dependency. They do not establish a clean-build speedup or a cost on
+another host or cache state. The temporary variant was removed, both targets
+were rebuilt to the ordinary generated state, and a subsequent no-op build
+performed no work.
+
+For reproduction, warm both targets and confirm a no-op build, insert the
+variant above, then run these commands in order against the same configured
+build directory:
+
+```sh
+cmake --build <build-dir> --target resolved_ir_codegen --parallel 3
+ninja -C <build-dir> -j 3 -d explain ptx_frontend_resolved_ir
+ninja -C <build-dir> -j 3 -d explain test_resolved_ir
+```
+
+Remove the inserted variant and build both targets again before testing or
+comparing other changes. The measured source used
+`/tmp/ptx-six-cold.drYe8K/build`; local compiler-step logs are under
+`/tmp/ptx-pr235-review.J2S3oW` and are not portable artifacts.
+
+The recursive CMake input repair was also exercised through the normal
+`resolved_ir_codegen` target. A temporary
+`instructions/ptx_spec/__review_probe__/nop.yaml` contained a bare `nop`
+instruction in category `miscellaneous`, codegen category `control_flow`, with
+variant `nop_probe_a`. Adding it discovered `nop.gen.hpp` and its matching
+source; changing only the variant name to `nop_probe_b` regenerated the class;
+removing the YAML reconfigured the build and removed both generated files.
+The input-membership manifest changed on add and remove, and the probe file is
+absent from the delivered source. To repeat this check, create a nested spec
+with the ordinary `ptx-instr/v1` header and one bare variant, run
+`cmake --build <build-dir> --target resolved_ir_codegen` after each add,
+variant-name edit, and removal, and inspect the generated model leaf and
+`submod/resolved_ir/resolved_spec_inputs.txt` in the build tree.

@@ -485,3 +485,70 @@ CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
 
 两个构建的准确配置缓存和临时测试标志 hook 均保存在 artifact 目录。
 依赖安装与配置在计时命令之前完成。
+
+## Review 分支上直接语义类的 variant 增量构建
+
+这是一组独立的单次增量测量：源码以
+`63369f8bc16f284662ffda4da1848e2d726edc8d` 为父提交，并包含本次修改的递归输入
+与 owned 坐标修复；没有重做上面的历史清洁构建。构建为 Debug，使用 Ninja 1.13.2、
+CMake 4.3.3、Clang 21.1.8、3 个并行编译任务和 6 个 generator 产物 writer。
+Production 标志为 `-g0 -std=gnu++23`，resolved-IR 测试目标另外使用
+`-gline-tables-only`。两者都使用 ccache 4.12.3 和已有 `x64-linux` 依赖树。
+5 GiB 编译缓存接近满额；没有并发运行其他构建。
+
+先将 `ptx_frontend_resolved_ir` 与 `test_resolved_ir` 构建到无工作基线，随后在
+`instructions/ptx_spec/arithmetic.yaml` 的 `abs_s16` 后临时加入一个**合成**
+`abs_s8` variant：
+
+```yaml
+      - name: abs_s8
+        availability: {ptx: "9.3", sm: 120}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8}]
+        examples: [{ptx: "abs.s8 %b0, %b1;", valid: true}]
+```
+
+这是实际的 generator 输入，产生了 `AbsS8` final class 和
+`InstructionKind::AbsS8` 枚举值；它不表示 `abs.s8` 是受支持的 PTX 形式，交付源码中也
+没有该样本。通过普通 `resolved_ir_codegen` 构建先完成 CMake 重新配置与生成，
+再分别计时两个目标。下表的 object 数来自 Ninja 实际执行的编译步骤，
+不是目标中声明的源码数量：
+
+| 增量步骤 | 墙钟时间 | 实际编译的 C++ object |
+| --- | ---: | ---: |
+| 两个目标的无变更基线 | 无工作 | 0 |
+| 重新配置及 `resolved_ir_codegen` | 38.003 秒 | 0 |
+| `ptx_frontend_resolved_ir` | 142.840 秒 | 96：93 个生成源、3 个手写源 |
+| 随后的 `test_resolved_ir` | 176.301 秒 | 129 个测试源 |
+
+Production 和测试编译合计增加 225 次 ccache miss、0 次 hit。
+公共 base 头文件发生变化，因此本来未修改的 opcode 源文件，例如
+`resolved_ir_data_movement_cvta.gen.cpp` 和
+`resolved_ir_parallel_synchronization_and_communication_bar.gen.cpp`，仍被编译。
+无关的测试源 `test_select_variant_cp.cpp` 与 `test_select_variant_xor.cpp` 也被编译。
+这些按目标统计的候选集展示了公共 base 依赖中保留全局 `InstructionKind` 目录的成本；
+不能据此推断清洁构建提速，或其他主机与缓存状态下的成本。移除临时 variant 后，
+两个目标已重建回普通生成状态；再次构建无工作。
+
+复现时先构建两个目标并确认无工作，然后加入上述 variant，在同一配置好的构建目录
+按顺序运行：
+
+```sh
+cmake --build <build-dir> --target resolved_ir_codegen --parallel 3
+ninja -C <build-dir> -j 3 -d explain ptx_frontend_resolved_ir
+ninja -C <build-dir> -j 3 -d explain test_resolved_ir
+```
+
+完成后删除临时 variant，并重新构建两个目标，然后再做测试或其他对比。
+测量使用 `/tmp/ptx-six-cold.drYe8K/build`；本机编译步骤日志位于
+`/tmp/ptx-pr235-review.J2S3oW`，不是可移植的产物。
+
+递归 CMake 输入修复还通过普通 `resolved_ir_codegen` 目标验证。
+临时 `instructions/ptx_spec/__review_probe__/nop.yaml` 使用
+`ptx-instr/v1`、`miscellaneous` category、`control_flow` codegen category、
+一个无 operand 的 `nop_probe_a` variant。增加文件后发现 `nop.gen.hpp`
+及其对应源文件；仅将 variant 名改为 `nop_probe_b` 后类重新生成；移除 YAML 后
+构建重新配置，并删除两个生成文件。输入成员列表在增加及移除时改变，
+样本文件不在交付源码中。复现时在子目录创建带普通 schema 头和一个 bare variant
+的 YAML；在增加、修改 variant 名、删除文件后各运行一次
+`cmake --build <build-dir> --target resolved_ir_codegen`，检查生成的 model leaf 和
+构建树内 `submod/resolved_ir/resolved_spec_inputs.txt`。

@@ -311,6 +311,61 @@ TEST(TensorAsync, RevalidatesOwnedTensorMetadata) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
 }
 
+/** A valid same-scope register ID cannot contradict a cached coordinate type. */
+TEST(TensorAsync, RejectsOwnedCoordinateBoundToDifferentWidthRegister) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.entry kernel() {
+  .reg .s32 %coord;
+  .reg .u64 %wide;
+  cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {%coord}];
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  auto& function = owned->functions.front();
+  auto* prefetch =
+      dynamic_cast<CpAsyncBulkPrefetchTensor1d*>(function.body.front().get());
+  ASSERT_NE(prefetch, nullptr);
+  auto& coordinate = std::get<ResolvedRegisterRef>(
+      prefetch->tensor.value.coordinates.elements.front());
+  ASSERT_EQ(coordinate.declared_type, base::ScalarType::S32);
+  ASSERT_TRUE(coordinate.symbol_id);
+  const auto wide = owned->symbols.lookup(function.declaration_scope, "%wide");
+  ASSERT_TRUE(wide);
+  const auto& wide_symbol = owned->symbols.symbol(wide->symbol);
+  ASSERT_EQ(wide_symbol.scope, function.declaration_scope);
+  ASSERT_EQ(wide_symbol.kind, binding::SymbolKind::Variable);
+  ASSERT_EQ(wide_symbol.type, ".u64");
+
+  const auto original_id = coordinate.symbol_id;
+  coordinate.symbol_id = wide->symbol;
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  EXPECT_TRUE(prefetch->check(context));
+  const auto mismatch =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(mismatch);
+  EXPECT_EQ(mismatch.error().front().kind,
+            checker::CheckDiagnosticKind::ModuleSourceMismatch);
+  EXPECT_EQ(mismatch.error().front().message,
+            "Tensor coordinate register type disagrees with its owned "
+            "declaration.");
+  coordinate.symbol_id = original_id;
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
 /** Scalar tensor coordinates retain carrier checks after syntax destruction. */
 TEST(TensorAsync, OwnedCoordinateRegisterShapesAcrossTiledDirections) {
   constexpr std::array<std::string_view, 3> instructions{

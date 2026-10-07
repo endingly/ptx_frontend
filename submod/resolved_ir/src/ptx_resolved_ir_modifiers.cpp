@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <string_view>
+#include <type_traits>
 #include <unordered_set>
+#include <vector>
 
 #include "resolved_value_domains.gen.hpp"
 
@@ -264,6 +266,84 @@ resolve_mbarrier_layout(const syntax_ast::AstModifier& modifier) {
   return WithLocs<MbarrierLayout>{*value, modifier.syntax.range};
 }
 
+/** Resolve a written CTA-group suffix into its Tensor Memory topology. */
+std::expected<WithLocs<TcgenCtaGroup>, ResolveDiagnostic>
+resolve_tcgen_cta_group(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenCtaGroups,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown Tensor Memory CTA group '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<TcgenCtaGroup>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed Tensor Memory register-transfer shape suffix. */
+std::expected<WithLocs<TcgenDataMovementShape>, ResolveDiagnostic>
+resolve_tcgen_shape(const syntax_ast::AstModifier& modifier) {
+  std::optional<TcgenDataMovementShape> value;
+  const std::string_view spelling = modifier.syntax.text;
+  if (spelling == ".32x32b")
+    value = TcgenDataMovementShape::S32x32b;
+  else if (spelling == ".16x64b")
+    value = TcgenDataMovementShape::S16x64b;
+  else if (spelling == ".16x128b")
+    value = TcgenDataMovementShape::S16x128b;
+  else if (spelling == ".16x256b")
+    value = TcgenDataMovementShape::S16x256b;
+  else if (spelling == ".16x32bx2")
+    value = TcgenDataMovementShape::S16x32bx2;
+  else if (spelling == ".128x256b")
+    value = TcgenDataMovementShape::S128x256b;
+  else if (spelling == ".4x256b")
+    value = TcgenDataMovementShape::S4x256b;
+  else if (spelling == ".128x128b")
+    value = TcgenDataMovementShape::S128x128b;
+  else if (spelling == ".64x128b")
+    value = TcgenDataMovementShape::S64x128b;
+  else if (spelling == ".32x128b")
+    value = TcgenDataMovementShape::S32x128b;
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{modifier.syntax.range,
+                                             "Unknown Tensor Memory shape."});
+  return WithLocs<TcgenDataMovementShape>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed Tensor Memory repeat suffix. */
+std::expected<WithLocs<TcgenRepeat>, ResolveDiagnostic> resolve_tcgen_repeat(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value =
+      lookup_ptx_suffix(generated_detail::kTcgenRepeats, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{modifier.syntax.range,
+                                             "Unknown Tensor Memory repeat."});
+  return WithLocs<TcgenRepeat>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed Tensor Memory reduction operation. */
+std::expected<WithLocs<TcgenReductionOp>, ResolveDiagnostic>
+resolve_tcgen_reduction_op(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenReductionOps,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        modifier.syntax.range, "Unknown Tensor Memory reduction."});
+  return WithLocs<TcgenReductionOp>{*value, modifier.syntax.range};
+}
+
+/** Resolve the load or store class selected by a Tensor Memory wait. */
+std::expected<WithLocs<TcgenWaitClass>, ResolveDiagnostic>
+resolve_tcgen_wait_class(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenWaitClasses,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        modifier.syntax.range, "Unknown Tensor Memory wait class."});
+  return WithLocs<TcgenWaitClass>{*value, modifier.syntax.range};
+}
+
 std::expected<WithLocs<AsyncProxyKind>, ResolveDiagnostic>
 resolve_async_proxy_kind(const syntax_ast::AstModifier& modifier) {
   const auto value = lookup_ptx_suffix(generated_detail::kAsyncProxyKinds,
@@ -367,6 +447,11 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(memory_state_space, resolve_memory_state_space)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_phase_type,
                                  resolve_mbarrier_phase_type)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_layout, resolve_mbarrier_layout)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_cta_group, resolve_tcgen_cta_group)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_shape, resolve_tcgen_shape)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_repeat, resolve_tcgen_repeat)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_reduction_op, resolve_tcgen_reduction_op)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_wait_class, resolve_tcgen_wait_class)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(async_proxy_kind, resolve_async_proxy_kind)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(proxy_kind_pair, resolve_proxy_kind_pair)
 
@@ -406,6 +491,15 @@ PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_phase_type, MbarrierPhaseType,
                             mbarrier_phase_type, true)
 PTX_DEFINE_MODIFIER_DEFAULT(mbarrier_layout, MbarrierLayout, mbarrier_layout,
                             true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_cta_group, TcgenCtaGroup, tcgen_cta_group,
+                            true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_shape, TcgenDataMovementShape, tcgen_shape,
+                            true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_repeat, TcgenRepeat, tcgen_repeat, true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_reduction_op, TcgenReductionOp,
+                            tcgen_reduction_op, true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_wait_class, TcgenWaitClass, tcgen_wait_class,
+                            true)
 PTX_DEFINE_MODIFIER_DEFAULT(async_proxy_kind, AsyncProxyKind, async_proxy_kind,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(proxy_kind_pair, ProxyKindPair, proxy_kind_pair,
@@ -442,40 +536,51 @@ struct ModifierDomainMapping {
 };
 
 /** One private table owns modifier kind, parser, and default associations. */
-#define PTX_MODIFIER_DOMAIN_TABLE(X)                                          \
-  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean",        \
-    Supported)                                                                \
-  X(ScalarType, ScalarType, parse_scalar_type_modifier,                       \
-    default_scalar_type_modifier, "scalar-type", Supported)                   \
-  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                 \
-    default_rounding_mode_modifier, "rounding-mode", Supported)               \
-  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,    \
-    "comparison-operator", UnsupportedDomain)                                 \
-  X(TestProperty, None, parse_test_property_modifier, nullptr,                \
-    "test-property", UnsupportedDomain)                                       \
-  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,          \
-    "boolean-operator", UnsupportedDomain)                                    \
-  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,              \
-    default_cache_operator_modifier, "cache-operator", Supported)             \
-  X(EvictionPriority, EvictionPriority, parse_eviction_priority_modifier,     \
-    default_eviction_priority_modifier, "eviction-priority", Supported)       \
-  X(PrefetchSize, PrefetchSize, parse_prefetch_size_modifier,                 \
-    default_prefetch_size_modifier, "prefetch size", Supported)               \
-  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,  \
-    default_memory_consistency_modifier, "memory-consistency", Supported)     \
-  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                    \
-    default_memory_scope_modifier, "memory-scope", Supported)                 \
-  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity",  \
-    NonModifierDomain)                                                        \
-  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,    \
-    default_memory_state_space_modifier, "memory-state-space", Supported)     \
-  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier, \
-    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)   \
-  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,           \
-    default_mbarrier_layout_modifier, "mbarrier layout", Supported)           \
-  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,          \
-    default_async_proxy_kind_modifier, "async proxy", Supported)              \
-  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,             \
+#define PTX_MODIFIER_DOMAIN_TABLE(X)                                           \
+  X(Bool, Bool, parse_bool_modifier, default_bool_modifier, "boolean",         \
+    Supported)                                                                 \
+  X(ScalarType, ScalarType, parse_scalar_type_modifier,                        \
+    default_scalar_type_modifier, "scalar-type", Supported)                    \
+  X(RoundingMode, RoundingMode, parse_rounding_mode_modifier,                  \
+    default_rounding_mode_modifier, "rounding-mode", Supported)                \
+  X(ComparisonOperator, None, parse_comparison_operator_modifier, nullptr,     \
+    "comparison-operator", UnsupportedDomain)                                  \
+  X(TestProperty, None, parse_test_property_modifier, nullptr,                 \
+    "test-property", UnsupportedDomain)                                        \
+  X(BooleanOperator, None, parse_boolean_operator_modifier, nullptr,           \
+    "boolean-operator", UnsupportedDomain)                                     \
+  X(CacheOperator, CacheOperator, parse_cache_operator_modifier,               \
+    default_cache_operator_modifier, "cache-operator", Supported)              \
+  X(EvictionPriority, EvictionPriority, parse_eviction_priority_modifier,      \
+    default_eviction_priority_modifier, "eviction-priority", Supported)        \
+  X(PrefetchSize, PrefetchSize, parse_prefetch_size_modifier,                  \
+    default_prefetch_size_modifier, "prefetch size", Supported)                \
+  X(MemoryConsistency, MemoryConsistency, parse_memory_consistency_modifier,   \
+    default_memory_consistency_modifier, "memory-consistency", Supported)      \
+  X(MemoryScope, MemoryScope, parse_memory_scope_modifier,                     \
+    default_memory_scope_modifier, "memory-scope", Supported)                  \
+  X(VectorArity, None, parse_vector_arity_modifier, nullptr, "vector-arity",   \
+    NonModifierDomain)                                                         \
+  X(MemoryStateSpace, MemoryStateSpace, parse_memory_state_space_modifier,     \
+    default_memory_state_space_modifier, "memory-state-space", Supported)      \
+  X(MbarrierPhaseType, MbarrierPhaseType, parse_mbarrier_phase_type_modifier,  \
+    default_mbarrier_phase_type_modifier, "mbarrier phase-type", Supported)    \
+  X(MbarrierLayout, MbarrierLayout, parse_mbarrier_layout_modifier,            \
+    default_mbarrier_layout_modifier, "mbarrier layout", Supported)            \
+  X(TcgenCtaGroup, TcgenCtaGroup, parse_tcgen_cta_group_modifier,              \
+    default_tcgen_cta_group_modifier, "Tensor Memory CTA group", Supported)    \
+  X(TcgenDataMovementShape, TcgenDataMovementShape,                            \
+    parse_tcgen_shape_modifier, default_tcgen_shape_modifier,                  \
+    "Tensor Memory shape", Supported)                                          \
+  X(TcgenRepeat, TcgenRepeat, parse_tcgen_repeat_modifier,                     \
+    default_tcgen_repeat_modifier, "Tensor Memory repeat", Supported)          \
+  X(TcgenReductionOp, TcgenReductionOp, parse_tcgen_reduction_op_modifier,     \
+    default_tcgen_reduction_op_modifier, "Tensor Memory reduction", Supported) \
+  X(TcgenWaitClass, TcgenWaitClass, parse_tcgen_wait_class_modifier,           \
+    default_tcgen_wait_class_modifier, "Tensor Memory wait", Supported)        \
+  X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,           \
+    default_async_proxy_kind_modifier, "async proxy", Supported)               \
+  X(ProxyKindPair, ProxyKindPair, parse_proxy_kind_pair_modifier,              \
     default_proxy_kind_pair_modifier, "proxy pair", Supported)
 
 /** Number of contiguous modifier domains at the start of ResolvedValueKind. */
@@ -751,6 +856,36 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_modifier_value(
   return domain->parser(modifier);
 }
 
+/** Distinguish tied variants by top-level syntax shape only.
+ *
+ * Cardinality, element types, values, and target checks stay with the selected
+ * layout and instruction checker so malformed operands retain their normal
+ * diagnostics.
+ */
+bool matches_variant_operand_shapes(
+    const check_end::SyntaxVariantDescriptor& variant,
+    const syntax_ast::AstInstruction& ast) {
+  using Bits = std::underlying_type_t<check_end::OperandSyntaxShape>;
+  for (const auto& layout : variant.operand_layouts) {
+    if (layout.slots.size() != ast.operands.size())
+      continue;
+    bool matches = true;
+    for (size_t index = 0; index < layout.slots.size(); ++index) {
+      const Bits allowed =
+          static_cast<Bits>(layout.slots[index].allowed_shapes);
+      const Bits actual = static_cast<Bits>(
+          check_end::get_operand_syntax_shape(ast.operands[index]));
+      if ((allowed & actual) == 0) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches)
+      return true;
+  }
+  return false;
+}
+
 }  // namespace detail
 
 std::expected<ActualModifierTable, ResolveDiagnostic> collect_actual_modifiers(
@@ -815,11 +950,10 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
   if (modifier_matches.size() == 1)
     return modifier_matches.front()->variant_name;
   if (modifier_matches.size() > 1) {
-    // Distinct public variants may share modifiers while separating an
-    // existing operand arity from an extended form.  Only use arity when the
-    // modifier match itself is ambiguous; ordinary operand diagnostics remain
-    // with the selected variant's layout checker.
-    std::optional<std::string_view> selected;
+    // Distinct exact forms may share modifiers while differing in operand
+    // arity or top-level syntax shape. Defer deeper checks to the selected
+    // layout and instruction checker.
+    std::vector<const check_end::SyntaxVariantDescriptor*> arity_matches;
     for (const auto* variant : modifier_matches) {
       const bool matches_arity = std::ranges::any_of(
           variant->operand_layouts, [&](const auto& layout) {
@@ -827,18 +961,35 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
           });
       if (!matches_arity)
         continue;
-      if (selected) {
-        return std::unexpected(ResolveDiagnostic{
-            .range = ast.range,
-            .message = fmt::format("Ambiguous modifier and operand-count "
-                                   "combination for instruction '{}'.",
-                                   ast.opcode.syntax.text),
-        });
-      }
-      selected = variant->variant_name;
+      arity_matches.push_back(variant);
     }
-    if (selected)
-      return *selected;
+    if (arity_matches.size() == 1)
+      return arity_matches.front()->variant_name;
+    if (arity_matches.size() > 1) {
+      std::optional<std::string_view> selected;
+      for (const auto* variant : arity_matches) {
+        if (!detail::matches_variant_operand_shapes(*variant, ast))
+          continue;
+        if (selected) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = ast.range,
+              .message =
+                  fmt::format("Ambiguous modifier, operand-count, and "
+                              "syntax-shape combination for instruction '{}'.",
+                              ast.opcode.syntax.text),
+          });
+        }
+        selected = variant->variant_name;
+      }
+      if (selected)
+        return *selected;
+      return std::unexpected(ResolveDiagnostic{
+          .range = ast.range,
+          .message = fmt::format("No operand-shape variant of instruction '{}' "
+                                 "accepts these operands.",
+                                 ast.opcode.syntax.text),
+      });
+    }
     return std::unexpected(ResolveDiagnostic{
         .range = ast.range,
         .message = fmt::format(

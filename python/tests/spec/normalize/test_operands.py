@@ -323,24 +323,24 @@ class OperandNormalizationTests(unittest.TestCase):
         )
 
     def test_brace_pack_cardinality_and_element_order(self) -> None:
-        for kind, maximum, kinds in (
-            ("tensor_coordinate", 5, ["reg", "imm"]),
-            ("tensor_coordinate", 5, ["imm", "reg"]),
-            ("matrix_fragment", 64, ["reg"]),
+        for kind, default_maximum, ceiling, kinds in (
+            ("tensor_coordinate", 5, 5, ["reg", "imm"]),
+            ("tensor_coordinate", 5, 5, ["imm", "reg"]),
+            ("matrix_fragment", 64, 128, ["reg"]),
         ):
             with self.subTest(kind=kind, kinds=kinds):
                 operand = normalize_operand(_pack(kind, element_kinds=kinds))
                 self.assertEqual(operand.minimum_elements, 1)
-                self.assertEqual(operand.maximum_elements, maximum)
+                self.assertEqual(operand.maximum_elements, default_maximum)
                 self.assertEqual(
                     operand.element_kinds,
                     tuple(OperandKind(value) for value in kinds),
                 )
                 exact = normalize_operand(
-                    _pack(kind, cardinality={"min": maximum, "max": maximum})
+                    _pack(kind, cardinality={"min": ceiling, "max": ceiling})
                 )
                 self.assertEqual(
-                    (exact.minimum_elements, exact.maximum_elements), (maximum, maximum)
+                    (exact.minimum_elements, exact.maximum_elements), (ceiling, ceiling)
                 )
 
     def test_brace_pack_requires_cardinality_object(self) -> None:
@@ -355,7 +355,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 )
 
     def test_brace_pack_cardinality_boundaries_and_boolean_rejection(self) -> None:
-        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 64)):
+        for kind, ceiling in (("tensor_coordinate", 5), ("matrix_fragment", 128)):
             for minimum, maximum in (
                 (0, 1),
                 (2, 1),

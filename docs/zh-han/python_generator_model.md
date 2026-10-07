@@ -139,11 +139,13 @@ rendering 或 filesystem 失败。
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、准确形式 identity 与 observer 契约 |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 final 语义形式类、selector 与 resolver 声明 |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 稳定的逐 opcode 聚合头：小 opcode 直接定义类，大 opcode 引入有界形式分片；声明 descriptor getter 与 resolver |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>_forms_NNN.gen.hpp` | `emit.resolved_model` | 大 opcode 中一个最多 64 形式的规范分片的 final 类声明 |
 | `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | 全部 opcode 头的聚合 |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 跨 opcode 的解析分发 |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 单个 opcode 的 out-of-line 解析、检查、克隆及引用遍历定义 |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 稳定的逐 opcode resolver、selector 与 descriptor getter 入口；小 opcode 还包含未分片的方法及 descriptor 行 |
+| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | 大 opcode 规范形式分片的有界方法定义与静态 descriptor 行 |
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
 `generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
@@ -156,14 +158,14 @@ CMake 源码构建将 `PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）传给 CLI。pl
 output listing 保持有序，全部选定产物成功后才写入 manifest。每个产物使用同目录
 candidate 并原子替换；失败的运行可能留下已成功写入的产物，但不会发布新的 manifest。
 
-Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
-供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker
-descriptor storage 共用一个私有源文件。
+Syntax descriptor storage 提供供 variant selection/resolution 使用的逐 opcode
+自由函数 getter。未分片 opcode 的 syntax、resolved、checker descriptor 行位于同一源文件；
+已分片 opcode 的公共 getter 留在稳定入口源文件，行数据位于私有 descriptor 分片。
 
 直接类路径保留 YAML schema 与 normalized instruction model。每个语义形式是
 `Instruction` 的 final 子类：公共字段是直接成员，layout 专有字段是带类型的
-optional。解析返回 `std::unique_ptr<Instruction>`。每个 opcode 的生成 `.cpp`
-定义 out-of-line 解析、检查、克隆和引用遍历方法。中央 dispatch 调用逐 opcode
+optional。解析返回 `std::unique_ptr<Instruction>`。生成的逐 opcode 源文件及必要时的
+方法分片定义 out-of-line 解析、检查、克隆和引用遍历方法。中央 dispatch 调用逐 opcode
 解析器，不使用 instruction union。
 
 完整 opcode 公共头不包含生成的 resolver/checker 函数体。小型手写
@@ -171,9 +173,15 @@ optional。解析返回 `std::unique_ptr<Instruction>`。每个 opcode 的生成
 不完整时使用。安装的 `ptx_resolved_ir.hpp` 包含生成聚合头和 module 解析 API。
 生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
-`codegen_category`，生成脚本据此为每个 opcode 产生稳定的私有源文件，
-并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
-但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
+`codegen_category`，生成脚本据此为每个 opcode 保留稳定的公共聚合头与私有入口源文件。
+形式超过 64 个时，声明、方法与 descriptor 行按规范顺序拆成每片最多 64 个形式的
+确定性分片，由 CMake 编入 `resolved_ir` library。consumer 仍使用同一逐 opcode include
+入口；分片不承诺新增形式对其他代码完全没有编译影响。
+
+公共 syntax、resolved 与 checker descriptor getter 返回 `const&` 且为 `noexcept`。
+大 opcode 的每个 getter 使用有界且只执行一次的 function-local `static const std::array`
+把规范顺序的静态分片行拼接为连续、生命周期稳定的存储，不使用 heap allocation。
+公共聚合头与精确 final 类身份仍是兼容边界；没有引入可变 logical-form tag 或 opcode 包装。
 
 生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
 output manifest）时保留 modification time。consumer 可包含聚合头或单个 opcode 头。
@@ -197,8 +205,8 @@ snapshot 不会选择彼此的 C++ spelling。
 
 ### Backend 配置边界
 
-`instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
-`instructions/ptx-cpp-backend-v2.schema.yaml` 构成独立的 C++ backend 映射层。
+`python/src/ptx_frontend/spec/resources/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
+`python/src/ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml` 构成独立的 C++ backend 映射层。
 `ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
 checker emitter 只通过 typed lookup 读取 C++ 拼写。查询接口的 domain 参数必须使用
 `CppDomain` 枚举成员，例如 `CppDomain.SCALAR_TYPES`，不接受裸字符串。当前 domain
@@ -234,8 +242,9 @@ domain/value 必须在生成期报告 `ValueError`。CMake 将 backend YAML 与 
 ## 生成规则
 
 - YAML identifier 经统一转换得到 deterministic PascalCase C++ 名称；碰撞必须报错。
-- 一个 layout 时，operand 字段直接放在 variant 中；多个 layout 时，生成嵌套
-  `*Operands` structs 与 `std::variant` payload。
+- 每个 final 形式直接存放共有 operand 字段，只在部分 layout 中存在的字段用强类型
+  optional。固定的小型 operand domain 本身可以使用强类型 variant；opcode owner
+  仍是 `unique_ptr<Instruction>`。
 - `ResolvedOperandLayoutTag` 始终与 syntax/resolved descriptor 中的 layout 索引对应。
 - 生成器只决定必要的 C++ 语法，不能把 `direct`、`sub_variant` 等旧 backend 选项
   重新暴露为模型字段。

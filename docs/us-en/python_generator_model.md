@@ -158,11 +158,13 @@ rendering or filesystem failure.
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, exact form identities, and observer contract |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | one opcode's final semantic-form classes, selector, and resolver declarations |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | stable per-opcode aggregate: direct classes for small opcodes, or bounded form-shard includes; descriptor getters and resolver declarations |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>_forms_NNN.gen.hpp` | `emit.resolved_model` | final-class declarations for one canonical shard of at most 64 forms when needed |
 | `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate of all opcode headers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | one opcode's out-of-line resolution, checking, clone, and reference visitation definitions |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | stable opcode resolver, selector, and descriptor-getter entry points; unsharded methods and rows for small opcodes |
+| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | bounded method definitions and static descriptor rows for canonical form shards |
 
 The generated public headers are under
 `generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
@@ -179,15 +181,17 @@ remain ordered, and the manifest is written only after all selected artifacts
 succeed. Each artifact uses a sibling candidate and atomic replacement; a failed
 run may leave successfully written artifacts, but does not publish a new manifest.
 
-Syntax descriptor storage implements getters on generated Resolved IR opcode
-types and is consumed by variant selection and resolution. It shares each
-opcode's private source with resolved and checker descriptor storage.
+Syntax descriptor storage supplies per-opcode free getters consumed by variant
+selection and resolution. Unsharded opcodes keep their syntax, resolved, and
+checker descriptor rows together; sharded opcodes keep the public getters in
+the stable entry-point source and their rows in private descriptor shards.
 
 The direct-class path keeps the YAML schema and normalized instruction model.
 Each semantic form is a final subclass of `Instruction`, with common fields as
 direct members and layout-specific fields as typed optionals. Resolution returns
-`std::unique_ptr<Instruction>`. Each opcode's generated `.cpp` provides
-out-of-line resolution, checking, clone, and reference visitation definitions.
+`std::unique_ptr<Instruction>`. The generated opcode source and, when needed,
+its method shards provide out-of-line resolution, checking, clone, and
+reference visitation definitions.
 The central dispatch selects a per-op resolver without an instruction union.
 
 The public opcode headers contain no generated resolver or checker bodies. The
@@ -197,10 +201,19 @@ opcode model headers remain usable with an incomplete syntax AST. The installed
 Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
-`codegen_category`. The generator creates one stable source per opcode,
-which CMake compiles into the `resolved_ir` library. Consumers retain
-one include entry point, while the complex `std::visit` code, lambdas, and
-resolve builders are compiled only once inside the library.
+`codegen_category`. The generator keeps one stable public aggregate and
+private entry-point source per opcode. Above 64 forms it partitions
+declarations, methods, and descriptor rows into deterministic shards of at
+most 64 forms, compiled into the `resolved_ir` library. Consumers retain the
+same opcode include entry point. A shard does not promise that adding a form
+has no compile fanout.
+
+The public syntax, resolved, and checker descriptor getters return `const&`
+and are `noexcept`. For a sharded opcode, each getter uses a bounded one-time
+function-local `static const std::array` to concatenate canonical static
+shard rows into contiguous, stable-lifetime storage without heap allocation.
+The public aggregate and exact final-class identities remain the compatibility
+boundary; no mutable logical-form tag or opcode wrapper is introduced.
 
 The generator formats a sibling candidate before comparing bytes with an
 existing artifact. Identical formatted output, including the output manifest,
@@ -232,8 +245,8 @@ snapshots cannot select each other's C++ spelling.
 
 ### Backend configuration boundary
 
-`instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and
-`instructions/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
+`python/src/ptx_frontend/spec/resources/ptx_cpp_backend_spec/ptx_frontend.yaml` and
+`python/src/ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
 mapping layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
 `domains` into `DomainBackend`; Syntax, Resolved, and checker emitters use only
 typed lookups for C++ spellings. Lookup APIs require a `CppDomain` enum member,
@@ -277,8 +290,9 @@ generation-only mappings and do not produce runtime tables.
 
 - YAML identifiers deterministically become PascalCase C++ names; collisions
   are errors.
-- A variant with one layout stores operand fields directly. Multiple layouts
-  generate nested `*Operands` structs and a `std::variant` payload.
+- Each final form stores common operand fields directly and fields present
+  only in some layouts as typed optionals. Fixed small operand domains may
+  themselves use typed variants; the opcode owner remains `unique_ptr<Instruction>`.
 - `ResolvedOperandLayoutTag` always indexes the matching syntax/resolved
   descriptor layout.
 - Emitters choose only mechanically necessary C++ syntax. They never re-add

@@ -1172,7 +1172,7 @@ TEST(ResolvedModule, ResolvesAndChecksSetmaxnregIncSyncAlignedSlice) {
   for (const auto source : {
            ".entry kernel() { .reg .u32 %r0; setmaxnreg.inc.sync.aligned.u32 "
            "%r0; }",
-           ".entry kernel() { setmaxnreg.dec.sync.aligned.u32 192; }",
+           ".entry kernel() { setmaxnreg.dec.sync.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.aligned.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.sync.u32 192; }",
            ".entry kernel() { setmaxnreg.inc.sync.aligned.s32 192; }",
@@ -2194,8 +2194,6 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
            "ldmatrix.sync.aligned.m16n16.x2.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.aligned.m8n8.x1.shared.b16 {%r0, %r1}, [x]; }",
-           ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
-           "ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r0, %r1}, [x]; }",
            ".entry kernel() { .reg .b32 %r<2>; .shared .b16 x; "
            "ldmatrix.sync.m8n8.x2.shared.b16 {%r0, %r1}, [x]; }",
        }) {

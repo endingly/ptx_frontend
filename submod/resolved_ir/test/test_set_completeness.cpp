@@ -88,7 +88,8 @@ TEST(SetCompleteness, RejectsWrongDeclaredTypesAndSourceImmediate) {
            "set.eq.u32.s32 %u, %s, 1.0;",
        }) {
     SCOPED_TRACE(source);
-    const auto parsed = test_helpers::parseModule(std::string(R"ptx(.version 9.3
+    const auto parsed =
+        test_helpers::parseModule(std::string(R"ptx(.version 9.3
 .target sm_100
 .entry kernel() {
   .reg .pred %p;

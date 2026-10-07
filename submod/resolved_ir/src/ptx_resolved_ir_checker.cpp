@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include <fmt/format.h>
 
@@ -147,6 +148,34 @@ std::pair<uint64_t, bool> integer_constraint_value(
           operand.immediate_is_negative.value_or(false)};
 }
 
+/**
+ * Recheck the use-width bits of a source-backed integer immediate.
+ * Fixed integer constraints use the original source value for legality, while
+ * consumers observe the converted bits; both representations must agree.
+ */
+CheckResult check_integer_immediate_consistency(const OperandView& operand,
+                                                const Context& context) {
+  if (!operand.integer_source_bits || !operand.immediate_bits ||
+      !operand.immediate_type || !is_integer_type(*operand.immediate_type))
+    return {};
+  const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
+  if (byte_width == 0 || byte_width > sizeof(uint64_t))
+    return {};
+  const uint8_t bit_width = byte_width * 8;
+  const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max()
+                                        : (uint64_t{1} << bit_width) - 1;
+  if (*operand.immediate_bits == (*operand.integer_source_bits & mask))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(operand.locations, context),
+      .message = fmt::format(
+          "Immediate operand '{}' has bits inconsistent with its integer "
+          "source value.",
+          operand.field_id),
+  }});
+}
+
 void append_value_availability_diagnostics(const OperandView& operand,
                                            const Context& context,
                                            CheckDiagnostics& diagnostics) {
@@ -250,6 +279,16 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_phase_type == actual.mbarrier_phase_type;
     case ModifierValueKind::MbarrierLayout:
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
+    case ModifierValueKind::TcgenCtaGroup:
+      return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
+    case ModifierValueKind::TcgenDataMovementShape:
+      return descriptor.tcgen_shape == actual.tcgen_shape;
+    case ModifierValueKind::TcgenRepeat:
+      return descriptor.tcgen_repeat == actual.tcgen_repeat;
+    case ModifierValueKind::TcgenReductionOp:
+      return descriptor.tcgen_reduction_op == actual.tcgen_reduction_op;
+    case ModifierValueKind::TcgenWaitClass:
+      return descriptor.tcgen_wait_class == actual.tcgen_wait_class;
     case ModifierValueKind::AsyncProxyKind:
       return descriptor.async_proxy_kind == actual.async_proxy_kind;
     case ModifierValueKind::ProxyKindPair:
@@ -522,6 +561,33 @@ OperandView project_tensor_operand(
   return view;
 }
 
+OperandView project_tensor_im2col_info(
+    std::string_view field_id,
+    const WithLocs<ResolvedTensorIm2colInfo>& operand) {
+  OperandView view{
+      .field_id = field_id,
+      .actual_shape = OperandShape::Vector,
+      .vector_arity = operand.value.elements.size(),
+      .locations = operand.locs,
+  };
+  for (size_t index = 0;
+       index < operand.value.elements.size() && index < kMaxOperandElements;
+       ++index) {
+    const auto& element = operand.value.elements[index];
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      view.vector_element_shapes[index] = OperandShape::Register;
+      view.vector_element_types[index] =
+          reg->declared_type.value_or(ScalarType::Invalid);
+      view.vector_element_registers[index] = reg;
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(element);
+      view.vector_element_shapes[index] = OperandShape::Immediate;
+      view.vector_element_types[index] = immediate.type;
+    }
+  }
+  return view;
+}
+
 CheckResult check_tensor_store_coordinates(const OperandView& operand,
                                            const Context& context) {
   if (!operand.tensor_has_negative_immediate)
@@ -529,7 +595,7 @@ CheckResult check_tensor_store_coordinates(const OperandView& operand,
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::RuleViolation,
       .range = diagnostic_range(operand.locations, context),
-      .message = "Tensor store coordinates must not be statically negative."}});
+      .message = "Tensor write coordinates must not be statically negative."}});
 }
 
 bool is_available(const AvailabilityDescriptor& availability,
@@ -682,11 +748,16 @@ CheckResult check_execution_predicate(
   return std::unexpected(std::move(diagnostics));
 }
 
+/** Append diagnostics for immutable matrix controls and scale selectors. */
+void append_matrix_operand_diagnostics(const MatrixInstructionDescriptor*,
+                                       std::span<const OperandView>,
+                                       const Context&, CheckDiagnostics&);
+
 CheckResult check_operands(
     std::span<const OperandDescriptor> descriptors,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
-    const Context& context) {
+    const Context& context, const MatrixInstructionDescriptor* matrix) {
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
@@ -733,8 +804,20 @@ CheckResult check_operands(
     if (operand->actual_shape == OperandShape::TensorOperand) {
       const auto* tensor = operand->tensor_operand;
       const bool invalid_structure =
-          tensor == nullptr || tensor->mode != TensorAccessMode::Tiled ||
-          static_cast<size_t>(tensor->rank) != operand->vector_arity ||
+          tensor == nullptr || !descriptor.expected_tensor_mode ||
+          !descriptor.expected_tensor_rank ||
+          *descriptor.expected_tensor_rank < TensorRank::One ||
+          *descriptor.expected_tensor_rank > TensorRank::Five ||
+          (*descriptor.expected_tensor_mode != TensorAccessMode::Tiled &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2col &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::Im2colW128 &&
+           *descriptor.expected_tensor_mode != TensorAccessMode::TileGather4 &&
+           *descriptor.expected_tensor_mode !=
+               TensorAccessMode::TileScatter4) ||
+          tensor->mode != *descriptor.expected_tensor_mode ||
+          tensor->rank != *descriptor.expected_tensor_rank ||
           tensor->coordinate_ranges.size() != operand->vector_arity ||
           tensor->tensor_map.range == SourceRange{};
       if (invalid_structure) {
@@ -1396,9 +1479,109 @@ CheckResult check_operands(
     });
   }
 
+  append_matrix_operand_diagnostics(matrix, operands, context, diagnostics);
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
+}
+
+/** Add matrix immediate and selector diagnostics after generic operand checks. */
+void append_matrix_operand_diagnostics(
+    const MatrixInstructionDescriptor* matrix,
+    std::span<const OperandView> operands, const Context& context,
+    CheckDiagnostics& diagnostics) {
+  if (matrix != nullptr) {
+    // WGMMA signs use an s32 -1/+1 domain; other matrix controls are
+    // nonnegative. Both source and converted payload must remain coherent.
+    for (const OperandView& operand : operands) {
+      if ((matrix->family == MatrixFamily::WGMMA ||
+           matrix->family == MatrixFamily::WGMMA_SPARSE) &&
+          operand.field_id == "scale_d") {
+        const bool valid_constant =
+            operand.actual_shape == OperandShape::Immediate &&
+            operand.immediate_type == ScalarType::Pred;
+        const bool valid_register =
+            operand.actual_shape == OperandShape::Predicate &&
+            operand.register_class == ResolvedRegisterClass::Predicate &&
+            !operand.register_vector_width &&
+            (!operand.register_symbol_id || operand.register_type) &&
+            (!operand.register_type ||
+             *operand.register_type == ScalarType::Pred) &&
+            !operand.destination_predicate_negated;
+        if (!valid_constant && !valid_register)
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = diagnostic_range(operand.locations, context),
+              .message = "WGMMA scale-D requires a scalar predicate or 0/1 "
+                         "constant.",
+          });
+      }
+      if (operand.actual_shape != OperandShape::Immediate ||
+          !operand.immediate_bits)
+        continue;
+      const uint64_t source =
+          operand.integer_source_bits.value_or(*operand.immediate_bits);
+      const uint64_t current = *operand.immediate_bits;
+      const size_t width = operand.immediate_type
+                               ? scalar_size_of(*operand.immediate_type) * 8u
+                               : 0u;
+      const bool fits_width =
+          width >= 64 || (width != 0 && source < (uint64_t{1} << width));
+      const bool is_wgmma_scale =
+          (matrix->family == MatrixFamily::WGMMA ||
+           matrix->family == MatrixFamily::WGMMA_SPARSE) &&
+          (operand.field_id == "scale_a" || operand.field_id == "scale_b");
+      const bool valid_scale =
+          operand.immediate_type == ScalarType::S32 &&
+          ((source == 1 && !operand.immediate_is_negative.value_or(false) &&
+            current == 1) ||
+           (source == UINT64_MAX &&
+            operand.immediate_is_negative.value_or(false) &&
+            current == UINT32_MAX));
+      if ((is_wgmma_scale && !valid_scale) ||
+          (!is_wgmma_scale && (operand.immediate_is_negative.value_or(false) ||
+                               source != current || !fits_width))) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+            .range = diagnostic_range(operand.locations, context),
+            .message = fmt::format(
+                "Matrix control immediate '{}' does not match its unsigned "
+                "source value and declared width.",
+                operand.field_id),
+        });
+      }
+    }
+    for (size_t index = 0; index < matrix->scale_selector_count; ++index) {
+      const auto& selector = matrix->scale_selectors[index];
+      const OperandView* operand =
+          find_operand(operands, selector.operand_field_id);
+      if (operand == nullptr || operand->actual_shape != OperandShape::Vector ||
+          operand->vector_arity != 2)
+        continue;
+      for (size_t lane = 0; lane < 2; ++lane) {
+        if (operand->vector_element_shapes[lane] != OperandShape::Immediate)
+          continue;
+        const auto source = operand->vector_immediate_source_bits[lane];
+        const auto current = operand->vector_immediate_bits[lane];
+        const bool valid =
+            source && current && *source == *current && *source <= UINT16_MAX &&
+            !operand->vector_immediate_negative[lane] &&
+            (lane == 0 ? (*source < 8 && (selector.byte_mask & (1u << *source)))
+                       : (*source <= selector.thread_max));
+        if (valid)
+          continue;
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = lane < operand->locations.size()
+                         ? operand->locations[lane]
+                         : diagnostic_range(operand->locations, context),
+            .message = fmt::format(
+                "Matrix scale selector '{}' has an invalid {} ID.",
+                selector.operand_field_id, lane == 0 ? "byte" : "thread"),
+        });
+      }
+    }
+  }
 }
 
 CheckResult check_operand_layout_tag(std::string_view variant_name,
@@ -1949,6 +2132,542 @@ CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
   return {};
 }
 
+/** Revalidate converted allocation scalars and the shared result-slot role. */
+CheckResult check_tcgen_allocation_rule(TcgenAllocationAction action,
+                                        std::span<const OperandView> operands,
+                                        const Context& context) {
+  CheckDiagnostics diagnostics;
+  const auto reject = [&](const OperandView* operand, CheckDiagnosticKind kind,
+                          std::string_view message) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = kind,
+        .range = operand ? diagnostic_range(operand->locations, context)
+                         : context.instruction_range,
+        .message = std::string(message),
+    });
+  };
+  const auto check_scalar = [&](const OperandView* operand,
+                                bool is_column_count) {
+    if (!operand) {
+      reject(nullptr, CheckDiagnosticKind::MissingOperand,
+             "Tensor Memory allocation is missing an operand.");
+      return;
+    }
+    if (operand->actual_shape == OperandShape::Register) {
+      if (operand->register_class != ResolvedRegisterClass::General ||
+          operand->register_vector_width || !operand->register_type ||
+          (*operand->register_type != ScalarType::B32 &&
+           *operand->register_type != ScalarType::U32 &&
+           *operand->register_type != ScalarType::S32)) {
+        reject(operand, CheckDiagnosticKind::OperandTypeMismatch,
+               "Tensor Memory scalar requires a general-class scalar "
+               "b32/u32/s32 register.");
+      }
+      return;
+    }
+    if (operand->actual_shape != OperandShape::Immediate ||
+        operand->immediate_type != ScalarType::U32 ||
+        !operand->immediate_bits || !operand->integer_source_bits ||
+        !operand->immediate_is_negative ||
+        *operand->immediate_bits !=
+            (*operand->integer_source_bits & uint64_t{0xffffffff})) {
+      reject(operand, CheckDiagnosticKind::ImmediateValueMismatch,
+             "Tensor Memory immediate must retain its 32-bit converted "
+             "value and integer source.");
+      return;
+    }
+    if (is_column_count && *operand->immediate_bits != 32 &&
+        *operand->immediate_bits != 64 && *operand->immediate_bits != 128 &&
+        *operand->immediate_bits != 256 && *operand->immediate_bits != 512) {
+      reject(operand, CheckDiagnosticKind::ImmediateValueMismatch,
+             "Tensor Memory column count must convert to 32, 64, 128, "
+             "256, or 512.");
+    }
+  };
+
+  switch (action) {
+    case TcgenAllocationAction::Alloc: {
+      const OperandView* slot = find_operand(operands, "dst");
+      if (!slot || slot->actual_shape != OperandShape::Address ||
+          (slot->address_state_space &&
+           *slot->address_state_space != MemoryStateSpace::Shared)) {
+        reject(slot, CheckDiagnosticKind::AddressStateSpaceMismatch,
+               "Tensor Memory allocation result requires a shared-CTA "
+               "slot or an unresolved generic shared-window pointer.");
+      }
+      check_scalar(find_operand(operands, "ncols"), true);
+      break;
+    }
+    case TcgenAllocationAction::Dealloc:
+      check_scalar(find_operand(operands, "taddr"), false);
+      check_scalar(find_operand(operands, "ncols"), true);
+      break;
+    case TcgenAllocationAction::RelinquishAllocPermit:
+      break;
+    default:
+      reject(nullptr, CheckDiagnosticKind::RuleViolation,
+             "Tensor Memory allocation action is invalid.");
+      break;
+  }
+
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+/** Preserve the allocation slot's scalar pointer contract in owned checking. */
+CheckResult check_tcgen_allocation_result_slot(
+    const WithLocs<ResolvedAddress>& slot, const Context& context) {
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(&slot.value.base);
+  if (!register_ref)
+    return {};
+  const auto type = register_ref->declared_type;
+  const bool scalar_pointer_type =
+      type &&
+      (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+       base::scalar_kind(*type) == base::ScalarKind::Signed ||
+       base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+      (base::scalar_size_of(*type) == 4 || base::scalar_size_of(*type) == 8);
+  if (register_ref->register_class == ResolvedRegisterClass::General &&
+      !register_ref->vector_width &&
+      (scalar_pointer_type || (!type && !register_ref->symbol_id))) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(slot.locs, context),
+      .message = "Tensor Memory allocation result-slot register must be a "
+                 "scalar General-class b32/s32/u32/b64/s64/u64 pointer "
+                 "carrier with known declaration type when bound.",
+  }});
+}
+
+/** Keep commit's mbarrier pointer contract after lossy operand projection. */
+CheckResult check_tcgen_commit_address(const WithLocs<ResolvedAddress>& address,
+                                       const Context& context) {
+  if (const auto* pointer =
+          std::get_if<ResolvedRegisterRef>(&address.value.base)) {
+    const auto type = pointer->declared_type;
+    const bool compatible =
+        type &&
+        (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+         base::scalar_kind(*type) == base::ScalarKind::Signed ||
+         base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+        (base::scalar_size_of(*type) == 4 || base::scalar_size_of(*type) == 8);
+    if (pointer->register_class != ResolvedRegisterClass::General ||
+        pointer->vector_width ||
+        (!compatible && (type || pointer->symbol_id))) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = diagnostic_range(address.locs, context),
+          .message = "TCGEN commit requires a scalar General-class 32/64-bit "
+                     "integer or bit mbarrier pointer with known type when "
+                     "bound.",
+      }});
+    }
+  } else if (const auto* symbol =
+                 std::get_if<ResolvedSymbolRef>(&address.value.base)) {
+    if (symbol->address_state_space &&
+        *symbol->address_state_space != base::DeclarationStateSpace::Shared) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = diagnostic_range(address.locs, context),
+          .message =
+              "TCGEN commit mbarrier must reside in cluster shared memory.",
+      }});
+    }
+  }
+  return {};
+}
+
+/** Preserve register class, width, and binding metadata of a CTA mask. */
+CheckResult check_tcgen_commit_mask(const WithLocs<ResolvedRegisterRef>& mask,
+                                    const Context& context) {
+  const auto& value = mask.value;
+  const auto type = value.declared_type;
+  const bool compatible =
+      type &&
+      (base::scalar_kind(*type) == base::ScalarKind::Bit ||
+       base::scalar_kind(*type) == base::ScalarKind::Signed ||
+       base::scalar_kind(*type) == base::ScalarKind::Unsigned) &&
+      base::scalar_size_of(*type) == 2;
+  if (value.register_class == ResolvedRegisterClass::General &&
+      !value.vector_width && (compatible || (!type && !value.symbol_id))) {
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(mask.locs, context),
+      .message = "TCGEN multicast mask requires a scalar General-class "
+                 "b16/u16/s16 register with known type when bound.",
+  }});
+}
+
+/** Decode the closed repeat domain without accepting an invalid enum tag. */
+static size_t tcgen_repeat_count(TcgenRepeat repeat) noexcept {
+  switch (repeat) {
+    case TcgenRepeat::X1:
+      return 1;
+    case TcgenRepeat::X2:
+      return 2;
+    case TcgenRepeat::X4:
+      return 4;
+    case TcgenRepeat::X8:
+      return 8;
+    case TcgenRepeat::X16:
+      return 16;
+    case TcgenRepeat::X32:
+      return 32;
+    case TcgenRepeat::X64:
+      return 64;
+    case TcgenRepeat::X128:
+      return 128;
+  }
+  return 0;
+}
+
+/** Validate transfer shape, repeat, and fragment arity after typed selection. */
+CheckResult check_tcgen_transfer_rule(std::span<const FieldView> fields,
+                                      std::span<const OperandView> operands,
+                                      bool reduction, const Context& context) {
+  const FieldView* shape = find_field(fields, "shape");
+  const FieldView* num = find_field(fields, "num");
+  const OperandView* r = find_operand(operands, "r");
+  if (!shape || !shape->tcgen_shape || !num || !num->tcgen_repeat || !r)
+    return cvt_rule_violation(context,
+                              "Tensor Memory transfer metadata is missing.");
+  const size_t repeat = tcgen_repeat_count(*num->tcgen_repeat);
+  size_t multiplier = 0;
+  size_t maximum_repeat = 128;
+  switch (*shape->tcgen_shape) {
+    case TcgenDataMovementShape::S32x32b:
+    case TcgenDataMovementShape::S16x64b:
+    case TcgenDataMovementShape::S16x32bx2:
+      multiplier = 1;
+      break;
+    case TcgenDataMovementShape::S16x128b:
+      multiplier = 2;
+      maximum_repeat = 64;
+      break;
+    case TcgenDataMovementShape::S16x256b:
+      multiplier = 4;
+      maximum_repeat = 32;
+      break;
+    case TcgenDataMovementShape::S128x256b:
+    case TcgenDataMovementShape::S4x256b:
+    case TcgenDataMovementShape::S128x128b:
+    case TcgenDataMovementShape::S64x128b:
+    case TcgenDataMovementShape::S32x128b:
+      break;
+  }
+  if (!multiplier || !repeat || repeat > maximum_repeat ||
+      (reduction &&
+       (repeat == 1 ||
+        (*shape->tcgen_shape != TcgenDataMovementShape::S32x32b &&
+         *shape->tcgen_shape != TcgenDataMovementShape::S16x32bx2))) ||
+      r->vector_arity != multiplier * repeat) {
+    return cvt_rule_violation(context,
+                              "Tensor Memory transfer has an invalid shape, "
+                              "repeat, or fragment cardinality.",
+                              CheckDiagnosticKind::InvalidVectorOperand);
+  }
+  return {};
+}
+
+/** Check a 32-bit General scalar carrier without requiring standalone types. */
+static bool tcgen_scalar_register32(const ResolvedRegisterRef& value) noexcept {
+  return value.register_class == ResolvedRegisterClass::General &&
+         !value.vector_width &&
+         (!value.declared_type
+              ? !value.symbol_id
+              : base::scalar_size_of(*value.declared_type) == 4 &&
+                    base::scalar_types_compatible(*value.declared_type,
+                                                  ScalarType::B32));
+}
+
+/** Validate the bracketed 32-bit Tensor Memory address carrier. */
+CheckResult check_tcgen_transfer_address(
+    const WithLocs<TensorMemoryAddress>& address, const Context& context) {
+  if (!address.value.bracketed)
+    return cvt_rule_violation(
+        context, "Tensor Memory transfer requires bracketed taddr.");
+  if (const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&address.value.value)) {
+    if (register_ref->register_class != ResolvedRegisterClass::General ||
+        register_ref->vector_width ||
+        (register_ref->symbol_id && !register_ref->declared_type) ||
+        (register_ref->declared_type &&
+         (!base::scalar_types_compatible(*register_ref->declared_type,
+                                         ScalarType::U32) ||
+          base::scalar_size_of(*register_ref->declared_type) != 4))) {
+      return cvt_rule_violation(
+          context,
+          "Tensor Memory address requires a scalar General 32-bit register.",
+          CheckDiagnosticKind::OperandTypeMismatch);
+    }
+  } else if (const auto* immediate =
+                 std::get_if<ResolvedImmediate>(&address.value.value)) {
+    if (immediate->type != ScalarType::U32 || !immediate->integer_source_bits ||
+        immediate->bits !=
+            (*immediate->integer_source_bits & uint64_t{0xffffffff})) {
+      return cvt_rule_violation(
+          context, "Tensor Memory address lost its 32-bit source conversion.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
+    }
+  }
+  return {};
+}
+
+/** Keep a copy descriptor opaque while checking its register carrier. */
+CheckResult check_tcgen_copy_descriptor(
+    const WithLocs<ResolvedRegisterRef>& descriptor, const Context& context) {
+  if (tcgen_copy_descriptor_view(descriptor.value))
+    return {};
+  return cvt_rule_violation(
+      context,
+      "Tensor Memory copy descriptor requires a scalar General-class "
+      "b64/u64/s64 register with known type when bound.",
+      CheckDiagnosticKind::OperandTypeMismatch);
+}
+
+/** Check one known MMA register carrier without interpreting its bits. */
+static bool tcgen_mma_carrier(const ResolvedRegisterRef& value, size_t bytes,
+                              bool permit_float = false) noexcept {
+  if (value.register_class != ResolvedRegisterClass::General ||
+      value.vector_width || (value.symbol_id && !value.declared_type))
+    return false;
+  if (!value.declared_type)
+    return true;
+  const auto kind = base::scalar_kind(*value.declared_type);
+  return base::scalar_size_of(*value.declared_type) == bytes &&
+         (kind == base::ScalarKind::Bit || kind == base::ScalarKind::Signed ||
+          kind == base::ScalarKind::Unsigned ||
+          (permit_float && kind == base::ScalarKind::Float));
+}
+
+/** Validate owned MMA source ranges against scalar or vector cardinality. */
+static bool tcgen_mma_valid_source_ranges(std::span<const SourceRange> ranges,
+                                          size_t expected) noexcept {
+  if (ranges.size() != expected)
+    return false;
+  return std::ranges::all_of(ranges, [](const SourceRange& range) {
+    if (range.start.line <= 0 || range.start.column <= 0 ||
+        range.end.line <= 0 || range.end.column <= 0)
+      return false;
+    return range.end.line > range.start.line ||
+           (range.end.line == range.start.line &&
+            range.end.column >= range.start.column);
+  });
+}
+
+/** Check the selected dense MMA's owned carriers and source provenance. */
+CheckResult check_tcgen_mma_sources(
+    const WithLocs<TcgenCtaGroup>& group_source,
+    const WithLocs<TensorMemoryAddress>& d,
+    const WithLocs<TensorMemoryAddress>* a_address,
+    const WithLocs<ResolvedRegisterRef>* a_shared,
+    const WithLocs<ResolvedRegisterRef>& b,
+    const WithLocs<ResolvedRegisterRef>& idesc,
+    const WithLocs<ResolvedRegisterVector>* mask,
+    const WithLocs<ResolvedPredicateSource>& enable_d,
+    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+  const TcgenCtaGroup group = group_source.value;
+  if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
+    return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
+  if ((a_address == nullptr) == (a_shared == nullptr))
+    return cvt_rule_violation(context,
+                              "TCGEN MMA requires exactly one A placement.");
+  if (!tcgen_mma_valid_source_ranges(group_source.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(d.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(
+          a_address ? a_address->locs : a_shared->locs, 1) ||
+      !tcgen_mma_valid_source_ranges(b.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(idesc.locs, 1) ||
+      !tcgen_mma_valid_source_ranges(enable_d.locs, 1) ||
+      (mask && !tcgen_mma_valid_source_ranges(
+                   mask->locs, group == TcgenCtaGroup::One ? 4 : 8)) ||
+      (scale && !tcgen_mma_valid_source_ranges(scale->locs, 1)))
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA owned operand source ranges are incomplete or "
+        "malformed.",
+        CheckDiagnosticKind::RuleViolation);
+  if (auto result = check_tcgen_transfer_address(d, context); !result)
+    return result;
+  if (a_address) {
+    if (auto result = check_tcgen_transfer_address(*a_address, context);
+        !result)
+      return result;
+  } else if (!tcgen_mma_carrier(a_shared->value, 8)) {
+    return cvt_rule_violation(
+        context, "TCGEN MMA shared A requires scalar General b64/u64/s64.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  if (!tcgen_mma_carrier(b.value, 8))
+    return cvt_rule_violation(
+        context, "TCGEN MMA shared B requires scalar General b64/u64/s64.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (!tcgen_mma_carrier(idesc.value, 4))
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA instruction descriptor requires scalar General "
+        "b32/u32/s32.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (mask) {
+    const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
+    if (mask->value.elements.size() != expected)
+      return cvt_rule_violation(
+          context,
+          "TCGEN MMA output-lane mask cardinality disagrees "
+          "with its CTA group.");
+    for (const auto& element : mask->value.elements) {
+      if (!element || !tcgen_mma_carrier(*element, 4, true))
+        return cvt_rule_violation(
+            context,
+            "TCGEN MMA output-lane mask requires scalar General "
+            "b32/u32/s32/f32 register entries.",
+            CheckDiagnosticKind::OperandTypeMismatch);
+    }
+  }
+  if (const auto* predicate = std::get_if<ResolvedPredicate>(&enable_d.value)) {
+    const auto& value = predicate->register_ref;
+    if (value.register_class != ResolvedRegisterClass::Predicate ||
+        value.vector_width || (value.symbol_id && !value.declared_type) ||
+        (value.declared_type && *value.declared_type != ScalarType::Pred))
+      return cvt_rule_violation(
+          context, "TCGEN MMA enable-D requires a scalar predicate register.",
+          CheckDiagnosticKind::OperandTypeMismatch);
+  } else if (!std::holds_alternative<ResolvedPredicateConstant>(
+                 enable_d.value)) {
+    return cvt_rule_violation(
+        context,
+        "TCGEN MMA enable-D requires a predicate or integer truth constant.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  if (scale) {
+    const auto& value = scale->value;
+    if (value.type != ScalarType::U32 || value.is_negative ||
+        !value.integer_source_bits || *value.integer_source_bits > 15 ||
+        value.bits != *value.integer_source_bits)
+      return cvt_rule_violation(
+          context, "TCGEN MMA D scale requires original integer 0..15.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  return {};
+}
+
+/** Preserve the public f16 check entrypoint through the shared dense rules. */
+CheckResult check_tcgen_mma_f16_sources(
+    const WithLocs<TcgenCtaGroup>& group_source,
+    const WithLocs<TensorMemoryAddress>& d,
+    const WithLocs<TensorMemoryAddress>* a_address,
+    const WithLocs<ResolvedRegisterRef>* a_shared,
+    const WithLocs<ResolvedRegisterRef>& b,
+    const WithLocs<ResolvedRegisterRef>& idesc,
+    const WithLocs<ResolvedRegisterVector>* mask,
+    const WithLocs<ResolvedPredicateSource>& enable_d,
+    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+  return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
+                                 mask, enable_d, scale, context);
+}
+
+/** Match copy qualifiers against the selected closed shape and format sets. */
+CheckResult check_tcgen_copy_rule(
+    std::span<const FieldView> fields,
+    std::span<const TcgenCopyShapePair> allowed_pairs,
+    std::span<const uint8_t> allowed_formats, const Context& context) {
+  const auto* shape = find_field(fields, "shape");
+  if (!shape || !shape->tcgen_shape)
+    return cvt_rule_violation(context, "Tensor Memory copy shape is missing.");
+  const auto flag = [&](std::string_view name) -> std::optional<bool> {
+    const auto* field = find_field(fields, name);
+    return field ? field->bool_value : std::nullopt;
+  };
+  const auto warp_a = flag("warpx2_02_13");
+  const auto warp_b = flag("warpx2_01_23");
+  const auto warp_four = flag("warpx4");
+  const auto dst = flag("dst_format");
+  const auto src_b6 = flag("src_b6");
+  const auto src_b4 = flag("src_b4");
+  if (!warp_a || !warp_b || !warp_four || !dst || !src_b6 || !src_b4)
+    return cvt_rule_violation(
+        context, "Tensor Memory copy qualifier metadata is missing.");
+  const unsigned multicast_count =
+      unsigned(*warp_a) + unsigned(*warp_b) + unsigned(*warp_four);
+  if (multicast_count > 1)
+    return cvt_rule_violation(
+        context, "Tensor Memory copy multicast qualifiers conflict.");
+  const auto multicast = *warp_a      ? TcgenCopyMulticast::WarpX2_02_13
+                         : *warp_b    ? TcgenCopyMulticast::WarpX2_01_23
+                         : *warp_four ? TcgenCopyMulticast::WarpX4
+                                      : TcgenCopyMulticast::None;
+  const bool valid_shape =
+      std::ranges::any_of(allowed_pairs, [&](const TcgenCopyShapePair& pair) {
+        return pair.shape == *shape->tcgen_shape && pair.multicast == multicast;
+      });
+  const uint8_t format =
+      uint8_t(*dst) | (uint8_t(*src_b6) << 1) | (uint8_t(*src_b4) << 2);
+  const bool valid_format =
+      std::ranges::find(allowed_formats, format) != allowed_formats.end();
+  if (!valid_shape || !valid_format)
+    return cvt_rule_violation(
+        context,
+        "Tensor Memory copy shape/multicast or paired format is invalid.");
+  return {};
+}
+
+/** Check the address carrier and immediate lane alignment for shift. */
+CheckResult check_tcgen_shift_address(
+    const WithLocs<TensorMemoryAddress>& address, const Context& context) {
+  if (auto result = check_tcgen_transfer_address(address, context); !result)
+    return result;
+  if (const auto* immediate =
+          std::get_if<ResolvedImmediate>(&address.value.value)) {
+    const uint32_t lane = uint32_t((immediate->bits >> 16) & 0xffff);
+    if (lane % 32 != 0)
+      return cvt_rule_violation(
+          context, "Tensor Memory shift lane component must be 32-aligned.",
+          CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  return {};
+}
+
+/** Check every source or destination fragment lane as a 32-bit scalar. */
+CheckResult check_tcgen_transfer_fragment(
+    const WithLocs<ResolvedRegisterVector>& fragment, const Context& context) {
+  for (const auto& lane : fragment.value.elements) {
+    if (!lane || !tcgen_scalar_register32(*lane))
+      return cvt_rule_violation(context,
+                                "Tensor Memory fragment requires scalar "
+                                "General 32-bit registers without sinks.",
+                                CheckDiagnosticKind::OperandTypeMismatch);
+  }
+  return {};
+}
+
+/** Check the reduction accumulator's 32-bit scalar carrier. */
+CheckResult check_tcgen_reduction_result(
+    const WithLocs<ResolvedRegisterRef>& result, const Context& context) {
+  if (!tcgen_scalar_register32(result.value))
+    return cvt_rule_violation(context,
+                              "Tensor Memory reduction result requires a "
+                              "scalar General 32-bit register.",
+                              CheckDiagnosticKind::OperandTypeMismatch);
+  return {};
+}
+
+/** Reject corrupted signedness provenance on a half-split offset. */
+CheckResult check_tcgen_half_split_offset(
+    const WithLocs<TcgenHalfSplitOffset>& offset, const Context& context) {
+  if (offset.value.source_kind != TcgenIntegerSourceKind::Signed &&
+      offset.value.source_kind != TcgenIntegerSourceKind::Unsigned)
+    return cvt_rule_violation(
+        context,
+        "Tensor Memory split offset has invalid integer-source metadata.",
+        CheckDiagnosticKind::ImmediateValueMismatch);
+  return {};
+}
+
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
@@ -2392,6 +3111,9 @@ CheckResult check_immediate_value(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
                        descriptor.allowed_values.end()) {
@@ -2439,6 +3161,9 @@ CheckResult check_immediate_multiple_of(
                         descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value % descriptor.divisor == 0) {
     return {};
@@ -2476,6 +3201,9 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
+  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+      !consistency)
+    return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
   if (!negative && value >= descriptor.minimum &&
       (!descriptor.has_maximum || value <= descriptor.maximum)) {
@@ -2560,6 +3288,325 @@ CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
       .range = diagnostic_range(primary->locations, context),
       .message = "createpolicy primary size exceeds total size.",
   }});
+}
+
+/** Apply encoded-field and source-versus-use rules to one tensor-map update. */
+CheckResult check_tensor_map_replace_rule(std::span<const FieldView> fields,
+                                          std::span<const OperandView> operands,
+                                          const Context& context) {
+  constexpr std::array field_ids{
+      std::pair{std::string_view{"field_global_address"},
+                TensorMapReplaceField::GlobalAddress},
+      std::pair{std::string_view{"field_rank"}, TensorMapReplaceField::Rank},
+      std::pair{std::string_view{"field_box_dim"},
+                TensorMapReplaceField::BoxDim},
+      std::pair{std::string_view{"field_global_dim"},
+                TensorMapReplaceField::GlobalDim},
+      std::pair{std::string_view{"field_global_stride"},
+                TensorMapReplaceField::GlobalStride},
+      std::pair{std::string_view{"field_element_stride"},
+                TensorMapReplaceField::ElementStride},
+      std::pair{std::string_view{"field_elemtype"},
+                TensorMapReplaceField::Elemtype},
+      std::pair{std::string_view{"field_interleave_layout"},
+                TensorMapReplaceField::InterleaveLayout},
+      std::pair{std::string_view{"field_swizzle_mode"},
+                TensorMapReplaceField::SwizzleMode},
+      std::pair{std::string_view{"field_swizzle_atomicity"},
+                TensorMapReplaceField::SwizzleAtomicity},
+      std::pair{std::string_view{"field_fill_mode"},
+                TensorMapReplaceField::FillMode},
+  };
+  std::optional<TensorMapReplaceField> replacement_field;
+  for (const auto& [name, field] : field_ids) {
+    const FieldView* selected = find_field(fields, name);
+    if (selected == nullptr)
+      continue;
+    if (!selected->bool_value.value_or(false) || replacement_field)
+      return cvt_rule_violation(context, "Invalid tensor-map field identity.");
+    replacement_field = field;
+  }
+  if (!replacement_field)
+    return cvt_rule_violation(context, "Missing tensor-map field identity.");
+
+  const OperandView* address = find_operand(operands, "tensor_map");
+  const FieldView* space = find_field(fields, "state_space");
+  if (!address || !space || !space->memory_state_space)
+    return cvt_rule_violation(context, "Missing tensor-map address or space.");
+  if (space->memory_state_space != MemoryStateSpace::Generic &&
+      address->address_state_space &&
+      *space->memory_state_space != *address->address_state_space)
+    return cvt_rule_violation(
+        context, "Tensor-map address and explicit state space differ.");
+
+  const auto valid_immediate = [](const OperandView& value,
+                                  ScalarType type) noexcept {
+    const uint64_t mask = type == ScalarType::B32 || type == ScalarType::U32
+                              ? uint64_t{0xffffffff}
+                              : ~uint64_t{0};
+    return value.actual_shape == OperandShape::Immediate &&
+           value.immediate_type == type && value.immediate_bits &&
+           value.integer_source_bits &&
+           *value.immediate_bits == (*value.integer_source_bits & mask);
+  };
+  if (const OperandView* ordinal = find_operand(operands, "ord")) {
+    if (!valid_immediate(*ordinal, ScalarType::U32) ||
+        ordinal->immediate_is_negative.value_or(false) ||
+        *ordinal->integer_source_bits > 4)
+      return cvt_rule_violation(context, "Tensor-map ordinal must be 0..4.",
+                                CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  const OperandView* value = find_operand(operands, "new_val");
+  if (!value)
+    return cvt_rule_violation(context, "Missing tensor-map replacement value.");
+  const bool wide =
+      *replacement_field == TensorMapReplaceField::GlobalAddress ||
+      *replacement_field == TensorMapReplaceField::GlobalStride;
+  const ScalarType type = wide ? ScalarType::B64 : ScalarType::B32;
+  const bool field3 =
+      *replacement_field == TensorMapReplaceField::Elemtype ||
+      *replacement_field == TensorMapReplaceField::InterleaveLayout ||
+      *replacement_field == TensorMapReplaceField::SwizzleMode ||
+      *replacement_field == TensorMapReplaceField::SwizzleAtomicity ||
+      *replacement_field == TensorMapReplaceField::FillMode;
+  if (value->actual_shape == OperandShape::Register) {
+    if (!field3)
+      return {};
+    return cvt_rule_violation(context,
+                              "Tensor-map field code must be an immediate.");
+  }
+  if (!valid_immediate(*value, type))
+    return cvt_rule_violation(
+        context, "Tensor-map replacement immediate has invalid owned bits.");
+  if (*replacement_field == TensorMapReplaceField::Rank) {
+    if (*value->immediate_bits <= 4)
+      return {};
+    return cvt_rule_violation(context, "Encoded tensor rank must be 0..4.",
+                              CheckDiagnosticKind::ImmediateValueMismatch);
+  }
+  if (*replacement_field == TensorMapReplaceField::GlobalAddress ||
+      *replacement_field == TensorMapReplaceField::BoxDim ||
+      *replacement_field == TensorMapReplaceField::GlobalDim ||
+      *replacement_field == TensorMapReplaceField::GlobalStride ||
+      *replacement_field == TensorMapReplaceField::ElementStride)
+    return {};
+
+  const ResolvedImmediate encoded{
+      .bits = *value->immediate_bits,
+      .type = type,
+      .is_negative = value->immediate_is_negative.value_or(false),
+      .integer_source_bits = value->integer_source_bits};
+  const auto code = tensor_map_encoded_code(*replacement_field, encoded);
+  if (!code)
+    return cvt_rule_violation(context, "Invalid tensor-map field code.",
+                              CheckDiagnosticKind::ImmediateValueMismatch);
+  const auto exact_90a = context.target.identity &&
+                         context.target.identity->architecture.number == 90 &&
+                         context.target.identity->flavor ==
+                             base::TargetFlavor::ArchitectureSpecific;
+  if ((*replacement_field == TensorMapReplaceField::SwizzleAtomicity &&
+       (context.target.ptx_version < PtxVersion{8, 6} || exact_90a)) ||
+      (*replacement_field == TensorMapReplaceField::Elemtype &&
+       code->code >= 13 &&
+       (context.target.ptx_version < PtxVersion{8, 7} || exact_90a)))
+    return cvt_rule_violation(
+        context, "Tensor-map field code is unavailable on this target.");
+  if (*replacement_field == TensorMapReplaceField::SwizzleMode &&
+      code->code == 4 &&
+      (context.target.ptx_version < PtxVersion{8, 8} ||
+       !context.target.identity ||
+       context.target.identity->architecture.number != 103 ||
+       context.target.identity->flavor !=
+           base::TargetFlavor::ArchitectureSpecific))
+    return cvt_rule_violation(context,
+                              "96B swizzle requires PTX 8.8 and sm_103a.");
+  return {};
+}
+
+/** Recheck owned source provenance for the fixed tensor-map proxy-copy size. */
+CheckResult check_tensor_map_cp_fenceproxy_rule(
+    std::span<const OperandView> operands, const Context& context) {
+  const OperandView* size = find_operand(operands, "size");
+  if (!size || size->actual_shape != OperandShape::Immediate ||
+      size->immediate_type != ScalarType::U32 || !size->immediate_bits ||
+      !size->integer_source_bits ||
+      size->immediate_is_negative.value_or(false) ||
+      *size->immediate_bits != uint64_t{128} ||
+      *size->integer_source_bits != uint64_t{128})
+    return cvt_rule_violation(
+        context, "Tensor-map proxy copy requires source-exact 128-byte size.",
+        CheckDiagnosticKind::ImmediateValueMismatch);
+  return {};
+}
+
+/** Check a tensor-map address without changing ordinary address semantics. */
+CheckResult check_tensor_map_address_register_width(
+    const WithLocs<ResolvedAddress>& address, const Context& context) {
+  const auto* reg = std::get_if<ResolvedRegisterRef>(&address.value.base);
+  if (!reg)
+    return {};
+  const bool invalid = reg->register_class != ResolvedRegisterClass::General ||
+                       reg->vector_width.has_value() ||
+                       (reg->symbol_id && !reg->declared_type) ||
+                       (reg->declared_type &&
+                        (!is_integer_type(*reg->declared_type) ||
+                         (base::scalar_size_of(*reg->declared_type) != 4 &&
+                          base::scalar_size_of(*reg->declared_type) != 8)));
+  if (!invalid)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(address.locs, context),
+      .message =
+          "Tensor-map address requires a scalar 32- or 64-bit integer/bit "
+          "register.",
+  }});
+}
+
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
+  return check_tensor_map_address_register_width(
+      WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
+                                tensor.value.tensor_map.range},
+      context);
+}
+
+CheckResult check_tensor_read_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedAddress>& dst, const WithLocs<ResolvedAddress>& mbar,
+    const Context& context) {
+  if (auto result = check_tensor_read_addresses(tensor, context); !result)
+    return result;
+  if (auto result = check_tensor_map_address_register_width(dst, context);
+      !result)
+    return result;
+  return check_tensor_map_address_register_width(mbar, context);
+}
+
+CheckResult check_tensor_im2col_info(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedTensorIm2colInfo>& info,
+    std::span<const uint16_t> maximum_values, const Context& context) {
+  const auto mode = tensor.value.mode;
+  const size_t rank = static_cast<size_t>(tensor.value.rank);
+  const size_t expected =
+      mode == TensorAccessMode::Im2col && rank >= 3 && rank <= 5 ? rank - 2
+      : (mode == TensorAccessMode::Im2colW ||
+         mode == TensorAccessMode::Im2colW128) &&
+              rank >= 3 && rank <= 5
+          ? 2
+          : 0;
+  if (expected == 0 || info.value.elements.size() != expected ||
+      info.locs.size() != expected || maximum_values.size() != expected ||
+      info.value.pack_range == SourceRange{})
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidVectorOperand,
+        .range = info.value.pack_range == SourceRange{}
+                     ? context.instruction_range
+                     : info.value.pack_range,
+        .message = "Im2col information mode, arity, or source ranges are "
+                   "invalid."}});
+  CheckDiagnostics diagnostics;
+  for (size_t index = 0; index < expected; ++index) {
+    const auto& element = info.value.elements[index];
+    const auto range = info.locs[index];
+    if (range == SourceRange{}) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::InvalidVectorOperand,
+          .range = info.value.pack_range,
+          .message = "Im2col information element has no source range."});
+      continue;
+    }
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      const bool invalid =
+          reg->register_class != ResolvedRegisterClass::General ||
+          reg->vector_width.has_value() ||
+          (reg->symbol_id && !reg->declared_type) ||
+          (reg->declared_type &&
+           (!is_integer_type(*reg->declared_type) ||
+            base::scalar_size_of(*reg->declared_type) != 2));
+      if (invalid)
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = range,
+            .message = "Im2col information requires a scalar 16-bit "
+                       "integer/bit register."});
+      continue;
+    }
+    const auto& immediate = std::get<ResolvedImmediate>(element);
+    if (immediate.type != ScalarType::U16 || !immediate.integer_source_bits ||
+        immediate.bits != (*immediate.integer_source_bits & uint64_t{0xffff})) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = range,
+          .message = "Im2col information immediate lacks consistent U16 "
+                     "instruction-use metadata."});
+    } else if (immediate.bits > maximum_values[index]) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = range,
+          .message = "Im2col information exceeds this mode's unsigned "
+                     "16-bit instruction-use bound."});
+    }
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+/** Preserve address-register shape and width after syntax ownership ends. */
+CheckResult check_tensor_reduction_addresses(
+    const WithLocs<ResolvedTensorOperand>& tensor,
+    const WithLocs<ResolvedAddress>& src, const Context& context) {
+  const auto map_check = check_tensor_map_address_register_width(
+      WithLocs<ResolvedAddress>{tensor.value.tensor_map.address,
+                                tensor.value.tensor_map.range},
+      context);
+  if (!map_check)
+    return map_check;
+  return check_tensor_map_address_register_width(src, context);
+}
+
+CheckResult check_tensor_gather_scatter_coordinates(
+    const WithLocs<ResolvedTensorOperand>& tensor, const Context& context) {
+  const auto& value = tensor.value;
+  if ((value.mode != TensorAccessMode::TileGather4 &&
+       value.mode != TensorAccessMode::TileScatter4) ||
+      value.rank != TensorRank::Two || value.coordinates.elements.size() != 5 ||
+      value.coordinate_ranges.size() != 5)
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::RuleViolation,
+                        .range = diagnostic_range(tensor.locs, context),
+                        .message = "Gather/scatter tensor metadata requires "
+                                   "rank two and five coordinates."}});
+  CheckDiagnostics diagnostics;
+  for (size_t index = 0; index < 5; ++index) {
+    const auto& range = value.coordinate_ranges[index];
+    const auto& element = value.coordinates.elements[index];
+    if (range == SourceRange{}) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(tensor.locs, context),
+          .message = "Gather/scatter coordinate has no source range."});
+      continue;
+    }
+    const auto* reg = std::get_if<ResolvedRegisterRef>(&element);
+    if (!reg)
+      continue;
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width || (reg->symbol_id && !reg->declared_type) ||
+        (reg->declared_type &&
+         (!is_integer_type(*reg->declared_type) ||
+          base::scalar_size_of(*reg->declared_type) != 4)))
+      diagnostics.push_back(
+          CheckDiagnostic{.kind = CheckDiagnosticKind::OperandTypeMismatch,
+                          .range = range,
+                          .message = "Gather/scatter coordinates require "
+                                     "scalar 32-bit integer/bit registers."});
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
 }
 
 CheckResult check_cp_async_rule(std::span<const FieldView> fields,
@@ -2671,3 +3718,85 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
 }
 
 }  // namespace ptx_frontend::resolved_ir::checker
+
+namespace ptx_frontend::resolved_ir {
+
+std::optional<TensorGatherScatterCoordinateRole>
+tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
+                                      size_t index) noexcept {
+  if ((tensor.mode != TensorAccessMode::TileGather4 &&
+       tensor.mode != TensorAccessMode::TileScatter4) ||
+      tensor.rank != TensorRank::Two ||
+      tensor.coordinates.elements.size() != 5 ||
+      tensor.coordinate_ranges.size() != 5 || index >= 5)
+    return std::nullopt;
+  return static_cast<TensorGatherScatterCoordinateRole>(index);
+}
+
+/** Validate the actual owned scalar source independently of operand views. */
+namespace checker {
+/** Reject a damaged written group before any generic field view loses location. */
+CheckResult check_tensor_cta_group(const WithLocs<TensorCtaGroup>& group,
+                                   const Context& context) {
+  if (!group.locs.empty() && (group.value == TensorCtaGroup::One ||
+                              group.value == TensorCtaGroup::Two))
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(group.locs, context),
+      .message = "Tensor CTA group requires a located ::1 or ::2 suffix.",
+  }});
+}
+
+CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>& mask,
+                                        const Context& context) {
+  bool valid = !mask.locs.empty();
+  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&mask.value)) {
+    valid = valid && reg->register_class == ResolvedRegisterClass::General &&
+            !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+            (!reg->declared_type || (*reg->declared_type == ScalarType::B16 ||
+                                     *reg->declared_type == ScalarType::U16 ||
+                                     *reg->declared_type == ScalarType::S16));
+  } else if (const auto* imm = std::get_if<ResolvedImmediate>(&mask.value)) {
+    valid = valid && imm->type == ScalarType::U16 && imm->integer_source_bits &&
+            imm->bits == (*imm->integer_source_bits & uint64_t{0xffff});
+  } else {
+    valid = false;
+  }
+  if (valid)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(mask.locs, context),
+      .message = "Tensor multicast mask requires a scalar 16-bit integer/bit "
+                 "register or a U16-converted integer literal.",
+  }});
+}
+}  // namespace checker
+
+std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
+    const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
+    size_t index) {
+  const size_t rank = static_cast<size_t>(tensor.rank);
+  if (rank < 3 || rank > 5 || index >= info.elements.size() ||
+      info.pack_range == SourceRange{})
+    return std::nullopt;
+  if (tensor.mode == TensorAccessMode::Im2col) {
+    if (info.elements.size() != rank - 2)
+      return std::nullopt;
+    constexpr std::array roles{TensorIm2colInfoRole::OffsetW,
+                               TensorIm2colInfoRole::OffsetH,
+                               TensorIm2colInfoRole::OffsetD};
+    return roles[index];
+  }
+  if (tensor.mode == TensorAccessMode::Im2colW ||
+      tensor.mode == TensorAccessMode::Im2colW128) {
+    if (info.elements.size() != 2)
+      return std::nullopt;
+    return index == 0 ? TensorIm2colInfoRole::Halo
+                      : TensorIm2colInfoRole::Offset;
+  }
+  return std::nullopt;
+}
+
+}  // namespace ptx_frontend::resolved_ir

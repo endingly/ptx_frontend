@@ -116,7 +116,8 @@ TEST(SelpCompleteness, RejectsWrongSourceImmediateAndPredicate) {
            "selp.s32 %d, %s, 1.0, %p;",
        }) {
     SCOPED_TRACE(source);
-    const auto parsed = test_helpers::parseModule(std::string(R"ptx(.version 9.3
+    const auto parsed =
+        test_helpers::parseModule(std::string(R"ptx(.version 9.3
 .target sm_100
 .entry kernel() {
   .reg .pred %p;

@@ -153,7 +153,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             _operand(
                 "matrix_fragment",
                 "fragment",
-                cardinality={"min": 1, "max": 65},
+                cardinality={"min": 1, "max": 129},
                 element_kinds=["reg"],
             ),
             _operand(
@@ -182,9 +182,10 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 vector={"arity": 2},
             ),
         ):
-            self.assertTrue(
-                list(self.operand_validator.iter_errors(cast(Any, operand)))
-            )
+            with self.subTest(operand=operand):
+                self.assertTrue(
+                    list(self.operand_validator.iter_errors(cast(Any, operand)))
+                )
 
     def test_predicate_sources_accept_integer_constants_and_negation(self) -> None:
         source_shapes = (

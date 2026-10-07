@@ -25,6 +25,7 @@ from ptx_frontend.code_gen.context import (
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
     REFERENCE_TYPES,
+    form_shards,
     generate_resolved_opcode_header,
     method_name,
 )
@@ -233,9 +234,9 @@ class GenerationPlanTests(unittest.TestCase):
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (92, 985))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 1225)
-        self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 194)
+        self.assertEqual((len(context.entries), len(forms)), (101, 4333))
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 5109)
+        self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 716)
         for form in forms:
             slots = operand_slots(form, self.backend)
             self.assertEqual(len({slot.member_name for slot in slots}), len(slots))
@@ -249,7 +250,10 @@ class GenerationPlanTests(unittest.TestCase):
                     )
         with tempfile.TemporaryDirectory() as directory:
             plan = build_generation_plan(context, Path(directory))
-            self.assertEqual(len(plan.paths), 4 + 2 * len(context.entries))
+            shard_count = sum(len(form_shards(entry)) for entry in context.entries)
+            self.assertEqual(shard_count, 56)
+            self.assertEqual(len(plan.paths), 10 + 2 * len(context.entries)
+                             + 3 * shard_count)
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
                                 for path in plan.paths))
 
@@ -461,7 +465,12 @@ class GenerationPlanTests(unittest.TestCase):
                 and artifact.path.name.startswith("resolved_ir_")
                 and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
             }
-            self.assertEqual(len(sources), len(context.entries))
+            opcode_paths = {
+                output / f"private/resolved_ir_{entry.specification.codegen_category}_"
+                f"{entry.specification.opcode}.gen.cpp"
+                for entry in context.entries
+            }
+            self.assertTrue(opcode_paths <= sources.keys())
             for entry in context.entries:
                 category = entry.specification.codegen_category
                 opcode = entry.specification.opcode
@@ -475,10 +484,24 @@ class GenerationPlanTests(unittest.TestCase):
                 self.assertIn(f"{opcode}_syntax_descriptor()", source)
                 self.assertIn(f"{opcode}_resolved_descriptor()", source)
                 self.assertIn(f"{opcode}_checker_descriptor()", source)
-                for variant in entry.resolved.variants:
-                    self.assertIn(
-                        f"{entry.cpp_name}{variant.cpp_name}::check(", source
-                    )
+                if form_shards(entry):
+                    for index, shard in enumerate(form_shards(entry)):
+                        method_path = output / (
+                            f"private/resolved_ir_{category}_{opcode}_"
+                            f"methods_{index:03d}.gen.cpp"
+                        )
+                        sources[method_path].emit(context, output_path=method_path)
+                        methods = method_path.read_text(encoding="utf-8")
+                        for variant_index in shard:
+                            variant = entry.resolved.variants[variant_index]
+                            self.assertIn(
+                                f"{entry.cpp_name}{variant.cpp_name}::check(", methods
+                            )
+                else:
+                    for variant in entry.resolved.variants:
+                        self.assertIn(
+                            f"{entry.cpp_name}{variant.cpp_name}::check(", source
+                        )
                 for other in context.entries:
                     if other is not entry:
                         self.assertNotIn(f"resolve{other.cpp_name}(", source)
@@ -495,9 +518,15 @@ class GenerationPlanTests(unittest.TestCase):
                 ))
                 for entry in context.entries
             )
+            shard_headers = {
+                public / "model" / entry.specification.codegen_category /
+                f"{entry.specification.opcode}_forms_{index:03d}.gen.hpp"
+                for entry in context.entries
+                for index, _ in enumerate(form_shards(entry))
+            }
             self.assertEqual(
                 {path for path in plan.paths if path.is_relative_to(public / "model")},
-                {path for _, path in leaves},
+                {path for _, path in leaves} | shard_headers,
             )
             self.assertIn(public / "ptx_instruction_base.gen.hpp", plan.paths)
             aggregate = public / "ptx_resolved_ir.gen.hpp"

@@ -70,6 +70,20 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.checker_descriptors",
         "ptx_frontend.code_gen.emit.syntax_descriptors",
         "ptx_frontend.code_gen.emit.value_domains",
+        "ptx_frontend.code_gen.emit.matrix",
+        "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
+        "ptx_frontend.code_gen.emit.tcgen_mma_operations",
+        "ptx_frontend.code_gen.emit.tensor_map_known_facts",
+        "ptx_frontend.ir.tensor_reduction",
+        "ptx_frontend.spec.tcgen_descriptor_domains",
+        "ptx_frontend.spec.tcgen_mma_operations",
+        "ptx_frontend.spec.tensor_map_known_facts",
+        "ptx_frontend.spec.normalize.matrix",
+        "ptx_frontend.spec.normalize.tcgen_allocation",
+        "ptx_frontend.spec.normalize.tcgen_copy_shift",
+        "ptx_frontend.spec.normalize.tcgen_load_store",
+        "ptx_frontend.spec.normalize.tcgen_mma",
+        "ptx_frontend.spec.normalize.tcgen_sync",
         "ptx_frontend.scripts.gen_all",
         "ptx_frontend.scripts.validate_yaml",
     )
@@ -78,6 +92,20 @@ def check_module_layout() -> None:
     # broken relocated imports are detected by the installed-wheel smoke test.
     for module in packaged_modules:
         import_module(module)
+
+    from ptx_frontend.code_gen.emit.resolved_model import FORM_SHARD_SIZE
+    from ptx_frontend.spec.tcgen_descriptor_domains import (
+        validate_catalogue as validate_descriptor_catalogue,
+    )
+    from ptx_frontend.spec.tcgen_mma_operations import (
+        validate_catalogue as validate_mma_catalogue,
+    )
+    from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
+
+    assert FORM_SHARD_SIZE == 64
+    assert len(TensorFactRule) == 22
+    validate_descriptor_catalogue()
+    validate_mma_catalogue()
 
 
 def check_packaged_spec_model() -> None:

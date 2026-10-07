@@ -24,6 +24,194 @@ class AsyncCompletionKind(Enum):
     ASYNC_GROUP = "async_group"
     BULK_GROUP = "bulk_group"
     MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
+    WGMMA_GROUP = "wgmma_group"
+    TCGEN_LOAD_WAIT = "tcgen_load_wait"
+    TCGEN_STORE_WAIT = "tcgen_store_wait"
+    TCGEN_MBARRIER_ARRIVE_ONE = "tcgen_mbarrier_arrive_one"
+
+
+class WgmmaProtocolAction(Enum):
+    """Instruction-local action in the independent warpgroup MMA protocol."""
+
+    NONE = "none"
+    ISSUE = "issue"
+    REGISTER_FENCE = "register_fence"
+    COMMIT = "commit"
+    WAIT = "wait"
+
+
+class MatrixFamily(Enum):
+    """Instruction family represented by one warp-matrix topology."""
+
+    LDMATRIX = "ldmatrix"
+    STMATRIX = "stmatrix"
+    MOVMATRIX = "movmatrix"
+    MMA = "mma"
+    MMA_SPARSE = "mma_sparse"
+    WMMA_LOAD = "wmma_load"
+    WMMA_STORE = "wmma_store"
+    WMMA_MMA = "wmma_mma"
+    WGMMA = "wgmma"
+    WGMMA_SPARSE = "wgmma_sparse"
+
+
+class WgmmaSourcePlacement(Enum):
+    """Where operand A resides; WGMMA operand B always uses shared memory."""
+
+    NONE = "none"
+    SHARED = "shared"
+    REGISTER = "register"
+
+
+class WgmmaSparseMetadataKind(Enum):
+    """Shape-specific interpretation of the opaque b32 sparse metadata."""
+
+    NONE = "none"
+    TWO_OF_FOUR = "two_of_four"
+    ONE_OF_TWO_TF32 = "one_of_two_tf32"
+
+
+class MatrixElementType(Enum):
+    """Logical element type, independent of its register packing."""
+
+    B1 = "b1"
+    B8 = "b8"
+    B8X16 = "b8x16"
+    B16 = "b16"
+    B4X16_P64 = "b4x16_p64"
+    B6X16_P32 = "b6x16_p32"
+    F16 = "f16"
+    BF16 = "bf16"
+    TF32 = "tf32"
+    F32 = "f32"
+    F64 = "f64"
+    S8 = "s8"
+    U8 = "u8"
+    S32 = "s32"
+    S4 = "s4"
+    U4 = "u4"
+    E4M3 = "e4m3"
+    E5M2 = "e5m2"
+    E3M2 = "e3m2"
+    E2M3 = "e2m3"
+    E2M1 = "e2m1"
+
+
+class MatrixLayout(Enum):
+    """Logical row or column placement of a matrix fragment."""
+
+    NONE = "none"
+    ROW = "row"
+    COL = "col"
+
+
+class MatrixKind(Enum):
+    """Warp MMA numeric format, including block-scaled formats."""
+
+    CLASSIC = "classic"
+    F8F6F4 = "f8f6f4"
+    MXF8F6F4 = "mxf8f6f4"
+    MXF4 = "mxf4"
+    MXF4NVF4 = "mxf4nvf4"
+
+
+class MatrixBitOperation(Enum):
+    """Single-bit MMA operation applied before population count."""
+
+    NONE = "none"
+    XOR = "xor"
+    AND = "and"
+
+
+class MatrixSparseOrder(Enum):
+    """Static ordering contract for sparse metadata bits."""
+
+    NONE = "none"
+    NATIVE = "native"
+    ORDERED = "ordered"
+
+
+class MatrixScaleType(Enum):
+    """Logical scale-factor representation for block-scaled MMA."""
+
+    NONE = "none"
+    UE8M0 = "ue8m0"
+    UE4M3 = "ue4m3"
+
+
+class MatrixAddressQualifier(Enum):
+    """Written matrix address-space suffix, distinct from bound provenance."""
+
+    NONE = "none"
+    GLOBAL = "global"
+    SHARED = "shared"
+    SHARED_CTA = "shared::cta"
+
+
+class MatrixFragmentRole(Enum):
+    """A, B, C, or D position of an owned register fragment."""
+
+    D = "d"
+    A = "a"
+    B = "b"
+    C = "c"
+
+
+@dataclass(frozen=True)
+class MatrixShape:
+    """Logical M×N×K shape; raw matrix moves use K=0."""
+
+    m: int
+    n: int
+    k: int
+
+
+@dataclass(frozen=True)
+class MatrixFragmentShape:
+    """Canonical register count and packing for one named operand."""
+
+    operand: str
+    role: MatrixFragmentRole
+    element_type: MatrixElementType
+    register_type: str
+    register_count: int
+
+
+@dataclass(frozen=True)
+class MatrixScaleSelectorSpec:
+    """Named A/B selector tuple and its canonical per-position immediate limits."""
+
+    operand: str
+    role: MatrixFragmentRole
+    byte_mask: int
+    thread_max: int
+
+
+@dataclass(frozen=True)
+class MatrixSpec:
+    """Typed instruction-local matrix topology shared by generators."""
+
+    family: MatrixFamily
+    shape: MatrixShape
+    a_layout: MatrixLayout
+    b_layout: MatrixLayout
+    c_layout: MatrixLayout
+    d_layout: MatrixLayout
+    elements: tuple[tuple[MatrixFragmentRole, MatrixElementType], ...]
+    fragments: tuple[MatrixFragmentShape, ...]
+    kind: MatrixKind = MatrixKind.CLASSIC
+    bit_operation: MatrixBitOperation = MatrixBitOperation.NONE
+    scale_type: MatrixScaleType = MatrixScaleType.NONE
+    source_packing: MatrixElementType | None = None
+    destination_packing: MatrixElementType | None = None
+    address_qualifier: MatrixAddressQualifier = MatrixAddressQualifier.NONE
+    transpose: bool = False
+    matrix_count: int = 0
+    scale_vector_size: int = 0
+    sparse_order: MatrixSparseOrder = MatrixSparseOrder.NONE
+    scale_selectors: tuple[MatrixScaleSelectorSpec, ...] = ()
+    source_placement: WgmmaSourcePlacement = WgmmaSourcePlacement.NONE
+    sparse_metadata_kind: WgmmaSparseMetadataKind = WgmmaSparseMetadataKind.NONE
 
 
 class _SemanticToken(Enum):
@@ -57,6 +245,9 @@ class SemanticRule(_SemanticToken):
     DATA_MOVEMENT_ST_EXPLICIT = "data_movement.st_explicit"
     DATA_MOVEMENT_ST_GENERIC = "data_movement.st_generic"
     DATA_MOVEMENT_ST_BULK = "data_movement.st_bulk"
+    DATA_MOVEMENT_TENSORMAP_REPLACE = "data_movement.tensormap_replace"
+    DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY = "data_movement.tensormap_cp_fenceproxy"
+    DATA_MOVEMENT_TENSOR_REDUCTION = "data_movement.tensor_reduction"
     FLOATING_POINT_ADD = "floating_point.add"
     FLOATING_POINT_ADD_BFLOAT = "floating_point.add_bfloat"
     FLOATING_POINT_ADD_HALF = "floating_point.add_half"
@@ -69,6 +260,19 @@ class SemanticRule(_SemanticToken):
     INTEGER_ARITH_SUB = "integer_arith.sub"
     INTEGER_ARITH_SUB_SAT = "integer_arith.sub_sat"
     MATRIX_MMA = "matrix.mma"
+    MATRIX_WGMMA_SCALE = "matrix.wgmma_scale"
+    TENSOR_MEMORY_ALLOC = "tensor_memory.alloc"
+    TENSOR_MEMORY_DEALLOC = "tensor_memory.dealloc"
+    TENSOR_MEMORY_RELINQUISH_ALLOC_PERMIT = "tensor_memory.relinquish_alloc_permit"
+    TENSOR_MEMORY_LOAD = "tensor_memory.load"
+    TENSOR_MEMORY_STORE = "tensor_memory.store"
+    TENSOR_MEMORY_LOAD_REDUCTION = "tensor_memory.load_reduction"
+    TENSOR_MEMORY_WAIT = "tensor_memory.wait"
+    TENSOR_MEMORY_COMMIT = "tensor_memory.commit"
+    TENSOR_MEMORY_FENCE = "tensor_memory.fence"
+    TENSOR_MEMORY_COPY = "tensor_memory.copy"
+    TENSOR_MEMORY_SHIFT = "tensor_memory.shift"
+    TENSOR_MEMORY_MMA = "tensor_memory.mma"
     MIXED_PRECISION_ADD = "mixed_precision.add"
     MIXED_PRECISION_SUB = "mixed_precision.sub"
     PARALLEL_SYNC_AND_COMMUNICATION_ACTIVEMASK = "parallel_sync_and_communication.activemask"
@@ -108,6 +312,11 @@ class ModifierKind(_SemanticToken):
     LAYOUT = "layout"
     PHASE_TYPE = "phase_type"
     MBARRIER_LAYOUT = "mbarrier_layout"
+    CTA_GROUP = "cta_group"
+    TCGEN_SHAPE = "tcgen_shape"
+    TCGEN_NUM = "tcgen_num"
+    TCGEN_RED_OP = "tcgen_red_op"
+    TCGEN_WAIT = "tcgen_wait"
     MEMORY_ORDER = "memory_order"
     PROXY = "proxy"
     PROXY_PAIR = "proxy_pair"
@@ -166,8 +375,15 @@ class OperandKind(_SemanticToken):
     VECTOR = "vector"
     TUPLE = "tuple"
     TENSOR_COORDINATE = "tensor_coordinate"
+    TENSOR_IM2COL_INFO = "tensor_im2col_info"
     TENSOR_OPERAND = "tensor_operand"
+    TENSOR_MEMORY_ADDRESS = "tensor_memory_address"
+    TENSOR_MEMORY_ADDRESS_BRACKET = "tensor_memory_address_bracket"
+    TCGEN_HALF_SPLIT_OFFSET = "tcgen_half_split_offset"
     MATRIX_FRAGMENT = "matrix_fragment"
+    MATRIX_SCALE_SELECTOR = "matrix_scale_selector"
+    SHARED_MATRIX_DESCRIPTOR = "shared_matrix_descriptor"
+    WGMMA_SCALE_D = "wgmma_scale_d"
     DESCRIPTOR = "descriptor"
     TYPED_TOKEN = "typed_token"
     MBARRIER_STATE_TOKEN = "mbarrier_state_token"
@@ -501,8 +717,10 @@ class VariantSpec:
     availability: dict[str, Any]
     modifiers: tuple[ModifierSpec, ...]
     operand_layouts: tuple[OperandLayoutSpec, ...]
+    matrix: MatrixSpec | None = None
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()
     memory_consistency: MemoryConsistencyConstraint | None = None
@@ -517,6 +735,8 @@ class VariantSpec:
     # The canonical order remains ``modifiers``; each alias includes absent
     # slots so it can be validated as a permutation of that order.
     modifier_order_aliases: tuple[tuple[str, ...], ...] = ()
+    tcgen_copy_pairs: tuple[tuple[str, str], ...] = ()
+    tcgen_copy_formats: tuple[tuple[bool, bool, bool], ...] = ()
 
 
 @dataclass(frozen=True)

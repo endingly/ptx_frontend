@@ -104,6 +104,25 @@ if(PTX_FRONTEND_BUILD_BENCHMARKS)
     add_subdirectory(benchmark)
 endif()
 if(BUILD_TESTING)
+    set(tensor_map_known_facts_fixture
+        "${resolved_generated_private}/ptx_frontend/resolved_ir/test/tensor_map_known_facts_cases.gen.inc")
+    add_custom_command(
+        OUTPUT "${tensor_map_known_facts_fixture}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "${resolved_generated_private}/ptx_frontend/resolved_ir/test"
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "PYTHONPATH=${PROJECT_SOURCE_DIR}:${PROJECT_SOURCE_DIR}/python/src"
+            "${Python3_EXECUTABLE}" -m python.tests.spec.test_tensor_map_known_facts
+            --emit-cpp-fixtures "${tensor_map_known_facts_fixture}"
+        DEPENDS
+            "${PROJECT_SOURCE_DIR}/python/tests/spec/test_tensor_map_known_facts.py"
+            "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/tensor_map_known_facts.py"
+            "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/emit/tensor_map_known_facts.py"
+            "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/resolved_ir.py"
+            "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/tensor_reduction.py"
+        VERBATIM)
+    add_custom_target(tensor_map_known_facts_test_fixtures
+        DEPENDS "${tensor_map_known_facts_fixture}")
     add_executable(resolved_ir_smoke test/smoke.cpp)
     target_link_libraries(resolved_ir_smoke PRIVATE
         ptx_frontend::resolved_ir)
@@ -120,5 +139,8 @@ if(BUILD_TESTING)
         GTest::gtest GTest::gtest_main ptx_frontend::resolved_ir)
     target_compile_options(test_resolved_ir PRIVATE
         $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:Clang>>:-gline-tables-only>)
+    target_include_directories(test_resolved_ir PRIVATE
+        "${resolved_generated_private}")
+    add_dependencies(test_resolved_ir tensor_map_known_facts_test_fixtures)
     gtest_discover_tests(test_resolved_ir)
 endif()

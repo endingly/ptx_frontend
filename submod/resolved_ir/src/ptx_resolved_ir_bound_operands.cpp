@@ -8,6 +8,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
@@ -1562,7 +1563,49 @@ resolve_tensor_coordinate(
   return resolved;
 }
 
-/** Resolve both parts of a tiled tensor operand through existing typed paths. */
+/** Resolve an im2col information pack with owned element conversion. */
+std::expected<WithLocs<ResolvedTensorIm2colInfo>, ResolveDiagnostic>
+resolve_tensor_im2col_info(
+    const syntax_ast::AstOperand& operand,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+  const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (pack == nullptr || pack->elements.empty())
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a nonempty im2col information brace pack."});
+  auto resolved = resolve_tensor_coordinate(operand, binding, fields, context);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  for (size_t index = 0; index < resolved->value.elements.size(); ++index) {
+    const auto* reg =
+        std::get_if<ResolvedRegisterRef>(&resolved->value.elements[index]);
+    if (!reg)
+      continue;
+    const bool invalid =
+        reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width.has_value() ||
+        (reg->symbol_id && !reg->declared_type) ||
+        (reg->declared_type &&
+         (base::scalar_size_of(*reg->declared_type) != 2 ||
+          (base::scalar_kind(*reg->declared_type) != base::ScalarKind::Bit &&
+           base::scalar_kind(*reg->declared_type) !=
+               base::ScalarKind::Unsigned &&
+           base::scalar_kind(*reg->declared_type) !=
+               base::ScalarKind::Signed)));
+    if (invalid)
+      return std::unexpected(ResolveDiagnostic{
+          .range = resolved->locs[index],
+          .message = "Im2col information requires scalar 16-bit integer/bit "
+                     "registers."});
+  }
+  WithLocs<ResolvedTensorIm2colInfo> info{ResolvedTensorIm2colInfo{
+      std::move(resolved->value.elements), pack->range}};
+  info.locs = std::move(resolved->locs);
+  return info;
+}
+
+/** Resolve both parts of a tensor operand using the selected form's mode. */
 std::expected<WithLocs<ResolvedTensorOperand>, ResolveDiagnostic>
 resolve_tensor_operand(
     const syntax_ast::AstOperand& operand,
@@ -1573,6 +1616,19 @@ resolve_tensor_operand(
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected [tensorMap, {coordinates}] operand."});
+  if (!binding.expected_tensor_mode || !binding.expected_tensor_rank ||
+      *binding.expected_tensor_rank < TensorRank::One ||
+      *binding.expected_tensor_rank > TensorRank::Five ||
+      (*binding.expected_tensor_mode != TensorAccessMode::Tiled &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colNoOffs &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2col &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colW &&
+       *binding.expected_tensor_mode != TensorAccessMode::Im2colW128 &&
+       *binding.expected_tensor_mode != TensorAccessMode::TileGather4 &&
+       *binding.expected_tensor_mode != TensorAccessMode::TileScatter4))
+    return std::unexpected(ResolveDiagnostic{
+        .range = tensor->range,
+        .message = "Tensor operand binding has no valid access mode."});
   syntax_ast::AstOperand address_operand{tensor->tensor_map};
   auto map = resolve_address(address_operand, context);
   if (!map)
@@ -1593,8 +1649,8 @@ resolve_tensor_operand(
   ResolvedTensorOperand resolved{
       .tensor_map = {std::move(map->value), tensor->tensor_map.range},
       .coordinates = std::move(coordinates->value),
-      .rank = static_cast<TensorRank>(binding.minimum_elements),
-      .mode = TensorAccessMode::Tiled,
+      .rank = *binding.expected_tensor_rank,
+      .mode = *binding.expected_tensor_mode,
       .coordinate_ranges = std::move(coordinates->locs)};
   return WithLocs<ResolvedTensorOperand>{std::move(resolved), tensor->range};
 }
@@ -1931,6 +1987,34 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::WgmmaScaleD: {
+      if (const auto* immediate =
+              std::get_if<syntax_ast::AstImmediate>(&operand)) {
+        auto value = resolve_immediate_value(*immediate, ScalarType::B64);
+        if (!value)
+          return std::unexpected(value.error());
+        if (value->is_negative || value->bits > 1) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = syntax_ast::sourceRange(operand),
+              .message = "WGMMA scale-d constant must be 0 or 1.",
+          });
+        }
+        return ResolvedFieldValue{WithLocs<ResolvedPredicateSource>{
+            ResolvedPredicateSource{
+                ResolvedPredicateConstant{.value = value->bits == 1}},
+            syntax_ast::sourceRange(operand)}};
+      }
+      if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(operand)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "WGMMA scale-d requires a predicate or 0/1 constant.",
+        });
+      }
+      auto value = resolve_predicate_source(operand, false, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::PredicateSource: {
       auto value = resolve_predicate_source(
           operand,
@@ -1974,6 +2058,74 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TensorMemoryAddress: {
+      auto value = resolve_reg_or_imm(operand, ScalarType::U32, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<TensorMemoryAddress> address{
+          TensorMemoryAddress{.value = std::move(value->value)}};
+      address.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(address)};
+    }
+    case ResolvedValueKind::TcgenBracketedAddress: {
+      const auto* source = std::get_if<syntax_ast::AstAddress>(&operand);
+      if (!source || !source->bracketed || source->offset || source->unified) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "Tensor Memory transfer requires a simple [taddr].",
+        });
+      }
+      const syntax_ast::AstOperand base = std::visit(
+          [](const auto& value) -> syntax_ast::AstOperand { return value; },
+          source->base);
+      auto value = resolve_reg_or_imm(base, ScalarType::U32, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<TensorMemoryAddress> address{TensorMemoryAddress{
+          .value = std::move(value->value), .bracketed = true}};
+      address.locs = {source->range};
+      return ResolvedFieldValue{std::move(address)};
+    }
+    case ResolvedValueKind::TcgenHalfSplitOffset: {
+      const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
+      if (!immediate ||
+          (immediate->kind != syntax_ast::AstImmediateKind::DecimalInteger &&
+           immediate->kind != syntax_ast::AstImmediateKind::HexInteger &&
+           immediate->kind != syntax_ast::AstImmediateKind::WarpSize)) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "Tensor Memory half-split offset requires an integer "
+                       "immediate.",
+        });
+      }
+      std::string_view text = immediate->syntax.text;
+      bool negative = false;
+      if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
+        negative = text.front() == '-';
+        text.remove_prefix(1);
+      }
+      const auto parsed =
+          immediate->kind == syntax_ast::AstImmediateKind::WarpSize
+              ? std::optional<uint64_t>{32}
+              : base::parseIntegerMagnitude(text);
+      if (!parsed) {
+        return std::unexpected(ResolveDiagnostic{
+            .range = immediate->syntax.range,
+            .message = "Invalid half-split integer source literal.",
+        });
+      }
+      const uint64_t magnitude = *parsed;
+      const bool unsigned_source =
+          text.ends_with('u') || text.ends_with('U') ||
+          magnitude >
+              static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+      return ResolvedFieldValue{WithLocs<TcgenHalfSplitOffset>{
+          TcgenHalfSplitOffset{
+              .source_bits = negative ? uint64_t{0} - magnitude : magnitude,
+              .source_kind = unsigned_source ? TcgenIntegerSourceKind::Unsigned
+                                             : TcgenIntegerSourceKind::Signed},
+          immediate->syntax.range}};
     }
     case ResolvedValueKind::CpAsyncSourceControl: {
       const auto range = syntax_ast::sourceRange(operand);
@@ -2153,11 +2305,45 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::TensorIm2colInfo: {
+      auto value =
+          resolve_tensor_im2col_info(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::TensorOperand: {
       auto value = resolve_tensor_operand(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::SharedMatrixDescriptor: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      WithLocs<ResolvedSharedMatrixDescriptor> descriptor{
+          ResolvedSharedMatrixDescriptor{.register_ref =
+                                             std::move(value->value)}};
+      descriptor.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(descriptor)};
+    }
+    case ResolvedValueKind::MatrixScaleSelector: {
+      auto value = resolve_tensor_coordinate(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      if (value->value.elements.size() != 2)
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "A matrix scale selector requires byte and thread IDs.",
+        });
+      WithLocs<ResolvedMatrixScaleSelector> selector{
+          ResolvedMatrixScaleSelector{
+              .byte_id = std::move(value->value.elements[0]),
+              .thread_id = std::move(value->value.elements[1]),
+          }};
+      selector.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(selector)};
     }
     case ResolvedValueKind::DirectCallTarget: {
       auto value = resolve_direct_call_target(operand, context);
@@ -2198,6 +2384,11 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MemoryStateSpace:
     case ResolvedValueKind::MbarrierPhaseType:
     case ResolvedValueKind::MbarrierLayout:
+    case ResolvedValueKind::TcgenCtaGroup:
+    case ResolvedValueKind::TcgenDataMovementShape:
+    case ResolvedValueKind::TcgenRepeat:
+    case ResolvedValueKind::TcgenReductionOp:
+    case ResolvedValueKind::TcgenWaitClass:
     case ResolvedValueKind::AsyncProxyKind:
     case ResolvedValueKind::ProxyKindPair:
       throw ResolveException(fmt::format(

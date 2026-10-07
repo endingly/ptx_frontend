@@ -677,7 +677,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             {"any_of": [{"target": "sm_90b"}]},
             {"any_of": [{"family": "sm_90a"}]},
             {"any_of": [{"capabilities": []}]},
-            {"any_of": [{"sm": 90}] * 6},
+            {"any_of": [{"sm": 90}] * 7},
         ):
             with self.assertRaises((TypeError, ValueError)):
                 normalize_availability(availability)
@@ -721,12 +721,12 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
         self.assertEqual(
-            list(validator.iter_errors({"any_of": [{"sm": 100}] * 5})), []
+            list(validator.iter_errors({"any_of": [{"sm": 100}] * 6})), []
         )
         self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
         self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
-                             {"any_of": [{"sm": 100}] * 6},
+                             {"any_of": [{"sm": 100}] * 7},
                              {"sm": 4294967296}, {"sm": True},
                              {"family": "sm_90a"},
                              {"any_of": [{"family": "sm_90a"}]},
@@ -743,6 +743,27 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn("TargetFlavor::ArchitectureSpecific", source)
         self.assertIn('.required_family = "sm_120f",', source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_six_clause_availability_retains_all_terms(self) -> None:
+        """Normalize and emit each bounded OR path without dropping AND terms."""
+
+        availability = {"any_of": [
+            {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+            {"ptx": "8.8", "sm": 120, "family": "sm_120f",
+             "capabilities": ["cluster"]},
+        ]}
+        self.assertEqual(normalize_availability(availability), availability)
+        source = emit_availability(availability)
+        self.assertIn(".any_of_count = 6", source)
+        for target in (90, 100, 120):
+            self.assertIn(f".exact_target_architecture = {{{target}}}", source)
+        for family in ("sm_100f", "sm_110f", "sm_120f"):
+            self.assertIn(f'.required_family = "{family}"', source)
+        self.assertIn('.capabilities = {{"cluster"}}', source)
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
         source = emit_availability(normalize_availability({"any_of": [

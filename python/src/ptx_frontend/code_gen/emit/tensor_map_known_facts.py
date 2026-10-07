@@ -1005,17 +1005,19 @@ __SELECTOR_CASES__
         result.diagnostics.emplace_back("selected coordinate lacks S32 use type");
         return;
       }
+      if (immediate->bits > uint64_t{0xffffffff} ||
+          (immediate->integer_source_bits &&
+           immediate->bits !=
+               (*immediate->integer_source_bits & uint64_t{0xffffffff}))) {
+        result.diagnostics.emplace_back("selected coordinate source/use bits disagree");
+        return;
+      }
       const uint32_t bits = static_cast<uint32_t>(immediate->bits);
       const int64_t converted = bits & UINT32_C(0x80000000)
           ? static_cast<int64_t>(bits) - INT64_C(4294967296)
           : static_cast<int64_t>(bits);
       access.coordinates[i].value = converted;
       access.coordinates[i].source_bits = immediate->integer_source_bits;
-      if (immediate->integer_source_bits &&
-          static_cast<uint32_t>(*immediate->integer_source_bits) != bits) {
-        result.diagnostics.emplace_back("selected coordinate source/use bits disagree");
-        return;
-      }
     }
     if (!info) return;
     access.info_known = true;
@@ -1035,14 +1037,16 @@ __SELECTOR_CASES__
         result.diagnostics.emplace_back("selected im2col information lacks U16 use type");
         return;
       }
-      const uint16_t bits = static_cast<uint16_t>(immediate->bits);
-      access.info[i].value = bits;
-      access.info[i].source_bits = immediate->integer_source_bits;
-      if (immediate->integer_source_bits &&
-          static_cast<uint16_t>(*immediate->integer_source_bits) != bits) {
+      if (immediate->bits > uint64_t{0xffff} ||
+          (immediate->integer_source_bits &&
+           immediate->bits !=
+               (*immediate->integer_source_bits & uint64_t{0xffff}))) {
         result.diagnostics.emplace_back("selected information source/use bits disagree");
         return;
       }
+      const uint16_t bits = static_cast<uint16_t>(immediate->bits);
+      access.info[i].value = bits;
+      access.info[i].source_bits = immediate->integer_source_bits;
     }
   };
   switch (instruction.instruction_kind()) {

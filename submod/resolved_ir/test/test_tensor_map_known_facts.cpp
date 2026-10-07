@@ -358,6 +358,53 @@ TEST(TensorMapKnownFacts, SelectedConvertedValuesAndLayoutStorageGuard) {
   EXPECT_FALSE(projected.diagnostics.empty());
 }
 
+/** Reject high use bits before narrowing while retaining valid source narrowing. */
+TEST(TensorMapKnownFacts, SelectedImmediateUseBitsAreNotTruncated) {
+  auto owned = selected_tensor_module(
+      "cp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::"
+      "complete_tx::bytes [dst], [tensor_map, {1, 0, 1}], [mbar], {1};");
+  ASSERT_TRUE(owned);
+  auto* copy = dynamic_cast<CpAsyncBulkTensor3dSharedClusterIm2col*>(
+      owned->functions.front().body.front().get());
+  ASSERT_NE(copy, nullptr);
+  ASSERT_TRUE(copy->im2col_info);
+  auto& coordinate =
+      std::get<ResolvedImmediate>(copy->tensor.value.coordinates.elements[0]);
+  auto& info =
+      std::get<ResolvedImmediate>(copy->im2col_info->value.elements[0]);
+  const auto context = selected_tensor_context("sm_100a");
+
+  coordinate.integer_source_bits = UINT64_C(0x100000001);
+  info.integer_source_bits = UINT64_C(0x10001);
+  auto projected = project_tensor_known_access_context(*copy, context);
+  ASSERT_TRUE(projected.diagnostics.empty());
+  ASSERT_TRUE(projected.access);
+  EXPECT_EQ(projected.access->coordinates[0].value, 1);
+  EXPECT_EQ(projected.access->coordinates[0].source_bits,
+            UINT64_C(0x100000001));
+  EXPECT_EQ(projected.access->info[0].value, 1u);
+  EXPECT_EQ(projected.access->info[0].source_bits, UINT64_C(0x10001));
+
+  coordinate.bits = UINT64_C(0x100000001);
+  coordinate.integer_source_bits = 1;
+  projected = project_tensor_known_access_context(*copy, context);
+  EXPECT_FALSE(projected.access);
+  ASSERT_FALSE(projected.diagnostics.empty());
+  EXPECT_NE(
+      projected.diagnostics.front().find("coordinate source/use bits disagree"),
+      std::string::npos);
+
+  coordinate.bits = 1;
+  info.bits = UINT64_C(0x10001);
+  info.integer_source_bits = 1;
+  projected = project_tensor_known_access_context(*copy, context);
+  EXPECT_FALSE(projected.access);
+  ASSERT_FALSE(projected.diagnostics.empty());
+  EXPECT_NE(projected.diagnostics.front().find(
+                "information source/use bits disagree"),
+            std::string::npos);
+}
+
 // The test-only generated include comes from literal Python fixture inputs.
 #include <ptx_frontend/resolved_ir/test/tensor_map_known_facts_cases.gen.inc>
 

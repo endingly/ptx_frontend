@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import unittest
 
+from ptx_frontend.code_gen.context import build_generation_context
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.ir.resolved_ir import (
     TensorAccessMode, TensorDestination as IrTensorDestination,
     _build_tensor_destination, from_instruction_spec,
@@ -25,6 +27,7 @@ from ptx_frontend.spec.tensor_map_known_facts import (
     validate_tensor_access_facts,
 )
 from ptx_frontend.code_gen.emit.tensor_map_known_facts import (
+    _render_selected_adapter,
     render_tensor_map_known_fact_query,
     render_tensor_map_known_fact_rules,
 )
@@ -86,8 +89,33 @@ class TensorDestinationNormalizationTests(unittest.TestCase):
         database = load_codegen_database(
             spec_dir=Path(__file__).resolve().parents[3] / "instructions/ptx_spec"
         )
+        cls.database = database
         cls.cp = next(item for item in database.instructions if item.opcode == "cp")
         cls.lowered = from_instruction_spec(cls.cp)
+
+    def test_selected_adapter_checks_full_use_bits_before_narrowing(self) -> None:
+        """Generated S32/U16 projection must reject contaminated use-width bits."""
+
+        backend = load_cpp_backend(
+            Path(__file__).resolve().parents[3] /
+            "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+        )
+        rendered = _render_selected_adapter(
+            build_generation_context(self.database, backend)
+        )
+        for width, mask in (("uint32_t", "0xffffffff"),
+                            ("uint16_t", "0xffff")):
+            with self.subTest(width=width):
+                guard = rendered.index(f"immediate->bits > uint64_t{{{mask}}}")
+                cast = rendered.index(
+                    f"const {width} bits = static_cast<{width}>(immediate->bits);"
+                )
+                self.assertLess(guard, cast)
+                self.assertIn(
+                    f"immediate->bits !=\n               "
+                    f"(*immediate->integer_source_bits & uint64_t{{{mask}}})",
+                    rendered[guard:cast],
+                )
 
     def test_exact_load_destinations_and_nontensor_absence(self) -> None:
         """Canonical fixed qualifiers distinguish CTA, cluster and absence."""

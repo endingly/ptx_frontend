@@ -166,6 +166,7 @@ class OperandKind(_SemanticToken):
     VECTOR = "vector"
     TUPLE = "tuple"
     TENSOR_COORDINATE = "tensor_coordinate"
+    TENSOR_OPERAND = "tensor_operand"
     MATRIX_FRAGMENT = "matrix_fragment"
     DESCRIPTOR = "descriptor"
     TYPED_TOKEN = "typed_token"

@@ -33,7 +33,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedVariant,
 )
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
-from ptx_frontend.spec.model import SemanticRule
+from ptx_frontend.spec.model import AsyncCompletionKind, SemanticRule
 
 
 def _append_result(expression: str) -> str:
@@ -559,6 +559,26 @@ def _emit_cross_rule_checks(
               diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
                                  immediate_multiple_of_check.error().end());
             }}
+"""
+    if (
+        variant.completion_kind is AsyncCompletionKind.BULK_GROUP
+        and any(
+            field.value_kind is ResolvedValueKind.TENSOR_OPERAND
+            for layout in variant.operand_layouts
+            for field in layout.fields
+        )
+    ):
+        checks += """            for (const auto& operand : operands) {
+              if (operand.actual_shape != OperandShape::TensorOperand)
+                continue;
+              const auto coordinate_check =
+                  check_tensor_store_coordinates(operand, context);
+              if (!coordinate_check) {
+                diagnostics.insert(diagnostics.end(),
+                                   coordinate_check.error().begin(),
+                                   coordinate_check.error().end());
+              }
+            }
 """
     if variant.rule is SemanticRule.DATA_MOVEMENT_CVT:
         checks += """            const auto cvt_rule_check = check_cvt_rule(

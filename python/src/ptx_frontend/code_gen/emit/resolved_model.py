@@ -55,7 +55,7 @@ REFERENCE_TYPES = (
     "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
-    "ResolvedTensorCoordinate", "ResolvedVectorRegisterRef",
+    "ResolvedTensorCoordinate", "ResolvedTensorOperand", "ResolvedVectorRegisterRef",
 )
 
 

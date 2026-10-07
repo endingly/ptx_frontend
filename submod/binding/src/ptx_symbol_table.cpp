@@ -1102,6 +1102,21 @@ struct SymbolTableBuilder {
                            *identifier);
             }
           } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstTensorOperand>) {
+            if (const auto* identifier =
+                    std::get_if<syntax_ast::AstIdentifierRef>(
+                        &value.tensor_map.base)) {
+              addReference(scope, ReferenceKind::InstructionOperand,
+                           *identifier);
+            }
+            for (const auto& element : value.coordinates.elements) {
+              if (const auto* identifier =
+                      std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             *identifier);
+              }
+            }
+          } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstVectorMember>) {
             addReference(scope, ReferenceKind::InstructionOperand, value.base);
           } else if constexpr (std::same_as<Value, syntax_ast::AstVectorPack>) {

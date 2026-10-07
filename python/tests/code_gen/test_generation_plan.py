@@ -32,6 +32,7 @@ from ptx_frontend.code_gen.resolved_layout import (
     operand_slots,
 )
 from ptx_frontend.code_gen.emit.resolved_source import (
+    _emit_resolve,
     generate_resolved_opcode_source,
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
@@ -231,8 +232,8 @@ class GenerationPlanTests(unittest.TestCase):
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (92, 965))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 1205)
+        self.assertEqual((len(context.entries), len(forms)), (92, 985))
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 1225)
         self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 194)
         for form in forms:
             slots = operand_slots(form, self.backend)
@@ -250,6 +251,22 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(len(plan.paths), 4 + 2 * len(context.entries))
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
                                 for path in plan.paths))
+
+    def test_cp_direct_dispatch_names_every_generated_form(self) -> None:
+        """Descriptor selection reaches all Cp forms beyond reflection limits."""
+        context = build_generation_context(self.database, self.backend)
+        cp = next(
+            entry for entry in context.entries
+            if entry.specification.opcode == "cp"
+        )
+        resolver = _emit_resolve(cp, self.backend)
+        self.assertGreater(len(cp.resolved.variants), 128)
+        for variant in cp.resolved.variants:
+            self.assertIn(
+                f'if (*selected == "{variant.cpp_name}") '
+                f'return InstructionKind::{cp.cpp_name}{variant.cpp_name};',
+                resolver,
+            )
 
     def test_context_lowers_and_projects_each_instruction_once(self) -> None:
         with (

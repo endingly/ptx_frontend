@@ -464,6 +464,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -551,6 +552,22 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorOperand>) {
+    const std::array<SourceRange, 1> map_range{value.tensor_map.range};
+    collect_operand_references(value.tensor_map.address, map_range, fallback,
+                               uses, address_resolution_policy);
+    for (size_t index = 0; index < value.coordinates.elements.size(); ++index) {
+      const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&value.coordinates.elements[index]);
+      if (!register_ref)
+        continue;
+      const std::array<SourceRange, 1> coordinate_range{
+          index < value.coordinate_ranges.size()
+              ? value.coordinate_ranges[index]
+              : fallback};
+      collect_operand_references(*register_ref, coordinate_range, fallback,
+                                 uses, address_resolution_policy);
+    }
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -722,17 +739,26 @@ class ReferenceCollector final : public detail::IReferenceObserver {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedTensorCoordinate. */
-  void tensor_coordinate(const ResolvedTensorCoordinate& value,
+  void tensor_coordinate(
+      const ResolvedTensorCoordinate& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect descriptor and coordinate references with their owned source ranges. */
+  void tensor_operand(const ResolvedTensorOperand& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedVectorRegisterRef. */
-  void vector_register_ref(const ResolvedVectorRegisterRef& value,
+  void vector_register_ref(
+      const ResolvedVectorRegisterRef& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
+
  private:
   /** Borrowed ordered destination, valid for this visitor's stack lifetime. */
   std::vector<ModuleReferenceUse>& uses_;

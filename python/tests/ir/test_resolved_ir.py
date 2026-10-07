@@ -5324,7 +5324,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("class Instruction", base_source)
         self.assertIn("std::unique_ptr<Instruction> clone() const", source)
         self.assertIn("void visit_references(detail::IReferenceObserver&)", source)
-        self.assertEqual(source.count(" final : public Instruction"), 965)
+        self.assertEqual(source.count(" final : public Instruction"), 985)
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",
                      "MovScalar", "SetBit", "SetpUnsigned", "CallDirect"):
@@ -5397,7 +5397,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("resolveInstruction(", source)
         self.assertIn("const syntax_ast::AstInstruction& ast", source)
-        self.assertEqual(source.count("case InstructionKind::"), 965)
+        self.assertEqual(source.count("case InstructionKind::"), 985)
         self.assertEqual(source.count('if (ast.opcode.syntax.text == "'), len(context.entries))
         for entry in context.entries:
             opcode = entry.specification.opcode

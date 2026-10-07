@@ -1168,6 +1168,7 @@ bool checkBulkAsyncContract() {
   cp.async.bulk.wait_group.read 0;
   st.bulk.shared::cta [s], 16, 0;
 }
+
 )ptx";
   std::optional<ir::ResolvedModule> owned;
   {
@@ -1211,6 +1212,86 @@ bool checkBulkAsyncContract() {
                  "public bulk async completion and group controls");
 }
 
+/** Exercise installed tiled tensor variants after syntax ownership expires. */
+bool checkTensorAsyncContract() {
+  constexpr std::string_view source = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 64 .b8 tensor_map[128];
+.shared .align 128 .b8 tile_data[1024];
+.shared .align 8 .b64 barrier;
+.entry kernel() {
+  .reg .s32 %coord<2>;
+  cp.async.bulk.prefetch.tensor.2d.L2.global.tile [tensor_map, {%coord0, 4294967296}];
+  cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes [tile_data], [tensor_map, {18446744073709551615, %coord1}], [barrier];
+  cp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {-4294967296}], [tile_data];
+  cp.async.bulk.commit_group;
+  cp.async.bulk.wait_group 0;
+}
+
+)ptx";
+  std::optional<ir::ResolvedModule> owned;
+  {
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!require(ast.has_value(), "tensor fixture parses"))
+      return false;
+    auto resolved = ir::resolveModuleOnly(*ast);
+    if (!require(resolved.has_value(), "tensor fixture resolves"))
+      return false;
+    owned.emplace(std::move(*resolved));
+  }
+  if (!require(ir::validateModule(
+                   *owned, ir::ModuleValidationPolicy::RequireCompleteContext)
+                   .has_value(),
+               "owned tensor module validates"))
+    return false;
+  const auto& body = owned->functions.front().body;
+  if (!require(body.size() == 5, "tensor forms retained"))
+    return false;
+  const auto* prefetch =
+      dynamic_cast<ir::CpAsyncBulkPrefetchTensor2d*>(body[0].get());
+  const auto* load =
+      dynamic_cast<ir::CpAsyncBulkTensor2dSharedCluster*>(body[1].get());
+  const auto* store =
+      dynamic_cast<ir::CpAsyncBulkTensor1dGlobalSharedCta*>(body[2].get());
+  const auto* prefetch_coordinate =
+      prefetch && prefetch->tensor.value.coordinates.elements.size() == 2
+          ? std::get_if<ir::ResolvedImmediate>(
+                &prefetch->tensor.value.coordinates.elements[1])
+          : nullptr;
+  const auto* load_coordinate =
+      load && load->tensor.value.coordinates.elements.size() == 2
+          ? std::get_if<ir::ResolvedImmediate>(
+                &load->tensor.value.coordinates.elements[0])
+          : nullptr;
+  const auto* store_coordinate =
+      store && store->tensor.value.coordinates.elements.size() == 1
+          ? std::get_if<ir::ResolvedImmediate>(
+                &store->tensor.value.coordinates.elements[0])
+          : nullptr;
+  return require(
+      prefetch && load && store && prefetch->tile.value &&
+          prefetch->tensor.value.rank == ir::TensorRank::Two &&
+          load->tensor.value.coordinates.elements.size() == 2 &&
+          store->tile.value && prefetch_coordinate &&
+          prefetch_coordinate->bits == 0 &&
+          prefetch_coordinate->integer_source_bits == 0x100000000ULL &&
+          !prefetch_coordinate->is_negative && load_coordinate &&
+          load_coordinate->bits == 0xffffffffULL &&
+          load_coordinate->integer_source_bits == 0xffffffffffffffffULL &&
+          !load_coordinate->is_negative && store_coordinate &&
+          store_coordinate->bits == 0 &&
+          store_coordinate->integer_source_bits == 0xffffffff00000000ULL &&
+          store_coordinate->is_negative &&
+          ir::CpAsyncBulkTensor2dSharedCluster::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::
+                  MbarrierCompleteTxBytes &&
+          ir::CpAsyncBulkTensor1dGlobalSharedCta::completion_kind ==
+              ptx_frontend::base::AsyncCompletionKind::BulkGroup,
+      "installed tensor map, rank, tile, and completion identities");
+}
 }  // namespace
 
 /** Check the installed public conversion, comparison, and resolved-IR contract. */
@@ -1266,6 +1347,8 @@ int main() {
     return 16;
   if (!checkBulkAsyncContract())
     return 17;
+  if (!checkTensorAsyncContract())
+    return 18;
   std::cout << "conversion consumer passed\n";
   return 0;
 }

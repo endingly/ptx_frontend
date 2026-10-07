@@ -39,6 +39,9 @@ The source covers a targeted module with these representative forms:
   commit/read-wait controls, and `st.bulk` zero fill as owned exact classes.
   The consumer checks each copy's static completion identity after destroying
   the parser and AST.
+- tiled tensor prefetch, global-to-cluster load, and CTA-shared-to-global store
+  with an owned tensor-map pointer and coordinates. The consumer checks rank,
+  explicit `.tile`, and the two completion identities after AST destruction.
 
 The main module uses PTX 9.3 and `sm_121a`, which supplies the exact target
 context for the scaled `s2f6x2` form; the bulk fixture uses `sm_100f`. The

@@ -19,6 +19,7 @@ class OperandSyntaxShape(IntFlag):
     BRANCH_TARGET_SET = 1 << 10
     REGISTER_PREDICATE_PAIR = 1 << 11
     NEGATED_IMMEDIATE = 1 << 12
+    TENSOR_OPERAND = 1 << 13
 
 
 OPERAND_SYNTAX_SHAPES = {
@@ -66,6 +67,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.TENSOR_COORDINATE: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
     OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.DIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,
     OperandKind.INDIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,

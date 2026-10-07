@@ -691,6 +691,7 @@ $defs:
       - vector
       - tuple
       - tensor_coordinate
+      - tensor_operand
       - matrix_fragment
       - descriptor
       - typed_token
@@ -937,6 +938,7 @@ $defs:
               not:
                 enum:
                   - tensor_coordinate
+                  - tensor_operand
                   - matrix_fragment
           required:
             - kind
@@ -951,7 +953,7 @@ $defs:
       - if:
           properties:
             kind:
-              const: tensor_coordinate
+              enum: [tensor_coordinate, tensor_operand]
           required:
             - kind
         then:

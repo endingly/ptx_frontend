@@ -429,6 +429,109 @@ void append_parameter_address_diagnostics(
 
 }  // namespace
 
+OperandView project_tensor_operand(
+    std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand) {
+  const auto& tensor = operand.value;
+  const auto& address = tensor.tensor_map.address;
+  const auto* symbol = std::get_if<ResolvedSymbolRef>(&address.base);
+  std::optional<MemoryStateSpace> space;
+  if (symbol && symbol->address_state_space) {
+    switch (*symbol->address_state_space) {
+      case syntax_ast::AstStateSpace::Global:
+        space = MemoryStateSpace::Global;
+        break;
+      case syntax_ast::AstStateSpace::Shared:
+        space = MemoryStateSpace::Shared;
+        break;
+      case syntax_ast::AstStateSpace::Local:
+        space = MemoryStateSpace::Local;
+        break;
+      case syntax_ast::AstStateSpace::Parameter:
+        space = MemoryStateSpace::Parameter;
+        break;
+      case syntax_ast::AstStateSpace::Constant:
+        space = MemoryStateSpace::Constant;
+        break;
+      case syntax_ast::AstStateSpace::Register:
+        break;
+    }
+  }
+  const auto low_bit = [](uint64_t value) {
+    return value == 0 ? uint64_t{0} : value & (~value + 1);
+  };
+  std::optional<uint64_t> alignment;
+  if (symbol)
+    alignment = symbol->address_alignment;
+  else if (const auto* immediate =
+               std::get_if<ResolvedImmediate>(&address.base))
+    alignment = low_bit(immediate->bits);
+  if (alignment && address.offset) {
+    const uint64_t offset_alignment = low_bit(address.offset->value.bits);
+    if (offset_alignment != 0 &&
+        (*alignment == 0 || offset_alignment < *alignment))
+      alignment = offset_alignment;
+  }
+  OperandView view{
+      .field_id = field_id,
+      .actual_shape = OperandShape::TensorOperand,
+      .address_state_space = space,
+      .address_base_kind =
+          std::holds_alternative<ResolvedRegisterRef>(address.base)
+              ? AddressBaseKind::Register
+          : std::holds_alternative<ResolvedSymbolRef>(address.base)
+              ? AddressBaseKind::Symbol
+              : AddressBaseKind::Immediate,
+      .address_offset_fits_signed32 =
+          !address.offset || address_offset_fits_signed32(*address.offset),
+      .address_alignment = alignment,
+      .enclosing_function_kind = address.enclosing_function_kind,
+      .parameter_direction = symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::InputParameter
+                                 ? ParameterDirection::Input
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::ReturnParameter
+                                 ? ParameterDirection::Return
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::CallParameter
+                                 ? ParameterDirection::CallArgument
+                                 : ParameterDirection::None,
+      .tensor_rank = tensor.rank,
+      .tensor_operand = &tensor,
+      .vector_arity = tensor.coordinates.elements.size(),
+      .locations = operand.locs,
+  };
+  for (size_t index = 0; index < tensor.coordinates.elements.size() &&
+                         index < kMaxOperandElements;
+       ++index) {
+    const auto& element = tensor.coordinates.elements[index];
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      view.vector_element_shapes[index] = OperandShape::Register;
+      view.vector_element_types[index] =
+          reg->declared_type.value_or(ScalarType::Invalid);
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(element);
+      view.vector_element_shapes[index] = OperandShape::Immediate;
+      view.vector_element_types[index] = immediate.type;
+      view.tensor_has_negative_immediate |=
+          (immediate.bits & uint64_t{0x80000000}) != 0;
+    }
+  }
+  return view;
+}
+
+CheckResult check_tensor_store_coordinates(const OperandView& operand,
+                                           const Context& context) {
+  if (!operand.tensor_has_negative_immediate)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(operand.locations, context),
+      .message = "Tensor store coordinates must not be statically negative."}});
+}
+
 bool is_available(const AvailabilityDescriptor& availability,
                   const TargetInfo& target) noexcept {
   if (availability.any_of_count != 0) {
@@ -587,7 +690,8 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
-    if (operand.actual_shape != OperandShape::Vector ||
+    if ((operand.actual_shape != OperandShape::Vector &&
+         operand.actual_shape != OperandShape::TensorOperand) ||
         (operand.vector_arity != 0 &&
          operand.vector_arity <= kMaxOperandElements)) {
       continue;
@@ -625,6 +729,74 @@ CheckResult check_operands(
               "instruction layout.",
               descriptor.target_field_id),
       });
+    }
+    if (operand->actual_shape == OperandShape::TensorOperand) {
+      const auto* tensor = operand->tensor_operand;
+      const bool invalid_structure =
+          tensor == nullptr || tensor->mode != TensorAccessMode::Tiled ||
+          static_cast<size_t>(tensor->rank) != operand->vector_arity ||
+          tensor->coordinate_ranges.size() != operand->vector_arity ||
+          tensor->tensor_map.range == SourceRange{};
+      if (invalid_structure) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(operand->locations, context),
+            .message =
+                "Tensor operand rank, mode, or source metadata is invalid."});
+      }
+      if (operand->address_state_space == MemoryStateSpace::Parameter &&
+          (operand->enclosing_function_kind != EnclosingFunctionKind::Entry ||
+           operand->parameter_direction != ParameterDirection::Input)) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = diagnostic_range(operand->locations, context),
+            .message =
+                "Tensor-map parameter storage requires a kernel parameter."});
+      }
+      if (tensor != nullptr) {
+        for (size_t index = 0; index < tensor->coordinates.elements.size();
+             ++index) {
+          const SourceRange range =
+              index < tensor->coordinate_ranges.size() &&
+                      tensor->coordinate_ranges[index] != SourceRange{}
+                  ? tensor->coordinate_ranges[index]
+                  : diagnostic_range(operand->locations, context);
+          const auto* reg = std::get_if<ResolvedRegisterRef>(
+              &tensor->coordinates.elements[index]);
+          if (reg) {
+            const bool valid =
+                reg->register_class == ResolvedRegisterClass::General &&
+                !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+                (!reg->declared_type ||
+                 (is_integer_type(*reg->declared_type) &&
+                  base::scalar_size_of(*reg->declared_type) == 4));
+            if (!valid)
+              diagnostics.push_back(CheckDiagnostic{
+                  .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                  .range = range,
+                  .message = "Tensor coordinates require scalar 32-bit "
+                             "integer/bit registers.",
+              });
+            continue;
+          }
+          const auto* immediate = std::get_if<ResolvedImmediate>(
+              &tensor->coordinates.elements[index]);
+          if (!immediate)
+            continue;
+          const bool valid =
+              immediate->type == ScalarType::S32 &&
+              immediate->integer_source_bits.has_value() &&
+              immediate->bits ==
+                  (*immediate->integer_source_bits & uint64_t{0xffffffff});
+          if (valid)
+            continue;
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = range,
+              .message = "Tensor coordinate immediate has invalid signed "
+                         "32-bit metadata."});
+        }
+      }
     }
     if (operand->actual_shape == OperandShape::Vector &&
         (descriptor.access == OperandAccess::Write ||
@@ -733,7 +905,8 @@ CheckResult check_operands(
 
     if (descriptor.minimum_elements != 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
-      if (operand->actual_shape != OperandShape::Vector ||
+      if ((operand->actual_shape != OperandShape::Vector &&
+           operand->actual_shape != OperandShape::TensorOperand) ||
           operand->vector_arity < descriptor.minimum_elements ||
           operand->vector_arity > descriptor.maximum_elements ||
           operand->vector_arity > kMaxOperandElements) {
@@ -937,7 +1110,8 @@ CheckResult check_operands(
       continue;
     }
 
-    if (operand->actual_shape == OperandShape::Vector &&
+    if ((operand->actual_shape == OperandShape::Vector ||
+         operand->actual_shape == OperandShape::TensorOperand) &&
         descriptor.minimum_elements != 0) {
       if (operand->vector_arity <= kMaxOperandElements) {
         const auto mismatched = std::ranges::find_if(

@@ -85,6 +85,17 @@ struct AstVectorPack {
   SourceRange range;
 };
 
+/** Unresolved tensor-map address paired with rank-dependent coordinates. */
+struct AstTensorOperand {
+  AstAddress tensor_map;
+  AstVectorPack coordinates;
+  /** Separator and outer delimiters survive CST lowering for diagnostics. */
+  SourceRange left_bracket_range;
+  SourceRange comma_range;
+  SourceRange right_bracket_range;
+  SourceRange range;
+};
+
 enum class AstCallParameterListKind : uint8_t {
   Return,
   Input,
@@ -128,8 +139,9 @@ struct AstRegisterPredicatePair {
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
                  AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
-                 AstCallParameterList, AstCallTarget, AstCallTargetSet,
-                 AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
+                 AstTensorOperand, AstCallParameterList, AstCallTarget,
+                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
+                 AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

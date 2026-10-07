@@ -1238,33 +1238,30 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     resolved_function.is_entry = function->is_entry;
     resolved_function.is_prototype = function->is_prototype;
     resolved_function.contract = ResolvedFunctionContract{
-                .signature =
-                    declaration_semantics::functionSignature(*function),
-                .linkage = symbol.linkage,
-                .canonical_function =
-                    symbol.canonical_function.value_or(symbol.id),
-                .is_noreturn = function->is_noreturn,
-                .abi_preserve =
-                    resolve_abi_contract(function->abi_preserve, false),
-                .abi_preserve_control =
-                    resolve_abi_contract(function->abi_preserve_control, true),
-                .blocks_are_clusters =
-                    function->blocks_are_clusters.has_value(),
-                .language_values =
-                    function->language
-                        ? std::optional<std::vector<std::string>>{std::in_place}
-                        : std::nullopt,
-            };
+        .signature = declaration_semantics::functionSignature(*function),
+        .linkage = symbol.linkage,
+        .canonical_function = symbol.canonical_function.value_or(symbol.id),
+        .is_noreturn = function->is_noreturn,
+        .abi_preserve = resolve_abi_contract(function->abi_preserve, false),
+        .abi_preserve_control =
+            resolve_abi_contract(function->abi_preserve_control, true),
+        .blocks_are_clusters = function->blocks_are_clusters.has_value(),
+        .language_values =
+            function->language
+                ? std::optional<std::vector<std::string>>{std::in_place}
+                : std::nullopt,
+    };
     resolved_function.range = function->range;
     resolved_function.declaration_scope = scope;
     resolved_function.source_target =
         header.regions[active_region].target_options.empty()
             ? std::nullopt
-            : std::optional<std::string>{header.regions[active_region]
-                                             .target_options.front()};
+            : std::optional<std::string>{
+                  header.regions[active_region].target_options.front()};
     resolved_function.source_version = header.regions[active_region].version;
     resolved_function.source_region = active_region;
-    resolved_function.source_identity = detail::function_source_identity(*function);
+    resolved_function.source_identity =
+        detail::function_source_identity(*function);
     if (function->language) {
       auto& language_values = *resolved_function.contract.language_values;
       language_values.reserve(function->language->values.size());

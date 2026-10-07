@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
 #include <fmt/format.h>
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <array>
@@ -208,7 +208,8 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
   const auto& target_payload = dynamic_cast<const CallDirect&>(*body[0]);
   ASSERT_TRUE(target_payload.target_direct_call_target.has_value());
   EXPECT_EQ(target_payload.target_direct_call_target->value.spelling, "callee");
-  ASSERT_TRUE(target_payload.target_direct_call_target->value.symbol_id.has_value());
+  ASSERT_TRUE(
+      target_payload.target_direct_call_target->value.symbol_id.has_value());
 
   const auto& input_payload = dynamic_cast<const CallDirect&>(*body[1]);
   ASSERT_TRUE(input_payload.arguments.has_value());
@@ -236,7 +237,8 @@ TEST(ResolvedModule, ResolvesDirectCallGroupsAndPreservesBindings) {
 
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
-      .instruction_range = return_payload.target_direct_call_target->locs.front(),
+      .instruction_range =
+          return_payload.target_direct_call_target->locs.front(),
   };
   EXPECT_TRUE(call->check(context).has_value());
 
@@ -416,22 +418,18 @@ TEST(ResolvedModule, ReportsDirectCallArityAndElementRanges) {
   EXPECT_EQ(resolved.error()[5].message,
             "Integer literal '128' is out of range for scalar type 'S8'.");
 
-  const auto& caller =
-      std::get<syntax_ast::AstFunction>(ast.items[5]);
+  const auto& caller = std::get<syntax_ast::AstFunction>(ast.items[5]);
   const auto& extra_inputs =
       std::get<syntax_ast::AstInstruction>(caller.body[6]);
   const auto& type_mismatch =
       std::get<syntax_ast::AstInstruction>(caller.body[7]);
   const auto& extra_group =
-      std::get<syntax_ast::AstCallParameterList>(
-          extra_inputs.operands[1]);
+      std::get<syntax_ast::AstCallParameterList>(extra_inputs.operands[1]);
   const auto& wide_group =
-      std::get<syntax_ast::AstCallParameterList>(
-          type_mismatch.operands[1]);
+      std::get<syntax_ast::AstCallParameterList>(type_mismatch.operands[1]);
   EXPECT_EQ(resolved.error()[3].range, extra_group.range);
   EXPECT_EQ(resolved.error()[4].range,
-            std::get<syntax_ast::AstIdentifierRef>(
-                wide_group.parameters[0])
+            std::get<syntax_ast::AstIdentifierRef>(wide_group.parameters[0])
                 .syntax.range);
 }
 
@@ -708,17 +706,14 @@ returning_prototype: .callprototype (.reg .u32 result) _ (.reg .u32 input);
       .target = {.ptx_version = {2, 1}, .sm_version = 20},
       .instruction_range = indirect_forms.range,
   };
-  const auto rejected =
-      body[0]->check(old_target);
+  const auto rejected = body[0]->check(old_target);
   ASSERT_FALSE(rejected.has_value());
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(
-      body[0]->check(supported_target)
-          .has_value());
+  EXPECT_TRUE(body[0]->check(supported_target).has_value());
 }
 
 TEST(ResolvedModule, ReportsIndirectCallAbiMismatches) {
@@ -873,8 +868,8 @@ TEST(ResolvedModule, ResolvesACompatibleFunctionDefinitionScope) {
   const auto& integer = dynamic_cast<const AddIntegerNoSat&>(
       *resolved->functions.back().body.front());
   EXPECT_TRUE(integer.dst.value.symbol_id.has_value());
-  EXPECT_TRUE(std::get<ResolvedRegisterRef>(integer.src1.value)
-                  .symbol_id.has_value());
+  EXPECT_TRUE(
+      std::get<ResolvedRegisterRef>(integer.src1.value).symbol_id.has_value());
 }
 
 TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {

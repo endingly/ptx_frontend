@@ -27,8 +27,7 @@ TEST(ResolveIsspacep, SelectsStateSpaceVariantsAndRejectsOtherForms) {
   const auto ast = parse_instruction("isspacep.global %p0, %rd0;");
   const auto resolved = resolveIsspacep(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* global =
-      dynamic_cast<IsspacepGlobalU64*>(resolved->get());
+  const auto* global = dynamic_cast<IsspacepGlobalU64*>(resolved->get());
   ASSERT_NE(global, nullptr);
   EXPECT_EQ(IsspacepGlobalU64::state_space, MemoryStateSpace::Global);
   EXPECT_EQ(global->src.value.register_class, ResolvedRegisterClass::General);
@@ -50,14 +49,11 @@ TEST(ResolveIsspacep, SelectsStateSpaceVariantsAndRejectsOtherForms) {
   const auto shared_cta =
       resolveIsspacep(parse_instruction("isspacep.shared::cta %p0, %rd0;"));
   ASSERT_TRUE(shared_cta.has_value()) << shared_cta.error().message;
-  EXPECT_NE(dynamic_cast<IsspacepSharedCta*>(shared_cta->get()),
-            nullptr);
+  EXPECT_NE(dynamic_cast<IsspacepSharedCta*>(shared_cta->get()), nullptr);
   const auto parameter_entry =
       resolveIsspacep(parse_instruction("isspacep.param::entry %p0, %rd0;"));
   ASSERT_TRUE(parameter_entry.has_value()) << parameter_entry.error().message;
-  EXPECT_NE(
-      dynamic_cast<IsspacepParamEntry*>(parameter_entry->get()),
-      nullptr);
+  EXPECT_NE(dynamic_cast<IsspacepParamEntry*>(parameter_entry->get()), nullptr);
 
   for (const auto source :
        {"isspacep %p0, %rd0;", "isspacep.param::func %p0, %rd0;",
@@ -109,21 +105,23 @@ TEST(ResolvedIrChecker, ChecksGeneratedIsspacepAvailabilityBoundaries) {
     const auto isspacep = resolveIsspacep(*ast);
     ASSERT_TRUE(isspacep.has_value()) << isspacep.error().message;
     EXPECT_FALSE(
-        (*isspacep)->check( Context{.target = {.ptx_version = test.rejected_ptx,
-                                            .sm_version = test.minimum_sm},
-                                 .instruction_range = ast->range})
+        (*isspacep)
+            ->check(Context{.target = {.ptx_version = test.rejected_ptx,
+                                       .sm_version = test.minimum_sm},
+                            .instruction_range = ast->range})
             .has_value());
     EXPECT_FALSE(
-        (*isspacep)->check( Context{.target = {.ptx_version = test.minimum_ptx,
-                                            .sm_version = static_cast<uint16_t>(
-                                                test.minimum_sm - 1)},
-                                 .instruction_range = ast->range})
+        (*isspacep)
+            ->check(Context{.target = {.ptx_version = test.minimum_ptx,
+                                       .sm_version = static_cast<uint16_t>(
+                                           test.minimum_sm - 1)},
+                            .instruction_range = ast->range})
             .has_value());
-    EXPECT_TRUE(
-        (*isspacep)->check( Context{.target = {.ptx_version = test.minimum_ptx,
-                                            .sm_version = test.minimum_sm},
-                                 .instruction_range = ast->range})
-            .has_value());
+    EXPECT_TRUE((*isspacep)
+                    ->check(Context{.target = {.ptx_version = test.minimum_ptx,
+                                               .sm_version = test.minimum_sm},
+                                    .instruction_range = ast->range})
+                    .has_value());
   }
 }
 

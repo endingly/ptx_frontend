@@ -4,8 +4,8 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
-#include "ptx_module_source_context.hpp"
 #include "ptx_cp_control.hpp"
+#include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
 
@@ -419,20 +419,21 @@ void append_reference(
     const ResolvedAddress* enclosing_address = nullptr,
     checker::AddressSymbolResolutionPolicy address_resolution_policy =
         checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace) {
-  uses.push_back({.symbol_id = symbol_id,
-                  .parameterized_index = parameterized_index,
-                  .expected_kind = expected_kind,
-                  .address_symbol = address_symbol ? std::optional{*address_symbol}
-                                                   : std::nullopt,
-                  .enclosing_address_function_kind =
-                      enclosing_address
-                          ? std::optional{enclosing_address->enclosing_function_kind}
-                          : std::nullopt,
-                  .address_resolution_policy = address_resolution_policy,
-                  .requires_register_state = requires_register_state,
-                  .requires_predicate_register = requires_predicate_register,
-                  .function_local = function_local,
-                  .range = reference_range(locations, fallback)});
+  uses.push_back(
+      {.symbol_id = symbol_id,
+       .parameterized_index = parameterized_index,
+       .expected_kind = expected_kind,
+       .address_symbol =
+           address_symbol ? std::optional{*address_symbol} : std::nullopt,
+       .enclosing_address_function_kind =
+           enclosing_address
+               ? std::optional{enclosing_address->enclosing_function_kind}
+               : std::nullopt,
+       .address_resolution_policy = address_resolution_policy,
+       .requires_register_state = requires_register_state,
+       .requires_predicate_register = requires_predicate_register,
+       .function_local = function_local,
+       .range = reference_range(locations, fallback)});
 }
 
 /**
@@ -610,132 +611,141 @@ void collect_operand_references(
 class ReferenceCollector final : public detail::IReferenceObserver {
  public:
   /** Borrow destination and instruction fallback only for one synchronous visit. */
-  ReferenceCollector(std::vector<ModuleReferenceUse>& uses, SourceRange fallback)
+  ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
+                     SourceRange fallback)
       : uses_(uses), fallback_(fallback) {}
   /** Collect declaration identities from a borrowed RegOrImm. */
-  void reg_or_imm(const RegOrImm& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+  void reg_or_imm(const RegOrImm& value, std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedAddress. */
   void address(const ResolvedAddress& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+               std::span<const SourceRange> locations,
+               checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedBranchTarget. */
   void branch_target(const ResolvedBranchTarget& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                     std::span<const SourceRange> locations,
+                     checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedBranchTargetSet. */
-  void branch_target_set(const ResolvedBranchTargetSet& value,
+  void branch_target_set(
+      const ResolvedBranchTargetSet& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCallArguments. */
   void call_arguments(const ResolvedCallArguments& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCallParameterRef. */
-  void call_parameter_ref(const ResolvedCallParameterRef& value,
+  void call_parameter_ref(
+      const ResolvedCallParameterRef& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedCpAsyncSourceControl. */
-  void cp_async_source_control(const ResolvedCpAsyncSourceControl& value,
+  void cp_async_source_control(
+      const ResolvedCpAsyncSourceControl& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedFunctionRef. */
   void function_ref(const ResolvedFunctionRef& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                    std::span<const SourceRange> locations,
+                    checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedIndirectCallee. */
   void indirect_callee(const ResolvedIndirectCallee& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                       std::span<const SourceRange> locations,
+                       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedMbarrierStateToken. */
-  void mbarrier_state_token(const ResolvedMbarrierStateToken& value,
+  void mbarrier_state_token(
+      const ResolvedMbarrierStateToken& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedMovSource. */
   void mov_source(const ResolvedMovSource& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedPredicate. */
   void predicate(const ResolvedPredicate& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                 std::span<const SourceRange> locations,
+                 checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedPredicateOrSink. */
-  void predicate_or_sink(const ResolvedPredicateOrSink& value,
+  void predicate_or_sink(
+      const ResolvedPredicateOrSink& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedPredicatePair. */
   void predicate_pair(const ResolvedPredicatePair& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedPredicatePairOrSink. */
-  void predicate_pair_or_sink(const ResolvedPredicatePairOrSink& value,
+  void predicate_pair_or_sink(
+      const ResolvedPredicatePairOrSink& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedPredicateSource. */
-  void predicate_source(const ResolvedPredicateSource& value,
+  void predicate_source(
+      const ResolvedPredicateSource& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedRegisterOrSink. */
-  void register_or_sink(const ResolvedRegisterOrSink& value,
+  void register_or_sink(
+      const ResolvedRegisterOrSink& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedRegisterRef. */
   void reg(const ResolvedRegisterRef& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+           std::span<const SourceRange> locations,
+           checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedRegisterVector. */
   void register_vector(const ResolvedRegisterVector& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                       std::span<const SourceRange> locations,
+                       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedShflSyncDestination. */
-  void shfl_sync_destination(const ResolvedShflSyncDestination& value,
+  void shfl_sync_destination(
+      const ResolvedShflSyncDestination& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedSymbolRef. */
   void symbol_ref(const ResolvedSymbolRef& value,
-      std::span<const SourceRange> locations,
-      checker::AddressSymbolResolutionPolicy policy) override {
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedTensorCoordinate. */
@@ -960,7 +970,8 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
   for (size_t index = 0; index < function.body.size(); ++index) {
     if (!function.body[index])
       continue;
-    TypeObserver observer(module, function.instruction_ranges[index], diagnostics);
+    TypeObserver observer(module, function.instruction_ranges[index],
+                          diagnostics);
     detail::visit_cp_control_registers(*function.body[index], observer);
   }
 }
@@ -1659,8 +1670,9 @@ void check_typed_call_literals(
     CallContractObserver observer;
     call->visit_references(observer);
     if (!observer.saw_target) {
-      append_model_mismatch(diagnostics, function.instruction_ranges[index],
-                            "Resolved call has no valid selected layout target.");
+      append_model_mismatch(
+          diagnostics, function.instruction_ranges[index],
+          "Resolved call has no valid selected layout target.");
       continue;
     }
     const declaration_semantics::FunctionSignature* signature = nullptr;
@@ -1669,8 +1681,9 @@ void check_typed_call_literals(
     else if (observer.direct_target)
       signature = direct_signature(module, signatures, *observer.direct_target);
     if (!signature) {
-      append_model_mismatch(diagnostics, function.instruction_ranges[index],
-                            "Resolved module call has no retained formal signature.");
+      append_model_mismatch(
+          diagnostics, function.instruction_ranges[index],
+          "Resolved module call has no retained formal signature.");
       continue;
     }
     check_call_inputs(observer.inputs ? &*observer.inputs : nullptr,

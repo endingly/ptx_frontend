@@ -80,11 +80,10 @@ TEST(TestpCompleteness, AcceptsFloatingSourceLiterals) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     const auto resolved = resolveTestp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(
-        (*resolved)->check(
-                       checker::Context{
-                           .target = {.ptx_version = {2, 0}, .sm_version = 20}})
-            .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{
+                        .target = {.ptx_version = {2, 0}, .sm_version = 20}})
+                    .has_value());
   }
 }
 
@@ -165,8 +164,8 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& f32_testp = dynamic_cast<TestpF32&>(
-      *owned_module->functions.front().body.front());
+  auto& f32_testp =
+      dynamic_cast<TestpF32&>(*owned_module->functions.front().body.front());
   const auto original_f32_source = f32_testp.src.value;
   const auto f64_source = std::get<ResolvedRegisterRef>(
       dynamic_cast<const TestpF64&>(*owned_module->functions.front().body[1])
@@ -179,14 +178,12 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   f32_testp.src.value = original_f32_source;
 
-  auto& copysign = dynamic_cast<CopysignF64&>(
-      *owned_module->functions.front().body[2]);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(copysign.sign_source.value)
-                .spelling,
+  auto& copysign =
+      dynamic_cast<CopysignF64&>(*owned_module->functions.front().body[2]);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(copysign.sign_source.value).spelling,
             "%fd2");
   EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(copysign.magnitude_source.value)
-          .spelling,
+      std::get<ResolvedRegisterRef>(copysign.magnitude_source.value).spelling,
       "%bd1");
   copysign.magnitude_source.value = original_f32_source;
   const auto invalid_copysign = validateModule(
@@ -203,12 +200,10 @@ TEST(CopysignCompleteness, RetainsSignThenMagnitudeSourceIdentity) {
   const auto resolved = resolveCopysign(*parsed);
   ASSERT_TRUE(resolved.has_value());
   const auto& variant = dynamic_cast<const CopysignF64&>(**resolved);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(variant.sign_source.value)
-                .spelling,
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(variant.sign_source.value).spelling,
             "%fd1");
   EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(variant.magnitude_source.value)
-          .spelling,
+      std::get<ResolvedRegisterRef>(variant.magnitude_source.value).spelling,
       "%fd2");
 }
 
@@ -225,10 +220,11 @@ TEST(CopysignCompleteness, RejectsWrongTypesAndChecksAvailability) {
   ASSERT_TRUE(parsed.has_value());
   const auto resolved = resolveCopysign(*parsed);
   ASSERT_TRUE(resolved.has_value());
-  EXPECT_TRUE((*resolved)->check(
-                  checker::Context{.target = {.ptx_version = PtxVersion{2, 0},
-                                              .sm_version = 20}})
-                  .has_value());
+  EXPECT_TRUE(
+      (*resolved)
+          ->check(checker::Context{
+              .target = {.ptx_version = PtxVersion{2, 0}, .sm_version = 20}})
+          .has_value());
 }
 
 /** Validate both `copysign` source roles against declared containers and literals. */

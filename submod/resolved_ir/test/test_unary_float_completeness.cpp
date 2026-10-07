@@ -12,8 +12,8 @@
 #include <ptx_frontend/resolved_ir/model/arithmetic/sqrt.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_syntax_parse_helpers.hpp"
 #include "test_module_snapshot.hpp"
+#include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -21,8 +21,10 @@ namespace {
 /** Resolve one unary floating instruction to its exact final class. */
 std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
 resolveUnaryFloat(const syntax_ast::AstInstruction& ast) {
-  if (ast.opcode.syntax.text == "rcp") return resolveRcp(ast);
-  if (ast.opcode.syntax.text == "sqrt") return resolveSqrt(ast);
+  if (ast.opcode.syntax.text == "rcp")
+    return resolveRcp(ast);
+  if (ast.opcode.syntax.text == "sqrt")
+    return resolveSqrt(ast);
   return resolveRsqrt(ast);
 }
 
@@ -45,28 +47,23 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   const auto& rcp_approx = dynamic_cast<const RcpApproxF32&>(*body[0]);
-EXPECT_TRUE(RcpApproxF32::approx);
+  EXPECT_TRUE(RcpApproxF32::approx);
   EXPECT_TRUE(rcp_approx.ftz.value);
-  EXPECT_EQ(dynamic_cast<const RcpDirectedF32&>(*body[1])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const RcpDirectedF32&>(*body[1]).rounding.value,
             RoundingMode::Rz);
   EXPECT_EQ(RcpRnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(dynamic_cast<const RcpDirectedF64&>(*body[3])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const RcpDirectedF64&>(*body[3]).rounding.value,
             RoundingMode::Rp);
   EXPECT_TRUE(RcpApproxFtzF64::approx);
   EXPECT_TRUE(RcpApproxFtzF64::ftz);
   EXPECT_TRUE(SqrtApproxF32::approx);
-  EXPECT_EQ(dynamic_cast<const SqrtDirectedF32&>(*body[6])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const SqrtDirectedF32&>(*body[6]).rounding.value,
             RoundingMode::Rm);
   EXPECT_EQ(SqrtRnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(dynamic_cast<const SqrtDirectedF64&>(*body[8])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const SqrtDirectedF64&>(*body[8]).rounding.value,
             RoundingMode::Rp);
   EXPECT_TRUE(RsqrtApproxF32::approx);
-  EXPECT_TRUE(dynamic_cast<const RsqrtApproxF32&>(*body[9])
-                  .ftz.value);
+  EXPECT_TRUE(dynamic_cast<const RsqrtApproxF32&>(*body[9]).ftz.value);
   EXPECT_TRUE(RsqrtApproxF64::approx);
   EXPECT_TRUE(RsqrtApproxFtzF64::approx);
   EXPECT_TRUE(RsqrtApproxFtzF64::ftz);
@@ -84,15 +81,15 @@ EXPECT_TRUE(RcpApproxF32::approx);
     if (std::string_view{source}.starts_with("rcp")) {
       const auto instruction = resolveRcp(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(dynamic_cast<const RcpDirectedF32&>(**instruction)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const RcpDirectedF32&>(**instruction).rounding.value,
+          expected);
     } else {
       const auto instruction = resolveSqrt(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(dynamic_cast<const SqrtDirectedF32&>(**instruction)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const SqrtDirectedF32&>(**instruction).rounding.value,
+          expected);
     }
   }
   for (const auto [source, expected] : {
@@ -108,15 +105,15 @@ EXPECT_TRUE(RcpApproxF32::approx);
     if (std::string_view{source}.starts_with("rcp")) {
       const auto instruction = resolveRcp(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(dynamic_cast<const RcpDirectedF64&>(**instruction)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const RcpDirectedF64&>(**instruction).rounding.value,
+          expected);
     } else {
       const auto instruction = resolveSqrt(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(dynamic_cast<const SqrtDirectedF64&>(**instruction)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const SqrtDirectedF64&>(**instruction).rounding.value,
+          expected);
     }
   }
 }

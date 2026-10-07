@@ -39,7 +39,8 @@ TEST(OwnedInstruction, DeepCopyMoveAndVectorGrowth) {
   ASSERT_TRUE(module);
   auto& body = module->functions.front().body;
   ASSERT_EQ(body.size(), 1u);
-  const auto* original = dynamic_cast<const AddIntegerNoSat*>(body.front().get());
+  const auto* original =
+      dynamic_cast<const AddIntegerNoSat*>(body.front().get());
   ASSERT_NE(original, nullptr);
   EXPECT_EQ(body.front()->opcode_name(), "add");
   EXPECT_EQ(dynamic_cast<const CallDirect*>(body.front().get()), nullptr);

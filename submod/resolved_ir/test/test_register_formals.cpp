@@ -95,21 +95,19 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
               binding::SymbolKind::InputParameter);
 
     if (test_case.scalar_type == ScalarType::F32) {
-      const auto* float_add =
-          dynamic_cast<const AddFloatF32*>(&add);
+      const auto* float_add = dynamic_cast<const AddFloatF32*>(&add);
       ASSERT_NE(float_add, nullptr);
       expectBoundFormalMetadata(
           float_add->dst.value,
-          std::get<ResolvedRegisterRef>(float_add->src1.value),
-          test_case, *result_symbol, *input_symbol);
+          std::get<ResolvedRegisterRef>(float_add->src1.value), test_case,
+          *result_symbol, *input_symbol);
     } else {
-      const auto* integer_add =
-          dynamic_cast<const AddIntegerNoSat*>(&add);
+      const auto* integer_add = dynamic_cast<const AddIntegerNoSat*>(&add);
       ASSERT_NE(integer_add, nullptr);
       expectBoundFormalMetadata(
           integer_add->dst.value,
-          std::get<ResolvedRegisterRef>(integer_add->src1.value),
-          test_case, *result_symbol, *input_symbol);
+          std::get<ResolvedRegisterRef>(integer_add->src1.value), test_case,
+          *result_symbol, *input_symbol);
     }
   }
 }

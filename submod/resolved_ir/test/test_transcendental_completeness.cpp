@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <optional>
 #include <string>
 #include <variant>
@@ -238,11 +237,10 @@ TEST(TranscendentalCompleteness, OwnsSourcesAndRevalidatesBoundWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& bf16 = dynamic_cast<Ex2ApproxFtzBf16&>(
-      *owned->functions.front().body[1]);
+  auto& bf16 =
+      dynamic_cast<Ex2ApproxFtzBf16&>(*owned->functions.front().body[1]);
   const auto packed =
-      dynamic_cast<const Ex2ApproxF16x2&>(
-          *owned->functions.front().body[0])
+      dynamic_cast<const Ex2ApproxF16x2&>(*owned->functions.front().body[0])
           .src.value;
   bf16.src.value = packed;
   const auto invalid =

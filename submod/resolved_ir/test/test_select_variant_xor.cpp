@@ -54,10 +54,11 @@ TEST(ResolvedIrChecker, ChecksGeneratedXorB32Availability) {
   EXPECT_EQ(unavailable.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(unavailable.error().front().range, ast->range);
-  EXPECT_TRUE((*xor_instruction)->check(
-                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                            .instruction_range = ast->range})
-                  .has_value());
+  EXPECT_TRUE(
+      (*xor_instruction)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = ast->range})
+          .has_value());
 }
 
 }  // namespace

@@ -25,8 +25,8 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected =
-        select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
+    const auto selected = select_variant_name(
+        parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -57,7 +57,8 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
            "b32 [%rd0], [%rd1];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     clusterlaunchcontrol_syntax_descriptor())
                      .has_value());
   }
 }
@@ -65,8 +66,8 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsTryCancelAsyncForms) {
 TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected =
-        select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
+    const auto selected = select_variant_name(
+        parse_instruction(source), clusterlaunchcontrol_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -97,7 +98,8 @@ TEST(SelectVariantClusterlaunchcontrol, SelectsQueryCancelForms) {
            "{%r0, %r1, %r2, _}, %q0;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), clusterlaunchcontrol_syntax_descriptor())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     clusterlaunchcontrol_syntax_descriptor())
                      .has_value());
   }
 }

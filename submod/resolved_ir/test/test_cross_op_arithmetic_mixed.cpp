@@ -33,8 +33,7 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   const auto and_boundary =
       resolveAnd(parse_instruction("and.b32 %r0, %r1, 4294967295;"));
   ASSERT_TRUE(and_boundary.has_value()) << and_boundary.error().message;
-  const auto* and_b32 =
-      dynamic_cast<AndB32*>(and_boundary->get());
+  const auto* and_b32 = dynamic_cast<AndB32*>(and_boundary->get());
   ASSERT_NE(and_b32, nullptr);
   const auto* and_immediate =
       std::get_if<ResolvedImmediate>(&and_b32->src2.value);
@@ -47,8 +46,7 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   ASSERT_TRUE(and_resolved.has_value()) << and_resolved.error().message;
   and_b32 = dynamic_cast<AndB32*>(and_resolved->get());
   ASSERT_NE(and_b32, nullptr);
-  and_immediate =
-      std::get_if<ResolvedImmediate>(&and_b32->src2.value);
+  and_immediate = std::get_if<ResolvedImmediate>(&and_b32->src2.value);
   ASSERT_NE(and_immediate, nullptr);
   EXPECT_EQ(and_immediate->bits, 0U);
   EXPECT_EQ(and_immediate->integer_source_bits, 0x100000000ULL);
@@ -67,8 +65,7 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   const auto xor_resolved =
       resolveXor(parse_instruction("xor.b32 %r0, %r1, 4294967296;"));
   ASSERT_TRUE(xor_resolved.has_value()) << xor_resolved.error().message;
-  const auto* xor_b32 =
-      dynamic_cast<XorB32*>(xor_resolved->get());
+  const auto* xor_b32 = dynamic_cast<XorB32*>(xor_resolved->get());
   ASSERT_NE(xor_b32, nullptr);
   const auto* xor_immediate =
       std::get_if<ResolvedImmediate>(&xor_b32->src2.value);
@@ -79,8 +76,7 @@ TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   const auto not_resolved =
       resolveNot(parse_instruction("not.b32 %r0, 0xffffffffffffffff;"));
   ASSERT_TRUE(not_resolved.has_value()) << not_resolved.error().message;
-  const auto* not_b32 =
-      dynamic_cast<NotB32*>(not_resolved->get());
+  const auto* not_b32 = dynamic_cast<NotB32*>(not_resolved->get());
   ASSERT_NE(not_b32, nullptr);
   const auto* not_immediate =
       std::get_if<ResolvedImmediate>(&not_b32->src.value);
@@ -104,9 +100,11 @@ TEST(SelectVariantMixedPrecision, RejectsUnsupportedReorderingAndDuplicates) {
       SCOPED_TRACE(source);
       const auto ast = parse_instruction(source);
       if (opcode == "add")
-        EXPECT_FALSE(select_variant_name(ast, add_syntax_descriptor()).has_value());
+        EXPECT_FALSE(
+            select_variant_name(ast, add_syntax_descriptor()).has_value());
       else
-        EXPECT_FALSE(select_variant_name(ast, sub_syntax_descriptor()).has_value());
+        EXPECT_FALSE(
+            select_variant_name(ast, sub_syntax_descriptor()).has_value());
     }
   }
 }

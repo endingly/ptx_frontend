@@ -37,7 +37,8 @@ TEST(ResolvePrmt, SelectsGenericAndSpecializedVariants) {
 /** `prmt` accepts only its documented selector mode tokens. */
 TEST(ResolvePrmt, RejectsUnknownSelectorMode) {
   EXPECT_FALSE(
-      select_variant_name(parse_instruction("prmt.b32.b4x %r0, %r1, %r2, %r3;"), prmt_syntax_descriptor())
+      select_variant_name(parse_instruction("prmt.b32.b4x %r0, %r1, %r2, %r3;"),
+                          prmt_syntax_descriptor())
           .has_value());
 }
 
@@ -60,14 +61,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedPrmtAvailability) {
     ASSERT_TRUE(ast.has_value());
     const auto prmt = resolvePrmt(*ast);
     ASSERT_TRUE(prmt.has_value());
-    EXPECT_TRUE((*prmt)->check( Context{.target = {.ptx_version = {2, 0},
-                                                .sm_version = 20}})
+    EXPECT_TRUE((*prmt)
+                    ->check(Context{
+                        .target = {.ptx_version = {2, 0}, .sm_version = 20}})
                     .has_value());
-    EXPECT_FALSE((*prmt)->check( Context{.target = {.ptx_version = {1, 9},
-                                                 .sm_version = 20}})
+    EXPECT_FALSE((*prmt)
+                     ->check(Context{
+                         .target = {.ptx_version = {1, 9}, .sm_version = 20}})
                      .has_value());
-    EXPECT_FALSE((*prmt)->check( Context{.target = {.ptx_version = {2, 0},
-                                                 .sm_version = 19}})
+    EXPECT_FALSE((*prmt)
+                     ->check(Context{
+                         .target = {.ptx_version = {2, 0}, .sm_version = 19}})
                      .has_value());
   }
 }

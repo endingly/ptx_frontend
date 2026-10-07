@@ -43,16 +43,14 @@ TEST(ResolveEx2, SelectsFrozenFloatAndLowPrecisionVariants) {
   const auto bf16 =
       resolveEx2(parse_instruction("ex2.approx.ftz.bf16 %b0, %b1;"));
   ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
-  ASSERT_NE(dynamic_cast<Ex2ApproxFtzBf16*>(bf16->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<Ex2ApproxFtzBf16*>(bf16->get()), nullptr);
   EXPECT_TRUE(Ex2ApproxFtzBf16::ftz);
   EXPECT_EQ(Ex2ApproxFtzBf16::type, ScalarType::BF16);
 
   const auto bf16x2 =
       resolveEx2(parse_instruction("ex2.approx.ftz.bf16x2 %r0, %r1;"));
   ASSERT_TRUE(bf16x2.has_value()) << bf16x2.error().message;
-  ASSERT_NE(dynamic_cast<Ex2ApproxFtzBf16x2*>(bf16x2->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<Ex2ApproxFtzBf16x2*>(bf16x2->get()), nullptr);
   EXPECT_EQ(Ex2ApproxFtzBf16x2::type, ScalarType::BF16x2);
 }
 
@@ -62,7 +60,9 @@ TEST(ResolveEx2, RejectsInvalidForms) {
         "ex2.approx.bf16x2 %r0, %r1;", "ex2.approx.ftz.f16 %h0, %h1;",
         "ex2.approx.f64 %d0, %d1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), ex2_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), ex2_syntax_descriptor())
+            .has_value());
   }
 }
 

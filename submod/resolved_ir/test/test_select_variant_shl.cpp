@@ -29,8 +29,7 @@ TEST(ResolveShl, SelectsB32VariantAndAcceptsImmediateAmount) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* shl_b32 = dynamic_cast<ShlB32*>(resolved->get());
   ASSERT_NE(shl_b32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      shl_b32->amount.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shl_b32->amount.value));
 }
 
 }  // namespace
@@ -46,14 +45,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedShlB32Availability) {
   const auto shl = resolveShl(*ast);
   ASSERT_TRUE(shl.has_value()) << shl.error().message;
   const auto rejected =
-      (*shl)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*shl)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error().front().range, ast->range);
   EXPECT_TRUE(
-      (*shl)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*shl)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

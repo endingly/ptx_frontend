@@ -51,17 +51,16 @@ TEST(CtaBarrierNumeric, RejectsInvalidKnownImmediateValuesAtTheirOperands) {
     ASSERT_TRUE(ast.has_value());
     const auto& body =
         std::get<syntax_ast::AstFunction>(ast->items.back()).body;
-    const auto bar = std::find_if(
-        body.begin(), body.end(),
-        [](const syntax_ast::AstFunctionBodyItem& item) {
-          const auto* instruction =
-              std::get_if<syntax_ast::AstInstruction>(&item);
-          return instruction != nullptr &&
-                 instruction->opcode.syntax.text == "bar";
-        });
+    const auto bar =
+        std::find_if(body.begin(), body.end(),
+                     [](const syntax_ast::AstFunctionBodyItem& item) {
+                       const auto* instruction =
+                           std::get_if<syntax_ast::AstInstruction>(&item);
+                       return instruction != nullptr &&
+                              instruction->opcode.syntax.text == "bar";
+                     });
     ASSERT_NE(bar, body.end());
-    const auto& syntax_instruction =
-        std::get<syntax_ast::AstInstruction>(*bar);
+    const auto& syntax_instruction = std::get<syntax_ast::AstInstruction>(*bar);
     const auto resolved = resolveModule(*ast);
 
     ASSERT_FALSE(resolved.has_value());
@@ -169,8 +168,8 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
   ASSERT_TRUE(legacy.has_value()) << legacy.error().front().message;
   const auto& legacy_instruction = *legacy->functions.front().body.front();
   EXPECT_EQ(legacy_instruction.instruction_kind(), InstructionKind::BarSync);
-  EXPECT_TRUE(legacy_instruction.check(
-                  checker::Context{
+  EXPECT_TRUE(legacy_instruction
+                  .check(checker::Context{
                       .target = {.ptx_version = {1, 0}, .sm_version = 10},
                       .instruction_range =
                           legacy->functions.front().instruction_ranges.front(),
@@ -184,7 +183,8 @@ TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
 .entry k() { bar.cta.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(cta_before_introduction_ast.has_value());
-  const auto cta_before_introduction = resolveModule(*cta_before_introduction_ast);
+  const auto cta_before_introduction =
+      resolveModule(*cta_before_introduction_ast);
   ASSERT_FALSE(cta_before_introduction.has_value());
   ASSERT_EQ(cta_before_introduction.error().size(), 1U);
   EXPECT_EQ(cta_before_introduction.error().front().checker_kind,
@@ -238,11 +238,10 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneSyncWithOwnedAlignedMetadata) {
   auto& first = dynamic_cast<BarrierSync&>(*function.body.front());
   const auto original_layout = first.operand_layout;
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = function.body.front()->check(
-      checker::Context{
-          .target = {.ptx_version = {7, 8}, .sm_version = 80},
-          .instruction_range = function.instruction_ranges.front(),
-      });
+  const auto corrupted = function.body.front()->check(checker::Context{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = function.instruction_ranges.front(),
+  });
   ASSERT_FALSE(corrupted.has_value());
   EXPECT_EQ(corrupted.error().front().kind,
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
@@ -355,11 +354,10 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneArriveWithOwnedAlignedMetadata) {
   auto& first = dynamic_cast<BarrierArrive&>(*function.body.front());
   const auto original_layout = first.operand_layout;
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = function.body.front()->check(
-      checker::Context{
-          .target = {.ptx_version = {7, 8}, .sm_version = 80},
-          .instruction_range = function.instruction_ranges.front(),
-      });
+  const auto corrupted = function.body.front()->check(checker::Context{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = function.instruction_ranges.front(),
+  });
   ASSERT_FALSE(corrupted.has_value());
   EXPECT_EQ(corrupted.error().front().kind,
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);
@@ -507,20 +505,26 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneReductionsAfterAstRelease) {
   auto& function = resolved->functions.front();
   ASSERT_EQ(function.body.size(), 13U);
   const std::array<InstructionKind, 12> expected{
-      InstructionKind::BarrierRedPopcU32,    InstructionKind::BarrierRedPopcU32,
-      InstructionKind::BarrierCtaRedPopcU32, InstructionKind::BarrierCtaRedPopcU32,
-      InstructionKind::BarrierRedAndPred,    InstructionKind::BarrierRedAndPred,
-      InstructionKind::BarrierCtaRedAndPred, InstructionKind::BarrierCtaRedAndPred,
-      InstructionKind::BarrierRedOrPred,     InstructionKind::BarrierRedOrPred,
-      InstructionKind::BarrierCtaRedOrPred,  InstructionKind::BarrierCtaRedOrPred,
+      InstructionKind::BarrierRedPopcU32,
+      InstructionKind::BarrierRedPopcU32,
+      InstructionKind::BarrierCtaRedPopcU32,
+      InstructionKind::BarrierCtaRedPopcU32,
+      InstructionKind::BarrierRedAndPred,
+      InstructionKind::BarrierRedAndPred,
+      InstructionKind::BarrierCtaRedAndPred,
+      InstructionKind::BarrierCtaRedAndPred,
+      InstructionKind::BarrierRedOrPred,
+      InstructionKind::BarrierRedOrPred,
+      InstructionKind::BarrierCtaRedOrPred,
+      InstructionKind::BarrierCtaRedOrPred,
   };
   for (std::size_t index = 0; index < expected.size(); ++index) {
     const auto& barrier = *function.body[index];
     EXPECT_EQ(barrier.instruction_kind(), expected[index]) << index;
     const auto checked = barrier.check(checker::Context{
-                     .target = {.ptx_version = {7, 8}, .sm_version = 80},
-                     .instruction_range = function.instruction_ranges[index],
-                 });
+        .target = {.ptx_version = {7, 8}, .sm_version = 80},
+        .instruction_range = function.instruction_ranges[index],
+    });
     EXPECT_TRUE(checked.has_value()) << index;
     const auto check_metadata = [index](const auto& reduction) {
       EXPECT_EQ(reduction.aligned.value, index % 2 == 1);
@@ -530,21 +534,29 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneReductionsAfterAstRelease) {
     };
     switch (expected[index]) {
       case InstructionKind::BarrierRedPopcU32:
-        check_metadata(dynamic_cast<const BarrierRedPopcU32&>(barrier)); break;
+        check_metadata(dynamic_cast<const BarrierRedPopcU32&>(barrier));
+        break;
       case InstructionKind::BarrierCtaRedPopcU32:
-        check_metadata(dynamic_cast<const BarrierCtaRedPopcU32&>(barrier)); break;
+        check_metadata(dynamic_cast<const BarrierCtaRedPopcU32&>(barrier));
+        break;
       case InstructionKind::BarrierRedAndPred:
-        check_metadata(dynamic_cast<const BarrierRedAndPred&>(barrier)); break;
+        check_metadata(dynamic_cast<const BarrierRedAndPred&>(barrier));
+        break;
       case InstructionKind::BarrierCtaRedAndPred:
-        check_metadata(dynamic_cast<const BarrierCtaRedAndPred&>(barrier)); break;
+        check_metadata(dynamic_cast<const BarrierCtaRedAndPred&>(barrier));
+        break;
       case InstructionKind::BarrierRedOrPred:
-        check_metadata(dynamic_cast<const BarrierRedOrPred&>(barrier)); break;
+        check_metadata(dynamic_cast<const BarrierRedOrPred&>(barrier));
+        break;
       case InstructionKind::BarrierCtaRedOrPred:
-        check_metadata(dynamic_cast<const BarrierCtaRedOrPred&>(barrier)); break;
-      default: FAIL() << "Unexpected reduction form";
+        check_metadata(dynamic_cast<const BarrierCtaRedOrPred&>(barrier));
+        break;
+      default:
+        FAIL() << "Unexpected reduction form";
     }
   }
-  const auto& and_reduction = dynamic_cast<const BarrierRedAndPred&>(*function.body[5]);
+  const auto& and_reduction =
+      dynamic_cast<const BarrierRedAndPred&>(*function.body[5]);
   EXPECT_TRUE(and_reduction.thread_count.has_value());
   EXPECT_EQ(and_reduction.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
@@ -552,21 +564,16 @@ TEST(CtaBarrierNumeric, ResolvesStandaloneReductionsAfterAstRelease) {
   EXPECT_TRUE(and_reduction.predicate.value.negated);
   EXPECT_EQ(and_reduction.predicate.value.register_ref.spelling, "%p1");
   EXPECT_FALSE(and_reduction.predicate.locs.empty());
-  EXPECT_EQ(
-      std::get<ResolvedImmediate>(and_reduction.barrier.value).bits,
-      15U);
-  EXPECT_EQ(
-      std::get<ResolvedImmediate>(and_reduction.thread_count->value)
-          .bits,
-      64U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(and_reduction.barrier.value).bits, 15U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(and_reduction.thread_count->value).bits,
+            64U);
 
   auto& first = dynamic_cast<BarrierRedPopcU32&>(*function.body.front());
   first.operand_layout = ResolvedOperandLayoutTag{99};
-  const auto corrupted = function.body.front()->check(
-      checker::Context{
-          .target = {.ptx_version = {7, 8}, .sm_version = 80},
-          .instruction_range = function.instruction_ranges.front(),
-      });
+  const auto corrupted = function.body.front()->check(checker::Context{
+      .target = {.ptx_version = {7, 8}, .sm_version = 80},
+      .instruction_range = function.instruction_ranges.front(),
+  });
   ASSERT_FALSE(corrupted.has_value());
   EXPECT_EQ(corrupted.error().front().kind,
             checker::CheckDiagnosticKind::InvalidOperandLayoutTag);

@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 
-
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -57,8 +56,7 @@ TEST(CarryCompleteness, RejectsInvalidFormsAndRevalidatesType) {
   const auto add = resolveAdd(*ordinary);
   ASSERT_TRUE(add);
   ASSERT_NE(dynamic_cast<AddIntegerNoSat*>(add->get()), nullptr);
-  EXPECT_EQ(AddIntegerNoSat::condition_code_effect,
-            ConditionCodeEffect::None);
+  EXPECT_EQ(AddIntegerNoSat::condition_code_effect, ConditionCodeEffect::None);
 }
 
 /** Retain immutable CC metadata after AST release and reject mutable type drift. */
@@ -85,9 +83,9 @@ TEST(CarryCompleteness, RetainsOwnedMultiplyAddCarryContract) {
   ASSERT_NE(variant, nullptr);
   EXPECT_EQ(variant->condition_code_effect, ConditionCodeEffect::CarryInOut);
   const auto& descriptor = madc_resolved_descriptor();
-  const auto selected = std::ranges::find_if(descriptor.variants, [](const auto& item) {
-    return item.variant_name == "LoCc32";
-  });
+  const auto selected = std::ranges::find_if(
+      descriptor.variants,
+      [](const auto& item) { return item.variant_name == "LoCc32"; });
   ASSERT_NE(selected, descriptor.variants.end());
   EXPECT_EQ(selected->condition_code_effect, variant->condition_code_effect);
   static_assert(
@@ -97,8 +95,8 @@ TEST(CarryCompleteness, RetainsOwnedMultiplyAddCarryContract) {
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
 
-  auto& mutable_variant = dynamic_cast<MadcLoCc32&>(
-      *owned_module->functions.front().body.front());
+  auto& mutable_variant =
+      dynamic_cast<MadcLoCc32&>(*owned_module->functions.front().body.front());
   mutable_variant.type.value = ScalarType::U64;
   EXPECT_FALSE(validateModule(*owned_module,
                               ModuleValidationPolicy::RequireCompleteContext)

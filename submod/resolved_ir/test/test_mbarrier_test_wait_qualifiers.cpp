@@ -64,7 +64,8 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
       InstructionKind::MbarrierTestWaitTokenPrimarySemanticsSharedCta,
       InstructionKind::MbarrierTestWaitParityPrimarySemanticsGenericOrShared,
       InstructionKind::MbarrierTestWaitParityPrimarySemanticsSharedCta,
-      InstructionKind::MbarrierTestWaitParityConditionalSemanticsGenericOrShared,
+      InstructionKind::
+          MbarrierTestWaitParityConditionalSemanticsGenericOrShared,
       InstructionKind::MbarrierTestWaitParityConditionalSemanticsSharedCta,
   };
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
@@ -78,10 +79,12 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
     EXPECT_EQ(instruction.instruction_kind(), expected[index]);
     EXPECT_TRUE(instruction.check(supported).has_value()) << index;
   }
-  const auto& first_qualifiers = dynamic_cast<const
-      MbarrierTestWaitTokenSemanticsGenericOrShared&>(*function.body[0]);
-  const auto& second_qualifiers = dynamic_cast<const
-      MbarrierTestWaitTokenSemanticsSharedCta&>(*function.body[1]);
+  const auto& first_qualifiers =
+      dynamic_cast<const MbarrierTestWaitTokenSemanticsGenericOrShared&>(
+          *function.body[0]);
+  const auto& second_qualifiers =
+      dynamic_cast<const MbarrierTestWaitTokenSemanticsSharedCta&>(
+          *function.body[1]);
   EXPECT_EQ(first_qualifiers.semantics.value, MemoryConsistency::Acquire);
   EXPECT_EQ(first_qualifiers.scope.value, MemoryScope::Cta);
   EXPECT_FALSE(first_qualifiers.semantics.locs.empty());
@@ -95,12 +98,13 @@ TEST(MbarrierTestWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
   EXPECT_EQ(function.body[11]->instruction_kind(),
             InstructionKind::MbarrierTestWaitParityGenericOrShared);
 
-  const auto& report = dynamic_cast<const
-      MbarrierTestWaitTokenPrimarySemanticsGenericOrShared&>(*function.body[4]);
+  const auto& report =
+      dynamic_cast<const MbarrierTestWaitTokenPrimarySemanticsGenericOrShared&>(
+          *function.body[4]);
   EXPECT_EQ(report.operand_layout.value, 2U);
-  const auto& conditional = dynamic_cast<const
-      MbarrierTestWaitParityConditionalSemanticsGenericOrShared&>(
-          *function.body[8]);
+  const auto& conditional = dynamic_cast<
+      const MbarrierTestWaitParityConditionalSemanticsGenericOrShared&>(
+      *function.body[8]);
   EXPECT_EQ(conditional.phase_parity.value.index(), 1U);
 
   /** Recheck one public instruction against an alternate target context. */

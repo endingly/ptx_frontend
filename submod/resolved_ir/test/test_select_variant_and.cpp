@@ -29,8 +29,7 @@ TEST(ResolveAnd, SelectsB32VariantAndAcceptsImmediateSource) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* and_b32 = dynamic_cast<AndB32*>(resolved->get());
   ASSERT_NE(and_b32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      and_b32->src2.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(and_b32->src2.value));
 }
 
 }  // namespace
@@ -50,7 +49,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedAndB32Availability) {
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = (*and_instruction)->check( old_target);
+  const auto unavailable = (*and_instruction)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -61,7 +60,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedAndB32Availability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*and_instruction)->check( supported_target).has_value());
+  EXPECT_TRUE((*and_instruction)->check(supported_target).has_value());
 }
 
 /** Public IR must not turn a predicate write into an invalid complemented destination. */
@@ -75,7 +74,7 @@ TEST(ResolvedIrChecker, RevalidationRejectsMutatedPredicateDestination) {
   destination.negated = true;
   const auto checked = (*resolved)->check(
       Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                         .instruction_range = ast->range});
+              .instruction_range = ast->range});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             CheckDiagnosticKind::UnsupportedOperandShape);

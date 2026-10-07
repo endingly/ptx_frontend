@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <optional>
 #include <string>
 #include <variant>
@@ -333,8 +332,7 @@ TEST(MinMaxCompleteness, OwnsLayoutSelectionAndRevalidatesTag) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
 
-  auto& ternary = dynamic_cast<MinF32&>(
-      *owned->functions.front().body[1]);
+  auto& ternary = dynamic_cast<MinF32&>(*owned->functions.front().body[1]);
   EXPECT_EQ(ternary.operand_layout, (ResolvedOperandLayoutTag{1}));
   ternary.operand_layout = ResolvedOperandLayoutTag{0};
   const auto invalid =
@@ -345,8 +343,8 @@ TEST(MinMaxCompleteness, OwnsLayoutSelectionAndRevalidatesTag) {
 
   ternary.operand_layout = ResolvedOperandLayoutTag{1};
   ternary.src3.reset();
-  const auto missing_required = validateModule(
-      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  const auto missing_required =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(missing_required.has_value());
   EXPECT_EQ(missing_required.error().front().kind,
             checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch);

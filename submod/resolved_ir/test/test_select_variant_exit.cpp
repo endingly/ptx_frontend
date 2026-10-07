@@ -32,8 +32,7 @@ TEST(ResolveExit, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
   const auto predicated_ast = parse_instruction("@%p0 exit;");
   const auto predicated = resolveExit(predicated_ast);
   ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
-  EXPECT_TRUE(
-      (dynamic_cast<ExitBare*>(predicated->get()) != nullptr));
+  EXPECT_TRUE((dynamic_cast<ExitBare*>(predicated->get()) != nullptr));
   EXPECT_TRUE((*predicated)->execution_predicate.has_value());
 
   const auto modifier_ast = parse_instruction("exit.uni;");
@@ -68,7 +67,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareExitAvailability) {
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = (*exit_instruction)->check( old_target);
+  const auto unavailable = (*exit_instruction)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -79,7 +78,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareExitAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*exit_instruction)->check( supported_target).has_value());
+  EXPECT_TRUE((*exit_instruction)->check(supported_target).has_value());
 }
 
 }  // namespace

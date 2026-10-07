@@ -43,21 +43,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedPopcAvailability) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto popc = resolvePopc(*ast);
   ASSERT_TRUE(popc.has_value()) << popc.error().message;
-  const auto old_ptx =
-      (*popc)->check(Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                           .instruction_range = ast->range});
+  const auto old_ptx = (*popc)->check(
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm =
-      (*popc)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                           .instruction_range = ast->range});
+  const auto old_sm = (*popc)->check(
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*popc)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                           .instruction_range = ast->range})
+      (*popc)
+          ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                          .instruction_range = ast->range})
           .has_value());
 }
 

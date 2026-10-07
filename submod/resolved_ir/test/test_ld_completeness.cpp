@@ -392,9 +392,8 @@ TEST(LdCompleteness, EnforcesUnifiedAddressPolicyWithoutAffectingMov) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(mov_suffix);
   const auto mov = resolveMov(*mov_suffix);
   if (mov) {
-    EXPECT_FALSE((*mov)->check(
-        checker::Context{.target = current,
-                         .instruction_range = mov_suffix->range}));
+    EXPECT_FALSE((*mov)->check(checker::Context{
+        .target = current, .instruction_range = mov_suffix->range}));
   }
 }
 

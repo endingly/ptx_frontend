@@ -29,8 +29,7 @@ TEST(ResolveOr, SelectsB32VariantAndAcceptsImmediateSource) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* or_b32 = dynamic_cast<OrB32*>(resolved->get());
   ASSERT_NE(or_b32, nullptr);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(or_b32->src2.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(or_b32->src2.value));
 }
 
 }  // namespace
@@ -50,7 +49,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedOrB32Availability) {
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = (*or_instruction)->check( old_target);
+  const auto unavailable = (*or_instruction)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -61,7 +60,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedOrB32Availability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*or_instruction)->check( supported_target).has_value());
+  EXPECT_TRUE((*or_instruction)->check(supported_target).has_value());
 }
 
 }  // namespace

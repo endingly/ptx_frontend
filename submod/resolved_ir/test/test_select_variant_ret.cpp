@@ -60,7 +60,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareRetAvailability) {
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = (*ret)->check( old_target);
+  const auto unavailable = (*ret)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -71,7 +71,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareRetAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*ret)->check( supported_target).has_value());
+  EXPECT_TRUE((*ret)->check(supported_target).has_value());
 }
 
 }  // namespace

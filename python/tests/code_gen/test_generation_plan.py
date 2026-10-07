@@ -8,6 +8,7 @@ import ast
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -311,7 +312,14 @@ class GenerationPlanTests(unittest.TestCase):
         payload_types.add("ResolvedPredicate")
         self.assertTrue(payload_types <= set(REFERENCE_TYPES))
         for payload_type in REFERENCE_TYPES:
-            self.assertIn(f"void {method_name(payload_type)}(const {payload_type}&", collector)
+            callback = (
+                rf"\bvoid\s+{re.escape(method_name(payload_type))}\s*\("
+                rf"\s*const\s+{re.escape(payload_type)}\s*&"
+            )
+            self.assertIsNotNone(
+                re.search(callback, collector),
+                f"Missing typed callback for {payload_type}",
+            )
         self.assertGreater(len(payload_types), 10)
         with tempfile.TemporaryDirectory() as directory:
             for entry in context.entries:

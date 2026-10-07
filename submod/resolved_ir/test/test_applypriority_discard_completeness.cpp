@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <optional>
 #include <string>
 #include <string_view>
@@ -159,8 +158,8 @@ TEST(ApplypriorityDiscardCompleteness, RevalidatesOwnedAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& discard = dynamic_cast<DiscardGenericL2&>(
-      *owned->functions.front().body.front());
+  auto& discard =
+      dynamic_cast<DiscardGenericL2&>(*owned->functions.front().body.front());
   auto& symbol = std::get<ResolvedSymbolRef>(discard.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 128u);
   symbol.address_alignment = 64;

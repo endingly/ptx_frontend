@@ -111,11 +111,9 @@ TEST(SetHalfCompleteness, ResolvesEveryTypedCohort) {
   }
   const auto& half = dynamic_cast<const SetHalfF16F16Boolean&>(*body[5]);
   EXPECT_TRUE(half.ftz.value);
-  EXPECT_TRUE(
-      std::get<ResolvedPredicate>(half.combine.value).negated);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(half.combine.value).negated);
   const auto& bfloat = dynamic_cast<const SetHalfBf16F16Boolean&>(*body[15]);
-  EXPECT_TRUE(
-      std::get<ResolvedPredicate>(bfloat.combine.value).negated);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(bfloat.combine.value).negated);
 }
 
 /** Reject comparator and FTZ controls outside their source-type domains. */
@@ -165,8 +163,7 @@ TEST(SetHalfCompleteness, RejectsIllegalSourceAndDestinationContainers) {
   .reg .s32 %s0;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -276,12 +273,15 @@ TEST(SetHalfCompleteness, EnforcesPtxAndTargetBoundaries) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     auto resolved = resolveSet(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_FALSE((*resolved)->check(
-        checker::Context{.target = entry.below_ptx}).has_value());
-    EXPECT_FALSE((*resolved)->check(
-        checker::Context{.target = entry.below_sm}).has_value());
-    EXPECT_TRUE((*resolved)->check(
-        checker::Context{.target = entry.supported}).has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{.target = entry.below_ptx})
+                     .has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{.target = entry.below_sm})
+                     .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{.target = entry.supported})
+                    .has_value());
   }
 }
 
@@ -297,12 +297,9 @@ TEST(SetHalfCompleteness, RevalidatesOwnedAndMutatedInstruction) {
     owned = std::move(*resolved);
   }
   ASSERT_NE(owned, nullptr);
-  auto& packed =
-      dynamic_cast<SetHalfNativeF16x2Boolean&>(*owned);
+  auto& packed = dynamic_cast<SetHalfNativeF16x2Boolean&>(*owned);
   EXPECT_TRUE(packed.ftz.value);
-  EXPECT_TRUE(
-      std::get<ResolvedPredicateConstant>(packed.combine.value)
-          .value);
+  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(packed.combine.value).value);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   EXPECT_TRUE(owned->check(context).has_value());

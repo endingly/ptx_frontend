@@ -86,9 +86,8 @@ TEST(SetpCompleteness, EnforcesTypeSpecificAvailability) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
     const auto resolved = resolveSetp(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = (*resolved)->check(
-        checker::Context{.target = target,
-                         .instruction_range = parsed_instruction->range});
+    const auto checked = (*resolved)->check(checker::Context{
+        .target = target, .instruction_range = parsed_instruction->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_TRUE(checked.error().front().kind ==
                     checker::CheckDiagnosticKind::UnsupportedPtxVersion ||
@@ -138,8 +137,8 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
   ASSERT_MODULE_PARSE_SUCCEEDS(valid_module);
   auto resolved = resolveModule(*valid_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = dynamic_cast<SetpF16x2&>(
-      *resolved->functions.front().body.front());
+  auto& packed =
+      dynamic_cast<SetpF16x2&>(*resolved->functions.front().body.front());
   packed.src1.value.declared_type = ScalarType::F16;
   const auto checked = resolved->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
@@ -204,12 +203,12 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
     const auto resolved = resolveSetp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto& variant = dynamic_cast<const SetpUnsignedBoolean&>(**resolved);
-    const auto* constant = std::get_if<ResolvedPredicateConstant>(
-        &variant.combine.value);
+    const auto* constant =
+        std::get_if<ResolvedPredicateConstant>(&variant.combine.value);
     ASSERT_NE(constant, nullptr);
     EXPECT_EQ(constant->value, expected);
-    EXPECT_TRUE((*resolved)->check( checker::Context{
-                       .target = {.ptx_version = {9, 3}, .sm_version = 100}}));
+    EXPECT_TRUE((*resolved)->check(checker::Context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 100}}));
   }
 
   const auto half = parseInstruction("setp.eq.and.f16 %p0, %h0, %h1, !0;");
@@ -218,8 +217,7 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
   ASSERT_TRUE(resolved_half.has_value()) << resolved_half.error().message;
   auto& half_variant = dynamic_cast<SetpF16Boolean&>(**resolved_half);
   EXPECT_TRUE(
-      std::get<ResolvedPredicateConstant>(half_variant.combine.value)
-          .value);
+      std::get<ResolvedPredicateConstant>(half_variant.combine.value).value);
 
   const auto special_info = base::lookup("%is_explicit_cluster");
   ASSERT_TRUE(special_info.has_value());
@@ -227,9 +225,11 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
       .register_ref = {.spelling = "%is_explicit_cluster",
                        .id = special_info->id},
   };
-  const auto rechecked = (*resolved_half)->check(
-      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                       .instruction_range = half->range});
+  const auto rechecked =
+      (*resolved_half)
+          ->check(checker::Context{
+              .target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = half->range});
   ASSERT_FALSE(rechecked.has_value());
   EXPECT_EQ(rechecked.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedOperandShape);

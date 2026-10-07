@@ -84,8 +84,7 @@ TEST(AddSubAudit, OwnsMixedAddendImmediateAndRevalidates) {
 
   const auto& add =
       dynamic_cast<const AddMixedF32&>(*owned->functions.front().body[0]);
-  const auto* addend =
-      std::get_if<ResolvedImmediate>(&add.addend.value);
+  const auto* addend = std::get_if<ResolvedImmediate>(&add.addend.value);
   ASSERT_NE(addend, nullptr);
   EXPECT_EQ(addend->type, ScalarType::F32);
   EXPECT_EQ(addend->bits, 0x3F800000u);

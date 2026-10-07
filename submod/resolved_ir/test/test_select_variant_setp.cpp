@@ -35,13 +35,11 @@ TEST(ResolveSetp, SelectsCompleteUnsignedVariants) {
       parse_instruction("setp.lt.and.u32 %p0, %r0, 16, !%p1;");
   const auto combined = resolveSetp(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and =
-      dynamic_cast<SetpUnsignedBoolean*>(combined->get());
+  const auto* lt_and = dynamic_cast<SetpUnsignedBoolean*>(combined->get());
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
-  EXPECT_TRUE(
-      std::get<ResolvedPredicate>(lt_and->combine.value).negated);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(lt_and->combine.value).negated);
 }
 
 TEST(ResolveSetp, SelectsCompleteSignedVariant) {
@@ -65,13 +63,11 @@ TEST(ResolveSetp, SelectsCompleteDualPredicateVariants) {
       parse_instruction("setp.lt.and.s32 %p0|%p1, %s0, %s1, %p2;");
   const auto combined = resolveSetp(combined_ast);
   ASSERT_TRUE(combined.has_value()) << combined.error().message;
-  const auto* lt_and =
-      dynamic_cast<SetpSignedBoolean*>(combined->get());
+  const auto* lt_and = dynamic_cast<SetpSignedBoolean*>(combined->get());
   ASSERT_NE(lt_and, nullptr);
   EXPECT_EQ(lt_and->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(lt_and->boolean.value, BooleanOperator::And);
-  const auto& combine =
-      std::get<ResolvedPredicate>(lt_and->combine.value);
+  const auto& combine = std::get<ResolvedPredicate>(lt_and->combine.value);
   EXPECT_FALSE(combine.negated);
   EXPECT_EQ(combine.register_ref.spelling, "%p2");
 }
@@ -117,15 +113,16 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetpLtU32Availability) {
   const auto setp = resolveSetp(*ast);
   ASSERT_TRUE(setp.has_value()) << setp.error().message;
   const auto rejected =
-      (*setp)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                           .instruction_range = ast->range});
+      (*setp)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                             .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error().front().range, ast->range);
   EXPECT_TRUE(
-      (*setp)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                           .instruction_range = ast->range})
+      (*setp)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = ast->range})
           .has_value());
 }
 
@@ -136,14 +133,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetpGeS32Availability) {
   const auto setp = resolveSetp(*ast);
   ASSERT_TRUE(setp.has_value()) << setp.error().message;
   const auto rejected =
-      (*setp)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                           .instruction_range = ast->range});
+      (*setp)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                             .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*setp)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                           .instruction_range = ast->range})
+      (*setp)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = ast->range})
           .has_value());
 }
 
@@ -157,15 +155,16 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetpDualPredicateAvailability) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto setp = resolveSetp(*ast);
     ASSERT_TRUE(setp.has_value()) << setp.error().message;
-    const auto rejected =
-        (*setp)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                             .instruction_range = ast->range});
+    const auto rejected = (*setp)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(rejected.has_value());
     EXPECT_EQ(rejected.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        (*setp)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                             .instruction_range = ast->range})
+        (*setp)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                            .instruction_range = ast->range})
             .has_value());
   }
 }

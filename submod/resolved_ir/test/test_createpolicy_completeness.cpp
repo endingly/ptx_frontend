@@ -69,23 +69,31 @@ TEST(CreatepolicyCompleteness, ResolvesDocumentedTopologies) {
   ASSERT_TRUE(validateModule(*resolved));
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 9u);
-  const auto& fractional = dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[0]);
+  const auto& fractional =
+      dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[0]);
   EXPECT_EQ(fractional.primary_priority.value, EvictionPriority::EvictLast);
   EXPECT_TRUE(fractional.fraction.has_value());
-  EXPECT_FALSE(dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[1]).fraction.has_value());
+  EXPECT_FALSE(dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[1])
+                   .fraction.has_value());
   const auto& secondary =
       dynamic_cast<const CreatepolicyFractionalL2SecondaryB64&>(*body[2]);
   EXPECT_EQ(secondary.secondary_priority.value,
             EvictionPriority::EvictUnchanged);
-  EXPECT_FALSE(dynamic_cast<const CreatepolicyFractionalL2SecondaryB64&>(*body[3]).fraction.has_value());
-  EXPECT_TRUE(
-      dynamic_cast<const CreatepolicyRangeGenericL2B64*>(body[4].get()) != nullptr);
+  EXPECT_FALSE(
+      dynamic_cast<const CreatepolicyFractionalL2SecondaryB64&>(*body[3])
+          .fraction.has_value());
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyRangeGenericL2B64*>(
+                  body[4].get()) != nullptr);
   EXPECT_NE(dynamic_cast<const CreatepolicyRangeGenericL2SecondaryB64*>(
-                body[5].get()), nullptr);
-  EXPECT_TRUE(dynamic_cast<const CreatepolicyRangeGlobalL2B64*>(body[6].get()) != nullptr);
-  EXPECT_NE(dynamic_cast<const CreatepolicyRangeGlobalL2SecondaryB64*>(
-                body[7].get()), nullptr);
-  EXPECT_TRUE(dynamic_cast<const CreatepolicyCvtL2B64*>(body[8].get()) != nullptr);
+                body[5].get()),
+            nullptr);
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyRangeGlobalL2B64*>(
+                  body[6].get()) != nullptr);
+  EXPECT_NE(
+      dynamic_cast<const CreatepolicyRangeGlobalL2SecondaryB64*>(body[7].get()),
+      nullptr);
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyCvtL2B64*>(body[8].get()) !=
+              nullptr);
 }
 
 /** All createpolicy topologies start at PTX 7.4 and SM 80. */
@@ -266,8 +274,7 @@ TEST(CreatepolicyCompleteness, RevalidatesOwnedImmediateMutation) {
   auto& fractional = dynamic_cast<CreatepolicyFractionalL2B64&>(
       *owned->functions.front().body[0]);
   ASSERT_TRUE(fractional.fraction.has_value());
-  auto& fraction = std::get<ResolvedImmediate>(
-      fractional.fraction->value);
+  auto& fraction = std::get<ResolvedImmediate>(fractional.fraction->value);
   ASSERT_EQ(fraction.bits, 0x3f000000u);
   fraction.bits = 0x7fc00000u;
   const auto invalid_fraction =
@@ -277,8 +284,7 @@ TEST(CreatepolicyCompleteness, RevalidatesOwnedImmediateMutation) {
 
   auto& range = dynamic_cast<CreatepolicyRangeGenericL2B64&>(
       *owned->functions.front().body[1]);
-  auto& primary =
-      std::get<ResolvedImmediate>(range.primary_size.value);
+  auto& primary = std::get<ResolvedImmediate>(range.primary_size.value);
   ASSERT_EQ(primary.bits, 128u);
   primary.bits = 512;
   const auto invalid_range =
@@ -318,10 +324,8 @@ TEST(CreatepolicyCompleteness, RevalidatesEachOwnedRangeSizeWithoutAst) {
       dynamic_cast<CreatepolicyRangeGenericL2B64&>(*body[1]);
   const auto& dynamic_total =
       dynamic_cast<CreatepolicyRangeGenericL2B64&>(*body[2]);
-  auto& primary =
-      std::get<ResolvedImmediate>(static_range.primary_size.value);
-  auto& total =
-      std::get<ResolvedImmediate>(static_range.total_size.value);
+  auto& primary = std::get<ResolvedImmediate>(static_range.primary_size.value);
+  auto& total = std::get<ResolvedImmediate>(static_range.total_size.value);
   const auto original_primary = primary;
   const auto original_total = total;
   const auto register_primary = dynamic_primary.primary_size.value;

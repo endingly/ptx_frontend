@@ -26,8 +26,7 @@ TEST(ResolveCos, SelectsFrozenApproxVariant) {
   const auto resolved =
       resolveCos(parse_instruction("cos.approx.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(dynamic_cast<CosApproxF32*>(resolved->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<CosApproxF32*>(resolved->get()), nullptr);
   EXPECT_EQ(CosApproxF32::type, ScalarType::F32);
   EXPECT_TRUE(CosApproxF32::approx);
 }
@@ -37,7 +36,9 @@ TEST(ResolveCos, RejectsInvalidForms) {
        {"cos.f32 %f0, %f1;", "cos.approx.f64 %d0, %d1;",
         "cos.approx.f32x2 %f0, %f1;", "cos.rz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), cos_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), cos_syntax_descriptor())
+            .has_value());
   }
 }
 

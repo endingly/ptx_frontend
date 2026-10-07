@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <array>
 #include <optional>
 #include <string>
@@ -209,8 +208,8 @@ TEST(LduCompleteness, RevalidatesOwnedBoundAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& load = dynamic_cast<LduExplicitV4&>(
-      *owned->functions.front().body.front());
+  auto& load =
+      dynamic_cast<LduExplicitV4&>(*owned->functions.front().body.front());
   auto& symbol = std::get<ResolvedSymbolRef>(load.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 16u);
   symbol.address_alignment = 4;

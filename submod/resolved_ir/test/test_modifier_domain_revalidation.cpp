@@ -10,7 +10,6 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-
 namespace ptx_frontend::resolved_ir {
 namespace {
 
@@ -101,9 +100,8 @@ TEST(ModifierDomainRevalidation, RejectsMutatedFloatingAddRzi) {
   selected->rounding.value = RoundingMode::Rzi;
   ASSERT_FALSE(selected->rounding.locs.empty());
 
-  expect_domain_failure(
-      candidate.instruction.check(candidate.context),
-      selected->rounding.locs.front());
+  expect_domain_failure(candidate.instruction.check(candidate.context),
+                        selected->rounding.locs.front());
 }
 
 /** Legal Add rounding values remain legal even without special availability. */
@@ -116,8 +114,7 @@ TEST(ModifierDomainRevalidation, PreservesLegalFloatingAddRoundingValues) {
     auto* selected = &candidate.instruction;
     ASSERT_NE(selected, nullptr);
     selected->rounding.value = rounding;
-    EXPECT_TRUE(
-        candidate.instruction.check(candidate.context).has_value());
+    EXPECT_TRUE(candidate.instruction.check(candidate.context).has_value());
   }
 }
 
@@ -128,13 +125,11 @@ TEST(ModifierDomainRevalidation, UsesDefaultAndFallbackRangeWithoutProvenance) {
   ASSERT_NE(selected, nullptr);
   EXPECT_EQ(selected->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(selected->rounding.locs.empty());
-  EXPECT_TRUE(
-      candidate.instruction.check(candidate.context).has_value());
+  EXPECT_TRUE(candidate.instruction.check(candidate.context).has_value());
 
   selected->rounding.value = RoundingMode::Rzi;
-  expect_domain_failure(
-      candidate.instruction.check(candidate.context),
-      candidate.context.instruction_range);
+  expect_domain_failure(candidate.instruction.check(candidate.context),
+                        candidate.context.instruction_range);
 }
 
 /** Invalid and unnamed enum values share the same variant-domain invariant. */
@@ -154,9 +149,8 @@ TEST(ModifierDomainRevalidation, RejectsInvalidAndUnnamedRoundingValues) {
                             : candidate.context.instruction_range;
       if (!retain_provenance)
         selected->rounding.locs.clear();
-      expect_domain_failure(
-          candidate.instruction.check(candidate.context),
-          expected_range);
+      expect_domain_failure(candidate.instruction.check(candidate.context),
+                            expected_range);
     }
   }
 }

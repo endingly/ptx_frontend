@@ -29,9 +29,8 @@ TEST(ResolveBfi, SelectsBothBitWidthsAndControlShapes) {
     SCOPED_TRACE(source);
     const auto resolved = resolveBfi(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(
-        (dynamic_cast<BfiB32*>(resolved->get()) != nullptr) ||
-        (dynamic_cast<BfiB64*>(resolved->get()) != nullptr));
+    EXPECT_TRUE((dynamic_cast<BfiB32*>(resolved->get()) != nullptr) ||
+                (dynamic_cast<BfiB64*>(resolved->get()) != nullptr));
   }
   EXPECT_FALSE(resolveBfi(parse_instruction("bfi.u32 %r0, %r1, %r2, 0, 8;"))
                    .has_value());
@@ -52,20 +51,21 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto bfi = resolveBfi(*ast);
     ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
-    const auto old_ptx =
-        (*bfi)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*bfi)->check(
+        Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
-    const auto old_sm =
-        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                            .instruction_range = ast->range});
+    const auto old_sm = (*bfi)->check(
+        Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+        (*bfi)
+            ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -78,9 +78,9 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfiAvailabilityAndImmediateRanges) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto bfi = resolveBfi(*ast);
     ASSERT_TRUE(bfi.has_value()) << bfi.error().message;
-    const auto checked =
-        (*bfi)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                            .instruction_range = ast->range});
+    const auto checked = (*bfi)->check(
+        Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                .instruction_range = ast->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               CheckDiagnosticKind::ImmediateValueMismatch);

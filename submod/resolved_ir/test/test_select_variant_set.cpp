@@ -24,27 +24,23 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 }
 
 TEST(ResolveSet, SelectsOrdinaryTypedFamilies) {
-  const auto eq =
-      resolveSet(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
+  const auto eq = resolveSet(parse_instruction("set.eq.u32.u32 %r0, %r1, 16;"));
   ASSERT_TRUE(eq.has_value()) << eq.error().message;
-  const auto* unsigned_result =
-      dynamic_cast<SetUnsigned*>(eq->get());
+  const auto* unsigned_result = dynamic_cast<SetUnsigned*>(eq->get());
   ASSERT_NE(unsigned_result, nullptr);
   EXPECT_EQ(unsigned_result->comparison.value, ComparisonOperator::Eq);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      unsigned_result->src2.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(unsigned_result->src2.value));
 
   const auto lt_and =
       resolveSet(parse_instruction("set.lt.and.f32.s32 %f0, %s0, -1, !%p0;"));
   ASSERT_TRUE(lt_and.has_value()) << lt_and.error().message;
-  const auto* signed_boolean =
-      dynamic_cast<SetSignedBoolean*>(lt_and->get());
+  const auto* signed_boolean = dynamic_cast<SetSignedBoolean*>(lt_and->get());
   ASSERT_NE(signed_boolean, nullptr);
   EXPECT_EQ(signed_boolean->comparison.value, ComparisonOperator::Lt);
   EXPECT_EQ(signed_boolean->boolean.value, BooleanOperator::And);
   EXPECT_TRUE(
-      std::get<ResolvedPredicate>(signed_boolean->combine.value)
-          .negated);
+      std::get<ResolvedPredicate>(signed_boolean->combine.value).negated);
 }
 
 TEST(ResolveSet, RejectsInvalidOrdinaryModifierDomains) {
@@ -54,7 +50,8 @@ TEST(ResolveSet, RejectsInvalidOrdinaryModifierDomains) {
            "set.eq.ftz.u32.f64 %r0, %r1, %r2;",
            "set.eq.u16.u32 %r0, %r1, %r2;",
        }) {
-    const auto selected = select_variant_name(parse_instruction(source), set_syntax_descriptor());
+    const auto selected =
+        select_variant_name(parse_instruction(source), set_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -76,14 +73,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedSetAvailability) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto set = resolveSet(*ast);
     ASSERT_TRUE(set.has_value()) << set.error().message;
-    const auto rejected =
-        (*set)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                            .instruction_range = ast->range});
+    const auto rejected = (*set)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(rejected.has_value());
     EXPECT_EQ(rejected.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        (*set)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*set)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }

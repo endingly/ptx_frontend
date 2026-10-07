@@ -18,12 +18,13 @@ enum class ModuleValidationPolicy : uint8_t {
 using ModuleResolveDiagnostics = std::vector<ResolveDiagnostic>;
 
 /** Resolve one standalone instruction without declaration binding. */
-std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveInstruction(
-    const syntax_ast::AstInstruction& ast);
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 /** Resolve one instruction against an explicit declaration-binding context. */
-std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveInstruction(
-    const syntax_ast::AstInstruction& ast, const ResolveContext& context);
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context);
 
 /**
  * Build the owned model and run declaration checks available from source.

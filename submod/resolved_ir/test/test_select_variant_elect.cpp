@@ -28,7 +28,8 @@ TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
            "elect.sync _|%p, 0xffffffff;",
        }) {
     SCOPED_TRACE(source);
-    const auto selected = select_variant_name(parse_instruction(source), elect_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              elect_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, "Sync");
   }
@@ -37,7 +38,9 @@ TEST(SelectVariantElect, SelectsAndResolvesOptionalDataDestination) {
            "elect.sync.abs %lane|%p, 0xffffffff;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), elect_syntax_descriptor()).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     elect_syntax_descriptor())
+                     .has_value());
   }
 }
 

@@ -34,13 +34,11 @@ TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
   const auto left_wrap =
       resolveShf(parse_instruction("shf.l.wrap.b32 %r0, 1, %r2, 32;"));
   ASSERT_TRUE(left_wrap.has_value()) << left_wrap.error().message;
-  ASSERT_NE(dynamic_cast<ShfLWrapB32*>(left_wrap->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<ShfLWrapB32*>(left_wrap->get()), nullptr);
   const auto right_clamp =
       resolveShf(parse_instruction("shf.r.clamp.b32 %r0, %r1, 2, 33;"));
   ASSERT_TRUE(right_clamp.has_value()) << right_clamp.error().message;
-  ASSERT_NE(dynamic_cast<ShfRClampB32*>(right_clamp->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<ShfRClampB32*>(right_clamp->get()), nullptr);
 }
 
 }  // namespace
@@ -60,20 +58,21 @@ TEST(ResolvedIrChecker, ChecksGeneratedShfAvailability) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto shf = resolveShf(*ast);
     ASSERT_TRUE(shf.has_value()) << shf.error().message;
-    const auto old_ptx =
-        (*shf)->check( Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*shf)->check(
+        Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
-    const auto old_sm =
-        (*shf)->check( Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
-                            .instruction_range = ast->range});
+    const auto old_sm = (*shf)->check(
+        Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        (*shf)->check( Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
+        (*shf)
+            ->check(Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
                             .instruction_range = ast->range})
             .has_value());
   }

@@ -78,10 +78,12 @@ TEST(MbarrierTryWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
     EXPECT_EQ(instruction.instruction_kind(), expected[index]);
     EXPECT_TRUE(instruction.check(supported).has_value()) << index;
   }
-  const auto& first_qualifiers = dynamic_cast<const
-      MbarrierTryWaitTokenSemanticsGenericOrShared&>(*function.body[0]);
-  const auto& second_qualifiers = dynamic_cast<const
-      MbarrierTryWaitTokenSemanticsSharedCta&>(*function.body[1]);
+  const auto& first_qualifiers =
+      dynamic_cast<const MbarrierTryWaitTokenSemanticsGenericOrShared&>(
+          *function.body[0]);
+  const auto& second_qualifiers =
+      dynamic_cast<const MbarrierTryWaitTokenSemanticsSharedCta&>(
+          *function.body[1]);
   EXPECT_EQ(first_qualifiers.semantics.value, MemoryConsistency::Acquire);
   EXPECT_EQ(first_qualifiers.scope.value, MemoryScope::Cta);
   EXPECT_FALSE(first_qualifiers.semantics.locs.empty());
@@ -92,22 +94,24 @@ TEST(MbarrierTryWaitQualifiers, OwnsPairedShapesAndSourceMetadata) {
   EXPECT_FALSE(second_qualifiers.scope.locs.empty());
   EXPECT_EQ(second_qualifiers.operand_layout.value, 1U);
   ASSERT_TRUE(second_qualifiers.time_hint.has_value());
-  EXPECT_EQ(std::get<ResolvedImmediate>(second_qualifiers.time_hint->value).bits,
-            12U);
+  EXPECT_EQ(
+      std::get<ResolvedImmediate>(second_qualifiers.time_hint->value).bits,
+      12U);
   EXPECT_FALSE(second_qualifiers.time_hint->locs.empty());
   EXPECT_EQ(function.body[10]->instruction_kind(),
             InstructionKind::MbarrierTryWaitTokenGenericOrShared);
   EXPECT_EQ(function.body[11]->instruction_kind(),
             InstructionKind::MbarrierTryWaitParityGenericOrShared);
 
-  const auto& report = dynamic_cast<const
-      MbarrierTryWaitTokenPrimarySemanticsGenericOrShared&>(*function.body[4]);
+  const auto& report =
+      dynamic_cast<const MbarrierTryWaitTokenPrimarySemanticsGenericOrShared&>(
+          *function.body[4]);
   EXPECT_EQ(report.operand_layout.value, 5U);
   ASSERT_TRUE(report.time_hint.has_value());
   EXPECT_EQ(std::get<ResolvedImmediate>(report.time_hint->value).bits, 20U);
-  const auto& conditional = dynamic_cast<const
-      MbarrierTryWaitParityConditionalSemanticsGenericOrShared&>(
-          *function.body[8]);
+  const auto& conditional = dynamic_cast<
+      const MbarrierTryWaitParityConditionalSemanticsGenericOrShared&>(
+      *function.body[8]);
   EXPECT_EQ(conditional.operand_layout.value, 1U);
   EXPECT_EQ(conditional.phase_parity.value.index(), 1U);
   ASSERT_TRUE(conditional.time_hint.has_value());

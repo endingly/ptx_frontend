@@ -23,14 +23,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 }
 
 TEST(ResolveTanh, SelectsFrozenFloatAndLowPrecisionVariants) {
-  const auto f32 =
-      resolveTanh(parse_instruction("tanh.approx.f32 %f0, %f1;"));
+  const auto f32 = resolveTanh(parse_instruction("tanh.approx.f32 %f0, %f1;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
   ASSERT_NE(dynamic_cast<TanhApproxF32*>(f32->get()), nullptr);
   EXPECT_EQ(TanhApproxF32::type, ScalarType::F32);
 
-  const auto f16 =
-      resolveTanh(parse_instruction("tanh.approx.f16 %h0, %h1;"));
+  const auto f16 = resolveTanh(parse_instruction("tanh.approx.f16 %h0, %h1;"));
   ASSERT_TRUE(f16.has_value()) << f16.error().message;
   ASSERT_NE(dynamic_cast<TanhApproxF16*>(f16->get()), nullptr);
   EXPECT_EQ(TanhApproxF16::type, ScalarType::F16);
@@ -38,8 +36,7 @@ TEST(ResolveTanh, SelectsFrozenFloatAndLowPrecisionVariants) {
   const auto f16x2 =
       resolveTanh(parse_instruction("tanh.approx.f16x2 %r0, %r1;"));
   ASSERT_TRUE(f16x2.has_value()) << f16x2.error().message;
-  ASSERT_NE(dynamic_cast<TanhApproxF16x2*>(f16x2->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<TanhApproxF16x2*>(f16x2->get()), nullptr);
   EXPECT_EQ(TanhApproxF16x2::type, ScalarType::F16x2);
 
   const auto bf16 =
@@ -51,8 +48,7 @@ TEST(ResolveTanh, SelectsFrozenFloatAndLowPrecisionVariants) {
   const auto bf16x2 =
       resolveTanh(parse_instruction("tanh.approx.bf16x2 %r0, %r1;"));
   ASSERT_TRUE(bf16x2.has_value()) << bf16x2.error().message;
-  ASSERT_NE(dynamic_cast<TanhApproxBf16x2*>(bf16x2->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<TanhApproxBf16x2*>(bf16x2->get()), nullptr);
   EXPECT_EQ(TanhApproxBf16x2::type, ScalarType::BF16x2);
 }
 
@@ -62,7 +58,9 @@ TEST(ResolveTanh, RejectsInvalidForms) {
         "tanh.approx.ftz.f16 %h0, %h1;", "tanh.approx.ftz.bf16 %b0, %b1;",
         "tanh.approx.f64 %d0, %d1;", "tanh.rz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), tanh_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), tanh_syntax_descriptor())
+            .has_value());
   }
 }
 

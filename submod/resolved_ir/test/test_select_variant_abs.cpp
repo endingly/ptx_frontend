@@ -37,7 +37,9 @@ TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
 TEST(ResolveAbs, RejectsInvalidForms) {
   for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f64 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), abs_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), abs_syntax_descriptor())
+            .has_value());
   }
   EXPECT_FALSE(resolveAbs(parse_instruction("abs.s32 %r0;")).has_value());
   EXPECT_FALSE(
@@ -58,14 +60,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedAbsAvailability) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto abs = resolveAbs(*ast);
     ASSERT_TRUE(abs.has_value()) << abs.error().message;
-    const auto old_ptx =
-        (*abs)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*abs)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        (*abs)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*abs)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }

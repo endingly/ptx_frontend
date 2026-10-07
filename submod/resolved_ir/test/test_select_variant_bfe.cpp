@@ -29,11 +29,10 @@ TEST(ResolveBfe, SelectsAllIntegerWidthsAndControlShapes) {
     SCOPED_TRACE(source);
     const auto resolved = resolveBfe(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(
-        (dynamic_cast<BfeU32*>(resolved->get()) != nullptr) ||
-        (dynamic_cast<BfeU64*>(resolved->get()) != nullptr) ||
-        (dynamic_cast<BfeS32*>(resolved->get()) != nullptr) ||
-        (dynamic_cast<BfeS64*>(resolved->get()) != nullptr));
+    EXPECT_TRUE((dynamic_cast<BfeU32*>(resolved->get()) != nullptr) ||
+                (dynamic_cast<BfeU64*>(resolved->get()) != nullptr) ||
+                (dynamic_cast<BfeS32*>(resolved->get()) != nullptr) ||
+                (dynamic_cast<BfeS64*>(resolved->get()) != nullptr));
   }
   EXPECT_FALSE(
       resolveBfe(parse_instruction("bfe.b32 %r0, %r1, 0, 8;")).has_value());
@@ -54,20 +53,21 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto bfe = resolveBfe(*ast);
     ASSERT_TRUE(bfe.has_value()) << bfe.error().message;
-    const auto old_ptx =
-        (*bfe)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*bfe)->check(
+        Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
-    const auto old_sm =
-        (*bfe)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                            .instruction_range = ast->range});
+    const auto old_sm = (*bfe)->check(
+        Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        (*bfe)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+        (*bfe)
+            ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -81,9 +81,9 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfeAvailabilityAndImmediateRanges) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto bfe = resolveBfe(*ast);
     ASSERT_TRUE(bfe.has_value()) << bfe.error().message;
-    const auto checked =
-        (*bfe)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                            .instruction_range = ast->range});
+    const auto checked = (*bfe)->check(
+        Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                .instruction_range = ast->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               CheckDiagnosticKind::ImmediateValueMismatch);

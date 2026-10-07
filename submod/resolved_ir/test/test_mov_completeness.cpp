@@ -18,7 +18,8 @@ using test_helpers::parseInstruction;
 using test_helpers::parseModule;
 
 /** Resolve one source instruction after requiring syntax recovery-free parsing. */
-std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve_mov(std::string_view source) {
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve_mov(
+    std::string_view source) {
   const auto parsed = parseInstruction(source);
   if (!parsed || !parsed.diagnostics.empty()) {
     return std::unexpected(ResolveDiagnostic{
@@ -52,22 +53,17 @@ TEST(MovCompleteness, PreservesPlainAndNegatedPredicateSources) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
 
-  const auto& plain =
-      dynamic_cast<const MovPred&>(*body[0]);
-  const auto& plain_source =
-      std::get<ResolvedPredicate>(plain.src.value);
+  const auto& plain = dynamic_cast<const MovPred&>(*body[0]);
+  const auto& plain_source = std::get<ResolvedPredicate>(plain.src.value);
   EXPECT_FALSE(plain_source.negated);
   EXPECT_EQ(plain_source.register_ref.spelling, "%p0");
 
-  const auto& negated =
-      dynamic_cast<const MovPred&>(*body[1]);
-  const auto& negated_source =
-      std::get<ResolvedPredicate>(negated.src.value);
+  const auto& negated = dynamic_cast<const MovPred&>(*body[1]);
+  const auto& negated_source = std::get<ResolvedPredicate>(negated.src.value);
   EXPECT_TRUE(negated_source.negated);
   EXPECT_EQ(negated_source.register_ref.spelling, "%p0");
 
-  const auto& special =
-      dynamic_cast<const MovPred&>(*body[2]);
+  const auto& special = dynamic_cast<const MovPred&>(*body[2]);
   const auto& special_source =
       std::get<ResolvedPredicateSpecialRegister>(special.src.value);
   EXPECT_FALSE(special_source.negated);
@@ -121,14 +117,14 @@ TEST(MovCompleteness, ResolvesPredicateConstantsAndNegatedSpecialRegisters) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& pred = dynamic_cast<const MovPred&>(*resolved->functions.front().body.front());
+  const auto& pred =
+      dynamic_cast<const MovPred&>(*resolved->functions.front().body.front());
   const auto* special =
       std::get_if<ResolvedPredicateSpecialRegister>(&pred.src.value);
   ASSERT_NE(special, nullptr);
   EXPECT_TRUE(special->negated);
   EXPECT_EQ(special->register_ref.id, base::lookup("%is_explicit_cluster")->id);
-  const auto& instruction =
-      *resolved->functions.front().body.front();
+  const auto& instruction = *resolved->functions.front().body.front();
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   EXPECT_TRUE(instruction.check(
       checker::Context{.target = {.ptx_version = {9, 3},
@@ -173,8 +169,8 @@ TEST(MovCompleteness, SeparatesScalarFromBitPackUnpack) {
 
   const auto& pack = dynamic_cast<const MovB128PackUnpack&>(*body[0]);
   EXPECT_EQ(pack.type, ScalarType::B128);
-  EXPECT_TRUE(
-      pack.dst_register.has_value() && pack.src_register_vector.has_value());
+  EXPECT_TRUE(pack.dst_register.has_value() &&
+              pack.src_register_vector.has_value());
 
   const auto& unpack = dynamic_cast<const MovB128PackUnpack&>(*body[1]);
   EXPECT_EQ(unpack.type, ScalarType::B128);

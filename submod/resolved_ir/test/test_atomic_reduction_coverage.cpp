@@ -30,7 +30,8 @@ std::optional<AtomicAddressQualifier> atomicQualifier(
   (([&] {
      if (const auto* form = dynamic_cast<const Forms*>(&instruction))
        qualifier = form->address_qualifier.value;
-   }()), ...);
+   }()),
+   ...);
   return qualifier;
 }
 
@@ -59,9 +60,11 @@ TEST(AtomicReductionCoverage, ResolvesIndependentScalarQualifiers) {
   auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 8u);
   for (size_t index = 0; index < 5; ++index)
-    EXPECT_EQ(body[index]->instruction_kind(), InstructionKind::AtomGlobalAddU32);
+    EXPECT_EQ(body[index]->instruction_kind(),
+              InstructionKind::AtomGlobalAddU32);
   for (size_t index = 5; index < 8; ++index)
-    EXPECT_EQ(body[index]->instruction_kind(), InstructionKind::RedGlobalAddU32);
+    EXPECT_EQ(body[index]->instruction_kind(),
+              InstructionKind::RedGlobalAddU32);
   const auto& generic = dynamic_cast<const AtomGlobalAddU32&>(*body[0]);
   const auto& scope_only = dynamic_cast<const AtomGlobalAddU32&>(*body[1]);
   const auto& sem_only = dynamic_cast<const AtomGlobalAddU32&>(*body[2]);
@@ -70,30 +73,22 @@ TEST(AtomicReductionCoverage, ResolvesIndependentScalarQualifiers) {
   EXPECT_EQ(generic.address_qualifier.value, AtomicAddressQualifier::Generic);
   EXPECT_TRUE(generic.address_qualifier.locs.empty());
   EXPECT_EQ(scope_only.address_qualifier.value, AtomicAddressQualifier::Global);
-  EXPECT_EQ(
-      scope_only.scope.value,
-      MemoryScope::Cta);
-  EXPECT_EQ(scope_only.semantics.value,
-            MemoryConsistency::Omitted);
-  EXPECT_EQ(
-      sem_only.semantics.value,
-      MemoryConsistency::Acquire);
-  EXPECT_EQ(
-      sem_only.scope.value,
-      MemoryScope::None);
+  EXPECT_EQ(scope_only.scope.value, MemoryScope::Cta);
+  EXPECT_EQ(scope_only.semantics.value, MemoryConsistency::Omitted);
+  EXPECT_EQ(sem_only.semantics.value, MemoryConsistency::Acquire);
+  EXPECT_EQ(sem_only.scope.value, MemoryScope::None);
   EXPECT_EQ(cluster.address_qualifier.value,
             AtomicAddressQualifier::SharedCluster);
-  EXPECT_EQ(
-      cluster.scope.value,
-      MemoryScope::Cluster);
+  EXPECT_EQ(cluster.scope.value, MemoryScope::Cluster);
   EXPECT_EQ(shared_cta.address_qualifier.value,
             AtomicAddressQualifier::SharedCta);
-  EXPECT_EQ(shared_cta.semantics.value,
-            MemoryConsistency::Release);
-  EXPECT_EQ(dynamic_cast<const RedGlobalAddU32&>(*body[5]).address_qualifier.value,
-            AtomicAddressQualifier::Shared);
-  EXPECT_EQ(dynamic_cast<const RedGlobalAddU32&>(*body[7]).address_qualifier.value,
-            AtomicAddressQualifier::SharedCluster);
+  EXPECT_EQ(shared_cta.semantics.value, MemoryConsistency::Release);
+  EXPECT_EQ(
+      dynamic_cast<const RedGlobalAddU32&>(*body[5]).address_qualifier.value,
+      AtomicAddressQualifier::Shared);
+  EXPECT_EQ(
+      dynamic_cast<const RedGlobalAddU32&>(*body[7]).address_qualifier.value,
+      AtomicAddressQualifier::SharedCluster);
   dynamic_cast<AtomGlobalAddU32&>(*body[3]).address_qualifier.value =
       AtomicAddressQualifier::Global;
   const auto invalid_owned =
@@ -224,18 +219,18 @@ TEST(AtomicReductionCoverage, ResolvesEverySupportedTupleAndQualifierCohort) {
     EXPECT_EQ(body[index + 14]->instruction_kind(), red_kinds[index / 2]);
   const auto& legacy_cas = dynamic_cast<AtomGlobalCasB32&>(*body[12]);
   const auto& modern_cas = dynamic_cast<AtomGlobalCasB32&>(*body[13]);
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      legacy_cas.compare.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      legacy_cas.swap.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      modern_cas.compare.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      modern_cas.swap.value));
-  const auto& atom_source = dynamic_cast<const AtomGlobalAddU32&>(*body[0]).src.value;
-  const auto& red_source = dynamic_cast<const RedGlobalAddU32&>(*body[14]).src.value;
   EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(atom_source));
+      std::holds_alternative<ResolvedRegisterRef>(legacy_cas.compare.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedRegisterRef>(legacy_cas.swap.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(modern_cas.compare.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(modern_cas.swap.value));
+  const auto& atom_source =
+      dynamic_cast<const AtomGlobalAddU32&>(*body[0]).src.value;
+  const auto& red_source =
+      dynamic_cast<const RedGlobalAddU32&>(*body[14]).src.value;
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(atom_source));
   EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_source));
 }
 
@@ -289,14 +284,11 @@ TEST(AtomicReductionCoverage, ResolvesExpandedScalarMatrix) {
   const auto& inc = dynamic_cast<AtomGlobalIncU32&>(*body[0]);
   const auto& exch = dynamic_cast<AtomGlobalExchB32&>(*body[11]);
   const auto& red = dynamic_cast<RedGlobalXorB32&>(*body.back());
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      inc.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(inc.src.value));
   EXPECT_EQ(inc.type, ScalarType::U32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      exch.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(exch.src.value));
   EXPECT_EQ(exch.type, ScalarType::B32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      red.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red.src.value));
   EXPECT_EQ(red.type, ScalarType::B32);
 }
 
@@ -480,15 +472,9 @@ TEST(AtomicReductionCoverage, RejectsInvalidTopologySpaceAndAlignment) {
   const auto expanded_ir = resolveModule(*expanded);
   ASSERT_TRUE(expanded_ir.has_value()) << expanded_ir.error().front().message;
   const auto& expanded_body = expanded_ir->functions.front().body;
-  EXPECT_EQ(expanded_body[0]->check(context)
-                .error()
-                .front()
-                .kind,
+  EXPECT_EQ(expanded_body[0]->check(context).error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
-  EXPECT_EQ(expanded_body[1]->check(context)
-                .error()
-                .front()
-                .kind,
+  EXPECT_EQ(expanded_body[1]->check(context).error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);
 }
 
@@ -519,8 +505,7 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   auto& body = owned->functions.front().body;
   auto& add = dynamic_cast<AtomGlobalAddU32&>(*body[0]);
   auto& cas = dynamic_cast<AtomGlobalCasB32&>(*body[1]);
-  auto& add_source = std::get<ResolvedRegisterRef>(
-      add.src.value);
+  auto& add_source = std::get<ResolvedRegisterRef>(add.src.value);
   add_source.declared_type = ScalarType::U64;
   const auto invalid_add =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
@@ -606,37 +591,35 @@ TEST(AtomicReductionCoverage, Resolves64BitScalarMatrix) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 54u);
   constexpr std::array atom_kinds = {
-      InstructionKind::AtomGlobalAddU64, InstructionKind::AtomGlobalMinU64,
-      InstructionKind::AtomGlobalMinS64, InstructionKind::AtomGlobalMaxU64,
-      InstructionKind::AtomGlobalMaxS64, InstructionKind::AtomGlobalAndB64,
-      InstructionKind::AtomGlobalOrB64, InstructionKind::AtomGlobalXorB64,
+      InstructionKind::AtomGlobalAddU64,  InstructionKind::AtomGlobalMinU64,
+      InstructionKind::AtomGlobalMinS64,  InstructionKind::AtomGlobalMaxU64,
+      InstructionKind::AtomGlobalMaxS64,  InstructionKind::AtomGlobalAndB64,
+      InstructionKind::AtomGlobalOrB64,   InstructionKind::AtomGlobalXorB64,
       InstructionKind::AtomGlobalExchB64, InstructionKind::AtomGlobalCasB64};
   constexpr std::array red_kinds = {
       InstructionKind::RedGlobalAddU64, InstructionKind::RedGlobalMinU64,
       InstructionKind::RedGlobalMinS64, InstructionKind::RedGlobalMaxU64,
       InstructionKind::RedGlobalMaxS64, InstructionKind::RedGlobalAndB64,
-      InstructionKind::RedGlobalOrB64, InstructionKind::RedGlobalXorB64};
+      InstructionKind::RedGlobalOrB64,  InstructionKind::RedGlobalXorB64};
   for (size_t pair = 0; pair != 10; ++pair) {
     for (size_t cohort = 0; cohort != 3; ++cohort)
       EXPECT_EQ(body[pair * 3 + cohort]->instruction_kind(), atom_kinds[pair]);
   }
   for (size_t pair = 0; pair != 8; ++pair) {
     for (size_t cohort = 0; cohort != 3; ++cohort)
-      EXPECT_EQ(body[30 + pair * 3 + cohort]->instruction_kind(), red_kinds[pair]);
+      EXPECT_EQ(body[30 + pair * 3 + cohort]->instruction_kind(),
+                red_kinds[pair]);
   }
   const auto& atom_add = dynamic_cast<AtomGlobalAddU64&>(*body[0]);
   const auto& atom_cas = dynamic_cast<AtomGlobalCasB64&>(*body[29]);
   const auto& red_xor = dynamic_cast<RedGlobalXorB64&>(*body.back());
   EXPECT_EQ(atom_add.type, ScalarType::U64);
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      atom_add.src.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      atom_cas.compare.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      atom_cas.swap.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(atom_add.src.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(atom_cas.compare.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(atom_cas.swap.value));
   EXPECT_EQ(red_xor.type, ScalarType::B64);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      red_xor.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_xor.src.value));
 }
 
 /** Pin the different legacy availability floors of the 64-bit families. */
@@ -773,23 +756,19 @@ TEST(AtomicReductionCoverage, Checks64BitAddressContracts) {
   ASSERT_EQ(body.size(), 4u);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
-  const auto atom_space =
-      body[0]->check(context);
+  const auto atom_space = body[0]->check(context);
   ASSERT_FALSE(atom_space.has_value());
   EXPECT_EQ(atom_space.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
-  const auto red_alignment =
-      body[1]->check(context);
+  const auto red_alignment = body[1]->check(context);
   ASSERT_FALSE(red_alignment.has_value());
   EXPECT_EQ(red_alignment.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);
-  const auto atom_alignment =
-      body[2]->check(context);
+  const auto atom_alignment = body[2]->check(context);
   ASSERT_FALSE(atom_alignment.has_value());
   EXPECT_EQ(atom_alignment.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);
-  const auto red_space =
-      body[3]->check(context);
+  const auto red_space = body[3]->check(context);
   ASSERT_FALSE(red_space.has_value());
   EXPECT_EQ(red_space.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -823,8 +802,7 @@ TEST(AtomicReductionCoverage, RechecksOwned64BitValueSources) {
   auto& add = dynamic_cast<AtomGlobalAddU64&>(*body[0]);
   auto& cas = dynamic_cast<AtomGlobalCasB64&>(*body[1]);
   auto& red = dynamic_cast<RedGlobalXorB64&>(*body[2]);
-  auto& add_src = std::get<ResolvedRegisterRef>(
-      add.src.value);
+  auto& add_src = std::get<ResolvedRegisterRef>(add.src.value);
   add_src.declared_type = ScalarType::U32;
   const auto invalid_add =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
@@ -840,8 +818,7 @@ TEST(AtomicReductionCoverage, RechecksOwned64BitValueSources) {
   EXPECT_EQ(invalid_compare.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   compare.declared_type = ScalarType::B64;
-  auto& red_src = std::get<ResolvedRegisterRef>(
-      red.src.value);
+  auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
   red_src.declared_type = ScalarType::B32;
   const auto invalid_red =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
@@ -912,11 +889,9 @@ TEST(AtomicReductionCoverage, ResolvesFloatAddMatrix) {
     }
   }
   const auto& atom_bits = dynamic_cast<AtomGlobalAddF32&>(*body[1]);
-  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
-      atom_bits.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(atom_bits.src.value));
   const auto& red_literal = dynamic_cast<RedGlobalAddF64&>(*body[24 + 12 + 3]);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      red_literal.src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(red_literal.src.value));
 }
 
 /** Pin float legacy and explicit availability at both dimensions. */
@@ -1041,8 +1016,7 @@ TEST(AtomicReductionCoverage, RechecksOwnedFloatAddOperands) {
   auto& body = owned->functions.front().body;
   auto& atom = dynamic_cast<AtomGlobalAddF32&>(*body[0]);
   auto& red = dynamic_cast<RedGlobalAddF64&>(*body[1]);
-  auto& atom_src = std::get<ResolvedRegisterRef>(
-      atom.src.value);
+  auto& atom_src = std::get<ResolvedRegisterRef>(atom.src.value);
   atom_src.declared_type = ScalarType::U32;
   const auto invalid_atom =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
@@ -1050,8 +1024,7 @@ TEST(AtomicReductionCoverage, RechecksOwnedFloatAddOperands) {
   EXPECT_EQ(invalid_atom.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   atom_src.declared_type = ScalarType::B32;
-  auto& red_src = std::get<ResolvedRegisterRef>(
-      red.src.value);
+  auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
   red_src.declared_type = ScalarType::U64;
   const auto invalid_red =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
@@ -1106,12 +1079,18 @@ TEST(AtomicReductionCoverage, ResolvesHalfBfloatAndWideScalarForms) {
   EXPECT_FALSE(dynamic_cast<AtomGlobalAddNoftzF16&>(*body[3])
                    .dst.value.register_ref.has_value());
   EXPECT_EQ(body[4]->instruction_kind(), InstructionKind::RedGlobalAddNoftzF16);
-  EXPECT_EQ(body[5]->instruction_kind(), InstructionKind::AtomGlobalAddNoftzF16x2);
-  EXPECT_EQ(body[6]->instruction_kind(), InstructionKind::RedGlobalAddNoftzF16x2);
-  EXPECT_EQ(body[7]->instruction_kind(), InstructionKind::AtomGlobalAddNoftzBf16);
-  EXPECT_EQ(body[8]->instruction_kind(), InstructionKind::RedGlobalAddNoftzBf16);
-  EXPECT_EQ(body[9]->instruction_kind(), InstructionKind::AtomGlobalAddNoftzBf16x2);
-  EXPECT_EQ(body[10]->instruction_kind(), InstructionKind::RedGlobalAddNoftzBf16x2);
+  EXPECT_EQ(body[5]->instruction_kind(),
+            InstructionKind::AtomGlobalAddNoftzF16x2);
+  EXPECT_EQ(body[6]->instruction_kind(),
+            InstructionKind::RedGlobalAddNoftzF16x2);
+  EXPECT_EQ(body[7]->instruction_kind(),
+            InstructionKind::AtomGlobalAddNoftzBf16);
+  EXPECT_EQ(body[8]->instruction_kind(),
+            InstructionKind::RedGlobalAddNoftzBf16);
+  EXPECT_EQ(body[9]->instruction_kind(),
+            InstructionKind::AtomGlobalAddNoftzBf16x2);
+  EXPECT_EQ(body[10]->instruction_kind(),
+            InstructionKind::RedGlobalAddNoftzBf16x2);
 }
 
 /** Recheck tuple floors and reject invalid scalar shapes after resolution. */
@@ -1225,8 +1204,7 @@ TEST(AtomicReductionCoverage, ResolvesScalarCacheHints) {
   auto& add = dynamic_cast<AtomGlobalAddU32&>(*body[0]);
   EXPECT_TRUE(add.cache_hint.value);
   EXPECT_EQ(add.operand_layout.value, 1u);
-  EXPECT_FALSE(
-      add.dst.value.register_ref.has_value());
+  EXPECT_FALSE(add.dst.value.register_ref.has_value());
   ASSERT_TRUE(add.cache_policy.has_value());
   EXPECT_EQ(add.cache_policy->value.declared_type, ScalarType::B64);
   EXPECT_EQ(dynamic_cast<AtomGlobalAddU32&>(*body[8]).address_qualifier.value,
@@ -1250,18 +1228,14 @@ TEST(AtomicReductionCoverage, ResolvesScalarCacheHints) {
   add.cache_hint.value = false;
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
-  EXPECT_FALSE(
-      body[0]->check(context).has_value());
+  EXPECT_FALSE(body[0]->check(context).has_value());
   add.cache_hint.value = true;
-  EXPECT_TRUE(
-      body[0]->check(context).has_value());
+  EXPECT_TRUE(body[0]->check(context).has_value());
   auto& policy = add.cache_policy->value;
   policy.declared_type = ScalarType::B32;
-  EXPECT_FALSE(
-      body[0]->check(context).has_value());
+  EXPECT_FALSE(body[0]->check(context).has_value());
   policy.declared_type = ScalarType::B64;
-  EXPECT_TRUE(
-      body[0]->check(context).has_value());
+  EXPECT_TRUE(body[0]->check(context).has_value());
 }
 
 /** Reject cache-policy operands that lack an eligible suffix or address. */
@@ -1394,27 +1368,28 @@ TEST(AtomicReductionCoverage, ResolvesCompleteVectorAtomicMatrix) {
   for (size_t index = 0; index < body.size(); ++index) {
     const auto kind = body[index]->instruction_kind();
     if (index < 77) {
-      EXPECT_NE(std::ranges::find(atom_vector_kinds, kind), atom_vector_kinds.end());
-      const auto qualifier = atomicQualifier<
-          AtomVectorAddNoftzF16, AtomVectorMinNoftzF16,
-          AtomVectorMaxNoftzF16, AtomVectorAddNoftzBf16,
-          AtomVectorMinNoftzBf16, AtomVectorMaxNoftzBf16,
-          AtomVectorAddNoftzF16x2, AtomVectorMinNoftzF16x2,
-          AtomVectorMaxNoftzF16x2, AtomVectorAddNoftzBf16x2,
-          AtomVectorMinNoftzBf16x2, AtomVectorMaxNoftzBf16x2,
-          AtomVectorAddF32>(*body[index]);
+      EXPECT_NE(std::ranges::find(atom_vector_kinds, kind),
+                atom_vector_kinds.end());
+      const auto qualifier =
+          atomicQualifier<AtomVectorAddNoftzF16, AtomVectorMinNoftzF16,
+                          AtomVectorMaxNoftzF16, AtomVectorAddNoftzBf16,
+                          AtomVectorMinNoftzBf16, AtomVectorMaxNoftzBf16,
+                          AtomVectorAddNoftzF16x2, AtomVectorMinNoftzF16x2,
+                          AtomVectorMaxNoftzF16x2, AtomVectorAddNoftzBf16x2,
+                          AtomVectorMinNoftzBf16x2, AtomVectorMaxNoftzBf16x2,
+                          AtomVectorAddF32>(*body[index]);
       ASSERT_TRUE(qualifier.has_value());
       EXPECT_EQ(*qualifier, AtomicAddressQualifier::Global);
     } else {
-      EXPECT_NE(std::ranges::find(red_vector_kinds, kind), red_vector_kinds.end());
+      EXPECT_NE(std::ranges::find(red_vector_kinds, kind),
+                red_vector_kinds.end());
       const auto qualifier = atomicQualifier<
-          RedVectorAddNoftzF16, RedVectorMinNoftzF16,
-          RedVectorMaxNoftzF16, RedVectorAddNoftzBf16,
-          RedVectorMinNoftzBf16, RedVectorMaxNoftzBf16,
+          RedVectorAddNoftzF16, RedVectorMinNoftzF16, RedVectorMaxNoftzF16,
+          RedVectorAddNoftzBf16, RedVectorMinNoftzBf16, RedVectorMaxNoftzBf16,
           RedVectorAddNoftzF16x2, RedVectorMinNoftzF16x2,
           RedVectorMaxNoftzF16x2, RedVectorAddNoftzBf16x2,
-          RedVectorMinNoftzBf16x2, RedVectorMaxNoftzBf16x2,
-          RedVectorAddF32>(*body[index]);
+          RedVectorMinNoftzBf16x2, RedVectorMaxNoftzBf16x2, RedVectorAddF32>(
+          *body[index]);
       ASSERT_TRUE(qualifier.has_value());
       EXPECT_EQ(*qualifier, AtomicAddressQualifier::Global);
     }
@@ -1483,14 +1458,10 @@ TEST(AtomicReductionCoverage, RejectsOwnedAtomicQualifierDomainMutations) {
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   auto& shared_async = dynamic_cast<RedAsyncSharedIncU32&>(*body[0]);
   EXPECT_TRUE(shared_async.check(target).has_value());
-  EXPECT_TRUE(
-      body[1]->check(target).has_value());
-  EXPECT_TRUE(
-      body[2]->check(target).has_value());
-  EXPECT_TRUE(
-      body[3]->check(target).has_value());
-  EXPECT_TRUE(
-      body[4]->check(target).has_value());
+  EXPECT_TRUE(body[1]->check(target).has_value());
+  EXPECT_TRUE(body[2]->check(target).has_value());
+  EXPECT_TRUE(body[3]->check(target).has_value());
+  EXPECT_TRUE(body[4]->check(target).has_value());
   EXPECT_EQ(shared_async.address_qualifier.value,
             AtomicAddressQualifier::SharedCluster);
   ASSERT_FALSE(shared_async.address_qualifier.locs.empty());
@@ -1559,8 +1530,7 @@ TEST(AtomicReductionCoverage, ChecksVectorAtomicOwnedContracts) {
   ASSERT_EQ(body.size(), 7u);
   auto& first = dynamic_cast<AtomVectorAddNoftzF16&>(*body[0]);
   EXPECT_EQ(first.vector.value, VectorArity::V2);
-  EXPECT_FALSE(
-      first.dst.value.elements[0].has_value());
+  EXPECT_FALSE(first.dst.value.elements[0].has_value());
   auto& hinted = dynamic_cast<AtomVectorMinNoftzF16x2&>(*body[1]);
   EXPECT_TRUE(hinted.cache_hint.value);
   EXPECT_EQ(hinted.vector.value, VectorArity::V4);
@@ -1583,22 +1553,16 @@ TEST(AtomicReductionCoverage, ChecksVectorAtomicOwnedContracts) {
     EXPECT_FALSE(check(old_sm).has_value());
   }
   hinted.vector.value = VectorArity::V8;
-  EXPECT_FALSE(body[1]->check(supported)
-                   .has_value());
+  EXPECT_FALSE(body[1]->check(supported).has_value());
   hinted.vector.value = VectorArity::V4;
   hinted.cache_hint.value = false;
-  EXPECT_FALSE(body[1]->check(supported)
-                   .has_value());
+  EXPECT_FALSE(body[1]->check(supported).has_value());
   hinted.cache_hint.value = true;
-  hinted.cache_policy->value.declared_type =
-      ScalarType::B32;
-  EXPECT_FALSE(body[1]->check(supported)
-                   .has_value());
+  hinted.cache_policy->value.declared_type = ScalarType::B32;
+  EXPECT_FALSE(body[1]->check(supported).has_value());
   auto& integer_lanes = dynamic_cast<AtomVectorAddNoftzF16&>(*body[4]);
-  integer_lanes.src.value.elements[0]
-      ->declared_type = ScalarType::F16;
-  EXPECT_FALSE(body[4]->check(supported)
-                   .has_value());
+  integer_lanes.src.value.elements[0]->declared_type = ScalarType::F16;
+  EXPECT_FALSE(body[4]->check(supported).has_value());
 }
 
 /** Accept native half storage while keeping unrelated 16/32-bit types out. */
@@ -1720,8 +1684,8 @@ TEST(AtomicReductionCoverage, ChecksDistinctDestinationVectorLanes) {
   ASSERT_MODULE_PARSE_SUCCEEDS(bound);
   auto owned = resolveAndValidateModule(*bound);
   ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
-  auto& atom = dynamic_cast<AtomVectorAddF32&>(
-      *owned->functions.front().body.front());
+  auto& atom =
+      dynamic_cast<AtomVectorAddF32&>(*owned->functions.front().body.front());
   auto& destination = atom.dst.value.elements;
   destination[1] = destination[0];
   const auto invalid_owned = atom.check(target);
@@ -1869,14 +1833,16 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 16u);
-  EXPECT_EQ(dynamic_cast<RedAsyncSharedIncU32&>(*body[0]).address_qualifier.value,
-            AtomicAddressQualifier::Generic);
-  EXPECT_EQ(dynamic_cast<RedAsyncSharedDecU32&>(*body[1]).address_qualifier.value,
-            AtomicAddressQualifier::SharedCluster);
-  EXPECT_EQ(dynamic_cast<RedAsyncReleaseAddS32&>(*body[13]).address_qualifier.value,
-            AtomicAddressQualifier::Global);
-  EXPECT_TRUE(dynamic_cast<RedAsyncReleaseAddU64&>(*body[14])
-                  .mmio.value);
+  EXPECT_EQ(
+      dynamic_cast<RedAsyncSharedIncU32&>(*body[0]).address_qualifier.value,
+      AtomicAddressQualifier::Generic);
+  EXPECT_EQ(
+      dynamic_cast<RedAsyncSharedDecU32&>(*body[1]).address_qualifier.value,
+      AtomicAddressQualifier::SharedCluster);
+  EXPECT_EQ(
+      dynamic_cast<RedAsyncReleaseAddS32&>(*body[13]).address_qualifier.value,
+      AtomicAddressQualifier::Global);
+  EXPECT_TRUE(dynamic_cast<RedAsyncReleaseAddU64&>(*body[14]).mmio.value);
   const checker::Context shared_target{
       .target = {.ptx_version = {8, 1}, .sm_version = 90}};
   const checker::Context release_target{
@@ -1903,29 +1869,23 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
   }
   auto& mmio = dynamic_cast<RedAsyncReleaseAddU64&>(*body[14]);
   mmio.scope.value = MemoryScope::Gpu;
-  EXPECT_FALSE(
-      body[14]->check(release_target)
-          .has_value());
+  EXPECT_FALSE(body[14]->check(release_target).has_value());
   mmio.scope.value = MemoryScope::Sys;
   dynamic_cast<RedAsyncSharedDecU32&>(*body[1]).address_qualifier.value =
       AtomicAddressQualifier::Global;
-  EXPECT_FALSE(body[1]->check(release_target)
-                   .has_value());
+  EXPECT_FALSE(body[1]->check(release_target).has_value());
   auto& shared = dynamic_cast<RedAsyncSharedIncU32&>(*body[0]);
   shared.address.value.base = ResolvedSymbolRef{
       .spelling = "barrier",
       .address_state_space = base::DeclarationStateSpace::Shared,
   };
-  EXPECT_FALSE(body[0]->check(shared_target)
-                   .has_value());
-  auto& mbarrier = dynamic_cast<RedAsyncSharedMinU32&>(*body[2])
-                       .mbarrier.value;
+  EXPECT_FALSE(body[0]->check(shared_target).has_value());
+  auto& mbarrier = dynamic_cast<RedAsyncSharedMinU32&>(*body[2]).mbarrier.value;
   mbarrier.base = ResolvedSymbolRef{
       .spelling = "barrier",
       .address_state_space = base::DeclarationStateSpace::Shared,
   };
-  EXPECT_FALSE(body[2]->check(shared_target)
-                   .has_value());
+  EXPECT_FALSE(body[2]->check(shared_target).has_value());
 }
 
 /** Reject mode mixing, nonregister destinations, and invalid barrier addresses. */
@@ -2005,8 +1965,7 @@ TEST(AtomicReductionCoverage, RechecksAsyncAddressOffsetDomain) {
   ASSERT_TRUE(shared.address.value.offset.has_value());
   ASSERT_TRUE(shared.mbarrier.value.offset.has_value());
   shared.address.value.offset->value.bits = 2147483648ULL;
-  const auto invalid_destination =
-      body[0]->check(supported);
+  const auto invalid_destination = body[0]->check(supported);
   ASSERT_FALSE(invalid_destination.has_value());
   EXPECT_TRUE(std::ranges::any_of(
       invalid_destination.error(),
@@ -2017,8 +1976,7 @@ TEST(AtomicReductionCoverage, RechecksAsyncAddressOffsetDomain) {
   shared.address.value.offset->value.integer_source_bits = 2147483647ULL;
   shared.mbarrier.value.offset->value.bits = 2147483649ULL;
   shared.mbarrier.value.offset->value.integer_source_bits = 2147483649ULL;
-  const auto invalid_mbarrier =
-      body[0]->check(supported);
+  const auto invalid_mbarrier = body[0]->check(supported);
   ASSERT_FALSE(invalid_mbarrier.has_value());
   EXPECT_TRUE(std::ranges::any_of(
       invalid_mbarrier.error(), [](const checker::CheckDiagnostic& diagnostic) {

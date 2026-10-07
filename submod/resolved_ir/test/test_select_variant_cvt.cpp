@@ -52,8 +52,7 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
   const auto to_integer =
       resolveCvt(parse_instruction("cvt.rzi.u32.f32 %r0, %f0;"));
   ASSERT_TRUE(to_integer.has_value()) << to_integer.error().message;
-  const auto* cvt =
-      dynamic_cast<CvtRziU32F32*>(to_integer->get());
+  const auto* cvt = dynamic_cast<CvtRziU32F32*>(to_integer->get());
   ASSERT_NE(cvt, nullptr);
   EXPECT_EQ(CvtRziU32F32::rounding, RoundingMode::Rzi);
   EXPECT_EQ(CvtRziU32F32::dst_type, ScalarType::U32);
@@ -61,8 +60,7 @@ TEST(ResolveCvt, SelectsFrozenMixedVariants) {
 }
 
 TEST(ResolveCvt, SelectsM12RnS32AndPackedF16x2Variants) {
-  const auto scalar =
-      resolveCvt(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
+  const auto scalar = resolveCvt(parse_instruction("cvt.rn.f32.s32 %f0, %r0;"));
   ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
   ASSERT_NE(dynamic_cast<CvtRnF32S32*>(scalar->get()), nullptr);
 
@@ -81,10 +79,12 @@ TEST(ResolveCvt, SelectsScalarAndPackedFormsButRejectsMissingInputs) {
        {"cvt.rz.f32.s32 %f0, %r0;", "cvt.rn.f32.s16 %f0, %r0;",
         "cvt.rz.f16x2.f32 %r0, %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_TRUE(select_variant_name(parse_instruction(source), cvt_syntax_descriptor()).has_value());
+    EXPECT_TRUE(
+        select_variant_name(parse_instruction(source), cvt_syntax_descriptor())
+            .has_value());
   }
-  EXPECT_FALSE(resolveCvt(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;"))
-                   .has_value());
+  EXPECT_FALSE(
+      resolveCvt(parse_instruction("cvt.rn.f16x2.f32 %r0, %f0;")).has_value());
 }
 
 /** Select scalar syntax independently from cross-field conversion rules. */
@@ -92,7 +92,8 @@ TEST(ResolveCvt, SelectsOrdinaryFloatSyntaxBeforeRuleChecking) {
   for (const auto source :
        {"cvt.f32.f64 %f0, %fd0;", "cvt.rz.f32.f64 %f0, %fd0;",
         "cvt.rn.f64.f32 %fd0, %f0;"}) {
-    const auto selected = select_variant_name(parse_instruction(source), cvt_syntax_descriptor());
+    const auto selected =
+        select_variant_name(parse_instruction(source), cvt_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_TRUE(selected.has_value());
   }
@@ -103,7 +104,8 @@ TEST(ResolveCvt, SelectsMixedSyntaxBeforeRuleChecking) {
   for (const auto source :
        {"cvt.rz.f32.u32 %f0, %r0;", "cvt.rn.u32.f32 %r0, %f0;",
         "cvt.rzi.f32.u32 %f0, %r0;"}) {
-    const auto selected = select_variant_name(parse_instruction(source), cvt_syntax_descriptor());
+    const auto selected =
+        select_variant_name(parse_instruction(source), cvt_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_TRUE(selected.has_value());
   }
@@ -122,13 +124,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtS32U32Availability) {
   const auto cvt = resolveCvt(*ast);
   ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
   const auto rejected =
-      (*cvt)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*cvt)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*cvt)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*cvt)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -140,13 +143,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRnF32F64Availability) {
   const auto cvt = resolveCvt(*ast);
   ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
   const auto rejected =
-      (*cvt)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 12},
-                          .instruction_range = ast->range});
+      (*cvt)->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 12},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*cvt)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 13},
+      (*cvt)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 13},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -158,13 +162,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtRziU32F32Availability) {
   const auto cvt = resolveCvt(*ast);
   ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
   const auto rejected =
-      (*cvt)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*cvt)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*cvt)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*cvt)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -176,12 +181,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedM12CvtAvailability) {
   const auto scalar = resolveCvt(*scalar_ast);
   ASSERT_TRUE(scalar.has_value()) << scalar.error().message;
   EXPECT_FALSE(
-      (*scalar)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                             .instruction_range = scalar_ast->range})
+      (*scalar)
+          ->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                          .instruction_range = scalar_ast->range})
           .has_value());
   EXPECT_TRUE(
-      (*scalar)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                             .instruction_range = scalar_ast->range})
+      (*scalar)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = scalar_ast->range})
           .has_value());
 
   PtxSyntaxParser packed_parser("cvt.rn.f16x2.f32 %r0, %f0, %f1;");
@@ -189,18 +196,21 @@ TEST(ResolvedIrChecker, ChecksGeneratedM12CvtAvailability) {
   ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
   const auto packed = resolveCvt(*packed_ast);
   ASSERT_TRUE(packed.has_value()) << packed.error().message;
-  EXPECT_FALSE((*packed)->check( Context{.target = {.ptx_version = {6, 9},
-                                                 .sm_version = 80},
-                                      .instruction_range = packed_ast->range})
-                   .has_value());
-  EXPECT_FALSE((*packed)->check( Context{.target = {.ptx_version = {7, 0},
-                                                 .sm_version = 79},
-                                      .instruction_range = packed_ast->range})
-                   .has_value());
-  EXPECT_TRUE((*packed)->check(
-                    Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
-                            .instruction_range = packed_ast->range})
-                  .has_value());
+  EXPECT_FALSE(
+      (*packed)
+          ->check(Context{.target = {.ptx_version = {6, 9}, .sm_version = 80},
+                          .instruction_range = packed_ast->range})
+          .has_value());
+  EXPECT_FALSE(
+      (*packed)
+          ->check(Context{.target = {.ptx_version = {7, 0}, .sm_version = 79},
+                          .instruction_range = packed_ast->range})
+          .has_value());
+  EXPECT_TRUE(
+      (*packed)
+          ->check(Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
+                          .instruction_range = packed_ast->range})
+          .has_value());
 }
 
 /** `cvt.pack` enforces base and sub-byte type-value target boundaries. */
@@ -213,15 +223,18 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtPackAvailability) {
     const auto cvt = resolveCvt(*ast);
     ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
     EXPECT_FALSE(
-        (*cvt)->check( Context{.target = {.ptx_version = {6, 4}, .sm_version = 72},
+        (*cvt)
+            ->check(Context{.target = {.ptx_version = {6, 4}, .sm_version = 72},
                             .instruction_range = ast->range})
             .has_value());
     EXPECT_FALSE(
-        (*cvt)->check( Context{.target = {.ptx_version = {6, 5}, .sm_version = 71},
+        (*cvt)
+            ->check(Context{.target = {.ptx_version = {6, 5}, .sm_version = 71},
                             .instruction_range = ast->range})
             .has_value());
     EXPECT_TRUE(
-        (*cvt)->check( Context{.target = {.ptx_version = {6, 5}, .sm_version = 72},
+        (*cvt)
+            ->check(Context{.target = {.ptx_version = {6, 5}, .sm_version = 72},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -232,11 +245,13 @@ TEST(ResolvedIrChecker, ChecksGeneratedCvtPackAvailability) {
   const auto cvt = resolveCvt(*ast);
   ASSERT_TRUE(cvt.has_value()) << cvt.error().message;
   EXPECT_FALSE(
-      (*cvt)->check( Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
+      (*cvt)
+          ->check(Context{.target = {.ptx_version = {6, 5}, .sm_version = 74},
                           .instruction_range = ast->range})
           .has_value());
   EXPECT_TRUE(
-      (*cvt)->check( Context{.target = {.ptx_version = {6, 5}, .sm_version = 75},
+      (*cvt)
+          ->check(Context{.target = {.ptx_version = {6, 5}, .sm_version = 75},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -246,8 +261,7 @@ TEST(ResolveCvt, SelectsPackedSatVariantsAndRejectsInvalidTopologies) {
       parse_instruction("cvt.pack.sat.u8.s32.b32 %r0, %r1, %r2, %r3;");
   const auto resolved = resolveCvt(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(dynamic_cast<CvtPackSatU8S32B32*>(resolved->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<CvtPackSatU8S32B32*>(resolved->get()), nullptr);
   EXPECT_TRUE(CvtPackSatU8S32B32::pack);
   EXPECT_TRUE(CvtPackSatU8S32B32::saturate);
   EXPECT_EQ(CvtPackSatU8S32B32::dst_type, ScalarType::U8);
@@ -257,16 +271,14 @@ TEST(ResolveCvt, SelectsPackedSatVariantsAndRejectsInvalidTopologies) {
   const auto packed_16 =
       resolveCvt(parse_instruction("cvt.pack.sat.s16.s32 %r0, %r1, %r2;"));
   ASSERT_TRUE(packed_16.has_value()) << packed_16.error().message;
-  const auto* s16 =
-      dynamic_cast<CvtPackSat16S32*>(packed_16->get());
+  const auto* s16 = dynamic_cast<CvtPackSat16S32*>(packed_16->get());
   ASSERT_NE(s16, nullptr);
   EXPECT_EQ(s16->dst_type.value, ScalarType::S16);
 
   const auto packed_small = resolveCvt(
       parse_instruction("cvt.pack.sat.u4.s32.b32 %r0, %r1, %r2, 0;"));
   ASSERT_TRUE(packed_small.has_value()) << packed_small.error().message;
-  const auto* u4 =
-      dynamic_cast<CvtPackSatSmallS32B32*>(packed_small->get());
+  const auto* u4 = dynamic_cast<CvtPackSatSmallS32B32*>(packed_small->get());
   ASSERT_NE(u4, nullptr);
   EXPECT_EQ(u4->dst_type.value, ScalarType::U4);
 

@@ -54,21 +54,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfindAvailability) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto bfind = resolveBfind(*ast);
   ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
-  const auto old_ptx =
-      (*bfind)->check(Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                            .instruction_range = ast->range});
+  const auto old_ptx = (*bfind)->check(
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm =
-      (*bfind)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                            .instruction_range = ast->range});
+  const auto old_sm = (*bfind)->check(
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*bfind)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                            .instruction_range = ast->range})
+      (*bfind)
+          ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                          .instruction_range = ast->range})
           .has_value());
 }
 

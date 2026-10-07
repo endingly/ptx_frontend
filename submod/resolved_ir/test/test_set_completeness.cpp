@@ -97,8 +97,7 @@ TEST(SetCompleteness, RejectsWrongDeclaredTypesAndSourceImmediate) {
   .reg .u32 %u;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -114,9 +113,9 @@ TEST(SetCompleteness, EnforcesF64TargetMinimum) {
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE((*resolved)->check(
-                             checker::Context{.target = {.ptx_version = {1, 0},
-                                                         .sm_version = 13}})
+  EXPECT_TRUE((*resolved)
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {1, 0}, .sm_version = 13}})
                   .has_value());
 }
 
@@ -134,7 +133,7 @@ TEST(SetCompleteness, RejectsMutatedTypedFields) {
   EXPECT_FALSE((*resolved)->check(context).has_value());
   bit.comparison.value = ComparisonOperator::Eq;
   bit.dtype.value = ScalarType::U16;
-  EXPECT_FALSE((*resolved)->check( context).has_value());
+  EXPECT_FALSE((*resolved)->check(context).has_value());
 }
 
 /** Recheck typed operands and predicate truth after source and AST destruction. */
@@ -152,10 +151,10 @@ TEST(SetCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
   const auto& variant = dynamic_cast<const SetFloatBoolean&>(*owned);
   EXPECT_EQ(variant.comparison.value, ComparisonOperator::Nan);
   EXPECT_TRUE(std::get<ResolvedPredicateConstant>(variant.combine.value).value);
-  EXPECT_TRUE(
-      owned->check(checker::Context{.target = {.ptx_version = {9, 3},
-                                               .sm_version = 100}})
-          .has_value());
+  EXPECT_TRUE(owned
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {9, 3}, .sm_version = 100}})
+                  .has_value());
 }
 
 }  // namespace

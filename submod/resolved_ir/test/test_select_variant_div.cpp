@@ -28,8 +28,7 @@ TEST(ResolveDiv, SelectsFrozenU32VariantAndAcceptsZeroImmediate) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* div = dynamic_cast<DivU32*>(resolved->get());
   ASSERT_NE(div, nullptr);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(div->src2.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(div->src2.value));
 }
 
 TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
@@ -58,7 +57,8 @@ TEST(ResolveDiv, RejectsInvalidFloatingModeCombinations) {
         "div.approx.full.f32 %f0, %f1, %f2;", "div.rn.ftz.f64 %d0, %d1, %d2;",
         "div.full.f64 %d0, %d1, %d2;", "div.rn.f16 %h0, %h1, %h2;",
         "div.sat.u32 %r0, %r1, %r2;"}) {
-    const auto selected = select_variant_name(parse_instruction(source), div_syntax_descriptor());
+    const auto selected =
+        select_variant_name(parse_instruction(source), div_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -77,13 +77,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivU32Availability) {
   const auto div = resolveDiv(*ast);
   ASSERT_TRUE(div.has_value()) << div.error().message;
   const auto rejected =
-      (*div)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*div)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*div)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*div)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -95,19 +96,20 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivRnF32Availability) {
   const auto div = resolveDiv(*ast);
   ASSERT_TRUE(div.has_value()) << div.error().message;
   const auto old_ptx =
-      (*div)->check( Context{.target = {.ptx_version = {1, 3}, .sm_version = 20},
-                          .instruction_range = ast->range});
+      (*div)->check(Context{.target = {.ptx_version = {1, 3}, .sm_version = 20},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_sm =
-      (*div)->check( Context{.target = {.ptx_version = {1, 4}, .sm_version = 19},
-                          .instruction_range = ast->range});
+      (*div)->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 19},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*div)->check( Context{.target = {.ptx_version = {1, 4}, .sm_version = 20},
+      (*div)
+          ->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 20},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -119,19 +121,20 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivRnF64Availability) {
   const auto div = resolveDiv(*ast);
   ASSERT_TRUE(div.has_value()) << div.error().message;
   const auto old_ptx =
-      (*div)->check( Context{.target = {.ptx_version = {1, 3}, .sm_version = 13},
-                          .instruction_range = ast->range});
+      (*div)->check(Context{.target = {.ptx_version = {1, 3}, .sm_version = 13},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_sm =
-      (*div)->check( Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
-                          .instruction_range = ast->range});
+      (*div)->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*div)->check( Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},
+      (*div)
+          ->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},
                           .instruction_range = ast->range})
           .has_value());
 }

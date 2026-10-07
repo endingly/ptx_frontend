@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <optional>
 #include <string>
 #include <variant>
@@ -56,8 +55,9 @@ TEST(MadCompleteness, ResolvesEveryExplicitFloatingRoundingForm) {
   EXPECT_EQ(rp_f32.rounding.value, RoundingMode::Rp);
   EXPECT_FALSE(rp_f32.ftz.value);
   EXPECT_TRUE(rp_f32.saturate.value);
-  EXPECT_NE(dynamic_cast<const MadRnF64*>(
-                resolved->functions.front().body[4].get()), nullptr);
+  EXPECT_NE(
+      dynamic_cast<const MadRnF64*>(resolved->functions.front().body[4].get()),
+      nullptr);
   EXPECT_EQ(MadRnF64::rounding, RoundingMode::Rn);
   EXPECT_EQ(
       dynamic_cast<const MadDirectedF64&>(*resolved->functions.front().body[5])
@@ -195,8 +195,7 @@ TEST(MadCompleteness, OwnsBoundSourcesAndRevalidatesWrongWidth) {
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
           .has_value());
-  auto& f32 =
-      dynamic_cast<MadRnF32&>(*owned->functions.front().body.front());
+  auto& f32 = dynamic_cast<MadRnF32&>(*owned->functions.front().body.front());
   const auto f64_source =
       dynamic_cast<const MadRnF64&>(*owned->functions.front().body[1])
           .src2.value;

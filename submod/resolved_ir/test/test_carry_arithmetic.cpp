@@ -67,10 +67,9 @@ void check_carry_form(std::string_view spelling, ConditionCodeEffect effect,
       const auto selected = select_variant_name(*ast, api.syntax());
       ASSERT_TRUE(selected.has_value()) << selected.error().message;
       const auto& variants = api.resolved().variants;
-      const auto variant = std::find_if(variants.begin(), variants.end(),
-                                        [&](const auto& entry) {
-                                          return entry.variant_name == *selected;
-                                        });
+      const auto variant = std::find_if(
+          variants.begin(), variants.end(),
+          [&](const auto& entry) { return entry.variant_name == *selected; });
       ASSERT_NE(variant, variants.end());
       EXPECT_EQ(variant->condition_code_effect, effect);
       const checker::Context minimum{
@@ -107,35 +106,33 @@ TEST(CarryCompleteness, DeliversAllImplicitEffectsAndAvailability) {
   constexpr CarryApi madc{resolveMadc, madc_syntax_descriptor,
                           madc_resolved_descriptor};
   check_carry_form<AddCc32, AddCc64>("add.cc", ConditionCodeEffect::CarryOut,
-                                      add);
+                                     add);
   check_carry_form<AddcPlain32, AddcPlain64>(
       "addc", ConditionCodeEffect::CarryIn, addc);
-  check_carry_form<AddcCc32, AddcCc64>(
-      "addc.cc", ConditionCodeEffect::CarryInOut, addc);
+  check_carry_form<AddcCc32, AddcCc64>("addc.cc",
+                                       ConditionCodeEffect::CarryInOut, addc);
   check_carry_form<SubCc32, SubCc64>("sub.cc", ConditionCodeEffect::BorrowOut,
-                                      sub);
+                                     sub);
   check_carry_form<SubcPlain32, SubcPlain64>(
       "subc", ConditionCodeEffect::BorrowIn, subc);
-  check_carry_form<SubcCc32, SubcCc64>(
-      "subc.cc", ConditionCodeEffect::BorrowInOut, subc);
-  check_carry_form<MadHiCc32, MadHiCc64>(
-      "mad.hi.cc", ConditionCodeEffect::CarryOut, mad, true, {3, 0}, {2, 9},
-      20);
-  check_carry_form<MadLoCc32, MadLoCc64>(
-      "mad.lo.cc", ConditionCodeEffect::CarryOut, mad, true, {3, 0}, {2, 9},
-      20);
+  check_carry_form<SubcCc32, SubcCc64>("subc.cc",
+                                       ConditionCodeEffect::BorrowInOut, subc);
+  check_carry_form<MadHiCc32, MadHiCc64>("mad.hi.cc",
+                                         ConditionCodeEffect::CarryOut, mad,
+                                         true, {3, 0}, {2, 9}, 20);
+  check_carry_form<MadLoCc32, MadLoCc64>("mad.lo.cc",
+                                         ConditionCodeEffect::CarryOut, mad,
+                                         true, {3, 0}, {2, 9}, 20);
   check_carry_form<MadcHiPlain32, MadcHiPlain64>(
-      "madc.hi", ConditionCodeEffect::CarryIn, madc, true, {3, 0}, {2, 9},
-      20);
+      "madc.hi", ConditionCodeEffect::CarryIn, madc, true, {3, 0}, {2, 9}, 20);
   check_carry_form<MadcLoPlain32, MadcLoPlain64>(
-      "madc.lo", ConditionCodeEffect::CarryIn, madc, true, {3, 0}, {2, 9},
-      20);
-  check_carry_form<MadcHiCc32, MadcHiCc64>(
-      "madc.hi.cc", ConditionCodeEffect::CarryInOut, madc, true, {3, 0},
-      {2, 9}, 20);
-  check_carry_form<MadcLoCc32, MadcLoCc64>(
-      "madc.lo.cc", ConditionCodeEffect::CarryInOut, madc, true, {3, 0},
-      {2, 9}, 20);
+      "madc.lo", ConditionCodeEffect::CarryIn, madc, true, {3, 0}, {2, 9}, 20);
+  check_carry_form<MadcHiCc32, MadcHiCc64>("madc.hi.cc",
+                                           ConditionCodeEffect::CarryInOut,
+                                           madc, true, {3, 0}, {2, 9}, 20);
+  check_carry_form<MadcLoCc32, MadcLoCc64>("madc.lo.cc",
+                                           ConditionCodeEffect::CarryInOut,
+                                           madc, true, {3, 0}, {2, 9}, 20);
 }
 
 /** Reject the original illegal type, modifier, and operand boundaries. */

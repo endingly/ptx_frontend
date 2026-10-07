@@ -85,10 +85,14 @@ TEST(AbsNegCompleteness, AcceptsScalarFloatingLiteralsAndBitContainers) {
 /** Reject unsupported modifiers, non-floating literals, sinks, and counts. */
 TEST(AbsNegCompleteness, RejectsForbiddenForms) {
   for (const auto source : {
-           "abs.ftz.f64 %fd0, %fd1;", "abs.ftz.bf16 %b0, %b1;",
-           "neg.ftz.bf16x2 %r0, %r1;", "neg.rn.f32 %f0, %f1;",
-           "abs.f32 %f0, 1;", "neg.f16 %h0, 1.0;",
-           "neg.f64 _, %fd1;", "abs.f16 %h0, %h1, %h2;",
+           "abs.ftz.f64 %fd0, %fd1;",
+           "abs.ftz.bf16 %b0, %b1;",
+           "neg.ftz.bf16x2 %r0, %r1;",
+           "neg.rn.f32 %f0, %f1;",
+           "abs.f32 %f0, 1;",
+           "neg.f16 %h0, 1.0;",
+           "neg.f64 _, %fd1;",
+           "abs.f16 %h0, %h1, %h2;",
        }) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
@@ -113,16 +117,38 @@ TEST(AbsNegCompleteness, ChecksDistinctCohortAvailability) {
     std::optional<unsigned> older_sm;
   };
   for (const auto& availability : {
-           AvailabilityCase{"abs.f64 %fd0, %fd1;", {1, 0}, 13, std::nullopt, 12},
-           AvailabilityCase{"neg.f64 %fd0, %fd1;", {1, 0}, 13, std::nullopt, 12},
-           AvailabilityCase{"abs.f16 %h0, %h1;", {6, 5}, 53, checker::PtxVersion{6, 4}, 52},
-           AvailabilityCase{"abs.f16x2 %r0, %r1;", {6, 5}, 53, checker::PtxVersion{6, 4}, 52},
-           AvailabilityCase{"neg.f16 %h0, %h1;", {6, 0}, 53, checker::PtxVersion{5, 0}, 52},
-           AvailabilityCase{"neg.f16x2 %r0, %r1;", {6, 0}, 53, checker::PtxVersion{5, 0}, 52},
-           AvailabilityCase{"abs.bf16 %b0, %b1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
-           AvailabilityCase{"abs.bf16x2 %r0, %r1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
-           AvailabilityCase{"neg.bf16 %b0, %b1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
-           AvailabilityCase{"neg.bf16x2 %r0, %r1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
+           AvailabilityCase{
+               "abs.f64 %fd0, %fd1;", {1, 0}, 13, std::nullopt, 12},
+           AvailabilityCase{
+               "neg.f64 %fd0, %fd1;", {1, 0}, 13, std::nullopt, 12},
+           AvailabilityCase{
+               "abs.f16 %h0, %h1;", {6, 5}, 53, checker::PtxVersion{6, 4}, 52},
+           AvailabilityCase{"abs.f16x2 %r0, %r1;",
+                            {6, 5},
+                            53,
+                            checker::PtxVersion{6, 4},
+                            52},
+           AvailabilityCase{
+               "neg.f16 %h0, %h1;", {6, 0}, 53, checker::PtxVersion{5, 0}, 52},
+           AvailabilityCase{"neg.f16x2 %r0, %r1;",
+                            {6, 0},
+                            53,
+                            checker::PtxVersion{5, 0},
+                            52},
+           AvailabilityCase{
+               "abs.bf16 %b0, %b1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
+           AvailabilityCase{"abs.bf16x2 %r0, %r1;",
+                            {7, 0},
+                            80,
+                            checker::PtxVersion{6, 5},
+                            75},
+           AvailabilityCase{
+               "neg.bf16 %b0, %b1;", {7, 0}, 80, checker::PtxVersion{6, 5}, 75},
+           AvailabilityCase{"neg.bf16x2 %r0, %r1;",
+                            {7, 0},
+                            80,
+                            checker::PtxVersion{6, 5},
+                            75},
        }) {
     SCOPED_TRACE(availability.source);
     const auto parsed = test_helpers::parseInstruction(availability.source);
@@ -133,7 +159,8 @@ TEST(AbsNegCompleteness, ChecksDistinctCohortAvailability) {
       return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
-                          .sm_version = availability.minimum_sm}).has_value());
+                          .sm_version = availability.minimum_sm})
+                    .has_value());
     if (availability.older_ptx) {
       const auto failure = check_at({.ptx_version = *availability.older_ptx,
                                      .sm_version = availability.minimum_sm});

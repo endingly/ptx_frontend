@@ -36,19 +36,16 @@ TEST(SelectVariantAdd, SelectsEveryGeneratedVariant) {
   expect_variant("add.u32 %r0, %r1, %r2;", "IntegerNoSat");
   expect_variant("add.sat.s32 %r0, %r1, %r2;", "Sat");
   expect_variant("add.u16x2 %r0, %r1, %r2;", "IntegerNoSat");
-  expect_variant("add.u8x4 %r0, %r1, %r2;",
-                 "PackedOptionalSat");
+  expect_variant("add.u8x4 %r0, %r1, %r2;", "PackedOptionalSat");
   expect_variant("add.sat.u32 %r0, %r1, %r2;", "Sat");
   expect_variant("add.f32 %f0, %f1, %f2;", "FloatF32");
-  expect_variant("add.rz.ftz.sat.f32 %f0, %f1, %f2;",
-                 "FloatF32");
+  expect_variant("add.rz.ftz.sat.f32 %f0, %f1, %f2;", "FloatF32");
   expect_variant("add.rp.f32x2 %r0, %r1, %r2;", "FloatF32x2");
   expect_variant("add.rm.f64 %fd0, %fd1, %fd2;", "FloatF64");
   expect_variant("add.rn.ftz.sat.f16x2 %r0, %r1, %r2;", "Half");
   expect_variant("add.bf16 %r0, %r1, %r2;", "Bfloat");
   expect_variant("add.f32.f16 %f0, %h1, %f2;", "MixedF32");
-  expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;",
-                 "MixedF32");
+  expect_variant("add.rz.f32.bf16.sat %f0, %h1, %f2;", "MixedF32");
 }
 
 TEST(SelectVariantAdd, ReportsUnknownModifier) {
@@ -190,8 +187,7 @@ TEST(ResolveAdd, BuildsFloatingVariantWithTypedRoundingAndDefaults) {
   const auto default_ast = parse_instruction("add.f32 %f0, %f1, 1.5;");
   const auto default_resolved = resolveAdd(default_ast);
   ASSERT_TRUE(default_resolved.has_value()) << default_resolved.error().message;
-  const auto* default_add =
-      dynamic_cast<AddFloatF32*>(default_resolved->get());
+  const auto* default_add = dynamic_cast<AddFloatF32*>(default_resolved->get());
   ASSERT_NE(default_add, nullptr);
   EXPECT_EQ(default_add->rounding.value, RoundingMode::Rn);
   EXPECT_TRUE(default_add->rounding.locs.empty());
@@ -237,9 +233,7 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   EXPECT_EQ(add->dst.value.spelling, "%f0");
   EXPECT_EQ(add->src.value.spelling, "%h1");
   // The addend is immediate-capable, so the reference is unwrapped explicitly.
-  EXPECT_EQ(
-      std::get<ResolvedRegisterRef>(add->addend.value).spelling,
-      "%f2");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(add->addend.value).spelling, "%f2");
   EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);
 }
 
@@ -252,7 +246,8 @@ TEST(SelectVariantAdd, RejectsFloatingModifierOutsideItsForm) {
             "combination.");
 
   const auto mixed_ast = parse_instruction("add.ftz.f32.f16 %f0, %h1, %f2;");
-  const auto mixed_selected = select_variant_name(mixed_ast, add_syntax_descriptor());
+  const auto mixed_selected =
+      select_variant_name(mixed_ast, add_syntax_descriptor());
   ASSERT_FALSE(mixed_selected.has_value());
   EXPECT_EQ(mixed_selected.error().message,
             "No variant of instruction 'add' accepts this modifier "
@@ -285,8 +280,7 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   const auto resolved = resolveAdd(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add =
-      dynamic_cast<AddIntegerNoSat*>(resolved->get());
+  const auto* add = dynamic_cast<AddIntegerNoSat*>(resolved->get());
   ASSERT_NE(add, nullptr);
   EXPECT_EQ(add->operand_layout, (ResolvedOperandLayoutTag{0}));
   EXPECT_EQ(add->type.value, ScalarType::S32);
@@ -300,15 +294,13 @@ TEST(ResolveAdd, BuildsResolvedIntegerVariantAndPreservesLocations) {
   EXPECT_EQ(src1.register_class, ResolvedRegisterClass::General);
   EXPECT_EQ(src1.index, 5U);
 
-  const auto* immediate =
-      std::get_if<ResolvedImmediate>(&add->src2.value);
+  const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->bits, 0xffffffffU);
   EXPECT_EQ(immediate->type, ScalarType::S32);
   ASSERT_EQ(add->src2.locs.size(), 1U);
   EXPECT_EQ(add->src2.locs.front(),
-            std::get<syntax_ast::AstImmediate>(ast.operands[2])
-                .syntax.range);
+            std::get<syntax_ast::AstImmediate>(ast.operands[2]).syntax.range);
 }
 
 TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
@@ -324,8 +316,7 @@ TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
   ASSERT_EQ(add->type.locs.size(), 1U);
   EXPECT_EQ(add->type.locs.front(), ast.modifiers[1].syntax.range);
 
-  const auto* immediate =
-      std::get_if<ResolvedImmediate>(&add->src2.value);
+  const auto* immediate = std::get_if<ResolvedImmediate>(&add->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->type, ScalarType::S32);
 }
@@ -333,20 +324,19 @@ TEST(ResolveAdd, UsesFixedSatAndResolvedTypeForSatVariant) {
 TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   const auto ast = parse_instruction("add.u32 %r4, %r5, 6;");
 
-  const auto fields =
-      resolve_fields(ast, add_syntax_descriptor(),
-                     add_resolved_descriptor(), "IntegerNoSat");
+  const auto fields = resolve_fields(ast, add_syntax_descriptor(),
+                                     add_resolved_descriptor(), "IntegerNoSat");
 
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
   EXPECT_EQ(fields->variant_name, "IntegerNoSat");
   EXPECT_EQ(fields->operand_layout, (ResolvedOperandLayoutTag{0}));
-  const auto* type = std::get_if<WithLocs<ScalarType>>(
-      &fields->modifiers.at("type"));
+  const auto* type =
+      std::get_if<WithLocs<ScalarType>>(&fields->modifiers.at("type"));
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(type->value, ScalarType::U32);
 
-  const auto* dst = std::get_if<WithLocs<ResolvedRegisterRef>>(
-      &fields->operands.at("dst"));
+  const auto* dst =
+      std::get_if<WithLocs<ResolvedRegisterRef>>(&fields->operands.at("dst"));
   ASSERT_NE(dst, nullptr);
   EXPECT_EQ(dst->value.spelling, "%r4");
   EXPECT_EQ(dst->value.index, 4U);
@@ -354,15 +344,13 @@ TEST(ResolveFieldsAdd, UsesResolvedFieldBindingsAndValueKinds) {
   const auto* src1 =
       std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src1"));
   ASSERT_NE(src1, nullptr);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).spelling,
-            "%r5");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).spelling, "%r5");
   EXPECT_EQ(std::get<ResolvedRegisterRef>(src1->value).index, 5U);
 
   const auto* src2 =
       std::get_if<WithLocs<RegOrImm>>(&fields->operands.at("src2"));
   ASSERT_NE(src2, nullptr);
-  const auto* immediate =
-      std::get_if<ResolvedImmediate>(&src2->value);
+  const auto* immediate = std::get_if<ResolvedImmediate>(&src2->value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->bits, 6U);
   EXPECT_EQ(immediate->type, ScalarType::U32);
@@ -386,8 +374,7 @@ TEST(ResolveAdd, PreservesRegisterSpellingBeyondNumericIndex) {
   const auto resolved = resolveAdd(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* add =
-      dynamic_cast<AddIntegerNoSat*>(resolved->get());
+  const auto* add = dynamic_cast<AddIntegerNoSat*>(resolved->get());
   ASSERT_NE(add, nullptr);
   const auto& dst = add->dst.value;
   const auto& src1 = std::get<ResolvedRegisterRef>(add->src1.value);
@@ -404,9 +391,9 @@ TEST(ResolveAdd, RejectsPredicateInGeneralRegisterSlot) {
   const auto resolved = resolveAdd(ast);
 
   ASSERT_FALSE(resolved.has_value());
-  EXPECT_EQ(resolved.error().range,
-            std::get<syntax_ast::AstIdentifierRef>(ast.operands[0])
-                .syntax.range);
+  EXPECT_EQ(
+      resolved.error().range,
+      std::get<syntax_ast::AstIdentifierRef>(ast.operands[0]).syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Expected a non-predicate register, got '%p1'.");
 }
@@ -455,7 +442,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
       .instruction_range = ast->range,
   };
 
-  const auto unsupported = (*resolved)->check( unsupported_context);
+  const auto unsupported = (*resolved)->check(unsupported_context);
   ASSERT_FALSE(unsupported.has_value());
   ASSERT_EQ(unsupported.error().size(), 2U);
   EXPECT_EQ(unsupported.error()[0].kind,
@@ -469,7 +456,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperUsesYamlAvailability) {
                  .enabled_family_features = families},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*resolved)->check( supported_context).has_value());
+  EXPECT_TRUE((*resolved)->check(supported_context).has_value());
 }
 
 TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
@@ -485,7 +472,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
       .target = {.ptx_version = {7, 9}, .sm_version = 80},
       .instruction_range = simd_ast->range,
   };
-  const auto unsupported_simd = (*simd)->check( old_simd_target);
+  const auto unsupported_simd = (*simd)->check(old_simd_target);
   ASSERT_FALSE(unsupported_simd.has_value());
   ASSERT_EQ(unsupported_simd.error().size(), 2U);
   EXPECT_EQ(unsupported_simd.error()[0].kind,
@@ -497,7 +484,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
       .target = {.ptx_version = {8, 0}, .sm_version = 90},
       .instruction_range = simd_ast->range,
   };
-  EXPECT_TRUE((*simd)->check( supported_simd_target).has_value());
+  EXPECT_TRUE((*simd)->check(supported_simd_target).has_value());
 
   PtxSyntaxParser sat_parser("add.sat.u32 %r0, %r1, %r2;");
   const auto sat_ast = sat_parser.parseInstruction();
@@ -514,7 +501,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
                  .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
-  const auto unsupported_sat = (*sat)->check( old_sat_target);
+  const auto unsupported_sat = (*sat)->check(old_sat_target);
   ASSERT_FALSE(unsupported_sat.has_value());
   ASSERT_EQ(unsupported_sat.error().size(), 2U);
   EXPECT_EQ(unsupported_sat.error()[0].kind,
@@ -528,7 +515,7 @@ TEST(ResolvedIrChecker, GeneratedMergedAddVariantsUseValueAvailability) {
                  .enabled_family_features = families},
       .instruction_range = sat_ast->range,
   };
-  EXPECT_TRUE((*sat)->check( supported_sat_target).has_value());
+  EXPECT_TRUE((*sat)->check(supported_sat_target).has_value());
 }
 
 TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
@@ -545,7 +532,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 10},
       .instruction_range = ast->range,
   };
-  const auto unsupported = (*resolved)->check( sm10_context);
+  const auto unsupported = (*resolved)->check(sm10_context);
   ASSERT_FALSE(unsupported.has_value());
   ASSERT_EQ(unsupported.error().size(), 1U);
   EXPECT_EQ(unsupported.error().front().kind,
@@ -557,7 +544,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddRoundingValueAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 20},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*resolved)->check( sm20_context).has_value());
+  EXPECT_TRUE((*resolved)->check(sm20_context).has_value());
 }
 
 TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
@@ -571,7 +558,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 12},
       .instruction_range = f64_ast->range,
   };
-  const auto unsupported_f64 = (*f64)->check( sm12_context);
+  const auto unsupported_f64 = (*f64)->check(sm12_context);
   ASSERT_FALSE(unsupported_f64.has_value());
   ASSERT_EQ(unsupported_f64.error().size(), 1U);
   EXPECT_EQ(unsupported_f64.error().front().kind,
@@ -587,7 +574,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
       .target = {.ptx_version = {4, 1}, .sm_version = 52},
       .instruction_range = half_ast->range,
   };
-  const auto unsupported_half = (*half)->check( old_half_context);
+  const auto unsupported_half = (*half)->check(old_half_context);
   ASSERT_FALSE(unsupported_half.has_value());
   ASSERT_EQ(unsupported_half.error().size(), 2U);
   EXPECT_EQ(unsupported_half.error()[0].kind,
@@ -599,7 +586,7 @@ TEST(ResolvedIrChecker, ChecksFloatingAddVariantAvailability) {
       .target = {.ptx_version = {4, 2}, .sm_version = 53},
       .instruction_range = half_ast->range,
   };
-  EXPECT_TRUE((*half)->check( supported_half_context).has_value());
+  EXPECT_TRUE((*half)->check(supported_half_context).has_value());
 }
 
 TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
@@ -614,7 +601,7 @@ TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
       .target = {.ptx_version = {8, 5}, .sm_version = 90},
       .instruction_range = ast->range,
   };
-  const auto unsupported = (*resolved)->check( old_target);
+  const auto unsupported = (*resolved)->check(old_target);
   ASSERT_FALSE(unsupported.has_value());
   ASSERT_EQ(unsupported.error().size(), 2U);
   EXPECT_EQ(unsupported.error()[0].kind,
@@ -626,7 +613,7 @@ TEST(ResolvedIrChecker, ChecksMixedPrecisionAddAvailability) {
       .target = {.ptx_version = {8, 6}, .sm_version = 100},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*resolved)->check( supported_target).has_value());
+  EXPECT_TRUE((*resolved)->check(supported_target).has_value());
 }
 
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
@@ -646,15 +633,14 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksImmediateTypeExpression) {
       .target = {.ptx_version = {9, 2}, .sm_version = 120},
       .instruction_range = ast->range,
   };
-  const auto result = (*resolved)->check( context);
+  const auto result = (*resolved)->check(context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 1U);
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::OperandTypeMismatch);
   EXPECT_EQ(result.error().front().range,
-            std::get<syntax_ast::AstImmediate>(ast->operands[2])
-                .syntax.range);
+            std::get<syntax_ast::AstImmediate>(ast->operands[2]).syntax.range);
 }
 
 TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
@@ -672,7 +658,7 @@ TEST(ResolvedIrChecker, GeneratedAddWrapperChecksSelectedOperandLayoutTag) {
       .target = {.ptx_version = {9, 2}, .sm_version = 120},
       .instruction_range = ast->range,
   };
-  const auto result = (*resolved)->check( context);
+  const auto result = (*resolved)->check(context);
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 1U);

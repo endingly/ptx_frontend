@@ -29,8 +29,7 @@ TEST(ResolveNot, SelectsB32VariantAndAcceptsImmediateSource) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* not_b32 = dynamic_cast<NotB32*>(resolved->get());
   ASSERT_NE(not_b32, nullptr);
-  EXPECT_TRUE(
-      std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(not_b32->src.value));
 }
 
 }  // namespace
@@ -47,16 +46,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedNotB32Availability) {
   ASSERT_TRUE(not_instruction.has_value()) << not_instruction.error().message;
   const Context old_target{.target = {.ptx_version = {0, 9}, .sm_version = 0},
                            .instruction_range = ast->range};
-  const auto unavailable = (*not_instruction)->check( old_target);
+  const auto unavailable = (*not_instruction)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(unavailable.error().front().range, ast->range);
-  EXPECT_TRUE((*not_instruction)->check(
-                    Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                            .instruction_range = ast->range})
-                  .has_value());
+  EXPECT_TRUE(
+      (*not_instruction)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = ast->range})
+          .has_value());
 }
 
 }  // namespace

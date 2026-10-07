@@ -29,8 +29,7 @@ TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* shr_u32 = dynamic_cast<ShrU32*>(resolved->get());
   ASSERT_NE(shr_u32, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      shr_u32->amount.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
 }
 
 }  // namespace
@@ -46,14 +45,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedShrU32Availability) {
   const auto shr = resolveShr(*ast);
   ASSERT_TRUE(shr.has_value()) << shr.error().message;
   const auto rejected =
-      (*shr)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*shr)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error().front().range, ast->range);
   EXPECT_TRUE(
-      (*shr)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*shr)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

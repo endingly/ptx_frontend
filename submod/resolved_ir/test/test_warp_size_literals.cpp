@@ -6,8 +6,8 @@
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 #include "test_module_snapshot.hpp"
@@ -60,8 +60,7 @@ TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
   EXPECT_FALSE(mov.is_negative);
 
   const auto& add = dynamic_cast<const AddIntegerNoSat&>(*body[1]);
-  const auto& add_immediate =
-      std::get<ResolvedImmediate>(add.src2.value);
+  const auto& add_immediate = std::get<ResolvedImmediate>(add.src2.value);
   EXPECT_EQ(add_immediate.type, ScalarType::U32);
   EXPECT_EQ(add_immediate.bits, 32u);
   EXPECT_EQ(add_immediate.integer_source_bits, 32u);

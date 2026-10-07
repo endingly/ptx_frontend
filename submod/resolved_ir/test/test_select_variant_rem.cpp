@@ -29,8 +29,8 @@ TEST(ResolveRem, SelectsFrozenVariantsAndAcceptsZeroDivisor) {
   const auto* signed_rem = dynamic_cast<RemS32*>(s32->get());
   ASSERT_NE(signed_rem, nullptr);
   EXPECT_EQ(RemS32::type, ScalarType::S32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      signed_rem->src2.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(signed_rem->src2.value));
 
   const auto u32 = resolveRem(parse_instruction("rem.u32 %r0, %r1, %r2;"));
   ASSERT_TRUE(u32.has_value()) << u32.error().message;
@@ -51,13 +51,14 @@ TEST(ResolvedIrChecker, ChecksGeneratedRemAvailability) {
   const auto rem = resolveRem(*ast);
   ASSERT_TRUE(rem.has_value()) << rem.error().message;
   const auto rejected =
-      (*rem)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*rem)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*rem)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*rem)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

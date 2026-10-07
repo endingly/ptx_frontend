@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -249,14 +248,14 @@ TEST(RegisterTypePolicy, WideIntegerFundamentalMatrixIsMetamorphic) {
       SCOPED_TRACE(mul_source);
       const auto mul = resolveSingleInstruction(mul_source);
       ASSERT_TRUE(mul);
-      expectAccepted((*mul)->check( kContext));
+      expectAccepted((*mul)->check(kContext));
 
       const std::string mad_source =
           wideMadSource(destination.spelling, multiplicand.spelling);
       SCOPED_TRACE(mad_source);
       const auto mad = resolveSingleInstruction(mad_source);
       ASSERT_TRUE(mad);
-      expectAccepted((*mad)->check( kContext));
+      expectAccepted((*mad)->check(kContext));
     }
   }
 }
@@ -267,36 +266,28 @@ TEST(RegisterTypePolicy, WideArithmeticRejectsWidthsAndCategoriesAtOperands) {
   const auto wide_multiplicand_instruction =
       resolveSingleInstruction(wide_multiplicand);
   ASSERT_TRUE(wide_multiplicand_instruction);
-  expectTypeMismatch(
-      (*wide_multiplicand_instruction)->check(
-                     kContext),
-      occurrenceRange(wide_multiplicand, "%src1", 2));
+  expectTypeMismatch((*wide_multiplicand_instruction)->check(kContext),
+                     occurrenceRange(wide_multiplicand, "%src1", 2));
 
   const std::string float_multiplicand = wideMadSource("u64", "f32", "u32");
   const auto float_multiplicand_instruction =
       resolveSingleInstruction(float_multiplicand);
   ASSERT_TRUE(float_multiplicand_instruction);
-  expectTypeMismatch(
-      (*float_multiplicand_instruction)->check(
-                     kContext),
-      occurrenceRange(float_multiplicand, "%src1", 2));
+  expectTypeMismatch((*float_multiplicand_instruction)->check(kContext),
+                     occurrenceRange(float_multiplicand, "%src1", 2));
 
   const std::string narrow_result = wideMadSource("u32", "u32", "u32", "u64");
   const auto narrow_result_instruction =
       resolveSingleInstruction(narrow_result);
   ASSERT_TRUE(narrow_result_instruction);
-  expectTypeMismatch(
-      (*narrow_result_instruction)->check(
-                     kContext),
-      occurrenceRange(narrow_result, "%dst", 2));
+  expectTypeMismatch((*narrow_result_instruction)->check(kContext),
+                     occurrenceRange(narrow_result, "%dst", 2));
 
   const std::string float_result = wideMulSource("f64", "u32");
   const auto float_result_instruction = resolveSingleInstruction(float_result);
   ASSERT_TRUE(float_result_instruction);
-  expectTypeMismatch(
-      (*float_result_instruction)->check(
-                     kContext),
-      occurrenceRange(float_result, "%dst", 2));
+  expectTypeMismatch((*float_result_instruction)->check(kContext),
+                     occurrenceRange(float_result, "%dst", 2));
 }
 
 /** Bit containers are valid ordinary operands, including scalar floating MAD. */
@@ -306,35 +297,34 @@ TEST(RegisterTypePolicy, BitContainersWorkForOrdinaryArithmeticAndBitCounts) {
       "%f2, %f3; }";
   const auto mad = resolveSingleInstruction(source);
   ASSERT_TRUE(mad);
-  expectAccepted((*mad)->check( kContext));
+  expectAccepted((*mad)->check(kContext));
 
   constexpr std::string_view popc_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s32 %src; popc.b32 %dst, %src; "
       "}";
   const auto popc = resolveSingleInstruction(popc_source);
   ASSERT_TRUE(popc);
-  expectAccepted((*popc)->check( kContext));
+  expectAccepted((*popc)->check(kContext));
 
   constexpr std::string_view clz32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src; clz.b32 %dst, %src; }";
   const auto clz32 = resolveSingleInstruction(clz32_source);
   ASSERT_TRUE(clz32);
-  expectAccepted((*clz32)->check( kContext));
+  expectAccepted((*clz32)->check(kContext));
 
   constexpr std::string_view clz64_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s64 %src; clz.b64 %dst, %src; }";
   const auto clz64 = resolveSingleInstruction(clz64_source);
   ASSERT_TRUE(clz64);
-  expectAccepted((*clz64)->check( kContext));
+  expectAccepted((*clz64)->check(kContext));
 
   constexpr std::string_view wrong_result =
       ".entry kernel() { .reg .u64 %dst; .reg .b32 %src; popc.b32 %dst, %src; "
       "}";
   const auto rejected = resolveSingleInstruction(wrong_result);
   ASSERT_TRUE(rejected);
-  expectTypeMismatch(
-      (*rejected)->check( kContext),
-      occurrenceRange(wrong_result, "%dst", 2));
+  expectTypeMismatch((*rejected)->check(kContext),
+                     occurrenceRange(wrong_result, "%dst", 2));
 }
 
 /** A target-bearing multi-instruction kernel retains the same wide-multiply contract. */
@@ -375,35 +365,35 @@ TEST(RegisterTypePolicy, OtherOrdinaryPatternsUseFundamentalCompatibility) {
       "}";
   const auto bfind = resolveSingleInstruction(bfind_source);
   ASSERT_TRUE(bfind);
-  expectAccepted((*bfind)->check( kContext));
+  expectAccepted((*bfind)->check(kContext));
 
   constexpr std::string_view bfe_source =
       ".entry kernel() { .reg .b32 %dst; .reg .s32 %src; bfe.u32 %dst, %src, "
       "0, 8; }";
   const auto bfe = resolveSingleInstruction(bfe_source);
   ASSERT_TRUE(bfe);
-  expectAccepted((*bfe)->check( kContext));
+  expectAccepted((*bfe)->check(kContext));
 
   constexpr std::string_view div_source =
       ".entry kernel() { .reg .b64 %dst, %src1, %src2; div.rn.f64 %dst, %src1, "
       "%src2; }";
   const auto div = resolveSingleInstruction(div_source);
   ASSERT_TRUE(div);
-  expectAccepted((*div)->check( kContext));
+  expectAccepted((*div)->check(kContext));
 
   constexpr std::string_view min_source =
       ".entry kernel() { .reg .b32 %dst, %src1, %src2; min.NaN.f32 %dst, "
       "%src1, %src2; }";
   const auto min = resolveSingleInstruction(min_source);
   ASSERT_TRUE(min);
-  expectAccepted((*min)->check( kContext));
+  expectAccepted((*min)->check(kContext));
 
   constexpr std::string_view max_source =
       ".entry kernel() { .reg .b32 %dst, %src1, %src2; max.NaN.f32 %dst, "
       "%src1, %src2; }";
   const auto max = resolveSingleInstruction(max_source);
   ASSERT_TRUE(max);
-  expectAccepted((*max)->check( kContext));
+  expectAccepted((*max)->check(kContext));
 }
 
 /** Packed bfloat FMA still requires its exact b16 storage container. */
@@ -413,7 +403,7 @@ TEST(RegisterTypePolicy, PackedBfloatStorageRemainsExact) {
       "fma.rn.bf16 %dst, %src1, %src2, %src3; }";
   const auto fma = resolveSingleInstruction(source);
   ASSERT_TRUE(fma);
-  expectTypeMismatch((*fma)->check( kContext),
+  expectTypeMismatch((*fma)->check(kContext),
                      occurrenceRange(source, "%src1", 2));
 }
 
@@ -424,57 +414,52 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
       "%src; }";
   const auto neg = resolveSingleInstruction(neg_source);
   ASSERT_TRUE(neg);
-  expectAccepted((*neg)->check( kContext));
+  expectAccepted((*neg)->check(kContext));
 
   constexpr std::string_view native_neg_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src; neg.f16x2 %dst, "
       "%src; }";
   const auto native_neg = resolveSingleInstruction(native_neg_source);
   ASSERT_TRUE(native_neg);
-  expectTypeMismatch(
-      (*native_neg)->check( kContext),
-      occurrenceRange(native_neg_source, "%dst", 2));
+  expectTypeMismatch((*native_neg)->check(kContext),
+                     occurrenceRange(native_neg_source, "%dst", 2));
 
   constexpr std::string_view cvt_f16x2_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src1, %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto cvt_f16x2 = resolveSingleInstruction(cvt_f16x2_source);
   ASSERT_TRUE(cvt_f16x2);
-  expectAccepted(
-      (*cvt_f16x2)->check( kContext));
+  expectAccepted((*cvt_f16x2)->check(kContext));
 
   constexpr std::string_view cvt_b32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .f32 %src1, %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto cvt_b32 = resolveSingleInstruction(cvt_b32_source);
   ASSERT_TRUE(cvt_b32);
-  expectAccepted((*cvt_b32)->check( kContext));
+  expectAccepted((*cvt_b32)->check(kContext));
 
   constexpr std::string_view wrong_destination =
       ".entry kernel() { .reg .u32 %dst; .reg .f32 %src1, %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto rejected_destination = resolveSingleInstruction(wrong_destination);
   ASSERT_TRUE(rejected_destination);
-  expectTypeMismatch(
-      (*rejected_destination)->check( kContext),
-      occurrenceRange(wrong_destination, "%dst", 2));
+  expectTypeMismatch((*rejected_destination)->check(kContext),
+                     occurrenceRange(wrong_destination, "%dst", 2));
 
   constexpr std::string_view wrong_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src1; .reg .f32 %src2; "
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto rejected_source = resolveSingleInstruction(wrong_source);
   ASSERT_TRUE(rejected_source);
-  expectTypeMismatch(
-      (*rejected_source)->check( kContext),
-      occurrenceRange(wrong_source, "%src1", 2));
+  expectTypeMismatch((*rejected_source)->check(kContext),
+                     occurrenceRange(wrong_source, "%src1", 2));
 
   constexpr std::string_view cvt_f32_s32_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src; cvt.rn.f32.s32 %dst, "
       "%src; }";
   const auto cvt_f32_s32 = resolveSingleInstruction(cvt_f32_s32_source);
   ASSERT_TRUE(cvt_f32_s32);
-  expectAccepted(
-      (*cvt_f32_s32)->check( kContext));
+  expectAccepted((*cvt_f32_s32)->check(kContext));
 }
 
 /** Generated metadata distinguishes ordinary compatibility from packed exact storage. */
@@ -486,8 +471,7 @@ TEST(RegisterTypePolicy, GeneratedDescriptorsExposeTheWidthPolicy) {
   expectBindingPolicy(popc_resolved_descriptor(), "B32", same_width);
   expectBindingPolicy(clz_resolved_descriptor(), "B32", same_width);
   expectBindingPolicy(clz_resolved_descriptor(), "B64", same_width);
-  expectBindingPolicy(bfind_resolved_descriptor(), "ShiftamtU32",
-                      same_width);
+  expectBindingPolicy(bfind_resolved_descriptor(), "ShiftamtU32", same_width);
   expectBindingPolicy(bfe_resolved_descriptor(), "U32", same_width);
   expectBindingPolicy(div_resolved_descriptor(), "RnF32", same_width);
   expectBindingPolicy(div_resolved_descriptor(), "RnF64", same_width);

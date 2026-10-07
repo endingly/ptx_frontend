@@ -1,15 +1,13 @@
 #include <gtest/gtest.h>
 
-
 #include <string>
 #include <utility>
-#include <vector>
 #include <variant>
+#include <vector>
 
 #include <ptx_frontend/resolved_ir/model/control_flow/brx.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
-
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -48,8 +46,8 @@ TEST(BranchTargetRepetition, PreservesExplicitAndCompactSequences) {
 
     const auto& syntax_function =
         std::get<syntax_ast::AstFunction>(ast->items.back());
-    const auto& table = std::get<syntax_ast::AstBranchTargets>(
-        syntax_function.body[1]);
+    const auto& table =
+        std::get<syntax_ast::AstBranchTargets>(syntax_function.body[1]);
     // Expand only in this assertion: the public AST retains compact entries.
     std::vector<std::string> expanded;
     std::string retained_entries;

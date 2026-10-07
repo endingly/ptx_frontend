@@ -25,13 +25,13 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected = select_variant_name(parse_instruction(source), mapa_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              mapa_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("mapa.shared::cluster.u32 %r0, %r1, 0;",
-                 "SharedCluster");
+  expect_variant("mapa.shared::cluster.u32 %r0, %r1, 0;", "SharedCluster");
   expect_variant("mapa.shared::cluster.u64 %rd0, shared_value+4, %r0;",
                  "SharedCluster");
   expect_variant("mapa.u32 %r0, %r1, 0;", "Generic");
@@ -43,7 +43,9 @@ TEST(SelectVariantMapa, SelectsSharedClusterAndGenericForms) {
            "mapa.shared::cluster.u32.u64 %r0, %r1, 0;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), mapa_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), mapa_syntax_descriptor())
+            .has_value());
   }
   EXPECT_FALSE(
       resolveMapa(parse_instruction("mapa.shared::cluster.u32 %r0, %r1;"))

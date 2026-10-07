@@ -43,7 +43,9 @@ TEST(ResolveNeg, RejectsInvalidForms) {
   for (const auto source : {"neg.ftz.f64 %f0, %f1;", "neg.ftz.bf16x2 %r0, %r1;",
                             "neg.sat.s32 %r0, %r1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), neg_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), neg_syntax_descriptor())
+            .has_value());
   }
 }
 
@@ -61,14 +63,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedNegAvailability) {
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
     const auto neg = resolveNeg(*ast);
     ASSERT_TRUE(neg.has_value()) << neg.error().message;
-    const auto old_ptx =
-        (*neg)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*neg)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        (*neg)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*neg)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -78,20 +81,23 @@ TEST(ResolvedIrChecker, ChecksGeneratedNegAvailability) {
   ASSERT_TRUE(packed_ast.has_value()) << packed_ast.diagnostics.front().message;
   const auto packed = resolveNeg(*packed_ast);
   ASSERT_TRUE(packed.has_value()) << packed.error().message;
-  const auto old_ptx = (*packed)->check( Context{.target = {.ptx_version = {5, 9}, .sm_version = 53},
-                       .instruction_range = packed_ast->range});
+  const auto old_ptx = (*packed)->check(
+      Context{.target = {.ptx_version = {5, 9}, .sm_version = 53},
+              .instruction_range = packed_ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm = (*packed)->check( Context{.target = {.ptx_version = {6, 0}, .sm_version = 52},
-                       .instruction_range = packed_ast->range});
+  const auto old_sm = (*packed)->check(
+      Context{.target = {.ptx_version = {6, 0}, .sm_version = 52},
+              .instruction_range = packed_ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE((*packed)->check(
-                    Context{.target = {.ptx_version = {6, 0}, .sm_version = 53},
-                            .instruction_range = packed_ast->range})
-                  .has_value());
+  EXPECT_TRUE(
+      (*packed)
+          ->check(Context{.target = {.ptx_version = {6, 0}, .sm_version = 53},
+                          .instruction_range = packed_ast->range})
+          .has_value());
 }
 
 }  // namespace

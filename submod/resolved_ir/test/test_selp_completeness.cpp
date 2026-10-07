@@ -89,13 +89,11 @@ TEST(SelpCompleteness, PreservesPredicateSourceTruthValues) {
     const auto resolved = resolveSelp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto* u32 = dynamic_cast<const SelpU32*>(resolved->get());
-    const auto& predicate = u32 ? u32->predicate.value
-                                : dynamic_cast<const SelpScalar&>(**resolved)
-                                      .predicate.value;
-    ASSERT_TRUE(std::holds_alternative<ResolvedPredicateConstant>(
-        predicate));
-    EXPECT_EQ(std::get<ResolvedPredicateConstant>(predicate).value,
-              expected);
+    const auto& predicate =
+        u32 ? u32->predicate.value
+            : dynamic_cast<const SelpScalar&>(**resolved).predicate.value;
+    ASSERT_TRUE(std::holds_alternative<ResolvedPredicateConstant>(predicate));
+    EXPECT_EQ(std::get<ResolvedPredicateConstant>(predicate).value, expected);
   }
 
   const auto parsed =
@@ -127,8 +125,7 @@ TEST(SelpCompleteness, RejectsWrongSourceImmediateAndPredicate) {
   .reg .f32 %f;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -144,9 +141,9 @@ TEST(SelpCompleteness, GatesOnlyF64AtSm13) {
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE((*resolved)->check(
-                             checker::Context{.target = {.ptx_version = {1, 0},
-                                                         .sm_version = 13}})
+  EXPECT_TRUE((*resolved)
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {1, 0}, .sm_version = 13}})
                   .has_value());
 
   const auto f32_parsed =
@@ -154,10 +151,10 @@ TEST(SelpCompleteness, GatesOnlyF64AtSm13) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(f32_parsed);
   const auto f32 = resolveSelp(*f32_parsed);
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  EXPECT_TRUE(
-      (*f32)->check( checker::Context{.target = {.ptx_version = {1, 0},
-                                                       .sm_version = 0}})
-          .has_value());
+  EXPECT_TRUE((*f32)
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
 }
 
 /** Public IR revalidation rejects a type outside the selected scalar domain. */
@@ -189,12 +186,11 @@ TEST(SelpCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
   const auto& variant = dynamic_cast<const SelpScalar&>(*owned);
   EXPECT_EQ(variant.type.value, ScalarType::F64);
   EXPECT_FALSE(
-      std::get<ResolvedPredicateConstant>(variant.predicate.value)
-          .value);
-  EXPECT_TRUE(
-      owned->check( checker::Context{.target = {.ptx_version = {9, 3},
-                                                         .sm_version = 100}})
-          .has_value());
+      std::get<ResolvedPredicateConstant>(variant.predicate.value).value);
+  EXPECT_TRUE(owned
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {9, 3}, .sm_version = 100}})
+                  .has_value());
 }
 
 }  // namespace

@@ -26,8 +26,7 @@ TEST(ResolveLg2, SelectsFrozenApproxVariant) {
   const auto resolved =
       resolveLg2(parse_instruction("lg2.approx.ftz.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(dynamic_cast<Lg2ApproxF32*>(resolved->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<Lg2ApproxF32*>(resolved->get()), nullptr);
   EXPECT_EQ(Lg2ApproxF32::type, ScalarType::F32);
   EXPECT_TRUE(Lg2ApproxF32::approx);
 }
@@ -37,7 +36,9 @@ TEST(ResolveLg2, RejectsInvalidForms) {
        {"lg2.f32 %f0, %f1;", "lg2.approx.f64 %d0, %d1;",
         "lg2.approx.f32x2 %f0, %f1;", "lg2.approx.sat.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), lg2_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), lg2_syntax_descriptor())
+            .has_value());
   }
 }
 

@@ -50,23 +50,17 @@ TEST(DivCompleteness, ResolvesExplicitFloatingModesAndOperands) {
   const auto& rn_f32 = dynamic_cast<const DivRnF32&>(*body[2]);
   EXPECT_TRUE(rn_f32.ftz.value);
   EXPECT_EQ(DivRnF32::rounding, RoundingMode::Rn);
-  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[3])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[3]).rounding.value,
             RoundingMode::Rz);
-  EXPECT_TRUE(dynamic_cast<const DivDirectedF32&>(*body[4])
-                  .ftz.value);
-  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[5])
-                .rounding.value,
+  EXPECT_TRUE(dynamic_cast<const DivDirectedF32&>(*body[4]).ftz.value);
+  EXPECT_EQ(dynamic_cast<const DivDirectedF32&>(*body[5]).rounding.value,
             RoundingMode::Rp);
   EXPECT_EQ(DivRnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[7])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[7]).rounding.value,
             RoundingMode::Rz);
-  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[8])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[8]).rounding.value,
             RoundingMode::Rm);
-  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[9])
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const DivDirectedF64&>(*body[9]).rounding.value,
             RoundingMode::Rp);
 }
 

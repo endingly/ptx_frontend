@@ -74,7 +74,7 @@ TEST(ResolveInstruction, DispatchesByOpcodeIntoGeneratedVariant) {
   const auto add_ast = parse_instruction("add.u32 %r0, %r1, %r2;");
   const auto add = resolveInstruction(add_ast);
   ASSERT_TRUE(add.has_value()) << add.error().message;
-EXPECT_NE(dynamic_cast<const AddIntegerNoSat*>(add->get()), nullptr);
+  EXPECT_NE(dynamic_cast<const AddIntegerNoSat*>(add->get()), nullptr);
 
   const auto sub_ast = parse_instruction("sub.u32 %r0, %r1, %r2;");
   const auto sub = resolveInstruction(sub_ast);
@@ -129,7 +129,8 @@ EXPECT_NE(dynamic_cast<const AddIntegerNoSat*>(add->get()), nullptr);
   const auto setp_ast = parse_instruction("setp.lt.u32 %p0, %r0, %r1;");
   const auto setp_instruction = resolveInstruction(setp_ast);
   ASSERT_TRUE(setp_instruction.has_value()) << setp_instruction.error().message;
-  EXPECT_NE(dynamic_cast<const SetpUnsigned*>(setp_instruction->get()), nullptr);
+  EXPECT_NE(dynamic_cast<const SetpUnsigned*>(setp_instruction->get()),
+            nullptr);
 
   const auto selp_ast = parse_instruction("selp.u32 %r0, %r1, %r2, %p0;");
   const auto selp_instruction = resolveInstruction(selp_ast);
@@ -144,7 +145,8 @@ EXPECT_NE(dynamic_cast<const AddIntegerNoSat*>(add->get()), nullptr);
   const auto ld_ast = parse_instruction("ld.global.u32 %r0, [%rd1];");
   const auto ld_instruction = resolveInstruction(ld_ast);
   ASSERT_TRUE(ld_instruction.has_value()) << ld_instruction.error().message;
-  EXPECT_NE(dynamic_cast<const LdExplicitScalar*>(ld_instruction->get()), nullptr);
+  EXPECT_NE(dynamic_cast<const LdExplicitScalar*>(ld_instruction->get()),
+            nullptr);
 }
 
 TEST(ResolveInstruction, RejectsUnknownOpcode) {
@@ -174,10 +176,10 @@ TEST(ResolveCpAsyncStandalone, DefersUnambiguousControlRegisterTypes) {
   const auto size = resolveInstruction(
       parse_instruction("cp.async.ca.shared.global [%r0], [%rd0], 4, %r1;"));
   ASSERT_TRUE(size.has_value()) << size.error().message;
-  const auto& size_copy = dynamic_cast<const CpAsyncCaSharedGlobalControl&>(**size);
+  const auto& size_copy =
+      dynamic_cast<const CpAsyncCaSharedGlobalControl&>(**size);
   const auto& size_control = size_copy.source_control.value;
-  const auto& size_register =
-      std::get<ResolvedRegisterRef>(size_control);
+  const auto& size_register = std::get<ResolvedRegisterRef>(size_control);
   EXPECT_FALSE(size_register.declared_type.has_value());
   EXPECT_FALSE(size_register.symbol_id.has_value());
   EXPECT_TRUE(size_copy.check(context).has_value());
@@ -185,33 +187,35 @@ TEST(ResolveCpAsyncStandalone, DefersUnambiguousControlRegisterTypes) {
   const auto predicate = resolveInstruction(
       parse_instruction("cp.async.ca.shared.global [%r0], [%rd0], 4, %p0;"));
   ASSERT_TRUE(predicate.has_value()) << predicate.error().message;
-  const auto& predicate_copy = dynamic_cast<const CpAsyncCaSharedGlobalControl&>(**predicate);
+  const auto& predicate_copy =
+      dynamic_cast<const CpAsyncCaSharedGlobalControl&>(**predicate);
   const auto& predicate_control = predicate_copy.source_control.value;
-  const auto& ignore =
-      std::get<ResolvedPredicate>(predicate_control);
+  const auto& ignore = std::get<ResolvedPredicate>(predicate_control);
   EXPECT_FALSE(ignore.register_ref.declared_type.has_value());
   EXPECT_FALSE(ignore.register_ref.symbol_id.has_value());
   EXPECT_TRUE(predicate_copy.check(context).has_value());
-  EXPECT_FALSE(predicate_copy.check(
-                              checker::Context{.target = {.ptx_version = {7, 4},
-                                                          .sm_version = 80}})
+  EXPECT_FALSE(predicate_copy
+                   .check(checker::Context{
+                       .target = {.ptx_version = {7, 4}, .sm_version = 80}})
                    .has_value());
 
   const auto policy = resolveInstruction(parse_instruction(
       "cp.async.ca.shared.global.L2::cache_hint [%r0], [%rd0], 4, 0, %rd1;"));
   ASSERT_TRUE(policy.has_value()) << policy.error().message;
-  const auto& policy_copy = dynamic_cast<const CpAsyncCaSharedGlobalCacheHintControlPolicy&>(**policy);
+  const auto& policy_copy =
+      dynamic_cast<const CpAsyncCaSharedGlobalCacheHintControlPolicy&>(
+          **policy);
   const auto& policy_register = policy_copy.cache_policy.value;
   EXPECT_FALSE(policy_register.declared_type.has_value());
   EXPECT_FALSE(policy_register.symbol_id.has_value());
   EXPECT_TRUE(policy_copy.check(context).has_value());
-  EXPECT_FALSE(policy_copy.check(
-                              checker::Context{.target = {.ptx_version = {7, 3},
-                                                          .sm_version = 80}})
+  EXPECT_FALSE(policy_copy
+                   .check(checker::Context{
+                       .target = {.ptx_version = {7, 3}, .sm_version = 80}})
                    .has_value());
-  EXPECT_FALSE(policy_copy.check(
-                              checker::Context{.target = {.ptx_version = {9, 3},
-                                                          .sm_version = 75}})
+  EXPECT_FALSE(policy_copy
+                   .check(checker::Context{
+                       .target = {.ptx_version = {9, 3}, .sm_version = 75}})
                    .has_value());
 }
 

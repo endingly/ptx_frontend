@@ -95,16 +95,16 @@ TEST(SlctCompleteness, AcceptsNumericDataAndSelectorImmediates) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
   const auto& integer = dynamic_cast<const SlctS32&>(*body[0]);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      integer.src_true.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      integer.selector.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(integer.src_true.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(integer.selector.value));
   const auto& floating = dynamic_cast<const SlctF32&>(*body[1]);
   EXPECT_TRUE(floating.ftz.value);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      floating.src_false.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      floating.selector.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.src_false.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
 }
 
 /** Reject unsupported data/selector suffixes and FTZ on integer selection. */
@@ -180,8 +180,7 @@ TEST(SlctCompleteness, RejectsWrongTypedImmediates) {
   .reg .s32 %c;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        resolveAndValidateModule(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -196,12 +195,18 @@ TEST(SlctCompleteness, EnforcesPtxAndF64SmMinimum) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
     auto resolved = resolveSlct(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_FALSE((*resolved)->check(checker::Context{
-        .target = {.ptx_version = {0, 9}, .sm_version = 13}}).has_value());
-    EXPECT_FALSE((*resolved)->check(checker::Context{
-        .target = {.ptx_version = {1, 0}, .sm_version = 12}}).has_value());
-    EXPECT_TRUE((*resolved)->check(checker::Context{
-        .target = {.ptx_version = {1, 0}, .sm_version = 13}}).has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {0, 9}, .sm_version = 13}})
+                     .has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {1, 0}, .sm_version = 12}})
+                     .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{
+                        .target = {.ptx_version = {1, 0}, .sm_version = 13}})
+                    .has_value());
   }
 }
 
@@ -220,18 +225,17 @@ TEST(SlctCompleteness, RevalidatesOwnedAndMutatedInstruction) {
   auto& floating = dynamic_cast<SlctF32&>(*owned);
   EXPECT_TRUE(floating.ftz.value);
   EXPECT_EQ(floating.dtype.value, ScalarType::U32);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      floating.src_true.value));
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      floating.selector.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.src_true.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
   EXPECT_TRUE(owned->check(context).has_value());
   floating.dtype.value = ScalarType::F16;
   EXPECT_FALSE(owned->check(context).has_value());
   floating.dtype.value = ScalarType::U32;
-  std::get<ResolvedImmediate>(floating.selector.value).type =
-      ScalarType::S32;
+  std::get<ResolvedImmediate>(floating.selector.value).type = ScalarType::S32;
   EXPECT_FALSE(owned->check(context).has_value());
 }
 

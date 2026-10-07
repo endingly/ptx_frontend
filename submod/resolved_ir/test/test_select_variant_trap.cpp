@@ -32,8 +32,7 @@ TEST(ResolveTrap, SelectsBareAndPredicatedVariantsAndRejectsInvalidSyntax) {
   const auto predicated_ast = parse_instruction("@%p0 trap;");
   const auto predicated = resolveTrap(predicated_ast);
   ASSERT_TRUE(predicated.has_value()) << predicated.error().message;
-  EXPECT_TRUE(
-      (dynamic_cast<TrapBare*>(predicated->get()) != nullptr));
+  EXPECT_TRUE((dynamic_cast<TrapBare*>(predicated->get()) != nullptr));
   EXPECT_TRUE((*predicated)->execution_predicate.has_value());
 
   const auto modifier_ast = parse_instruction("trap.uni;");
@@ -68,7 +67,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareTrapAvailability) {
       .target = {.ptx_version = {0, 9}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  const auto unavailable = (*trap)->check( old_target);
+  const auto unavailable = (*trap)->check(old_target);
   ASSERT_FALSE(unavailable.has_value());
   ASSERT_EQ(unavailable.error().size(), 1u);
   EXPECT_EQ(unavailable.error().front().kind,
@@ -79,7 +78,7 @@ TEST(ResolvedIrChecker, ChecksGeneratedBareTrapAvailability) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*trap)->check( supported_target).has_value());
+  EXPECT_TRUE((*trap)->check(supported_target).has_value());
 }
 
 }  // namespace

@@ -57,8 +57,8 @@ TEST(ResolveLoadStore, ChecksMemoryConsistencyCrossRules) {
   EXPECT_EQ(canonical_relaxed_local_check.error().back().kind,
             checker::CheckDiagnosticKind::MemoryConsistencyViolation);
 
-  const auto canonical_cache = resolveLd(
-      parse_instruction("ld.relaxed.cta.global.ca.u32 %r0, [%rd0];"));
+  const auto canonical_cache =
+      resolveLd(parse_instruction("ld.relaxed.cta.global.ca.u32 %r0, [%rd0];"));
   ASSERT_TRUE(canonical_cache.has_value()) << canonical_cache.error().message;
   const auto canonical_cache_check = (*canonical_cache)->check(context);
   ASSERT_FALSE(canonical_cache_check.has_value());
@@ -98,14 +98,18 @@ TEST(ResolveLd, SelectsM12GlobalNcL1NoAllocateAndRejectsUnfrozenForms) {
            "ld.global.nc.L1::no_allocate.b32 %r0, [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_TRUE(select_variant_name(parse_instruction(source), ld_syntax_descriptor()).has_value());
+    EXPECT_TRUE(
+        select_variant_name(parse_instruction(source), ld_syntax_descriptor())
+            .has_value());
   }
   for (const auto source : {
            "ld.global.nc.L2::evict_first.u32 %r0, [%rd0];",
            "ld.global.ca.nc.L1::no_allocate.u32 %r0, [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), ld_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), ld_syntax_descriptor())
+            .has_value());
   }
 }
 

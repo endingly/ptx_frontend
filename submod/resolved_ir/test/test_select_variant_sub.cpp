@@ -37,29 +37,25 @@ TEST(SelectVariantSub, SelectsEveryGeneratedVariant) {
   expect_variant("sub.sat.s32 %r0, %r1, %r2;", "OptionalSat");
   expect_variant("sub.u8x4 %r0, %r1, %r2;", "OptionalSat");
   expect_variant("sub.sat.s8x4 %r0, %r1, %r2;", "OptionalSat");
-  expect_variant("sub.rz.ftz.sat.f32 %f0, %f1, %f2;",
-                 "FloatF32");
+  expect_variant("sub.rz.ftz.sat.f32 %f0, %f1, %f2;", "FloatF32");
   expect_variant("sub.rp.f32x2 %r0, %r1, %r2;", "FloatF32x2");
   expect_variant("sub.rm.f64 %fd0, %fd1, %fd2;", "FloatF64");
   expect_variant("sub.rn.ftz.sat.f16x2 %r0, %r1, %r2;", "Half");
   expect_variant("sub.bf16 %r0, %r1, %r2;", "Bfloat");
   expect_variant("sub.f32.f16 %f0, %h1, %f2;", "MixedF32");
-  expect_variant("sub.rz.f32.bf16.sat %f0, %h1, %f2;",
-                 "MixedF32");
+  expect_variant("sub.rz.f32.bf16.sat %f0, %h1, %f2;", "MixedF32");
 }
 
 TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
   const auto integer_ast = parse_instruction("sub.sat.s32 %r4, %r5, -1;");
   const auto integer_resolved = resolveSub(integer_ast);
   ASSERT_TRUE(integer_resolved.has_value()) << integer_resolved.error().message;
-  const auto* integer =
-      dynamic_cast<SubOptionalSat*>(integer_resolved->get());
+  const auto* integer = dynamic_cast<SubOptionalSat*>(integer_resolved->get());
   ASSERT_NE(integer, nullptr);
   EXPECT_TRUE(integer->saturate.value);
   ASSERT_EQ(integer->saturate.locs.size(), 1U);
   EXPECT_EQ(integer->type.value, ScalarType::S32);
-  const auto* immediate =
-      std::get_if<ResolvedImmediate>(&integer->src2.value);
+  const auto* immediate = std::get_if<ResolvedImmediate>(&integer->src2.value);
   ASSERT_NE(immediate, nullptr);
   EXPECT_EQ(immediate->type, ScalarType::S32);
 
@@ -67,15 +63,13 @@ TEST(ResolveSub, BuildsIntegerAndMixedPrecisionVariants) {
       parse_instruction("sub.rz.f32.bf16.sat %f0, %h1, %f2;");
   const auto mixed_resolved = resolveSub(mixed_ast);
   ASSERT_TRUE(mixed_resolved.has_value()) << mixed_resolved.error().message;
-  const auto* mixed =
-      dynamic_cast<SubMixedF32*>(mixed_resolved->get());
+  const auto* mixed = dynamic_cast<SubMixedF32*>(mixed_resolved->get());
   ASSERT_NE(mixed, nullptr);
   EXPECT_EQ(mixed->rounding.value, RoundingMode::Rz);
   EXPECT_EQ(SubMixedF32::result_type, ScalarType::F32);
   EXPECT_EQ(mixed->input_type.value, ScalarType::BF16);
   EXPECT_TRUE(mixed->saturate.value);
-  EXPECT_EQ(std::get<ResolvedRegisterRef>(mixed->subtrahend.value)
-                .spelling,
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(mixed->subtrahend.value).spelling,
             "%f2");
 }
 
@@ -92,8 +86,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
 
   const auto resolved = resolveSub(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(dynamic_cast<SubOptionalSat*>(resolved->get()),
-            nullptr);
+  ASSERT_NE(dynamic_cast<SubOptionalSat*>(resolved->get()), nullptr);
 
   constexpr std::array<std::string_view, 1> family{"sm_120f"};
   const Context unsupported_context{
@@ -102,7 +95,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
                  .enabled_family_features = family},
       .instruction_range = ast->range,
   };
-  const auto unsupported = (*resolved)->check( unsupported_context);
+  const auto unsupported = (*resolved)->check(unsupported_context);
   ASSERT_FALSE(unsupported.has_value());
   ASSERT_EQ(unsupported.error().size(), 2U);
   EXPECT_EQ(unsupported.error()[0].kind,
@@ -116,7 +109,7 @@ TEST(ResolvedIrChecker, GeneratedSubWrapperUsesValueAvailability) {
                  .enabled_family_features = family},
       .instruction_range = ast->range,
   };
-  EXPECT_TRUE((*resolved)->check( supported_context).has_value());
+  EXPECT_TRUE((*resolved)->check(supported_context).has_value());
 }
 
 }  // namespace

@@ -25,7 +25,8 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected = select_variant_name(parse_instruction(source), cp_syntax_descriptor());
+    const auto selected =
+        select_variant_name(parse_instruction(source), cp_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -49,7 +50,9 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
            "cp.async.mbarrier.arrive.b64.noinc [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), cp_syntax_descriptor()).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), cp_syntax_descriptor())
+            .has_value());
   }
   EXPECT_FALSE(
       resolveCp(parse_instruction("cp.async.mbarrier.arrive.b64 [%rd0], 1;"))
@@ -58,16 +61,19 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
 
 TEST(SelectVariantCp, SeparatesOriginalAndSourceControlledCopyByArity) {
   const auto original = select_variant_name(
-      parse_instruction("cp.async.ca.shared.global [dst], [src], 4;"), cp_syntax_descriptor());
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4;"),
+      cp_syntax_descriptor());
   ASSERT_TRUE(original.has_value());
   EXPECT_EQ(*original, "AsyncCaSharedGlobal");
   const auto extended = select_variant_name(
-      parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2;"), cp_syntax_descriptor());
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2;"),
+      cp_syntax_descriptor());
   ASSERT_TRUE(extended.has_value());
   EXPECT_EQ(*extended, "AsyncCaSharedGlobalControl");
   EXPECT_FALSE(
       select_variant_name(
-          parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2, 1;"), cp_syntax_descriptor())
+          parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2, 1;"),
+          cp_syntax_descriptor())
           .has_value());
 }
 

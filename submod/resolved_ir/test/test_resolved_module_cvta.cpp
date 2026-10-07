@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include <variant>
 
-
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -29,12 +28,11 @@ TEST(ResolveCvta, ResolvesForwardSymbolAndOffsetSources) {
   ASSERT_EQ(body.size(), 2u);
 
   const auto& direct_variant = dynamic_cast<const CvtaGlobalU64&>(*body[0]);
-  EXPECT_TRUE(std::holds_alternative<ResolvedSymbolRef>(
-      direct_variant.src.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedSymbolRef>(direct_variant.src.value));
 
   const auto& offset_variant = dynamic_cast<const CvtaGlobalU64&>(*body[1]);
-  const auto* address =
-      std::get_if<ResolvedAddress>(&offset_variant.src.value);
+  const auto* address = std::get_if<ResolvedAddress>(&offset_variant.src.value);
   ASSERT_NE(address, nullptr);
   EXPECT_TRUE(std::holds_alternative<ResolvedSymbolRef>(address->base));
 }

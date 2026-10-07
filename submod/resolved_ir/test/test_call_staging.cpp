@@ -10,7 +10,6 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-
 namespace ptx_frontend::resolved_ir {
 namespace {
 
@@ -83,10 +82,14 @@ TEST(CallStaging, PreservesCallsAcrossOrdinaryDeclarations) {
     ASSERT_EQ(module->functions.size(), 2u);
     const auto& function = module->functions.back();
     ASSERT_EQ(function.body.size(), 5u);
-    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[0].get()) != nullptr);
-    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[1].get()) != nullptr);
-    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[3].get()) != nullptr);
-    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[4].get()) != nullptr);
+    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[0].get()) !=
+                nullptr);
+    EXPECT_TRUE(dynamic_cast<const StExplicitScalar*>(function.body[1].get()) !=
+                nullptr);
+    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[3].get()) !=
+                nullptr);
+    EXPECT_TRUE(dynamic_cast<const LdExplicitScalar*>(function.body[4].get()) !=
+                nullptr);
     const auto* call = dynamic_cast<const CallDirect*>(function.body[2].get());
     ASSERT_NE(call, nullptr);
     ASSERT_TRUE(call->return_value.has_value());
@@ -165,8 +168,7 @@ TEST(CallStaging, RejectsPredicationAcrossDeclarations) {
         "ld.param.b32 %r1, [result];";
     const auto ast = parseCallModule(body);
     ASSERT_TRUE(ast);
-    const auto& function =
-        std::get<syntax_ast::AstFunction>(ast->items.back());
+    const auto& function = std::get<syntax_ast::AstFunction>(ast->items.back());
     std::optional<SourceRange> predicate_range;
     for (const auto& item : function.body) {
       if (const auto* instruction =
@@ -215,9 +217,8 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   ASSERT_TRUE(call.return_value->value.symbol_id);
   EXPECT_NE(call.return_value->value.symbol_id, outer->symbol);
   const auto& load = dynamic_cast<const LdExplicitScalar&>(*function.body[2]);
-  EXPECT_EQ(
-      std::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
-      call.return_value->value.symbol_id);
+  EXPECT_EQ(std::get<ResolvedSymbolRef>(load.address.value.base).symbol_id,
+            call.return_value->value.symbol_id);
 
   const auto crossed_ast = parseCallModule(R"ptx(
   .param .b32 a, b, result;
@@ -233,12 +234,10 @@ TEST(CallStaging, KeepsNestedSequencesWithinTheirScope) {
   ASSERT_EQ(crossed.error().size(), 1u);
   const auto& crossed_function =
       std::get<syntax_ast::AstFunction>(crossed_ast->items.back());
-  const auto& block =
-      *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
-          crossed_function.body.back());
-  EXPECT_EQ(
-      crossed.error().front().range,
-      std::get<syntax_ast::AstInstruction>(block.body.back()).range);
+  const auto& block = *std::get<std::unique_ptr<syntax_ast::AstBlock>>(
+      crossed_function.body.back());
+  EXPECT_EQ(crossed.error().front().range,
+            std::get<syntax_ast::AstInstruction>(block.body.back()).range);
   EXPECT_EQ(crossed.error().front().stage(),
             ResolveDiagnosticStage::Resolution);
   EXPECT_EQ(crossed.error().front().message,

@@ -40,9 +40,11 @@ TEST(BulkAsync, CopyAndGroupTopology) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 7u);
-  EXPECT_NE(dynamic_cast<CpAsyncBulkGlobalSharedCluster*>(body[0].get()), nullptr);
+  EXPECT_NE(dynamic_cast<CpAsyncBulkGlobalSharedCluster*>(body[0].get()),
+            nullptr);
   EXPECT_NE(dynamic_cast<CpAsyncBulkGlobalSharedCta*>(body[1].get()), nullptr);
-  EXPECT_NE(dynamic_cast<CpAsyncBulkSharedCtaSharedCluster*>(body[2].get()), nullptr);
+  EXPECT_NE(dynamic_cast<CpAsyncBulkSharedCtaSharedCluster*>(body[2].get()),
+            nullptr);
   EXPECT_NE(dynamic_cast<CpAsyncBulkSharedCtaGlobal*>(body[3].get()), nullptr);
   EXPECT_NE(dynamic_cast<CpAsyncBulkCommitGroup*>(body[4].get()), nullptr);
   const auto* read_wait = dynamic_cast<CpAsyncBulkWaitGroup*>(body[5].get());
@@ -88,9 +90,11 @@ TEST(BulkAsync, ReductionAndPrefetch) {
   ASSERT_EQ(body.size(), 5u);
   EXPECT_NE(dynamic_cast<CpReduceAsyncBulkSharedAdd*>(body[0].get()), nullptr);
   EXPECT_NE(dynamic_cast<CpReduceAsyncBulkGlobalMin*>(body[1].get()), nullptr);
-  EXPECT_NE(dynamic_cast<CpReduceAsyncBulkGlobalAddNoftz*>(body[2].get()), nullptr);
+  EXPECT_NE(dynamic_cast<CpReduceAsyncBulkGlobalAddNoftz*>(body[2].get()),
+            nullptr);
   EXPECT_NE(dynamic_cast<CpAsyncBulkPrefetchGlobal*>(body[3].get()), nullptr);
-  EXPECT_NE(dynamic_cast<CpAsyncBulkPrefetchGlobalCacheHint*>(body[4].get()), nullptr);
+  EXPECT_NE(dynamic_cast<CpAsyncBulkPrefetchGlobalCacheHint*>(body[4].get()),
+            nullptr);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   for (const auto& item : body)
@@ -137,12 +141,9 @@ TEST(BulkAsync, StoreTopologiesAndSizeVersion) {
     EXPECT_TRUE(item->check(current).has_value());
   const checker::Context old{
       .target = {.ptx_version = {8, 6}, .sm_version = 100}};
-  EXPECT_TRUE(
-      body[4]->check(old).has_value());
-  EXPECT_FALSE(
-      body[5]->check(old).has_value());
-  EXPECT_TRUE(
-      body[6]->check(old).has_value());
+  EXPECT_TRUE(body[4]->check(old).has_value());
+  EXPECT_FALSE(body[5]->check(old).has_value());
+  EXPECT_TRUE(body[6]->check(old).has_value());
 }
 
 /** Async stores require a register base for every destination layout. */
@@ -268,11 +269,14 @@ TEST(BulkAsync, CopyQualifierMatrix) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 6u);
   EXPECT_NE(dynamic_cast<CpAsyncBulkGlobalSharedCtaCacheHintIgnoreOob*>(
-                body[3].get()), nullptr);
-  EXPECT_NE(dynamic_cast<CpAsyncBulkSharedCtaGlobalCacheHintCpMask*>(
-                body[4].get()), nullptr);
-  EXPECT_NE(dynamic_cast<CpAsyncBulkSharedCtaGlobalCpMaskRelaxed*>(
-                body[5].get()), nullptr);
+                body[3].get()),
+            nullptr);
+  EXPECT_NE(
+      dynamic_cast<CpAsyncBulkSharedCtaGlobalCacheHintCpMask*>(body[4].get()),
+      nullptr);
+  EXPECT_NE(
+      dynamic_cast<CpAsyncBulkSharedCtaGlobalCpMaskRelaxed*>(body[5].get()),
+      nullptr);
   for (const std::string_view target : {"sm_100f", "sm_100", "sm_90a"}) {
     const auto profile = base::find_target_profile(target);
     ASSERT_TRUE(profile.has_value());
@@ -283,26 +287,18 @@ TEST(BulkAsync, CopyQualifierMatrix) {
                    .identity = profile->identity,
                    .capabilities = profile->capabilities},
     };
-    EXPECT_EQ(
-        body[0]->check(context).has_value(),
-        target != "sm_100");
-    EXPECT_EQ(
-        body[1]->check(context).has_value(),
-        target != "sm_100");
+    EXPECT_EQ(body[0]->check(context).has_value(), target != "sm_100");
+    EXPECT_EQ(body[1]->check(context).has_value(), target != "sm_100");
     for (size_t i = 2; i < 4; ++i)
       EXPECT_TRUE(body[i]->check(context).has_value());
-    EXPECT_EQ(
-        body[4]->check(context).has_value(),
-        target != "sm_90a");
-    EXPECT_EQ(
-        body[5]->check(context).has_value(),
-        target == "sm_100f");
+    EXPECT_EQ(body[4]->check(context).has_value(), target != "sm_90a");
+    EXPECT_EQ(body[5]->check(context).has_value(), target == "sm_100f");
   }
   auto* bounded = dynamic_cast<CpAsyncBulkGlobalSharedCtaCacheHintIgnoreOob*>(
       resolved->functions.front().body[3].get());
   ASSERT_NE(bounded, nullptr);
-  auto& ignore_left = std::get<ResolvedImmediate>(
-      bounded->ignore_bytes_left.value);
+  auto& ignore_left =
+      std::get<ResolvedImmediate>(bounded->ignore_bytes_left.value);
   ignore_left.bits = 16;
   ignore_left.integer_source_bits = 16;
   const checker::Context base_context{
@@ -333,20 +329,18 @@ TEST(BulkAsync, ReductionScopeAndCachePolicy) {
   ASSERT_EQ(body.size(), 3u);
   EXPECT_NE(dynamic_cast<CpReduceAsyncBulkSharedAddRelaxed*>(body[0].get()),
             nullptr);
-  EXPECT_NE(dynamic_cast<CpReduceAsyncBulkGlobalMinCacheHintRelaxed*>(
-                body[1].get()), nullptr);
+  EXPECT_NE(
+      dynamic_cast<CpReduceAsyncBulkGlobalMinCacheHintRelaxed*>(body[1].get()),
+      nullptr);
   const checker::Context current{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
   const checker::Context old{
       .target = {.ptx_version = {9, 2}, .sm_version = 90}};
   for (const auto& item : body)
     EXPECT_TRUE(item->check(current).has_value());
-  EXPECT_FALSE(
-      body[0]->check(old).has_value());
-  EXPECT_FALSE(
-      body[1]->check(old).has_value());
-  EXPECT_TRUE(
-      body[2]->check(old).has_value());
+  EXPECT_FALSE(body[0]->check(old).has_value());
+  EXPECT_FALSE(body[1]->check(old).has_value());
+  EXPECT_TRUE(body[2]->check(old).has_value());
 }
 
 /** Rechecking owned IR catches altered static byte-count metadata. */
@@ -374,11 +368,13 @@ TEST(BulkAsync, OwnedMetadataTamperIsRejected) {
   ASSERT_NE(copy, nullptr);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90}};
-  EXPECT_TRUE(owned->functions.front().body.front()->check(context).has_value());
+  EXPECT_TRUE(
+      owned->functions.front().body.front()->check(context).has_value());
   auto& size = std::get<ResolvedImmediate>(copy->size.value);
   size.bits = 15;
   size.integer_source_bits = 15;
-  EXPECT_FALSE(owned->functions.front().body.front()->check(context).has_value());
+  EXPECT_FALSE(
+      owned->functions.front().body.front()->check(context).has_value());
 }
 
 /** Invalid modifier/operand pairings fail before they enter owned IR. */

@@ -296,8 +296,7 @@ TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
 
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().range,
-            std::get<syntax_ast::AstVectorPack>(ast.operands.front())
-                .range);
+            std::get<syntax_ast::AstVectorPack>(ast.operands.front()).range);
   EXPECT_EQ(resolved.error().message,
             "Vector operand requires 1 to 5 elements.");
 }
@@ -311,8 +310,7 @@ TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(
       resolved.error().range,
-      std::get<syntax_ast::AstImmediate>(vector.elements.front())
-          .syntax.range);
+      std::get<syntax_ast::AstImmediate>(vector.elements.front()).syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Vector operand element has a shape not accepted by this "
             "instruction layout.");
@@ -986,8 +984,8 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
   const auto implicit = resolve_fields(implicit_ast, syntax_descriptor,
                                        resolved_descriptor, "Defaulted");
   ASSERT_TRUE(implicit.has_value()) << implicit.error().message;
-  const auto* implicit_type = std::get_if<WithLocs<ScalarType>>(
-      &implicit->modifiers.at("type"));
+  const auto* implicit_type =
+      std::get_if<WithLocs<ScalarType>>(&implicit->modifiers.at("type"));
   ASSERT_NE(implicit_type, nullptr);
   EXPECT_EQ(implicit_type->value, ScalarType::U32);
   EXPECT_TRUE(implicit_type->locs.empty());
@@ -996,8 +994,8 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
   const auto explicit_value = resolve_fields(explicit_ast, syntax_descriptor,
                                              resolved_descriptor, "Defaulted");
   ASSERT_TRUE(explicit_value.has_value()) << explicit_value.error().message;
-  const auto* explicit_type = std::get_if<WithLocs<ScalarType>>(
-      &explicit_value->modifiers.at("type"));
+  const auto* explicit_type =
+      std::get_if<WithLocs<ScalarType>>(&explicit_value->modifiers.at("type"));
   ASSERT_NE(explicit_type, nullptr);
   EXPECT_EQ(explicit_type->value, ScalarType::U64);
   ASSERT_EQ(explicit_type->locs.size(), 1U);
@@ -1132,8 +1130,8 @@ TEST(ResolveFields, ResolvesBooleanOperatorModifier) {
   const auto fields =
       resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Boolean");
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
-  const auto* boolean = std::get_if<WithLocs<BooleanOperator>>(
-      &fields->modifiers.at("boolean"));
+  const auto* boolean =
+      std::get_if<WithLocs<BooleanOperator>>(&fields->modifiers.at("boolean"));
   ASSERT_NE(boolean, nullptr);
   EXPECT_EQ(boolean->value, BooleanOperator::Xor);
   ASSERT_EQ(boolean->locs.size(), 1U);

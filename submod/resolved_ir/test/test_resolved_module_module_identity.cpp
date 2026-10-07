@@ -29,7 +29,8 @@ const AddIntegerNoSat& resolvedIntegerAdd(
 }
 
 /** Return a scalar move source from its selected typed optional field. */
-const WithLocs<ResolvedMovSource>& scalarMovSource(const Instruction& instruction) {
+const WithLocs<ResolvedMovSource>& scalarMovSource(
+    const Instruction& instruction) {
   const auto& mov = dynamic_cast<const MovScalar&>(instruction);
   return mov.src_mov_source.value();
 }
@@ -67,8 +68,7 @@ TEST(ResolvedModule, CarriesFunctionAndRegisterSymbolIdentity) {
   ASSERT_EQ(function.body.size(), 1u);
 
   const AddIntegerNoSat& add = resolvedIntegerAdd(function.body.front());
-  EXPECT_FALSE(
-      function.body.front()->execution_predicate);
+  EXPECT_FALSE(function.body.front()->execution_predicate);
   const ResolvedRegisterRef& dst = add.dst.value;
   const auto& src1 = std::get<ResolvedRegisterRef>(add.src1.value);
   const auto& src2 = std::get<ResolvedRegisterRef>(add.src2.value);
@@ -294,11 +294,10 @@ TEST(ResolvedModule, ResolvesAndChecksSpecialRegisterMetadata) {
   const auto resolved = resolveModule(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& mov = dynamic_cast<const MovScalar&>(
-      *resolved->functions.front().body.front());
+  const auto& mov =
+      dynamic_cast<const MovScalar&>(*resolved->functions.front().body.front());
   const auto& scalar = mov.src_mov_source.value();
-  const auto& special =
-      std::get<ResolvedSpecialRegisterRef>(scalar.value);
+  const auto& special = std::get<ResolvedSpecialRegisterRef>(scalar.value);
   EXPECT_EQ(special.spelling, "%laneid");
   EXPECT_EQ(special.id.kind, base::SpecialRegisterKind::LaneId);
   EXPECT_FALSE(special.component.has_value());
@@ -338,18 +337,17 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
       << cluster_ast.diagnostics.front().message;
   const auto cluster_resolved = resolveInstruction(*cluster_ast);
   ASSERT_TRUE(cluster_resolved.has_value()) << cluster_resolved.error().message;
-  const auto& cluster_mov =
-      dynamic_cast<const MovScalar&>(**cluster_resolved);
+  const auto& cluster_mov = dynamic_cast<const MovScalar&>(**cluster_resolved);
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
   const auto cluster_check = cluster_mov.check(checker::Context{
-                       .target =
-                           checker::TargetInfo{
-                               .ptx_version = checker::PtxVersion{7, 8},
-                               .sm_version = 80,
-                               .capabilities = cluster_capabilities,
-                           },
-                       .instruction_range = cluster_ast->range,
-                   });
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{7, 8},
+              .sm_version = 80,
+              .capabilities = cluster_capabilities,
+          },
+      .instruction_range = cluster_ast->range,
+  });
   ASSERT_FALSE(cluster_check.has_value());
   ASSERT_EQ(cluster_check.error().size(), 1u);
   EXPECT_EQ(cluster_check.error().front().kind,
@@ -389,14 +387,15 @@ TEST(ResolvedModule, ChecksSpecialRegisterSmAndTypeRequirements) {
   const auto wide_resolved = resolveInstruction(*wide_ast);
   ASSERT_TRUE(wide_resolved.has_value()) << wide_resolved.error().message;
   const auto wide_check =
-      (*wide_resolved)->check(checker::Context{
-                         .target =
-                             checker::TargetInfo{
-                                 .ptx_version = checker::PtxVersion{9, 3},
-                                 .sm_version = 120,
-                             },
-                         .instruction_range = wide_ast->range,
-                     });
+      (*wide_resolved)
+          ->check(checker::Context{
+              .target =
+                  checker::TargetInfo{
+                      .ptx_version = checker::PtxVersion{9, 3},
+                      .sm_version = 120,
+                  },
+              .instruction_range = wide_ast->range,
+          });
   ASSERT_FALSE(wide_check.has_value());
   ASSERT_EQ(wide_check.error().size(), 1u);
   EXPECT_EQ(wide_check.error().front().kind,
@@ -451,14 +450,14 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
   const auto check_at = [&](size_t index, checker::PtxVersion version,
                             uint32_t sm) {
     return body[index]->check(checker::Context{
-                              .target =
-                                  checker::TargetInfo{
-                                      .ptx_version = version,
-                                      .sm_version = sm,
-                                      .capabilities = capabilities,
-                                  },
-                              .instruction_range = ast.range,
-                          });
+        .target =
+            checker::TargetInfo{
+                .ptx_version = version,
+                .sm_version = sm,
+                .capabilities = capabilities,
+            },
+        .instruction_range = ast.range,
+    });
   };
   struct AvailabilityBoundary {
     size_t instruction;
@@ -478,9 +477,10 @@ TEST(ResolvedModule, ResolvesAndChecksSmemAndGraphSpecialRegisters) {
     const auto ptx_rejected = check_at(
         boundary.instruction, boundary.too_old_ptx, boundary.minimum_sm);
     ASSERT_FALSE(ptx_rejected.has_value());
-    const auto info = base::metadata(
-        std::get<ResolvedSpecialRegisterRef>(
-            scalarMovSource(*body[boundary.instruction]).value).id);
+    const auto info =
+        base::metadata(std::get<ResolvedSpecialRegisterRef>(
+                           scalarMovSource(*body[boundary.instruction]).value)
+                           .id);
     EXPECT_EQ(ptx_rejected.error().front().kind,
               info.required_capability.empty()
                   ? checker::CheckDiagnosticKind::UnsupportedPtxVersion

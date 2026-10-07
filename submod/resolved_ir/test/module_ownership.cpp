@@ -97,11 +97,13 @@ TEST(ResolvedFunctionOwnership, AssignmentHasStrongGuaranteeOnCloneFailure) {
   EXPECT_EQ(target.body.front().get(), target_instruction);
   EXPECT_EQ(target.name, name);
   EXPECT_EQ(target.instruction_ranges, ranges);
-  EXPECT_EQ(dynamic_cast<AddIntegerNoSat*>(target.body.front().get())->dst.value.spelling,
+  EXPECT_EQ(dynamic_cast<AddIntegerNoSat*>(target.body.front().get())
+                ->dst.value.spelling,
             "%r0");
   target = target;
   ASSERT_EQ(target.body.size(), 1u);
-  EXPECT_EQ(dynamic_cast<AddIntegerNoSat*>(target.body.front().get())->dst.value.spelling,
+  EXPECT_EQ(dynamic_cast<AddIntegerNoSat*>(target.body.front().get())
+                ->dst.value.spelling,
             "%r0");
 }
 

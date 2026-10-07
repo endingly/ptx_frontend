@@ -38,7 +38,8 @@ using test_helpers::parseModule;
 
 /** Stop a non-void test-local helper after standalone resolution fails. */
 [[noreturn]] void reportInstructionResolutionFailure(
-    const std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>& result) {
+    const std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>&
+        result) {
   ADD_FAILURE() << result.error().message;
   throw std::runtime_error(result.error().message);
 }
@@ -77,10 +78,9 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
   EXPECT_EQ(mov_symbol.address_state_space, syntax_ast::AstStateSpace::Global);
   EXPECT_EQ(mov_symbol.declared_type, ScalarType::U32);
 
-  const auto& symbol_address = dynamic_cast<LdGenericScalar&>(*body[1])
-                                   .address.value;
-  const auto& symbol_base =
-      std::get<ResolvedSymbolRef>(symbol_address.base);
+  const auto& symbol_address =
+      dynamic_cast<LdGenericScalar&>(*body[1]).address.value;
+  const auto& symbol_base = std::get<ResolvedSymbolRef>(symbol_address.base);
   EXPECT_EQ(symbol_base.symbol_id, mov_symbol.symbol_id);
   ASSERT_TRUE(symbol_address.offset.has_value());
   EXPECT_EQ(symbol_address.offset->operation,
@@ -88,8 +88,8 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
   EXPECT_EQ(symbol_address.offset->value.type, ScalarType::S64);
   EXPECT_EQ(symbol_address.offset->value.bits, 4u);
 
-  const auto& register_address = dynamic_cast<LdGenericScalar&>(*body[2])
-                                     .address.value;
+  const auto& register_address =
+      dynamic_cast<LdGenericScalar&>(*body[2]).address.value;
   const auto& register_base =
       std::get<ResolvedRegisterRef>(register_address.base);
   ASSERT_TRUE(register_base.symbol_id.has_value());
@@ -100,8 +100,8 @@ TEST(ResolvedModule, ResolvesBoundSymbolsAndAddressBases) {
             ResolvedAddressOffsetOperator::Subtract);
   EXPECT_EQ(register_address.offset->value.bits, 8u);
 
-  const auto& immediate_address = dynamic_cast<LdGenericScalar&>(*body[3])
-                                      .address.value;
+  const auto& immediate_address =
+      dynamic_cast<LdGenericScalar&>(*body[3]).address.value;
   const auto& immediate_base =
       std::get<ResolvedImmediate>(immediate_address.base);
   EXPECT_EQ(immediate_base.type, ScalarType::U32);
@@ -158,8 +158,7 @@ TEST(ResolvedModule, ValidatesBoundAddressRegisterTypes) {
           std::get<syntax_ast::AstInstruction>(function.body.back());
       const auto address = std::ranges::find_if(
           instruction.operands, [](const syntax_ast::AstOperand& operand) {
-            return std::holds_alternative<syntax_ast::AstAddress>(
-                operand);
+            return std::holds_alternative<syntax_ast::AstAddress>(operand);
           });
       ASSERT_NE(address, instruction.operands.end());
       const auto& base = std::get<syntax_ast::AstIdentifierRef>(
@@ -216,16 +215,16 @@ TEST(ResolvedModule, ResolvesOctalImmediateAndAddressOffsets) {
   EXPECT_EQ(symbol_address.offset->value.type, ScalarType::S64);
   EXPECT_EQ(symbol_address.offset->value.bits, 8U);
 
-  const auto& register_address = dynamic_cast<LdGenericScalar&>(*body[2])
-                                     .address.value;
+  const auto& register_address =
+      dynamic_cast<LdGenericScalar&>(*body[2]).address.value;
   ASSERT_TRUE(register_address.offset.has_value());
   EXPECT_EQ(register_address.offset->operation,
             ResolvedAddressOffsetOperator::Subtract);
   EXPECT_EQ(register_address.offset->value.type, ScalarType::S64);
   EXPECT_EQ(register_address.offset->value.bits, 8U);
 
-  const auto& absolute_address = dynamic_cast<LdGenericScalar&>(*body[3])
-                                     .address.value;
+  const auto& absolute_address =
+      dynamic_cast<LdGenericScalar&>(*body[3]).address.value;
   const auto& absolute_base =
       std::get<ResolvedImmediate>(absolute_address.base);
   EXPECT_EQ(absolute_base.type, ScalarType::U32);
@@ -266,21 +265,21 @@ TEST(ResolvedModule, ValidatesMemoryAddressImmediateDomains) {
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 9u);
 
-  const auto& maximum_absolute = dynamic_cast<LdExplicitScalar&>(*body[2])
-                                     .address.value;
+  const auto& maximum_absolute =
+      dynamic_cast<LdExplicitScalar&>(*body[2]).address.value;
   EXPECT_EQ(std::get<ResolvedImmediate>(maximum_absolute.base).type,
             ScalarType::U32);
   EXPECT_EQ(std::get<ResolvedImmediate>(maximum_absolute.base).bits,
             4294967295u);
 
   for (const size_t index : {size_t{4}, size_t{5}, size_t{6}, size_t{7}}) {
-    const auto& address = dynamic_cast<LdExplicitScalar&>(*body[index])
-                              .address.value;
+    const auto& address =
+        dynamic_cast<LdExplicitScalar&>(*body[index]).address.value;
     ASSERT_TRUE(address.offset.has_value());
     EXPECT_EQ(address.offset->value.type, ScalarType::S64);
   }
-  const auto& negative_minimum = dynamic_cast<LdExplicitScalar&>(*body[5])
-                                     .address.value;
+  const auto& negative_minimum =
+      dynamic_cast<LdExplicitScalar&>(*body[5]).address.value;
   EXPECT_EQ(negative_minimum.offset->operation,
             ResolvedAddressOffsetOperator::Subtract);
   EXPECT_EQ(negative_minimum.offset->value.bits, 2147483648u);
@@ -332,15 +331,14 @@ TEST(ResolvedModule, ValidatesMemoryAddressImmediateDomains) {
     const auto& invalid_function =
         std::get<syntax_ast::AstFunction>(invalid_ast.items.back());
     const auto& invalid_instruction =
-        std::get<syntax_ast::AstInstruction>(
-            invalid_function.body.back());
-    const auto& invalid_address = std::get<syntax_ast::AstAddress>(
-        invalid_instruction.operands.back());
+        std::get<syntax_ast::AstInstruction>(invalid_function.body.back());
+    const auto& invalid_address =
+        std::get<syntax_ast::AstAddress>(invalid_instruction.operands.back());
     const auto expected_range =
-        invalid_address.offset ? invalid_address.offset->magnitude.syntax.range
-                               : std::get<syntax_ast::AstImmediate>(
-                                     invalid_address.base)
-                                     .syntax.range;
+        invalid_address.offset
+            ? invalid_address.offset->magnitude.syntax.range
+            : std::get<syntax_ast::AstImmediate>(invalid_address.base)
+                  .syntax.range;
     const auto invalid = resolveModule(invalid_ast);
     ASSERT_FALSE(invalid.has_value()) << address;
     EXPECT_EQ(invalid.error().front().message, expected);
@@ -356,15 +354,14 @@ TEST(ResolvedModule, ChecksGenericLoadAvailability) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto& load = **resolved;
 
-  const auto rejected =
-      load.check(checker::Context{
-                               .target =
-                                   checker::TargetInfo{
-                                       .ptx_version = checker::PtxVersion{1, 5},
-                                       .sm_version = 10,
-                                   },
-                               .instruction_range = ast->range,
-                           });
+  const auto rejected = load.check(checker::Context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{1, 5},
+              .sm_version = 10,
+          },
+      .instruction_range = ast->range,
+  });
   ASSERT_FALSE(rejected.has_value());
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].kind,
@@ -372,16 +369,15 @@ TEST(ResolvedModule, ChecksGenericLoadAvailability) {
   EXPECT_EQ(rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
 
-  EXPECT_TRUE(
-      load.check(checker::Context{
-                         .target =
-                             checker::TargetInfo{
-                                 .ptx_version = checker::PtxVersion{2, 0},
-                                 .sm_version = 20,
-                             },
-                         .instruction_range = ast->range,
-                     })
-          .has_value());
+  EXPECT_TRUE(load.check(checker::Context{
+                             .target =
+                                 checker::TargetInfo{
+                                     .ptx_version = checker::PtxVersion{2, 0},
+                                     .sm_version = 20,
+                                 },
+                             .instruction_range = ast->range,
+                         })
+                  .has_value());
 }
 
 TEST(ResolvedModule, ChecksGenericLoadStoreAddressStateSpacePolicy) {
@@ -419,30 +415,23 @@ TEST(ResolvedModule, ChecksGenericLoadStoreAddressStateSpacePolicy) {
   };
 
   for (const size_t index : {0u, 1u, 2u, 5u}) {
-    EXPECT_TRUE(
-        body[index]->check(generic_context)
-            .has_value());
+    EXPECT_TRUE(body[index]->check(generic_context).has_value());
   }
   for (const size_t index : {6u, 7u, 8u, 11u}) {
-    EXPECT_TRUE(
-        body[index]->check(generic_context)
-            .has_value());
+    EXPECT_TRUE(body[index]->check(generic_context).has_value());
   }
 
   auto const_context = generic_context;
   const_context.target.ptx_version = {3, 0};
-  const auto old_const_load =
-      body[3]->check(const_context);
+  const auto old_const_load = body[3]->check(const_context);
   ASSERT_FALSE(old_const_load.has_value());
   ASSERT_EQ(old_const_load.error().size(), 1u);
   EXPECT_EQ(old_const_load.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(old_const_load.error().front().range,
-            dynamic_cast<LdGenericScalar&>(*body[3])
-                .address.locs.front());
+            dynamic_cast<LdGenericScalar&>(*body[3]).address.locs.front());
   const_context.target.ptx_version = {3, 1};
-  EXPECT_TRUE(body[3]->check(const_context)
-                  .has_value());
+  EXPECT_TRUE(body[3]->check(const_context).has_value());
 
   const auto expect_mismatch = [&](const auto& instruction) {
     const auto checked = instruction.check(generic_context);
@@ -477,18 +466,15 @@ TEST(ResolvedModule, ResolvesGenericAndExplicitScalarLoadStoreForms) {
   EXPECT_NE(dynamic_cast<LdExplicitScalar*>(global_load.get()), nullptr);
   EXPECT_NE(dynamic_cast<StGenericScalar*>(generic_store.get()), nullptr);
   EXPECT_NE(dynamic_cast<StExplicitScalar*>(global_store.get()), nullptr);
-  EXPECT_EQ(dynamic_cast<LdExplicitScalar&>(*global_load)
-                .state_space.value,
+  EXPECT_EQ(dynamic_cast<LdExplicitScalar&>(*global_load).state_space.value,
             MemoryStateSpace::Global);
-  EXPECT_EQ(dynamic_cast<StExplicitScalar&>(*global_store)
-                .state_space.value,
+  EXPECT_EQ(dynamic_cast<StExplicitScalar&>(*global_store).state_space.value,
             MemoryStateSpace::Global);
 
   const checker::Context old_target{
       .target = {.ptx_version = {1, 5}, .sm_version = 10},
   };
-  const auto generic_store_check =
-      generic_store->check(old_target);
+  const auto generic_store_check = generic_store->check(old_target);
   ASSERT_FALSE(generic_store_check.has_value());
   ASSERT_EQ(generic_store_check.error().size(), 2u);
   EXPECT_EQ(generic_store_check.error()[0].kind,
@@ -536,20 +522,17 @@ TEST(ResolvedModule, ResolvesEveryLegalLoadStoreCacheOperator) {
     ASSERT_EQ(generic.cache.locs.size(), 1u);
     EXPECT_EQ(generic.cache.locs.front(),
               generic_ast.modifiers.front().syntax.range);
-    EXPECT_TRUE(
-        generic_instruction->check(context)
-            .has_value());
+    EXPECT_TRUE(generic_instruction->check(context).has_value());
 
     auto [explicit_ast, explicit_instruction] =
         resolve(fmt::format("ld.global.{}.u32 %r0, [%rd0];", cache.spelling));
-    const auto& explicit_load = dynamic_cast<LdExplicitScalar&>(*explicit_instruction);
+    const auto& explicit_load =
+        dynamic_cast<LdExplicitScalar&>(*explicit_instruction);
     EXPECT_EQ(explicit_load.cache.value, cache.value);
     ASSERT_EQ(explicit_load.cache.locs.size(), 1u);
     EXPECT_EQ(explicit_load.cache.locs.front(),
               explicit_ast.modifiers[1].syntax.range);
-    EXPECT_TRUE(
-        explicit_instruction->check(context)
-            .has_value());
+    EXPECT_TRUE(explicit_instruction->check(context).has_value());
   }
 
   for (const auto& cache : store_cases) {
@@ -561,20 +544,17 @@ TEST(ResolvedModule, ResolvesEveryLegalLoadStoreCacheOperator) {
     ASSERT_EQ(generic.cache.locs.size(), 1u);
     EXPECT_EQ(generic.cache.locs.front(),
               generic_ast.modifiers.front().syntax.range);
-    EXPECT_TRUE(
-        generic_instruction->check(context)
-            .has_value());
+    EXPECT_TRUE(generic_instruction->check(context).has_value());
 
     auto [explicit_ast, explicit_instruction] =
         resolve(fmt::format("st.global.{}.u32 [%rd0], %r0;", cache.spelling));
-    const auto& explicit_store = dynamic_cast<StExplicitScalar&>(*explicit_instruction);
+    const auto& explicit_store =
+        dynamic_cast<StExplicitScalar&>(*explicit_instruction);
     EXPECT_EQ(explicit_store.cache.value, cache.value);
     ASSERT_EQ(explicit_store.cache.locs.size(), 1u);
     EXPECT_EQ(explicit_store.cache.locs.front(),
               explicit_ast.modifiers[1].syntax.range);
-    EXPECT_TRUE(
-        explicit_instruction->check(context)
-            .has_value());
+    EXPECT_TRUE(explicit_instruction->check(context).has_value());
   }
 }
 
@@ -608,8 +588,7 @@ TEST(ResolvedModule,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_EQ(cached_load.error()[0].range,
             cached_load_ast.modifiers[1].syntax.range);
-  EXPECT_TRUE(cached_load_instruction->check(supported_target)
-                  .has_value());
+  EXPECT_TRUE(cached_load_instruction->check(supported_target).has_value());
 
   auto [cached_store_ast, cached_store_instruction] =
       resolve("st.global.wb.u32 [%rd0], %r0;");
@@ -622,21 +601,17 @@ TEST(ResolvedModule,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_EQ(cached_store.error()[0].range,
             cached_store_ast.modifiers[1].syntax.range);
-  EXPECT_TRUE(cached_store_instruction->check(supported_target)
-                  .has_value());
+  EXPECT_TRUE(cached_store_instruction->check(supported_target).has_value());
 
   auto [implicit_load_ast, implicit_load_instruction] =
       resolve("ld.global.u32 %r0, [%rd0];");
   (void)implicit_load_ast;
-  EXPECT_TRUE(implicit_load_instruction->check(old_target)
-                  .has_value());
+  EXPECT_TRUE(implicit_load_instruction->check(old_target).has_value());
 
   auto [implicit_store_ast, implicit_store_instruction] =
       resolve("st.global.u32 [%rd0], %r0;");
   (void)implicit_store_ast;
-  EXPECT_TRUE(
-      implicit_store_instruction->check(old_target)
-          .has_value());
+  EXPECT_TRUE(implicit_store_instruction->check(old_target).has_value());
 }
 
 TEST(ResolvedModule, ResolvesAndChecksLoadStoreScalarTypeFamily) {
@@ -672,32 +647,32 @@ TEST(ResolvedModule, ResolvesAndChecksLoadStoreScalarTypeFamily) {
     SCOPED_TRACE(scalar.spelling);
     auto [generic_load, generic_load_type_range] =
         resolve(fmt::format("ld.{} %r0, [%rd0];", scalar.spelling));
-    const auto& generic_load_variant = dynamic_cast<LdGenericScalar&>(*generic_load);
+    const auto& generic_load_variant =
+        dynamic_cast<LdGenericScalar&>(*generic_load);
     EXPECT_EQ(generic_load_variant.type.value, scalar.type);
     ASSERT_EQ(generic_load_variant.type.locs.size(), 1u);
     EXPECT_EQ(generic_load_variant.type.locs.front(), generic_load_type_range);
-    EXPECT_TRUE(generic_load->check(context)
-                    .has_value());
+    EXPECT_TRUE(generic_load->check(context).has_value());
 
     auto [explicit_load, explicit_load_type_range] =
         resolve(fmt::format("ld.global.{} %r0, [%rd0];", scalar.spelling));
-    const auto& explicit_load_variant = dynamic_cast<LdExplicitScalar&>(*explicit_load);
+    const auto& explicit_load_variant =
+        dynamic_cast<LdExplicitScalar&>(*explicit_load);
     EXPECT_EQ(explicit_load_variant.type.value, scalar.type);
     ASSERT_EQ(explicit_load_variant.type.locs.size(), 1u);
     EXPECT_EQ(explicit_load_variant.type.locs.front(),
               explicit_load_type_range);
-    EXPECT_TRUE(explicit_load->check(context)
-                    .has_value());
+    EXPECT_TRUE(explicit_load->check(context).has_value());
 
     auto [generic_store, generic_store_type_range] =
         resolve(fmt::format("st.{} [%rd0], %r0;", scalar.spelling));
-    const auto& generic_store_variant = dynamic_cast<StGenericScalar&>(*generic_store);
+    const auto& generic_store_variant =
+        dynamic_cast<StGenericScalar&>(*generic_store);
     EXPECT_EQ(generic_store_variant.type.value, scalar.type);
     ASSERT_EQ(generic_store_variant.type.locs.size(), 1u);
     EXPECT_EQ(generic_store_variant.type.locs.front(),
               generic_store_type_range);
-    EXPECT_TRUE(generic_store->check(context)
-                    .has_value());
+    EXPECT_TRUE(generic_store->check(context).has_value());
 
     auto [explicit_store, explicit_store_type_range] =
         resolve(fmt::format("st.global.{} [%rd0], %r0;", scalar.spelling));
@@ -707,8 +682,7 @@ TEST(ResolvedModule, ResolvesAndChecksLoadStoreScalarTypeFamily) {
     ASSERT_EQ(explicit_store_variant.type.locs.size(), 1u);
     EXPECT_EQ(explicit_store_variant.type.locs.front(),
               explicit_store_type_range);
-    EXPECT_TRUE(explicit_store->check(context)
-                    .has_value());
+    EXPECT_TRUE(explicit_store->check(context).has_value());
   }
 }
 
@@ -744,8 +718,7 @@ TEST(ResolvedModule, ChecksLoadStoreF64Availability) {
 
   auto [explicit_vector_instruction, explicit_vector_type_range] =
       resolve("ld.global.v2.f64 {%fd0, %fd1}, [%rd0];");
-  const auto& explicit_vector_load =
-      *explicit_vector_instruction;
+  const auto& explicit_vector_load = *explicit_vector_instruction;
   const auto explicit_vector_rejected =
       explicit_vector_load.check(sm12_context);
   ASSERT_FALSE(explicit_vector_rejected.has_value());
@@ -766,8 +739,7 @@ TEST(ResolvedModule, ChecksLoadStoreF64Availability) {
   const checker::Context generic_sm13_context{
       .target = {.ptx_version = {2, 0}, .sm_version = 13},
   };
-  const auto generic_rejected =
-      generic_load.check(generic_sm13_context);
+  const auto generic_rejected = generic_load.check(generic_sm13_context);
   ASSERT_FALSE(generic_rejected.has_value());
   ASSERT_EQ(generic_rejected.error().size(), 1u);
   EXPECT_EQ(generic_rejected.error().front().kind,
@@ -893,15 +865,12 @@ TEST(ResolvedModule, ResolvesAndChecksLegacyLoadStoreRegisterVectors) {
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast.range,
   };
-  const auto old_generic =
-      body[0]->check(old_target);
+  const auto old_generic = body[0]->check(old_target);
   ASSERT_FALSE(old_generic.has_value());
   EXPECT_EQ(old_generic.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  EXPECT_TRUE(
-      body[2]->check(old_target).has_value());
-  EXPECT_TRUE(
-      body[6]->check(old_target).has_value());
+  EXPECT_TRUE(body[2]->check(old_target).has_value());
+  EXPECT_TRUE(body[6]->check(old_target).has_value());
 }
 
 TEST(ResolvedModule, ChecksBoundAndImmediateAddressAlignment) {
@@ -1040,48 +1009,38 @@ TEST(ResolvedModule, ChecksModernLoadStoreRegisterVectors) {
       .target = {.ptx_version = {8, 8}, .sm_version = 100},
       .instruction_range = ast.range,
   };
-  EXPECT_TRUE(
-      body[0]->check(supported).has_value());
-  EXPECT_TRUE(
-      body[1]->check(supported).has_value());
-  EXPECT_TRUE(
-      body[3]->check(supported).has_value());
-  EXPECT_TRUE(
-      body[7]->check(supported).has_value());
+  EXPECT_TRUE(body[0]->check(supported).has_value());
+  EXPECT_TRUE(body[1]->check(supported).has_value());
+  EXPECT_TRUE(body[3]->check(supported).has_value());
+  EXPECT_TRUE(body[7]->check(supported).has_value());
 
-  const auto underaligned =
-      body[2]->check(supported);
+  const auto underaligned = body[2]->check(supported);
   ASSERT_FALSE(underaligned.has_value());
   EXPECT_EQ(underaligned.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);
 
-  const auto explicit_non_global =
-      body[4]->check(supported);
+  const auto explicit_non_global = body[4]->check(supported);
   ASSERT_FALSE(explicit_non_global.has_value());
   EXPECT_EQ(explicit_non_global.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
-  const auto generic_bound_non_global =
-      body[5]->check(supported);
+  const auto generic_bound_non_global = body[5]->check(supported);
   ASSERT_FALSE(generic_bound_non_global.has_value());
   EXPECT_EQ(generic_bound_non_global.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
-  const auto wrong_width =
-      body[6]->check(supported);
+  const auto wrong_width = body[6]->check(supported);
   ASSERT_FALSE(wrong_width.has_value());
   EXPECT_EQ(wrong_width.error().front().kind,
             checker::CheckDiagnosticKind::RuleViolation);
 
   auto old_ptx = supported;
   old_ptx.target.ptx_version = {8, 7};
-  const auto ptx_rejected =
-      body[3]->check(old_ptx);
+  const auto ptx_rejected = body[3]->check(old_ptx);
   ASSERT_FALSE(ptx_rejected.has_value());
   EXPECT_EQ(ptx_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   auto old_sm = supported;
   old_sm.target.sm_version = 90;
-  const auto sm_rejected =
-      body[3]->check(old_sm);
+  const auto sm_rejected = body[3]->check(old_sm);
   ASSERT_FALSE(sm_rejected.has_value());
   EXPECT_EQ(sm_rejected.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
@@ -1172,8 +1131,7 @@ TEST(ResolvedModule, ChecksBasicExplicitAddressStateSpaces) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 10u);
-  const auto& syntax_function =
-      std::get<syntax_ast::AstFunction>(ast.items[2]);
+  const auto& syntax_function = std::get<syntax_ast::AstFunction>(ast.items[2]);
   const checker::Context context{
       .target = {.ptx_version = {1, 0}, .sm_version = 0},
       .instruction_range = ast.range,
@@ -1184,13 +1142,11 @@ TEST(ResolvedModule, ChecksBasicExplicitAddressStateSpaces) {
       MemoryStateSpace::Local, MemoryStateSpace::Shared};
   for (size_t index = 0; index < expected_load_spaces.size(); ++index) {
     const auto& load = *body[index];
-    const auto& explicit_load =
-        dynamic_cast<const LdExplicitScalar&>(load);
+    const auto& explicit_load = dynamic_cast<const LdExplicitScalar&>(load);
     EXPECT_EQ(explicit_load.state_space.value, expected_load_spaces[index]);
     ASSERT_EQ(explicit_load.state_space.locs.size(), 1u);
     const auto& syntax_instruction =
-        std::get<syntax_ast::AstInstruction>(
-            syntax_function.body[4 + index]);
+        std::get<syntax_ast::AstInstruction>(syntax_function.body[4 + index]);
     EXPECT_EQ(explicit_load.state_space.locs.front(),
               syntax_instruction.modifiers.front().syntax.range);
     EXPECT_TRUE(load.check(context).has_value());
@@ -1201,13 +1157,11 @@ TEST(ResolvedModule, ChecksBasicExplicitAddressStateSpaces) {
                                              MemoryStateSpace::Shared};
   for (size_t offset = 0; offset < expected_store_spaces.size(); ++offset) {
     const auto& store = *body[4 + offset];
-    const auto& explicit_store =
-        dynamic_cast<const StExplicitScalar&>(store);
+    const auto& explicit_store = dynamic_cast<const StExplicitScalar&>(store);
     EXPECT_EQ(explicit_store.state_space.value, expected_store_spaces[offset]);
     ASSERT_EQ(explicit_store.state_space.locs.size(), 1u);
     const auto& syntax_instruction =
-        std::get<syntax_ast::AstInstruction>(
-            syntax_function.body[8 + offset]);
+        std::get<syntax_ast::AstInstruction>(syntax_function.body[8 + offset]);
     EXPECT_EQ(explicit_store.state_space.locs.front(),
               syntax_instruction.modifiers.front().syntax.range);
     EXPECT_TRUE(store.check(context).has_value());
@@ -1225,10 +1179,8 @@ TEST(ResolvedModule, ChecksBasicExplicitAddressStateSpaces) {
 
   // A register address does not carry a declaration-derived state space, so
   // the explicit qualifier is retained without inventing an effective space.
-  EXPECT_TRUE(
-      body[8]->check(context).has_value());
-  EXPECT_TRUE(
-      body[9]->check(context).has_value());
+  EXPECT_TRUE(body[8]->check(context).has_value());
+  EXPECT_TRUE(body[9]->check(context).has_value());
 }
 
 TEST(ResolvedModule, RejectsConstStoreModifier) {
@@ -1251,12 +1203,11 @@ TEST(ResolvedModule, RejectsParamAddressThroughExplicitGlobalLoad) {
   const auto& ast = *parsed_module_1;
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& load =
-      *resolved->functions.front().body.front();
+  const auto& load = *resolved->functions.front().body.front();
   const auto checked = load.check(checker::Context{
-                .target = {.ptx_version = {1, 0}, .sm_version = 0},
-                .instruction_range = ast.range,
-            });
+      .target = {.ptx_version = {1, 0}, .sm_version = 0},
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(checked.has_value());
   ASSERT_EQ(checked.error().size(), 1u);
   EXPECT_EQ(checked.error().front().kind,
@@ -1299,8 +1250,7 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
       .instruction_range = ast.range,
   };
 
-  const auto& kernel_load =
-      *resolved->functions[0].body.front();
+  const auto& kernel_load = *resolved->functions[0].body.front();
   const auto& kernel_explicit =
       dynamic_cast<const LdExplicitScalar&>(kernel_load);
   EXPECT_EQ(kernel_explicit.state_space.value, MemoryStateSpace::Parameter);
@@ -1312,12 +1262,10 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(kernel_load.check(supported_context).has_value());
 
-  const auto& syntax_device =
-      std::get<syntax_ast::AstFunction>(ast.items[2]);
+  const auto& syntax_device = std::get<syntax_ast::AstFunction>(ast.items[2]);
   const auto& syntax_first_load =
       std::get<syntax_ast::AstInstruction>(syntax_device.body[2]);
-  const auto& device_load =
-      *resolved->functions[1].body[0];
+  const auto& device_load = *resolved->functions[1].body[0];
   const auto& device_explicit =
       dynamic_cast<const LdExplicitScalar&>(device_load);
   EXPECT_EQ(device_explicit.state_space.value, MemoryStateSpace::Parameter);
@@ -1326,8 +1274,8 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
             syntax_first_load.modifiers.front().syntax.range);
   EXPECT_EQ(device_explicit.address.value.enclosing_function_kind,
             EnclosingFunctionKind::Device);
-  const auto& input_symbol = std::get<ResolvedSymbolRef>(
-      device_explicit.address.value.base);
+  const auto& input_symbol =
+      std::get<ResolvedSymbolRef>(device_explicit.address.value.base);
   EXPECT_FALSE(input_symbol.address_availability.has_value());
 
   const auto expect_old_target = [&](const auto& instruction) {
@@ -1349,10 +1297,8 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::ParameterDirectionMismatch);
   };
-  expect_direction_mismatch(
-      *resolved->functions[1].body[4]);
-  expect_direction_mismatch(
-      *resolved->functions[1].body[5]);
+  expect_direction_mismatch(*resolved->functions[1].body[4]);
+  expect_direction_mismatch(*resolved->functions[1].body[5]);
 
   const auto wrong_space =
       resolved->functions[1].body[6]->check(supported_context);
@@ -1414,8 +1360,8 @@ TEST(ResolvedModule, RejectsNarrowStoreSourceRegisterType) {
   const auto& ast = *parsed_module_1;
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto checked = resolved->functions.front().body.front()->check(
-      checker::Context{
+  const auto checked =
+      resolved->functions.front().body.front()->check(checker::Context{
           .target = {.ptx_version = {1, 0}, .sm_version = 0},
           .instruction_range = ast.range,
       });
@@ -1470,8 +1416,7 @@ TEST(ResolvedModule, ResolvesMovRegisterImmediateAndSymbolOffsetSources) {
 
   const auto& address_source = std::get<ResolvedAddress>(
       dynamic_cast<const MovScalar&>(*body[2]).src_mov_source->value);
-  const auto& symbol =
-      std::get<ResolvedSymbolRef>(address_source.base);
+  const auto& symbol = std::get<ResolvedSymbolRef>(address_source.base);
   ASSERT_TRUE(symbol.symbol_id.has_value());
   EXPECT_EQ(resolved->symbols.symbol(*symbol.symbol_id).name, "global_value");
   ASSERT_TRUE(address_source.offset.has_value());
@@ -1500,17 +1445,15 @@ TEST(ResolvedModule, ChecksMovRegisterSourceType) {
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
-  const auto& mov =
-      *resolved->functions.front().body.front();
-  const auto checked =
-      mov.check(checker::Context{
-                              .target =
-                                  checker::TargetInfo{
-                                      .ptx_version = checker::PtxVersion{9, 2},
-                                      .sm_version = 120,
-                                  },
-                              .instruction_range = ast.range,
-                          });
+  const auto& mov = *resolved->functions.front().body.front();
+  const auto checked = mov.check(checker::Context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{9, 2},
+              .sm_version = 120,
+          },
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(checked.has_value());
   ASSERT_EQ(checked.error().size(), 1u);
   EXPECT_EQ(checked.error().front().kind,
@@ -1555,22 +1498,20 @@ TEST(ResolvedModule, ResolvesAndChecksMovScalarTypeFamilies) {
   EXPECT_EQ(immediate.type, ScalarType::U16);
   EXPECT_EQ(immediate.bits, 65535u);
   const auto& f64 = *body[8];
-  EXPECT_EQ(dynamic_cast<const MovScalar&>(f64).type.value,
-            ScalarType::F64);
+  EXPECT_EQ(dynamic_cast<const MovScalar&>(f64).type.value, ScalarType::F64);
 
   const auto check_at = [&](const Instruction& mov, uint32_t sm) {
     return mov.check(checker::Context{
-                              .target =
-                                  checker::TargetInfo{
-                                      .ptx_version = checker::PtxVersion{9, 2},
-                                      .sm_version = sm,
-                                  },
-                              .instruction_range = ast.range,
-                          });
+        .target =
+            checker::TargetInfo{
+                .ptx_version = checker::PtxVersion{9, 2},
+                .sm_version = sm,
+            },
+        .instruction_range = ast.range,
+    });
   };
   for (size_t index = 0; index < 9; ++index)
-    EXPECT_TRUE(
-        check_at(*body[index], 13).has_value());
+    EXPECT_TRUE(check_at(*body[index], 13).has_value());
 
   const auto old_target = check_at(f64, 12);
   ASSERT_FALSE(old_target.has_value());
@@ -1630,24 +1571,19 @@ TEST(ResolvedModule, ResolvesAndChecksMovRegisterVectorPackAndUnpack) {
       .instruction_range = ast.range,
   };
   for (const auto& instruction : body)
-    EXPECT_TRUE(instruction->check(current)
-                    .has_value());
+    EXPECT_TRUE(instruction->check(current).has_value());
 
-  const auto b128_too_old =
-      body[3]->check(checker::Context{
-                         .target = checker::TargetInfo{.ptx_version = {8, 2},
-                                                       .sm_version = 70},
-                         .instruction_range = ast.range,
-                     });
+  const auto b128_too_old = body[3]->check(checker::Context{
+      .target = checker::TargetInfo{.ptx_version = {8, 2}, .sm_version = 70},
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(b128_too_old.has_value());
   EXPECT_EQ(b128_too_old.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto b128_sm_too_old =
-      body[3]->check(checker::Context{
-                         .target = checker::TargetInfo{.ptx_version = {8, 3},
-                                                       .sm_version = 69},
-                         .instruction_range = ast.range,
-                     });
+  const auto b128_sm_too_old = body[3]->check(checker::Context{
+      .target = checker::TargetInfo{.ptx_version = {8, 3}, .sm_version = 69},
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(b128_sm_too_old.has_value());
   EXPECT_EQ(b128_sm_too_old.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
@@ -1749,13 +1685,13 @@ TEST(ResolvedModule, ChecksLegacySpecialRegisterMoveWidths) {
 
   const auto check_at = [&](size_t index, checker::PtxVersion version) {
     return body[index]->check(checker::Context{
-                              .target =
-                                  checker::TargetInfo{
-                                      .ptx_version = version,
-                                      .sm_version = 10,
-                                  },
-                              .instruction_range = ast.range,
-                          });
+        .target =
+            checker::TargetInfo{
+                .ptx_version = version,
+                .sm_version = 10,
+            },
+        .instruction_range = ast.range,
+    });
   };
   EXPECT_TRUE(check_at(0, {1, 0}).has_value());
   EXPECT_TRUE(check_at(1, {2, 0}).has_value());
@@ -1811,11 +1747,9 @@ TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
 
-  const auto& mov =
-      *resolved->functions.front().body.front();
+  const auto& mov = *resolved->functions.front().body.front();
   const auto& predicate = dynamic_cast<const MovPred&>(mov);
-  const auto& source =
-      std::get<ResolvedPredicate>(predicate.src.value);
+  const auto& source = std::get<ResolvedPredicate>(predicate.src.value);
   EXPECT_FALSE(predicate.dst.value.negated);
   EXPECT_FALSE(source.negated);
   ASSERT_TRUE(predicate.dst.value.register_ref.symbol_id.has_value());
@@ -1827,16 +1761,15 @@ TEST(ResolvedModule, ResolvesAndChecksPredicateMove) {
   EXPECT_EQ(predicate.dst.value.register_ref.parameterized_index, 0u);
   EXPECT_EQ(source.register_ref.parameterized_index, 1u);
 
-  EXPECT_TRUE(
-      mov.check(checker::Context{
-                         .target =
-                             checker::TargetInfo{
-                                 .ptx_version = checker::PtxVersion{1, 0},
-                                 .sm_version = 0,
-                             },
-                         .instruction_range = ast.range,
-                     })
-          .has_value());
+  EXPECT_TRUE(mov.check(checker::Context{
+                            .target =
+                                checker::TargetInfo{
+                                    .ptx_version = checker::PtxVersion{1, 0},
+                                    .sm_version = 0,
+                                },
+                            .instruction_range = ast.range,
+                        })
+                  .has_value());
 
   PtxSyntaxParser parser("mov.pred %p0, %p1;");
   const auto standalone_ast = parser.parseInstruction();
@@ -1867,7 +1800,8 @@ TEST(ResolvedModule, ResolvesU32MovSymbolAddressSource) {
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& source = std::get<ResolvedSymbolRef>(
-      dynamic_cast<const MovScalar&>(*resolved->functions.front().body.front()).src_mov_source->value);
+      dynamic_cast<const MovScalar&>(*resolved->functions.front().body.front())
+          .src_mov_source->value);
   EXPECT_EQ(source.spelling, "global_value");
   EXPECT_EQ(source.declaration_state_space, syntax_ast::AstStateSpace::Global);
   EXPECT_EQ(source.address_state_space, syntax_ast::AstStateSpace::Global);
@@ -1894,7 +1828,8 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   ASSERT_EQ(resolved->functions.size(), 2u);
 
   const auto& kernel_address = std::get<ResolvedAddress>(
-      dynamic_cast<const MovScalar&>(*resolved->functions[0].body.front()).src_mov_source->value);
+      dynamic_cast<const MovScalar&>(*resolved->functions[0].body.front())
+          .src_mov_source->value);
   const auto& kernel_parameter =
       std::get<ResolvedSymbolRef>(kernel_address.base);
   EXPECT_EQ(kernel_parameter.declaration_kind,
@@ -1907,7 +1842,8 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   EXPECT_EQ(kernel_address.offset->value.bits, 4u);
 
   const auto& device_input = std::get<ResolvedSymbolRef>(
-      dynamic_cast<const MovScalar&>(*resolved->functions[1].body[0]).src_mov_source->value);
+      dynamic_cast<const MovScalar&>(*resolved->functions[1].body[0])
+          .src_mov_source->value);
   EXPECT_EQ(device_input.declaration_kind, binding::SymbolKind::InputParameter);
   EXPECT_EQ(device_input.declaration_state_space,
             syntax_ast::AstStateSpace::Parameter);
@@ -1918,7 +1854,8 @@ TEST(ResolvedModule, ResolvesKernelAndDeviceFunctionParameterAddresses) {
   EXPECT_EQ(device_input.address_availability->minimum_sm_version, 20u);
 
   const auto& return_parameter = std::get<ResolvedSymbolRef>(
-      dynamic_cast<const MovScalar&>(*resolved->functions[1].body[1]).src_mov_source->value);
+      dynamic_cast<const MovScalar&>(*resolved->functions[1].body[1])
+          .src_mov_source->value);
   EXPECT_EQ(return_parameter.declaration_kind,
             binding::SymbolKind::ReturnParameter);
   EXPECT_EQ(return_parameter.declaration_state_space,
@@ -1943,59 +1880,57 @@ TEST(ResolvedModule, ChecksDeviceParameterAddressAvailability) {
   const auto& ast = *parsed_module_1;
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& input_mov =
-      *resolved->functions.front().body[0];
-  const auto& return_mov =
-      *resolved->functions.front().body[1];
+  const auto& input_mov = *resolved->functions.front().body[0];
+  const auto& return_mov = *resolved->functions.front().body[1];
 
-  const auto input_rejected =
-      input_mov.check(checker::Context{
-                                    .target =
-                                        checker::TargetInfo{
-                                            .ptx_version = {1, 5},
-                                            .sm_version = 10,
-                                        },
-                                    .instruction_range = ast.range,
-                                });
+  const auto input_rejected = input_mov.check(checker::Context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = {1, 5},
+              .sm_version = 10,
+          },
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(input_rejected.has_value());
   ASSERT_EQ(input_rejected.error().size(), 2u);
   EXPECT_EQ(input_rejected.error()[0].kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(input_rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(input_mov.check(checker::Context{
-                                 .target =
-                                     checker::TargetInfo{
-                                         .ptx_version = {2, 0},
-                                         .sm_version = 20,
-                                     },
-                                 .instruction_range = ast.range,
-                             })
+  EXPECT_TRUE(input_mov
+                  .check(checker::Context{
+                      .target =
+                          checker::TargetInfo{
+                              .ptx_version = {2, 0},
+                              .sm_version = 20,
+                          },
+                      .instruction_range = ast.range,
+                  })
                   .has_value());
 
-  const auto return_rejected =
-      return_mov.check(checker::Context{
-                                     .target =
-                                         checker::TargetInfo{
-                                             .ptx_version = {5, 0},
-                                             .sm_version = 10,
-                                         },
-                                     .instruction_range = ast.range,
-                                 });
+  const auto return_rejected = return_mov.check(checker::Context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = {5, 0},
+              .sm_version = 10,
+          },
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(return_rejected.has_value());
   ASSERT_EQ(return_rejected.error().size(), 2u);
   EXPECT_EQ(return_rejected.error()[0].kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(return_rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(return_mov.check(checker::Context{
-                                 .target =
-                                     checker::TargetInfo{
-                                         .ptx_version = {6, 0},
-                                         .sm_version = 20,
-                                     },
-                                 .instruction_range = ast.range,
-                             })
+  EXPECT_TRUE(return_mov
+                  .check(checker::Context{
+                      .target =
+                          checker::TargetInfo{
+                              .ptx_version = {6, 0},
+                              .sm_version = 20,
+                          },
+                      .instruction_range = ast.range,
+                  })
                   .has_value());
 }
 
@@ -2017,10 +1952,8 @@ TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 3u);
-  const auto& device_mov =
-      *resolved->functions[2].body[0];
-  const auto& kernel_mov =
-      *resolved->functions[2].body[1];
+  const auto& device_mov = *resolved->functions[2].body[0];
+  const auto& kernel_mov = *resolved->functions[2].body[1];
 
   const auto& device = std::get<ResolvedFunctionRef>(
       dynamic_cast<const MovScalar&>(device_mov).src_mov_source->value);
@@ -2028,14 +1961,15 @@ TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
   EXPECT_EQ(resolved->symbols.symbol(*device.symbol_id).name, "device");
   EXPECT_FALSE(device.is_entry);
   EXPECT_FALSE(device.address_availability.has_value());
-  EXPECT_TRUE(device_mov.check(checker::Context{
-                                 .target =
-                                     checker::TargetInfo{
-                                         .ptx_version = {1, 0},
-                                         .sm_version = 0,
-                                     },
-                                 .instruction_range = ast.range,
-                             })
+  EXPECT_TRUE(device_mov
+                  .check(checker::Context{
+                      .target =
+                          checker::TargetInfo{
+                              .ptx_version = {1, 0},
+                              .sm_version = 0,
+                          },
+                      .instruction_range = ast.range,
+                  })
                   .has_value());
 
   const auto& kernel = std::get<ResolvedFunctionRef>(
@@ -2048,29 +1982,29 @@ TEST(ResolvedModule, ResolvesAndChecksFunctionAddresses) {
             (checker::PtxVersion{3, 1}));
   EXPECT_EQ(kernel.address_availability->minimum_sm_version, 35u);
 
-  const auto rejected =
-      kernel_mov.check(checker::Context{
-                                     .target =
-                                         checker::TargetInfo{
-                                             .ptx_version = {3, 0},
-                                             .sm_version = 30,
-                                         },
-                                     .instruction_range = ast.range,
-                                 });
+  const auto rejected = kernel_mov.check(checker::Context{
+      .target =
+          checker::TargetInfo{
+              .ptx_version = {3, 0},
+              .sm_version = 30,
+          },
+      .instruction_range = ast.range,
+  });
   ASSERT_FALSE(rejected.has_value());
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error()[1].kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(kernel_mov.check(checker::Context{
-                                 .target =
-                                     checker::TargetInfo{
-                                         .ptx_version = {3, 1},
-                                         .sm_version = 35,
-                                     },
-                                 .instruction_range = ast.range,
-                             })
+  EXPECT_TRUE(kernel_mov
+                  .check(checker::Context{
+                      .target =
+                          checker::TargetInfo{
+                              .ptx_version = {3, 1},
+                              .sm_version = 35,
+                          },
+                      .instruction_range = ast.range,
+                  })
                   .has_value());
 }
 
@@ -2246,8 +2180,8 @@ TEST(ResolvedModule, KeepsStandaloneAddressAndSymbolIdentityOpen) {
   ASSERT_TRUE(load_ast.has_value()) << load_ast.diagnostics.front().message;
   const auto load_resolved = resolveInstruction(*load_ast);
   ASSERT_TRUE(load_resolved.has_value()) << load_resolved.error().message;
-  const auto& address = dynamic_cast<const LdGenericScalar&>(**load_resolved)
-                            .address.value;
+  const auto& address =
+      dynamic_cast<const LdGenericScalar&>(**load_resolved).address.value;
   const auto& base = std::get<ResolvedRegisterRef>(address.base);
   EXPECT_EQ(base.spelling, "%rd0");
   EXPECT_FALSE(base.symbol_id.has_value());
@@ -2295,21 +2229,20 @@ TEST(ResolvedModule, CheckerUsesDeclarationBoundRegisterTypes) {
   const auto resolved = resolveModule(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const ResolvedFunction& function = resolved->functions.front();
-  const auto& add = dynamic_cast<const AddIntegerNoSat&>(*function.body.front());
+  const auto& add =
+      dynamic_cast<const AddIntegerNoSat&>(*function.body.front());
   const auto& syntax_instruction =
-      std::get<syntax_ast::AstFunction>(ast.items.front())
-          .body.back();
+      std::get<syntax_ast::AstFunction>(ast.items.front()).body.back();
 
   const auto result = add.check(checker::Context{
-          .target =
-              checker::TargetInfo{
-                  .ptx_version = checker::PtxVersion{9, 0},
-                  .sm_version = 100,
-              },
-          .instruction_range = std::get<syntax_ast::AstInstruction>(
-                                   syntax_instruction)
-                                   .range,
-      });
+      .target =
+          checker::TargetInfo{
+              .ptx_version = checker::PtxVersion{9, 0},
+              .sm_version = 100,
+          },
+      .instruction_range =
+          std::get<syntax_ast::AstInstruction>(syntax_instruction).range,
+  });
 
   ASSERT_FALSE(result.has_value());
   ASSERT_EQ(result.error().size(), 1u);
@@ -2333,8 +2266,7 @@ TEST(ResolvedModule, BindsPredicateOperandsByDeclarationType) {
   const auto resolved = resolveModule(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& bar =
-      *resolved->functions.front().body.front();
+  const auto& bar = *resolved->functions.front().body.front();
   const auto& reduction = dynamic_cast<const BarRedAndPred&>(bar);
   EXPECT_FALSE(reduction.thread_count.has_value());
   ASSERT_TRUE(reduction.dst.value.register_ref.symbol_id.has_value());
@@ -2358,8 +2290,7 @@ TEST(ResolvedModule, PreservesAndBindsExecutionPredicate) {
   const auto resolved = resolveModule(ast);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& add =
-      *resolved->functions.front().body.front();
+  const auto& add = *resolved->functions.front().body.front();
   ASSERT_TRUE(add.execution_predicate.has_value());
   const ResolvedPredicate& predicate = add.execution_predicate->value;
   EXPECT_TRUE(predicate.negated);
@@ -2371,8 +2302,7 @@ TEST(ResolvedModule, PreservesAndBindsExecutionPredicate) {
   EXPECT_EQ(resolved->symbols.symbol(*predicate.register_ref.symbol_id).name,
             "%condition");
 
-  const auto& function =
-      std::get<syntax_ast::AstFunction>(ast.items.front());
+  const auto& function = std::get<syntax_ast::AstFunction>(ast.items.front());
   const auto& instruction =
       std::get<syntax_ast::AstInstruction>(function.body.back());
   ASSERT_TRUE(instruction.predicate.has_value());

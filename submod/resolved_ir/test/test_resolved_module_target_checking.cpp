@@ -28,8 +28,9 @@ TEST(ResolvedModule, ResolvesClusterSpecialRegisterFamilies) {
       ADD_FAILURE() << (ast.diagnostics.empty()
                             ? "PTX source did not produce a syntax instruction."
                             : ast.diagnostics.front().message);
-      return std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>{std::unexpected(
-          ResolveDiagnostic{.message = "instruction parse failed"})};
+      return std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>{
+          std::unexpected(
+              ResolveDiagnostic{.message = "instruction parse failed"})};
     }
     return resolveInstruction(*ast);
   };
@@ -324,8 +325,8 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_EQ(body.size(), 10u);
   const auto check = [&ast](const std::unique_ptr<Instruction>& instruction,
                             const checker::TargetInfo& target) {
-    return instruction->check(checker::Context{.target = target,
-                                               .instruction_range = ast.range});
+    return instruction->check(
+        checker::Context{.target = target, .instruction_range = ast.range});
   };
   const auto sm100a = base::find_target_profile("sm_100a");
   ASSERT_TRUE(sm100a.has_value());
@@ -368,8 +369,10 @@ TEST(ResolvedModule, ChecksClusterCapabilityAcrossModernInstructionSlices) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto cta = resolveModule(*parsed_module_2);
   ASSERT_TRUE(cta.has_value()) << cta.error().front().message;
-  EXPECT_TRUE(cta->functions.front().body.front()->check(
-      checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 90}})
+  EXPECT_TRUE(cta->functions.front()
+                  .body.front()
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {8, 0}, .sm_version = 90}})
                   .has_value());
 }
 
@@ -474,9 +477,8 @@ TEST(ResolvedModule, ClearsUnknownTargetAndKeepsFunctionIndicesAligned) {
   ASSERT_EQ(rejected.error().size(), 2u);
   EXPECT_EQ(rejected.error()[0].message,
             "Unknown validation target 'sm_123a'.");
-  EXPECT_EQ(
-      rejected.error()[0].range,
-      std::get<syntax_ast::AstTargetDirective>(ast.items[3]).range);
+  EXPECT_EQ(rejected.error()[0].range,
+            std::get<syntax_ast::AstTargetDirective>(ast.items[3]).range);
   EXPECT_EQ(rejected.error()[1].message,
             "Operand value '%cluster_ctarank' has no matching availability "
             "clause.");

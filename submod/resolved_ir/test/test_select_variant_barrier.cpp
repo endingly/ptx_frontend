@@ -26,7 +26,8 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected = select_variant_name(parse_instruction(source), barrier_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              barrier_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -57,28 +58,19 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
   }
   for (const auto& [source, expected] :
        std::array<std::pair<std::string_view, std::string_view>, 12>{{
-           {"barrier.red.popc.u32 %r0, 0, %p0;",
-            "RedPopcU32"},
-           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;",
-            "RedPopcU32"},
-           {"barrier.cta.red.popc.u32 %r0, 0, %p0;",
-            "CtaRedPopcU32"},
+           {"barrier.red.popc.u32 %r0, 0, %p0;", "RedPopcU32"},
+           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;", "RedPopcU32"},
+           {"barrier.cta.red.popc.u32 %r0, 0, %p0;", "CtaRedPopcU32"},
            {"barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;",
             "CtaRedPopcU32"},
-           {"barrier.red.and.pred %p0, 0, %p1;",
-            "RedAndPred"},
-           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;",
-            "RedAndPred"},
-           {"barrier.cta.red.and.pred %p0, 0, %p1;",
-            "CtaRedAndPred"},
+           {"barrier.red.and.pred %p0, 0, %p1;", "RedAndPred"},
+           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;", "RedAndPred"},
+           {"barrier.cta.red.and.pred %p0, 0, %p1;", "CtaRedAndPred"},
            {"barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;",
             "CtaRedAndPred"},
-           {"barrier.red.or.pred %p0, 0, %p1;",
-            "RedOrPred"},
-           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;",
-            "RedOrPred"},
-           {"barrier.cta.red.or.pred %p0, 0, %p1;",
-            "CtaRedOrPred"},
+           {"barrier.red.or.pred %p0, 0, %p1;", "RedOrPred"},
+           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;", "RedOrPred"},
+           {"barrier.cta.red.or.pred %p0, 0, %p1;", "CtaRedOrPred"},
            {"barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;",
             "CtaRedOrPred"},
        }}) {
@@ -116,7 +108,8 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.cluster.wait.release;",
            "barrier.cluster.arrive.aligned.release;",
        }) {
-    const auto selected = select_variant_name(parse_instruction(source), barrier_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              barrier_syntax_descriptor());
     EXPECT_FALSE(selected.has_value()) << source;
   }
 }

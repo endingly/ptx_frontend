@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <array>
 #include <optional>
 #include <string_view>
@@ -187,17 +186,17 @@ TEST(IntegerArithmeticCompleteness,
     ASSERT_NE(minimum, nullptr);
     EXPECT_TRUE(MinReluS16x2::relu);
     EXPECT_EQ(MinReluS16x2::type, ScalarType::S16x2);
-    EXPECT_TRUE(instruction->check(
-                    checker::Context{.target = {.ptx_version = {8, 0},
-                                                         .sm_version = 90}})
+    EXPECT_TRUE(instruction
+                    ->check(checker::Context{
+                        .target = {.ptx_version = {8, 0}, .sm_version = 90}})
                     .has_value());
-    EXPECT_FALSE(instruction->check(
-                     checker::Context{.target = {.ptx_version = {7, 9},
-                                                          .sm_version = 90}})
+    EXPECT_FALSE(instruction
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {7, 9}, .sm_version = 90}})
                      .has_value());
-    EXPECT_FALSE(instruction->check(
-                     checker::Context{.target = {.ptx_version = {8, 0},
-                                                          .sm_version = 80}})
+    EXPECT_FALSE(instruction
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {8, 0}, .sm_version = 80}})
                      .has_value());
   }
 
@@ -323,8 +322,10 @@ TEST(IntegerArithmeticCompleteness,
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_fns);
   const auto resolved_fns = resolveInstruction(*parsed_fns);
   ASSERT_TRUE(resolved_fns.has_value());
-  const auto checked = (*resolved_fns)->check(
-      checker::Context{.target = {.ptx_version = {6, 0}, .sm_version = 30}});
+  const auto checked =
+      (*resolved_fns)
+          ->check(checker::Context{
+              .target = {.ptx_version = {6, 0}, .sm_version = 30}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
@@ -354,10 +355,10 @@ TEST(IntegerArithmeticCompleteness, RetainsOwnedOperandsAndRejectsMutation) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& dp4a = dynamic_cast<Dp4aU32S32&>(
-      *owned_module->functions.front().body[1]);
-  std::get<ResolvedRegisterRef>(dp4a.accumulator.value)
-      .declared_type = ScalarType::U64;
+  auto& dp4a =
+      dynamic_cast<Dp4aU32S32&>(*owned_module->functions.front().body[1]);
+  std::get<ResolvedRegisterRef>(dp4a.accumulator.value).declared_type =
+      ScalarType::U64;
   const auto invalid = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());

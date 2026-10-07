@@ -43,21 +43,22 @@ TEST(ResolvedIrChecker, ChecksGeneratedBrevAvailability) {
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
   const auto brev = resolveBrev(*ast);
   ASSERT_TRUE(brev.has_value()) << brev.error().message;
-  const auto old_ptx =
-      (*brev)->check( Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                           .instruction_range = ast->range});
+  const auto old_ptx = (*brev)->check(
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm =
-      (*brev)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                           .instruction_range = ast->range});
+  const auto old_sm = (*brev)->check(
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      (*brev)->check( Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                           .instruction_range = ast->range})
+      (*brev)
+          ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                          .instruction_range = ast->range})
           .has_value());
 }
 

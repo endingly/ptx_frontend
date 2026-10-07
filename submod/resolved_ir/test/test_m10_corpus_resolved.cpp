@@ -68,7 +68,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_copy.has_value()) << invalid_copy.error().front().message;
   const auto copy_check = dynamic_cast<const CpAsyncCaSharedGlobal&>(
-      *invalid_copy->functions.front().body.front()).check(current);
+                              *invalid_copy->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(copy_check.has_value());
   EXPECT_EQ(copy_check.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
@@ -82,7 +83,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_atom.has_value()) << invalid_atom.error().front().message;
   const auto atom_check = dynamic_cast<const AtomGlobalAddU32&>(
-      *invalid_atom->functions.front().body.front()).check(current);
+                              *invalid_atom->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(atom_check.has_value());
   EXPECT_EQ(atom_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -97,7 +99,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_vote.has_value()) << invalid_vote.error().front().message;
   const auto vote_check = dynamic_cast<const VoteSyncBallotB32&>(
-      *invalid_vote->functions.front().body.front()).check(current);
+                              *invalid_vote->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(vote_check.has_value());
   EXPECT_EQ(vote_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -122,7 +125,8 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
       << invalid_ldmatrix.error().front().message;
   const auto ldmatrix_check =
       dynamic_cast<const LdmatrixSyncAlignedM8n8X2SharedB16&>(
-          *invalid_ldmatrix->functions.front().body.front()).check(current);
+          *invalid_ldmatrix->functions.front().body.front())
+          .check(current);
   ASSERT_FALSE(ldmatrix_check.has_value());
   EXPECT_EQ(ldmatrix_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -148,9 +152,11 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(valid_mma.has_value()) << valid_mma.error().front().message;
-  const auto old_target = dynamic_cast<const MmaSyncAlignedM16n8k8RowColF32F16F16F32&>(
-      *valid_mma->functions.front().body.front()).check(
-      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 80}});
+  const auto old_target =
+      dynamic_cast<const MmaSyncAlignedM16n8k8RowColF32F16F16F32&>(
+          *valid_mma->functions.front().body.front())
+          .check(checker::Context{
+              .target = {.ptx_version = {6, 4}, .sm_version = 80}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);

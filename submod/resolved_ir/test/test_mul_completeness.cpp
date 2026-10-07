@@ -96,9 +96,8 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
     const auto resolved = resolveMul(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = (*resolved)->check(
-        checker::Context{.target = target,
-                         .instruction_range = parsed_instruction->range});
+    const auto checked = (*resolved)->check(checker::Context{
+        .target = target, .instruction_range = parsed_instruction->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_TRUE(checked.error().front().kind ==
                     checker::CheckDiagnosticKind::UnsupportedPtxVersion ||
@@ -117,8 +116,8 @@ TEST(MulCompleteness, EnforcesPerFormAvailabilityAndExactPackedContainers) {
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
   auto resolved = resolveModule(*parsed_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = dynamic_cast<MulF32x2&>(
-      *resolved->functions.front().body.front());
+  auto& packed =
+      dynamic_cast<MulF32x2&>(*resolved->functions.front().body.front());
   ASSERT_EQ(packed.dst.value.declared_type, ScalarType::B64);
   packed.dst.value.declared_type = ScalarType::B32;
   const auto checked = resolved->functions.front().body.front()->check(

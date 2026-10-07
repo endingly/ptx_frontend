@@ -594,8 +594,7 @@ TEST(OwnedModuleHandoff, RetainsSynchronizedWarpFormsAfterInputDies) {
 
   auto& paired = bfly_mode.dst_shfl_destination->value;
   ASSERT_TRUE(paired.predicate.has_value());
-  auto& predicate_type =
-      paired.predicate->value.register_ref.declared_type;
+  auto& predicate_type = paired.predicate->value.register_ref.declared_type;
   ASSERT_EQ(predicate_type, base::ScalarType::Pred);
   predicate_type = base::ScalarType::B32;
   expect_owned_validation_kind(
@@ -718,10 +717,8 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolAddressMetadataWithoutAst) {
       module, ModuleValidationPolicy::RequireCompleteContext);
 
   auto& shared_cta = dynamic_cast<CvtaSharedCtaU64&>(*kernel.body.front());
-  ResolvedAddress& address =
-      std::get<ResolvedAddress>(shared_cta.src.value);
-  ResolvedSymbolRef& symbol =
-      std::get<ResolvedSymbolRef>(address.base);
+  ResolvedAddress& address = std::get<ResolvedAddress>(shared_cta.src.value);
+  ResolvedSymbolRef& symbol = std::get<ResolvedSymbolRef>(address.base);
   ASSERT_EQ(symbol.address_state_space, syntax_ast::AstStateSpace::Shared);
   const auto original_state_space = symbol.address_state_space;
   symbol.address_state_space = syntax_ast::AstStateSpace::Global;
@@ -810,10 +807,8 @@ TEST(OwnedModuleHandoff, RevalidatesCvtaSymbolBindingIdentityWithoutAst) {
   direct_symbol.enclosing_function_kind = EnclosingFunctionKind::Entry;
 
   auto& offset = dynamic_cast<CvtaSharedCtaU64&>(*kernel.body[1]);
-  ResolvedAddress& address =
-      std::get<ResolvedAddress>(offset.src.value);
-  ResolvedSymbolRef& offset_symbol =
-      std::get<ResolvedSymbolRef>(address.base);
+  ResolvedAddress& address = std::get<ResolvedAddress>(offset.src.value);
+  ResolvedSymbolRef& offset_symbol = std::get<ResolvedSymbolRef>(address.base);
   const auto original_offset_id = offset_symbol.symbol_id;
   offset_symbol.symbol_id = global->symbol;
   expect_owned_model_mismatch(module,
@@ -1259,8 +1254,7 @@ TEST(OwnedModuleHandoff, RetainsUnifiedUuidOverflowDiagnostics) {
 
   std::vector<SourceRange> expected_ranges;
   for (const auto& item : parsed->items) {
-    const auto* function =
-        std::get_if<syntax_ast::AstFunction>(&item);
+    const auto* function = std::get_if<syntax_ast::AstFunction>(&item);
     if (function == nullptr)
       continue;
     const size_t invalid_index =
@@ -1367,8 +1361,10 @@ TEST(OwnedModuleHandoff, RejectsMalformedOwnedCallContractsWithoutAst) {
 
   auto& target_only = dynamic_cast<CallDirect&>(*caller.body[0]);
   ASSERT_TRUE(target_only.target_direct_call_target.has_value());
-  ASSERT_TRUE(target_only.target_direct_call_target->value.symbol_id.has_value());
-  const auto original_target = target_only.target_direct_call_target->value.symbol_id;
+  ASSERT_TRUE(
+      target_only.target_direct_call_target->value.symbol_id.has_value());
+  const auto original_target =
+      target_only.target_direct_call_target->value.symbol_id;
   target_only.target_direct_call_target->value.symbol_id = formal.symbol_id;
   expect_owned_model_mismatch(module,
                               ModuleValidationPolicy::RequireCompleteContext);

@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -149,9 +148,8 @@ TEST(RegisterDeclarations, ClassifiesEveryModeledScalarFromBaseMetadata) {
     const auto* function =
         std::get_if<syntax_ast::AstFunction>(&ast->items.front());
     ASSERT_NE(function, nullptr);
-    const auto* declaration =
-        std::get_if<syntax_ast::AstVariableDeclaration>(
-            &function->body.front());
+    const auto* declaration = std::get_if<syntax_ast::AstVariableDeclaration>(
+        &function->body.front());
     ASSERT_NE(declaration, nullptr);
 
     const auto binding = binding::bindSymbols(*ast);
@@ -214,12 +212,10 @@ TEST(RegisterDeclarations, RejectsExternallyConstructedVectorWidths) {
 }
 )ptx");
   ASSERT_TRUE(ast);
-  auto* function =
-      std::get_if<syntax_ast::AstFunction>(&ast->items.front());
+  auto* function = std::get_if<syntax_ast::AstFunction>(&ast->items.front());
   ASSERT_NE(function, nullptr);
   auto* declaration =
-      std::get_if<syntax_ast::AstVariableDeclaration>(
-          &function->body.front());
+      std::get_if<syntax_ast::AstVariableDeclaration>(&function->body.front());
   ASSERT_NE(declaration, nullptr);
   ASSERT_TRUE(declaration->vector_type.has_value());
   declaration->vector_type->text = ".v8";

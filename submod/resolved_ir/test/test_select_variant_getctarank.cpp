@@ -25,13 +25,13 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected = select_variant_name(parse_instruction(source), getctarank_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              getctarank_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("getctarank.shared::cluster.u32 %r0, %r1;",
-                 "SharedCluster");
+  expect_variant("getctarank.shared::cluster.u32 %r0, %r1;", "SharedCluster");
   expect_variant("getctarank.shared::cluster.u64 %r0, shared_value+4;",
                  "SharedCluster");
   expect_variant("getctarank.u32 %r0, %r1;", "Generic");
@@ -43,8 +43,9 @@ TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
            "getctarank.shared::cluster.u32.u64 %r0, %r1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(
-        select_variant_name(parse_instruction(source), getctarank_syntax_descriptor()).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     getctarank_syntax_descriptor())
+                     .has_value());
   }
   EXPECT_FALSE(resolveGetctarank(
                    parse_instruction("getctarank.shared::cluster.u32 %r0;"))

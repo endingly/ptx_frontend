@@ -29,10 +29,8 @@ TEST(ResolveSelp, SelectsFrozenU32Variant) {
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto* selp = dynamic_cast<SelpU32*>(resolved->get());
   ASSERT_NE(selp, nullptr);
-  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(
-      selp->src_false.value));
-  EXPECT_FALSE(
-      std::get<ResolvedPredicate>(selp->predicate.value).negated);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(selp->src_false.value));
+  EXPECT_FALSE(std::get<ResolvedPredicate>(selp->predicate.value).negated);
 }
 
 }  // namespace
@@ -48,14 +46,15 @@ TEST(ResolvedIrChecker, ChecksGeneratedSelpU32Availability) {
   const auto selp = resolveSelp(*ast);
   ASSERT_TRUE(selp.has_value()) << selp.error().message;
   const auto rejected =
-      (*selp)->check( Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                           .instruction_range = ast->range});
+      (*selp)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                             .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      (*selp)->check( Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
-                           .instruction_range = ast->range})
+      (*selp)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+                          .instruction_range = ast->range})
           .has_value());
 }
 

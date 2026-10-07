@@ -111,8 +111,7 @@ void all_forms() {
       std::pair{"add.sat.u8x4 %r0, %r1, %r2;",
                 ir::InstructionKind::AddPackedOptionalSat},
       std::pair{"add.cc.u32 %r0, %r1, %r2;", ir::InstructionKind::AddCc32},
-      std::pair{"add.cc.u64 %rd0, %rd1, %rd2;",
-                ir::InstructionKind::AddCc64}};
+      std::pair{"add.cc.u64 %rd0, %rd1, %rd2;", ir::InstructionKind::AddCc64}};
   for (auto [text, kind] : cases) {
     auto instruction = resolve(text);
     require(instruction->instruction_kind() == kind, "wrong identity");

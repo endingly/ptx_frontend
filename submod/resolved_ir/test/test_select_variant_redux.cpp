@@ -25,17 +25,15 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
   const auto expect_variant = [](std::string_view source,
                                  std::string_view expected) {
-    const auto selected = select_variant_name(parse_instruction(source), redux_syntax_descriptor());
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              redux_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("redux.sync.add.u32 %r0, %r1, 0xffffffff;",
-                 "SyncAdd");
-  expect_variant("redux.sync.min.s32 %r0, %r1, %r2;",
-                 "SyncMin");
-  expect_variant("redux.sync.max.u32 %r0, %r1, %r2;",
-                 "SyncMax");
+  expect_variant("redux.sync.add.u32 %r0, %r1, 0xffffffff;", "SyncAdd");
+  expect_variant("redux.sync.min.s32 %r0, %r1, %r2;", "SyncMin");
+  expect_variant("redux.sync.max.u32 %r0, %r1, %r2;", "SyncMax");
   for (const std::string_view source : {
            "redux.sync.and.b32 %r0, %r1, 0xffffffff;",
            "redux.sync.or.b32 %r0, %r1, 0xffffffff;",
@@ -61,7 +59,9 @@ TEST(SelectVariantRedux, SelectsReduxSyncFormsAndRejectsInvalidOnes) {
            "redux.sync.add.abs.u32 %r0, %r1, 0xffffffff;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(select_variant_name(parse_instruction(source), redux_syntax_descriptor()).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     redux_syntax_descriptor())
+                     .has_value());
   }
 }
 

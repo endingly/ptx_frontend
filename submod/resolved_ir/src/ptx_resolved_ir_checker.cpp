@@ -1,6 +1,9 @@
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstdint>
 
 #include <fmt/format.h>
 
@@ -52,6 +55,98 @@ const OperandView* find_operand(std::span<const OperandView> operands,
   return it == operands.end() ? nullptr : &*it;
 }
 
+/** Find the generated modifier view identified by its stable semantic name. */
+const ModifierValueView* find_modifier(
+    std::span<const ModifierValueView> modifiers,
+    std::string_view kind_id) noexcept {
+  const auto it = std::ranges::find_if(
+      modifiers, [kind_id](const ModifierValueView& modifier) {
+        return modifier.kind_id == kind_id;
+      });
+  return it == modifiers.end() ? nullptr : &*it;
+}
+
+/** Return whether a scalar is an integer or bit-size conversion type. */
+bool is_integer_type(ScalarType type) noexcept {
+  return base::scalar_kind(type) == base::ScalarKind::Unsigned ||
+         base::scalar_kind(type) == base::ScalarKind::Signed ||
+         base::scalar_kind(type) == base::ScalarKind::Bit;
+}
+
+/** Return whether a scalar belongs to PTX's floating conversion category. */
+bool is_float_type(ScalarType type) noexcept {
+  return base::scalar_kind(type) == base::ScalarKind::Float;
+}
+
+/** Return whether a rounding value produces an integer-valued result. */
+bool is_integer_rounding(RoundingMode rounding) noexcept {
+  return rounding == RoundingMode::Rni || rounding == RoundingMode::Rzi ||
+         rounding == RoundingMode::Rmi || rounding == RoundingMode::Rpi;
+}
+
+/** Return whether a rounding value selects a floating conversion direction. */
+bool is_float_rounding(RoundingMode rounding) noexcept {
+  return rounding == RoundingMode::Rn || rounding == RoundingMode::Rz ||
+         rounding == RoundingMode::Rm || rounding == RoundingMode::Rp;
+}
+
+/** Return the ordered precision rank used by ordinary scalar float conversion. */
+int float_precision_rank(ScalarType type) noexcept {
+  switch (type) {
+    case ScalarType::F16:
+    case ScalarType::BF16:
+      return 1;
+    case ScalarType::F32:
+      return 2;
+    case ScalarType::F64:
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+/** Return whether every source integer value is representable by destination. */
+bool integer_range_contains(ScalarType destination,
+                            ScalarType source) noexcept {
+  if (!is_integer_type(destination) || !is_integer_type(source))
+    return false;
+  const uint8_t destination_bits = base::scalar_size_of(destination) * 8;
+  const uint8_t source_bits = base::scalar_size_of(source) * 8;
+  const bool destination_signed =
+      base::scalar_kind(destination) == base::ScalarKind::Signed;
+  const bool source_signed =
+      base::scalar_kind(source) == base::ScalarKind::Signed;
+  if (!destination_signed && source_signed)
+    return false;
+  if (destination_signed && !source_signed)
+    return destination_bits > source_bits;
+  return destination_bits >= source_bits;
+}
+
+/** Construct a conversion diagnostic at the selected instruction range. */
+CheckResult cvt_rule_violation(
+    const Context& context, std::string_view message,
+    CheckDiagnosticKind kind = CheckDiagnosticKind::RuleViolation) {
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = kind,
+      .range = context.instruction_range,
+      .message = std::string{message},
+  }});
+}
+
+/**
+ * Return the evaluated integer value used by fixed immediate constraints.
+ *
+ * Integer source bits precede a data operand's width conversion, so a source
+ * value that narrows to an allowed bit pattern cannot satisfy a control rule.
+ * @pre `operand.immediate_bits` is engaged.
+ */
+std::pair<uint64_t, bool> integer_constraint_value(
+    const OperandView& operand) noexcept {
+  return {operand.integer_source_bits.value_or(*operand.immediate_bits),
+          operand.immediate_is_negative.value_or(false)};
+}
+
 void append_value_availability_diagnostics(const OperandView& operand,
                                            const Context& context,
                                            CheckDiagnostics& diagnostics) {
@@ -66,8 +161,9 @@ void append_value_availability_diagnostics(const OperandView& operand,
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = range,
-        .message = fmt::format("Operand value '{}' has no matching availability clause.",
-                               operand.value_name),
+        .message = fmt::format(
+            "Operand value '{}' has no matching availability clause.",
+            operand.value_name),
     });
     return;
   }
@@ -107,9 +203,18 @@ void append_value_availability_diagnostics(const OperandView& operand,
   }
 }
 
-bool matches_modifier_value(
-    const ModifierValueAvailabilityDescriptor& descriptor,
-    const ModifierValueView& actual) noexcept {
+/** Restrict shared typed-value comparison to generated modifier descriptors. */
+template <typename Descriptor>
+concept ModifierValueDescriptor =
+    std::same_as<std::remove_cvref_t<Descriptor>,
+                 ModifierValueAvailabilityDescriptor> ||
+    std::same_as<std::remove_cvref_t<Descriptor>,
+                 ModifierValueDomainDescriptor>;
+
+/** Compare one generated typed modifier value with a projected resolved value. */
+template <ModifierValueDescriptor Descriptor>
+bool matches_modifier_value(const Descriptor& descriptor,
+                            const ModifierValueView& actual) noexcept {
   if (descriptor.kind_id != actual.kind_id ||
       descriptor.value_kind != actual.value_kind) {
     return false;
@@ -123,12 +228,16 @@ bool matches_modifier_value(
       return descriptor.rounding_mode == actual.rounding_mode;
     case ModifierValueKind::ComparisonOperator:
       return descriptor.comparison_operator == actual.comparison_operator;
+    case ModifierValueKind::TestProperty:
+      return descriptor.test_property == actual.test_property;
     case ModifierValueKind::BooleanOperator:
       return descriptor.boolean_operator == actual.boolean_operator;
     case ModifierValueKind::CacheOperator:
       return descriptor.cache_operator == actual.cache_operator;
     case ModifierValueKind::EvictionPriority:
       return descriptor.eviction_priority == actual.eviction_priority;
+    case ModifierValueKind::PrefetchSize:
+      return descriptor.prefetch_size == actual.prefetch_size;
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
@@ -180,7 +289,8 @@ void append_address_constraint_availability_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = range,
-        .message = fmt::format("{} has no matching availability clause.", constraint),
+        .message =
+            fmt::format("{} has no matching availability clause.", constraint),
     });
     return;
   }
@@ -198,9 +308,9 @@ void append_address_constraint_availability_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedSmVersion,
         .range = range,
-        .message = fmt::format(
-            "{} requires SM >= {}, but target SM is {}.", constraint,
-            availability.minimum_sm_version, context.target.sm_version),
+        .message = fmt::format("{} requires SM >= {}, but target SM is {}.",
+                               constraint, availability.minimum_sm_version,
+                               context.target.sm_version),
     });
   }
   if (!availability.required_family.empty() &&
@@ -215,7 +325,8 @@ void append_address_constraint_availability_diagnostics(
   }
 }
 
-std::string_view parameter_direction_name(ParameterDirection direction) noexcept {
+std::string_view parameter_direction_name(
+    ParameterDirection direction) noexcept {
   switch (direction) {
     case ParameterDirection::None:
       return "unknown";
@@ -253,12 +364,14 @@ void append_parameter_qualifier_diagnostics(
 
   bool mismatch = false;
   if (operand.parameter_qualifier == ParameterAddressQualifier::Entry) {
-    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
-               operand.parameter_direction == ParameterDirection::Return ||
-               operand.parameter_direction == ParameterDirection::CallArgument;
+    mismatch =
+        operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
+        operand.parameter_direction == ParameterDirection::Return ||
+        operand.parameter_direction == ParameterDirection::CallArgument;
   } else {
-    mismatch = operand.enclosing_function_kind == EnclosingFunctionKind::Entry &&
-               operand.parameter_direction == ParameterDirection::Input;
+    mismatch =
+        operand.enclosing_function_kind == EnclosingFunctionKind::Entry &&
+        operand.parameter_direction == ParameterDirection::Input;
   }
   if (!mismatch)
     return;
@@ -295,12 +408,12 @@ void append_parameter_address_diagnostics(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ParameterDirectionMismatch,
         .range = diagnostic_range(operand.locations, context),
-        .message = fmt::format(
-            "Address operand '{}' refers to a {} parameter but the "
-            "instruction requires a {} parameter address.",
-            descriptor.target_field_id,
-            parameter_direction_name(operand.parameter_direction),
-            parameter_direction_name(constraint.direction)),
+        .message =
+            fmt::format("Address operand '{}' refers to a {} parameter but the "
+                        "instruction requires a {} parameter address.",
+                        descriptor.target_field_id,
+                        parameter_direction_name(operand.parameter_direction),
+                        parameter_direction_name(constraint.direction)),
     });
     return;
   }
@@ -309,12 +422,115 @@ void append_parameter_address_diagnostics(
       operand.enclosing_function_kind == EnclosingFunctionKind::Device ||
       operand.parameter_direction == ParameterDirection::CallArgument) {
     append_address_constraint_availability_diagnostics(
-        constraint.function_availability, "Parameter address", operand,
-        context, diagnostics);
+        constraint.function_availability, "Parameter address", operand, context,
+        diagnostics);
   }
 }
 
 }  // namespace
+
+OperandView project_tensor_operand(
+    std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand) {
+  const auto& tensor = operand.value;
+  const auto& address = tensor.tensor_map.address;
+  const auto* symbol = std::get_if<ResolvedSymbolRef>(&address.base);
+  std::optional<MemoryStateSpace> space;
+  if (symbol && symbol->address_state_space) {
+    switch (*symbol->address_state_space) {
+      case syntax_ast::AstStateSpace::Global:
+        space = MemoryStateSpace::Global;
+        break;
+      case syntax_ast::AstStateSpace::Shared:
+        space = MemoryStateSpace::Shared;
+        break;
+      case syntax_ast::AstStateSpace::Local:
+        space = MemoryStateSpace::Local;
+        break;
+      case syntax_ast::AstStateSpace::Parameter:
+        space = MemoryStateSpace::Parameter;
+        break;
+      case syntax_ast::AstStateSpace::Constant:
+        space = MemoryStateSpace::Constant;
+        break;
+      case syntax_ast::AstStateSpace::Register:
+        break;
+    }
+  }
+  const auto low_bit = [](uint64_t value) {
+    return value == 0 ? uint64_t{0} : value & (~value + 1);
+  };
+  std::optional<uint64_t> alignment;
+  if (symbol)
+    alignment = symbol->address_alignment;
+  else if (const auto* immediate =
+               std::get_if<ResolvedImmediate>(&address.base))
+    alignment = low_bit(immediate->bits);
+  if (alignment && address.offset) {
+    const uint64_t offset_alignment = low_bit(address.offset->value.bits);
+    if (offset_alignment != 0 &&
+        (*alignment == 0 || offset_alignment < *alignment))
+      alignment = offset_alignment;
+  }
+  OperandView view{
+      .field_id = field_id,
+      .actual_shape = OperandShape::TensorOperand,
+      .address_state_space = space,
+      .address_base_kind =
+          std::holds_alternative<ResolvedRegisterRef>(address.base)
+              ? AddressBaseKind::Register
+          : std::holds_alternative<ResolvedSymbolRef>(address.base)
+              ? AddressBaseKind::Symbol
+              : AddressBaseKind::Immediate,
+      .address_offset_fits_signed32 =
+          !address.offset || address_offset_fits_signed32(*address.offset),
+      .address_alignment = alignment,
+      .enclosing_function_kind = address.enclosing_function_kind,
+      .parameter_direction = symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::InputParameter
+                                 ? ParameterDirection::Input
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::ReturnParameter
+                                 ? ParameterDirection::Return
+                             : symbol && symbol->declaration_kind &&
+                                     *symbol->declaration_kind ==
+                                         binding::SymbolKind::CallParameter
+                                 ? ParameterDirection::CallArgument
+                                 : ParameterDirection::None,
+      .tensor_rank = tensor.rank,
+      .tensor_operand = &tensor,
+      .vector_arity = tensor.coordinates.elements.size(),
+      .locations = operand.locs,
+  };
+  for (size_t index = 0; index < tensor.coordinates.elements.size() &&
+                         index < kMaxOperandElements;
+       ++index) {
+    const auto& element = tensor.coordinates.elements[index];
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+      view.vector_element_shapes[index] = OperandShape::Register;
+      view.vector_element_types[index] =
+          reg->declared_type.value_or(ScalarType::Invalid);
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(element);
+      view.vector_element_shapes[index] = OperandShape::Immediate;
+      view.vector_element_types[index] = immediate.type;
+      view.tensor_has_negative_immediate |=
+          (immediate.bits & uint64_t{0x80000000}) != 0;
+    }
+  }
+  return view;
+}
+
+CheckResult check_tensor_store_coordinates(const OperandView& operand,
+                                           const Context& context) {
+  if (!operand.tensor_has_negative_immediate)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(operand.locations, context),
+      .message = "Tensor store coordinates must not be statically negative."}});
+}
 
 bool is_available(const AvailabilityDescriptor& availability,
                   const TargetInfo& target) noexcept {
@@ -334,7 +550,8 @@ bool is_available(const AvailabilityDescriptor& availability,
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
            ++capability) {
-        if (!has_capability(target.capabilities, clause.capabilities[capability])) {
+        if (!has_capability(target.capabilities,
+                            clause.capabilities[capability])) {
           capabilities_match = false;
           break;
         }
@@ -373,8 +590,9 @@ CheckResult check_availability(const VariantDescriptor& variant,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = context.instruction_range,
-        .message = fmt::format("Instruction variant '{}' has no matching availability clause.",
-                               variant.variant_name),
+        .message = fmt::format(
+            "Instruction variant '{}' has no matching availability clause.",
+            variant.variant_name),
     }});
   }
 
@@ -436,12 +654,58 @@ CheckResult check_common(const InstructionDescriptor& instruction,
   return check_availability(*variant, context);
 }
 
+CheckResult check_execution_predicate(
+    const std::optional<WithLocs<ResolvedPredicate>>& predicate,
+    const Context& context) {
+  if (!predicate)
+    return {};
+
+  const ResolvedRegisterRef& register_ref = predicate->value.register_ref;
+  CheckDiagnostics diagnostics;
+  const auto invalid = [&](std::string_view reason) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidExecutionPredicate,
+        .range = diagnostic_range(predicate->locs, context),
+        .message = fmt::format("Instruction execution predicate {}.", reason),
+    });
+  };
+  if (register_ref.register_class != ResolvedRegisterClass::Predicate)
+    invalid("does not retain predicate register class");
+  if (register_ref.declared_type &&
+      *register_ref.declared_type != ScalarType::Pred) {
+    invalid("has a non-.pred declared type");
+  }
+  if (register_ref.vector_width)
+    invalid("has vector register shape");
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 CheckResult check_operands(
     std::span<const OperandDescriptor> descriptors,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
     const Context& context) {
   CheckDiagnostics diagnostics;
+
+  for (const OperandView& operand : operands) {
+    if ((operand.actual_shape != OperandShape::Vector &&
+         operand.actual_shape != OperandShape::TensorOperand) ||
+        (operand.vector_arity != 0 &&
+         operand.vector_arity <= kMaxOperandElements)) {
+      continue;
+    }
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::InvalidVectorOperand,
+        .range = diagnostic_range(operand.locations, context),
+        .message =
+            fmt::format("Vector operand '{}' has an unsupported element count.",
+                        operand.field_id),
+    });
+  }
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
 
   for (const OperandDescriptor& descriptor : descriptors) {
     const OperandView* operand =
@@ -466,6 +730,173 @@ CheckResult check_operands(
               descriptor.target_field_id),
       });
     }
+    if (operand->actual_shape == OperandShape::TensorOperand) {
+      const auto* tensor = operand->tensor_operand;
+      const bool invalid_structure =
+          tensor == nullptr || tensor->mode != TensorAccessMode::Tiled ||
+          static_cast<size_t>(tensor->rank) != operand->vector_arity ||
+          tensor->coordinate_ranges.size() != operand->vector_arity ||
+          tensor->tensor_map.range == SourceRange{};
+      if (invalid_structure) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(operand->locations, context),
+            .message =
+                "Tensor operand rank, mode, or source metadata is invalid."});
+      }
+      if (operand->address_state_space == MemoryStateSpace::Parameter &&
+          (operand->enclosing_function_kind != EnclosingFunctionKind::Entry ||
+           operand->parameter_direction != ParameterDirection::Input)) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+            .range = diagnostic_range(operand->locations, context),
+            .message =
+                "Tensor-map parameter storage requires a kernel parameter."});
+      }
+      if (tensor != nullptr) {
+        for (size_t index = 0; index < tensor->coordinates.elements.size();
+             ++index) {
+          const SourceRange range =
+              index < tensor->coordinate_ranges.size() &&
+                      tensor->coordinate_ranges[index] != SourceRange{}
+                  ? tensor->coordinate_ranges[index]
+                  : diagnostic_range(operand->locations, context);
+          const auto* reg = std::get_if<ResolvedRegisterRef>(
+              &tensor->coordinates.elements[index]);
+          if (reg) {
+            const bool valid =
+                reg->register_class == ResolvedRegisterClass::General &&
+                !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+                (!reg->declared_type ||
+                 (is_integer_type(*reg->declared_type) &&
+                  base::scalar_size_of(*reg->declared_type) == 4));
+            if (!valid)
+              diagnostics.push_back(CheckDiagnostic{
+                  .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                  .range = range,
+                  .message = "Tensor coordinates require scalar 32-bit "
+                             "integer/bit registers.",
+              });
+            continue;
+          }
+          const auto* immediate = std::get_if<ResolvedImmediate>(
+              &tensor->coordinates.elements[index]);
+          if (!immediate)
+            continue;
+          const bool valid =
+              immediate->type == ScalarType::S32 &&
+              immediate->integer_source_bits.has_value() &&
+              immediate->bits ==
+                  (*immediate->integer_source_bits & uint64_t{0xffffffff});
+          if (valid)
+            continue;
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = range,
+              .message = "Tensor coordinate immediate has invalid signed "
+                         "32-bit metadata."});
+        }
+      }
+    }
+    if (operand->actual_shape == OperandShape::Vector &&
+        (descriptor.access == OperandAccess::Write ||
+         descriptor.access == OperandAccess::ReadWrite) &&
+        operand->vector_arity <= kMaxOperandElements) {
+      for (size_t index = 0; index < operand->vector_arity; ++index) {
+        const ResolvedRegisterRef* lane =
+            operand->vector_element_registers[index];
+        if (lane == nullptr)
+          continue;
+        for (size_t previous = 0; previous < index; ++previous) {
+          const ResolvedRegisterRef* earlier =
+              operand->vector_element_registers[previous];
+          if (earlier == nullptr)
+            continue;
+          const bool same_register =
+              (lane->symbol_id && earlier->symbol_id &&
+               lane->symbol_id == earlier->symbol_id &&
+               lane->parameterized_index == earlier->parameterized_index) ||
+              lane->spelling == earlier->spelling;
+          if (!same_register)
+            continue;
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::InvalidVectorOperand,
+              .range = index < operand->locations.size()
+                           ? operand->locations[index]
+                           : diagnostic_range(operand->locations, context),
+              .message =
+                  fmt::format("Destination vector '{}' writes register '{}' "
+                              "more than once.",
+                              descriptor.target_field_id, lane->spelling),
+          });
+          break;
+        }
+      }
+    }
+    if (operand->actual_shape == OperandShape::PredicatePair &&
+        !operand->predicate_pair_has_destination) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format("Predicate-pair operand '{}' must retain at "
+                                 "least one destination.",
+                                 descriptor.target_field_id),
+      });
+    }
+    if (operand->actual_shape == OperandShape::ShflDestination) {
+      if (!operand->paired_destination_data_present &&
+          !operand->paired_destination_predicate_present) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' must retain a data "
+                                   "or predicate output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (!operand->paired_destination_data_present &&
+          !descriptor.allow_destination_sink) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' cannot discard its "
+                                   "data output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (!operand->paired_destination_predicate_present &&
+          !descriptor.allow_predicate_sink) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format("Paired destination '{}' cannot discard its "
+                                   "predicate output.",
+                                   descriptor.target_field_id),
+        });
+      }
+      if (operand->paired_destination_predicate_type &&
+          *operand->paired_destination_predicate_type != ScalarType::Pred) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::OperandTypeMismatch,
+            .range = diagnostic_range(operand->locations, context),
+            .message = fmt::format(
+                "Paired destination '{}' has predicate "
+                "output type '{}' rather than '.pred'.",
+                descriptor.target_field_id,
+                to_string(*operand->paired_destination_predicate_type)),
+        });
+      }
+    }
+    if (descriptor.role == OperandRole::Destination &&
+        operand->destination_predicate_negated) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("Predicate destination '{}' cannot be negated.",
+                          descriptor.target_field_id),
+      });
+    }
     if (operand->is_sink) {
       append_address_constraint_availability_diagnostics(
           descriptor.sink_availability, "mbarrier state-token sink", *operand,
@@ -474,7 +905,8 @@ CheckResult check_operands(
 
     if (descriptor.minimum_elements != 0) {
       const SourceRange& range = diagnostic_range(operand->locations, context);
-      if (operand->actual_shape != OperandShape::Vector ||
+      if ((operand->actual_shape != OperandShape::Vector &&
+           operand->actual_shape != OperandShape::TensorOperand) ||
           operand->vector_arity < descriptor.minimum_elements ||
           operand->vector_arity > descriptor.maximum_elements ||
           operand->vector_arity > kMaxOperandElements) {
@@ -493,8 +925,8 @@ CheckResult check_operands(
               return !allows_shape(descriptor.allowed_element_shapes,
                                    element_shape);
             });
-        if (mismatched != operand->vector_element_shapes.begin() +
-                              operand->vector_arity) {
+        if (mismatched !=
+            operand->vector_element_shapes.begin() + operand->vector_arity) {
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::UnsupportedOperandShape,
               .range = range,
@@ -505,6 +937,27 @@ CheckResult check_operands(
           });
         }
       }
+    }
+
+    if (descriptor.address_base_policy == AddressBasePolicy::Register &&
+        operand->address_base_kind != AddressBaseKind::Register) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("Address operand '{}' requires a register base.",
+                          descriptor.target_field_id),
+      });
+    }
+    if (descriptor.address_offset_domain == AddressOffsetDomain::Signed32 &&
+        !operand->address_offset_fits_signed32) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Address operand '{}' requires a signed 32-bit offset.",
+              descriptor.target_field_id),
+      });
     }
 
     std::optional<MemoryStateSpace> selected_state_space;
@@ -539,12 +992,10 @@ CheckResult check_operands(
         }
       }
     }
-    append_parameter_qualifier_diagnostics(descriptor, *operand,
-                                           selected_state_space, context,
-                                           diagnostics);
-    append_parameter_address_diagnostics(descriptor, *operand,
-                                         selected_state_space, context,
-                                         diagnostics);
+    append_parameter_qualifier_diagnostics(
+        descriptor, *operand, selected_state_space, context, diagnostics);
+    append_parameter_address_diagnostics(
+        descriptor, *operand, selected_state_space, context, diagnostics);
 
     if (!descriptor.allowed_address_state_spaces.empty() &&
         operand->address_state_space) {
@@ -564,8 +1015,9 @@ CheckResult check_operands(
                 state_space_name(*operand->address_state_space)),
         });
       } else {
-        const std::string constraint_name = fmt::format(
-            "Address state space '.{}'", state_space_name(allowed->state_space));
+        const std::string constraint_name =
+            fmt::format("Address state space '.{}'",
+                        state_space_name(allowed->state_space));
         append_address_constraint_availability_diagnostics(
             allowed->availability, constraint_name, *operand, context,
             diagnostics);
@@ -658,7 +1110,8 @@ CheckResult check_operands(
       continue;
     }
 
-    if (operand->actual_shape == OperandShape::Vector &&
+    if ((operand->actual_shape == OperandShape::Vector ||
+         operand->actual_shape == OperandShape::TensorOperand) &&
         descriptor.minimum_elements != 0) {
       if (operand->vector_arity <= kMaxOperandElements) {
         const auto mismatched = std::ranges::find_if(
@@ -667,14 +1120,13 @@ CheckResult check_operands(
             [&](ScalarType element_type) {
               // Standalone operands have no declaration to establish a type.
               return element_type != ScalarType::Invalid &&
-                     !scalar_types_compatible(
-                         element_type, expected_type,
-                         descriptor.register_width_policy);
+                     !scalar_types_compatible(element_type, expected_type,
+                                              descriptor.register_width_policy);
             });
-        if (mismatched != operand->vector_element_types.begin() +
-                              operand->vector_arity) {
-          const size_t index =
-              static_cast<size_t>(mismatched - operand->vector_element_types.begin());
+        if (mismatched !=
+            operand->vector_element_types.begin() + operand->vector_arity) {
+          const size_t index = static_cast<size_t>(
+              mismatched - operand->vector_element_types.begin());
           diagnostics.push_back(CheckDiagnostic{
               .kind = CheckDiagnosticKind::OperandTypeMismatch,
               .range = index < operand->locations.size()
@@ -752,8 +1204,7 @@ CheckResult check_operands(
             .message = fmt::format(
                 "Vector operand '{}' payload width ({} bits) exceeds the "
                 "supported {} bit limit.",
-                descriptor.target_field_id,
-                vector_payload_bits,
+                descriptor.target_field_id, vector_payload_bits,
                 kMaxRegisterVectorPayloadBits),
         });
         continue;
@@ -776,10 +1227,11 @@ CheckResult check_operands(
         diagnostics.push_back(CheckDiagnostic{
             .kind = CheckDiagnosticKind::InvalidVectorOperand,
             .range = range,
-            .message = fmt::format(
-                "Vector operand '{}' uses the '_' sink with {} bits; {} bits are required.",
-                descriptor.target_field_id, vector_payload_bits,
-                descriptor.vector_sink_payload_bits),
+            .message =
+                fmt::format("Vector operand '{}' uses the '_' sink with {} "
+                            "bits; {} bits are required.",
+                            descriptor.target_field_id, vector_payload_bits,
+                            descriptor.vector_sink_payload_bits),
         });
         continue;
       }
@@ -817,15 +1269,61 @@ CheckResult check_operands(
                   element_bytes * 8),
           });
         }
+      } else if (!descriptor.allowed_register_types.empty()) {
+        std::optional<bool> floating_register_family;
+        for (size_t index = 0; index < operand->vector_arity; ++index) {
+          if (operand->vector_element_shapes[index] != OperandShape::Register)
+            continue;
+          const ScalarType element_type = operand->vector_element_types[index];
+          if (element_type == ScalarType::Invalid)
+            continue;
+          const SourceRange& lane_range = index < operand->locations.size()
+                                              ? operand->locations[index]
+                                              : range;
+          if (std::ranges::find(descriptor.allowed_register_types,
+                                element_type) ==
+              descriptor.allowed_register_types.end()) {
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                .range = lane_range,
+                .message = fmt::format("Vector operand '{}' has disallowed "
+                                       "register lane type '{}'.",
+                                       descriptor.target_field_id,
+                                       to_string(element_type)),
+            });
+            continue;
+          }
+          if (!descriptor.require_uniform_register_family)
+            continue;
+          const auto kind = scalar_kind(element_type);
+          if (kind == base::ScalarKind::Bit)
+            continue;
+          const bool floating = kind == base::ScalarKind::Float;
+          if ((kind != base::ScalarKind::Float &&
+               kind != base::ScalarKind::Signed &&
+               kind != base::ScalarKind::Unsigned) ||
+              (floating_register_family &&
+               *floating_register_family != floating)) {
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                .range = lane_range,
+                .message = fmt::format(
+                    "Vector operand '{}' mixes integer and floating register "
+                    "lanes.",
+                    descriptor.target_field_id),
+            });
+          } else {
+            floating_register_family = floating;
+          }
+        }
       } else {
         const auto mismatched = std::ranges::find_if(
             operand->vector_element_types.begin(),
             operand->vector_element_types.begin() + operand->vector_arity,
             [&](ScalarType element_type) {
               return element_type != ScalarType::Invalid &&
-                     !scalar_types_compatible(
-                         element_type, expected_type,
-                         descriptor.register_width_policy);
+                     !scalar_types_compatible(element_type, expected_type,
+                                              descriptor.register_width_policy);
             });
         if (mismatched !=
             operand->vector_element_types.begin() + operand->vector_arity) {
@@ -855,8 +1353,7 @@ CheckResult check_operands(
               expected_type_source, to_string(expected_type)),
       });
     } else if (operand->register_type &&
-               !scalar_types_compatible(*operand->register_type,
-                                        expected_type,
+               !scalar_types_compatible(*operand->register_type, expected_type,
                                         descriptor.register_width_policy)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
@@ -920,6 +1417,38 @@ CheckResult check_operand_layout_tag(std::string_view variant_name,
   }});
 }
 
+CheckResult check_operand_layout_modifiers(
+    const VariantDescriptor& variant, uint16_t selected_layout,
+    std::span<const ModifierValueView> actual_values, const Context& context) {
+  if (selected_layout >= variant.operand_layouts.size()) {
+    return check_operand_layout_tag(variant.variant_name, selected_layout,
+                                    variant.operand_layouts.size(), context);
+  }
+
+  const auto& layout = variant.operand_layouts[selected_layout];
+  if (layout.forbidden_modifiers.empty())
+    return {};
+
+  CheckDiagnostics diagnostics;
+  for (const ModifierValueView& actual : actual_values) {
+    if (!actual.is_present)
+      continue;
+    if (!std::ranges::contains(layout.forbidden_modifiers, actual.slot))
+      continue;
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierNotAllowedForLayout,
+        .range = diagnostic_range(actual.locations, context),
+        .message = fmt::format(
+            "Operand layout '{}' of instruction variant '{}' does not accept "
+            "modifier '{}'.",
+            layout.layout_name, variant.variant_name, actual.kind_id),
+    });
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
 CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
                                               uint16_t selected_layout,
                                               const Context& context) {
@@ -939,7 +1468,8 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = context.instruction_range,
-        .message = fmt::format("Operand layout '{}' of instruction variant '{}' has no matching availability clause.",
+        .message = fmt::format("Operand layout '{}' of instruction variant "
+                               "'{}' has no matching availability clause.",
                                layout.layout_name, variant.variant_name),
     }});
   }
@@ -1013,8 +1543,9 @@ CheckResult check_modifier_value_availability(
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedAvailability,
           .range = range,
-          .message = fmt::format("Modifier '{}' has no matching availability clause.",
-                                 actual.kind_id),
+          .message =
+              fmt::format("Modifier '{}' has no matching availability clause.",
+                          actual.kind_id),
       });
       continue;
     }
@@ -1055,6 +1586,369 @@ CheckResult check_modifier_value_availability(
   return std::unexpected(std::move(diagnostics));
 }
 
+CheckResult check_modifier_value_domain(
+    std::span<const ModifierValueDomainDescriptor> descriptors,
+    std::span<const ModifierValueView> actual_values, const Context& context) {
+  CheckDiagnostics diagnostics;
+  for (const ModifierValueView& actual : actual_values) {
+    const auto it = std::ranges::find_if(
+        descriptors, [&actual](const ModifierValueDomainDescriptor& entry) {
+          return matches_modifier_value(entry, actual);
+        });
+    if (it != descriptors.end())
+      continue;
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = diagnostic_range(actual.locations, context),
+        .message = fmt::format("Modifier '{}' has a value outside the selected "
+                               "instruction variant's "
+                               "semantic domain.",
+                               actual.kind_id),
+    });
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
+                           std::span<const OperandView> operands,
+                           const Context& context) {
+  const ModifierValueView* destination = find_modifier(modifiers, "dst_type");
+  const ModifierValueView* source = find_modifier(modifiers, "src_type");
+  if (destination == nullptr || source == nullptr ||
+      destination->value_kind != ModifierValueKind::ScalarType ||
+      source->value_kind != ModifierValueKind::ScalarType) {
+    return cvt_rule_violation(
+        context, "cvt requires typed destination and source modifiers.");
+  }
+
+  const ScalarType destination_type = destination->scalar_type;
+  const ScalarType source_type = source->scalar_type;
+  const ModifierValueView* rounding = find_modifier(modifiers, "rounding");
+  const RoundingMode rounding_mode =
+      rounding == nullptr || !rounding->is_present ? RoundingMode::Invalid
+                                                   : rounding->rounding_mode;
+  const ModifierValueView* ftz = find_modifier(modifiers, "ftz");
+  const bool has_ftz = ftz != nullptr && ftz->is_present && ftz->bool_value;
+  const ModifierValueView* saturate = find_modifier(modifiers, "sat");
+  const bool has_saturate =
+      saturate != nullptr && saturate->is_present && saturate->bool_value;
+  const ModifierValueView* scaled = find_modifier(modifiers, "scaled");
+  const bool has_scaled =
+      scaled != nullptr && scaled->is_present && scaled->bool_value;
+  const bool has_scale_factor =
+      std::ranges::any_of(operands, [](const OperandView& operand) {
+        return operand.field_id == "scale_factor";
+      });
+
+  const bool destination_integer = is_integer_type(destination_type);
+  const bool source_integer = is_integer_type(source_type);
+  const bool destination_float = is_float_type(destination_type);
+  const bool source_float = is_float_type(source_type);
+  if ((!destination_integer && !destination_float) ||
+      (!source_integer && !source_float)) {
+    return cvt_rule_violation(context,
+                              "cvt requires scalar integer or floating source "
+                              "and destination types.");
+  }
+
+  const auto has_exact_width = [](const OperandView* operand, ScalarType type) {
+    return operand == nullptr || !operand->register_type.has_value() ||
+           base::scalar_size_of(*operand->register_type) ==
+               base::scalar_size_of(type);
+  };
+  const bool exact_destination = destination_type == ScalarType::BF16 ||
+                                 destination_type == ScalarType::BF16x2 ||
+                                 destination_type == ScalarType::TF32;
+  const bool exact_source =
+      source_type == ScalarType::BF16 || source_type == ScalarType::BF16x2;
+  if ((exact_destination &&
+       !has_exact_width(find_operand(operands, "dst"), destination_type)) ||
+      (exact_source &&
+       !has_exact_width(find_operand(operands, "src"), source_type))) {
+    return cvt_rule_violation(
+        context,
+        "bfloat and tf32 cvt operands require an exact-width register.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  }
+
+  if ((destination_type == ScalarType::F64 || source_type == ScalarType::F64) &&
+      context.target.sm_version < 13) {
+    return cvt_rule_violation(
+        context, "cvt conversions to or from f64 require SM13 or newer.",
+        CheckDiagnosticKind::UnsupportedSmVersion);
+  }
+
+  if (has_scaled != has_scale_factor) {
+    return cvt_rule_violation(
+        context,
+        "cvt scaled::n2::ue8m0 requires exactly one scale-factor operand.");
+  }
+
+  if (has_ftz && destination_type != ScalarType::F32 &&
+      source_type != ScalarType::F32) {
+    return cvt_rule_violation(
+        context, "cvt.ftz requires an f32 source or destination type.");
+  }
+
+  if (destination_float && has_saturate &&
+      destination_type != ScalarType::F16 &&
+      destination_type != ScalarType::F32 &&
+      destination_type != ScalarType::F64) {
+    return cvt_rule_violation(
+        context,
+        "cvt.sat floating destinations are limited to f16, f32, and f64.");
+  }
+  if (destination_integer && source_integer && has_saturate &&
+      integer_range_contains(destination_type, source_type)) {
+    return cvt_rule_violation(context,
+                              "cvt.sat is not permitted when the integer "
+                              "destination range contains the source range.");
+  }
+
+  if (destination_integer && source_integer) {
+    if (rounding_mode != RoundingMode::Invalid)
+      return cvt_rule_violation(
+          context, "integer-to-integer cvt does not admit rounding.");
+    return {};
+  }
+  if (destination_integer && source_float) {
+    if (!is_integer_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "floating-to-integer cvt requires integer rounding.");
+    return {};
+  }
+  if (destination_float && source_integer) {
+    if (!is_float_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "integer-to-floating cvt requires floating rounding.");
+    return {};
+  }
+
+  const int destination_rank = float_precision_rank(destination_type);
+  const int source_rank = float_precision_rank(source_type);
+  const bool f16_bf16_pair =
+      (destination_type == ScalarType::F16 &&
+       source_type == ScalarType::BF16) ||
+      (destination_type == ScalarType::BF16 && source_type == ScalarType::F16);
+  if (f16_bf16_pair) {
+    if (rounding_mode == RoundingMode::Invalid ||
+        is_float_rounding(rounding_mode)) {
+      return {};
+    }
+    return cvt_rule_violation(
+        context, "bfloat conversion pairs only admit floating rounding.");
+  }
+  if (destination_type == ScalarType::BF16 && source_type == ScalarType::F32) {
+    if (is_float_rounding(rounding_mode))
+      return {};
+    return cvt_rule_violation(
+        context, "f32 to bf16 conversion requires floating rounding.");
+  }
+  if (destination_type == ScalarType::F32 && source_type == ScalarType::BF16) {
+    if (rounding_mode == RoundingMode::Invalid)
+      return {};
+    return cvt_rule_violation(
+        context, "bf16 to f32 conversion does not admit rounding.");
+  }
+  if (destination_type == source_type && is_integer_rounding(rounding_mode)) {
+    return {};
+  }
+  if (destination_rank == 0 || source_rank == 0)
+    return {};
+  if (destination_rank < source_rank) {
+    if (!is_float_rounding(rounding_mode))
+      return cvt_rule_violation(
+          context, "precision-losing floating cvt requires floating rounding.");
+  } else if (rounding_mode != RoundingMode::Invalid) {
+    return cvt_rule_violation(
+        context, "non-lossy floating cvt does not admit rounding.");
+  }
+  return {};
+}
+
+CheckResult check_atomic_qualifiers(
+    const VariantDescriptor::AtomicAddressQualifierDescriptor& descriptor,
+    const WithLocs<AtomicAddressQualifier>& qualifier,
+    std::span<const FieldView> fields, std::span<const OperandView> operands,
+    const Context& context) {
+  const SourceRange& range = diagnostic_range(qualifier.locs, context);
+  const auto written = qualifier.value;
+  if (std::ranges::find(descriptor.allowed_values, written) ==
+      descriptor.allowed_values.end()) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = range,
+        .message = "Written atomic address qualifier is not admitted by this "
+                   "variant.",
+    }});
+  }
+  const FieldView* space_field =
+      find_field(fields, descriptor.state_space_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_operand_id);
+  if (!space_field || !space_field->memory_state_space || !address) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Atomic qualifier fields or address are missing.",
+    }});
+  }
+
+  const MemoryStateSpace selected = *space_field->memory_state_space;
+  MemoryStateSpace expected;
+  switch (written) {
+    case AtomicAddressQualifier::Generic:
+      expected = MemoryStateSpace::Generic;
+      break;
+    case AtomicAddressQualifier::Global:
+      expected = MemoryStateSpace::Global;
+      break;
+    case AtomicAddressQualifier::Shared:
+    case AtomicAddressQualifier::SharedCta:
+    case AtomicAddressQualifier::SharedCluster:
+      expected = MemoryStateSpace::Shared;
+      break;
+    default:
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = range,
+          .message = "Written atomic address qualifier is invalid.",
+      }});
+  }
+  CheckDiagnostics diagnostics;
+  if (selected != expected) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+        .range = range,
+        .message = "Written atomic address qualifier disagrees with the "
+                   "selected state-space modifier.",
+    });
+  }
+  if (address->address_state_space &&
+      *address->address_state_space != MemoryStateSpace::Global &&
+      *address->address_state_space != MemoryStateSpace::Shared) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+        .range = diagnostic_range(address->locations, context),
+        .message = "Atomic address must refer to global or shared memory.",
+    });
+  } else if (address->address_state_space &&
+             written != AtomicAddressQualifier::Generic &&
+             *address->address_state_space != expected) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+        .range = diagnostic_range(address->locations, context),
+        .message = "Atomic address provenance conflicts with the written "
+                   "state-space qualifier.",
+    });
+  }
+
+  if (const FieldView* cache_hint = find_field(fields, "cache_hint")) {
+    const bool written_hint = cache_hint->bool_value.value_or(false);
+    const bool has_policy = find_operand(operands, "cache_policy") != nullptr;
+    if (written_hint != has_policy) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(cache_hint->locations, context),
+          .message = "Atomic cache hint requires exactly one trailing "
+                     "cache-policy register.",
+      });
+    }
+    if (written_hint && written != AtomicAddressQualifier::Generic &&
+        written != AtomicAddressQualifier::Global) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = range,
+          .message = "Atomic cache hint requires global addressing.",
+      });
+    }
+    if (written_hint && address->address_state_space &&
+        *address->address_state_space != MemoryStateSpace::Global) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::AddressStateSpaceMismatch,
+          .range = diagnostic_range(address->locations, context),
+          .message = "Atomic cache hint requires a global address.",
+      });
+    }
+  }
+
+  PtxVersion minimum_ptx{};
+  int minimum_sm = 0;
+  if (written == AtomicAddressQualifier::Generic) {
+    minimum_ptx = {2, 0};
+    minimum_sm = 20;
+  } else if (written == AtomicAddressQualifier::SharedCta) {
+    minimum_ptx = {7, 8};
+    minimum_sm = 30;
+  } else if (written == AtomicAddressQualifier::SharedCluster) {
+    minimum_ptx = {7, 8};
+    minimum_sm = 90;
+  }
+  if (context.target.ptx_version < minimum_ptx) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = range,
+        .message = "Atomic address qualifier is unavailable for the target PTX "
+                   "version.",
+    });
+  }
+  if (context.target.sm_version < minimum_sm) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+        .range = range,
+        .message = "Atomic address qualifier is unavailable for the target SM "
+                   "version.",
+    });
+  }
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_red_async_release_qualifiers(
+    std::span<const FieldView> fields, const Context& context) {
+  const FieldView* mmio = find_field(fields, "mmio");
+  const FieldView* scope = find_field(fields, "scope");
+  if (!mmio || !mmio->bool_value || !scope || !scope->memory_scope) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Async release reduction has missing qualifier fields.",
+    }});
+  }
+  if (*mmio->bool_value && *scope->memory_scope != MemoryScope::Sys) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(mmio->locations, context),
+        .message = "Async MMIO release reduction requires system scope.",
+    }});
+  }
+  return {};
+}
+
+/** Gate a 32-bit bulk-store size register while retaining legacy immediates. */
+CheckResult check_st_bulk_size_width(std::span<const OperandView> operands,
+                                     const Context& context) {
+  const OperandView* size = find_operand(operands, "size");
+  if (size == nullptr)
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "Bulk store has no size operand.",
+    }});
+  if (size->register_type && base::scalar_size_of(*size->register_type) == 4 &&
+      context.target.ptx_version < PtxVersion{9, 0}) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = diagnostic_range(size->locations, context),
+        .message = "32-bit bulk-store size requires PTX 9.0 or newer.",
+    }});
+  }
+  return {};
+}
+
 CheckResult check_memory_consistency(
     const VariantDescriptor::MemoryConsistencyDescriptor& descriptor,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
@@ -1065,27 +1959,36 @@ CheckResult check_memory_consistency(
   const FieldView* semantics_field =
       find_field(fields, descriptor.semantics_field_id);
   const FieldView* scope_field = find_field(fields, descriptor.scope_field_id);
-  const FieldView* mmio_field = descriptor.mmio_field_id.empty()
-                                    ? nullptr
-                                    : find_field(fields, descriptor.mmio_field_id);
-  const FieldView* cache_field = find_field(fields, descriptor.cache_field_id);
-  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  const FieldView* mmio_field =
+      descriptor.mmio_field_id.empty()
+          ? nullptr
+          : find_field(fields, descriptor.mmio_field_id);
+  const FieldView* cache_field =
+      descriptor.cache_field_id.empty()
+          ? nullptr
+          : find_field(fields, descriptor.cache_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_field_id);
   if (semantics_field == nullptr || scope_field == nullptr ||
-      cache_field == nullptr || address == nullptr ||
-      !semantics_field->memory_consistency || !scope_field->memory_scope ||
-      !cache_field->cache_operator ||
-      (mmio_field != nullptr && !mmio_field->bool_value)) {
+      address == nullptr || !semantics_field->memory_consistency ||
+      !scope_field->memory_scope ||
+      (!descriptor.cache_field_id.empty() &&
+       (cache_field == nullptr || !cache_field->cache_operator)) ||
+      (!descriptor.mmio_field_id.empty() &&
+       (mmio_field == nullptr || !mmio_field->bool_value))) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = "Generated memory-consistency descriptor has missing fields.",
+        .message =
+            "Generated memory-consistency descriptor has missing fields.",
     }});
   }
 
   const MemoryConsistency semantics = *semantics_field->memory_consistency;
   const MemoryScope scope = *scope_field->memory_scope;
   const bool mmio = mmio_field != nullptr && *mmio_field->bool_value;
-  const bool cached = *cache_field->cache_operator != CacheOperator::Unspecified;
+  const bool cached = cache_field != nullptr && *cache_field->cache_operator !=
+                                                    CacheOperator::Unspecified;
   CheckDiagnostics diagnostics;
   const auto violation = [&](const FieldView& field, std::string_view message) {
     diagnostics.push_back(CheckDiagnostic{
@@ -1098,49 +2001,160 @@ CheckResult check_memory_consistency(
   const bool scoped = semantics == MemoryConsistency::Relaxed ||
                       semantics == MemoryConsistency::Acquire ||
                       semantics == MemoryConsistency::Release;
+  const FieldView* type_field = find_field(fields, descriptor.type_field_id);
+  if (scope == MemoryScope::Sys && type_field != nullptr &&
+      type_field->scalar_type && *type_field->scalar_type == ScalarType::B128 &&
+      context.target.ptx_version < PtxVersion{8, 4}) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = diagnostic_range(type_field->locations, context),
+        .message = "The .sys scope with .b128 requires PTX ISA >= 8.4.",
+    });
+  }
   if (scoped != (scope != MemoryScope::None)) {
     violation(scoped ? *semantics_field : *scope_field,
               scoped ? "Memory semantics requires an explicit scope."
-                     : "Memory scope is only valid with relaxed, acquire, or release semantics.");
+                     : "Memory scope is only valid with relaxed, acquire, or "
+                       "release semantics.");
   }
   if (cached && (semantics == MemoryConsistency::Volatile || scoped || mmio)) {
     violation(*cache_field,
-              "Cache operator is not valid with volatile, ordered, or mmio memory semantics.");
+              "Cache operator is not valid with volatile, ordered, or mmio "
+              "memory semantics.");
   }
 
   std::optional<MemoryStateSpace> state_space = address->address_state_space;
   if (!descriptor.state_space_field_id.empty()) {
-    const FieldView* field = find_field(fields, descriptor.state_space_field_id);
+    const FieldView* field =
+        find_field(fields, descriptor.state_space_field_id);
     if (field != nullptr && field->memory_state_space)
       state_space = *field->memory_state_space;
   }
-  const bool known_global_or_shared =
-      state_space == MemoryStateSpace::Global || state_space == MemoryStateSpace::Shared;
+  const bool known_global_or_shared = state_space == MemoryStateSpace::Global ||
+                                      state_space == MemoryStateSpace::Shared;
   const bool volatile_local = semantics == MemoryConsistency::Volatile &&
                               state_space == MemoryStateSpace::Local;
   const bool strong = scoped || semantics == MemoryConsistency::Volatile;
-  if (strong && state_space && !known_global_or_shared && !volatile_local) {
+  if (strong && address->address_unified) {
     violation(*semantics_field,
-              "Strong memory semantics require a global or shared address space.");
+              "An .unified address is only valid with weak memory semantics.");
+  }
+  if (strong && state_space && !known_global_or_shared && !volatile_local) {
+    violation(
+        *semantics_field,
+        "Strong memory semantics require a global or shared address space.");
   }
   if (volatile_local && context.target.ptx_version < PtxVersion{9, 1}) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
         .range = diagnostic_range(semantics_field->locations, context),
-        .message = fmt::format("volatile.local requires PTX ISA >= 9.1, but target PTX ISA is {}.",
-                               format_version(context.target.ptx_version)),
+        .message = fmt::format(
+            "volatile.local requires PTX ISA >= 9.1, but target PTX ISA is {}.",
+            format_version(context.target.ptx_version)),
     });
   }
   if (mmio) {
-    if (semantics != MemoryConsistency::Relaxed || scope != MemoryScope::Sys) {
-      violation(*mmio_field, "mmio requires .relaxed.sys semantics.");
+    const auto mmio_semantic = std::ranges::find_if(
+        descriptor.mmio_semantics, [semantics](const auto& candidate) {
+          return candidate.semantics == semantics;
+        });
+    if (mmio_semantic == descriptor.mmio_semantics.end() ||
+        scope != MemoryScope::Sys) {
+      violation(*mmio_field,
+                "mmio requires a descriptor-admitted semantic and .sys scope.");
+    } else if (!is_available(mmio_semantic->availability, context.target)) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedAvailability,
+          .range = diagnostic_range(semantics_field->locations, context),
+          .message = "The selected mmio memory semantic is unavailable for the "
+                     "target.",
+      });
     }
     if (state_space && *state_space != MemoryStateSpace::Global) {
       violation(*mmio_field,
-                "mmio requires a global address space when the address space is known.");
+                "mmio requires a global address space when the address space "
+                "is known.");
     }
   }
 
+  if (diagnostics.empty())
+    return {};
+  return std::unexpected(std::move(diagnostics));
+}
+
+CheckResult check_unified_address_suffix(const VariantDescriptor& descriptor,
+                                         std::span<const FieldView> fields,
+                                         std::span<const OperandView> operands,
+                                         const Context& context) {
+  CheckDiagnostics diagnostics;
+  for (const OperandView& operand : operands) {
+    if (operand.address_unified && !descriptor.permits_unified_address) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = "This instruction form does not admit an .unified address "
+                     "suffix.",
+      });
+    }
+    if (operand.address_unified) {
+      if (context.target.ptx_version < PtxVersion{8, 0}) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires PTX ISA >= 8.0.",
+        });
+      }
+      if (context.target.sm_version < 90) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::UnsupportedSmVersion,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires SM >= 90.",
+        });
+      }
+      std::optional<MemoryStateSpace> effective_space =
+          operand.address_state_space;
+      for (const FieldView& field : fields) {
+        if (field.memory_state_space) {
+          effective_space = *field.memory_state_space;
+          break;
+        }
+      }
+      if (effective_space && *effective_space != MemoryStateSpace::Global &&
+          *effective_space != MemoryStateSpace::Generic) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(operand.locations, context),
+            .message = "The .unified address suffix requires a global or "
+                       "generic address.",
+        });
+      }
+    }
+    if (descriptor.unified_address_access ==
+            VariantDescriptor::UnifiedAddressAccess::Read &&
+        operand.address_declaration_is_unified &&
+        *operand.address_declaration_is_unified != operand.address_unified) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = *operand.address_declaration_is_unified
+                         ? "An address of a .unified declaration requires an "
+                           ".unified suffix."
+                         : "An .unified address suffix requires a .unified "
+                           "declaration.",
+      });
+    }
+    if (descriptor.unified_address_access ==
+            VariantDescriptor::UnifiedAddressAccess::Write &&
+        operand.address_declaration_is_unified &&
+        *operand.address_declaration_is_unified) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(operand.locations, context),
+          .message = "A .unified declaration is read-only and cannot be a "
+                     "store address.",
+      });
+    }
+  }
   if (diagnostics.empty())
     return {};
   return std::unexpected(std::move(diagnostics));
@@ -1166,7 +2180,8 @@ CheckResult check_address_alignment(
                      "immediate field.",
       }});
     }
-    required = *immediate->immediate_bits;
+    required =
+        immediate->integer_source_bits.value_or(*immediate->immediate_bits);
   } else if (required == 0) {
     const FieldView* type = find_field(fields, descriptor.type_field_id);
     const FieldView* vector =
@@ -1237,8 +2252,10 @@ CheckResult check_memory_vector(
     return {};
 
   const FieldView* type = find_field(fields, descriptor.type_field_id);
-  const OperandView* vector = find_operand(operands, descriptor.vector_field_id);
-  const OperandView* address = find_operand(operands, descriptor.address_field_id);
+  const OperandView* vector =
+      find_operand(operands, descriptor.vector_field_id);
+  const OperandView* address =
+      find_operand(operands, descriptor.address_field_id);
   if (type == nullptr || vector == nullptr || address == nullptr ||
       !type->scalar_type || vector->actual_shape != OperandShape::Vector) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1248,16 +2265,17 @@ CheckResult check_memory_vector(
     }});
   }
 
-  const size_t payload_bits =
-      static_cast<size_t>(vector->vector_arity) * scalar_size_of(*type->scalar_type) * 8u;
-  const bool modern_candidate = vector->vector_arity > 4 ||
-                                payload_bits > 128 ||
-                                vector->vector_sink_count != 0;
+  const size_t payload_bits = static_cast<size_t>(vector->vector_arity) *
+                              scalar_size_of(*type->scalar_type) * 8u;
+  const bool modern_candidate =
+      descriptor.require_modern || vector->vector_arity > 4 ||
+      payload_bits > 128 || vector->vector_sink_count != 0;
   if (!modern_candidate)
     return {};
 
   CheckDiagnostics diagnostics;
-  const SourceRange& vector_range = diagnostic_range(vector->locations, context);
+  const SourceRange& vector_range =
+      diagnostic_range(vector->locations, context);
   if (payload_bits != 256) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
@@ -1265,16 +2283,29 @@ CheckResult check_memory_vector(
         .message = "Modern memory vectors require an exact 256-bit payload.",
     });
   }
+  const bool legal_modern_shape =
+      (vector->vector_arity == 8 && scalar_size_of(*type->scalar_type) == 4) ||
+      (vector->vector_arity == 4 && scalar_size_of(*type->scalar_type) == 8);
+  if (!legal_modern_shape) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = vector_range,
+        .message = "Modern memory vectors allow only .v8 32-bit or .v4 64-bit "
+                   "elements.",
+    });
+  }
 
   std::optional<MemoryStateSpace> state_space = address->address_state_space;
   const FieldView* state_space_field = nullptr;
   if (!descriptor.state_space_field_id.empty()) {
     state_space_field = find_field(fields, descriptor.state_space_field_id);
-    if (state_space_field == nullptr || !state_space_field->memory_state_space) {
+    if (state_space_field == nullptr ||
+        !state_space_field->memory_state_space) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::RuleViolation,
           .range = context.instruction_range,
-          .message = "Generated memory-vector descriptor has an invalid state-space field.",
+          .message = "Generated memory-vector descriptor has an invalid "
+                     "state-space field.",
       });
     } else {
       state_space = *state_space_field->memory_state_space;
@@ -1286,7 +2317,8 @@ CheckResult check_memory_vector(
         .range = state_space_field != nullptr
                      ? diagnostic_range(state_space_field->locations, context)
                      : diagnostic_range(address->locations, context),
-        .message = "Modern memory vectors require a global address space when known.",
+        .message =
+            "Modern memory vectors require a global address space when known.",
     });
   }
 
@@ -1300,7 +2332,8 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedAvailability,
         .range = vector_range,
-        .message = "Modern memory vectors have no matching availability clause.",
+        .message =
+            "Modern memory vectors have no matching availability clause.",
     });
     return std::unexpected(std::move(diagnostics));
   }
@@ -1308,10 +2341,10 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
         .range = vector_range,
-        .message = fmt::format(
-            "Modern memory vectors require PTX ISA >= {}, but target PTX ISA is {}.",
-            format_version(availability.minimum_ptx_version),
-            format_version(context.target.ptx_version)),
+        .message = fmt::format("Modern memory vectors require PTX ISA >= {}, "
+                               "but target PTX ISA is {}.",
+                               format_version(availability.minimum_ptx_version),
+                               format_version(context.target.ptx_version)),
     });
   }
   if (context.target.sm_version < availability.minimum_sm_version) {
@@ -1329,8 +2362,9 @@ CheckResult check_memory_vector(
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedTargetFamily,
         .range = vector_range,
-        .message = fmt::format("Modern memory vectors require target family '{}'.",
-                               availability.required_family),
+        .message =
+            fmt::format("Modern memory vectors require target family '{}'.",
+                        availability.required_family),
     });
   }
 
@@ -1353,21 +2387,21 @@ CheckResult check_immediate_value(
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = fmt::format(
-            "Immediate-value constraint references missing immediate operand '{}'.",
-            descriptor.operand_field_id),
+        .message = fmt::format("Immediate-value constraint references missing "
+                               "immediate operand '{}'.",
+                               descriptor.operand_field_id),
     }});
   }
-  if (std::ranges::find(descriptor.allowed_values, *operand->immediate_bits) !=
-      descriptor.allowed_values.end()) {
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && std::ranges::find(descriptor.allowed_values, value) !=
+                       descriptor.allowed_values.end()) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::ImmediateValueMismatch,
       .range = diagnostic_range(operand->locations, context),
       .message = fmt::format("Immediate operand '{}' has unsupported value {}.",
-                             descriptor.operand_field_id,
-                             *operand->immediate_bits),
+                             descriptor.operand_field_id, value),
   }});
 }
 
@@ -1380,36 +2414,42 @@ CheckResult check_immediate_multiple_of(
       find_operand(operands, descriptor.operand_field_id);
   if (operand == nullptr)
     return {};
+  if (descriptor.divisor == 0) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message =
+            fmt::format("Immediate-multiple constraint for '{}' has zero "
+                        "divisor.",
+                        descriptor.operand_field_id),
+    }});
+  }
+  // A register operand is dynamically unknown; the generated divisibility
+  // rule applies only when it resolves to an immediate.
+  if (operand->actual_shape == OperandShape::Register)
+    return {};
   if (operand->actual_shape != OperandShape::Immediate ||
       !operand->immediate_bits) {
     return std::unexpected(CheckDiagnostics{CheckDiagnostic{
         .kind = CheckDiagnosticKind::RuleViolation,
         .range = context.instruction_range,
-        .message = fmt::format("Immediate-multiple constraint references missing "
-                               "immediate operand '{}'.",
-                               descriptor.operand_field_id),
+        .message =
+            fmt::format("Immediate-multiple constraint references missing "
+                        "immediate operand '{}'.",
+                        descriptor.operand_field_id),
     }});
   }
-  if (descriptor.divisor == 0) {
-    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-        .kind = CheckDiagnosticKind::RuleViolation,
-        .range = context.instruction_range,
-        .message = fmt::format("Immediate-multiple constraint for '{}' has zero "
-                               "divisor.",
-                               descriptor.operand_field_id),
-    }});
-  }
-  if (!operand->immediate_is_negative.value_or(false) &&
-      *operand->immediate_bits % descriptor.divisor == 0) {
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && value % descriptor.divisor == 0) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
       .kind = CheckDiagnosticKind::ImmediateValueMismatch,
       .range = diagnostic_range(operand->locations, context),
-      .message = fmt::format("Immediate operand '{}' has value {} that is not a "
-                             "multiple of {}.",
-                             descriptor.operand_field_id,
-                             *operand->immediate_bits, descriptor.divisor),
+      .message =
+          fmt::format("Immediate operand '{}' has value {} that is not a "
+                      "multiple of {}.",
+                      descriptor.operand_field_id, value, descriptor.divisor),
   }});
 }
 
@@ -1436,10 +2476,9 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
-  if (!operand->immediate_is_negative.value_or(false) &&
-      *operand->immediate_bits >= descriptor.minimum &&
-      (!descriptor.has_maximum ||
-       *operand->immediate_bits <= descriptor.maximum)) {
+  const auto [value, negative] = integer_constraint_value(*operand);
+  if (!negative && value >= descriptor.minimum &&
+      (!descriptor.has_maximum || value <= descriptor.maximum)) {
     return {};
   }
   return std::unexpected(CheckDiagnostics{CheckDiagnostic{
@@ -1447,7 +2486,187 @@ CheckResult check_immediate_range(
       .range = diagnostic_range(operand->locations, context),
       .message = fmt::format(
           "Immediate operand '{}' has value {} outside the supported range.",
-          descriptor.operand_field_id, *operand->immediate_bits),
+          descriptor.operand_field_id, value),
+  }});
+}
+
+/** Validate source-known createpolicy fraction and range-size values. */
+CheckResult check_createpolicy_rule(std::span<const OperandView> operands,
+                                    const Context& context) {
+  if (const OperandView* fraction = find_operand(operands, "fraction")) {
+    // A register value is dynamic; only source constants can be bounded here.
+    if (fraction->actual_shape != OperandShape::Register) {
+      if (fraction->actual_shape != OperandShape::Immediate ||
+          fraction->immediate_type != ScalarType::F32 ||
+          !fraction->immediate_bits || *fraction->immediate_bits > UINT32_MAX) {
+        return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+            .kind = CheckDiagnosticKind::RuleViolation,
+            .range = diagnostic_range(fraction->locations, context),
+            .message = "createpolicy fraction must be an f32 value.",
+        }});
+      }
+      const float value = std::bit_cast<float>(
+          static_cast<uint32_t>(*fraction->immediate_bits));
+      if (!std::isfinite(value) || value <= 0.0f || value > 1.0f) {
+        return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+            .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+            .range = diagnostic_range(fraction->locations, context),
+            .message = "createpolicy fraction must be in (0.0, 1.0].",
+        }});
+      }
+    }
+  }
+
+  const OperandView* primary = find_operand(operands, "primary_size");
+  const OperandView* total = find_operand(operands, "total_size");
+  if (primary == nullptr && total == nullptr)
+    return {};
+  if (primary == nullptr || total == nullptr) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "createpolicy range requires both size operands.",
+    }});
+  }
+  for (const OperandView* size : {primary, total}) {
+    if (size->actual_shape == OperandShape::Register)
+      continue;
+    if (size->actual_shape != OperandShape::Immediate ||
+        size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format(
+              "createpolicy {} must be a 32-bit register or immediate.",
+              size->field_id),
+      }});
+    }
+    if (*size->immediate_bits > UINT32_MAX) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(size->locations, context),
+          .message = fmt::format("createpolicy {} immediate exceeds 32 bits.",
+                                 size->field_id),
+      }});
+    }
+  }
+  if (primary->actual_shape == OperandShape::Register ||
+      total->actual_shape == OperandShape::Register)
+    return {};
+  if (*primary->immediate_bits <= *total->immediate_bits)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+      .range = diagnostic_range(primary->locations, context),
+      .message = "createpolicy primary size exceeds total size.",
+  }});
+}
+
+CheckResult check_cp_async_rule(std::span<const FieldView> fields,
+                                std::span<const OperandView> operands,
+                                const Context& context) {
+  const OperandView* size = find_operand(operands, "cp_size");
+  if (size == nullptr || size->actual_shape != OperandShape::Immediate ||
+      size->immediate_type != ScalarType::U32 || !size->immediate_bits) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = context.instruction_range,
+        .message = "cp.async requires a typed immediate copy size.",
+    }});
+  }
+  const FieldView* hint_field = find_field(fields, "cache_hint");
+  const bool has_hint =
+      hint_field != nullptr && hint_field->bool_value.value_or(false);
+  const OperandView* policy = find_operand(operands, "cache_policy");
+  /** Preserve the declared integer/bit register family for cache policies. */
+  const auto is_policy_type = [](std::optional<ScalarType> type) {
+    return type == ScalarType::B64 || type == ScalarType::U64 ||
+           type == ScalarType::S64;
+  };
+  /** Defer type checking only when no declaration was bound to the operand. */
+  const auto unbound_unknown_type = [](const OperandView& operand) {
+    return !operand.register_type && !operand.register_symbol_id;
+  };
+  if (policy != nullptr &&
+      (!has_hint || policy->actual_shape != OperandShape::Register ||
+       policy->register_class != ResolvedRegisterClass::General ||
+       (!is_policy_type(policy->register_type) &&
+        !unbound_unknown_type(*policy)))) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(policy->locations, context),
+        .message = "cp.async cache policy requires an L2 cache hint and a "
+                   "64-bit integer or bit register.",
+    }});
+  }
+  const OperandView* control = find_operand(operands, "source_control");
+  if (control == nullptr)
+    return {};
+  if (control->cp_async_cache_policy) {
+    if (has_hint && policy == nullptr &&
+        control->actual_shape == OperandShape::Register &&
+        control->register_class == ResolvedRegisterClass::General &&
+        (is_policy_type(control->register_type) ||
+         unbound_unknown_type(*control)))
+      return {};
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = diagnostic_range(control->locations, context),
+        .message = "cp.async fourth-operand cache policy requires an L2 cache "
+                   "hint and no fifth operand.",
+    }});
+  }
+  if (control->actual_shape == OperandShape::Immediate) {
+    if (control->immediate_type != ScalarType::U32 ||
+        !control->immediate_bits ||
+        control->immediate_is_negative.value_or(false)) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be a 32-bit unsigned integer.",
+      }});
+    }
+    if (*control->immediate_bits >= *size->immediate_bits) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async source size must be smaller than copy size.",
+      }});
+    }
+    return {};
+  }
+  if (control->actual_shape == OperandShape::Register &&
+      control->register_class == ResolvedRegisterClass::General &&
+      (control->register_type == ScalarType::U32 ||
+       control->register_type == ScalarType::S32 ||
+       control->register_type == ScalarType::B32 ||
+       unbound_unknown_type(*control)))
+    return {};
+  if (control->actual_shape == OperandShape::Predicate) {
+    if (control->register_class != ResolvedRegisterClass::Predicate ||
+        (control->register_type != ScalarType::Pred &&
+         !unbound_unknown_type(*control))) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::RuleViolation,
+          .range = diagnostic_range(control->locations, context),
+          .message =
+              "cp.async ignore-source control requires a predicate register.",
+      }});
+    }
+    if (context.target.ptx_version < PtxVersion{7, 5}) {
+      return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+          .range = diagnostic_range(control->locations, context),
+          .message = "cp.async ignore-source control requires PTX 7.5.",
+      }});
+    }
+    return {};
+  }
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(control->locations, context),
+      .message = "cp.async source size must be a 32-bit integer or bit "
+                 "register, or an unsigned immediate.",
   }});
 }
 

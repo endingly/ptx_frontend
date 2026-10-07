@@ -8,12 +8,12 @@ from jsonschema import Draft202012Validator
 
 from ptx_frontend.code_gen.database import load_codegen_database
 from ptx_frontend.code_gen.load_yaml import load_yaml
-from ptx_frontend.code_gen.gen_resolved_checker_descriptor import _emit_availability
+from ptx_frontend.code_gen.emit.availability import emit_availability
 from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCHEMA = REPO_ROOT / "instructions/schemas/ptx-instr-v1.schema.yaml"
+SCHEMA = REPO_ROOT / "instructions/ptx-instr-v1.schema.yaml"
 
 
 def _variant(name: str, type_value: str) -> dict[str, object]:
@@ -153,9 +153,10 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             "divisor": 8,
         }]
         validator = Draft202012Validator(load_yaml(SCHEMA))
-        self.assertEqual(list(validator.iter_errors(spec)), [])
+        json_spec = cast(Any, spec)
+        self.assertEqual(list(validator.iter_errors(json_spec)), [])
         cast(list[dict[str, object]], variant["constraints"])[0]["divisor"] = 0
-        self.assertTrue(list(validator.iter_errors(spec)))
+        self.assertTrue(list(validator.iter_errors(json_spec)))
 
     def test_schema_caps_immediate_constraint_fields_at_uint64(self) -> None:
         spec = _spec(
@@ -164,6 +165,7 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             variant_name="add_integer",
             type_value="u32",
         )
+        json_spec = cast(Any, spec)
         instruction = cast(list[dict[str, object]], spec["instructions"])[0]
         variant = cast(list[dict[str, object]], instruction["variants"])[0]
         variant["operands"] = [{
@@ -184,9 +186,9 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 variant["constraints"] = [constraint]
-                self.assertEqual(list(validator.iter_errors(spec)), [])
+                self.assertEqual(list(validator.iter_errors(json_spec)), [])
                 constraint[field] = too_large
-                self.assertTrue(list(validator.iter_errors(spec)))
+                self.assertTrue(list(validator.iter_errors(json_spec)))
 
     def test_database_allows_layout_conditional_immediate_constraints(self) -> None:
         for kind, constraint in (
@@ -306,6 +308,28 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
                 ),
             )
 
+    def test_allows_overlapping_modifiers_at_distinct_operand_counts(self) -> None:
+        first = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="u32",
+        )
+        second = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_second",
+            type_value="u32",
+        )
+        instructions = cast(list[dict[str, Any]], second["instructions"])
+        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+        variants[0]["operands"] = [
+            {"name": "dst", "kind": "reg", "role": "dst", "access": "write"}
+        ]
+
+        database = self._load(first, second)
+        self.assertEqual(len(database.instructions[0].variants), 2)
+
     def test_allows_one_spelling_to_bind_different_slots_across_variants(
         self,
     ) -> None:
@@ -366,35 +390,40 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
         self.assertEqual(len(database.instructions), 1)
         self.assertEqual(len(database.instructions[0].variants), 1)
 
-    def test_rejects_optional_slot_with_repeated_spelling(self) -> None:
-        spec = _spec(
-            category="floating_point",
-            codegen_category="arithmetic",
-            variant_name="add_mixed",
-            type_value="f16",
-        )
-        instructions = cast(list[dict[str, Any]], spec["instructions"])
-        variants = cast(list[dict[str, Any]], instructions[0]["variants"])
-        variants[0]["modifiers"] = [
-            {
-                "name": "optional_type",
-                "kind": "type",
-                "presence": "optional",
-                "domain": "scalar_types",
-                "default": "f16",
-                "values": ["f16"],
-            },
-            {
-                "name": "required_type",
-                "kind": "type",
-                "presence": "fixed",
-                "domain": "scalar_types",
-                "value": "f16",
-            },
-        ]
+    def test_rejects_optional_slot_with_repeated_spelling_in_either_order(self) -> None:
+        optional_type = {
+            "name": "optional_type",
+            "kind": "type",
+            "presence": "optional",
+            "domain": "scalar_types",
+            "default": "f16",
+            "values": ["f16"],
+        }
+        required_type = {
+            "name": "required_type",
+            "kind": "type",
+            "presence": "fixed",
+            "domain": "scalar_types",
+            "value": "f16",
+        }
 
-        with self.assertRaisesRegex(ValueError, "optional slot"):
-            self._load(spec)
+        for modifiers in (
+            [optional_type, required_type],
+            [required_type, optional_type],
+        ):
+            with self.subTest(modifiers=modifiers):
+                spec = _spec(
+                    category="floating_point",
+                    codegen_category="arithmetic",
+                    variant_name="add_mixed",
+                    type_value="f16",
+                )
+                instructions = cast(list[dict[str, Any]], spec["instructions"])
+                variants = cast(list[dict[str, Any]], instructions[0]["variants"])
+                variants[0]["modifiers"] = modifiers
+
+                with self.assertRaisesRegex(ValueError, "optional slot"):
+                    self._load(spec)
 
     def test_does_not_treat_different_modifier_orders_as_overlap(self) -> None:
         spec = _spec(
@@ -451,6 +480,115 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
             [variant.name for variant in database.instructions[0].variants],
             ["add_first", "add_second"],
         )
+
+    def test_accepts_complete_modifier_order_alias(self) -> None:
+        spec = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_mixed",
+            type_value="f32",
+        )
+        variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], spec["instructions"])[0]["variants"],
+        )[0]
+        variant["modifiers"] = [
+            {
+                "name": "result_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f32",
+            },
+            {
+                "name": "input_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+        ]
+        variant["modifier_order_aliases"] = [["input_type", "result_type"]]
+
+        database = self._load(spec)
+
+        self.assertEqual(
+            database.instructions[0].variants[0].modifier_order_aliases,
+            (("input_type", "result_type"),),
+        )
+
+    def test_rejects_invalid_modifier_order_aliases(self) -> None:
+        for alias, message in (
+            (["missing"], "unknown slots"),
+            (["type", "type"], "non-unique elements"),
+            ([], "contain every modifier slot"),
+            (["type"], "duplicates the canonical"),
+        ):
+            with self.subTest(alias=alias):
+                spec = _spec(
+                    category="floating_point",
+                    codegen_category="arithmetic",
+                    variant_name="add_alias",
+                    type_value="f32",
+                )
+                variant = cast(
+                    list[dict[str, Any]],
+                    cast(list[dict[str, Any]], spec["instructions"])[0]["variants"],
+                )[0]
+                variant["modifier_order_aliases"] = [alias]
+                with self.assertRaisesRegex(ValueError, message):
+                    self._load(spec)
+
+    def test_rejects_ambiguous_alias_binding_and_cross_variant_overlap(self) -> None:
+        ambiguous = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_repeated",
+            type_value="f16",
+        )
+        ambiguous_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], ambiguous["instructions"])[0]["variants"],
+        )[0]
+        ambiguous_variant["modifiers"] = [
+            {
+                "name": "first_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+            {
+                "name": "second_type", "kind": "type", "presence": "fixed",
+                "domain": "scalar_types", "value": "f16",
+            },
+        ]
+        ambiguous_variant["modifier_order_aliases"] = [["second_type", "first_type"]]
+        with self.assertRaisesRegex(ValueError, "different slot identities"):
+            self._load(ambiguous)
+
+        first = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_first",
+            type_value="f32",
+        )
+        first_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], first["instructions"])[0]["variants"],
+        )[0]
+        first_variant["modifiers"].append({
+            "name": "input_type", "kind": "type", "presence": "fixed",
+            "domain": "scalar_types", "value": "f16",
+        })
+        first_variant["modifier_order_aliases"] = [["input_type", "type"]]
+        second = _spec(
+            category="floating_point",
+            codegen_category="arithmetic",
+            variant_name="add_second",
+            type_value="f16",
+        )
+        second_variant = cast(
+            list[dict[str, Any]],
+            cast(list[dict[str, Any]], second["instructions"])[0]["variants"],
+        )[0]
+        second_variant["modifiers"].append({
+            "name": "input_type", "kind": "type", "presence": "fixed",
+            "domain": "scalar_types", "value": "f32",
+        })
+        with self.assertRaisesRegex(ValueError, "overlapping modifier combination"):
+            self._load(first, second)
 
 
 class AvailabilityNormalizationTests(unittest.TestCase):
@@ -510,7 +648,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertEqual(normalize_availability(availability), availability)
         self.assertIn(
             '.required_family = "sm_103f",',
-            _emit_availability(normalize_availability(availability)),
+            emit_availability(normalize_availability(availability)),
         )
 
     def test_schema_defines_family_as_source_feature_target(self) -> None:
@@ -552,7 +690,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
     def test_accepts_maximum_exact_target_during_normalization(self) -> None:
         availability = {"any_of": [{"target": "sm_4294967295"}]}
         self.assertEqual(normalize_availability(availability), availability)
-        source = _emit_availability(normalize_availability(availability))
+        source = emit_availability(normalize_availability(availability))
         self.assertIn(".exact_target_architecture = {4294967295}", source)
         self.assertIn("TargetFlavor::Generic", source)
 
@@ -596,7 +734,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             self.assertTrue(list(validator.iter_errors(availability)))
 
     def test_dnf_generator_keeps_or_clauses_and_and_terms(self) -> None:
-        source = _emit_availability({"any_of": [
+        source = emit_availability({"any_of": [
             {"ptx": "9.0", "sm": 100, "target": "sm_100a",
              "capabilities": ["tensor", "cluster"]},
             {"sm": 120, "family": "sm_120f"},
@@ -607,7 +745,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
-        source = _emit_availability(normalize_availability({"any_of": [
+        source = emit_availability(normalize_availability({"any_of": [
             {"target": "sm_80", "capabilities": ["tensor", "cluster"]},
             {"target": "sm_90a"},
             {"target": "sm_100f"},
@@ -625,9 +763,9 @@ class AvailabilityNormalizationTests(unittest.TestCase):
     def test_emitter_rejects_unvalidated_sm(self) -> None:
         for availability in ({"sm": 4294967296}, {"any_of": [{"sm": True}]}):
             with self.assertRaisesRegex(ValueError, "availability SM version"):
-                _emit_availability(availability)
+                emit_availability(availability)
         with self.assertRaisesRegex(ValueError, "availability target"):
-            _emit_availability({"any_of": [{"target": "sm_4294967296"}]})
+            emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
 
 if __name__ == "__main__":

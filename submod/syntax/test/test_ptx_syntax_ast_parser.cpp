@@ -19,15 +19,15 @@ namespace {
 
 using syntax_ast::AstAddress;
 using syntax_ast::AstAddressOffset;
-using syntax_ast::AstBranchTarget;
-using syntax_ast::AstBranchTargetSet;
 using syntax_ast::AstBlock;
-using syntax_ast::AstCallParameterList;
-using syntax_ast::AstCallTarget;
-using syntax_ast::AstCallTargetSet;
-using syntax_ast::AstCallPrototype;
-using syntax_ast::AstCallTargets;
+using syntax_ast::AstBranchTarget;
 using syntax_ast::AstBranchTargets;
+using syntax_ast::AstBranchTargetSet;
+using syntax_ast::AstCallParameterList;
+using syntax_ast::AstCallPrototype;
+using syntax_ast::AstCallTarget;
+using syntax_ast::AstCallTargets;
+using syntax_ast::AstCallTargetSet;
 using syntax_ast::AstIdentifierRef;
 using syntax_ast::AstImmediate;
 using syntax_ast::AstInstruction;
@@ -35,6 +35,28 @@ using syntax_ast::AstPredicateOperand;
 using syntax_ast::AstRegisterPredicatePair;
 using syntax_ast::AstVectorMember;
 using syntax_ast::AstVectorPack;
+
+std::string_view sourceSlice(std::string_view source, SourceRange range);
+
+/** Lowering retains nested address, coordinates, and delimiters with ranges. */
+TEST(PtxSyntaxParser, LowersTensorMapCoordinateComposite) {
+  constexpr std::string_view source =
+      "cp.async.bulk.prefetch.tensor.2d.L2.global "
+      "[tensor_map+64, {%r0, -2}];";
+  PtxSyntaxParser parser(source);
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->operands.size(), 1u);
+  const auto& tensor =
+      std::get<syntax_ast::AstTensorOperand>(result->operands.front());
+  EXPECT_EQ(sourceSlice(source, tensor.range), "[tensor_map+64, {%r0, -2}]");
+  EXPECT_EQ(sourceSlice(source, tensor.comma_range), ",");
+  EXPECT_EQ(sourceSlice(source, tensor.tensor_map.range), "tensor_map+64");
+  ASSERT_EQ(tensor.coordinates.elements.size(), 2u);
+  EXPECT_EQ(
+      std::get<AstImmediate>(tensor.coordinates.elements.back()).syntax.text,
+      "-2");
+}
 
 std::string_view sourceSlice(std::string_view source, SourceRange range) {
   const auto offset = [source](SourcePos position) {
@@ -181,7 +203,8 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
   const auto module = parser.parseModule();
 
   ASSERT_TRUE(module.has_value()) << module.diagnostics.front().message;
-  const auto& function = std::get<syntax_ast::AstFunction>(module->items.front());
+  const auto& function =
+      std::get<syntax_ast::AstFunction>(module->items.front());
   ASSERT_EQ(function.body.size(), 1u);
   const auto& prototype = std::get<AstCallPrototype>(function.body.front());
   EXPECT_EQ(prototype.label.syntax.text, "prototype");
@@ -338,6 +361,54 @@ TEST(PtxSyntaxParser, MapsCstDiagnosticsToSyntaxDiagnostics) {
   EXPECT_EQ(syntax.diagnostics.front().range, cst.diagnostics.front().range);
 }
 
+/** The syntax facade must terminate and preserve ordered diagnostics at comment EOF. */
+TEST(PtxSyntaxParser, UnterminatedCommentsTerminateWithRecoveredSyntax) {
+  constexpr std::array<std::string_view, 3> sources{
+      "/*", ".entry k() { ret; }\n /* tail", ".entry k() { ret;\n /* tail"};
+  for (std::size_t index = 0; index < sources.size(); ++index) {
+    SCOPED_TRACE(sources[index]);
+    PtxCstParser cst_parser(sources[index]);
+    PtxSyntaxParser syntax_parser(sources[index]);
+    const auto cst = cst_parser.parseModule();
+    const auto syntax = syntax_parser.parseModule();
+
+    ASSERT_TRUE(cst.has_value());
+    ASSERT_TRUE(syntax.has_value());
+    ASSERT_EQ(syntax.diagnostics.size(), index == 2 ? 2u : 1u);
+    ASSERT_EQ(syntax.diagnostics.size(), cst.diagnostics.size());
+    for (std::size_t diagnostic = 0; diagnostic < syntax.diagnostics.size();
+         ++diagnostic) {
+      EXPECT_EQ(syntax.diagnostics[diagnostic].message,
+                cst.diagnostics[diagnostic].message);
+      EXPECT_EQ(syntax.diagnostics[diagnostic].range,
+                cst.diagnostics[diagnostic].range);
+    }
+    if (index == 0) {
+      EXPECT_TRUE(syntax->items.empty());
+    } else {
+      ASSERT_EQ(syntax->items.size(), 1u);
+      const auto& function =
+          std::get<syntax_ast::AstFunction>(syntax->items.front());
+      ASSERT_EQ(function.body.size(), 1u);
+      EXPECT_EQ(
+          std::get<AstInstruction>(function.body.front()).opcode.syntax.text,
+          "ret");
+    }
+  }
+}
+
+/** Ordinary lexical errors leave following valid syntax available to consumers. */
+TEST(PtxSyntaxParser, RecoversLexicalErrorBeforeValidModuleItem) {
+  PtxSyntaxParser parser("` .entry k() { ret; }");
+  const auto syntax = parser.parseModule();
+  ASSERT_TRUE(syntax.has_value());
+  ASSERT_EQ(syntax.diagnostics.size(), 1u);
+  ASSERT_EQ(syntax->items.size(), 1u);
+  EXPECT_EQ(
+      std::get<syntax_ast::AstFunction>(syntax->items.front()).name.syntax.text,
+      "k");
+}
+
 TEST(PtxSyntaxParser, LowersOnlyValidNeighborsOfRecoveredModuleCst) {
   constexpr std::string_view source = R"ptx(.version nope;
 .target;
@@ -359,8 +430,7 @@ TEST(PtxSyntaxParser, LowersOnlyValidNeighborsOfRecoveredModuleCst) {
   ASSERT_EQ(lowered->items.size(), 1u);
   const auto& function = std::get<syntax_ast::AstFunction>(lowered->items[0]);
   ASSERT_EQ(function.body.size(), 1u);
-  const auto& block =
-      *std::get<std::unique_ptr<AstBlock>>(function.body[0]);
+  const auto& block = *std::get<std::unique_ptr<AstBlock>>(function.body[0]);
   ASSERT_EQ(block.body.size(), 1u);
   EXPECT_EQ(std::get<AstInstruction>(block.body[0]).opcode.syntax.text, "sub");
 
@@ -379,7 +449,8 @@ TEST(PtxSyntaxParser, RejectsEmptyVectorPack) {
 
   auto result = parser.parseInstruction();
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.diagnostics.front().message, "vector operand cannot be empty");
+  EXPECT_EQ(result.diagnostics.front().message,
+            "vector operand cannot be empty");
 }
 
 TEST(AstFile, DistinguishesInstructionFragmentAndModuleRoots) {
@@ -527,8 +598,7 @@ TEST(PtxSyntaxParser, LowersPragmasAtAllSupportedScopes) {
   EXPECT_EQ(module_pragma.strings[1].text, "\"opaque\"");
   EXPECT_EQ(module_pragma.range.start.line, 1u);
 
-  const auto& function =
-      std::get<syntax_ast::AstFunction>(result->items[1]);
+  const auto& function = std::get<syntax_ast::AstFunction>(result->items[1]);
   ASSERT_EQ(function.pragmas.size(), 1u);
   EXPECT_EQ(function.pragmas[0].strings[0].text, "\"nounroll\"");
   EXPECT_EQ(function.pragmas[0].range.start.line, 2u);
@@ -737,6 +807,18 @@ TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {
       std::holds_alternative<syntax_ast::AstInstruction>(function.body[2]));
 }
 
+/** Negated integer operands lower to their dedicated semantic syntax leaf. */
+TEST(PtxSyntaxParser, LowersNegatedIntegerInstructionOperands) {
+  PtxSyntaxParser parser("mov.pred %p0, !-1;");
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->operands.size(), 2u);
+  const auto* negated =
+      std::get_if<syntax_ast::AstNegatedImmediate>(&result->operands[1]);
+  ASSERT_NE(negated, nullptr);
+  EXPECT_EQ(negated->immediate.syntax.text, "-1");
+}
+
 TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {
   constexpr std::string_view source =
       ".visible .global .align 16 .v4 .f32 values[2][3];\n"
@@ -936,8 +1018,8 @@ TEST(PtxSyntaxParser, PreservesM11ComplexModifierCorpusLosslessly) {
   EXPECT_TRUE(reparsed.diagnostics.empty());
   EXPECT_EQ(reparsed->sourceText(), source);
 
-  const auto& cst_function = std::get<syntax_cst::CstFunction>(
-      cst->module()->items.back());
+  const auto& cst_function =
+      std::get<syntax_cst::CstFunction>(cst->module()->items.back());
   ASSERT_EQ(cst_function.body.size(), 5u);
   const auto& cst_packed_load =
       std::get<syntax_cst::CstInstruction>(cst_function.body[1]);
@@ -950,12 +1032,17 @@ TEST(PtxSyntaxParser, PreservesM11ComplexModifierCorpusLosslessly) {
   EXPECT_EQ(cst->token(*cst_packed_load.operands.front().trailing_comma).text,
             ",");
   for (const std::string_view spelling : {
-           ".16x64b",          ".16x128b",      ".4x256b",
-           ".layout::v0",      ".kind::mxf8f6f4", ".block_scale",
-           ".scale_vec::1X",   ".collector::a::fill",
+           ".16x64b",
+           ".16x128b",
+           ".4x256b",
+           ".layout::v0",
+           ".kind::mxf8f6f4",
+           ".block_scale",
+           ".scale_vec::1X",
+           ".collector::a::fill",
        }) {
-    const auto token = std::ranges::find_if(
-        cst->tokens, [spelling](const auto& candidate) {
+    const auto token =
+        std::ranges::find_if(cst->tokens, [spelling](const auto& candidate) {
           return candidate.text == spelling;
         });
     ASSERT_NE(token, cst->tokens.end()) << spelling;
@@ -969,24 +1056,27 @@ TEST(PtxSyntaxParser, PreservesM11ComplexModifierCorpusLosslessly) {
   const auto& ast_function =
       std::get<syntax_ast::AstFunction>(ast->items.back());
   ASSERT_EQ(ast_function.body.size(), 5u);
-  const auto expect_modifiers = [&](size_t item,
-                                    std::initializer_list<std::string_view> expected) {
-    const auto& instruction = std::get<AstInstruction>(ast_function.body[item]);
-    ASSERT_EQ(instruction.modifiers.size(), expected.size());
-    for (size_t index = 0; index < expected.size(); ++index) {
-      const auto expected_spelling = *(expected.begin() + index);
-      EXPECT_EQ(instruction.modifiers[index].syntax.text, expected_spelling);
-      EXPECT_EQ(sourceSlice(source, instruction.modifiers[index].syntax.range),
-                expected_spelling);
-    }
-  };
+  const auto expect_modifiers =
+      [&](size_t item, std::initializer_list<std::string_view> expected) {
+        const auto& instruction =
+            std::get<AstInstruction>(ast_function.body[item]);
+        ASSERT_EQ(instruction.modifiers.size(), expected.size());
+        for (size_t index = 0; index < expected.size(); ++index) {
+          const auto expected_spelling = *(expected.begin() + index);
+          EXPECT_EQ(instruction.modifiers[index].syntax.text,
+                    expected_spelling);
+          EXPECT_EQ(
+              sourceSlice(source, instruction.modifiers[index].syntax.range),
+              expected_spelling);
+        }
+      };
   expect_modifiers(0, {".ld", ".sync", ".aligned", ".16x64b", ".x1", ".b32"});
   expect_modifiers(1, {".ld", ".sync", ".aligned", ".16x128b", ".x1", ".b32"});
   expect_modifiers(2, {".cp", ".cta_group::1", ".4x256b"});
   expect_modifiers(3, {".check_layout", ".layout::v0", ".shared::cta", ".b64"});
-  expect_modifiers(4, {".mma", ".cta_group::1", ".kind::mxf8f6f4",
-                       ".block_scale", ".scale_vec::1X",
-                       ".collector::a::fill"});
+  expect_modifiers(4,
+                   {".mma", ".cta_group::1", ".kind::mxf8f6f4", ".block_scale",
+                    ".scale_vec::1X", ".collector::a::fill"});
   const auto& ast_pack = std::get<AstVectorPack>(
       std::get<AstInstruction>(ast_function.body[1]).operands.front());
   EXPECT_EQ(ast_pack.elements.size(), 2u);

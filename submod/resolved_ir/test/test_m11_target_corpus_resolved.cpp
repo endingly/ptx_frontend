@@ -8,8 +8,8 @@
 #include <string>
 #include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
@@ -41,14 +41,14 @@ TEST(ResolvedModule, ResolvesM11MultiGenerationTargetCorpus) {
     ASSERT_TRUE(parsed.has_value()) << file;
     EXPECT_TRUE(parsed.diagnostics.empty()) << file;
 
-    const auto resolved = resolveModule(*parsed);
+    const auto resolved = test_support::resolveModuleSnapshot(*parsed);
     ASSERT_TRUE(resolved.has_value())
         << (resolved.error().empty() ? "resolution failed"
                                      : resolved.error().front().message)
         << file;
     ASSERT_EQ(resolved->functions.size(),
               name == "multi_target_profiles.ptx" ? 3u : 1u);
-    EXPECT_FALSE(resolved->functions.front().body.empty());
+    EXPECT_GT(resolved->functions.front().instruction_count, 0u);
   }
 }
 
@@ -67,7 +67,7 @@ TEST(ResolvedModule, DiagnosesM11UnsupportedTargetCorpus) {
     const auto parsed = parser.parseModule();
     EXPECT_TRUE(parsed.has_value()) << file;
     EXPECT_TRUE(parsed.diagnostics.empty()) << file;
-    return resolveModule(*parsed);
+    return test_support::resolveModuleSnapshot(*parsed);
   };
 
   const auto cluster = resolve("sm80_cluster_unsupported.ptx");

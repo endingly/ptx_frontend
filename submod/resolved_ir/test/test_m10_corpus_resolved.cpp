@@ -6,12 +6,20 @@
 #include <stdexcept>
 #include <string>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/matrix/ldmatrix.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/matrix/mma.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/atom.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/vote.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+#include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
+/** Parse a complete corpus fixture and report unexpected syntax failure. */
 syntax_ast::AstModule parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
@@ -38,21 +46,15 @@ TEST(ResolvedModule, ResolvesAndChecksEveryM10CorpusModule) {
   const auto parsed = parser.parseModule();
   ASSERT_TRUE(parsed.has_value()) << file;
   EXPECT_TRUE(parsed.diagnostics.empty()) << file;
-  const auto resolved = resolveModule(*parsed);
-  ASSERT_TRUE(resolved.has_value()) << file;
-  ASSERT_EQ(resolved->functions.size(), 1u);
-  const auto& function = resolved->functions.front();
-  ASSERT_FALSE(function.body.empty());
-
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 80},
   };
-  for (const auto& instruction : function.body) {
-    const auto checked = std::visit(
-        [&](const auto& value) { return checker::check(value, context); },
-        instruction);
-    EXPECT_TRUE(checked.has_value()) << file;
-  }
+  const auto resolved =
+      test_support::resolveAndCheckInstructionSnapshot(*parsed, context);
+  ASSERT_TRUE(resolved.has_value()) << file;
+  ASSERT_EQ(resolved->functions.size(), 1u);
+  const auto& function = resolved->functions.front();
+  ASSERT_GT(function.instruction_count, 0u);
 }
 
 TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
@@ -65,8 +67,9 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 .entry kernel() { cp.async.ca.shared.global [shared_value], [global_value], 3; }
 )ptx"));
   ASSERT_TRUE(invalid_copy.has_value()) << invalid_copy.error().front().message;
-  const auto copy_check = checker::check(
-      std::get<Cp>(invalid_copy->functions.front().body.front()), current);
+  const auto copy_check = dynamic_cast<const CpAsyncCaSharedGlobal&>(
+                              *invalid_copy->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(copy_check.has_value());
   EXPECT_EQ(copy_check.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
@@ -79,8 +82,9 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(invalid_atom.has_value()) << invalid_atom.error().front().message;
-  const auto atom_check = checker::check(
-      std::get<Atom>(invalid_atom->functions.front().body.front()), current);
+  const auto atom_check = dynamic_cast<const AtomGlobalAddU32&>(
+                              *invalid_atom->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(atom_check.has_value());
   EXPECT_EQ(atom_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -94,8 +98,9 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(invalid_vote.has_value()) << invalid_vote.error().front().message;
-  const auto vote_check = checker::check(
-      std::get<Vote>(invalid_vote->functions.front().body.front()), current);
+  const auto vote_check = dynamic_cast<const VoteSyncBallotB32&>(
+                              *invalid_vote->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(vote_check.has_value());
   EXPECT_EQ(vote_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
@@ -118,9 +123,10 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_TRUE(invalid_ldmatrix.has_value())
       << invalid_ldmatrix.error().front().message;
-  const auto ldmatrix_check = checker::check(
-      std::get<Ldmatrix>(invalid_ldmatrix->functions.front().body.front()),
-      current);
+  const auto ldmatrix_check =
+      dynamic_cast<const LdmatrixSyncAlignedM8n8X2SharedB16&>(
+          *invalid_ldmatrix->functions.front().body.front())
+          .check(current);
   ASSERT_FALSE(ldmatrix_check.has_value());
   EXPECT_EQ(ldmatrix_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
@@ -146,9 +152,11 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(valid_mma.has_value()) << valid_mma.error().front().message;
-  const auto old_target = checker::check(
-      std::get<Mma>(valid_mma->functions.front().body.front()),
-      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 80}});
+  const auto old_target =
+      dynamic_cast<const MmaSyncAlignedM16n8k8RowColF32F16F16F32&>(
+          *valid_mma->functions.front().body.front())
+          .check(checker::Context{
+              .target = {.ptx_version = {6, 4}, .sm_version = 80}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);

@@ -15,9 +15,9 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.cpp_backend import configure_cpp_backend
+from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.database import load_codegen_database
-from ptx_frontend.code_gen.gen_syntax_ast_arch import (
+from ptx_frontend.code_gen.emit.syntax_descriptors import (
     emit_check_end_instruction_descriptor_implementation,
     generate_syntax_descriptor_source,
 )
@@ -27,6 +27,7 @@ from ptx_frontend.code_gen.model import (
     OperandRegisterWidthPolicy,
     OperandVectorTypePolicy,
 )
+from ptx_frontend.spec.model import OperandKind, SemanticRule
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.ir.syntax_ast import (
@@ -37,9 +38,16 @@ from ptx_frontend.ir.syntax_ast import (
 )
 
 
-def setUpModule() -> None:
-    configure_cpp_backend(REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml")
+BACKEND = load_cpp_backend(
+    REPO_ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+)
 
+def build_test_generation_context(database):
+    """Make the explicit emitter input from this test's configured backend."""
+
+    from ptx_frontend.code_gen.context import build_generation_context
+
+    return build_generation_context(database, BACKEND)
 
 class SyntaxAstDescriptorBuildTest(unittest.TestCase):
     @classmethod
@@ -61,6 +69,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             if instruction.opcode == "sub"
         )
         cls.descriptor = from_InstructionSpec(add)
+        cls.add_entry = next(
+            entry
+            for entry in build_test_generation_context(database).entries
+            if entry.specification.opcode == "add"
+        )
         cls.sub_descriptor = from_InstructionSpec(sub)
         call = next(
             instruction
@@ -148,6 +161,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 "add_integer_no_sat",
                 "add_sat",
                 "add_packed_optional_sat",
+                "add_cc_32",
+                "add_cc_64",
             ],
         )
 
@@ -224,11 +239,16 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     ModifierPresence.OPTIONAL,
                     (".rn", ".rz", ".rm", ".rp"),
                 ),
+                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
                 ("result_type", ModifierPresence.REQUIRED, (".f32",)),
                 ("input_type", ModifierPresence.REQUIRED, (".f16", ".bf16")),
                 ("ftz", ModifierPresence.ABSENT, ()),
-                ("sat", ModifierPresence.OPTIONAL, (".sat",)),
             ],
+        )
+        self.assertEqual(
+            [[modifier.kind_id for modifier in alias]
+            for alias in mixed.modifier_order_aliases],
+            [["rounding", "result_type", "input_type", "ftz", "sat"]],
         )
 
     def test_add_binary_flat_operand_layout(self) -> None:
@@ -271,13 +291,18 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         self.assertEqual(OperandSyntaxShape.CALL_TARGET.value, 1 << 7)
         self.assertEqual(OperandSyntaxShape.CALL_TARGET_SET.value, 1 << 8)
         self.assertEqual(OperandSyntaxShape.BRANCH_TARGET.value, 1 << 9)
+        self.assertEqual(OperandSyntaxShape.NEGATED_IMMEDIATE.value, 1 << 12)
 
     def test_register_predicate_pair_uses_dedicated_single_operand_shape(self) -> None:
         variant = self.shfl_descriptor.variants[0]
         self.assertEqual(variant.variant_id, "shfl_sync_idx_b32")
         self.assertEqual(
-            variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
+            variant.operand_layouts[1].slots[0].allowed_syntax_shapes,
             OperandSyntaxShape.REGISTER_PREDICATE_PAIR,
+        )
+        self.assertEqual(
+            variant.operand_layouts[0].slots[0].allowed_syntax_shapes,
+            OperandSyntaxShape.IDENTIFIER_REF,
         )
 
     def test_mov_source_layout_covers_data_and_address_forms(self) -> None:
@@ -301,7 +326,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             | OperandSyntaxShape.ADDRESS
             | OperandSyntaxShape.VECTOR_MEMBER,
         )
-        vector_layout = descriptor.variants[1].operand_layouts[0]
+        vector_layout = descriptor.variants[2].operand_layouts[0]
         self.assertEqual(
             [slot.allowed_syntax_shapes for slot in vector_layout.slots],
             [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
@@ -367,6 +392,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 "sub_mixed_f32",
                 "sub_integer_no_sat",
                 "sub_optional_sat",
+                "sub_cc_32",
+                "sub_cc_64",
             ],
         )
 
@@ -413,7 +440,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             [
                 (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
                 (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
-                (OperandSyntaxShape.IDENTIFIER_REF, OperandPresence.REQUIRED),
+                # The FP32 subtrahend is immediate-capable; the narrow source
+                # and the destination are not.
+                (
+                    OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
+                    OperandPresence.REQUIRED,
+                ),
             ],
         )
 
@@ -683,6 +715,40 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
 
+    def test_normalizes_only_known_semantic_rules(self) -> None:
+        """Normalize rule spellings before later IR and emitter stages."""
+
+        def normalize_rule(rule: object):
+            return normalize_instruction_spec(
+                {
+                    "category": "test",
+                    "codegen_category": "test",
+                    "instructions": [
+                        {
+                            "opcode": "sample",
+                            "operands": [],
+                            "variants": [
+                                {
+                                    "name": "sample",
+                                    "availability": {"ptx": "1.0"},
+                                    "rule": rule,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+        normalized = normalize_rule("data_movement.cvt")
+        self.assertIs(
+            normalized[0].variants[0].rule,
+            SemanticRule.DATA_MOVEMENT_CVT,
+        )
+        with self.assertRaisesRegex(ValueError, "unknown semantic rule"):
+            normalize_rule("test.unimplemented")
+        with self.assertRaisesRegex(ValueError, "semantic rule must be a string"):
+            normalize_rule(True)
+
     def test_type_expression_requires_supported_active_type_modifier(self) -> None:
         def normalize_with_expr(expression: str, modifiers: list[dict[str, object]]):
             return normalize_instruction_spec(
@@ -785,7 +851,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             0
         ].state_space_expression
         self.assertIsNotNone(expression)
-        self.assertEqual(expression.modifier_name, "state_space")
+        self.assertEqual(expression.modifier_name, "state_space") # pyright: ignore[reportOptionalMemberAccess]
 
         with self.assertRaisesRegex(ValueError, "active state-space modifier"):
             normalize_with_modifier(
@@ -936,9 +1002,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             "values": ["global", "param"],
         }
         operand = normalize_parameter(required_modifier)
-        self.assertEqual(operand.parameter_constraint.direction, "input")
+        self.assertEqual(operand.parameter_constraint.direction, "input") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
-            operand.parameter_constraint.function_availability,
+            operand.parameter_constraint.function_availability, # pyright: ignore[reportOptionalMemberAccess]
             {"ptx": "2.0", "sm": 20},
         )
 
@@ -949,7 +1015,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             "domain": "state_spaces",
             "value": "param",
         }
-        self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint)
+        self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint) # pyright: ignore[reportArgumentType]
 
         with self.assertRaisesRegex(ValueError, "address constraints.*kind 'addr'"):
             normalize_parameter(required_modifier, kind="reg")
@@ -957,7 +1023,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_parameter(required_modifier, state_space=None)
         without_param = dict(required_modifier, values=["global"])
         with self.assertRaisesRegex(ValueError, "allow \\.param"):
-            normalize_parameter(without_param)
+            normalize_parameter(without_param) # pyright: ignore[reportArgumentType]
         with self.assertRaisesRegex(ValueError, "unsupported parameter direction"):
             normalize_parameter(
                 required_modifier,
@@ -1030,8 +1096,12 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_width(register_width="same_width").register_width_policy,
             OperandRegisterWidthPolicy.SAME_WIDTH,
         )
+        self.assertEqual(
+            normalize_width(kind="reg_or_imm").register_width_policy,
+            OperandRegisterWidthPolicy.EQUAL_OR_WIDER,
+        )
         with self.assertRaisesRegex(ValueError, "only valid for kind 'reg'"):
-            normalize_width(kind="reg_or_imm")
+            normalize_width(kind="imm")
         with self.assertRaisesRegex(ValueError, "requires a type expression"):
             normalize_width(operand_type=None)
         with self.assertRaisesRegex(ValueError, "unsupported register_width"):
@@ -1143,7 +1213,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
 
         address = {"name": "address", "kind": "addr", "role": "addr", "access": "read"}
         count = {"name": "count", "kind": "imm", "role": "src", "access": "read", "type": "u32"}
-        normalize_layouts([[address], [address, count]])
+        normalize_layouts([[address], [address, count]]) # pyright: ignore[reportArgumentType]
         for invalid_layouts in (
             [[address], [count]],
             [[address], [address, address]],
@@ -1151,7 +1221,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         ):
             with self.subTest(layouts=invalid_layouts):
                 with self.assertRaisesRegex(ValueError, "kind 'addr' operand"):
-                    normalize_layouts(invalid_layouts)
+                    normalize_layouts(invalid_layouts) # pyright: ignore[reportArgumentType]
 
     def test_immediate_value_constraint_normalization(self) -> None:
         def normalize_constraint(constraint: object, *, operand_kind: str = "imm") -> None:
@@ -1229,6 +1299,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         normalize_constraint(
             {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8}
         )
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 8},
+            operand_kind="reg_or_imm",
+        )
         for constraint, message, kind in (
             ({"kind": "immediate_multiple_of", "operand": "missing", "divisor": 8}, "kind 'imm'", "imm"),
             ({"kind": "immediate_multiple_of", "operand": "count", "divisor": 0}, "positive integer", "imm"),
@@ -1299,6 +1373,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         operand_name: str,
         other_layout_name: str,
         other_operands: list[dict[str, str]],
+        immediate_kind: str = "imm",
     ) -> None:
         normalize_instruction_spec(
             {
@@ -1309,7 +1384,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     "availability": {"ptx": "1.0"},
                     "operand_layouts": [
                         {"name": "immediate", "operands": [
-                            {"name": operand_name, "kind": "imm"},
+                            {"name": operand_name, "kind": immediate_kind},
                         ]},
                         {"name": other_layout_name, "operands": other_operands},
                     ],
@@ -1319,16 +1394,16 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )
 
     def test_immediate_constraints_allow_a_missing_layout_operand(self) -> None:
-        for kind, constraint, operand_name in (
+        for kind, constraint, operand_name, operand_kind in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
-            }, "size"),
+            }, "size", "imm"),
             ("immediate_range", {
                 "kind": "immediate_range", "operand": "count", "minimum": 1,
-            }, "count"),
+            }, "count", "reg_or_imm"),
             ("immediate_multiple_of", {
                 "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
-            }, "stride"),
+            }, "stride", "reg_or_imm"),
         ):
             with self.subTest(kind=kind):
                 self._normalize_multilayout_immediate_constraint(
@@ -1336,6 +1411,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                     operand_name,
                     "missing",
                     [{"name": "dst", "kind": "reg"}],
+                    immediate_kind=operand_kind,
                 )
 
     def test_immediate_constraint_rejects_unknown_operand(self) -> None:
@@ -1366,22 +1442,22 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_immediate_constraints_name_non_immediate_layout_and_kind(self) -> None:
-        for kind, constraint, operand_name in (
+        for kind, constraint, operand_name, operand_kind, disallowed_kind in (
             ("immediate_value", {
                 "kind": "immediate_value", "operand": "size", "values": [4],
-            }, "size"),
+            }, "size", "imm", "reg_or_imm"),
             ("immediate_range", {
                 "kind": "immediate_range", "operand": "count", "minimum": 1,
-            }, "count"),
+            }, "count", "reg_or_imm", "reg"),
             ("immediate_multiple_of", {
                 "kind": "immediate_multiple_of", "operand": "stride", "divisor": 4,
-            }, "stride"),
+            }, "stride", "reg_or_imm", "reg"),
         ):
             with self.subTest(kind=kind):
                 with self.assertRaisesRegex(
                     ValueError,
                     rf"{kind} operand {operand_name!r}.*operand layout "
-                    r"'register'.*kind 'imm'.*'reg'",
+                    rf"'register'.*not {disallowed_kind!r}",
                 ):
                     self._normalize_multilayout_immediate_constraint(
                         constraint,
@@ -1389,8 +1465,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                         "register",
                         [
                             {"name": "dst", "kind": "reg"},
-                            {"name": operand_name, "kind": "reg"},
+                            {"name": operand_name, "kind": disallowed_kind},
                         ],
+                        immediate_kind=operand_kind,
                     )
 
     def test_immediate_constraints_accept_immediates_in_every_layout(self) -> None:
@@ -1437,9 +1514,11 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         normalize_constraint(
             {"kind": "immediate_range", "operand": "count", "minimum": 1}
         )
+        normalize_constraint(
+            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1}
+        )
         for constraint in (
             {"kind": "immediate_value", "operand": "count", "values": [1]},
-            {"kind": "immediate_multiple_of", "operand": "count", "divisor": 1},
         ):
             with self.assertRaisesRegex(ValueError, r"kind 'imm'.*'reg_or_imm'"):
                 normalize_constraint(constraint)
@@ -1497,7 +1576,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         )[0]
         operand = instruction.variants[0].operand_layouts[0].operands[0]
         self.assertEqual(operand.vector_arities, ())
-        self.assertEqual(operand.vector_arity_expression.modifier_name, "vector")
+        self.assertEqual(operand.vector_arity_expression.modifier_name, "vector") # pyright: ignore[reportOptionalMemberAccess]
         self.assertEqual(
             operand.vector_type_policy,
             OperandVectorTypePolicy.ELEMENT,
@@ -1621,7 +1700,10 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             normalize_operand("reg", allow_predicate_sink=False)
         with self.assertRaisesRegex(TypeError, "allow_predicate_sink"):
             normalize_operand("shfl_dest", allow_predicate_sink=1)
-        self.assertEqual(normalize_operand("reg_or_sink").kind, "reg_or_sink")
+        self.assertIs(
+            normalize_operand("reg_or_sink").kind,
+            OperandKind.REGISTER_OR_SINK,
+        )
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
             normalize_operand("reg_or_sink", role="src")
         with self.assertRaisesRegex(ValueError, "reg_or_sink.*write destination"):
@@ -1756,7 +1838,7 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
                 }
             )
         with self.assertRaisesRegex(
-            ValueError, "cache sentinel 'unspecified' is not a syntax value"
+        ValueError, "unsupported semantic cache_operator value 'unspecified'"
         ):
             normalize_modifier_entry(
                 {
@@ -1770,7 +1852,9 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             )
 
     def test_emit_add_check_end_descriptor_implementation(self) -> None:
-        source = emit_check_end_instruction_descriptor_implementation(self.descriptor)
+        source = emit_check_end_instruction_descriptor_implementation(
+            self.descriptor, BACKEND, cpp_name=self.add_entry.cpp_name
+        )
 
         self.assertTrue(source.startswith("struct AddDescriptorStorage {"))
         self.assertIn(
@@ -1821,14 +1905,14 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             output_path = Path(directory) / "syntax_descriptor.gen.cpp"
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("SOURCE_DATE_EPOCH", None)
-                generate_syntax_descriptor_source(
-                    database,
+                generate_syntax_descriptor_source(build_test_generation_context(database),
+                    category="arithmetic",
                     output_path=output_path,
                 )
             source = output_path.read_text(encoding="utf-8")
 
         self.assertTrue(
-            source.startswith("// Generated by python/scripts/gen_all.py. Do not edit.")
+            source.startswith("// Generated by ptx_frontend.code_gen. Do not edit.")
         )
         self.assertNotIn("#pragma once", source)
         self.assertIn(
@@ -1837,13 +1921,17 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
             source,
         )
         self.assertIn(
-            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>',
+            '#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>',
+            source,
+        )
+        self.assertIn(
+            '#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>',
             source,
         )
         self.assertIn("namespace ptx_frontend::resolved_ir {", source)
         self.assertEqual(source.count("namespace {"), 1)
         self.assertIn("struct AddDescriptorStorage {", source)
-        self.assertIn("struct BarDescriptorStorage {", source)
+        self.assertNotIn("struct BarDescriptorStorage {", source)
         self.assertIn("Add::get_syntax_descriptor() noexcept", source)
 
     def test_generation_timestamp_uses_source_date_epoch(self) -> None:

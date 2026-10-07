@@ -5,15 +5,70 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  consumer-integration:
+    name: Clang consumer and unit validation
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      CC: /usr/bin/clang-21
+      CXX: /usr/bin/clang++-21
+      VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg/downloads
+      VCPKG_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.cache/vcpkg/archives,readwrite"
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 1G
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v6
+      - name: Set up Linux dependencies
+        id: setup
+        uses: ./.github/actions/setup-linux
+
+      - name: Restore persistent Debug compiler cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-clang-debug-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+          restore-keys: |
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-ci-linux-clang-debug-${{ steps.setup.outputs.compiler-identity }}-
+
+      - name: Configure Clang Debug coverage
+        run: cmake --preset ci-linux-clang-debug -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+
+      - name: Build Clang Debug coverage
+        run: cmake --build --preset ci-linux-clang-debug
+
+      - name: Run Clang Debug tests
+        run: ctest --preset ci-linux-clang-debug --output-on-failure
+
+      - name: Test installed public API consumer
+        shell: bash
+        run: |
+          install_prefix="$RUNNER_TEMP/ptx-frontend-consumer-install"
+          consumer_build="$RUNNER_TEMP/ptx-frontend-consumer-build"
+          dependency_prefix="$GITHUB_WORKSPACE/out/build/ci-linux-clang-debug/vcpkg_installed/x64-linux"
+          cmake --install out/build/ci-linux-clang-debug --prefix "$install_prefix"
+          cmake -S examples/conversion_consumer -B "$consumer_build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dptx_frontend_DIR="$install_prefix/lib/cmake/ptx_frontend" \
+            -DCMAKE_PREFIX_PATH="$install_prefix;$dependency_prefix"
+          cmake --build "$consumer_build"
+          "$consumer_build/conversion_consumer"
+
+  release:
+    needs: consumer-integration
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.x"
 
@@ -23,7 +78,7 @@ jobs:
       - name: Check tag version and smoke-test wheel
         shell: bash
         run: |
-          version=$(python3 -c "from configparser import ConfigParser; p = ConfigParser(); p.read('python/setup.cfg'); print(p['metadata']['version'])")
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('python/pyproject.toml', 'rb'))['project']['version'])")
           test "${GITHUB_REF_NAME#v}" = "$version"
           python3 python/tests/code_gen/wheel_smoke.py dist/*.whl
 

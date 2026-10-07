@@ -28,45 +28,203 @@ accepts exactly 256-bit `.v8` × 32-bit and `.v4` × 64-bit forms. Static natura
 alignment checks bound data symbols with constant byte offsets and absolute
 immediate addresses; register and standalone unresolved addresses stay unknown.
 Other source forms, remaining qualifier extensions, CFG/SSA, and target
-lowering remain later work. `ResolvedIndirectCallee` now provides descriptor-
+lowering remain later work. `ResolvedIndirectCallee` provides descriptor-
 independent identity for a non-predicate `.reg` indirect target or a bound
-function-local `.callprototype`/`.calltargets` label; it intentionally omits
-metadata payload and ABI. Generated `Call::Direct` now has three additional
+function-local `.callprototype`/`.calltargets` label. Its enclosing
+`ResolvedFunction` owns the matching ordered metadata payload and normalized
+ABI separately, so an operand remains compact without making the metadata
+unavailable. The final `CallDirect` class now has three additional
 `IndirectCall` layouts (target/metadata, target/input/metadata, and
 return/target/input/metadata), each available from PTX 2.1 / SM 20; normal
 module indirect calls preserve the bound target and metadata identities, then
 reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
-The generated public layer also provides an opcode-independent boundary:
+The active public entry point is
+`<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`.
+It aggregates handwritten foundation and module containers with generated
+final semantic-form classes. Narrow per-opcode headers live under
+`model/<category>/<opcode>.gen.hpp`. Model headers retain owned data and
+read-only descriptors, complete owned diagnostics, and selector declarations
+without requiring a complete Syntax AST. Include parsing headers when calling
+a standalone resolver, and `ptx_resolved_ir_resolution.hpp` for module or
+bound-context resolution. Resolution is
+exposed through `ptx_resolved_ir_resolution.hpp`, and checking through virtual
+`Instruction::check` plus the handwritten support header
+`ptx_resolved_ir_checker_support.hpp`.
+
+The public layer also provides an opcode-independent boundary:
 
 ```cpp
-using ResolvedInstruction =
-    std::variant<Add, Sub, Bar, Bra, Call, Mov, Ld /* ... */>;
-
-std::expected<ResolvedInstruction, ResolveDiagnostic>
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
+`ResolvedFunction::body` is a vector of `unique_ptr<Instruction>`. Each of the
+965 semantic forms is a distinct final class. There is no opcode owner wrapper,
+instruction union, or layout-payload variant in the active API. Exact-class
+queries use `dynamic_cast` to a final class, not opcode identity alone; the
+module implementation has a constrained private helper for these casts. Copying a
+`ResolvedFunction` clones every non-null instruction and all metadata, while
+preserving null slots so validation can reject them. Borrows survive vector
+growth and function moves, and end with instruction destruction or replacement.
+Internal `IReferenceObserver` callbacks borrow typed foundation values and
+location spans synchronously; validation forbids reentrant payload mutation.
+Source ranges, symbol identity, Call literal normalization, and the distinct
+resolution-only versus final-validation guarantees remain in force.
+
+The module entry points have distinct success contracts:
+
+| Entry point | Success means |
+| --- | --- |
+| `resolveModuleOnly(ast)` | Binding, declaration semantics, instruction resolution, and call-ABI/staging checks passed. It does not run the final instruction/directive checker. |
+| `resolveAndValidateModule(ast)` | Resolution and final checking passed, with a recognized source target and PTX version for each checked region. Missing context is an error. |
+| `resolveModule(ast)` | Compatibility behavior: resolution plus final checks where context is available; targetless fragments remain accepted. |
+| `validateModule(ast, module, policy)` | Source correspondence and final instruction/directive checks passed under the explicit policy (default: `RequireCompleteContext`). The module must already have passed resolution. |
+| `validateModule(module, policy)` | Revalidates owned header, declaration/member identities, control metadata, typed call literals, operand layouts, and available source-region checker rules without traversing an AST. Manually constructed or mutated public IR must use this entry point before consumption. |
+| `checkModuleAvailability(ast, module)` | Compatibility wrapper for validation with `AvailableContext`; despite its historical name, it runs the full instruction checker in contextualized regions. |
+
+Resolution-only still enforces declaration availability when its source contains
+the relevant version/target; it is not a bypass for malformed declarations.
+Binding, declaration shape/type rules, operand resolution, and call ABI/staging
+belong to resolution. The final generated checker owns remaining instruction
+constraints (including target-independent layout/type relationships) as well as
+PTX/SM/profile availability. Thus resolution-only does not guarantee that all
+target-independent instruction constraints passed. All validation guarantees
+are limited to the currently modeled instruction and declaration subset.
+Each `.target` replaces the active source context, including clearing a previous
+recognized target when the new spelling is unknown. Function headers, nested
+body declarations, and local call prototypes use their containing function's
+source region. This is separate from choosing a deployment target for lowering.
+The explicit validation catalog includes historical `sm_13` and `sm_20` with no modern
+capabilities, allowing the PTX 6.0 `sm_20`/`sm_30` declaration boundary to be
+checked consistently; arbitrary numeric target spellings remain unrecognized.
+
+`ResolvedFunction::declaration_scope` identifies a declaration occurrence:
+a prototype and definition may share a `SymbolId` but have different scopes.
+Binding retains the declaration range and exposes `functionScope(range)`;
+resolution, storage collection, and declaration checking use that association
+instead of pairing independent traversal indices. `instruction_ranges` and
+`instruction_opcodes` own one entry per flattened instruction. `source_target`
+and `source_version` retain the original source context, and `source_identity`
+owns a location-independent syntax identity used to check correspondence.
+`ResolvedModule::source_identity` additionally covers module declarations,
+aliases, and address size, so changing a global's type or initializer cannot
+silently reuse instruction bindings from another source.
+
+Validation rejects missing, extra, ambiguous, or structurally different
+function/instruction associations with `ModuleSourceMismatch`. It still accepts
+a separately parsed equivalent function body with shifted line numbers and
+different target/version. Resolution-significant directives must still match.
+Validation rebinds the supplied AST and repeats declaration semantics, including
+availability under its replacement source context. Duplicate equivalent
+declarations need an unambiguous occurrence match; they are not silently paired
+by order. Instruction diagnostics use the IR's original owned ranges, while
+directive diagnostics refer to the supplied AST. Missing strict-validation
+context is reported as `MissingValidationContext`.
+
+`ResolvedModule::header` owns the effective version, ordered source target
+options, and address-size values for a targetless prefix and every subsequent
+`.target` region. Each value records `Missing`, `Explicit`, or `Defaulted`
+provenance. An omitted `.address_size` owns the PTX-defined 32-bit value with
+`Defaulted` provenance; it never depends on the host. Source target order
+defines source availability only; it is not a deployment or physical-backend
+target. Invalid, duplicate, or inconsistent
+header directives are retained as invalid ranges and rejected by owned
+validation. `ResolvedFunction::source_region` selects this same owned context.
+
+Functions own their normalized signature, linkage and canonical/alias identity,
+`.noreturn` and ABI-preservation contracts, normalized numeric resource values,
+cluster dimensions (including inferred trailing dimensions), `.blocksareclusters`,
+and language value. Entry resources are source launch contracts, not occupancy
+calculations or physical allocations. Function-local `.branchtargets` owns its
+ordered expanded bound labels (so `L<2>` is `L0`, `L1`, not two `L` entries);
+explicit repeated labels retain separate logical entries. `.calltargets` owns ordered
+bound/canonical functions plus their common signature; `.callprototype` owns
+its signature and ABI/noreturn suffixes. These records and their source ranges
+remain valid after AST destruction.
+
+`ResolvedFunctionAttribute::values` has migrated from source spelling storage
+to the typed optional `ResolvedUnifiedId` `unified_id` payload. For
+`.attribute(.unified(uuid1, uuid2))`, `unified_id->upper` is UUID `uuid1`
+(upper 64 bits) and `unified_id->lower` is UUID `uuid2` (lower 64 bits); no
+byte-order or host-address conversion occurs. Function attributes and storage
+declarations use this same named value type.
+Malformed source UUID tokens remain declaration diagnostics, while AST-free
+validation rejects a retained `.unified` attribute without that typed payload.
+
+Module call literals are formal-driven `ResolvedImmediate` values after a
+successful direct, alias, or metadata-backed call check. A standalone
+instruction without a module call contract may retain a `ResolvedCallLiteral`
+with no value; consumers must not guess a type. A declared external module
+call still retains its signature and formal-typed literals; actual linking or
+relocation remains deferred. `base::DeclarationStateSpace` and
+`base::LiteralCategory` name the
+semantic values exposed by resolved/binding data. The legacy `AstStateSpace`
+and `AstImmediateKind` aliases remain source-compatible names, not a requirement
+to retain a syntax AST.
+
+Instruction ranges/opcodes and all owned records are semantic provenance. The
+frontend retains `.language` and function ABI/resource contracts; `.file`,
+`.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
+are explicitly not resolved payloads. There is no promise of stable generated
+C++ struct layout or binary ABI. Raw module directives still require an AST;
+the owned model is a semantic handoff for the documented subset, not a complete
+source serialization contract.
+
+`ResolveDiagnostic` owns its message and source ranges. Module resolution
+preserves the originating `binding_kind`, `declaration_kind`, or `checker_kind`,
+as well as the primary `range` and any `previous_range` supplied by binding or
+declaration semantics. `stage()` derives `Binding`, `DeclarationSemantics`, or
+`Checking` from that typed category. Exactly one category is populated for an
+imported diagnostic; native resolver errors keep all three empty and report
+`Resolution`. Native resolver errors do not yet have a finer-grained code.
+Consumers can inspect imported error categories and related locations without
+parsing the human-readable message, even after source text and AST destruction.
+Diagnostic ordering and existing early-return boundaries are unchanged. The
+existing aggregate fields remain in order, with new optional categories appended.
+
 `resolveInstruction` is generated from the instruction database and dispatches
-to the existing `resolve<T>` specialization. This keeps opcode dispatch out of
-callers while retaining the strongly typed per-opcode structures.
+to per-opcode functions such as `resolveAdd`, each constructing an exact final
+semantic-form class. This keeps opcode dispatch out of callers.
 `resolveModule` first builds a `SymbolTable`, then constructs an explicit
 `ResolveContext` for each function scope. The resulting `ResolvedModule` owns
 that table, and each `ResolvedFunction` is identified by its function
-`SymbolId`. `ResolvedFunction::label_positions` records each function label as
+`SymbolId`. Each function owns a single `parameter_declarations` table for its
+validated `.param` declarations. Filtering by `ParameterDeclarationRole::EntryInput`
+selects entry header inputs in source order.
+`ResolvedFunction::label_positions` records each function label as
 its bound `SymbolId` and a source-order boundary in the recursively flattened
 instruction body: labels before the first instruction are at zero, consecutive
 labels share a boundary, and a trailing label is at `body.size()`. Standalone
-`resolveInstruction` and `resolve<T>` remain declaration-free for
-single-instruction tools. Directives and declarations remain in the Syntax
+`resolveInstruction` and per-opcode resolvers remain declaration-free for
+single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
-fields. Bound `.file` and `.debug_str`
+fields; owned, normalized parameter and storage metadata are deliberate exceptions.
+Bound `.file` and `.debug_str`
 identities validate `.loc` metadata there, but `.loc`, `.section`, and
 `.pragma` do not add Resolved IR nodes or instruction attachment.
+
+`ResolvedFunction::parameter_declarations` owns validated `.param`
+declarations: return formals first, input formals next, then body-local declarators
+in lexical traversal order (including nested blocks). Each
+`ResolvedParameterDeclaration` retains its `symbol_id`, `scope_id`, role
+(`EntryInput`, `DeviceInput`, `DeviceReturn`, or `BodyLocal`), fundamental
+`scalar_type`, effective byte `alignment`, `explicit_alignment`, `vector_width`,
+outer-to-inner `array_extents`, checked `byte_extent`, and optional pointee
+properties. Scalar shapes have no array extents; supported unsized device input
+arrays have a null extent and no byte extent. The owning function and symbol
+table preserve lexical identity even for shadowed local names. Values remain
+inspectable after source text and Syntax AST destruction. A non-pointer has no
+pointer properties; a pointer with no pointed state space is generic, and omitted
+pointee alignment defaults to four bytes. This sole parameter table does not
+include `.reg` formals or `.callprototype` signatures. See the
+[parameter coverage and migration contract](parameter_declarations.md)
+for declaration validation, unsupported forms, and version boundaries. None of
+these fields describes packed argument offsets or a runtime allocation.
 
 Module resolution additionally performs direct and metadata-backed indirect
 call ABI and call-context work
@@ -75,6 +233,23 @@ canonical prototype/definition signature, checks return/input actuals and
 formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
+
+`<ptx_frontend/semantic/ptx_function_contract.hpp>` exposes the canonical
+function-signature contract without a Syntax AST dependency. Its parameter
+contracts use semantic state-space and pointer-space enums, `ScalarType` and a
+typed vector shape, retained invalid spelling for diagnostics, and optional
+tagged numeric values: omitted, validated constants, or invalid structural
+keys. Direct-call ABI validation consumes those normalized values without
+reparsing alignment text or the former array-extent string protocol; invalid
+structural data is never silently replaced by a default.
+
+Call-staging adjacency follows the executable instruction sequence within the
+current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do
+not interrupt argument stores before a call or return loads after it. Labels,
+nested blocks, and call/branch metadata remain scan boundaries; nested bodies
+are checked separately with their own symbol scope. Actual intervening
+instructions and predicated staging accesses remain invalid. The declaration's
+placement does not change which bound parameter identity the call must use.
 
 ## Locations and primitive values
 
@@ -97,14 +272,29 @@ Modifier primitives include `bool`, `ScalarType`, and `RoundingMode`; the latter
 turns `.rn/.rz/.rm/.rp` into statically checkable values instead of runtime
 strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 `ResolvedPredicate`, `ResolvedBranchTarget`, `ResolvedSpecialRegisterRef`,
-`ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores integer bits
-and `ScalarType`, so the checker never has to reinterpret literal text.
+`ResolvedFunctionRef`, `ResolvedSymbolRef`, `ResolvedAddress`, `ResolvedMovSource`, and `RegOrImm`. A `ResolvedImmediate` stores use-width bits
+and `ScalarType`. Integer forms also retain evaluated 64-bit source bits and
+numerical signed-negativity, so fixed-control checks never reinterpret literal
+text or trust a narrowed value.
 
-`AstImmediateKind` retains the lexer's literal classification. Decimal and hex
-integers, including their optional `U` suffix, are range-checked against the
-target integer or bit type. Negative values are stored in `bits` as the
-target-width two's-complement representation rather than being unconditionally
-extended to 64 bits. Decimal floats currently convert to `F32` and `F64`, while
+`AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
+integers, including their optional `U` suffix, first evaluate in the PTX
+64-bit signed/unsigned source domain; unary minus preserves that source type
+and unsigned negation wraps. Ordinary data uses retain the low target-width
+bits. `WARP_SZ` is the source-defined signed integer constant `32`, including
+in ordinary instruction-immediate positions; it is not a query of a target's
+physical warp width. The generated operand descriptor independently selects
+narrowing or
+strict target-width representability for each semantic use; a fixed scalar type
+expresses provenance only. Generated range, exact-value, and multiple-of
+controls compare preserved source bits, while unconstrained controls opt into
+strict conversion explicitly. Call literals checked against formal parameter
+types and address offsets retain strict target-width representability. A signed
+`-0` is numerically zero,
+whereas floating negative zero retains its IEEE sign bit. Decimal floats
+currently convert to `F32` and `F64`; a single leading `+` is normalized only
+at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
+their normal floating semantics. Raw `0f`/`0d` bit-pattern rules are unchanged.
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
 respectively. Other floating formats require explicit quantization rules and
 must not silently take the integer path.
@@ -122,6 +312,18 @@ requires it to bind to a `.pred` register, while standalone resolution accepts
 a numbered `%pN` guard. `ResolvedBranchTarget` follows the same two-boundary
 rule: module resolution stores the current function label's `SymbolId`, while
 standalone resolution retains the source spelling with no symbol identity.
+
+Public-IR revalidation checks execution predicates independently of the selected
+opcode variant and operand layout, including operandless instructions. A known
+non-predicate register class, non-`.pred` declaration type, or vector shape is
+invalid; missing standalone declaration metadata remains unknown. Owned-module
+validation additionally requires the guard's identity to name an actual scalar
+`.reg .pred` declaration in the function's symbol table, rather than trusting
+cached register metadata. This includes legal register-valued function formals
+and parameterized predicate-register members. Plain and negated guards share
+the same contract. Diagnostics use the guard's retained location when present,
+otherwise the instruction range; neither check requires the original source or
+syntax AST to remain alive.
 
 `ResolvedSpecialRegisterRef` retains the exact spelling, a stable
 `SpecialRegisterId`, and an optional vector component. It does not store an
@@ -148,21 +350,31 @@ fundamental-type compatibility: a same-width bit type agrees with any
 fundamental type, signed and unsigned integers agree, and integer/float mixes
 remain invalid. The `.f64` value additionally carries its SM 13 requirement.
 
-`mov.pred` has a separate variant because both fields are
-`ResolvedPredicate`, structurally unlike the classified scalar source. Module
-resolution requires unnegated `.pred` registers for source and destination and
-retains stable `SymbolId` values; standalone resolution continues to accept
-numbered predicate registers without declaration context.
+`mov.pred` has a separate variant because its destination is a
+`ResolvedPredicate` and its source is a `ResolvedPredicateSource`, structurally
+unlike the classified scalar source. Module
+resolution requires an unnegated `.pred` destination, but accepts a plain or
+negated predicate source and retains its negation and stable `SymbolId` value.
+The source may instead be a `ResolvedPredicateConstant` holding a canonical
+Boolean value, or a `ResolvedPredicateSpecialRegister` retaining both the special
+register reference and negation. Integer constants normalize nonzero to true;
+an optional `!` then inverts that value. Constants have no synthetic `SymbolId`.
+The canonical `pred_source` shape used by SETP accepts predicate registers and
+integer constants, including negation; MOV's `pred_or_sreg` additionally accepts
+predicate special registers. Neither shape admits floating constants.
+Standalone resolution continues to accept numbered predicate registers without
+declaration context.
 
-Scalar and vector `mov` share one dynamic type-modifier variant because their
-`.b16/.b32/.b64` modifier forms are identical. Three operand layouts represent
-scalar, pack, and unpack forms without duplicate variants. `ResolvedRegisterVector`
-stores two or four optional `ResolvedRegisterRef` elements; an empty element is
-the destination-only `_` sink. Resolution and checking require a bit-size
+`Mov::Scalar` owns the scalar dynamic type modifier
+`.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`, including
+the established `.b16/.b32/.b64` pack and unpack layouts.
+`Mov::B128PackUnpack` is a distinct generated public variant with fixed
+`.b128` for vector pack/unpack only. `ResolvedRegisterVector` stores two or
+four optional `ResolvedRegisterRef` elements; an empty element is the
+destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
-least one real destination register, and no sub-byte element. `.b128` is
-accepted only by pack/unpack layouts and carries PTX 8.3 / SM 70 modifier-value
-availability.
+least one real destination register, and no sub-byte element.
+`Mov::B128PackUnpack` carries PTX 8.3 / SM 70 availability.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the
@@ -192,16 +404,29 @@ Standalone resolution cannot tell whether an unbound name denotes data or a
 function, so it remains a `ResolvedSymbolRef` with no identity.
 
 A `ResolvedAddress` base is a variant of `ResolvedRegisterRef`,
-`ResolvedImmediate`, and `ResolvedSymbolRef`. Its optional offset retains the
-add/subtract operator and a parsed signed 64-bit value.
+`ResolvedImmediate`, and `ResolvedSymbolRef`. A bound register base must be an
+integer or bit-size declaration no wider than 64 bits: floating declarations
+and `.b128` are rejected before checker projection. This preserves PTX address
+extension/truncation for narrower integer/bit declarations without treating a
+known floating register as an unknown address. Declaration-free standalone
+resolution has no type fact and therefore keeps the address base deferred. Its
+optional offset retains the add/subtract operator and magnitude. A bracketed
+memory address uses PTX's unsigned 32-bit immediate base and signed 32-bit
+offset domain after that operator is applied: `-2147483648` is represented by
+a subtraction magnitude of `2147483648`. Unbracketed `mov symbol+offset`
+retains the separate signed 64-bit addend domain used by symbol-address and
+relocation consumers. The shared IR continues to retain offset magnitudes as
+signed 64-bit values; the 32-bit rule is a source-form legality check rather
+than a relocation-domain narrowing.
 A 32/64-bit integer or bit-size `mov d, symbol+offset` uses an unbracketed
 address value restricted to an addressable data-symbol or formal-parameter
 base. Scalar and braced-vector `ld`/`st` require bracketed dereference and
 cover register, immediate, and bound-symbol bases. Each opcode uses
 `GenericScalar`, `ExplicitScalar`, `GenericVector`, and `ExplicitVector`
-variants. Their runtime type field accepts `.b8/.b16/.b32/.b64`,
-`.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; `.b128` is not a
-memory type in the current model. Vector variants add a required runtime
+variants. Their runtime type field accepts `.b8/.b16/.b32/.b64/.b128`,
+`.u8/.u16/.u32/.u64`, `.s8/.s16/.s32/.s64`, and `.f32/.f64`; the selected
+`.b128` value requires PTX 8.3 / SM 70, and `.sys` with `.b128` requires PTX
+8.4. Vector variants add a required runtime
 `.v2/.v4/.v8` field, and the register-vector operand descriptor links its expected
 element count to that field rather than duplicating variants per arity. Memory
 vectors use element type policy: each register element is checked against the
@@ -216,10 +441,12 @@ check, either side being a bit type is compatible, signed/unsigned fundamental
 integers are mutually compatible, floats require the exact type/size, and
 integer/float combinations remain incompatible. This covers wider load
 destinations and store sources through 64-bit declared registers, including
-store truncation. A wider actual `.b128` register is deliberately rejected
-until declaration-type target availability is represented and checked; exact
-`.b128` compatibility remains unchanged for its existing `mov` vector
-consumers.
+store truncation. A wider actual `.b128` register is deliberately rejected by
+the `EqualOrWider` policy for a narrower selected instruction; an exact `.b128`
+declaration is accepted for a selected `.b128` memory instruction. Exact
+`.b128` compatibility remains unchanged for existing `mov` vector consumers.
+The focused [LD coverage](ld_coverage.md) and [ST coverage](st_coverage.md)
+documents define the current memory subset.
 
 Explicit loads accept `.const/.global/.local/.param/.shared`, while stores
 accept `.global/.local/.param/.shared`. `WithLocs` retains both runtime
@@ -277,25 +504,23 @@ which continues to describe address-value semantics such as `mov`.
 
 ## Opcode-generated structures
 
-Every opcode generates one outer struct. `VariantType` and `std::variant`
-represent the variant uniquely selected by the modifier combination:
+Every semantic form generates one final class derived from `Instruction`. An
+opcode has a narrow generated header with all of its forms, descriptor access,
+and a per-opcode resolver. For example:
 
 ```cpp
-struct Add {
-  enum class VariantType { IntegerNoSat, Sat, PackedOptionalSat };
-
-  struct IntegerNoSat {
-    ResolvedOperandLayoutTag operand_layout;
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterRef> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-  using Variant = std::variant<IntegerNoSat /* ... */>;
-  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
-  Variant variant;
+class AddIntegerNoSat final : public Instruction {
+public:
+  ResolvedOperandLayoutTag operand_layout;
+  WithLocs<ScalarType> type;
+  WithLocs<ResolvedRegisterRef> dst;
+  WithLocs<RegOrImm> src1;
+  WithLocs<RegOrImm> src2;
 };
 ```
+
+The optional `execution_predicate` and virtual operations are inherited from
+`Instruction`.
 
 A fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
 `.sat` is fixed while the type is an allowed value with its own availability,
@@ -319,27 +544,27 @@ Add without becoming a global spelling-to-kind map.
 ## Multiple operand layouts in one variant
 
 The same modifier combination can admit different operand shapes. It must not
-be split into artificial modifier variants. Instead, generate a layout tag and
-a nested payload variant. `bar.sync a{, b}` is represented as:
+be split into artificial semantic forms. A final form class retains one layout
+tag, direct fields present in every layout, and typed optional fields present
+only in some layouts. `bar.sync a{, b}` is represented approximately as:
 
 ```cpp
-struct Bar::Sync {
+class BarSync final : public Instruction {
+public:
   ResolvedOperandLayoutTag operand_layout;
   inline static constexpr bool sync = true;
-  struct BarrierOperands { WithLocs<RegOrImm> barrier; };
-  struct BarrierAndThreadCountOperands {
-    WithLocs<RegOrImm> barrier;
-    WithLocs<RegOrImm> thread_count;
-  };
-  using Operands = std::variant<BarrierOperands,
-                                BarrierAndThreadCountOperands>;
-  Operands operands;
+  std::optional<WithLocs<ResolvedImmediate>> barrier_immediate;
+  std::optional<WithLocs<RegOrImm>> barrier_reg_or_imm;
+  std::optional<WithLocs<RegOrImm>> thread_count;
 };
 ```
 
 `ResolvedOperandLayoutTag` is the index of the layout in generated descriptors.
-The checker verifies tag validity, tag/payload-alternative agreement, and every
-operand binding. A disagreement is corrupted Resolved IR and produces
+The checker verifies tag validity, required and forbidden optional-field
+presence, and every operand binding before dereferencing a layout-specific
+field. Fields with the same descriptor ID but different C++ value types get
+deterministic value-kind suffixes, as `barrier_immediate` and
+`barrier_reg_or_imm` illustrate. A disagreement is corrupted Resolved IR and produces
 `OperandLayoutPayloadMismatch`.
 
 `Flat` handles comma-separated positional slots. `Call` is the only other
@@ -350,16 +575,18 @@ be disguised as `Flat`.
 
 ## Resolution protocol
 
-`resolve<T>(const AstInstruction&)` and its `ResolveContext` overload share one
-generated opcode-specific implementation. Shared logic performs these steps:
+Each per-opcode resolver and its `ResolveContext` overload share one generated
+implementation. Shared logic performs these steps:
 
 1. The common matcher diagnoses spellings unknown to the whole syntax
-   descriptor, then binds spellings to unique active slots separately inside
-   each candidate variant. Reusing one slot is a user diagnostic; one spelling
-   owned by multiple active slots in a variant is a descriptor bug.
-2. `selectVariant<T>` selects exactly one variant from those variant-local
+   descriptor, then binds spellings to ordered slots separately inside each
+   candidate variant. Required/fixed slots may share a spelling when their
+   positions disambiguate it; repeated optional spellings are rejected by the
+   database. Reusing one slot is a user diagnostic.
+2. `select_variant_name` selects exactly one semantic form from those form-local
    bindings. `absent`, `optional`, and `required/fixed` match by slot and
-   allowed value, independent of source modifier order.
+   allowed value in canonical or explicitly declared alias order. Order aliases
+   do not create new semantic variants or change field bindings.
 3. The selected variant chooses exactly one `OperandLayout` from AST shapes and
    arity.
 4. `resolve_fields` resolves the common execution predicate and converts
@@ -368,23 +595,22 @@ generated opcode-specific implementation. Shared logic performs these steps:
    ordinary registers must resolve to visible `.reg` declarations; both retain
    their `SymbolId` and declaration type, while a direct branch target must bind
    to a label in the current function.
-5. The generated builder places fields in the selected struct or payload.
+5. The generated builder constructs the exact final class and populates its
+   direct and optional fields.
 
 No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-`selectVariant<T>` remains a common template adapter in the handwritten public
-ABI header, so every type satisfying the `PtxOperator` concept can use it
-directly. It passes the descriptor to an out-of-line non-template matcher and
-converts the selected variant name to the opcode's `VariantType`. One generated
-`resolved_ir.gen.hpp` centralizes all opcode structs and
-the explicit-specialization declarations for `resolve<T>` and `check<T>`.
-Definitions of the latter two are non-inline and emitted by YAML category into
-`resolved_ir_<category>.gen.cpp`, which is compiled into the library. This
-boundary keeps only the small type adapter as a template while preventing every
-consumer translation unit from reparsing the matcher or instantiating large
-resolve builders and checker visits/lambdas, with one public include entry point.
+`select_variant_name` is the non-template descriptor matcher. At the resolver
+boundary its selected name maps once to a typed form index; subsequent
+construction uses typed dispatch. Generated final class definitions and
+resolver declarations share one full per-opcode header under the YAML
+`codegen_category`; callers with only model needs can use the generated base
+header. The aggregate `ptx_resolved_ir.gen.hpp` includes all opcode
+headers. Non-inline resolver, checker, clone, and observer definitions are
+emitted into one `.gen.cpp` per opcode and compiled into the library. The
+internal fixed-domain observer is not a public all-family visitor template.
 
 ## Three descriptors
 
@@ -400,13 +626,30 @@ They must not duplicate each other: syntax descriptors do not store resolved C++
 types, resolved descriptors do not recognize modifier spellings, and checker
 descriptors do not redo resolve bindings.
 
+The normalized specification model converts modifier kind and presence, and
+operand kind, role, and access, from YAML spellings into semantic enums at the
+loading boundary. Resolved-IR validation uses those enums and PTX constraints;
+it does not load C++ domain mappings. C++ type names, enum expressions, and
+member aliases are applied only by code generation. For example, the semantic
+`.sat` field remains `sat` in the IR while the backend may emit the historical
+`saturate` C++ member spelling. Checker operand views likewise dispatch by
+`ResolvedValueKind` and field origin, so a backend type-name change cannot
+select a different semantic branch.
+
 ## Checker contract
 
-Each generated `checker::check<T>` wrapper uses common checking for:
+Each final form's virtual `Instruction::check` override uses common checking for:
 
+- membership of every projected dynamic modifier value in the selected
+  variant's generated semantic domain. This check is independent of source
+  locations and modifier spelling-presence: an omitted optional modifier is
+  checked using that field's declared default, while an out-of-domain edited
+  value with no provenance remains invalid and uses the instruction range as
+  its diagnostic fallback. `ModifierValueDomainMismatch` reports a value
+  outside this domain.
 - minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
 - layout-tag bounds;
-- layout-tag/payload agreement;
+- layout-tag and required/forbidden optional-field agreement;
 - operand field identity, resolved shape, and immediate or bound-register
   declaration types from structured descriptors.
 - special-register intrinsic metadata and contextual type/availability selected
@@ -419,6 +662,28 @@ Each generated `checker::check<T>` wrapper uses common checking for:
 - explicit `.param` input/return direction and function-context availability
   from the generated operand constraint; direction mismatches take precedence
   over that contextual availability.
+
+The caller supplies `checker::Context::target` and `instruction_range` for a
+single-instruction check. The latter is the stable fallback diagnostic range
+when the edited field has no retained source provenance.
+
+Semantic-domain membership and target availability are separate questions. The
+domain is derived from the normalized variant modifier values together with the
+individual optional field default; it is not inferred from availability entries,
+and it does not admit a blanket enum sentinel. Availability keeps its existing
+source-presence behavior, because an omitted default need not have the same PTX
+or SM requirement as an explicitly spelled value. Therefore a legal value can
+pass domain membership yet still fail its target availability check.
+
+Generated vector projections also accept caller-constructed or mutated public
+IR without requiring a separate vector-size preverification pass. They retain
+the original width/element count in `OperandView::vector_arity` and bound writes
+to the fixed-capacity element arrays. The common checker rejects zero or
+over-capacity vector counts with `InvalidVectorOperand` before inspecting
+elements; supported counts still undergo their instruction-specific checks.
+An oversized payload is never narrowed or clamped into a valid vector. This
+guarantee covers vector projection sizes, not every possible malformed-IR
+invariant or cross-instruction constraint.
 
 `rule_id` is reserved for typed instruction-specific rules. Register visibility
 and `.reg` state space are checked during module resolution; the common checker
@@ -435,14 +700,15 @@ constraints remain outside its ABI.
 - A new multi-layout instruction needs tests for normal resolution, an invalid
   layout tag, and a tag/payload mismatch.
 
-Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`,
-`submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
-`resolved_ir.gen.hpp`.
+Implementation entry points are
+`submod/resolved_ir/include/ptx_resolved_ir.hpp`,
+`submod/resolved_ir/include/ptx_resolved_ir_checker_support.hpp`, and generated
+`ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp`.
 
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
-by module resolution. Scalar `.b128` and
-declaration-type availability for wider `.b128` registers remain outside this
-slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
+by module resolution. Scalar `.b128` is rejected by the generated `Mov::Scalar`
+type domain; declaration-type availability for wider `.b128` registers remains
+outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.

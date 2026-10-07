@@ -15,16 +15,15 @@ YAML files
 
 ## 输入数据库
 
-`ptx_frontend.code_gen.database` 递归发现 canonical 的
-`python/code_gen/resources/ptx_spec/**/*.yaml`（源码树可通过兼容 symlink
-`instructions/ptx_spec` 访问），按路径排序加载，并
+`ptx_frontend.spec.database` 递归发现 canonical 的
+`python/src/ptx_frontend/spec/resources/ptx_spec/**/*.yaml`，按路径排序加载，并
 保证所有文件使用相同 schema 版本；同 opcode 的定义随后合并。`InstructionSpec` 的最小稳定
-模型位于 `ptx_frontend.code_gen.model`：
+模型位于 `ptx_frontend.spec.model`：
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
                 codegen_category)
-VariantSpec(name, availability, modifiers, operand_layouts, rule)
+VariantSpec(name, availability, modifiers, operand_layouts, rule, ..., modifier_order_aliases)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
 OperandSpec(name, kind, role, access, type_expression)
@@ -33,14 +32,15 @@ OperandSpec(name, kind, role, access, type_expression)
 该模型只保存生成当前 frontend 所需的字段。YAML 中的文档、example、constraint 等
 尚未被 generator 使用的元数据，不应悄悄混入 C++ 表示。
 
-database 在合并 opcode 后验证 selector 语言：每个 variant 内，活动 modifier slot 的
-spelling 集合必须两两不交；不同 variant 接受的无序 spelling 集合必须互斥。slot name
-只在 variant 内有意义，所以同一 spelling 可以跨 variant 绑定不同 slot。校验通过后，
-C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时保持 modifier 顺序无关。
+database 在合并 opcode 后验证 selector 语言：只有 required/fixed slot 的有序位置
+能够消除绑定歧义时，活动 modifier slot 才可以共享 spelling。同一 variant 的规范
+序列与显式 `modifier_order_aliases` 若有交集，必须产生相同绑定；不同 variant 接受
+的序列必须互斥。slot name 只在 variant 内有意义，所以同一 spelling 可以跨 variant
+绑定不同 slot。这些校验使 C++ matcher 能确定性地局部绑定，而不接受任意源码顺序。
 
 ## Normalization
 
-`ptx_frontend.code_gen.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
+`ptx_frontend.spec.normalize` 负责将 schema 合法但书写方式不同的 YAML 收敛为一个模型：
 
 - 统一展开 `type_sets` 与 `value_sets` 的 `$name` 引用，并拒绝两者同名；
 - 将 operand 的 `type: {expr: modifier(type)}` 解析为
@@ -60,7 +60,7 @@ C++ matcher 才能对每个候选 variant 做确定性的局部绑定，同时�
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
-SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts)
+SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts, modifier_order_aliases=())
 SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```
@@ -79,7 +79,7 @@ ResolvedInstruction(opcode, cpp_name, variants)
 ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
-ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedField(name, value_kind, origin, storage, ...)
 ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
@@ -99,39 +99,91 @@ optional modifier 的 YAML `default` 会在模型转换时成为 typed
 同一 variant 的多个 layout 可复用同名 field，前提是其定义完全一致；否则模型构建应
 失败，而不是让生成结果含糊。
 
+Modifier value 采用表驱动处理。`ir.resolved_value_kind` 定义语义身份，
+`ir.resolved_value_policy` 统一 modifier kind 映射、Python 值类型、optional default
+支持范围和诊断名称。C++ domain 与 descriptor member 映射归
+`code_gen.resolved_value_traits` 所有；emitter 共用其中的值转换和 descriptor 初始化
+函数，不再按 C++ 类型名称字符串分派。现有调用方仍可从 `ir.resolved_ir` 导入
+`ResolvedValueKind`。
+Descriptor 表达式映射使用 `ResolvedValueKind` 枚举作为查询键；C++ 成员名字符串
+仅用于输出拼写。
+
+归一化后的 discriminator enum 是严格的 `Enum` 成员：YAML spelling 只在归一化边界
+转换一次，后续不能与 raw string 混用。`spec.semantic_domains` 保存不可变的已建模 PTX
+词表，并区分可拼写值与 optional 的 default-only sentinel。它会在构建 Resolved IR 前
+校验展开 value set、fixed value、default、scalar expression、state space 与
+special-register compatibility。该词表刻意包含当前 C++ backend 尚未映射的合法 PTX
+形式；这类 IR 仍合法，缺失 C++ mapping 会在生成期作为明确的 capability error 报告。
+因此 `ResolvedField` 不再提供 C++ type 或 expression property，只有 code generation
+helper 在输出时投影这些表示。
+
 ## C++ emitter 与产物
 
-`python/scripts/gen_all.py` 原子生成 Resolved IR 阶段所需的公共声明、运行期映射、
-dispatch、按 category 分片的实现以及 descriptor：
+`python -m ptx_frontend.code_gen` 生成 Resolved IR 所需的直接类公共声明、
+运行期映射、dispatch 及按 category 分片的实现：
+
+一次 generation run 中，`GenerationContext` 保存唯一的有序 binding 序列：每个
+normalized `InstructionSpec` 都与其一次 lowered、backend-projected 的
+`ResolvedInstruction` 配对。每个 binding 从 source opcode 派生一个 canonical C++
+instruction type name，并要求 resolved model 精确携带该名称。Syntax emission 与
+category selection 读取 binding 的 source 一侧和 type identity；model、descriptor、resolver
+与 checker emission 读取 resolved 一侧。为兼容性保留的 resolved tuple 由 binding 派生，
+因此 source 与 resolved 的顺序或 C++ type identity 不能独立漂移。
+
+context 构造会在任何 emitter 创建目录或写文件之前执行有限的结构 preflight：canonical
+binding C++ type name 必须唯一，且每个 resolved operand payload kind 都必须有 module-reference
+policy。binding 构造自身会拒绝 resolved C++ name 与 source-derived type name 不同的情况，
+包括 direct 构造和 `dataclasses.replace`。它只验证冻结 snapshot，而不声称能预测所有
+rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | 全部 opcode structs，以及 `resolve<T>`、`check<T>` 的显式特化声明 |
-| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | resolver 使用的运行期 value-domain lookup table |
-| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | 该 category 下两组显式特化的 out-of-line 定义 |
-| `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source syntax descriptors 与 getter |
-| `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors 与 getter |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors 与 getter |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、准确形式 identity 与 observer 契约 |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 单个 opcode 的 final 语义形式类、selector 与 resolver 声明 |
+| `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | 全部 opcode 头的聚合 |
+| `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 跨 opcode 的解析分发 |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 单个 opcode 的 out-of-line 解析、检查、克隆及引用遍历定义 |
 
-生成的公开头在 `submod/resolved_ir` 的构建树中仍平铺于 `generated/public` include
-root。`submod/resolved_ir` include 工程级的 `cmake/generate_ptx_frontend.cmake`；
-该 helper 原子调用 `gen_all.py`，负责列出输出、生成文件并将其编译进 `resolved_ir`
-target。顶层只提供 submodule 编排与 facade target。
+生成的公开头位于 `submod/resolved_ir` 构建树的
+`generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。
+私有生成源码和支持头保留在 `generated/private`，不安装。
+`submod/resolved_ir/CMakeLists.txt` 使用 Python codegen CLI 的 `--list-outputs`
+模式发现产物，再生成并将私有源码编译进 `resolved_ir`。生成规则依赖两份 schema、
+backend mapping、规格文件以及 generator Python 源码。
+CLI 默认使用六个并发产物 writer（`--jobs 6`）；`--jobs 1` 保持串行生成。
+CMake 源码构建将 `PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）传给 CLI。plan 与
+output listing 保持有序，全部选定产物成功后才写入 manifest。每个产物使用同目录
+candidate 并原子替换；失败的运行可能留下已成功写入的产物，但不会发布新的 manifest。
 
-`syntax_descriptor.gen.cpp` 虽描述 source syntax，但它实现的是 generated Resolved IR
-opcode 类型的 getter，并由 variant selection/resolution 消费；在生成器依赖边界改变前，
-它仍与其他 `gen_all.py` 输出一起归属 `resolved_ir`，不按文件名拆入 `syntax` submodule。
+Syntax descriptor storage 实现 generated Resolved IR opcode 类型的 getter，
+供 variant selection/resolution 使用，并与同一 opcode 的 resolved、checker
+descriptor storage 共用一个私有源文件。
 
-公共头不包含生成函数体。生成分片使用归一化后的 `codegen_category`；它与记录 PTX
+直接类路径保留 YAML schema 与 normalized instruction model。每个语义形式是
+`Instruction` 的 final 子类：公共字段是直接成员，layout 专有字段是带类型的
+optional。解析返回 `std::unique_ptr<Instruction>`。每个 opcode 的生成 `.cpp`
+定义 out-of-line 解析、检查、克隆和引用遍历方法。中央 dispatch 调用逐 opcode
+解析器，不使用 instruction union。
+
+完整 opcode 公共头不包含生成的 resolver/checker 函数体。小型手写
+`ptx_resolved_ir_selection.hpp` 提供通用选择适配器；单个 opcode model 头仍可在 syntax AST
+不完整时使用。安装的 `ptx_resolved_ir.hpp` 包含生成聚合头和 module 解析 API。
+生成分片使用归一化后的 `codegen_category`；它与记录 PTX
 文档归属的 `source_categories` 分离。同 opcode 的全部 YAML 定义必须使用同一
-`codegen_category`，生成脚本据此产生稳定的 category 源文件，
+`codegen_category`，生成脚本据此为每个 opcode 产生稳定的私有源文件，
 并由 CMake 编译进 `resolved_ir` library。这样 consumer 仍只有一个 include 入口，
 但复杂的 `std::visit`、lambda、resolve builder 只在库内编译一次。
 
+生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
+output manifest）时保留 modification time。consumer 可包含聚合头或单个 opcode 头。
+
+比较与选择规范生成 `comparison_and_selection` 分区。窄 consumer 可包含
+`model/comparison_and_selection/set.gen.hpp` 等单个头；聚合头提供所有形式。
+
 每个输出文件只打开一次外层 namespace。private descriptor storage 位于单一匿名或
 `generated_detail` namespace，getter 位于 `ptx_frontend::resolved_ir`；checker
-specialization 声明位于公共头的单一 `checker` namespace，每个 category 实现文件也只
+specialization 声明位于公共头的单一 `checker` namespace，每个 opcode 实现文件也只
 打开一次对应 namespace。
 
 所有 emitter 从规范化后的 C++ backend domain 获取语义值对应的 C++ 类型与表达式。
@@ -139,11 +191,15 @@ specialization 声明位于公共头的单一 `checker` namespace，每个 categ
 标准 `SOURCE_DATE_EPOCH`，生成警告会使用该确定性 UTC 时间，否则明确标记时间已省略。
 因此相同 ISA spec、backend spec 和生成器输入会产生 byte-identical 内容。
 
+backend lookup helper 必须接收由 context 或 emitting call 显式传入的 `CodegenUnit`。
+生成器没有 process-global active backend、配置步骤或 backend cache，因此独立的 generation
+snapshot 不会选择彼此的 C++ spelling。
+
 ### Backend 配置边界
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 及其
-`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` 作为独立的 C++ backend
-配置层。`ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
+`instructions/ptx-cpp-backend-v2.schema.yaml` 构成独立的 C++ backend 映射层。
+`ptx_frontend.code_gen.cpp_backend` 将 `domains` 规范化为 `DomainBackend`，Syntax、Resolved、
 checker emitter 只通过 typed lookup 读取 C++ 拼写。查询接口的 domain 参数必须使用
 `CppDomain` 枚举成员，例如 `CppDomain.SCALAR_TYPES`，不接受裸字符串。当前 domain
 覆盖 scalar type、
@@ -151,18 +207,29 @@ rounding mode、resolved value type/kind、modifier presence、operand role/acce
 type-expression kind 与 checker modifier kind。
 
 backend spec 不应重复表达 `ptx_spec` 中的 PTX ISA 语义，也不应影响
-`InstructionSpec` 的规范化结果。`DomainBackend` 与 `CodegenUnit` 已进入当前生成路径；
-`InstructionBackend` 与 `EmitBackend` 仍为未来的 per-instruction override 保留，当前
-`instructions` mapping 为空，也不能改变 resolved IR 的 variant/layout 结构。emitter
-不得直接读取原始 YAML 字典。loader 会先执行 JSON Schema 校验，再检查当前生成路径所需
-domain 是否齐全；缺失 domain/value 必须在生成期报告 `ValueError`。CMake 将 backend
-YAML 与 schema 都列为生成依赖，修改任何 C++ 映射都会触发重新生成。
+`InstructionSpec` 的规范化结果。其唯一的生成输入是 ISA schema version、backend schema
+version 和封闭的 C++ mapping domain 集合；不接受 per-instruction layout、emit、namespace、
+include 或 category policy。`CodegenUnit` 只保存这些输入。emitter 不得直接读取原始 YAML
+字典。loader 会在 v2 schema 校验之前，以迁移诊断拒绝已退休的
+`ptx-cpp-backend/v1`；consumer 必须将 import 和 construction 迁移到收窄后的
+`CodegenUnit(spec_schema, backend_schema, domains)` contract。缺失、未知或无 mapping 的
+domain/value 必须在生成期报告 `ValueError`。CMake 将 backend YAML 与 schema 都列为生成
+依赖，修改任何 C++ 映射都会触发重新生成。
+
+迁移 backend 文件时，将 schema tag 和 YAML-language-server header 从 v1 改为 v2，随后删除
+`target`、`category`、`namespace`、`includes`、`common`、`emit_kinds` 与 `instructions`。
+删除已退休的 `modifier_value_cpp_types`、`operand_value_cpp_types` domain，以及 value 内的
+`token` 或 `aliases`。`Emit*`、`InstructionBackend`、`ModifierBackend`、`OperandBackend`
+不再可 import；改用 `DomainBackend` 和收窄后的 `CodegenUnit`。PTX ISA 文件继续使用
+`ptx-instr/v1`。
 
 需要在运行期从 PTX 源码 suffix 解析值的 domain 声明
 `runtime_lookup: ptx_suffix`。生成器会把对应映射生成到 private 的
 `resolved_value_domains.gen.hpp`，并以 `inline constexpr std::array` 保存。
 手写 resolver 只保留一份通用 suffix 查找算法，不再重复 scalar type 或 rounding mode
-的映射数据；未标记的 domain 仍仅用于生成期，不会产生运行期查找表。
+的映射数据；标记 domain 的 `cpp_type` 决定生成表的 value type。未标记
+`runtime_lookup` 时，`cpp_type` 仅为 type annotation，不决定 instruction field type；后者由
+`resolved_value_cpp_types` mapping 决定。未标记的 domain 仍仅用于生成期，不会产生运行期查找表。
 
 ## 生成规则
 

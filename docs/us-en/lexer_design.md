@@ -155,7 +155,7 @@ operators and precedence.
 
 The lexer recognizes:
 
-- Decimal integers, with an optional `u` or `U` suffix.
+- Decimal and leading-zero octal integers, with an optional `u` or `U` suffix.
 - Hexadecimal integers beginning with `0x` or `0X`, with an optional unsigned
   suffix.
 - PTX bit-pattern floating literals `0f` plus eight hex digits.
@@ -167,17 +167,32 @@ The lexer recognizes:
 Literal tokens preserve their exact source spelling. Numeric conversion and
 string unescaping are intentionally outside the lexer.
 
+For compatibility, both decimal and octal integers use `TokenKind::Decimal`
+and lower to `AstImmediateKind::DecimalInteger`; these names do not determine
+the numeric radix. Integer decoding treats a leading zero as octal (`010` is
+8). An octal spelling containing `8` or `9`, such as `09U`, produces one
+`Error` token spanning the whole literal. Decimal floating spellings such as
+`09.0` and `09e1` remain floating tokens.
+
 ### Generic Identifiers
 
 Ordinary identifiers use the following shape:
 
 ```text
-[A-Za-z_$%][A-Za-z0-9_$%]*
+[A-Za-z_$%][A-Za-z0-9_$]*
 ```
 
 They are emitted as `TokenKind::Ident`. This category includes instruction
 names, registers, special registers, labels, symbols, and target names such as
 `sm_80`.
+
+Percent is permitted only as the leading character of a percent-prefixed
+identifier; it is not an identifier continuation character. Thus an internal
+percent terminates the preceding identifier and begins a new leading-percent
+identifier when followed by a valid continuation. A standalone `%` remains the
+`TokenKind::Percent` remainder operator. The lexer also keeps `_` as an
+`Ident` token for the designated sink and call-prototype-placeholder contexts;
+those context-specific meanings are decided after lexing.
 
 Keeping instruction names generic avoids changing the lexer whenever PTX adds
 an instruction.
@@ -248,7 +263,8 @@ Block comments use an exclusive `BLOCK_COMMENT` scanner state:
 1. `/*` enters the state.
 2. All content is skipped until `*/`.
 3. `*/` returns to the initial state.
-4. End of input inside the state emits `TokenKind::Error`.
+4. End of input inside the state emits one `TokenKind::Error` and returns to
+   the initial state so the next read reaches `TokenKind::Eof`.
 
 Block comments are not nested.
 
@@ -272,26 +288,28 @@ Line endings are handled as follows:
 
 - `\n` increments the line and resets the column to 1.
 - `\r` does the same.
-- `\r\n` is treated as one line ending when both bytes are part of the same
-  Flex match.
+- `\r\n` is treated as one line ending, including inside block comments.
 
 Columns count bytes, not Unicode code points. PTX identifiers are currently
 restricted to ASCII, so this matches the accepted lexical grammar.
 
-EOF and an unterminated block comment use a zero-width range at the current
-position.
+EOF uses a zero-width range at the current position. An unterminated block
+comment retains the range from its opening `/*` through end of input.
 
 ## Error Behavior
 
 An unknown character is emitted as `TokenKind::Error` with the offending byte
 in `Token::text` and its normal source range.
 
-An unterminated block comment emits `TokenKind::Error` with empty text and a
-zero-width range at end of input.
+An unterminated block comment emits one `TokenKind::Error` containing its full
+text, source range, and preceding trivia. Subsequent reads return EOF with empty
+text and no repeated trivia. Repeated `peek()` calls can observe the same cached
+error until `consume()` advances past it.
 
 The lexer reports errors as tokens rather than throwing exceptions. A caller
 may stop at the first error or request additional tokens when recovery is
-appropriate.
+appropriate. An ordinary invalid character does not force EOF: following valid
+tokens remain available. Module recovery relies on this progress contract.
 
 EOF is emitted as `TokenKind::Eof`, with empty text and a zero-width current
 position range.
@@ -343,10 +361,6 @@ ctest --test-dir out/build/ci-linux-gcc-debug --output-on-failure
 - Token text is allocated separately for every emitted token.
 - The lexer accepts ASCII identifiers only.
 - Block comments cannot nest.
-- A `\r\n` sequence inside a block comment is currently consumed as two
-  separate Flex matches and therefore advances the line twice. Outside block
-  comments, CRLF is normally consumed in one whitespace match and advances the
-  line once.
 - String tokens preserve escapes and quotes; they are not decoded.
 - Signs are separate from numeric literals.
 - The decimal floating grammar does not recognize every spelling that a C++

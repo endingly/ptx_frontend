@@ -1,8 +1,8 @@
 #pragma once
 #include <memory>
+#include <ptx_frontend/lexer/ptx_token.hpp>
 #include <string>
 #include <string_view>
-#include <ptx_frontend/lexer/ptx_token.hpp>
 
 namespace ptx_frontend {
 
@@ -18,6 +18,11 @@ class PtxLexer {
   PtxLexer(PtxLexer&&) = delete;
   PtxLexer& operator=(PtxLexer&&) = delete;
 
+  /**
+   * Read the next non-trivia token, independently of the lookahead cache.
+   * Errors retain their source text and range. An unterminated block comment
+   * yields one Error, followed by Eof; other lexical errors permit later tokens.
+   */
   Token next();
   Token peek();
   Token consume();

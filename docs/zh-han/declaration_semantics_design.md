@@ -15,11 +15,21 @@ pass，并在解析 instruction 前累积两者的诊断。
 
 ## Array 与 initializer
 
+整数字面量与指令立即数共享十进制、前导零八进制和十六进制解码规则。例如，
+`010` 的初始化值为 8，用作数组维度时也为 8；无符号后缀不改变基数。
+
+无法在 64 位源码数值域内解码的整数字面量属于非法表达式，而非待求值的合法值。
+声明检查在字面量自身的 range 报告 `InvalidIntegerLiteral`，`resolveModule()`
+保留该类别和位置。即使三元表达式的两个分支相同，或字面量位于未选中的分支，
+折叠也不能掩盖解码失败。合法的待求值表达式仍被单独处理：尚未求值的合法比较
+作为条件时，等值分支仍可折叠为常量。
+
 array dimension 必须能求值为正整数 constant。求值器以带 `.s64/.u64` signedness 的
 64-bit bit pattern 保存每个整数子表达式，支持负数中间值、cast、usual arithmetic
 conversion，以及一元/二元/三元运算；因此 `-1 + 2` 等合法表达式不会在中间阶段被
 误判。`WARP_SZ` 同样在此阶段求值；symbol address 不能作为 dimension。
-只有带 initializer 的第一维可以省略，其长度由最外层 initializer list 推导。
+只有第一维可以省略：有 initializer 时由最外层 list 推导其长度；external storage
+declaration 也可在没有 initializer 时保留未知的首维。
 
 initializer 的 brace nesting 必须与 array 维数一致；vector declaration 额外形成长度为
 2 或 4 的最内层 aggregate。每一维允许少于声明长度，剩余元素按 PTX 规则补零；只有
@@ -27,8 +37,19 @@ initializer 的 brace nesting 必须与 array 维数一致；vector declaration 
 
 scalar leaf 区分 integer、floating 和 symbol address expression。整数与浮点 expression
 必须进入相应类型类别，symbol address 只能初始化 `.u32/.u64`；initializer symbol 必须
-指向 function 或 `.global/.const` variable。`generic()` 与 mask operator 作为 initializer
-operator 处理，而不是普通 function call。
+指向 function 或非 opaque 的 `.global/.const` variable。`.texref`、`.samplerref` 与
+`.surfref` identity 不能成为 initializer address，即使经由 `generic()`、byte-mask 或算术
+wrapper 也不例外。`generic()` 与 mask operator 作为 initializer operator 处理，而不是普通
+function call；该限制不影响允许的 opaque handle `mov` retrieval。
+
+## Unified UUID attribute
+
+对于已建模的 `.unified(upper, lower)` attribute，declaration semantics 将两个 direct
+integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、十六进制及
+支持的 unsigned suffix 沿用 integer-literal rule；overflow 会指向出错 token，而不会截断。
+该检查同样适用于合法的 global variable 与 device function definition/prototype，并发生在
+storage metadata 或未来 function metadata backend 消费该值之前。placement、PTX-version 与
+target check 仍是独立的 declaration rule。
 
 ## Redeclaration
 
@@ -43,6 +64,21 @@ module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再�
   诊断；
 - `.extern .func` 只能是 prototype，不能带 body。
 
+redeclaration 的 alignment 按 effective value 比较，但每个 declaration occurrence
+仍保留 source provenance 与 range。对于已建模的 fundamental storage，省略的
+alignment 是 scalar byte size（scalar array 也相同），或完整 `.v2`/`.v4` element
+width（vector array 也相同）。显式且有效的 alignment 按解码后的整数值比较，
+因此等值的八进制与十进制拼写相匹配。unsupported layout 与 invalid alignment syntax
+不会被猜测出 default。parameterized count 和 ABI-preserve count 也按解码后的整数值比较。
+
+验证注记：CUDA 13.1 `ptxas` V13.1.115 接受 `.version 8.0` / `.target sm_80` /
+`.address_size 64` fixture 中 scalar、scalar-array、byte-array、`.v2 .u32` 与 `.v4
+.u32` external declaration 的 matching implicit/explicit form，且两种 declaration
+order 都成功。对于 `g` scalar fixture，whole-program compilation 精确给出警告
+`ptxas warning : Unresolved extern variable 'g' in whole program compilation, ignoring
+extern qualifier`；因此该比较是带此警告的成功，而非 warning-free。相同 assembler 以
+`Alignment must be a power of two` 拒绝 `.align 3`。
+
 function prototype 与 definition 各自仍拥有 lexical scope。function symbol 的
 `owned_scope` 优先指向 definition scope，从而使后续 module resolution 使用 definition
 中的 parameter/local declaration。
@@ -53,13 +89,21 @@ function prototype 与 definition 各自仍拥有 lexical scope。function symbo
 此前已声明的 device `.func`；重复 member 会以两个 member range 诊断，所有有效 member 必须有
 相同的 canonical `FunctionSignature`。`.branchtargets` member 必须是所属 function 中的 label，
 允许 forward label。`N<5>` 这样的 compact entry 会基于已有 local label 检查，不创建 synthetic
-symbol；缺失或 overlap label 使用 compact-entry range 诊断。
+symbol；缺失 label 使用 compact-entry range 诊断。分支表是有序的索引序列：允许显式目标
+重复、compact 与显式目标交叠，以及 compact entry 之间交叠，不对这些目标去重。
 
 `.callprototype` 拒绝同时出现 return parameter 与 `.noreturn`，对 formal 使用既有
 alignment/array-extent 检查，并要求 array formal 使用 `.param`。duplicate declaration label 仍由
 binding 负责。module resolution 会把有效 prototype 转为与 function 相同的 canonical signature，
 并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
 availability 仍留给后续工作。
+
+## 参数声明
+
+参数另有按上下文区分的[覆盖与验证契约](parameter_declarations.md)，包括支持的类型、
+unsized array 位置、pointer attribute，以及可静态判定的 ISA version/target 与 entry
+大小限制。该契约适用于 entry/device header、call-prototype formal 与 body-local `.param`
+声明；保留 type spelling 或 array syntax 本身不表示声明合法。
 
 ## Entry resource constraint
 
@@ -78,7 +122,16 @@ feasibility semantic。
 
 ## 当前边界
 
+declaration 检查之后，module resolution 将已支持的 storage form 投影到
+[拥有自身数据的存储元信息](storage_declarations.md)，包含 checked byte extent 与 typed
+initializer value/reference。即使 declaration checker 接受某个 expression category，
+超出可表示范围的 form 仍可能在这一步产生 diagnostic。declaration category 与关联 range
+会通过 `ResolveDiagnostic` 保留。
+
 该 pass 不负责 opcode-specific instruction type checking，也不实现 link-time 的跨 module
 symbol 选择。integer constant expression 当前覆盖已有 AST grammar，并按 PTX 的
 `.s64/.u64` 类型传播规则求值；后续若增加新的 constant operator，需要同时扩展分类、
 signedness 传播与求值逻辑。
+
+二元位运算遵循 PTX 正文中的通常算术转换规则；汇总表的不同表述、可复现汇编
+证据和工具版本限制见[符号性决策说明](bitwise_constant_policy.md)。

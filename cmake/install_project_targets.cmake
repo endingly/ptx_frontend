@@ -98,6 +98,10 @@ function(install_project_targets)
         "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx_spec")
     set(PTX_FRONTEND_PTX_SPEC_SCHEMA
         "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx-instr-v1.schema.yaml")
+    set(PTX_FRONTEND_PTX_CPP_BACKEND_SPEC
+        "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml")
+    set(PTX_FRONTEND_PTX_CPP_BACKEND_SCHEMA
+        "${CMAKE_INSTALL_DATADIR}/ptx_frontend/ptx-cpp-backend-v2.schema.yaml")
 
     set(_template
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/${INSTALL_PROJECT_PROJECT}Config.cmake.in")
@@ -121,6 +125,8 @@ function(install_project_targets)
         PATH_VARS
             PTX_FRONTEND_PTX_SPEC_DIR
             PTX_FRONTEND_PTX_SPEC_SCHEMA
+            PTX_FRONTEND_PTX_CPP_BACKEND_SPEC
+            PTX_FRONTEND_PTX_CPP_BACKEND_SCHEMA
         NO_SET_AND_CHECK_MACRO
     )
     write_basic_package_version_file(

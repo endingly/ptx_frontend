@@ -1,0 +1,94 @@
+import os
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from typing import Optional
+
+
+def generated_at_comment() -> str:
+    """Return reproducible generation metadata.
+
+    Reproducible builds may provide the conventional ``SOURCE_DATE_EPOCH``.
+    Without it, do not embed wall-clock time into generated artifacts.
+    """
+
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw_epoch is None:
+        return (
+            "// Generated at: omitted "
+            "(set SOURCE_DATE_EPOCH for a reproducible timestamp)"
+        )
+    try:
+        epoch = int(raw_epoch)
+    except ValueError as error:
+        raise ValueError("SOURCE_DATE_EPOCH must be an integer") from error
+    timestamp = datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+    return f"// Generated at: {timestamp}"
+
+
+def find_clang_format() -> Optional[str]:
+    for name in (
+        "clang-format-21",
+        "clang-format",
+        "clang-format-15",
+        "clang-format-14",
+        "clang-format-13",
+    ):
+        p = shutil.which(name)
+        if p:
+            return p
+    return None
+
+
+def format_code(
+    code: str,
+    clang_bin: Optional[str] = None,
+    style: str = "file",
+    filename_hint: str = "file.cpp",
+) -> str:
+    """
+    Format a code string with clang-format and return formatted string.
+    - style: "file" (use .clang-format) or JSON-like string, e.g. "{BasedOnStyle: LLVM, IndentWidth: 2}"
+    - filename_hint: passed to --assume-filename so clang-format detects language.
+    """
+    clang = clang_bin or find_clang_format()
+    if not clang:
+        raise RuntimeError("clang-format not found on PATH")
+    args = [clang, f"--assume-filename={filename_hint}", f"-style={style}"]
+    proc = subprocess.run(
+        args, input=code.encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"clang-format failed: {proc.stderr.decode('utf-8').strip()}"
+        )
+    return proc.stdout.decode("utf-8")
+
+
+def format_file_inplace(
+    path: str, clang_bin: Optional[str] = None, style: str = "file"
+) -> None:
+    """Format a file in-place (like `clang-format -i`)."""
+    clang = clang_bin or find_clang_format()
+    if not clang:
+        raise RuntimeError("clang-format not found on PATH")
+    subprocess.run([clang, f"-style={style}", "-i", path], check=True)
+
+
+def to_file_stem(value: str) -> str:
+    """Convert arbitrary PTX spelling into a lower-case file-safe stem."""
+
+    result = re.sub(r"[^A-Za-z0-9]+", "_", value)
+    result = re.sub(r"_+", "_", result)
+    return result.strip("_").lower()
+
+
+def file_stem_to_pascal_case(value: str) -> str:
+    """Convert a PTX/file stem such as ``add_s32`` to ``AddS32``."""
+
+    return "".join(
+        part[:1].upper() + part[1:]
+        for part in re.split(r"[^A-Za-z0-9]+", value)
+        if part
+    )

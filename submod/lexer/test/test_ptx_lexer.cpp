@@ -71,6 +71,38 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
 // Basic instruction lexing
 // -----------------------------------------------------------------------------
 
+/** Octal source retains the existing integer token category and exact spelling. */
+TEST(PtxLexerNew, OctalSpellingsAndDecimalFloatControls) {
+  for (const std::string_view spelling :
+       {"0", "0U", "00", "010", "077u", "010U"}) {
+    PtxLexer lexer(spelling);
+    const auto token = lexer.next();
+    EXPECT_EQ(token.kind, TokenKind::Decimal) << spelling;
+    EXPECT_EQ(token.text, spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+  for (const std::string_view spelling : {"09.0", "09e1", "08.5e-1"}) {
+    PtxLexer lexer(spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::F64) << spelling;
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
+/** Invalid octal digits form one recoverable error with the full literal range. */
+TEST(PtxLexerNew, InvalidOctalReportsWholeLiteralAndRecovers) {
+  for (const std::string_view spelling : {"08", "09", "019U", "0789u"}) {
+    const std::string source = std::string{spelling} + " 7";
+    PtxLexer lexer(source);
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error) << spelling;
+    EXPECT_EQ(error.text, spelling);
+    EXPECT_EQ(error.range.start.column, 1u);
+    EXPECT_EQ(error.range.end.column, spelling.size() + 1u);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Decimal);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
 TEST(PtxLexerNew, EmitsEof) {
   PtxLexer lexer("add.s32;");
 
@@ -267,8 +299,8 @@ TEST(PtxLexerNew, ModuleDirectivesRemainDedicatedTokens) {
 }
 
 TEST(PtxLexerNew, KernelResourceDirectivesRemainDedicatedTokens) {
-  const auto toks = lex_all(
-      ".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
+  const auto toks =
+      lex_all(".maxnreg 32 .maxntid 16, 8 .reqntid 64 .minnctapersm 2");
 
   ASSERT_EQ(toks.size(), 10u);
   expect_token(toks[0], TokenKind::DotMaxnreg, ".maxnreg");
@@ -288,8 +320,7 @@ TEST(PtxLexerNew, ClusterDimensionDirectivesRemainDedicatedTokens) {
 }
 
 TEST(PtxLexerNew, FileDirectiveRemainsDedicated) {
-  const auto toks = lex_all(
-      ".file 0 \"source.ptx\", 0, 18446744073709551615U");
+  const auto toks = lex_all(".file 0 \"source.ptx\", 0, 18446744073709551615U");
 
   ASSERT_EQ(toks.size(), 7u);
   expect_token(toks[0], TokenKind::DotFile, ".file");
@@ -321,8 +352,8 @@ TEST(PtxLexerNew, PragmaDirectiveRemainsDedicated) {
 }
 
 TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
-  const auto toks = lex_all(
-      ".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
+  const auto toks =
+      lex_all(".loc 1 15 3, function_name .debug_str+16, inlined_at 1 10 5");
 
   ASSERT_EQ(toks.size(), 14u);
   expect_token(toks[0], TokenKind::DotLoc, ".loc");
@@ -411,6 +442,34 @@ TEST(PtxLexerNew, RegisterDeclarationSnippet) {
   expect_token(toks[6], TokenKind::Semicolon, ";");
 }
 
+/** Internal percent signs terminate user identifiers without rejecting valid prefixes. */
+TEST(PtxLexerNew, SplitsInternalPercentIdentifiersAtNewLeadingPercentNames) {
+  const auto toks = lex_all("bad%name %r%tmp");
+
+  ASSERT_EQ(toks.size(), 4u);
+  expect_token(toks[0], TokenKind::Ident, "bad");
+  expect_token(toks[1], TokenKind::Ident, "%name");
+  expect_token(toks[2], TokenKind::Ident, "%r");
+  expect_token(toks[3], TokenKind::Ident, "%tmp");
+  EXPECT_EQ(toks[0].range, (SourceRange{{1, 1}, {1, 4}}));
+  EXPECT_EQ(toks[1].range, (SourceRange{{1, 4}, {1, 9}}));
+  EXPECT_EQ(toks[2].range, (SourceRange{{1, 10}, {1, 12}}));
+  EXPECT_EQ(toks[3].range, (SourceRange{{1, 12}, {1, 16}}));
+}
+
+/** Leading-percent, dollar, and underscore spellings retain their lexical class. */
+TEST(PtxLexerNew, PreservesValidUserIdentifierPrefixes) {
+  const auto toks = lex_all("%r1 $name _name foo$bar");
+
+  ASSERT_EQ(toks.size(), 4u);
+  for (const auto& token : toks)
+    EXPECT_EQ(token.kind, TokenKind::Ident) << token.text;
+  expect_token(toks[0], TokenKind::Ident, "%r1");
+  expect_token(toks[1], TokenKind::Ident, "$name");
+  expect_token(toks[2], TokenKind::Ident, "_name");
+  expect_token(toks[3], TokenKind::Ident, "foo$bar");
+}
+
 TEST(PtxLexerNew, LoadInstructionWithDeclarationLikeModifier) {
   auto toks = lex_all("ld.global.u32 %r1, [%rd1];");
 
@@ -467,6 +526,12 @@ TEST(PtxLexerNew, ConstantExpressionOperatorsUseDedicatedTokens) {
   ASSERT_EQ(toks.size(), expected.size());
   for (std::size_t i = 0; i < expected.size(); ++i)
     EXPECT_EQ(toks[i].kind, expected[i]) << "text=" << toks[i].text;
+
+  const auto remainder = lex_all("7 % 4");
+  ASSERT_EQ(remainder.size(), 3u);
+  expect_token(remainder[0], TokenKind::Decimal, "7");
+  expect_token(remainder[1], TokenKind::Percent, "%");
+  expect_token(remainder[2], TokenKind::Decimal, "4");
 }
 
 // -----------------------------------------------------------------------------
@@ -531,11 +596,95 @@ TEST(PtxLexerNew, SkipsLineAndBlockComments) {
   expect_token(toks[15], TokenKind::Semicolon, ";");
 }
 
+/** Block-comment line endings advance once and retain exact trivia ranges. */
+TEST(PtxLexerNew, PreservesMixedLineEndingsInsideBlockComments) {
+  PtxLexer lexer("/* first\r\nsecond\rlast\nend */\r\n// line\radd");
+
+  const auto add = lexer.next();
+  ASSERT_EQ(add.kind, TokenKind::Ident);
+  EXPECT_EQ(add.text, "add");
+  EXPECT_EQ(add.range, (SourceRange{SourcePos{6, 1}, SourcePos{6, 4}}));
+  ASSERT_EQ(add.leading_trivia.size(), 4u);
+  EXPECT_EQ(add.leading_trivia[0].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(add.leading_trivia[0].text, "/* first\r\nsecond\rlast\nend */");
+  EXPECT_EQ(add.leading_trivia[0].range,
+            (SourceRange{SourcePos{1, 1}, SourcePos{4, 7}}));
+  EXPECT_EQ(add.leading_trivia[1].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(add.leading_trivia[1].text, "\r\n");
+  EXPECT_EQ(add.leading_trivia[1].range,
+            (SourceRange{SourcePos{4, 7}, SourcePos{5, 1}}));
+  EXPECT_EQ(add.leading_trivia[2].kind, TriviaKind::LineComment);
+  EXPECT_EQ(add.leading_trivia[2].text, "// line");
+  EXPECT_EQ(add.leading_trivia[2].range,
+            (SourceRange{SourcePos{5, 1}, SourcePos{5, 8}}));
+  EXPECT_EQ(add.leading_trivia[3].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(add.leading_trivia[3].text, "\r");
+  EXPECT_EQ(add.leading_trivia[3].range,
+            (SourceRange{SourcePos{5, 8}, SourcePos{6, 1}}));
+}
+
 TEST(PtxLexerNew, UnterminatedBlockCommentReturnsError) {
   auto toks = lex_all("add.s32 %r1, %r2, %r3; /* unterminated");
 
   ASSERT_GE(toks.size(), 1u);
   EXPECT_EQ(toks.back().kind, TokenKind::Error);
+}
+
+/** Unterminated block comments coalesce CRLF while preserving their full range. */
+TEST(PtxLexerNew, UnterminatedBlockCommentPreservesMixedLineEndingRange) {
+  PtxLexer lexer("/* first\r\nsecond\rlast\nend");
+  const auto error = lexer.next();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "/* first\r\nsecond\rlast\nend");
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 1}, SourcePos{4, 4}}));
+
+  const auto eof = lexer.next();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  EXPECT_EQ(eof.range, (SourceRange{SourcePos{4, 4}, SourcePos{4, 4}}));
+}
+
+/** Preserve an unterminated comment once, then keep direct reads at EOF. */
+TEST(PtxLexerNew, UnterminatedBlockCommentReportsErrorOnceThenEof) {
+  PtxLexer lexer(" \t/* unterminated\n tail");
+  const auto error = lexer.next();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "/* unterminated\n tail");
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 3}, SourcePos{2, 6}}));
+  ASSERT_EQ(error.leading_trivia.size(), 1u);
+  EXPECT_EQ(error.leading_trivia.front().text, " \t");
+
+  for (int index = 0; index < 3; ++index) {
+    const auto eof = lexer.next();
+    EXPECT_EQ(eof.kind, TokenKind::Eof);
+    EXPECT_TRUE(eof.text.empty());
+    EXPECT_TRUE(eof.leading_trivia.empty());
+    EXPECT_EQ(eof.range, (SourceRange{SourcePos{2, 6}, SourcePos{2, 6}}));
+  }
+  EXPECT_EQ(error.text, "/* unterminated\n tail");
+}
+
+/** Lookahead repeats the cached error, but consuming it must advance to EOF. */
+TEST(PtxLexerNew, UnterminatedBlockCommentLookaheadAdvancesAfterConsume) {
+  PtxLexer lexer("/*");
+  EXPECT_EQ(lexer.peek().kind, TokenKind::Error);
+  EXPECT_EQ(lexer.peek().text, "/*");
+  const auto error = lexer.consume();
+  EXPECT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.range, (SourceRange{SourcePos{1, 1}, SourcePos{1, 3}}));
+  EXPECT_EQ(lexer.peek().kind, TokenKind::Eof);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
+}
+
+/** Ordinary invalid bytes must not prevent later tokens or completed comments. */
+TEST(PtxLexerNew, LexicalErrorDoesNotDiscardFollowingTokens) {
+  PtxLexer lexer("` /* closed */ ret;");
+  const auto error = lexer.consume();
+  ASSERT_EQ(error.kind, TokenKind::Error);
+  EXPECT_EQ(error.text, "`");
+  EXPECT_EQ(lexer.consume().text, "ret");
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Semicolon);
+  EXPECT_EQ(lexer.consume().kind, TokenKind::Eof);
 }
 
 // -----------------------------------------------------------------------------

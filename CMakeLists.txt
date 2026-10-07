@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.28.0)
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-project(ptx_frontend VERSION 0.0.1 LANGUAGES C CXX)
+
+# Select optional manifest dependencies before project() loads the vcpkg toolchain.
+option(PTX_FRONTEND_BUILD_BENCHMARKS "Build frontend performance benchmarks" OFF)
+if(PTX_FRONTEND_BUILD_BENCHMARKS)
+    list(APPEND VCPKG_MANIFEST_FEATURES benchmarks)
+    list(REMOVE_DUPLICATES VCPKG_MANIFEST_FEATURES)
+endif()
+
+project(ptx_frontend VERSION 0.7.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
@@ -46,14 +54,14 @@ install_project_targets(
     NAMESPACE ptx_frontend
     TARGETS
         ptx_frontend
-        common
-        base
-        lexer
-        cst
-        syntax
-        binding
-        semantic
-        resolved_ir
+        ptx_frontend_common
+        ptx_frontend_base
+        ptx_frontend_lexer
+        ptx_frontend_cst
+        ptx_frontend_syntax
+        ptx_frontend_binding
+        ptx_frontend_semantic
+        ptx_frontend_resolved_ir
     COMPONENTS
         ptx_frontend
         common
@@ -74,6 +82,7 @@ install_project_targets(
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/binding/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/semantic/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/submod/resolved_ir/include"
+        "${CMAKE_CURRENT_BINARY_DIR}/submod/resolved_ir/generated/public/ptx_frontend/resolved_ir"
     INCLUDE_DESTINATIONS
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/common"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/base"
@@ -82,6 +91,7 @@ install_project_targets(
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/syntax"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/binding"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/semantic"
+        "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/resolved_ir"
         "${CMAKE_INSTALL_INCLUDEDIR}/ptx_frontend/resolved_ir"
     DEPENDENCIES
         "fmt CONFIG"

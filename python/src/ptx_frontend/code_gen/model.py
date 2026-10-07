@@ -1,0 +1,71 @@
+"""Compatibility exports for the relocated PTX specification model.
+
+The canonical model definitions live in :mod:`ptx_frontend.spec.model`.
+This module preserves the historical ``ptx_frontend.code_gen.model`` import
+path for downstream users while keeping every exported class identity equal to
+the canonical specification model.
+"""
+
+from ptx_frontend.spec.model import (
+    AddressAlignmentConstraint,
+    CodegenUnit,
+    ConditionCodeEffect,
+    DomainBackend,
+    ImmediateMultipleOfConstraint,
+    ImmediateRangeConstraint,
+    ImmediateValueConstraint,
+    InstructionSpec,
+    MbarrierStateTokenForm,
+    MemoryConsistencyConstraint,
+    MemoryVectorConstraint,
+    ModifierSpec,
+    ModifierValueSpec,
+    OperandImmediateConversionPolicy,
+    OperandLayoutKind,
+    OperandLayoutSpec,
+    OperandParameterConstraint,
+    OperandRegisterWidthPolicy,
+    OperandSpec,
+    OperandStateSpaceExpression,
+    OperandStateSpaceValue,
+    OperandTypeCompatibilitySpec,
+    OperandTypeExpression,
+    OperandTypeExpressionKind,
+    OperandVectorArityExpression,
+    OperandVectorTypePolicy,
+    RuntimeLookupKind,
+    VariantSpec,
+    modifier_spellings,
+)
+
+__all__ = [
+    "AddressAlignmentConstraint",
+    "CodegenUnit",
+    "ConditionCodeEffect",
+    "DomainBackend",
+    "ImmediateMultipleOfConstraint",
+    "ImmediateRangeConstraint",
+    "ImmediateValueConstraint",
+    "InstructionSpec",
+    "MbarrierStateTokenForm",
+    "MemoryConsistencyConstraint",
+    "MemoryVectorConstraint",
+    "ModifierSpec",
+    "ModifierValueSpec",
+    "OperandImmediateConversionPolicy",
+    "OperandLayoutKind",
+    "OperandLayoutSpec",
+    "OperandParameterConstraint",
+    "OperandRegisterWidthPolicy",
+    "OperandSpec",
+    "OperandStateSpaceExpression",
+    "OperandStateSpaceValue",
+    "OperandTypeCompatibilitySpec",
+    "OperandTypeExpression",
+    "OperandTypeExpressionKind",
+    "OperandVectorArityExpression",
+    "OperandVectorTypePolicy",
+    "RuntimeLookupKind",
+    "VariantSpec",
+    "modifier_spellings",
+]

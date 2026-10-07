@@ -1,0 +1,210 @@
+{
+  "description": "Reconstructed issue #106 modules, not the unavailable round-seven attachment.",
+  "ptxas_version": "CUDA 13.1, V13.1.115; Build cuda_13.1.r13.1/compiler.37061995_0",
+  "ptxas_command": "/usr/local/cuda/bin/ptxas -arch=sm_80 -O0 CASE.ptx -o CASE.cubin",
+  "fixture_ptx_version": "8.0",
+  "fixture_target": "sm_80",
+  "project_specification": "PTX ISA 9.3 (CUDA 13.3.0 archive)",
+  "frontend_revision": "fix/issue_106 working tree based on c6e5e2d5503b6f8a7d01dca7e7cb43e33f78719a, including uncommitted policy fix",
+  "frontend_exit_codes": {
+    "0": "accepted",
+    "1": "explicit generated checking rejected",
+    "2": "parse failure",
+    "3": "module resolution (including target-aware checking) rejected",
+    "4": "driver input error"
+  },
+  "driver_source": "#include <fstream>\n#include <iostream>\n#include <iterator>\n#include <string>\n#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>\n#include <ptx_frontend/syntax/ptx_syntax_parser.hpp>\n\n/** Check one PTX 8.0/sm_80 module; distinct exits expose parse/resolve failures. */\nint main(int argc, char** argv) {\n  using namespace ptx_frontend;\n  using namespace ptx_frontend::resolved_ir;\n  if (argc != 2) return 4;\n  std::ifstream input(argv[1]);\n  if (!input) return 4;\n  const std::string source{std::istreambuf_iterator<char>{input}, {}};\n  PtxSyntaxParser parser(source);\n  const auto ast = parser.parseModule();\n  if (!ast || !ast.diagnostics.empty()) return 2;\n  const auto module = resolveModule(*ast);\n  if (!module) {\n    for (const auto& diagnostic : module.error())\n      std::cout << (diagnostic.checker_kind ? \"checker: \" : \"resolution: \")\n                << diagnostic.message << '\\n';\n    return 3;\n  }\n  const checker::Context context{.target = {.ptx_version = {8, 0}, .sm_version = 80}};\n  bool valid = true;\n  for (const auto& function : module->functions) {\n    for (const auto& instruction : function.body) {\n      const auto checked = std::visit(\n          [&context](const auto& value) { return checker::check(value, context); },\n          instruction);\n      if (!checked) {\n        valid = false;\n        for (const auto& diagnostic : checked.error())\n          std::cout << diagnostic.message << '\\n';\n      }\n    }\n  }\n  return valid ? 0 : 1;\n}\n",
+  "summary": {
+    "cases": 23,
+    "accepted": 15,
+    "rejected": 8,
+    "accept_reject_agreement": 23,
+    "ptxas_warnings": 0
+  },
+  "cases": [
+    {
+      "name": "mul_u",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .u32 a,b;\n.reg .u64 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "mul_b",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 a,b;\n.reg .b64 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "mul_s",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .s32 a,b;\n.reg .s64 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "mul_bad_width",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b64 a,b;\n.reg .b64 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'src1' has declared type 'B64' but instruction type source 'fixed scalar type' is 'U32'.\nchecker: Register operand 'src2' has declared type 'B64' but instruction type source 'fixed scalar type' is 'U32'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas mul_bad_width.ptx, line 7; error   : Arguments mismatch for instruction 'mul.wide'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "mul_bad_float",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .f32 a,b;\n.reg .u64 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'src1' has declared type 'F32' but instruction type source 'fixed scalar type' is 'U32'.\nchecker: Register operand 'src2' has declared type 'F32' but instruction type source 'fixed scalar type' is 'U32'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas mul_bad_float.ptx, line 7; error   : Arguments mismatch for instruction 'mul.wide'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "mul_bad_result",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .u32 a,b;\n.reg .u32 d;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'dst' has declared type 'U32' but instruction type source 'fixed scalar type' is 'U64'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas mul_bad_result.ptx, line 7; error   : Arguments mismatch for instruction 'mul.wide'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "bit_counts",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 d,a;\n.reg .b64 b;\npopc.b32 d,a;\nclz.b32 d,a;\nclz.b64 d,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "mad_wide_b",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 a,b;\n.reg .b64 d,c;\nmad.wide.u32 d,a,b,c;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "mad_float_b",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 d,a,b,c;\nmad.rn.f32 d,a,b,c;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "bfind_bfe_s",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .s32 d,a;\nbfind.shiftamt.u32 d,a;\nbfe.u32 d,a,0,8;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "float_ops_b",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 d,a,b;\n.reg .b64 x,y,z;\ndiv.rn.f32 d,a,b;\ndiv.rn.f64 x,y,z;\nmin.NaN.f32 d,a,b;\nmax.NaN.f32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "neg_b32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 d,a;\nneg.f16x2 d,a;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "cvt_b32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 d;\n.reg .b32 a,b;\ncvt.rn.f16x2.f32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "neg_f16x2",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .f16x2 d,a;\nneg.f16x2 d,a;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "cvt_f16x2",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .f16x2 d;\n.reg .b32 a,b;\ncvt.rn.f16x2.f32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "neg_u32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .u32 d,a;\nneg.f16x2 d,a;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'dst' has declared type 'U32' but instruction type source 'fixed scalar type' is 'F16x2'.\nchecker: Register operand 'src' has declared type 'U32' but instruction type source 'fixed scalar type' is 'F16x2'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas neg_u32.ptx, line 6; error   : Arguments mismatch for instruction 'neg'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "cvt_u32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .u32 d;\n.reg .b32 a,b;\ncvt.rn.f16x2.f32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'dst' has declared type 'U32' but instruction type source 'fixed scalar type' is 'F16x2'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas cvt_u32.ptx, line 7; error   : Arguments mismatch for instruction 'cvt'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "neg_f32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .f32 d,a;\nneg.f16x2 d,a;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'dst' has declared type 'F32' but instruction type source 'fixed scalar type' is 'F16x2'.\nchecker: Register operand 'src' has declared type 'F32' but instruction type source 'fixed scalar type' is 'F16x2'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas neg_f32.ptx, line 6; error   : Arguments mismatch for instruction 'neg'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "cvt_f32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .f32 d;\n.reg .b32 a,b;\ncvt.rn.f16x2.f32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'dst' has declared type 'F32' but instruction type source 'fixed scalar type' is 'F16x2'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas cvt_f32.ptx, line 7; error   : Arguments mismatch for instruction 'cvt'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "bf16_b16",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b16 d,a,b,c;\nfma.rn.bf16 d,a,b,c;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "bf16_bad_f16",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b16 d,b,c;\n.reg .f16 a;\nfma.rn.bf16 d,a,b,c;\nret;\n}\n",
+      "frontend_exit": 3,
+      "frontend_diagnostics": "checker: Register operand 'src1' has declared type 'F16' but instruction type source 'fixed scalar type' is 'B16'.",
+      "ptxas_exit": 255,
+      "ptxas_diagnostics": "ptxas bf16_bad_f16.ptx, line 7; error   : Arguments mismatch for instruction 'fma'\nptxas fatal   : Ptx assembly aborted due to errors"
+    },
+    {
+      "name": "mask_u32",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .u32 d,m;\n.reg .pred p;\nactivemask.b32 d;\nvote.sync.ballot.b32 d,p,m;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    },
+    {
+      "name": "kernel_original",
+      "source": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry k() {\n.reg .b32 a,b;\n.reg .b64 d;\nmov.b32 a,2;\nmov.b32 b,3;\nmul.wide.u32 d,a,b;\nret;\n}\n",
+      "frontend_exit": 0,
+      "frontend_diagnostics": "",
+      "ptxas_exit": 0,
+      "ptxas_diagnostics": ""
+    }
+  ]
+}

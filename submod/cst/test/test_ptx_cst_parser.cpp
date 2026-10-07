@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
@@ -11,21 +13,43 @@ namespace ptx_frontend {
 namespace {
 
 using syntax_cst::CstAddress;
-using syntax_cst::CstBranchTarget;
-using syntax_cst::CstBranchTargetSet;
 using syntax_cst::CstBlock;
-using syntax_cst::CstCallParameterList;
-using syntax_cst::CstCallTarget;
-using syntax_cst::CstCallTargetSet;
-using syntax_cst::CstCallPrototype;
-using syntax_cst::CstCallTargets;
+using syntax_cst::CstBranchTarget;
 using syntax_cst::CstBranchTargets;
+using syntax_cst::CstBranchTargetSet;
+using syntax_cst::CstCallParameterList;
+using syntax_cst::CstCallPrototype;
+using syntax_cst::CstCallTarget;
+using syntax_cst::CstCallTargets;
+using syntax_cst::CstCallTargetSet;
 using syntax_cst::CstRecoveryKind;
 using syntax_cst::CstRecoveryNode;
 using syntax_cst::CstRegisterPredicatePair;
 using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
+
+/** The composite source preserves its inner punctuation and address tokens. */
+TEST(PtxCstParser, PreservesTensorMapCoordinateComposite) {
+  PtxCstParser parser(
+      "cp.async.bulk.prefetch.tensor.2d.L2.global "
+      "[tensor_map+64, {%r0, -2}];");
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+  ASSERT_EQ(result->instruction()->operands.size(), 1u);
+  const auto& operand = std::get<syntax_cst::CstTensorOperand>(
+      result->instruction()->operands.front().operand);
+  EXPECT_EQ(result->token(operand.left_bracket).kind, TokenKind::LBracket);
+  EXPECT_EQ(result->token(operand.comma).kind, TokenKind::Comma);
+  EXPECT_EQ(result->token(operand.coordinates.left_brace).kind,
+            TokenKind::LBrace);
+  EXPECT_EQ(result->token(operand.coordinates.commas.front()).kind,
+            TokenKind::Comma);
+  EXPECT_EQ(result->token(operand.right_bracket).kind, TokenKind::RBracket);
+  ASSERT_TRUE(operand.tensor_map.offset.has_value());
+  EXPECT_EQ(result->token(operand.tensor_map.offset->operator_token).kind,
+            TokenKind::Plus);
+}
 
 TEST(PtxCstParser, RoundTripsInstructionWithAllTriviaAndPunctuation) {
   constexpr std::string_view source =
@@ -104,16 +128,57 @@ TEST(PtxCstParser, RoundTripsUnmodifiedModuleTokenBufferByteForByte) {
     EXPECT_EQ(left.kind, right.kind);
     EXPECT_EQ(left.text, right.text);
     ASSERT_EQ(left.leading_trivia.size(), right.leading_trivia.size());
-    for (std::size_t trivia = 0; trivia < left.leading_trivia.size(); ++trivia) {
+    for (std::size_t trivia = 0; trivia < left.leading_trivia.size();
+         ++trivia) {
       EXPECT_EQ(left.leading_trivia[trivia].kind,
                 right.leading_trivia[trivia].kind);
-      EXPECT_EQ(left.leading_trivia[trivia].text, right.leading_trivia[trivia].text);
+      EXPECT_EQ(left.leading_trivia[trivia].text,
+                right.leading_trivia[trivia].text);
     }
   }
   const auto& final_trivia = first->tokens[first_end].leading_trivia;
   ASSERT_EQ(final_trivia.size(), 3u);
   EXPECT_EQ(final_trivia[1].kind, TriviaKind::LineComment);
   EXPECT_EQ(final_trivia.back().text, "\n   ");
+}
+
+/** Internal-percent spellings recover without discarding a valid following entry. */
+TEST(PtxCstParser, RecoversInternalPercentIdentifiersBeforeValidEntry) {
+  constexpr std::string_view source = R"ptx(.version 9.3
+.target sm_80
+.address_size 64
+.global .u32 bad%name = 1;
+.entry k() {
+  .reg .u32 %r<2>;
+  mov.u32 %r0, %r%tmp;
+  ret;
+}
+)ptx";
+  PtxCstParser parser(source);
+
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics[0].range, (SourceRange{{4, 17}, {4, 22}}));
+  EXPECT_EQ(result.diagnostics[1].range, (SourceRange{{7, 18}, {7, 22}}));
+  ASSERT_EQ(result->module()->items.size(), 7u);
+  EXPECT_TRUE(
+      std::holds_alternative<CstRecoveryNode>(result->module()->items[3]));
+  EXPECT_TRUE(
+      std::holds_alternative<CstRecoveryNode>(result->module()->items[4]));
+  EXPECT_TRUE(
+      std::holds_alternative<CstRecoveryNode>(result->module()->items[5]));
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.back());
+  ASSERT_EQ(function.body.size(), 5u);
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(function.body[1]));
+  EXPECT_TRUE(std::holds_alternative<CstRecoveryNode>(function.body[2]));
+  const auto& recovered_instruction =
+      std::get<syntax_cst::CstInstruction>(function.body[3]);
+  EXPECT_EQ(result->token(recovered_instruction.opcode).text, "%tmp");
+  const auto& ret = std::get<syntax_cst::CstInstruction>(function.body.back());
+  EXPECT_EQ(result->token(ret.opcode).text, "ret");
 }
 
 TEST(PtxCstParser, AcceptsWeakAsAnInstructionModifier) {
@@ -233,9 +298,10 @@ TEST(PtxCstParser, RetainsIndexedBranchTargetList) {
   ASSERT_NE(instruction, nullptr);
   ASSERT_EQ(instruction->modifiers.size(), 2u);
   ASSERT_EQ(instruction->operands.size(), 2u);
-  EXPECT_EQ(result->token(std::get<syntax_cst::CstIdentifier>(
-                              instruction->operands[0].operand)
-                              .token)
+  EXPECT_EQ(result
+                ->token(std::get<syntax_cst::CstIdentifier>(
+                            instruction->operands[0].operand)
+                            .token)
                 .text,
             "%r0");
   const auto& target_set =
@@ -279,10 +345,11 @@ TEST(PtxCstParser, ReportsSingleDiagnosticWithoutAValue) {
 TEST(ParseResult, RetainsAValueAndOrderedDiagnostics) {
   const ResultWithDiagnostics<int, CstParseDiagnostic> result{
       .value = 7,
-      .diagnostics = {
-          {{{1, 1}, {1, 2}}, "first"},
-          {{{2, 1}, {2, 2}}, "second"},
-      },
+      .diagnostics =
+          {
+              {{{1, 1}, {1, 2}}, "first"},
+              {{{2, 1}, {2, 2}}, "second"},
+          },
   };
 
   ASSERT_TRUE(result.has_value());
@@ -307,8 +374,8 @@ TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
 
   ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
-  const auto& function = std::get<syntax_cst::CstFunction>(
-      result->module()->items.front());
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
   ASSERT_EQ(function.body.size(), 4u);
   for (const auto& item : function.body)
     EXPECT_TRUE(std::holds_alternative<CstCallPrototype>(item));
@@ -324,8 +391,7 @@ TEST(PtxCstParser, RetainsFunctionLocalCallPrototypeStructure) {
   ASSERT_TRUE(full.noreturn_directive.has_value());
   ASSERT_TRUE(full.abi_preserve.has_value());
   ASSERT_TRUE(full.abi_preserve_control.has_value());
-  EXPECT_EQ(result->token(full.abi_preserve->directive).text,
-            ".abi_preserve");
+  EXPECT_EQ(result->token(full.abi_preserve->directive).text, ".abi_preserve");
   EXPECT_EQ(result->token(full.abi_preserve->count).text, "10");
   EXPECT_EQ(result->token(full.abi_preserve_control->count).text, "2");
 }
@@ -334,7 +400,8 @@ TEST(PtxCstParser, RejectsMalformedAndNonlocalCallPrototypeGrammar) {
   for (const auto [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
            {".func f() { p: .callprototype (.reg .u32 a, .reg .u32 b) _; }",
-            ".callprototype return parameter list must contain exactly one parameter"},
+            ".callprototype return parameter list must contain exactly one "
+            "parameter"},
            {".func f() { p: .callprototype value; }",
             "expected '_' in .callprototype"},
            {".func f() { .callprototype _; }",
@@ -364,8 +431,8 @@ TEST(PtxCstParser, RetainsFunctionLocalCallTargetsStructure) {
 
   ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
-  const auto& function = std::get<syntax_cst::CstFunction>(
-      result->module()->items.front());
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
   ASSERT_EQ(function.body.size(), 3u);
   for (const auto& item : function.body)
     EXPECT_TRUE(std::holds_alternative<CstCallTargets>(item));
@@ -417,8 +484,8 @@ TEST(PtxCstParser, RetainsFunctionLocalBranchTargetsStructure) {
 
   ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
-  const auto& function = std::get<syntax_cst::CstFunction>(
-      result->module()->items.front());
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
   ASSERT_EQ(function.body.size(), 1u);
   const auto& targets = std::get<CstBranchTargets>(function.body.front());
   EXPECT_EQ(result->token(targets.label).text, "table");
@@ -542,8 +609,7 @@ TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
   EXPECT_EQ(result->sourceText(), source);
   const auto& items = result->module()->items;
   ASSERT_EQ(items.size(), 2u);
-  const auto& short_form =
-      std::get<syntax_cst::CstModuleDirective>(items[0]);
+  const auto& short_form = std::get<syntax_cst::CstModuleDirective>(items[0]);
   EXPECT_EQ(result->token(short_form.keyword).kind, TokenKind::DotFile);
   ASSERT_EQ(short_form.arguments.size(), 2u);
   EXPECT_EQ(result->token(short_form.arguments[0]).kind, TokenKind::Hex);
@@ -552,8 +618,7 @@ TEST(PtxCstParser, RetainsOutermostFileDirectivePayload) {
   EXPECT_FALSE(short_form.terminator.has_value());
   EXPECT_EQ(result->token(short_form.arguments[1]).text, "\"source.ptx\"");
 
-  const auto& full_form =
-      std::get<syntax_cst::CstModuleDirective>(items[1]);
+  const auto& full_form = std::get<syntax_cst::CstModuleDirective>(items[1]);
   ASSERT_EQ(full_form.arguments.size(), 4u);
   ASSERT_EQ(full_form.separators.size(), 2u);
   ASSERT_TRUE(full_form.terminator.has_value());
@@ -648,8 +713,7 @@ TEST(PtxCstParser, RecoversMissingSectionBraceBeforeFollowingFunction) {
   ASSERT_EQ(items.size(), 2u);
   EXPECT_EQ(std::get<CstRecoveryNode>(items.front()).kind,
             CstRecoveryKind::Skipped);
-  EXPECT_TRUE(
-      std::holds_alternative<syntax_cst::CstFunction>(items.back()));
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(items.back()));
 }
 
 TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
@@ -667,26 +731,25 @@ TEST(PtxCstParser, RetainsPragmasAtAllSupportedScopes) {
 
   ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
   EXPECT_EQ(result->sourceText(), source);
-  const auto& module_pragma = std::get<syntax_cst::CstPragma>(
-      result->module()->items.front());
+  const auto& module_pragma =
+      std::get<syntax_cst::CstPragma>(result->module()->items.front());
   EXPECT_EQ(result->token(module_pragma.directive).kind, TokenKind::DotPragma);
   ASSERT_EQ(module_pragma.strings.size(), 2u);
   ASSERT_EQ(module_pragma.commas.size(), 1u);
   EXPECT_EQ(result->token(module_pragma.strings[1]).text, "\"opaque\"");
 
-  const auto& function = std::get<syntax_cst::CstFunction>(
-      result->module()->items[1]);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items[1]);
   ASSERT_EQ(function.pragmas.size(), 1u);
-  EXPECT_EQ(result->token(function.pragmas[0].strings[0]).text,
-            "\"nounroll\"");
+  EXPECT_EQ(result->token(function.pragmas[0].strings[0]).text, "\"nounroll\"");
   EXPECT_EQ(result->sourceRange(function.pragmas[0].token_range).start.line,
             2u);
   ASSERT_EQ(function.body.size(), 2u);
   const auto& body_pragma =
       std::get<syntax_cst::CstPragma>(function.body.front());
   EXPECT_EQ(result->sourceRange(body_pragma.token_range).start.line, 3u);
-  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
-      function.body[1]);
+  const auto& block =
+      *std::get<std::unique_ptr<syntax_cst::CstBlock>>(function.body[1]);
   const auto& nested_pragma =
       std::get<syntax_cst::CstPragma>(block.body.front());
   ASSERT_EQ(nested_pragma.strings.size(), 2u);
@@ -836,20 +899,18 @@ TEST(PtxCstParser, RetainsNestedLocDirectiveStructure) {
   EXPECT_FALSE(basic.terminator.has_value());
   EXPECT_EQ(result->sourceRange(basic.token_range).start.line, 2u);
 
-  const auto& block = *std::get<std::unique_ptr<syntax_cst::CstBlock>>(
-      function.body[1]);
+  const auto& block =
+      *std::get<std::unique_ptr<syntax_cst::CstBlock>>(function.body[1]);
   ASSERT_EQ(block.body.size(), 3u);
   const auto& named = std::get<syntax_cst::CstLocDirective>(block.body[0]);
   ASSERT_TRUE(named.inline_context.has_value());
   EXPECT_EQ(result->token(named.inline_context->function_name_label).text,
             "info_string0");
 
-  const auto& dotted =
-      std::get<syntax_cst::CstLocDirective>(block.body[1]);
+  const auto& dotted = std::get<syntax_cst::CstLocDirective>(block.body[1]);
   ASSERT_TRUE(dotted.inline_context.has_value());
   const auto& context = *dotted.inline_context;
-  EXPECT_EQ(result->token(context.function_name_keyword).text,
-            "function_name");
+  EXPECT_EQ(result->token(context.function_name_keyword).text, "function_name");
   EXPECT_EQ(result->token(context.function_name_label).text, ".debug_str");
   ASSERT_TRUE(context.plus.has_value());
   ASSERT_TRUE(context.function_name_offset.has_value());
@@ -865,7 +926,8 @@ TEST(PtxCstParser, RejectsMalformedOrModuleScopeLocDirectives) {
            ".entry f() { .loc 1 2 }",
            ".entry f() { .loc 1 2 3, function_name name }",
            ".entry f() { .loc 1 2 3, inlined_at 1 2 3 }",
-           ".entry f() { .loc 1 2 3, function_name name + 1.5, inlined_at 1 2 3 }",
+           ".entry f() { .loc 1 2 3, function_name name + 1.5, inlined_at 1 2 "
+           "3 }",
            ".loc 1 2 3",
        }) {
     PtxCstParser parser(source);
@@ -935,6 +997,30 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+/** Parameter syntax restrictions report their boundary before generic token errors. */
+TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
+  for (const auto& [source, message] :
+       std::initializer_list<std::pair<std::string_view, std::string_view>>{
+           {".entry kernel(.param .v2 .u32 input) { }",
+            "vector function parameters are not supported"},
+           {".func (.param .v4 .b8 result) helper();",
+            "vector function parameters are not supported"},
+           {".entry kernel(.param .u32 input[2][3]) { }",
+            "multidimensional function parameters are not supported"},
+           {".func (.param .u32 result[2][3]) helper();",
+            "multidimensional function parameters are not supported"},
+           {".entry kernel() { .param .b8 bytes[] = {1}; }",
+            "variable initializer requires '.global' or '.const' state "
+            "space"}}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_FALSE(result.diagnostics.empty()) << source;
+    EXPECT_EQ(result.diagnostics.front().message, message) << source;
+  }
+}
+
 TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
   for (const std::string_view source : {
            ".func helper() unexpected;",
@@ -945,9 +1031,8 @@ TEST(PtxCstParser, RejectsUnsupportedFunctionHeaderTokens) {
 
     ASSERT_TRUE(result.has_value()) << source;
     ASSERT_FALSE(result.diagnostics.empty()) << source;
-    EXPECT_TRUE(
-        result.diagnostics.front().message.starts_with(
-            "unsupported function header token"))
+    EXPECT_TRUE(result.diagnostics.front().message.starts_with(
+        "unsupported function header token"))
         << source;
   }
 }
@@ -1010,7 +1095,8 @@ TEST(PtxCstParser, RetainsNestedFunctionBlocks) {
   const auto& inner = *std::get<std::unique_ptr<CstBlock>>(outer.body[1]);
   EXPECT_EQ(result->token(inner.left_brace).range.start.line, 4u);
   ASSERT_EQ(inner.body.size(), 1u);
-  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(inner.body[0]));
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(inner.body[0]));
 }
 
 TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
@@ -1057,8 +1143,7 @@ TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
   EXPECT_TRUE(skipped.token_range->first < skipped.token_range->last);
   EXPECT_EQ(file.sourceRange(*skipped.token_range), skipped.range);
 
-  const auto& spanned_error =
-      std::get<CstRecoveryNode>(function.body.back());
+  const auto& spanned_error = std::get<CstRecoveryNode>(function.body.back());
   EXPECT_EQ(spanned_error.kind, CstRecoveryKind::Error);
   EXPECT_FALSE(spanned_error.expected_kind.has_value());
   ASSERT_TRUE(spanned_error.token_range.has_value());
@@ -1095,6 +1180,92 @@ TEST(PtxCstParser, RecoveryNodesPreserveSourceAndRecoveryInvariants) {
   EXPECT_EQ(eof_error.range.start, eof_error.range.end);
   EXPECT_EQ(file.tokens.size(), token_count);
   EXPECT_EQ(file.sourceText(), original_source);
+}
+
+/** Recovery retains the error token exactly once and terminates at real EOF. */
+TEST(PtxCstParser, UnterminatedCommentOnlyTerminatesAndRoundTrips) {
+  constexpr std::string_view source = "/*";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{1, 1}, SourcePos{1, 3}}));
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_EQ(result->tokens.size(), 2u);
+  EXPECT_EQ(result->tokens.front().kind, TokenKind::Error);
+  EXPECT_EQ(result->tokens.front().text, source);
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** Unterminated CRLF block comments retain their lexer diagnostic position. */
+TEST(PtxCstParser, UnterminatedCrLfBlockCommentReportsCorrectRange) {
+  constexpr std::string_view source = ".entry k() { ret;\r\n/* first\r\nlast";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 1}, SourcePos{3, 5}}));
+  EXPECT_EQ(result.diagnostics.back().range,
+            (SourceRange{SourcePos{3, 5}, SourcePos{3, 5}}));
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+/** An unterminated trailing comment must not discard an already parsed function. */
+TEST(PtxCstParser,
+     UnterminatedCommentAfterModulePrefixTerminatesAndRoundTrips) {
+  constexpr std::string_view source = ".entry k() { ret; }\n /* tail";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 2}, SourcePos{2, 9}}));
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_NE(result->module(), nullptr);
+  ASSERT_FALSE(result->module()->items.empty());
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      result->module()->items.front()));
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** A function-tail comment diagnoses both the invalid token and missing brace. */
+TEST(PtxCstParser, UnterminatedCommentInFunctionTerminatesAndRoundTrips) {
+  constexpr std::string_view source = ".entry k() { ret;\n /* tail";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 2u);
+  EXPECT_EQ(result.diagnostics.front().range,
+            (SourceRange{SourcePos{2, 2}, SourcePos{2, 9}}));
+  EXPECT_EQ(result.diagnostics.back().message,
+            "expected '}' at end of function body");
+  EXPECT_EQ(result->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(result->module()->items.front());
+  ASSERT_FALSE(function.body.empty());
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstInstruction>(
+      function.body.front()));
+  EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
+}
+
+/** Recoverable invalid characters must not be mistaken for terminal lexer errors. */
+TEST(PtxCstParser, RecoversLexicalErrorBeforeValidModuleItem) {
+  constexpr std::string_view source = "` .entry k() { ret; }";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.diagnostics.size(), 1u);
+  EXPECT_EQ(result->sourceText(), source);
+  ASSERT_EQ(result->module()->items.size(), 2u);
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+      result->module()->items.back()));
 }
 
 TEST(PtxCstParser, RecoversMissingBodySemicolonBeforeNextInstruction) {
@@ -1172,8 +1343,8 @@ TEST(PtxCstParser, RecoversMissingFunctionBraceBeforeNextFunctionAndAtEof) {
   EXPECT_EQ(next_function.diagnostics.front().message,
             "expected '}' at end of function body");
   ASSERT_EQ(next_function->module()->items.size(), 3u);
-  const auto& first = std::get<syntax_cst::CstFunction>(
-      next_function->module()->items.front());
+  const auto& first =
+      std::get<syntax_cst::CstFunction>(next_function->module()->items.front());
   EXPECT_FALSE(first.right_brace.has_value());
   EXPECT_EQ(std::get<CstRecoveryNode>(first.body.back()).expected_kind,
             TokenKind::RBrace);
@@ -1210,8 +1381,8 @@ TEST(PtxCstParser, RecoversStrayModuleTokenAndEofWithoutSyntheticTokens) {
   ASSERT_EQ(module.items.size(), 3u);
   EXPECT_EQ(std::get<CstRecoveryNode>(module.items.back()).kind,
             CstRecoveryKind::Error);
-  EXPECT_FALSE(std::get<CstRecoveryNode>(module.items.back())
-                   .token_range.has_value());
+  EXPECT_FALSE(
+      std::get<CstRecoveryNode>(module.items.back()).token_range.has_value());
   EXPECT_EQ(result->tokens.back().kind, TokenKind::Eof);
 }
 
@@ -1423,6 +1594,27 @@ TEST(PtxCstParser, RejectsInitializersInUnsupportedDeclarations) {
     ASSERT_TRUE(result.has_value()) << source_and_message.first;
     ASSERT_FALSE(result.diagnostics.empty()) << source_and_message.first;
     EXPECT_EQ(result.diagnostics.front().message, source_and_message.second);
+  }
+}
+
+/** Negated predicate constants retain their exclamation and integer tokens. */
+TEST(PtxCstParser, ParsesNegatedIntegerInstructionOperands) {
+  constexpr std::string_view sources[] = {"mov.pred %p0, !0;",
+                                          "mov.pred %p0, !-1;"};
+  for (const auto source : sources) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseInstruction();
+    ASSERT_TRUE(result.has_value()) << result.diagnostics.front().message;
+    const auto* instruction = result->instruction();
+    ASSERT_NE(instruction, nullptr);
+    ASSERT_EQ(instruction->operands.size(), 2u);
+    const auto* negated = std::get_if<syntax_cst::CstNegatedImmediate>(
+        &instruction->operands[1].operand);
+    ASSERT_NE(negated, nullptr);
+    EXPECT_EQ(result->token(negated->exclamation_token).text, "!");
+    EXPECT_EQ(result->token(negated->immediate.literal).text,
+              source.ends_with("!-1;") ? "1" : "0");
+    EXPECT_EQ(negated->immediate.sign.has_value(), source.ends_with("!-1;"));
   }
 }
 

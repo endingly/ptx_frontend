@@ -1,0 +1,77 @@
+# PTX C++ backend mapping schema. This schema deliberately excludes PTX ISA
+# structure and C++ instruction-layout policy; it accepts only semantic-to-C++
+# domain mappings consumed by the generator.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://ptxc.dev/schemas/ptx-cpp-backend-v2.schema.yaml"
+
+title: "PTX C++ Backend Mapping Schema"
+description: "Semantic PTX value to C++ expression mappings for the frontend generator."
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - backend
+  - spec_schema
+  - domains
+
+properties:
+  schema:
+    const: "ptx-cpp-backend/v2"
+  backend:
+    const: "cpp"
+  spec_schema:
+    const: "ptx-instr/v1"
+  domains:
+    type: object
+    minProperties: 1
+    additionalProperties:
+      $ref: "#/$defs/domain_mapping"
+
+$defs:
+  cpp_qualified_name:
+    type: string
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$"
+  cpp_expr:
+    type: string
+    minLength: 1
+  domain_mapping:
+    description: >
+      C++ expressions for one semantic value domain. cpp_type determines a
+      generated runtime lookup table's value type when runtime_lookup is set;
+      otherwise it is type annotation and never changes an instruction field.
+    type: object
+    additionalProperties: false
+    required:
+      - cpp_type
+      - values
+    properties:
+      cpp_type:
+        $ref: "#/$defs/cpp_qualified_name"
+      description:
+        description: "Human-readable annotation; it does not alter generation."
+        type: string
+      values:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          $ref: "#/$defs/value_mapping"
+      default:
+        $ref: "#/$defs/cpp_expr"
+      runtime_lookup:
+        description: "Emit this domain as a runtime PTX suffix lookup table."
+        const: ptx_suffix
+  value_mapping:
+    oneOf:
+      - $ref: "#/$defs/cpp_expr"
+      - type: object
+        additionalProperties: false
+        required:
+          - cpp
+        properties:
+          cpp:
+            $ref: "#/$defs/cpp_expr"
+          doc:
+            description: "Human-readable annotation; it does not alter generation."
+            type: string

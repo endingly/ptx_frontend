@@ -112,6 +112,18 @@ grammar shape and state-space/linkage constraints; the following declaration
 semantics pass validates types, array dimensions, and element counts.
 Unsupported constructs are not silently treated as instructions.
 
+Source constant-expression and initializer trees share a maximum depth of 128
+(`PtxCstParser::maxConstantTreeDepth`). A literal or symbol has depth 1; each
+unary, cast, parenthesized, call, binary, conditional, or brace-list node adds
+one to its deepest child. The scalar-initializer wrapper adds no level. This
+is a frontend resource limit, not a PTX language limit; shallow lists may have
+more than 128 elements. Recursive parsing checks the remaining depth before
+descending, and iterative binary/postfix construction checks tree height before
+adding a parent. Over-limit input produces a source-located parse diagnostic
+and follows normal lossless recovery, keeping partial-tree cleanup and later
+lowering, checking, and destruction bounded. This source-parser guarantee does
+not validate arbitrarily deep CST/AST trees manually constructed by callers.
+
 Public parser and lowering roots return `ResultWithDiagnostics<T, D>`: an
 optional value plus an ordered `DiagnosticCollection<D>`. This lets module
 recovery return a CST with diagnostics without another API change. Module

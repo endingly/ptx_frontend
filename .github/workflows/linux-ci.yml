@@ -3,15 +3,16 @@ name: Linux CI
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    # PR caches cannot warm other PRs; keep both integration branches warm.
-    branches: [dev, main]
   schedule:
     - cron: "0 0 1 * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: linux-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   VCPKG_ROOT: ${{ github.workspace }}/.vcpkg
@@ -23,143 +24,189 @@ env:
   PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
 
 jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install pinned formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format-21
+
+      - name: Check tracked handwritten C++ formatting
+        run: python3 .github/scripts/check_clang_format.py --clang-format clang-format-21
+
   test:
     name: ${{ matrix.name }}
     runs-on: ubuntu-26.04
     timeout-minutes: 60
-    concurrency:
-      group: linux-ci-${{ github.ref }}-${{ matrix.preset }}
-      cancel-in-progress: true
+    cache-mode: write
+    env:
+      CC: /usr/bin/clang-21
+      CXX: /usr/bin/clang++-21
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Debug
-            preset: ci-linux-gcc-debug
+            preset: ci-linux-clang-debug
+            writes_shared_caches: true
           - name: Release
-            preset: ci-linux-gcc-release
+            preset: ci-linux-clang-release
+            writes_shared_caches: false
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Compute cache epoch
-        id: cache-epoch
+      - name: Initialize compiler-cache metrics directory
         shell: bash
-        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+        run: echo "CCACHE_METRICS_DIR=$RUNNER_TEMP/ccache-metrics/${{ matrix.preset }}" >> "$GITHUB_ENV"
 
-      - name: Restore APT package cache
-        uses: actions/cache@v6
+      - name: Set up Linux dependencies
+        id: setup
+        uses: ./.github/actions/setup-linux
         with:
-          path: .cache/apt/archives
-          key: apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-epoch.outputs.month }}-${{ hashFiles('.github/workflows/linux-ci.yml') }}
-          restore-keys: |
-            apt-${{ runner.os }}-${{ runner.arch }}-${{ steps.cache-epoch.outputs.month }}-
+          writes-shared-caches: ${{ matrix.writes_shared_caches }}
 
-      - name: Install system dependencies
-        shell: bash
-        env:
-          APT_CACHE_DIR: ${{ github.workspace }}/.cache/apt/archives
-        run: |
-          mkdir -p "$APT_CACHE_DIR/partial"
-          chmod 0777 "$APT_CACHE_DIR" "$APT_CACHE_DIR/partial"
-          sudo apt-get update
-          sudo apt-get \
-            -o Dir::Cache::archives="$APT_CACHE_DIR" \
-            -o Binary::apt::APT::Keep-Downloaded-Packages=true \
-            install -y --no-install-recommends \
-            build-essential \
-            ccache \
-            clang-format \
-            cmake \
-            curl \
-            flex \
-            gcc \
-            g++ \
-            git \
-            ninja-build \
-            pkg-config \
-            python3 \
-            python3-pip \
-            python3-venv \
-            tar \
-            unzip \
-            zip
-          sudo chmod -R a+rX "$APT_CACHE_DIR"
-
-      - name: Compute toolchain cache identity
-        id: toolchain
-        shell: bash
-        run: |
-          fingerprint=$( { printf '%s\n' "$ImageOS" "$ImageVersion"; g++ --version; cmake --version; } | sha256sum | cut -d ' ' -f 1)
-          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Python download cache
-        uses: actions/cache@v6
-        with:
-          path: .cache/pip
-          key: pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            pip-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('requirements.txt', 'python/pyproject.toml', 'python/setup.cfg') }}-
-
-      - name: Install Python generator dependencies
-        shell: bash
-        run: |
-          python3 -m venv .venv
-          .venv/bin/python -m pip install -r requirements.txt
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
-
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            .cache/vcpkg/archives
-            .cache/vcpkg/downloads
-          # Refresh immutable snapshots so newly built ABIs survive this run.
-          key: vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            vcpkg-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('vcpkg.json') }}-
-
-      - name: Prepare vcpkg cache directories
-        shell: bash
-        run: mkdir -p "$VCPKG_BINARY_CACHE" "$VCPKG_DOWNLOADS"
-
-      - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: ${{ env.VCPKG_ROOT }}
-          vcpkgJsonGlob: '**/vcpkg.json'
-          runVcpkgInstall: false
-          doNotCache: true
-
-      - name: Restore compiler cache
-        uses: actions/cache@v6
+      # PR, scheduled, and manual jobs restore a compatible main-produced seed;
+      # only integration smoke on trusted main may upload immutable SHA keys.
+      - name: Restore persistent compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/ccache
-          # ccache validates source/header contents; snapshots must advance even
-          # when only C++ files change. Keep consumer and full-build caches separate.
-          key: ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ matrix.preset }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
           restore-keys: |
-            ccache-v4-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ matrix.preset }}-
+            ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-
 
-      - name: Configure
+      - name: Configure and reset production compiler-cache statistics
+        shell: bash
+        run: |
+          rm -rf "$CCACHE_METRICS_DIR"
+          mkdir -p "$CCACHE_METRICS_DIR"
+          ccache --zero-stats
+          date +%s > "$CCACHE_METRICS_DIR/production.started-at"
+          cmake --preset "${{ matrix.preset }}" -DPython3_EXECUTABLE="$GITHUB_WORKSPACE/.venv/bin/python"
+
+      - name: Save vcpkg source-download cache
+        if: success() && matrix.writes_shared_caches && steps.setup.outputs.downloads-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/vcpkg/downloads
+          key: ${{ steps.setup.outputs.downloads-cache-key }}
+
+      # Installed toolchains can differ within the matrix, producing distinct binary keys.
+      - name: Save vcpkg binary archive cache
+        if: success() && steps.setup.outputs.binary-cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/vcpkg/archives
+          key: ${{ steps.setup.outputs.binary-cache-key }}
+
+      - name: Build production target
+        id: production-build
+        shell: bash
+        run: |
+          date +%s > "$CCACHE_METRICS_DIR/production.build-started-at"
+          set +e
+          cmake --build --preset "${{ matrix.preset }}" --target ptx_frontend_resolved_ir
+          build_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/production.finished-at"
+          echo "$build_exit_code" > "$CCACHE_METRICS_DIR/production.build-exit-code"
+          exit "$build_exit_code"
+
+      - name: Record production compiler-cache statistics
+        if: always()
+        shell: bash
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase production-build --started-at-file "$CCACHE_METRICS_DIR/production.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-started-at-file "$CCACHE_METRICS_DIR/production.build-started-at" \
+            --build-finished-at-file "$CCACHE_METRICS_DIR/production.finished-at" \
+            --build-exit-code-file "$CCACHE_METRICS_DIR/production.build-exit-code" \
+            --status "${{ steps.production-build.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/production-build.json" || true
+          ccache --show-stats || true
+
+      # Production and test compilation share the persistent compiler cache.
+      # Reset only statistics so test-phase hit/miss metrics remain independent.
+      - name: Reset test compiler-cache statistics
+        if: success()
         shell: bash
         run: |
           ccache --zero-stats
-          cmake --preset "${{ matrix.preset }}"
+          date +%s > "$CCACHE_METRICS_DIR/tests.started-at"
 
-      - name: Build
+      - name: Build test support
+        id: test-support
+        if: success()
+        shell: bash
         run: cmake --build --preset "${{ matrix.preset }}"
 
       - name: Test
-        run: ctest --preset "${{ matrix.preset }}" --output-on-failure
-
-      - name: Verify archived PTX ISA baseline
-        if: matrix.name == 'Debug' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        id: test
         shell: bash
-        run: .venv/bin/python python/scripts/verify_ptx_isa_baseline.py instructions/ptx_isa_baseline.yaml
+        if: success()
+        run: |
+          set +e
+          ctest --preset "${{ matrix.preset }}" --output-on-failure
+          test_exit_code=$?
+          date +%s > "$CCACHE_METRICS_DIR/tests.finished-at"
+          exit "$test_exit_code"
 
-      - name: Show compiler cache statistics
+      - name: Record test compiler-cache statistics
         if: always()
         shell: bash
-        run: ccache --show-stats || true
+        run: |
+          python3 .github/scripts/capture_ccache_metrics.py \
+            --phase tests \
+            --started-at-file "$CCACHE_METRICS_DIR/tests.started-at" \
+            --finished-at-file "$CCACHE_METRICS_DIR/tests.finished-at" \
+            --status "${{ steps.test-support.outcome }}" \
+            --status "${{ steps.test.outcome }}" \
+            --output "$CCACHE_METRICS_DIR/tests.json" || true
+          ccache --show-stats || true
+
+      - name: Test installed public API consumer
+        if: success() && matrix.preset == 'ci-linux-clang-debug'
+        shell: bash
+        run: |
+          install_prefix="$RUNNER_TEMP/ptx-frontend-consumer-install"
+          consumer_build="$RUNNER_TEMP/ptx-frontend-consumer-build"
+          dependency_prefix="$GITHUB_WORKSPACE/out/build/${{ matrix.preset }}/vcpkg_installed/x64-linux"
+          cmake --install "out/build/${{ matrix.preset }}" --prefix "$install_prefix"
+          cmake -S examples/conversion_consumer -B "$consumer_build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Dptx_frontend_DIR="$install_prefix/lib/cmake/ptx_frontend" \
+            -DCMAKE_PREFIX_PATH="$install_prefix;$dependency_prefix"
+          cmake --build "$consumer_build"
+          "$consumer_build/conversion_consumer"
+
+      - name: Save PR compiler cache
+        if: >
+          github.event_name == 'pull_request' &&
+          steps.production-build.outcome == 'success' &&
+          steps.test-support.outcome == 'success' &&
+          steps.test.outcome == 'success' &&
+          steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ccache
+          key: ccache-v8-${{ runner.os }}-${{ runner.arch }}-${{ matrix.preset }}-${{ steps.setup.outputs.compiler-identity }}-${{ github.sha }}
+
+      # JSON records local cache size, cleanup count, hit/miss rate, and phase
+      # wall-clock time. Actions transfer bytes/times remain in action logs.
+      - name: Upload compiler-cache measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ccache-metrics-${{ matrix.preset }}
+          path: ${{ runner.temp }}/ccache-metrics/${{ matrix.preset }}
+          if-no-files-found: warn
+          retention-days: 14

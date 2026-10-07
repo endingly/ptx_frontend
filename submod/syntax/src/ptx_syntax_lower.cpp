@@ -232,6 +232,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               value.exclamation_token.has_value(),
               lowerIdentifier(cst, {value.name}),
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstNegatedImmediate>) {
+          return syntax_ast::AstNegatedImmediate{
+              lowerImmediate(cst, value.immediate),
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value, syntax_cst::CstImmediate>) {
           return lowerImmediate(cst, value);
         } else if constexpr (std::same_as<Value, syntax_cst::CstAddress>) {
@@ -257,9 +262,14 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                 lowerImmediate(cst, value.offset->magnitude),
                 cst.sourceRange(value.offset->token_range)};
           }
-          return syntax_ast::AstAddress{std::move(base), std::move(offset),
-                                        value.left_bracket.has_value(),
-                                        cst.sourceRange(value.token_range)};
+          return syntax_ast::AstAddress{
+              std::move(base),
+              std::move(offset),
+              value.left_bracket.has_value(),
+              value.unified_token.has_value(),
+              value.unified_token ? cst.token(*value.unified_token).range
+                                  : SourceRange{},
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>) {
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
@@ -271,6 +281,21 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
             elements.push_back(lowerVectorElement(cst, element));
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstTensorOperand>) {
+          auto address = std::get<syntax_ast::AstAddress>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.tensor_map}));
+          // The tensor-map address is the first member of the outer brackets.
+          address.bracketed = true;
+          auto coordinates = std::get<syntax_ast::AstVectorPack>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.coordinates}));
+          return syntax_ast::AstTensorOperand{
+              std::move(address),
+              std::move(coordinates),
+              cst.token(value.left_bracket).range,
+              cst.token(value.comma).range,
+              cst.token(value.right_bracket).range,
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallParameterList>) {
           std::vector<syntax_ast::AstCallParameter> parameters;
@@ -297,10 +322,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstBranchTargetSet{
               lowerIdentifier(cst, value.name),
               cst.sourceRange(value.token_range)};
-        } else if constexpr (std::same_as<Value,
-                                          syntax_cst::CstRegisterPredicatePair>) {
+        } else if constexpr (std::same_as<
+                                 Value, syntax_cst::CstRegisterPredicatePair>) {
           return syntax_ast::AstRegisterPredicatePair{
-              lowerIdentifier(cst, value.dst), lowerIdentifier(cst, value.predicate),
+              lowerIdentifier(cst, value.dst),
+              lowerIdentifier(cst, value.predicate),
               cst.sourceRange(value.token_range)};
         } else {
           return syntax_ast::AstBranchTarget{
@@ -472,20 +498,19 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
 syntax_ast::AstCallPrototype lowerCallPrototype(
     const syntax_cst::CstFile& cst,
     const syntax_cst::CstCallPrototype& prototype) {
-  const auto lower_parameters = [&cst](
-                                    const std::optional<syntax_cst::CstFunctionParameterList>&
-                                        parameters) {
-    std::vector<syntax_ast::AstFunctionParameter> lowered;
-    if (!parameters)
-      return lowered;
-    lowered.reserve(parameters->parameters.size());
-    for (const auto& parameter : parameters->parameters)
-      lowered.push_back(lowerFunctionParameter(cst, parameter));
-    return lowered;
-  };
-  const auto lower_suffix = [&cst](
-                                const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>&
-                                    suffix)
+  const auto lower_parameters =
+      [&cst](const std::optional<syntax_cst::CstFunctionParameterList>&
+                 parameters) {
+        std::vector<syntax_ast::AstFunctionParameter> lowered;
+        if (!parameters)
+          return lowered;
+        lowered.reserve(parameters->parameters.size());
+        for (const auto& parameter : parameters->parameters)
+          lowered.push_back(lowerFunctionParameter(cst, parameter));
+        return lowered;
+      };
+  const auto lower_suffix =
+      [&cst](const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>& suffix)
       -> std::optional<syntax_ast::AstCallPrototypeAbiSuffix> {
     if (!suffix)
       return std::nullopt;
@@ -511,8 +536,7 @@ syntax_ast::AstCallPrototype lowerCallPrototype(
 }
 
 syntax_ast::AstCallTargets lowerCallTargets(
-    const syntax_cst::CstFile& cst,
-    const syntax_cst::CstCallTargets& targets) {
+    const syntax_cst::CstFile& cst, const syntax_cst::CstCallTargets& targets) {
   std::vector<syntax_ast::AstIdentifierRef> lowered_targets;
   lowered_targets.reserve(targets.targets.size());
   for (const auto target : targets.targets)
@@ -553,7 +577,8 @@ syntax_ast::AstLocDirective lowerLocDirective(
   if (location.inline_context) {
     const auto& context = *location.inline_context;
     inline_context = syntax_ast::AstLocInlineContext{
-        .function_name_label = lowerIdentifier(cst, {context.function_name_label}),
+        .function_name_label =
+            lowerIdentifier(cst, {context.function_name_label}),
         .function_name_offset =
             context.function_name_offset
                 ? std::optional{leafSyntax(cst, *context.function_name_offset)}
@@ -661,8 +686,8 @@ syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
           std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body_item)) {
     return std::make_unique<syntax_ast::AstBlock>(lowerBlock(cst, **block));
   }
-  return lowerInstructionNode(
-      cst, std::get<syntax_cst::CstInstruction>(body_item));
+  return lowerInstructionNode(cst,
+                              std::get<syntax_cst::CstInstruction>(body_item));
 }
 
 syntax_ast::AstBlock lowerBlock(const syntax_cst::CstFile& cst,
@@ -812,16 +837,16 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
         .name = lowerIdentifier(cst, {function.name}),
         .return_parameters = {},
         .parameters = {},
-        .noreturn_directive = function.noreturn_directive
-                                 ? std::optional{leafSyntax(
-                                       cst, *function.noreturn_directive)}
-                                 : std::nullopt,
+        .noreturn_directive =
+            function.noreturn_directive
+                ? std::optional{leafSyntax(cst, *function.noreturn_directive)}
+                : std::nullopt,
         .abi_preserve = std::nullopt,
         .abi_preserve_control = std::nullopt,
-        .blocks_are_clusters = function.blocks_are_clusters
-                                   ? std::optional{leafSyntax(
-                                         cst, *function.blocks_are_clusters)}
-                                   : std::nullopt,
+        .blocks_are_clusters =
+            function.blocks_are_clusters
+                ? std::optional{leafSyntax(cst, *function.blocks_are_clusters)}
+                : std::nullopt,
         .language = std::nullopt,
         .pragmas = {},
         .resources = {},
@@ -831,9 +856,9 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
     lowered.qualifiers.reserve(function.qualifiers.size());
     for (const auto qualifier : function.qualifiers)
       lowered.qualifiers.push_back(leafSyntax(cst, qualifier));
-    const auto lower_suffix = [&cst](
-                                  const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>&
-                                      suffix)
+    const auto lower_suffix =
+        [&cst](
+            const std::optional<syntax_cst::CstCallPrototypeAbiSuffix>& suffix)
         -> std::optional<syntax_ast::AstCallPrototypeAbiSuffix> {
       if (!suffix)
         return std::nullopt;

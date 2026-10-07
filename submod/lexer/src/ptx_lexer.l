@@ -80,7 +80,7 @@ WS              [ \t\r\n]+
 LINE_CMT        "//"[^\n\r]*
 
 ID_START        [A-Za-z_$%]
-ID_CONT         [A-Za-z0-9_$%]
+ID_CONT         [A-Za-z0-9_$]
 IDENT           {ID_START}{ID_CONT}*
 
 DOT_ATOM        [A-Za-z0-9_$%]+
@@ -90,6 +90,7 @@ F32HEX          0[fF][0-9a-fA-F]{8}
 F64HEX          0[dD][0-9a-fA-F]{16}
 HEX             0[xX][0-9a-fA-F]+[uU]?
 DECIMAL         [0-9]+[uU]?
+INVALID_OCTAL   0[0-9]*[89][0-9]*[uU]?
 
 F64_A           [0-9]*\.[0-9]+([eE][-+]?[0-9]+)?
 F64_B           [0-9]+[eE][-+]?[0-9]+
@@ -118,13 +119,17 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
                             BEGIN(INITIAL);
                             return TokenKind::BlockComment;
                         }
-<BLOCK_COMMENT>.|\n     { yyextra->block_comment_text.append(yytext, yyleng); }
+<BLOCK_COMMENT>\r\n|\r|\n|. {
+                            yyextra->block_comment_text.append(yytext, yyleng);
+                        }
 <BLOCK_COMMENT><<EOF>>  {
                             yylval->sv = yyextra->block_comment_text;
                             yylval->range = SourceRange{
                                 yyextra->block_comment_start,
                                 ptx_make_current_range(yyextra).end,
                             };
+                            /* Report the error once, then let recovery reach EOF. */
+                            BEGIN(INITIAL);
                             return TokenKind::Error;
                         }
 
@@ -168,6 +173,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 {F64HEX}                { TOK(F64Hex); }
 {HEX}                   { TOK(Hex); }
 {F64}                   { TOK(F64); }
+{INVALID_OCTAL}         { TOK(Error); }
 {DECIMAL}               { TOK(Decimal); }
 
 {STRING}                { TOK(String); }
@@ -220,6 +226,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 
 ".b8x16.b6x16_p32"                { TOK(DotIdent); }
 ".b8x16.b4x16_p64"                { TOK(DotIdent); }
+
+".xorsign.abs"                    { TOK(DotIdent); }
 
  /* Generic dot-prefixed token. Does not consume chained suffixes like .sat.s32. */
 {DOT_IDENT}                       { TOK(DotIdent); }

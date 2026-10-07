@@ -1,0 +1,47 @@
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <array>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+#include <ptx_frontend/resolved_ir/model/arithmetic/sin.gen.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+
+/** Parse one standalone instruction for a generated-opcode test. */
+syntax_ast::AstInstruction parse_instruction(std::string_view source) {
+  PtxSyntaxParser parser(source);
+  auto ast = parser.parseInstruction();
+  EXPECT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
+  return std::move(*ast);
+}
+
+TEST(ResolveSin, SelectsFrozenApproxVariant) {
+  const auto resolved =
+      resolveSin(parse_instruction("sin.approx.ftz.f32 %f0, %f1;"));
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  ASSERT_NE(dynamic_cast<SinApproxF32*>(resolved->get()), nullptr);
+  EXPECT_EQ(SinApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(SinApproxF32::approx);
+  EXPECT_TRUE(dynamic_cast<SinApproxF32&>(**resolved).ftz.value);
+}
+
+TEST(ResolveSin, RejectsInvalidForms) {
+  for (const auto source :
+       {"sin.f32 %f0, %f1;", "sin.approx.f64 %d0, %d1;",
+        "sin.approx.f32x2 %f0, %f1;", "sin.approx.sat.f32 %f0, %f1;"}) {
+    SCOPED_TRACE(source);
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), sin_syntax_descriptor())
+            .has_value());
+  }
+}
+
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir

@@ -2,14 +2,14 @@
 
 ## 目的
 
-`python/code_gen/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
-声明来源（`instructions/ptx_spec/` 仅为源码树兼容 symlink）。它描述合法的源码
+`python/src/ptx_frontend/spec/resources/ptx_spec/` 中的 YAML 是 PTX 指令事实的 canonical
+声明来源（`instructions/ptx_spec/` 是源码构建使用的仓库输入目录）。它描述合法的源码
 形式、variant、operand layout、availability 和规则标识；Python generator 从中同时
 生成 Syntax descriptor、Resolved descriptor、checker descriptor 和 C++ instruction
 结构。它不是 C++ 代码模板，也不是 backend layout 配置。
 
 每个文件使用同级 package schema
-`python/code_gen/resources/ptx-instr-v1.schema.yaml`（YAML comment 通过
+`python/src/ptx_frontend/spec/resources/ptx-instr-v1.schema.yaml`（YAML comment 通过
 `../ptx-instr-v1.schema.yaml` 引用）：
 
 ```yaml
@@ -20,7 +20,30 @@ codegen_category: arithmetic
 ```
 
 schema 负责字段形状和基础枚举；normalizer 负责跨字段的生成器不变量，例如一个
-variant 不能同时写 `operands` 和 `operand_layouts`。
+variant 不能同时写 `operands` 和 `operand_layouts`。schema enum、YAML entry 或 `rule`
+identifier 本身都不是 executable checker：只有 normalizer、generated descriptor、resolver
+和 checker 已实现对应 contract 时才有意义。
+
+## 扩展边界
+
+canonical YAML/database 是 instruction form 唯一的 machine-readable source。不得另建手写
+opcode/variant registry 或 capability API。
+
+canonical model 变更的独立、已测量成本见[generated-model build scalability baseline](build_scalability.md)；
+它不是 opcode acceptance 或 ISA-conformance evidence。
+
+只有当 form 复用已实现的 syntax/operand primitive、modifier domain、type expression 与
+descriptor-backed constraint 时，才适合 YAML-only 添加。它仍需要 non-overlapping variant、
+normalizer/database check、generated descriptor、resolver/checker coverage，以及
+source/target availability fact。复用一个 `rule` name 不等于新 relation 会被检查；必须确认
+其 selected descriptor field 和 constraint 会进入 executable checker code。
+
+新增 operand primitive、modifier domain/value representation 或 semantic constraint 是
+coordinated change：按需扩展 schema，再扩展 Python Syntax/Resolved model 与 normalization、
+C++ resolved payload 与 resolver、descriptor emission、checker implementation 和测试。不能仅因
+YAML 能解析就把 requirement 静默编码进 string 或 enum。frontend contract 是 source
+acceptance、binding、resolved modeling 与 target-aware validation；它不提供 simulator execution，
+也不建立 physical-hardware conformance。
 
 ## 预定义数据引用
 
@@ -52,8 +75,8 @@ PTX 9.7.1 至 9.7.5 合并的例外。
 
 合并按 spec 文件路径及文件内声明顺序进行。文件路径本身就是定义来源，不再需要额外的
 `fragment` ID。database 会在发射代码前拒绝重复 variant ID、PascalCase 后冲突的
-C++ variant 名、同一 variant 内一个 spelling 归属多个活动 modifier slot，以及可接受
-同一无序 modifier 集合的重叠 variant。
+C++ variant 名、存在歧义的 modifier slot 绑定，以及可接受同一有序 modifier 序列
+（包括显式声明的顺序别名）的重叠 variant。
 
 ## Variant 与 modifier
 
@@ -133,9 +156,33 @@ default，不是可拼写的 modifier value。
 `flag` 通常给出 `token: ".sat"`；`type` 的 token 通常从 `value` 或 `values` 推导。
 `name` 是当前 variant 内的 modifier slot ID，`kind` 决定解析后的值类型。同一个
 spelling 可以在不同 variant 绑定不同 slot，例如 `.f32` 在普通 Add 中绑定 `type`，在
-mixed Add 中绑定 `result_type`；但在单个 variant 内必须唯一归属一个活动 slot。
-modifier matching 不依赖源码顺序。不同 variant 接受的无序 modifier 集合必须互斥，
-否则 database 会在生成前拒绝。
+mixed Add 中绑定 `result_type`。matching 遵循 `modifiers` 的声明顺序；可以跳过
+optional 和 absent slot，但不能跳过 required slot。只有 required/fixed slot 可以
+共享 spelling，且必须由有序位置消除绑定歧义。不同 variant 接受的有序 modifier
+序列必须互斥，否则 database 会在生成前拒绝。
+
+以固定版本 PTX 手册的 **Syntax** 顺序作为规范声明顺序。有兼容性证据支持其他拼写时，
+variant 可以声明 `modifier_order_aliases`：每项必须是全部 modifier slot 名称的完整
+排列，包括 absent slot。例如 mixed Add/Sub 的规范顺序是
+`rounding, sat, result_type, input_type, ftz`，同时保留历史顺序：
+
+```yaml
+modifier_order_aliases:
+  - [rounding, result_type, input_type, ftz, sat]
+```
+
+别名选择同一个 variant，绑定相同的语义 field、default 与源码位置；它不允许任意
+重排，也不放宽 checker 约束。database 会拒绝不完整的排列，以及让同一源码序列
+产生不同 slot 绑定的别名。
+
+此规范顺序策略用于解决固定版本
+[mixed-precision Sub 文档](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#mixed-precision-floating-point-instructions-sub)
+中的不一致：Syntax 将 `.sat` 放在 type 之前，而一个 example 将它放在 type 之后。
+两种形式都保留；这不意味着 Syntax 穷举了 assembler 接受的所有拼写。
+
+使用 Python 包生成代码的消费者应同步升级 C++ frontend，并重新生成、编译产物。
+variant ID 和 field 名称稳定不代表二进制布局兼容：规范 slot 重排也会改变生成成员的
+顺序，syntax descriptor 还增加了 alias span。
 
 `values` 的单项可改写为对象，为某个语义值追加 target availability：
 
@@ -175,6 +222,38 @@ modifier（`modifier(type)`），也可以是固定 scalar type（例如 `u32`�
 type-expression 函数是 `modifier(name)`：它读取当前 variant 的 active `kind: type` modifier。
 schema 仍保留 `same_as(...)`、`one_of(...)` 和 `same_size_as(...)` 作为未来语法，但
 normalizer 会明确报错表示尚未支持。
+
+每个 generated operand payload 还必须有明确的 module-reference policy。
+`code_gen.reference_policy` 会将 semantic payload 分类到公开的
+`REFERENCE_VALUE_KINDS` 或 `REFERENCE_FREE_VALUE_KINDS`；未分类 type 会在 context
+构造时、generation 开始前失败。reference-bearing payload
+是能够携带 bound declaration/symbol identity 的 resolved primitive（例如 register、predicate、
+symbol、address、vector、call/control 与 tensor-coordinate form）。生成的
+`visit_instruction_references` visitor 将它们交给 module 和 AST-free revalidation。reference-free
+payload 是不含此类 identity 的 value（例如 modifier enum、immediate 与 special-register
+reference），故刻意不访问。必须按实际 resolved payload 和 validation requirement 决定分类，
+不能按 operand 的 YAML name 猜测。随后还必须扩展 `ptx_module_availability.cpp` 中的 C++
+consumer：`ReferenceBearingOperandPayload` 接纳该 payload，`collect_operand_references` 递归
+投影为 `ModuleReferenceUse`，`check_module_references` 执行 owned-symbol、kind、scope、
+register-state 与 parameterized-index check。因此 generated visitor 本身不足；collector 的
+exhaustive branch 会故意令新 admitted payload 在没有 owned-module validation 时编译失败。
+
+`immediate_conversion` 是 integer immediate 独立的 use contract。其默认值 `narrow`
+会在解码 64-bit source 后保留 resolved scalar width 的低位。仅当语义 operand 必须能由
+该宽度表示时才使用 `require_target_range`：
+
+```yaml
+- name: barrier
+  kind: reg_or_imm
+  role: barrier
+  access: read
+  type: u32
+  immediate_conversion: require_target_range
+```
+
+它独立于 `type`：fixed scalar type 与 modifier-derived type 都可选择任一 conversion。
+若 bounded control operand 的规则可由 generated range、exact-value 或 multiple-of constraint
+完整表达，应复用这些 constraint；它们比较原始 decoded source bits。
 
 address operand 也可以从 active `kind: state_space` modifier 派生所要求的
 state space：
@@ -262,15 +341,20 @@ legacy memory-vector payload 最多 128 bit：`.v2` 到 64-bit type，`.v4` 到
   register_width: equal_or_wider
 ```
 
-`register_width` 默认为 `same_width`。normalizer 会拒绝在非 register operand 或没有 type
+`register_width` 默认为 `same_width`，允许同宽兼容基础类型。`exact` 则要求声明类型枚举
+相同，应保留给显式格式限制，而非仅位宽固定的普通 operand。规范来源及回归边界见
+[寄存器声明兼容性](register_type_policy.md)。normalizer 会拒绝在非 register operand 或没有 type
 expression 的 operand 上使用非默认 `equal_or_wider`，避免 constraint 静默失效；`reg_vector`
 operand 也可使用该 policy，并逐元素检查。resolved operand descriptor 保存该 policy，不生成
 runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source，以及 legacy
 `.v2/.v4` memory vector element 使用 `equal_or_wider`：声明 register size 必须大于等于
 instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
 float 要求 exact type/size，integer/float 不兼容。immediate 与 special-register check 仍为
-same-width。wider actual register 当前只覆盖到 64-bit；在 declaration type 的 target availability
-得到检查前，`.b128` 仍明确拒绝。scalar `.b128` instruction type 仍不属于当前范围。
+same-width。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
+8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
+selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
+`.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
+[LD](ld_coverage.md) 与 [ST](st_coverage.md)。
 
 `reg_vector` operand 必须用 `vector.arity` 声明合法元素数。静态形式使用整数或列表：
 
@@ -324,7 +408,9 @@ layout name 是稳定语义 ID，不是 C++ layout directive。它按声明顺�
 
 ## Immediate operand constraint
 
-variant-level `constraints` 可以对具名 `kind: imm` operand 声明可执行的整数规则：
+variant-level `constraints` 可以对具名 operand 声明可执行的整数规则。根据
+constraint kind，它可以是 `kind: imm` 或 `kind: reg_or_imm`；`reg_or_imm` rule
+仅在 source 是已知 immediate 时生效：
 
 ```yaml
 constraints:
@@ -336,8 +422,9 @@ constraints:
 每个 variant 最多一个 `immediate_value`，它是非空且无重复的 allowlist。每个 operand
 最多一个 `immediate_range`；`minimum` 为 inclusive，下界可选的 `maximum` 也为
 inclusive，省略 `maximum` 表示没有上界。每个 variant 最多一个
-`immediate_multiple_of` divisor rule。当具名 operand 的语义合理时，这些 descriptor
-可以组合使用。
+`immediate_multiple_of` divisor rule。和 `immediate_range` 一样，它可指向 `imm`
+或 `reg_or_imm` operand：生成的 checker 会检查已知 immediate，而把动态未知的
+register 值留给 runtime。当具名 operand 的语义合理时，这些 descriptor 可以组合使用。
 
 所有配置值使用生成代码的 `uint64_t` 域：YAML 中实际的整数必须落在
 `0..18446744073709551615`（`2^64 - 1`）。负数、Boolean、float 或其他非整数，以及
@@ -345,13 +432,12 @@ inclusive，省略 `maximum` 表示没有上界。每个 variant 最多一个
 `immediate_value.values[index]`，并以同一规则验证 `minimum`、出现时的 `maximum` 和
 `divisor`；还会拒绝 `maximum < minimum`，并要求 `divisor > 0`。
 
-operand 引用刻意是 variant-wide，而不是 layout-local。对三种 constraint kind 中的每一种，
-该具名 operand 都必须存在于此 variant 的**每一个** operand layout，且在每个 layout 中
-都必须是 `kind: imm`。哪怕只有一个具名 layout 缺少该 operand，或写成
-`reg`/`reg_or_imm`，normalization 也会报错，并指明 variant、constraint kind、operand 与
-layout。不得用 layout-local constraint DSL 或“runtime 缺 operand 就跳过”的规则绕过它。
-未来 instruction 若确实需要 layout-specific rule，必须新增经过明确设计的 contract；不能
-放宽这个不变量。
+operand 引用刻意是 variant-wide，而不是 layout-local。它必须至少出现在一个 operand
+layout。对全部三类 constraint，省略该 operand 表示 constraint 不适用于该 layout，且不
+会导致 missing-field error。operand 出现时，`immediate_value` 要求 `kind: imm`，而
+`immediate_range` 与 `immediate_multiple_of` 接受 `kind: imm` 或 `kind: reg_or_imm`。
+`reg` occurrence 会导致 normalization error，并指明 variant、constraint kind、operand 与
+layout。这样既允许 optional operand，又在值 contract 要求时保留 immediate-only rule。
 
 当前冻结的 `setmaxnreg.inc.sync.aligned.u32` form 展示了 range 与 divisibility rule 的组合：
 
@@ -367,11 +453,12 @@ constraints:
 独立的 inclusive range：`offset` 和 `width` 均为 `0..255`；两个 operand 在各自唯一的
 layout 中都是 immediate operand。
 
-resolver 中，integer immediate 携带 scalar type、受 operand width 限制的 raw bits，以及
-源端 signed marker。例如 signed `-1` 的 raw bits 是该 operand width 下的 two's-complement，
-同时保留 `is_negative`；checker rule 运行前不会把它转换成抽象 signed integer。range 和
-multiple-of 会先拒绝 negative marker，再比较或取余。exact-value 则有意比较 raw bits，
-所以 allowlist 是 bit-value contract。floating immediate 解析为 IEEE raw bits：decimal form
+resolver 中，integer immediate 携带 scalar type、use-width bits、求值后的 64-bit source bits，
+以及数值上的 signed-negative 性质。source 在没有 `U`/`u` 且不超过 `INT64_MAX` 时为 signed；
+unary minus 保留该 type，而 unsigned value 按该宽度回绕。range、multiple-of 与 exact-value
+都要求 source 为 nonnegative，并比较原始 source bits；因此非零 source 即使窄化为允许的
+target-width bit pattern，也不能满足 fixed control rule。signed `-0` 因而等同 zero。
+floating immediate 解析为 IEEE raw bits：decimal form
 要求 `f32` 或 `f64`，`0f...`/`0d...` 分别是 unsigned 32-/64-bit bit-pattern literal，
 必须恰好使用 `f32`/`f64`，且不能带符号。因此这些 constraint 是 integer-domain rule；不要
 用看似数值的 bounds 表达 floating-point ordering。
@@ -388,10 +475,10 @@ configuration error 与 source-program error。
 operand_patterns:
   bar_sync_immediate_barrier:
     - {name: barrier, kind: imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
   bar_sync_barrier:
     - {name: barrier, kind: reg_or_imm, role: barrier,
-       access: read, type: u32}
+       access: read, type: u32, immediate_conversion: require_target_range}
 
 instructions:
   - opcode: bar
@@ -434,12 +521,15 @@ checker 公共逻辑解释最低 PTX、SM 与 `family` 要求。`family` 是最�
 family-specific 源特性 target：checker 只在 source target profile 的
 `enabled_family_features` 中查找。显式 catalog 为：`sm_100` → 无；
 `sm_100f`/`sm_100a` → `sm_100f`；`sm_103` → 无；`sm_103f`/`sm_103a` →
-`sm_100f`、`sm_103f`；`sm_120f` → 仅 `sm_120f`。不得由 SM 数字或 target 后缀
-推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
+`sm_100f`、`sm_103f`；`sm_120` → 无；`sm_120f`/`sm_120a` 为 `sm_120f`；
+`sm_121` → 无；`sm_121f`/`sm_121a` 为 `sm_120f`、`sm_121f`。不得由 SM 数字或
+target 后缀推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
 `a` target 是 exact identity，不能作 family spelling；需要精确 target 时使用
 `any_of: [{target: sm_100a}]`。capability clause、exact target 与 `family` 均是相互独立的
-constraint。`rule` 是稳定 rule ID，供 instruction-specific checker 使用。
-`examples`、`doc` 和 `description` 记录规范意图，不能替代可执行的 C++/
+constraint。`rule` 是封闭的 semantic-rule ID，供 instruction-specific checker 使用。
+normalization 会在构造 IR 前拒绝未知或非字符串的 rule spelling；emitter 按 typed identity
+dispatch，而 checker descriptor 仅将该 spelling 保留为 inert metadata。`examples`、`doc` 和
+`description` 记录规范意图，不能替代可执行的 C++/
 Python 测试。
 
 `any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一
@@ -481,6 +571,22 @@ resolver 与 checker 无需从 modifier 的位置或字符串重新推断 operan
 4. 新增 spec 前确认 lexer/AST 能形成所需 operand shape；不能时先扩展语法层。
 5. 新增 layout 必须补 resolver/checker 测试，尤其是 tag 范围与 tag/payload 不一致。
 6. schema 通过不代表生成器支持；运行 Python tests、CMake build 与 CTest 验证。
+
+## Whole-opcode acceptance
+
+不能因为一个新 variant 能 parse、YAML database test 通过，或 generated model 有非零
+variant count，就称 opcode complete。应针对相关 PTX 9.3 normative section 冻结所声称的范围，
+包括相邻的 excluded form，并用 independently derived 的 positive/negative source case 覆盖其
+modifier、operand、availability 与 diagnostic boundary。model/generator consistency check 只能说明
+YAML 按预期 normalized 和 emitted，不是 independently derived 的 ISA-conformance evidence。
+
+当 declaration type、binding identity、call/control metadata、function context 或 address
+provenance 会影响 legality 时，必须通过带 source version 和 target context 的
+declaration-aware module 测试。standalone instruction test 适合 local syntax/resolution，但不能替代
+module check。应 mutate public Resolved IR，并运行 AST-free validation，检查 retained identity、
+provenance 与 descriptor invariant。最后，用仅含 public header 的 installed-package consumer
+编译并运行。这些 frontend check 不证明 simulator execution、dynamic protocol correctness、独立
+probe 之外的 assembler acceptance，或 GPU/hardware behavior。
 
 推荐验证命令：
 

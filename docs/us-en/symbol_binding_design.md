@@ -38,6 +38,11 @@ parameter; a function symbol also records its `.func`/`.entry` classification.
 A function symbol points to its function scope through `owned_scope`. When a
 prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
+Each function scope also owns its declaration's `SourceRange`.
+`functionScope(range)` returns the unique matching occurrence (or no value for
+a missing/ambiguous range), so clients need not align function and scope-vector
+traversals. This occurrence identity must not be replaced by `owned_scope` when
+processing a prototype's local parameters.
 
 Lookup checks exact names first, parameterized names second, and then walks to
 the parent scope. A block declaration can therefore shadow an outer or module
@@ -45,7 +50,7 @@ symbol, while sibling blocks remain invisible to each other. Labels and
 control-flow metadata are deliberately function-local rather than block-local.
 
 Debug identities use a separate module metadata namespace. `.file` indices are
-normalized to `uint64_t` (decimal/hex and an optional `u`/`U` suffix) and bind
+normalized to `uint64_t` (decimal/octal/hex and an optional `u`/`U` suffix) and bind
 as `DebugFile` symbols; repeated indices intentionally reuse the first
 `SymbolId`. A `.debug_str` section binds its name and each raw `name:` payload
 label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
@@ -69,10 +74,54 @@ declaration that overlaps an explicit name, or another parameterized
 declaration with a different base, produces a same-scope duplicate diagnostic
 with the previous range. The base itself is not a generated member, so
 `name<2>` and an explicit `name` remain distinct symbols.
+Ordinary/ordinary comparisons use the two literal spellings; ordinary/group
+comparisons test the ordinary spelling against the group's members; and
+group/group comparisons test only generated members. Zero-count invalid groups
+have no members and do not create overlap candidates, while same-base compact
+declarations retain the exact-declaration duplicate policy.
 
 Parameterized names are valid in every state space, but cannot also declare an
 array or initializer. The previous `.reg`-only restriction was removed, and
 the public CST/AST field is now consistently named `parameterized_count`.
+
+## Lookup indexes and compact groups
+
+The table retains its owning `symbols` vector as the source of stable
+`SymbolId` values. It additionally keeps private, scope-aligned indexes with
+their own string keys: ordinary exact names, parameterized exact bases, and a
+prefix trie for parameterized bases. Lookup therefore checks the current
+scope's ordinary exact name, then only parameterized bases that can prefix the
+queried spelling, before moving to the parent scope. This preserves the
+current-scope ordinary, current-scope parameterized, then parent precedence.
+Debug metadata is deliberately excluded from these lexical indexes.
+When a scope has just one parameterized group, lookup checks that group's
+member directly after the ordinary-name probe, avoiding prefix-trie overhead
+without changing bounds, canonical suffix handling, or parent fallback.
+
+`exactDeclaration(scope, spelling, parameterized)` exposes the corresponding
+same-scope exact index for consumers that associate an AST declarator with its
+bound identity. It neither walks parents nor treats a generated compact member
+as a declaration. Metadata remains excluded, and a legal redeclaration retains
+the first stable `SymbolId`. `initializerReference(range)` similarly indexes
+only initializer references by their exact source range, retaining the first
+record even when it is unresolved; declaration semantics and storage lowering
+therefore do not rescan all instruction and initializer references per symbol.
+
+Parameterized overlap checking uses a sparse 32-bit member-range trie keyed
+by canonical spelling decompositions. It identifies existing explicit names
+and nonempty group first-member spellings relevant to the new base/count, then
+retains the first stored overlapping identity for the diagnostic. Group bases
+are excluded because they are not members; the existing name-set-overlap
+predicate remains authoritative.
+The indexes store no logical members: a declaration with a very large count
+uses storage proportional to its spelling and the fixed 32-bit trie paths,
+not to its count. Index keys and trie storage are owned by the table, so
+`symbols` vector growth and supported table copies or moves cannot leave
+borrowed name keys dangling.
+
+The [scaling benchmark](../../submod/resolved_ir/benchmark/README.md) records
+separate parser, binding, direct-lookup, and module-resolution measurements,
+including compact-group controls and a generated PTX corpus input.
 
 ## Reference binding
 

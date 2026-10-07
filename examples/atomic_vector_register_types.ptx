@@ -1,0 +1,41 @@
+// Reproduce vector register-container acceptance with:
+// ptxas -O0 -arch=sm_90 atomic_vector_register_types.ptx -o /tmp/atomic_vector_register_types.cubin
+// This checks assembly only; it does not execute the kernel.
+.version 9.3
+.target sm_90
+.address_size 64
+
+.global .align 16 .b8 half_values[16];
+.global .align 16 .b8 float_values[32];
+.global .align 4 .b8 observed[4];
+
+.visible .entry atomic_vector_register_types() {
+  .reg .u16 %uh<4>;
+  .reg .s16 %sh<4>;
+  .reg .u32 %uw<4>;
+  .reg .s32 %sw<4>;
+
+  mov.b16 %uh2, 0x3c00;
+  mov.b16 %uh3, 0x3c00;
+  mov.b16 %sh2, 0x3c00;
+  mov.b16 %sh3, 0x3c00;
+  mov.b32 %uw2, 0x3f800000;
+  mov.b32 %uw3, 0x3f800000;
+  mov.b32 %sw2, 0x3f800000;
+  mov.b32 %sw3, 0x3f800000;
+
+  atom.global.add.noftz.v2.f16 {%uh0, %uh1}, [half_values], {%uh2, %uh3};
+  red.global.add.noftz.v2.f16 [half_values], {%uh2, %uh3};
+  atom.global.add.noftz.v2.f16 {%sh0, %sh1}, [half_values], {%sh2, %sh3};
+  red.global.add.noftz.v2.f16 [half_values], {%sh2, %sh3};
+  atom.global.add.v2.f32 {%uw0, %uw1}, [float_values], {%uw2, %uw3};
+  red.global.add.v2.f32 [float_values], {%uw2, %uw3};
+  atom.global.add.v2.f32 {%sw0, %sw1}, [float_values], {%sw2, %sw3};
+  red.global.add.v2.f32 [float_values], {%sw2, %sw3};
+
+  st.global.b16 [observed], %uh0;
+  st.global.b16 [observed+2], %sh0;
+  st.global.b32 [observed], %uw0;
+  st.global.b32 [observed], %sw0;
+  ret;
+}

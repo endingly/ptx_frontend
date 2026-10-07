@@ -16,16 +16,15 @@ YAML files
 
 ## Input database
 
-`ptx_frontend.code_gen.database` recursively discovers the canonical
-`python/code_gen/resources/ptx_spec/**/*.yaml` (available in source trees via
-the compatibility symlink `instructions/ptx_spec`),
+`ptx_frontend.spec.database` recursively discovers the canonical
+`python/src/ptx_frontend/spec/resources/ptx_spec/**/*.yaml`,
 loads them in path order, enforces one schema version, and then merges
-definitions of the same opcode. The minimal stable model in `ptx_frontend.code_gen.model` is:
+definitions of the same opcode. The minimal stable model in `ptx_frontend.spec.model` is:
 
 ```python
 InstructionSpec(opcode, variants, syntax_forms, source_categories,
                 codegen_category)
-VariantSpec(name, availability, modifiers, operand_layouts, rule)
+VariantSpec(name, availability, modifiers, operand_layouts, rule, ..., modifier_order_aliases)
 OperandLayoutSpec(name, operands)
 ModifierSpec(name, kind, presence, values, value, token, default)
 OperandSpec(name, kind, role, access, type_expression)
@@ -36,15 +35,17 @@ YAML documentation, examples, and constraints that have no generator consumer
 must not silently leak into the C++ representation.
 
 After merging an opcode, the database validates the selector language. Active
-modifier slots within one variant must have disjoint spelling sets, and the
-unordered spelling sets accepted by different variants must not overlap. Slot
-names are variant-local, so one spelling may bind different slots across
-variants. These checks make candidate-local C++ binding deterministic while
-remaining independent of modifier source order.
+modifier slots may share spellings only when required/fixed positions make
+ordered binding unambiguous. Canonical modifier sequences and explicit
+`modifier_order_aliases` must bind identically when they overlap within a
+variant; accepted sequences must not overlap across variants. Slot names are
+variant-local, so one spelling may bind different slots across variants. These
+checks keep candidate-local C++ binding deterministic without accepting
+arbitrary source order.
 
 ## Normalization
 
-`ptx_frontend.code_gen.normalize` converts different legal YAML spellings into one model:
+`ptx_frontend.spec.normalize` converts different legal YAML spellings into one model:
 
 - expands `$name` references from both `type_sets` and `value_sets`, rejecting
   names defined in both namespaces;
@@ -65,7 +66,7 @@ the compatibility boundary, not the emitters.
 
 ```python
 SyntaxInstructionDescriptor(opcode, variants)
-SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts)
+SyntaxVariantDescriptor(variant_id, modifiers, operand_layouts, modifier_order_aliases=())
 SyntaxModifierDescriptor(kind_id, presence, allowed_spellings)
 SyntaxOperandLayoutDescriptor(layout_id, kind, slots)
 ```
@@ -86,7 +87,7 @@ ResolvedInstruction(opcode, cpp_name, variants)
 ResolvedVariant(variant_id, modifier_fields, modifier_bindings,
                 operand_layouts, availability, rule)
 ResolvedOperandLayout(layout_id, cpp_name, fields, bindings)
-ResolvedField(name, value_cpp_type, origin, storage, ...)
+ResolvedField(name, value_kind, origin, storage, ...)
 ResolvedModifierBinding(source_kind_id, target_field_id, default_value)
 ResolvedOperandBinding(target_field_id, type_expression, role, access, ...)
 ```
@@ -108,47 +109,113 @@ spelling/presence and does not duplicate the semantic default.
 Layouts may reuse a field name only when its complete definition is identical.
 Otherwise model construction fails instead of generating ambiguous code.
 
+Modifier value handling is table-driven. `ir.resolved_value_kind` owns semantic
+identity, and `ir.resolved_value_policy` owns modifier-kind mappings, Python value
+types, optional-default support, and diagnostic labels. The C++ domain and
+descriptor-member mappings live in `code_gen.resolved_value_traits`; emitters
+share its value conversion and descriptor initialization helpers instead of
+dispatching on C++ type-name strings. Descriptor expression maps use
+`ResolvedValueKind` enum keys; C++ member-name strings are output spellings only.
+`ResolvedValueKind` remains importable from
+`ir.resolved_ir` for existing callers.
+
+Normalized discriminator enums are strict `Enum` members: YAML spelling is
+converted once at the normalization boundary and is not interchangeable with a
+raw string downstream. `spec.semantic_domains` owns immutable modeled-PTX vocabularies
+and the policy for spellable values versus optional default-only sentinels.
+It validates expanded value sets, fixed values, defaults, scalar expressions,
+state spaces, and special-register compatibility before Resolved IR is built.
+The vocabulary intentionally includes legal PTX forms that the configured C++
+backend does not yet map. Such IR is valid; a missing C++ mapping remains a
+clear code-generation capability error. `ResolvedField` therefore has no C++
+type or expression properties, and code-generation helpers apply those
+representations only while emitting output.
+
 ## C++ emitters and artifacts
 
-`python/scripts/gen_all.py` atomically generates the public declarations,
-runtime mappings, dispatch, category-partitioned implementations, and
-descriptors required by the Resolved IR stage:
+`python -m ptx_frontend.code_gen` generates the public direct-class
+declarations, runtime mappings, dispatch, and category-partitioned
+implementations required by Resolved IR:
+
+For one run, `GenerationContext` owns a single ordered sequence of bindings:
+each normalized `InstructionSpec` is paired with its once-lowered,
+backend-projected `ResolvedInstruction`. Each binding derives one canonical C++
+instruction type name from its source opcode and requires the resolved model to
+carry exactly that name. Syntax emission and category selection read the source
+side and binding type identity, while model, descriptor, resolver, and checker
+emission read the resolved side. The resolved tuple exposed for compatibility is
+derived from the bindings, so source and resolved order or C++ type identity
+cannot drift independently.
+
+Context construction performs a finite structural preflight before an emitter
+can create a directory or write a file: canonical binding C++ type names must
+be unique, and every resolved operand payload kind must have a module-reference
+policy. Binding construction itself rejects a resolved C++ name that differs
+from its source-derived type name, including direct construction and
+`dataclasses.replace`. This validates the frozen snapshot, not every possible
+rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/resolved_ir.gen.hpp` | `gen_resolved_ir.py` | all opcode structs plus explicit-specialization declarations for `resolve<T>` and `check<T>` |
-| `private/resolved_value_domains.gen.hpp` | `gen_resolved_value_domains.py` | runtime value-domain lookup tables used by the resolver |
-| `private/resolved_ir_dispatch.gen.cpp` | `gen_resolved_ir.py` | opcode-independent resolve/check dispatch |
-| `private/resolved_ir_<category>.gen.cpp` | `gen_resolved_ir.py` | out-of-line definitions of those two specialization sets for one category |
-| `private/syntax_descriptor.gen.cpp` | `gen_syntax_ast_arch.py` | source-syntax descriptors and getters |
-| `private/resolved_descriptor.gen.cpp` | `gen_resolved_descriptor.py` | resolved field/binding descriptors and getters |
-| `private/resolved_ir_checker_descriptor.gen.cpp` | `gen_resolved_checker_descriptor.py` | availability/rule descriptors and getters |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, exact form identities, and observer contract |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | one opcode's final semantic-form classes, selector, and resolver declarations |
+| `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate of all opcode headers |
+| `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | one opcode's out-of-line resolution, checking, clone, and reference visitation definitions |
 
-The generated public header remains flat under the `generated/public` include
-root in the `submod/resolved_ir` build tree. `submod/resolved_ir` includes the
-project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
-`gen_all.py` atomically to list and generate all outputs before compiling them
-into `resolved_ir`. The top level only orchestrates submodules and provides the
-facade target.
+The generated public headers are under
+`generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
+tree and install under the same path relative to `include`. Private generated
+sources and support headers remain under `generated/private` and are not
+installed. `submod/resolved_ir/CMakeLists.txt` uses the Python codegen CLI's
+`--list-outputs` mode to discover artifacts, then generates them before compiling
+private sources into `resolved_ir`. The generation rule depends on both schemas,
+the backend mapping, specification files, and generator Python sources.
+The CLI defaults to six concurrent artifact writers (`--jobs 6`); `--jobs 1`
+retains serial emission. The CMake source build passes
+`PTX_FRONTEND_CODEGEN_JOBS` (default `6`) to the CLI. The plan and output listing
+remain ordered, and the manifest is written only after all selected artifacts
+succeed. Each artifact uses a sibling candidate and atomic replacement; a failed
+run may leave successfully written artifacts, but does not publish a new manifest.
 
-Although `syntax_descriptor.gen.cpp` describes source syntax, it implements
-getters on generated Resolved IR opcode types and is consumed by variant
-selection and resolution. Until that generator dependency boundary changes, it
-belongs to `resolved_ir` with the other atomic `gen_all.py` outputs rather than
-to the `syntax` submodule by filename alone.
+Syntax descriptor storage implements getters on generated Resolved IR opcode
+types and is consumed by variant selection and resolution. It shares each
+opcode's private source with resolved and checker descriptor storage.
 
-The public header contains no generated function bodies. Generation uses the
+The direct-class path keeps the YAML schema and normalized instruction model.
+Each semantic form is a final subclass of `Instruction`, with common fields as
+direct members and layout-specific fields as typed optionals. Resolution returns
+`std::unique_ptr<Instruction>`. Each opcode's generated `.cpp` provides
+out-of-line resolution, checking, clone, and reference visitation definitions.
+The central dispatch selects a per-op resolver without an instruction union.
+
+The public opcode headers contain no generated resolver or checker bodies. The
+selection adapter lives in handwritten `ptx_resolved_ir_selection.hpp`;
+opcode model headers remain usable with an incomplete syntax AST. The installed
+`ptx_resolved_ir.hpp` includes the generated aggregate and module resolution API.
+Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
-`codegen_category`. The generator uses that value to create stable category
-sources, which CMake compiles into the `resolved_ir` library. Consumers retain
+`codegen_category`. The generator creates one stable source per opcode,
+which CMake compiles into the `resolved_ir` library. Consumers retain
 one include entry point, while the complex `std::visit` code, lambdas, and
 resolve builders are compiled only once inside the library.
+
+The generator formats a sibling candidate before comparing bytes with an
+existing artifact. Identical formatted output, including the output manifest,
+keeps its modification time. Consumers can include the aggregate or a single
+opcode header.
+
+The comparison and selection spec owns the generated
+`comparison_and_selection` category. Narrow consumers use individual headers
+such as `model/comparison_and_selection/set.gen.hpp`; the aggregate exposes all
+forms.
 
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
 `ptx_frontend::resolved_ir`. Checker specialization declarations share one
-`checker` namespace in the public header, and each category implementation
+`checker` namespace in the public header, and each opcode implementation
 likewise opens it only once.
 
 Emitters obtain C++ types and expressions for semantic values from normalized
@@ -158,11 +225,16 @@ standard `SOURCE_DATE_EPOCH`, the warning uses that deterministic UTC time;
 otherwise it explicitly marks the time as omitted. Identical specs and
 backend specs and generator inputs therefore produce byte-identical content.
 
+Backend lookup helpers require an explicit `CodegenUnit`, supplied by the
+context or the emitting call. The generator has no process-global active
+backend, configuration step, or backend cache, so independent generation
+snapshots cannot select each other's C++ spelling.
+
 ### Backend configuration boundary
 
 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and
-`instructions/schemas/ptx-cpp-backend-v1.schema.yaml` are retained as a
-separate C++ backend configuration layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
+`instructions/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
+mapping layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
 `domains` into `DomainBackend`; Syntax, Resolved, and checker emitters use only
 typed lookups for C++ spellings. Lookup APIs require a `CppDomain` enum member,
 such as `CppDomain.SCALAR_TYPES`, rather than a bare string. Current domains
@@ -171,22 +243,35 @@ presence, operand roles/access/shapes, type-expression kinds, and checker
 modifier kinds.
 
 A backend spec must not duplicate PTX ISA semantics from `ptx_spec` or alter
-the normalized `InstructionSpec`. `DomainBackend` and `CodegenUnit` now serve
-the active generation path. `InstructionBackend` and `EmitBackend` remain
-reserved for future per-instruction overrides; the current `instructions`
-mapping is empty and cannot alter Resolved IR variant/layout structure.
-Emitters never read raw YAML dictionaries, and a missing domain/value is a
-generation-time `ValueError`. The loader performs JSON Schema validation before
-checking that every domain required by the active generation path exists.
-CMake tracks both the backend YAML and its schema as generation dependencies,
-so changing a C++ mapping regenerates all affected artifacts.
+the normalized `InstructionSpec`. Its only generated inputs are the ISA schema
+version, backend schema version, and closed set of C++ mapping domains;
+per-instruction layout, emit, namespace, include, and category policy are not
+accepted. `CodegenUnit` contains only those inputs. Emitters never read raw YAML
+dictionaries, and a missing, unknown, or unmapped domain value is a
+generation-time `ValueError`. The loader rejects retired
+`ptx-cpp-backend/v1` files with a migration diagnostic before v2 schema
+validation; consumers must migrate imports and construction to the narrowed
+`CodegenUnit(spec_schema, backend_schema, domains)` contract. CMake tracks both
+the backend YAML and its schema as generation dependencies, so changing a C++
+mapping regenerates all affected artifacts.
+
+To migrate a backend file, change its schema tag and YAML-language-server header
+from v1 to v2, then remove `target`, `category`, `namespace`, `includes`,
+`common`, `emit_kinds`, and `instructions`. Remove the retired
+`modifier_value_cpp_types` and `operand_value_cpp_types` domains and any value
+`token` or `aliases` entries. `Emit*`, `InstructionBackend`, `ModifierBackend`,
+and `OperandBackend` are no longer importable; use `DomainBackend` and the
+narrowed `CodegenUnit` instead. PTX ISA files remain `ptx-instr/v1`.
 
 Domains that must parse PTX source suffixes at runtime declare
 `runtime_lookup: ptx_suffix`. The generator emits their mappings as private
 `inline constexpr std::array` tables in `resolved_value_domains.gen.hpp`.
 The handwritten resolver owns one generic suffix-search algorithm and does not
-repeat scalar-type or rounding-mode mapping data. Domains without this marker
-remain generation-only mappings and do not produce runtime tables.
+repeat scalar-type or rounding-mode mapping data. A marked domain's `cpp_type`
+sets the generated table value type. Without `runtime_lookup`, `cpp_type` is
+type annotation only; it does not choose an instruction field type, which comes
+from the `resolved_value_cpp_types` mapping. Domains without this marker remain
+generation-only mappings and do not produce runtime tables.
 
 ## Generation rules
 

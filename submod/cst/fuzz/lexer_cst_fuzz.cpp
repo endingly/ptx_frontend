@@ -7,18 +7,17 @@
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/lexer/ptx_lexer.hpp>
 
+/** Check finite lexing through errors and lossless parsing of arbitrary bytes. */
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size) {
   if (size > static_cast<std::size_t>(std::numeric_limits<int>::max()))
     return 0;
 
-  const char* bytes =
-      size == 0 ? "" : reinterpret_cast<const char*>(data);
+  const char* bytes = size == 0 ? "" : reinterpret_cast<const char*>(data);
   const std::string_view source(bytes, size);
   ptx_frontend::PtxLexer lexer(source);
   for (std::size_t count = 0; count <= size; ++count) {
     const auto token = lexer.consume();
-    if (token.kind == ptx_frontend::TokenKind::Eof ||
-        token.kind == ptx_frontend::TokenKind::Error)
+    if (token.kind == ptx_frontend::TokenKind::Eof)
       break;
     if (count == size)
       std::abort();

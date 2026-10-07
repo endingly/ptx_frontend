@@ -1,0 +1,1482 @@
+{
+  "description": "CUDA ptxas evidence for PTX 9.3 extended-precision mad.cc and madc forms. Acceptance is syntax/target evidence only and does not prove runtime behavior.",
+  "ptxas": {
+    "path": "/usr/local/cuda/bin/ptxas",
+    "version_command": [
+      "/usr/local/cuda/bin/ptxas",
+      "--version"
+    ],
+    "version_exit_code": 0,
+    "version_text": "ptxas: NVIDIA (R) Ptx optimizing assembler\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Tue_Dec_16_07:22:11_PM_PST_2025\nCuda compilation tools, release 13.1, V13.1.115\nBuild cuda_13.1.r13.1/compiler.37061995_0\n",
+    "probe_command_template": [
+      "/usr/local/cuda/bin/ptxas",
+      "-v",
+      "-arch=ARCH",
+      "-o",
+      "case.o",
+      "case.ptx"
+    ]
+  },
+  "normative_reference": {
+    "manual": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html",
+    "mad_cc": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-mad-cc",
+    "madc": "https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#extended-precision-arithmetic-instructions-madc",
+    "sections": [
+      "9.7.2.5",
+      "9.7.2.6"
+    ]
+  },
+  "frontend_scope": {
+    "base_commit": "92c7eace44da4ba98ae82206ea4b0ea71465fcc4",
+    "branch": "feat/issue-141-extended-precision",
+    "working_tree_scope": "Read-only ptxas evidence; no frontend or runtime claim."
+  },
+  "capture_notes": [
+    "Every source is a complete PTX module and every negative isolates one incompatible instruction.",
+    "Priority omitted hi/lo cases are observational because the brace syntax does not state a default.",
+    "The CUDA 13.1 assembler reports support through PTX 9.1; PTX 9.3 rejection is tool_unavailable, not a frontend contract result.",
+    "All positive probes use PTX 8.0/sm_80, which is above documented family floors; no GPU execution was performed."
+  ],
+  "summary": {
+    "cases": 32,
+    "expected_classification_counts": {
+      "unspecified_observation": 5,
+      "accepted": 9,
+      "contract_reject": 14,
+      "tool_unavailable": 1,
+      "version_boundary": 2,
+      "target_boundary": 1
+    },
+    "observed_classification_counts": {
+      "rejected_unspecified": 3,
+      "accepted": 11,
+      "contract_reject": 14,
+      "tool_unavailable": 1,
+      "version_boundary": 2,
+      "target_boundary": 1
+    },
+    "classification_matches": 32,
+    "all_classification_matches": true,
+    "all_cases_have_complete_source": true,
+    "source_sha256_all_match": true,
+    "positive_all_24_form_count": 24,
+    "accepted_unspecified_observation_ids": [
+      "negative_mad_duplicate_cc",
+      "negative_madc_duplicate_cc"
+    ]
+  },
+  "single_case_replay": {
+    "description": "From the repository root, replace CASE_ID with a recorded case ID. The command writes source_text to runs/CASE_ID/case.ptx and runs replay.argv in replay.working_directory.",
+    "command": "python3 - <<'PY'\nimport json, pathlib, subprocess\nj=json.load(open('docs/extended_precision_ptxas.json')); c=next(x for x in j['cases'] if x['id']=='CASE_ID'); wd=pathlib.Path(c['replay']['working_directory']); wd.mkdir(parents=True, exist_ok=True); (wd/c['source_file']).write_text(c['source_text']); subprocess.run(c['replay']['argv'], cwd=wd, check=False)\nPY"
+  },
+  "cases": [
+    {
+      "id": "omitted_mad_cc_u32",
+      "phase": "priority",
+      "note": "Omitted hi/lo on mad.cc.u32; record assembler behavior for primary review.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/omitted_mad_cc_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry omitted_mad_cc_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "4e9aece23d942addbff8972328cef91d48d2cf5077492b778ec07e2b2cd31c4e",
+      "replay": {
+        "working_directory": "runs/omitted_mad_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/omitted_mad_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/omitted_mad_cc_u32/stdout.txt",
+        "stderr_file": "runs/omitted_mad_cc_u32/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "unspecified_observation",
+      "classification": "rejected_unspecified",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Unexpected instruction types specified for 'mad'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "omitted_madc_u32",
+      "phase": "priority",
+      "note": "Omitted hi/lo and cc on madc.u32; record assembler behavior for primary review.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/omitted_madc_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry omitted_madc_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "1344d929315a18034cb5edaf30c6f218796a308a5e30723c5163b81a68aacce2",
+      "replay": {
+        "working_directory": "runs/omitted_madc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/omitted_madc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/omitted_madc_u32/stdout.txt",
+        "stderr_file": "runs/omitted_madc_u32/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "unspecified_observation",
+      "classification": "rejected_unspecified",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Not a name of any known instruction: 'madc'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "omitted_madc_cc_u32",
+      "phase": "priority",
+      "note": "Omitted hi/lo on madc.cc.u32; record assembler behavior for primary review.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/omitted_madc_cc_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry omitted_madc_cc_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "e70b9061ad7641bd1b028872cf58a0209a435e0e21fd3e42da636c7246d5c33c",
+      "replay": {
+        "working_directory": "runs/omitted_madc_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/omitted_madc_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/omitted_madc_cc_u32/stdout.txt",
+        "stderr_file": "runs/omitted_madc_cc_u32/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "unspecified_observation",
+      "classification": "rejected_unspecified",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Not a name of any known instruction: 'madc'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "explicit_mad_lo_cc_u32",
+      "phase": "priority",
+      "note": "Explicit canonical mad.cc low-half control.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/explicit_mad_lo_cc_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry explicit_mad_lo_cc_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "3983b714bc52602a9d73af59d5e2ed27255bad43dc9e9ae1a90c2b2bbcf15088",
+      "replay": {
+        "working_directory": "runs/explicit_mad_lo_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/explicit_mad_lo_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/explicit_mad_lo_cc_u32/stdout.txt",
+        "stderr_file": "runs/explicit_mad_lo_cc_u32/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'explicit_mad_lo_cc_u32' for 'sm_80'\nptxas info    : Function properties for explicit_mad_lo_cc_u32\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 21.828 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "explicit_madc_lo_u32",
+      "phase": "priority",
+      "note": "Explicit canonical madc low-half control without carry-out modifier.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/explicit_madc_lo_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry explicit_madc_lo_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "6761dc555ba0baf60128847629994b25da1d2b69343a66a4db3314dccd653223",
+      "replay": {
+        "working_directory": "runs/explicit_madc_lo_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/explicit_madc_lo_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/explicit_madc_lo_u32/stdout.txt",
+        "stderr_file": "runs/explicit_madc_lo_u32/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'explicit_madc_lo_u32' for 'sm_80'\nptxas info    : Function properties for explicit_madc_lo_u32\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 3.063 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "explicit_madc_lo_cc_u32",
+      "phase": "priority",
+      "note": "Explicit canonical madc low-half control with carry-out modifier.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/explicit_madc_lo_cc_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry explicit_madc_lo_cc_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "cfbc53297fd93720f0bdc96a2b2b55aba60b11c1059cf62b52fd708d9ac815ac",
+      "replay": {
+        "working_directory": "runs/explicit_madc_lo_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/explicit_madc_lo_cc_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/explicit_madc_lo_cc_u32/stdout.txt",
+        "stderr_file": "runs/explicit_madc_lo_cc_u32/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'explicit_madc_lo_cc_u32' for 'sm_80'\nptxas info    : Function properties for explicit_madc_lo_cc_u32\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 1.804 ms\n",
+      "object_bytes": 3240,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_all_24_v80_sm80",
+      "phase": "positive",
+      "note": "All 8 mad.cc and 16 madc modifier/type forms in one complete module.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_all_24_v80_sm80.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_all_24_v80_sm80() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %r1, %r2, %r3;\n  mad.hi.cc.u32 %r4, %r5, %r6, %r7;\n  mad.lo.cc.s32 %s0, %s1, %s2, %s3;\n  mad.hi.cc.s32 %s4, %s5, %s6, %s7;\n  mad.lo.cc.u64 %rd0, %rd1, %rd2, %rd3;\n  mad.hi.cc.u64 %rd4, %rd5, %rd6, %rd7;\n  mad.lo.cc.s64 %sd0, %sd1, %sd2, %sd3;\n  mad.hi.cc.s64 %sd4, %sd5, %sd6, %sd7;\n  madc.lo.u32 %r8, %r9, %r10, %r11;\n  madc.hi.u32 %r12, %r13, %r14, %r15;\n  madc.lo.cc.u32 %r16, %r17, %r18, %r19;\n  madc.hi.cc.u32 %r20, %r21, %r22, %r23;\n  madc.lo.s32 %s8, %s9, %s10, %s11;\n  madc.hi.s32 %s12, %s13, %s14, %s15;\n  madc.lo.cc.s32 %s16, %s17, %s18, %s19;\n  madc.hi.cc.s32 %s20, %s21, %s22, %s23;\n  madc.lo.u64 %rd8, %rd9, %rd10, %rd11;\n  madc.hi.u64 %rd12, %rd13, %rd14, %rd15;\n  madc.lo.cc.u64 %rd16, %rd17, %rd18, %rd19;\n  madc.hi.cc.u64 %rd20, %rd21, %rd22, %rd23;\n  madc.lo.s64 %sd8, %sd9, %sd10, %sd11;\n  madc.hi.s64 %sd12, %sd13, %sd14, %sd15;\n  madc.lo.cc.s64 %sd16, %sd17, %sd18, %sd19;\n  madc.hi.cc.s64 %sd20, %sd21, %sd22, %sd23;\n  ret;\n}\n",
+      "source_sha256": "c1f54f560e5102fe41e4ff1438f573545dc4d821ec6051141199d860ec7698c9",
+      "replay": {
+        "working_directory": "runs/positive_all_24_v80_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_all_24_v80_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_all_24_v80_sm80/stdout.txt",
+        "stderr_file": "runs/positive_all_24_v80_sm80/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_all_24_v80_sm80' for 'sm_80'\nptxas info    : Function properties for positive_all_24_v80_sm80\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 1.873 ms\n",
+      "object_bytes": 3240,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_immediate_u32",
+      "phase": "positive",
+      "note": "Immediate multiplicands and addends for 32-bit unsigned forms.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_immediate_u32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_immediate_u32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, 1, 2, 3;\n  mad.hi.cc.u32 %r1, 1, 2, 3;\n  madc.lo.u32 %r2, 1, 2, 3;\n  madc.hi.cc.u32 %r3, 1, 2, 3;\n  ret;\n}\n",
+      "source_sha256": "eca73180e6dd92f9b9aa0ef2fca396698b650ee75bd90b3761c308960b72f21d",
+      "replay": {
+        "working_directory": "runs/positive_immediate_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_immediate_u32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_immediate_u32/stdout.txt",
+        "stderr_file": "runs/positive_immediate_u32/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_immediate_u32' for 'sm_80'\nptxas info    : Function properties for positive_immediate_u32\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 1.975 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_immediate_s32",
+      "phase": "positive",
+      "note": "Signed 32-bit immediate operands.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_immediate_s32.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_immediate_s32() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.s32 %s0, -1, 2, -3;\n  mad.hi.cc.s32 %s1, -1, 2, -3;\n  madc.lo.s32 %s2, -1, 2, -3;\n  madc.hi.cc.s32 %s3, -1, 2, -3;\n  ret;\n}\n",
+      "source_sha256": "3a2eb86cb2ff25b88945934f4e070eef665623cee8b2cf847e843087cc1b597c",
+      "replay": {
+        "working_directory": "runs/positive_immediate_s32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_immediate_s32",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_immediate_s32/stdout.txt",
+        "stderr_file": "runs/positive_immediate_s32/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_immediate_s32' for 'sm_80'\nptxas info    : Function properties for positive_immediate_s32\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 1.845 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_immediate_u64",
+      "phase": "positive",
+      "note": "Unsigned 64-bit immediate operands.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_immediate_u64.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_immediate_u64() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u64 %rd0, 1, 2, 3;\n  mad.hi.cc.u64 %rd1, 1, 2, 3;\n  madc.lo.u64 %rd2, 1, 2, 3;\n  madc.hi.cc.u64 %rd3, 1, 2, 3;\n  ret;\n}\n",
+      "source_sha256": "291ee739c8895dd2219619b64401b5eafd644040cfbe89bee1c170d6f2105c91",
+      "replay": {
+        "working_directory": "runs/positive_immediate_u64",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_immediate_u64",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_immediate_u64/stdout.txt",
+        "stderr_file": "runs/positive_immediate_u64/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_immediate_u64' for 'sm_80'\nptxas info    : Function properties for positive_immediate_u64\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 1.657 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_immediate_s64",
+      "phase": "positive",
+      "note": "Signed 64-bit immediate operands.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_immediate_s64.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_immediate_s64() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.s64 %sd0, -1, 2, -3;\n  mad.hi.cc.s64 %sd1, -1, 2, -3;\n  madc.lo.s64 %sd2, -1, 2, -3;\n  madc.hi.cc.s64 %sd3, -1, 2, -3;\n  ret;\n}\n",
+      "source_sha256": "65c5950f0e44c3133be6b51066931fa9dbde46d26d7182752ae5856e18459fe4",
+      "replay": {
+        "working_directory": "runs/positive_immediate_s64",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_immediate_s64",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_immediate_s64/stdout.txt",
+        "stderr_file": "runs/positive_immediate_s64/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_immediate_s64' for 'sm_80'\nptxas info    : Function properties for positive_immediate_s64\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 2.063 ms\n",
+      "object_bytes": 3112,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "positive_multiword_chain_v80_sm80",
+      "phase": "positive",
+      "note": "Official documented extended-precision multiply chain using mul, mad.cc, madc, and addc.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/positive_multiword_chain_v80_sm80.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry positive_multiword_chain_v80_sm80() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mul.lo.u32 %r0, %r4, %r6;\n  mul.hi.u32 %r1, %r4, %r6;\n  mad.lo.cc.u32 %r1, %r5, %r6, %r1;\n  madc.hi.u32 %r2, %r5, %r6, 0;\n  mad.lo.cc.u32 %r1, %r4, %r7, %r1;\n  madc.hi.cc.u32 %r2, %r4, %r7, %r2;\n  addc.u32 %r3, 0, 0;\n  mad.lo.cc.u32 %r2, %r5, %r7, %r2;\n  madc.hi.u32 %r3, %r5, %r7, %r3;\n  ret;\n}\n",
+      "source_sha256": "c7a5beda39a470609c8d72c2cf3c624354b64e09e4b53b3184e2e20041bc8618",
+      "replay": {
+        "working_directory": "runs/positive_multiword_chain_v80_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/positive_multiword_chain_v80_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/positive_multiword_chain_v80_sm80/stdout.txt",
+        "stderr_file": "runs/positive_multiword_chain_v80_sm80/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "accepted",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'positive_multiword_chain_v80_sm80' for 'sm_80'\nptxas info    : Function properties for positive_multiword_chain_v80_sm80\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 2.536 ms\n",
+      "object_bytes": 3240,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_u16",
+      "phase": "negative",
+      "note": "u16 is outside mad.cc type set.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_u16.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_u16() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u16 %h0, %h1, %h2, %h3;\n  ret;\n}\n",
+      "source_sha256": "5230b3dbf8a468795df496b1c8da2dfde347b4a987d31a2fda0a872c40c44a1b",
+      "replay": {
+        "working_directory": "runs/negative_mad_u16",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_u16",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_u16/stdout.txt",
+        "stderr_file": "runs/negative_mad_u16/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Modifier '.cc' applies only to mad.lo integer types\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_u16",
+      "phase": "negative",
+      "note": "u16 is outside madc type set.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_u16.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_u16() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.cc.u16 %h0, %h1, %h2, %h3;\n  ret;\n}\n",
+      "source_sha256": "9ce5ef3ff71dba1248d8030b6cad2e0b7e5c0f690c0b8bdca8635d58b2b803b9",
+      "replay": {
+        "working_directory": "runs/negative_madc_u16",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_u16",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_u16/stdout.txt",
+        "stderr_file": "runs/negative_madc_u16/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Modifier '.cc' applies only to madc.lo integer types\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_float",
+      "phase": "negative",
+      "note": "Floating type is outside mad.cc type set.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_float.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_float() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.f32 %f0, %f1, %f2, %f3;\n  ret;\n}\n",
+      "source_sha256": "114a0e8631b4ffa21954dc9a79ee376507a123877c2d4ba010a549a4b415d435",
+      "replay": {
+        "working_directory": "runs/negative_mad_float",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_float",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_float/stdout.txt",
+        "stderr_file": "runs/negative_mad_float/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Unexpected instruction types specified for 'mad.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_float",
+      "phase": "negative",
+      "note": "Floating type is outside madc type set.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_float.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_float() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.cc.f32 %f0, %f1, %f2, %f3;\n  ret;\n}\n",
+      "source_sha256": "23db189e1377787d717cf7705570311f41fc2224621b9976c9df36158deceaed",
+      "replay": {
+        "working_directory": "runs/negative_madc_float",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_float",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_float/stdout.txt",
+        "stderr_file": "runs/negative_madc_float/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Unexpected instruction types specified for 'madc.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_sat",
+      "phase": "negative",
+      "note": "Saturation modifier is not in mad.cc syntax.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_sat.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_sat() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.sat.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "b5302e31cf5bc1c3e30ff0f26821ec604b623e78cc96e48dcb79439060f34ce9",
+      "replay": {
+        "working_directory": "runs/negative_mad_sat",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_sat",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_sat/stdout.txt",
+        "stderr_file": "runs/negative_mad_sat/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Illegal modifier '.sat' for instruction 'mad.lo'\nptxas case.ptx, line 13; error   : Modifier '.cc' cannot be combined with modifier '.sat'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_sat",
+      "phase": "negative",
+      "note": "Saturation modifier is not in madc syntax.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_sat.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_sat() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.sat.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "1c0c226ec5ded651af60a2ee2ab286af548c7b121fdecd3f9973ffcc434fc624",
+      "replay": {
+        "working_directory": "runs/negative_madc_sat",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_sat",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_sat/stdout.txt",
+        "stderr_file": "runs/negative_madc_sat/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Illegal modifier '.sat' for instruction 'madc.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_wide",
+      "phase": "negative",
+      "note": "wide mode is not in mad.cc syntax.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_wide.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_wide() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.wide.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "1c95c0fb4913df9f231f7887d2f9710bb5072fa45a4f254ef0fcb419378d1340",
+      "replay": {
+        "working_directory": "runs/negative_mad_wide",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_wide",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_wide/stdout.txt",
+        "stderr_file": "runs/negative_mad_wide/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Arguments mismatch for instruction 'mad.wide'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_wide",
+      "phase": "negative",
+      "note": "wide mode is not in madc syntax.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_wide.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_wide() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.wide.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "dd114fdc125534cc0bc3557d31d57ce8ec4dcef2d100d98dede2523dc22835e8",
+      "replay": {
+        "working_directory": "runs/negative_madc_wide",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_wide",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_wide/stdout.txt",
+        "stderr_file": "runs/negative_madc_wide/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Unknown modifier '.wide'\nptxas case.ptx, line 13; error   : Not a name of any known instruction: 'madc'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_modifier_order",
+      "phase": "negative",
+      "note": "mad.cc modifier order is invalid.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_modifier_order.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_modifier_order() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.cc.lo.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "62a855b657f2b5465293952ce6ce628280d0c033afbf542335b248eb63292459",
+      "replay": {
+        "working_directory": "runs/negative_mad_modifier_order",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_modifier_order",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_modifier_order/stdout.txt",
+        "stderr_file": "runs/negative_mad_modifier_order/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Unexpected instruction types specified for 'mad'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_modifier_order",
+      "phase": "negative",
+      "note": "madc.cc modifier order is invalid.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_modifier_order.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_modifier_order() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.cc.lo.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "a417ff9aa16d602049a753d80bf875b8ab1b5da85961f0128a2f0d63e8777501",
+      "replay": {
+        "working_directory": "runs/negative_madc_modifier_order",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_modifier_order",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_modifier_order/stdout.txt",
+        "stderr_file": "runs/negative_madc_modifier_order/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Not a name of any known instruction: 'madc'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_duplicate_cc",
+      "phase": "negative",
+      "note": "Duplicate carry-out modifier; record assembler acceptance for primary review.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_duplicate_cc.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_duplicate_cc() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "78ae58ba6a7f0315c194a47bff1647a38f30b9a2b2b914420773d886b51c5c62",
+      "replay": {
+        "working_directory": "runs/negative_mad_duplicate_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_duplicate_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_duplicate_cc/stdout.txt",
+        "stderr_file": "runs/negative_mad_duplicate_cc/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "unspecified_observation",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'negative_mad_duplicate_cc' for 'sm_80'\nptxas info    : Function properties for negative_mad_duplicate_cc\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 10.603 ms\n",
+      "object_bytes": 3240,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_madc_duplicate_cc",
+      "phase": "negative",
+      "note": "Duplicate carry-out modifier; record assembler acceptance for primary review.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_madc_duplicate_cc.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_madc_duplicate_cc() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  madc.lo.cc.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "0a9fcb78fe89ff72b7d7bc0c8c9f1c705f033a75ae9ebf8c0c3559565bc08651",
+      "replay": {
+        "working_directory": "runs/negative_madc_duplicate_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_madc_duplicate_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_madc_duplicate_cc/stdout.txt",
+        "stderr_file": "runs/negative_madc_duplicate_cc/stderr.txt"
+      },
+      "exit_code": 0,
+      "observed_status": "accepted",
+      "expected_classification": "unspecified_observation",
+      "classification": "accepted",
+      "stdout": "",
+      "stderr": "ptxas info    : 0 bytes gmem\nptxas info    : Compiling entry function 'negative_madc_duplicate_cc' for 'sm_80'\nptxas info    : Function properties for negative_madc_duplicate_cc\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 4 registers, used 0 barriers, 352 bytes cmem[0]\nptxas info    : Compile time = 2.896 ms\n",
+      "object_bytes": 3240,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_dest_width",
+      "phase": "negative",
+      "note": "u32 instruction destination has 64-bit register.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_dest_width.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_dest_width() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %rd0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "a7b6ae4eb519f558135691831fb2c47f127df24795bf126a865577215de33acd",
+      "replay": {
+        "working_directory": "runs/negative_mad_dest_width",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_dest_width",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_dest_width/stdout.txt",
+        "stderr_file": "runs/negative_mad_dest_width/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Arguments mismatch for instruction 'mad.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_source_width",
+      "phase": "negative",
+      "note": "u32 instruction multiplicand has 64-bit register.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_source_width.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_source_width() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %rd1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "33c210ef28d5b8a0047e040bc6f3f29f9f7b2f8aa3ca40ec3b10ec788f3ade2f",
+      "replay": {
+        "working_directory": "runs/negative_mad_source_width",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_source_width",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_source_width/stdout.txt",
+        "stderr_file": "runs/negative_mad_source_width/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Arguments mismatch for instruction 'mad.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_float_register",
+      "phase": "negative",
+      "note": "u32 instruction destination has floating register.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_float_register.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_float_register() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %f0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "3eefb3febb7d6ee2b15ae6c88028b06aeb91d6e462c0af18fd9630d893cd410f",
+      "replay": {
+        "working_directory": "runs/negative_mad_float_register",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_float_register",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_float_register/stdout.txt",
+        "stderr_file": "runs/negative_mad_float_register/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Arguments mismatch for instruction 'mad.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "negative_mad_rounding",
+      "phase": "negative",
+      "note": "Floating rounding modifier is invalid for integer mad.",
+      "target": "sm_80",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/negative_mad_rounding.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_80\n.address_size 64\n.visible .entry negative_mad_rounding() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.rn.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "1ba151d1905e06bccca2424dd1cee4502630cfd2a3f814768096926217c7b18c",
+      "replay": {
+        "working_directory": "runs/negative_mad_rounding",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/negative_mad_rounding",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/negative_mad_rounding/stdout.txt",
+        "stderr_file": "runs/negative_mad_rounding/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "contract_reject",
+      "classification": "contract_reject",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Illegal rounding modifier for instruction 'mad.lo'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "boundary_ptx93_v93_sm80",
+      "phase": "boundary",
+      "note": "PTX 9.3 normative source against CUDA 13.1 ptxas, which supports through PTX 9.1.",
+      "target": "sm_80",
+      "ptx_version": "9.3",
+      "original_source_file": "sources/boundary_ptx93_v93_sm80.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 9.3\n.target sm_80\n.address_size 64\n.visible .entry boundary_ptx93_v93_sm80() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "8c48a8f83de0526b7d4eab8aeec9ff9c0b4000921e3550aef76815207d87e2b9",
+      "replay": {
+        "working_directory": "runs/boundary_ptx93_v93_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/boundary_ptx93_v93_sm80",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/boundary_ptx93_v93_sm80/stdout.txt",
+        "stderr_file": "runs/boundary_ptx93_v93_sm80/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "tool_unavailable",
+      "classification": "tool_unavailable",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 1; fatal   : Unsupported .version 9.3; current version is '9.1'\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "boundary_ptx2_mad_cc",
+      "phase": "boundary",
+      "note": "mad.cc is documented as introduced in PTX 3.0.",
+      "target": "sm_20",
+      "arch": "sm_80",
+      "ptx_version": "2.0",
+      "original_source_file": "sources/boundary_ptx2_mad_cc.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 2.0\n.target sm_20\n.visible .entry boundary_ptx2_mad_cc() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "a35fc944a9d5585972b217f22cf9c16ba484844098bc4d248f2b8f8f47ad5339",
+      "replay": {
+        "working_directory": "runs/boundary_ptx2_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/boundary_ptx2_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/boundary_ptx2_mad_cc/stdout.txt",
+        "stderr_file": "runs/boundary_ptx2_mad_cc/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "version_boundary",
+      "classification": "version_boundary",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 12; error   : Feature 'mad.cc' requires PTX ISA .version 3.0 or later\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "classification_match": true
+    },
+    {
+      "id": "boundary_ptx3_u64_mad_cc",
+      "phase": "boundary",
+      "note": "64-bit mad.cc is documented as introduced in PTX 4.3.",
+      "target": "sm_20",
+      "ptx_version": "3.0",
+      "original_source_file": "sources/boundary_ptx3_u64_mad_cc.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 3.0\n.target sm_20\n.address_size 64\n.visible .entry boundary_ptx3_u64_mad_cc() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u64 %rd0, %rd1, %rd2, %rd3;\n  ret;\n}\n",
+      "source_sha256": "0c0ffb3d751ac52fd99402b9afddcce74ead5def26534d78556493b3fbf17536",
+      "replay": {
+        "working_directory": "runs/boundary_ptx3_u64_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/boundary_ptx3_u64_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/boundary_ptx3_u64_mad_cc/stdout.txt",
+        "stderr_file": "runs/boundary_ptx3_u64_mad_cc/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "version_boundary",
+      "classification": "version_boundary",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Feature '.cc with 64bit type' requires PTX ISA .version 4.3 or later\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    },
+    {
+      "id": "boundary_sm10_mad_cc",
+      "phase": "boundary",
+      "note": "mad.cc is documented as requiring sm_20 or higher.",
+      "target": "sm_10",
+      "ptx_version": "8.0",
+      "original_source_file": "sources/boundary_sm10_mad_cc.ptx",
+      "source_file": "case.ptx",
+      "source_text": ".version 8.0\n.target sm_10\n.address_size 64\n.visible .entry boundary_sm10_mad_cc() {\n  .reg .u16 %h<8>;\n  .reg .s16 %hs<8>;\n  .reg .u32 %r<32>;\n  .reg .s32 %s<32>;\n  .reg .u64 %rd<32>;\n  .reg .s64 %sd<32>;\n  .reg .f32 %f<8>;\n  .reg .f64 %fd<8>;\n  mad.lo.cc.u32 %r0, %r1, %r2, %r3;\n  ret;\n}\n",
+      "source_sha256": "b6d87a7e1604a50dfe2a5a4c6d04996b585f03f3caa3331c483ae1aa1794a4b7",
+      "replay": {
+        "working_directory": "runs/boundary_sm10_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ]
+      },
+      "execution": {
+        "cwd": "runs/boundary_sm10_mad_cc",
+        "argv": [
+          "/usr/local/cuda/bin/ptxas",
+          "-v",
+          "-arch=sm_80",
+          "-o",
+          "case.o",
+          "case.ptx"
+        ],
+        "stdout_file": "runs/boundary_sm10_mad_cc/stdout.txt",
+        "stderr_file": "runs/boundary_sm10_mad_cc/stderr.txt"
+      },
+      "exit_code": 255,
+      "observed_status": "rejected",
+      "expected_classification": "target_boundary",
+      "classification": "target_boundary",
+      "stdout": "",
+      "stderr": "ptxas case.ptx, line 13; error   : Instruction 'mad.cc' requires .target sm_20 or higher\nptxas fatal   : Ptx assembly aborted due to errors\n",
+      "object_bytes": null,
+      "arch": "sm_80",
+      "classification_match": true
+    }
+  ]
+}

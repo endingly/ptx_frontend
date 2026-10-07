@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 
 namespace ptx_frontend::syntax_ast {
@@ -39,20 +40,16 @@ struct AstPredicateOperand {
   SourceRange range;
 };
 
-/** Lexical category of the literal token underlying an immediate. */
-enum class AstImmediateKind : uint8_t {
-  DecimalInteger,
-  HexInteger,
-  F32Hex,
-  F64Hex,
-  DecimalFloat,
-  WarpSize,
-};
-
 /** A lexical literal whose semantic value is decoded during resolution. */
 struct AstImmediate {
   AstSyntax syntax;
   AstImmediateKind kind = AstImmediateKind::DecimalInteger;
+};
+
+/** An integer instruction operand complemented as a predicate constant. */
+struct AstNegatedImmediate {
+  AstImmediate immediate;
+  SourceRange range;
 };
 
 struct AstAddressOffset {
@@ -68,6 +65,10 @@ struct AstAddress {
   std::variant<AstIdentifierRef, AstImmediate> base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
+  /** PTX `.unified` address suffix independent of declaration attributes. */
+  bool unified{};
+  /** Suffix location; empty when `unified` is false. */
+  SourceRange unified_range;
   SourceRange range;
 };
 
@@ -81,6 +82,17 @@ using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate>;
 
 struct AstVectorPack {
   std::vector<AstVectorElement> elements;
+  SourceRange range;
+};
+
+/** Unresolved tensor-map address paired with rank-dependent coordinates. */
+struct AstTensorOperand {
+  AstAddress tensor_map;
+  AstVectorPack coordinates;
+  /** Separator and outer delimiters survive CST lowering for diagnostics. */
+  SourceRange left_bracket_range;
+  SourceRange comma_range;
+  SourceRange right_bracket_range;
   SourceRange range;
 };
 
@@ -125,10 +137,11 @@ struct AstRegisterPredicatePair {
 
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand =
-    std::variant<AstIdentifierRef, AstPredicateOperand, AstImmediate,
-                 AstAddress, AstVectorMember, AstVectorPack,
-                 AstCallParameterList, AstCallTarget, AstCallTargetSet,
-                 AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
+    std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
+                 AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
+                 AstTensorOperand, AstCallParameterList, AstCallTarget,
+                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
+                 AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {
@@ -303,15 +316,6 @@ struct AstAttribute {
   AstAttributeKind kind{};
   std::vector<AstSyntax> values;
   SourceRange range;
-};
-
-enum class AstStateSpace : uint8_t {
-  Register,
-  Parameter,
-  Local,
-  Shared,
-  Global,
-  Constant,
 };
 
 struct AstVariableDeclaration {

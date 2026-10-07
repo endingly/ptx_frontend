@@ -8,5 +8,13 @@
     "fmt",
     "gtest",
     "magic-enum"
-  ]
+  ],
+  "features": {
+    "benchmarks": {
+      "description": "Build optional frontend performance benchmarks",
+      "dependencies": [
+        "benchmark"
+      ]
+    }
+  }
 }

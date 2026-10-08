@@ -132,7 +132,7 @@ TEST(ModuleNewOpsReferences, Im2colInfoRegisterIdentityIsOwned) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)));
 }
 
-/** Shared matrix descriptors retain declaration identity and cached type. */
+/** Both shared matrix carriers retain scalar shape and type without syntax. */
 TEST(ModuleNewOpsReferences, WgmmaDescriptorBindingIsOwned) {
   auto owned = owned_module(R"ptx(
 .version 9.3
@@ -150,9 +150,68 @@ TEST(ModuleNewOpsReferences, WgmmaDescriptorBindingIsOwned) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
   auto& mma = dynamic_cast<WgmmaMmaAsyncDenseM64n8k16F16F16F16SharedPlain&>(
       *owned->functions.front().body.front());
-  mma.a_desc.value.register_ref.symbol_id.reset();
-  EXPECT_TRUE(has_module_mismatch(
-      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)));
+  const auto target = base::find_target_profile("sm_90a");
+  ASSERT_TRUE(target.has_value());
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = target->identity.architecture.number,
+                 .enabled_family_features = target->enabled_family_features,
+                 .identity = target->identity,
+                 .capabilities = target->capabilities},
+      .instruction_range = owned->functions.front().instruction_ranges.front(),
+  };
+  const auto expect_rejected = [&]() {
+    EXPECT_FALSE(mma.check(context).has_value());
+    EXPECT_FALSE(
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  };
+  for (ResolvedRegisterRef* carrier :
+       {&mma.a_desc.value.register_ref, &mma.b_desc.value.register_ref}) {
+    ASSERT_TRUE(carrier->symbol_id);
+    ASSERT_EQ(carrier->declared_type, ScalarType::B64);
+    const auto saved_id = carrier->symbol_id;
+
+    carrier->vector_width = 2;
+    expect_rejected();
+    carrier->vector_width.reset();
+    carrier->register_class = ResolvedRegisterClass::Predicate;
+    expect_rejected();
+    carrier->register_class = ResolvedRegisterClass::General;
+    carrier->declared_type = ScalarType::F64;
+    expect_rejected();
+    carrier->declared_type.reset();
+    expect_rejected();
+
+    carrier->symbol_id.reset();
+    EXPECT_TRUE(mma.check(context).has_value());
+    EXPECT_TRUE(has_module_mismatch(validateModule(
+        *owned, ModuleValidationPolicy::RequireCompleteContext)));
+    carrier->symbol_id = saved_id;
+    carrier->declared_type = ScalarType::B64;
+  }
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** Standalone descriptors defer types until declarations can be bound. */
+TEST(ModuleNewOpsReferences, WgmmaStandaloneDescriptorTypesRemainDeferred) {
+  const auto parsed = test_helpers::parseInstruction(
+      "wgmma.mma_async.sync.aligned.m64n8k16.f16.f16.f16 "
+      "{%d0,%d1}, %rd0, %rd1, 1, -1, 1, 0, 1;");
+  ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+  auto resolved = resolveInstruction(*parsed);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+  const auto target = base::find_target_profile("sm_90a");
+  ASSERT_TRUE(target.has_value());
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = target->identity.architecture.number,
+                 .enabled_family_features = target->enabled_family_features,
+                 .identity = target->identity,
+                 .capabilities = target->capabilities},
+      .instruction_range = parsed->range,
+  };
+  EXPECT_TRUE((*resolved)->check(context).has_value());
 }
 
 }  // namespace

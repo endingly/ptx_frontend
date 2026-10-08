@@ -101,6 +101,44 @@ TEST(TcgenAllocation, AcceptsActionsGroupsAndConvertedCounts) {
       "%signed_count;\n"
       "  tcgen05.dealloc.cta_group::1.sync.aligned.b32 %t, "
       "%unsigned_count;\n")));
+  for (std::string_view carrier : {"%t", "%unsigned_count", "%signed_count"}) {
+    SCOPED_TRACE(carrier);
+    const std::string instruction =
+        "  tcgen05.alloc.cta_group::1.sync.aligned.b32 [slot], " +
+        std::string(carrier) + ";\n" +
+        "  tcgen05.dealloc.cta_group::1.sync.aligned.b32 " +
+        std::string(carrier) + ", " + std::string(carrier) + ";\n";
+    EXPECT_TRUE(accepts_allocation(allocation_source(instruction), true));
+  }
+}
+
+/** Standalone allocation carriers retain deferred declaration checking. */
+TEST(TcgenAllocation, AcceptsStandaloneUnknownScalarRegisters) {
+  const auto target = base::find_target_profile("sm_110a");
+  ASSERT_TRUE(target.has_value());
+  for (std::string_view source : {
+           "tcgen05.alloc.cta_group::1.sync.aligned.b32 [%rd0], %r0;",
+           "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %r0, 32;",
+           "tcgen05.dealloc.cta_group::1.sync.aligned.b32 0, %r0;",
+       }) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseInstruction();
+    ASSERT_TRUE(ast.has_value());
+    auto resolved = resolveInstruction(*ast);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3},
+                   .sm_version = target->identity.architecture.number,
+                   .enabled_family_features = target->enabled_family_features,
+                   .identity = target->identity,
+                   .capabilities = target->capabilities},
+        .instruction_range = ast->range,
+    };
+    const auto result = (*resolved)->check(context);
+    EXPECT_TRUE(result.has_value())
+        << (result ? "" : result.error().front().message);
+  }
 }
 
 /** Converted column count, carrier shape, and result-slot placement are checked. */
@@ -115,6 +153,8 @@ TEST(TcgenAllocation, RejectsKnownInvalidOperandsAndLocations) {
   for (std::string_view source : {
            "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %wide, 32;",
            "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %float_count, 32;",
+           "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %t, %wide;",
+           "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %t, %float_count;",
            "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 "
            "[slot], %wide;",
            "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 "
@@ -226,6 +266,58 @@ TEST(TcgenAllocation, RejectsOwnedCountAddressAndGroupTampering) {
   address.register_class = ResolvedRegisterClass::Predicate;
   EXPECT_FALSE(validateModule(*owned).has_value());
   address.register_class = ResolvedRegisterClass::General;
+  EXPECT_TRUE(validateModule(*owned).has_value());
+}
+
+/** Bound allocation scalars require cached types after syntax is released. */
+TEST(TcgenAllocation, RejectsOwnedScalarMetadataTampering) {
+  auto ast = parse_allocation_module(allocation_source(
+      "  tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 "
+      "[slot], %n;\n"
+      "  tcgen05.dealloc.cta_group::1.sync.aligned.b32 %t, %n;\n"));
+  ASSERT_TRUE(ast);
+  auto resolved = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  std::optional<ResolvedModule> owned = std::move(*resolved);
+  ast.reset();
+  auto& alloc =
+      dynamic_cast<Tcgen05AllocSharedCta&>(*owned->functions.front().body[0]);
+  auto& dealloc =
+      dynamic_cast<Tcgen05Dealloc&>(*owned->functions.front().body[1]);
+  auto& alloc_count = std::get<ResolvedRegisterRef>(alloc.ncols.value);
+  auto& dealloc_address =
+      std::get<ResolvedRegisterRef>(dealloc.taddr.value.value);
+  auto& dealloc_count = std::get<ResolvedRegisterRef>(dealloc.ncols.value);
+  const auto target = base::find_target_profile("sm_100a");
+  ASSERT_TRUE(target.has_value());
+  const checker::Context alloc_context{
+      .target = {.ptx_version = {8, 6},
+                 .sm_version = target->identity.architecture.number,
+                 .enabled_family_features = target->enabled_family_features,
+                 .identity = target->identity,
+                 .capabilities = target->capabilities},
+      .instruction_range = owned->functions.front().instruction_ranges[0],
+  };
+  checker::Context dealloc_context = alloc_context;
+  dealloc_context.instruction_range =
+      owned->functions.front().instruction_ranges[1];
+  for (ResolvedRegisterRef* carrier :
+       {&alloc_count, &dealloc_address, &dealloc_count}) {
+    ASSERT_TRUE(carrier->symbol_id);
+    const auto saved_type = carrier->declared_type;
+    const Instruction* instruction =
+        carrier == &alloc_count ? static_cast<const Instruction*>(&alloc)
+                                : static_cast<const Instruction*>(&dealloc);
+    const checker::Context& context =
+        carrier == &alloc_count ? alloc_context : dealloc_context;
+    carrier->declared_type.reset();
+    EXPECT_FALSE(instruction->check(context).has_value());
+    EXPECT_FALSE(validateModule(*owned).has_value());
+    carrier->declared_type = ScalarType::F32;
+    EXPECT_FALSE(instruction->check(context).has_value());
+    EXPECT_FALSE(validateModule(*owned).has_value());
+    carrier->declared_type = saved_type;
+  }
   EXPECT_TRUE(validateModule(*owned).has_value());
 }
 

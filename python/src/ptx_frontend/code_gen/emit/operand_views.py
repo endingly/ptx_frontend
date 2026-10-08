@@ -339,6 +339,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .register_symbol_id = {object_name}.{field.name}.value.register_ref.symbol_id,
                   .register_class = {object_name}.{field.name}.value.register_ref.register_class,
+                  .register_vector_width = {object_name}.{field.name}.value.register_ref.vector_width,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_kind is ResolvedValueKind.REGISTER:

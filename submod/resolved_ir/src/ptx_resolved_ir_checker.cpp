@@ -1491,9 +1491,28 @@ void append_matrix_operand_diagnostics(
     std::span<const OperandView> operands, const Context& context,
     CheckDiagnostics& diagnostics) {
   if (matrix != nullptr) {
-    // WGMMA signs use an s32 -1/+1 domain; other matrix controls are
-    // nonnegative. Both source and converted payload must remain coherent.
+    // Recheck descriptor carriers and source-backed controls independently of
+    // the syntax tree; standalone unknown register types remain deferred.
     for (const OperandView& operand : operands) {
+      if ((matrix->family == MatrixFamily::WGMMA ||
+           matrix->family == MatrixFamily::WGMMA_SPARSE) &&
+          (operand.field_id == "a_desc" || operand.field_id == "b_desc")) {
+        const bool valid_carrier =
+            operand.actual_shape == OperandShape::Register &&
+            operand.register_class == ResolvedRegisterClass::General &&
+            !operand.register_vector_width &&
+            (!operand.register_symbol_id || operand.register_type) &&
+            (!operand.register_type ||
+             (is_integer_type(*operand.register_type) &&
+              base::scalar_size_of(*operand.register_type) == 8));
+        if (!valid_carrier)
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::OperandTypeMismatch,
+              .range = diagnostic_range(operand.locations, context),
+              .message = "WGMMA shared descriptor requires a scalar 64-bit "
+                         "general register.",
+          });
+      }
       if ((matrix->family == MatrixFamily::WGMMA ||
            matrix->family == MatrixFamily::WGMMA_SPARSE) &&
           operand.field_id == "scale_d") {
@@ -2155,8 +2174,10 @@ CheckResult check_tcgen_allocation_rule(TcgenAllocationAction action,
     }
     if (operand->actual_shape == OperandShape::Register) {
       if (operand->register_class != ResolvedRegisterClass::General ||
-          operand->register_vector_width || !operand->register_type ||
-          (*operand->register_type != ScalarType::B32 &&
+          operand->register_vector_width ||
+          (!operand->register_type && operand->register_symbol_id) ||
+          (operand->register_type &&
+           *operand->register_type != ScalarType::B32 &&
            *operand->register_type != ScalarType::U32 &&
            *operand->register_type != ScalarType::S32)) {
         reject(operand, CheckDiagnosticKind::OperandTypeMismatch,

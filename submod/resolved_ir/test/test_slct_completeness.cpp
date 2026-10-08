@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -7,11 +6,10 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/slct.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -60,19 +58,19 @@ TEST(SlctCompleteness, ResolvesAllTypeAndSelectorCombinations) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Slct>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 22u);
   for (size_t index = 0; index < body.size(); ++index) {
     SCOPED_TRACE(index);
-    const auto* instruction = test_ir_access::get_if<Slct>(&body[index]);
-    ASSERT_NE(instruction, nullptr);
-    EXPECT_EQ(instruction->variant.index(), index % 2u);
+    if (index % 2u == 0u) {
+      EXPECT_NE(dynamic_cast<const SlctS32*>(body[index].get()), nullptr);
+    } else {
+      EXPECT_NE(dynamic_cast<const SlctF32*>(body[index].get()), nullptr);
+    }
   }
-  const auto& floating = test_ir_access::get<Slct::F32>(
-      test_ir_access::get<Slct>(body[21]).variant);
+  const auto& floating = dynamic_cast<const SlctF32&>(*body[21]);
   EXPECT_TRUE(floating.ftz.value);
   EXPECT_EQ(floating.dtype.value, ScalarType::F64);
 }
@@ -92,24 +90,21 @@ TEST(SlctCompleteness, AcceptsNumericDataAndSelectorImmediates) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Slct>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
-  const auto& integer = test_ir_access::get<Slct::S32>(
-      test_ir_access::get<Slct>(body[0]).variant);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      integer.src_true.value));
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      integer.selector.value));
-  const auto& floating = test_ir_access::get<Slct::F32>(
-      test_ir_access::get<Slct>(body[1]).variant);
+  const auto& integer = dynamic_cast<const SlctS32&>(*body[0]);
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(integer.src_true.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(integer.selector.value));
+  const auto& floating = dynamic_cast<const SlctF32&>(*body[1]);
   EXPECT_TRUE(floating.ftz.value);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      floating.src_false.value));
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      floating.selector.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.src_false.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
 }
 
 /** Reject unsupported data/selector suffixes and FTZ on integer selection. */
@@ -123,7 +118,7 @@ TEST(SlctCompleteness, RejectsInvalidModifierCombinations) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolve<Slct>(*parsed).has_value());
+    EXPECT_FALSE(resolveSlct(*parsed).has_value());
   }
 }
 
@@ -162,8 +157,7 @@ TEST(SlctCompleteness, EnforcesNominalDataAndSelectorContainers) {
   .reg .f64 %f64a, %f64d;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    const auto resolved = test_support::resolveTypedModule<Slct>(
-        *parsed, test_support::ModulePipeline::CompleteContext);
+    const auto resolved = resolveAndValidateModule(*parsed);
     EXPECT_EQ(resolved.has_value(), accepted);
   }
 }
@@ -186,8 +180,7 @@ TEST(SlctCompleteness, RejectsWrongTypedImmediates) {
   .reg .s32 %c;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -200,48 +193,50 @@ TEST(SlctCompleteness, EnforcesPtxAndF64SmMinimum) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Slct>(*parsed);
+    auto resolved = resolveSlct(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_FALSE(checker::check(
-        *resolved,
-        checker::Context{.target = {.ptx_version = {0, 9}, .sm_version = 13}}));
-    EXPECT_FALSE(checker::check(
-        *resolved,
-        checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 12}}));
-    EXPECT_TRUE(checker::check(
-        *resolved,
-        checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 13}}));
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {0, 9}, .sm_version = 13}})
+                     .has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{
+                         .target = {.ptx_version = {1, 0}, .sm_version = 12}})
+                     .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{
+                        .target = {.ptx_version = {1, 0}, .sm_version = 13}})
+                    .has_value());
   }
 }
 
 /** Owned numeric operands and typed controls are rechecked after syntax release. */
 TEST(SlctCompleteness, RevalidatesOwnedAndMutatedInstruction) {
-  std::optional<Slct> owned;
+  std::unique_ptr<Instruction> owned;
   {
     const std::string source = "slct.ftz.u32.f32 %r0, 1, %r1, -1.0;";
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Slct>(*parsed);
+    auto resolved = resolveSlct(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    owned = *resolved;
+    owned = std::move(*resolved);
   }
-  ASSERT_TRUE(owned.has_value());
-  auto& floating = test_ir_access::get<Slct::F32>(owned->variant);
+  ASSERT_NE(owned, nullptr);
+  auto& floating = dynamic_cast<SlctF32&>(*owned);
   EXPECT_TRUE(floating.ftz.value);
   EXPECT_EQ(floating.dtype.value, ScalarType::U32);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      floating.src_true.value));
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      floating.selector.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.src_true.value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(floating.selector.value));
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
-  EXPECT_TRUE(checker::check(*owned, context));
+  EXPECT_TRUE(owned->check(context).has_value());
   floating.dtype.value = ScalarType::F16;
-  EXPECT_FALSE(checker::check(*owned, context));
+  EXPECT_FALSE(owned->check(context).has_value());
   floating.dtype.value = ScalarType::U32;
-  test_ir_access::get<ResolvedImmediate>(floating.selector.value).type =
-      ScalarType::S32;
-  EXPECT_FALSE(checker::check(*owned, context));
+  std::get<ResolvedImmediate>(floating.selector.value).type = ScalarType::S32;
+  EXPECT_FALSE(owned->check(context).has_value());
 }
 
 }  // namespace

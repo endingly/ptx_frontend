@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+#include <variant>
 
 #include <array>
 #include <filesystem>
@@ -42,17 +42,15 @@ void expectM12CorpusModule(const CorpusCase& corpus_case) {
   ASSERT_TRUE(parsed.has_value()) << file;
   ASSERT_GE(parsed->items.size(), 3u);
   EXPECT_EQ(
-      test_ir_access::get<syntax_ast::AstVersionDirective>(parsed->items[0])
-          .version.text,
+      std::get<syntax_ast::AstVersionDirective>(parsed->items[0]).version.text,
       "9.3");
   const auto& target =
-      test_ir_access::get<syntax_ast::AstTargetDirective>(parsed->items[1]);
+      std::get<syntax_ast::AstTargetDirective>(parsed->items[1]);
   ASSERT_EQ(target.targets.size(), 1u);
   EXPECT_EQ(target.targets[0].text, corpus_case.target);
-  EXPECT_EQ(
-      test_ir_access::get<syntax_ast::AstAddressSizeDirective>(parsed->items[2])
-          .bit_width.text,
-      "64");
+  EXPECT_EQ(std::get<syntax_ast::AstAddressSizeDirective>(parsed->items[2])
+                .bit_width.text,
+            "64");
 
   const auto resolved =
       test_support::resolveAndCheckAvailableModuleSnapshot(*parsed);

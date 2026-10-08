@@ -5,10 +5,13 @@ from importlib.util import find_spec
 import os
 
 from ptx_frontend.code_gen.cpp_backend import CppDomain, load_cpp_backend
+from ptx_frontend.code_gen.database import (
+    get_packaged_spec_database as compatibility_get_packaged_spec_database,
+)
 from ptx_frontend.code_gen.model import (
     InstructionSpec as CompatibilityInstructionSpec,
 )
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.spec.resources import (
@@ -62,16 +65,28 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.cli",
         "ptx_frontend.code_gen.context",
         "ptx_frontend.code_gen.plan",
+        "ptx_frontend.code_gen.resolved_layout",
         "ptx_frontend.code_gen.emit.resolved_model",
-        "ptx_frontend.code_gen.emit.resolved_resolver",
-        "ptx_frontend.code_gen.emit.resolved_checker",
-        "ptx_frontend.code_gen.emit.category_source",
-        "ptx_frontend.code_gen.emit.references",
+        "ptx_frontend.code_gen.emit.resolved_source",
         "ptx_frontend.code_gen.emit.resolved_dispatch",
         "ptx_frontend.code_gen.emit.resolved_descriptors",
         "ptx_frontend.code_gen.emit.checker_descriptors",
         "ptx_frontend.code_gen.emit.syntax_descriptors",
         "ptx_frontend.code_gen.emit.value_domains",
+        "ptx_frontend.code_gen.emit.matrix",
+        "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
+        "ptx_frontend.code_gen.emit.tcgen_mma_operations",
+        "ptx_frontend.code_gen.emit.tensor_map_known_facts",
+        "ptx_frontend.ir.tensor_reduction",
+        "ptx_frontend.spec.tcgen_descriptor_domains",
+        "ptx_frontend.spec.tcgen_mma_operations",
+        "ptx_frontend.spec.tensor_map_known_facts",
+        "ptx_frontend.spec.normalize.matrix",
+        "ptx_frontend.spec.normalize.tcgen_allocation",
+        "ptx_frontend.spec.normalize.tcgen_copy_shift",
+        "ptx_frontend.spec.normalize.tcgen_load_store",
+        "ptx_frontend.spec.normalize.tcgen_mma",
+        "ptx_frontend.spec.normalize.tcgen_sync",
         "ptx_frontend.scripts.gen_all",
         "ptx_frontend.scripts.validate_yaml",
     )
@@ -81,13 +96,29 @@ def check_module_layout() -> None:
     for module in packaged_modules:
         import_module(module)
 
+    from ptx_frontend.code_gen.emit.resolved_model import FORM_SHARD_SIZE
+    from ptx_frontend.spec.tcgen_descriptor_domains import (
+        validate_catalogue as validate_descriptor_catalogue,
+    )
+    from ptx_frontend.spec.tcgen_mma_operations import (
+        validate_catalogue as validate_mma_catalogue,
+    )
+    from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
+
+    assert FORM_SHARD_SIZE == 64
+    assert len(TensorFactRule) == 22
+    validate_descriptor_catalogue()
+    validate_mma_catalogue()
+
 
 def check_packaged_spec_model() -> None:
     """Exercise the normalized specification model from the installed wheel."""
 
     assert InstructionSpec is CompatibilityInstructionSpec
+    assert get_packaged_spec_database is compatibility_get_packaged_spec_database
 
-    database = load_packaged_spec_database()
+    database = get_packaged_spec_database()
+    assert get_packaged_spec_database() is database
 
     assert database.instructions
     assert all(isinstance(item, InstructionSpec) for item in database.instructions)

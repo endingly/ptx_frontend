@@ -41,4 +41,5 @@ jobs:
       - name: Run Python unit tests
         run: |
             .venv/bin/python -m unittest_parallel \
-              -s python/tests -t python -p 'test_*.py' --level=module -v
+              -s python/tests -t python -p 'test_*.py' \
+              --level=module --jobs 4 -v

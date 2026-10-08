@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <limits>
@@ -7,6 +6,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
@@ -33,7 +33,7 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 syntax_ast::AstImmediate parse_immediate(std::string_view literal) {
   const auto ast = parse_instruction(std::string("add.u32 %r0, %r1, ") +
                                      std::string(literal) + ";");
-  return test_ir_access::get<syntax_ast::AstImmediate>(ast.operands.back());
+  return std::get<syntax_ast::AstImmediate>(ast.operands.back());
 }
 
 /** Resolve one synthetic indirect-callee field using support descriptors. */
@@ -114,7 +114,7 @@ syntax_ast::AstInstruction indirect_metadata_instruction(std::string spelling) {
 /** Retrieve the resolved indirect callee from synthetic fields. */
 const WithLocs<ResolvedIndirectCallee>& indirect_callee_field(
     const ResolvedInstructionFields& fields) {
-  return test_ir_access::get<WithLocs<ResolvedIndirectCallee>>(
+  return std::get<WithLocs<ResolvedIndirectCallee>>(
       fields.operands.at("callee"));
 }
 
@@ -296,8 +296,7 @@ TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
 
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(resolved.error().range,
-            test_ir_access::get<syntax_ast::AstVectorPack>(ast.operands.front())
-                .range);
+            std::get<syntax_ast::AstVectorPack>(ast.operands.front()).range);
   EXPECT_EQ(resolved.error().message,
             "Vector operand requires 1 to 5 elements.");
 }
@@ -305,14 +304,13 @@ TEST(ResolveFields, DiagnosesModernPackCardinalityAtSyntaxSelection) {
 TEST(ResolveFields, DiagnosesModernPackElementShapeAtSyntaxSelection) {
   const auto ast = parse_instruction("sample {1};");
   const auto& vector =
-      test_ir_access::get<syntax_ast::AstVectorPack>(ast.operands.front());
+      std::get<syntax_ast::AstVectorPack>(ast.operands.front());
   const auto resolved = resolve_register_pack(ast);
 
   ASSERT_FALSE(resolved.has_value());
   EXPECT_EQ(
       resolved.error().range,
-      test_ir_access::get<syntax_ast::AstImmediate>(vector.elements.front())
-          .syntax.range);
+      std::get<syntax_ast::AstImmediate>(vector.elements.front()).syntax.range);
   EXPECT_EQ(resolved.error().message,
             "Vector operand element has a shape not accepted by this "
             "instruction layout.");
@@ -423,7 +421,7 @@ TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {
   const auto register_fields =
       resolve_indirect_callee_field(parse_instruction("call %r12;"));
   ASSERT_TRUE(register_fields.has_value()) << register_fields.error().message;
-  const auto* register_ref = test_ir_access::get_if<ResolvedRegisterRef>(
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(
       &indirect_callee_field(*register_fields).value);
   ASSERT_NE(register_ref, nullptr);
   EXPECT_EQ(register_ref->spelling, "%r12");
@@ -433,7 +431,7 @@ TEST(ResolveIndirectCallee, ResolvesStandaloneRegisterAndMetadataSpelling) {
   const auto metadata_fields =
       resolve_indirect_callee_field(indirect_metadata_instruction("prototype"));
   ASSERT_TRUE(metadata_fields.has_value()) << metadata_fields.error().message;
-  const auto* metadata = test_ir_access::get_if<ResolvedIndirectMetadataRef>(
+  const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(
       &indirect_callee_field(*metadata_fields).value);
   ASSERT_NE(metadata, nullptr);
   EXPECT_EQ(metadata->spelling, "prototype");
@@ -470,7 +468,7 @@ TEST(ResolveIndirectCallee, BindsRegisterAndMetadataDeclarations) {
   const auto register_fields =
       resolve_indirect_callee_field(parse_instruction("call %fptr;"), &context);
   ASSERT_TRUE(register_fields.has_value()) << register_fields.error().message;
-  const auto* register_ref = test_ir_access::get_if<ResolvedRegisterRef>(
+  const auto* register_ref = std::get_if<ResolvedRegisterRef>(
       &indirect_callee_field(*register_fields).value);
   ASSERT_NE(register_ref, nullptr);
   const auto fptr = binding.table.lookup(*scope, "%fptr");
@@ -483,7 +481,7 @@ TEST(ResolveIndirectCallee, BindsRegisterAndMetadataDeclarations) {
     const auto fields = resolve_indirect_callee_field(
         indirect_metadata_instruction(std::move(spelling)), &context);
     ASSERT_TRUE(fields.has_value()) << fields.error().message;
-    const auto* metadata = test_ir_access::get_if<ResolvedIndirectMetadataRef>(
+    const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(
         &indirect_callee_field(*fields).value);
     ASSERT_NE(metadata, nullptr);
     const auto expected = binding.table.lookup(*scope, metadata->spelling);
@@ -986,8 +984,8 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
   const auto implicit = resolve_fields(implicit_ast, syntax_descriptor,
                                        resolved_descriptor, "Defaulted");
   ASSERT_TRUE(implicit.has_value()) << implicit.error().message;
-  const auto* implicit_type = test_ir_access::get_if<WithLocs<ScalarType>>(
-      &implicit->modifiers.at("type"));
+  const auto* implicit_type =
+      std::get_if<WithLocs<ScalarType>>(&implicit->modifiers.at("type"));
   ASSERT_NE(implicit_type, nullptr);
   EXPECT_EQ(implicit_type->value, ScalarType::U32);
   EXPECT_TRUE(implicit_type->locs.empty());
@@ -996,8 +994,8 @@ TEST(ResolveFields, AppliesTypedOptionalModifierDefault) {
   const auto explicit_value = resolve_fields(explicit_ast, syntax_descriptor,
                                              resolved_descriptor, "Defaulted");
   ASSERT_TRUE(explicit_value.has_value()) << explicit_value.error().message;
-  const auto* explicit_type = test_ir_access::get_if<WithLocs<ScalarType>>(
-      &explicit_value->modifiers.at("type"));
+  const auto* explicit_type =
+      std::get_if<WithLocs<ScalarType>>(&explicit_value->modifiers.at("type"));
   ASSERT_NE(explicit_type, nullptr);
   EXPECT_EQ(explicit_type->value, ScalarType::U64);
   ASSERT_EQ(explicit_type->locs.size(), 1U);
@@ -1064,7 +1062,7 @@ TEST(ResolveFields, ResolvesComparisonOperatorModifier) {
   const auto fields =
       resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Comparison");
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
-  const auto* comparison = test_ir_access::get_if<WithLocs<ComparisonOperator>>(
+  const auto* comparison = std::get_if<WithLocs<ComparisonOperator>>(
       &fields->modifiers.at("comparison"));
   ASSERT_NE(comparison, nullptr);
   EXPECT_EQ(comparison->value, ComparisonOperator::Lt);
@@ -1132,8 +1130,8 @@ TEST(ResolveFields, ResolvesBooleanOperatorModifier) {
   const auto fields =
       resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Boolean");
   ASSERT_TRUE(fields.has_value()) << fields.error().message;
-  const auto* boolean = test_ir_access::get_if<WithLocs<BooleanOperator>>(
-      &fields->modifiers.at("boolean"));
+  const auto* boolean =
+      std::get_if<WithLocs<BooleanOperator>>(&fields->modifiers.at("boolean"));
   ASSERT_NE(boolean, nullptr);
   EXPECT_EQ(boolean->value, BooleanOperator::Xor);
   ASSERT_EQ(boolean->locs.size(), 1U);

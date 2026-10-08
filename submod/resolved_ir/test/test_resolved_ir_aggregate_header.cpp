@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 
 TEST(ResolvedIrPublicHeaders, CompatibilityAggregateCompilesStandalone) {
-  using ptx_frontend::resolved_ir::ModuleValidationPolicy;
-  EXPECT_EQ(ModuleValidationPolicy::RequireCompleteContext,
-            ModuleValidationPolicy::RequireCompleteContext);
+  using namespace ptx_frontend::resolved_ir;
+  EXPECT_EQ(AddIntegerNoSat::kind, InstructionKind::AddIntegerNoSat);
 }

@@ -3,7 +3,9 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_cp_control.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -25,14 +27,13 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::resolved_ir {
-/** Optional generated opcode type used by owned call ABI validation. */
-struct Call;
 namespace {
 
-/** Borrow one exact generated record from the instruction owner. */
-template <PtxOperator T>
-const T* instruction_if(const OwnedInstruction& instruction) {
-  return instruction.get_if<T>();
+/** Borrow an exact final class only after its dynamic type has been checked. */
+template <typename T>
+  requires std::derived_from<T, Instruction> && std::is_final_v<T>
+const T* instruction_if(const std::unique_ptr<Instruction>& instruction) {
+  return dynamic_cast<const T*>(instruction.get());
 }
 
 checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
@@ -320,7 +321,12 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
       continue;
     }
     for (size_t i = 0; i < instructions.size(); ++i) {
-      const auto opcode = resolved.body[i].opcode_name();
+      if (!resolved.body[i]) {
+        mismatch(instructions[i]->range,
+                 "Resolved function contains a null instruction entry.");
+        continue;
+      }
+      const auto opcode = resolved.body[i]->opcode_name();
       if (instructions[i]->opcode.syntax.text !=
               resolved.instruction_opcodes[i] ||
           opcode != resolved.instruction_opcodes[i]) {
@@ -342,11 +348,13 @@ void check_instruction_body(const ResolvedFunction& function,
                             const checker::TargetInfo& target,
                             checker::CheckDiagnostics& diagnostics) {
   for (size_t i = 0; i < function.body.size(); ++i) {
+    if (!function.body[i])
+      continue;
     const checker::Context context{
         .target = target,
         .instruction_range = function.instruction_ranges[i],
     };
-    const auto result = function.body[i].check(context);
+    const auto result = function.body[i]->check(context);
     if (!result)
       diagnostics.insert(diagnostics.end(), result.error().begin(),
                          result.error().end());
@@ -368,10 +376,10 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<binding::SymbolKind> expected_kind;
-  /** Borrowed symbol payload; valid while this validation call owns the module. */
-  const ResolvedSymbolRef* address_symbol{};
-  /** Present for an offset address that contributes function-context metadata. */
-  const ResolvedAddress* enclosing_address{};
+  /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
+  std::optional<ResolvedSymbolRef> address_symbol;
+  /** Copied enclosing function context for an offset address. */
+  std::optional<EnclosingFunctionKind> enclosing_address_function_kind;
   /** Immutable generated policy for parameter-address materialization. */
   checker::AddressSymbolResolutionPolicy address_resolution_policy{
       checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace};
@@ -412,16 +420,21 @@ void append_reference(
     const ResolvedAddress* enclosing_address = nullptr,
     checker::AddressSymbolResolutionPolicy address_resolution_policy =
         checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace) {
-  uses.push_back({.symbol_id = symbol_id,
-                  .parameterized_index = parameterized_index,
-                  .expected_kind = expected_kind,
-                  .address_symbol = address_symbol,
-                  .enclosing_address = enclosing_address,
-                  .address_resolution_policy = address_resolution_policy,
-                  .requires_register_state = requires_register_state,
-                  .requires_predicate_register = requires_predicate_register,
-                  .function_local = function_local,
-                  .range = reference_range(locations, fallback)});
+  uses.push_back(
+      {.symbol_id = symbol_id,
+       .parameterized_index = parameterized_index,
+       .expected_kind = expected_kind,
+       .address_symbol =
+           address_symbol ? std::optional{*address_symbol} : std::nullopt,
+       .enclosing_address_function_kind =
+           enclosing_address
+               ? std::optional{enclosing_address->enclosing_function_kind}
+               : std::nullopt,
+       .address_resolution_policy = address_resolution_policy,
+       .requires_register_state = requires_register_state,
+       .requires_predicate_register = requires_predicate_register,
+       .function_local = function_local,
+       .range = reference_range(locations, fallback)});
 }
 
 /**
@@ -453,6 +466,11 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
+    std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -540,6 +558,36 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorIm2colInfo>) {
+    for (const auto& element : value.elements)
+      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
+        collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, TensorMemoryAddress>) {
+    collect_operand_references(value.value, locations, fallback, uses,
+                               address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
+    collect_operand_references(value.byte_id, locations, fallback, uses,
+                               address_resolution_policy);
+    collect_operand_references(value.thread_id, locations, fallback, uses,
+                               address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedSharedMatrixDescriptor>) {
+    collect_register(value.register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorOperand>) {
+    const std::array<SourceRange, 1> map_range{value.tensor_map.range};
+    collect_operand_references(value.tensor_map.address, map_range, fallback,
+                               uses, address_resolution_policy);
+    for (size_t index = 0; index < value.coordinates.elements.size(); ++index) {
+      const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&value.coordinates.elements[index]);
+      if (!register_ref)
+        continue;
+      const std::array<SourceRange, 1> coordinate_range{
+          index < value.coordinate_ranges.size()
+              ? value.coordinate_ranges[index]
+              : fallback};
+      collect_operand_references(*register_ref, coordinate_range, fallback,
+                                 uses, address_resolution_policy);
+    }
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -578,45 +626,201 @@ void collect_operand_references(
   }
 }
 
-/** Decode a borrowed foundation payload without including any opcode union. */
-void collect_owned_reference(detail::OwnedReferenceView view,
-                             SourceRange fallback,
-                             std::vector<ModuleReferenceUse>& uses) {
-#define PTX_COLLECT_OWNED_REFERENCE(Type)                               \
-  if (view.type == typeid(Type)) {                                      \
-    collect_operand_references(*static_cast<const Type*>(view.payload), \
-                               view.locations, fallback, uses,          \
-                               view.address_policy);                    \
-    return;                                                             \
+/** Collect every fixed foundation domain without RTTI or erased payload casts. */
+class ReferenceCollector final : public detail::IReferenceObserver {
+ public:
+  /** Borrow destination and instruction fallback only for one synchronous visit. */
+  ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
+                     SourceRange fallback)
+      : uses_(uses), fallback_(fallback) {}
+  /** Collect declaration identities from a borrowed RegOrImm. */
+  void reg_or_imm(const RegOrImm& value, std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
   }
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterRef)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedMbarrierStateToken)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterOrSink)
-  PTX_COLLECT_OWNED_REFERENCE(RegOrImm)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedShflSyncDestination)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicatePair)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicatePairOrSink)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicateOrSink)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedMovSource)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedCpAsyncSourceControl)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicate)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedPredicateSource)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedBranchTarget)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedBranchTargetSet)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedVectorRegisterRef)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedSymbolRef)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedAddress)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedRegisterVector)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedTensorCoordinate)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedFunctionRef)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedIndirectCallee)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedCallParameterRef)
-  PTX_COLLECT_OWNED_REFERENCE(ResolvedCallArguments)
-#undef PTX_COLLECT_OWNED_REFERENCE
-  throw ResolveException(
-      "Generated reference payload has no module collector.");
-}
+  /** Collect declaration identities from a borrowed ResolvedAddress. */
+  void address(const ResolvedAddress& value,
+               std::span<const SourceRange> locations,
+               checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedBranchTarget. */
+  void branch_target(const ResolvedBranchTarget& value,
+                     std::span<const SourceRange> locations,
+                     checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedBranchTargetSet. */
+  void branch_target_set(
+      const ResolvedBranchTargetSet& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedCallArguments. */
+  void call_arguments(const ResolvedCallArguments& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedCallParameterRef. */
+  void call_parameter_ref(
+      const ResolvedCallParameterRef& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedCpAsyncSourceControl. */
+  void cp_async_source_control(
+      const ResolvedCpAsyncSourceControl& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedFunctionRef. */
+  void function_ref(const ResolvedFunctionRef& value,
+                    std::span<const SourceRange> locations,
+                    checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedIndirectCallee. */
+  void indirect_callee(const ResolvedIndirectCallee& value,
+                       std::span<const SourceRange> locations,
+                       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedMbarrierStateToken. */
+  void mbarrier_state_token(
+      const ResolvedMbarrierStateToken& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedMovSource. */
+  void mov_source(const ResolvedMovSource& value,
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedPredicate. */
+  void predicate(const ResolvedPredicate& value,
+                 std::span<const SourceRange> locations,
+                 checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedPredicateOrSink. */
+  void predicate_or_sink(
+      const ResolvedPredicateOrSink& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedPredicatePair. */
+  void predicate_pair(const ResolvedPredicatePair& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedPredicatePairOrSink. */
+  void predicate_pair_or_sink(
+      const ResolvedPredicatePairOrSink& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedPredicateSource. */
+  void predicate_source(
+      const ResolvedPredicateSource& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedRegisterOrSink. */
+  void register_or_sink(
+      const ResolvedRegisterOrSink& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedRegisterRef. */
+  void reg(const ResolvedRegisterRef& value,
+           std::span<const SourceRange> locations,
+           checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedRegisterVector. */
+  void register_vector(const ResolvedRegisterVector& value,
+                       std::span<const SourceRange> locations,
+                       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedShflSyncDestination. */
+  void shfl_sync_destination(
+      const ResolvedShflSyncDestination& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedSymbolRef. */
+  void symbol_ref(const ResolvedSymbolRef& value,
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedTensorCoordinate. */
+  void tensor_coordinate(
+      const ResolvedTensorCoordinate& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect register elements in a borrowed im2col information pack. */
+  void tensor_im2col_info(
+      const ResolvedTensorIm2colInfo& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect descriptor and coordinate references with their owned source ranges. */
+  void tensor_operand(const ResolvedTensorOperand& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect a borrowed Tensor Memory address register, when present. */
+  void tensor_memory_address(
+      const TensorMemoryAddress& value, std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect both borrowed matrix scale selector registers, when present. */
+  void matrix_scale_selector(
+      const ResolvedMatrixScaleSelector& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect the bound register carrying a shared matrix descriptor. */
+  void shared_matrix_descriptor(
+      const ResolvedSharedMatrixDescriptor& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect declaration identities from a borrowed ResolvedVectorRegisterRef. */
+  void vector_register_ref(
+      const ResolvedVectorRegisterRef& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
 
+ private:
+  /** Borrowed ordered destination, valid for this visitor's stack lifetime. */
+  std::vector<ModuleReferenceUse>& uses_;
+  /** Owned instruction source range used when an operand has no explicit range. */
+  SourceRange fallback_;
+};
 /** Return a symbol only when an externally supplied identity is in table bounds. */
 const binding::Symbol* owned_symbol(const ResolvedModule& module,
                                     binding::SymbolId id) {
@@ -666,7 +870,7 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
                                   const ModuleReferenceUse& use,
                                   const ResolvedFunction& function,
                                   checker::CheckDiagnostics& diagnostics) {
-  if (use.address_symbol == nullptr)
+  if (!use.address_symbol)
     return;
 
   const ResolvedSymbolRef& cached = *use.address_symbol;
@@ -689,8 +893,8 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
       cached.address_state_space == expected_address_space &&
       cached.enclosing_function_kind == expected_function_kind;
   const bool matching_address_context =
-      use.enclosing_address == nullptr ||
-      use.enclosing_address->enclosing_function_kind == expected_function_kind;
+      !use.enclosing_address_function_kind ||
+      *use.enclosing_address_function_kind == expected_function_kind;
   if (!matching_declaration || !matching_address_context) {
     append_model_mismatch(diagnostics, use.range,
                           "Resolved address operand metadata disagrees with "
@@ -718,21 +922,10 @@ void check_module_references(const ResolvedModule& module,
                              checker::CheckDiagnostics& diagnostics) {
   std::vector<ModuleReferenceUse> uses;
   for (size_t index = 0; index < function.body.size(); ++index) {
-    /** Borrowed collection state used only during this instruction's visit. */
-    struct SinkState {
-      /** Destination preserving descriptor order. */
-      std::vector<ModuleReferenceUse>& uses;
-      /** Owned source location used when a field has no explicit location. */
-      SourceRange fallback;
-    } state{uses, function.instruction_ranges[index]};
-    function.body[index].visit_references(detail::OwnedReferenceSink{
-        .state = &state,
-        .accept =
-            [](void* opaque, detail::OwnedReferenceView view) {
-              auto& current = *static_cast<SinkState*>(opaque);
-              collect_owned_reference(view, current.fallback, current.uses);
-            },
-    });
+    if (!function.body[index])
+      continue;
+    ReferenceCollector collector(uses, function.instruction_ranges[index]);
+    function.body[index]->visit_references(collector);
   }
   for (const auto& use : uses) {
     if (!use.symbol_id) {
@@ -775,12 +968,90 @@ void check_module_references(const ResolvedModule& module,
   }
 }
 
-/** Compare a copy-control register's cached type with its owned declaration. */
-void check_cp_async_register_binding(const ResolvedModule& module,
-                                     const ResolvedRegisterRef& register_ref,
-                                     std::span<const SourceRange> locations,
-                                     SourceRange fallback,
-                                     checker::CheckDiagnostics& diagnostics) {
+/** Return a written TCGEN CTA group from the exact owned form, if any. */
+template <typename T>
+  requires std::derived_from<T, Instruction> && std::is_final_v<T>
+std::optional<TcgenCtaGroup> tcgen_group_if(const Instruction& instruction) {
+  const auto* form = dynamic_cast<const T*>(&instruction);
+  return form ? std::optional{form->cta_group.value} : std::nullopt;
+}
+
+/** Select the group only from a matching final TCGEN instruction class. */
+std::optional<TcgenCtaGroup> tcgen_cta_group(const Instruction& instruction) {
+  switch (instruction.instruction_kind()) {
+    case InstructionKind::Tcgen05AllocGeneric:
+      return tcgen_group_if<Tcgen05AllocGeneric>(instruction);
+    case InstructionKind::Tcgen05AllocSharedCta:
+      return tcgen_group_if<Tcgen05AllocSharedCta>(instruction);
+    case InstructionKind::Tcgen05Dealloc:
+      return tcgen_group_if<Tcgen05Dealloc>(instruction);
+    case InstructionKind::Tcgen05RelinquishAllocPermit:
+      return tcgen_group_if<Tcgen05RelinquishAllocPermit>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1GenericSingle:
+      return tcgen_group_if<Tcgen05CommitGroup1GenericSingle>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1GenericMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup1GenericMulticast>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1SharedClusterSingle:
+      return tcgen_group_if<Tcgen05CommitGroup1SharedClusterSingle>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup1SharedClusterMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup1SharedClusterMulticast>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup2GenericSingle:
+      return tcgen_group_if<Tcgen05CommitGroup2GenericSingle>(instruction);
+    case InstructionKind::Tcgen05CommitGroup2GenericMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup2GenericMulticast>(instruction);
+    case InstructionKind::Tcgen05CommitGroup2SharedClusterSingle:
+      return tcgen_group_if<Tcgen05CommitGroup2SharedClusterSingle>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup2SharedClusterMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup2SharedClusterMulticast>(
+          instruction);
+    case InstructionKind::Tcgen05Cp:
+      return tcgen_group_if<Tcgen05Cp>(instruction);
+    case InstructionKind::Tcgen05MmaF16:
+      return tcgen_group_if<Tcgen05MmaF16>(instruction);
+    case InstructionKind::Tcgen05MmaTf32:
+      return tcgen_group_if<Tcgen05MmaTf32>(instruction);
+    case InstructionKind::Tcgen05MmaI8:
+      return tcgen_group_if<Tcgen05MmaI8>(instruction);
+    case InstructionKind::Tcgen05Shift:
+      return tcgen_group_if<Tcgen05Shift>(instruction);
+    default:
+      return std::nullopt;
+  }
+}
+
+/** Compare only written TCGEN groups within one owned function body. */
+void check_tcgen_cta_groups(const ResolvedFunction& function,
+                            checker::CheckDiagnostics& diagnostics) {
+  std::optional<TcgenCtaGroup> group;
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    if (!function.body[index])
+      continue;
+    const auto current = tcgen_cta_group(*function.body[index]);
+    if (!current)
+      continue;
+    if (!group) {
+      group = current;
+    } else if (*group != *current) {
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = function.instruction_ranges[index],
+          .message = "Tensor Memory CTA group conflicts with another "
+                     "instruction in this function body.",
+      });
+    }
+  }
+}
+
+/** Compare a borrowed register's cached scalar type with its owned declaration. */
+void check_cached_register_binding(const ResolvedModule& module,
+                                   const ResolvedRegisterRef& register_ref,
+                                   std::span<const SourceRange> locations,
+                                   SourceRange fallback,
+                                   std::string_view operand_name,
+                                   checker::CheckDiagnostics& diagnostics) {
   if (!register_ref.symbol_id)
     return;  // The general reference validator reports missing identities.
   const auto* symbol = owned_symbol(module, *register_ref.symbol_id);
@@ -792,59 +1063,149 @@ void check_cp_async_register_binding(const ResolvedModule& module,
   if (!declared || register_ref.declared_type != declared) {
     append_model_mismatch(
         diagnostics, reference_range(locations, fallback),
-        "cp.async control register type disagrees with its owned declaration.");
+        fmt::format("{} register type disagrees with its owned declaration.",
+                    operand_name));
   }
 }
 
-/** Revalidate copy-control types and width-selected roles without source AST. */
+/** Revalidate copy-control cached types without source AST. */
 void check_cp_async_control_bindings(const ResolvedModule& module,
                                      const ResolvedFunction& function,
                                      checker::CheckDiagnostics& diagnostics) {
+  /** Check only designated Cp control registers supplied by the private walker. */
+  struct TypeObserver final : detail::IReferenceObserver {
+    /** Borrow module and diagnostics for one synchronous instruction visit. */
+    TypeObserver(const ResolvedModule& owner, SourceRange range,
+                 checker::CheckDiagnostics& output)
+        : module(owner), fallback(range), diagnostics(output) {}
+    /** Compare a borrowed control register's cached type and declaration. */
+    void reg(const ResolvedRegisterRef& value,
+             std::span<const SourceRange> locations,
+             checker::AddressSymbolResolutionPolicy) override {
+      check_cached_register_binding(module, value, locations, fallback,
+                                    "cp.async control", diagnostics);
+    }
+    /** Borrowed module whose symbol table owns every identity. */
+    const ResolvedModule& module;
+    /** Owned instruction range used for missing operand provenance. */
+    SourceRange fallback;
+    /** Borrowed ordered diagnostic destination. */
+    checker::CheckDiagnostics& diagnostics;
+  };
   for (size_t index = 0; index < function.body.size(); ++index) {
-    const auto* copy = instruction_if<Cp>(function.body[index]);
-    if (!copy)
+    if (!function.body[index])
       continue;
-    const SourceRange fallback = function.instruction_ranges[index];
-    std::visit(
-        [&](const auto& selected) {
-          if constexpr (requires { selected.source_control; }) {
-            std::visit(
-                [&](const auto& control) {
-                  using Control = std::remove_cvref_t<decltype(control)>;
-                  if constexpr (std::same_as<Control, ResolvedRegisterRef>) {
-                    check_cp_async_register_binding(
-                        module, control, selected.source_control.locs, fallback,
-                        diagnostics);
-                  } else if constexpr (std::same_as<Control,
-                                                    ResolvedPredicate> ||
-                                       std::same_as<
-                                           Control,
-                                           ResolvedCpAsyncCachePolicy>) {
-                    check_cp_async_register_binding(
-                        module, control.register_ref,
-                        selected.source_control.locs, fallback, diagnostics);
-                  }
-                },
-                selected.source_control.value);
-          }
-          if constexpr (requires { selected.cache_policy; }) {
-            check_cp_async_register_binding(module, selected.cache_policy.value,
-                                            selected.cache_policy.locs,
-                                            fallback, diagnostics);
-          }
-          if constexpr (requires { selected.operands; }) {
-            std::visit(
-                [&](const auto& payload) {
-                  if constexpr (requires { payload.cache_policy; }) {
-                    check_cp_async_register_binding(
-                        module, payload.cache_policy.value,
-                        payload.cache_policy.locs, fallback, diagnostics);
-                  }
-                },
-                selected.operands);
-          }
-        },
-        copy->variant);
+    TypeObserver observer(module, function.instruction_ranges[index],
+                          diagnostics);
+    detail::visit_cp_control_registers(*function.body[index], observer);
+  }
+}
+
+/** Revalidate a register alternative against its owned declaration. */
+void check_register_alternative_binding(
+    const RegOrImm& value, const ResolvedModule& module,
+    std::span<const SourceRange> locations, SourceRange fallback,
+    std::string_view operand_name, checker::CheckDiagnostics& diagnostics) {
+  if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
+    check_cached_register_binding(module, *register_ref, locations, fallback,
+                                  operand_name, diagnostics);
+}
+
+/** Revalidate modern composite payload cached types after syntax release. */
+void check_tensor_coordinate_bindings(const ResolvedModule& module,
+                                      const ResolvedFunction& function,
+                                      checker::CheckDiagnostics& diagnostics) {
+  /** Borrow tensor payloads only during each synchronous reference visit. */
+  struct TypeObserver final : detail::IReferenceObserver {
+    /** Borrow the owned symbol table and diagnostic sink for one instruction. */
+    TypeObserver(const ResolvedModule& owner, SourceRange range,
+                 checker::CheckDiagnostics& output)
+        : module(owner), fallback(range), diagnostics(output) {}
+
+    /** Check a standalone coordinate tuple at its operand source location. */
+    void tensor_coordinate(const ResolvedTensorCoordinate& value,
+                           std::span<const SourceRange> locations,
+                           checker::AddressSymbolResolutionPolicy) override {
+      for (const auto& element : value.elements)
+        check_register_alternative_binding(element, module, locations, fallback,
+                                           "Tensor coordinate", diagnostics);
+    }
+
+    /** Check cached types of im2col information register elements. */
+    void tensor_im2col_info(const ResolvedTensorIm2colInfo& value,
+                            std::span<const SourceRange> locations,
+                            checker::AddressSymbolResolutionPolicy) override {
+      for (const auto& element : value.elements)
+        check_register_alternative_binding(element, module, locations, fallback,
+                                           "Tensor im2col info", diagnostics);
+    }
+
+    /** Check the cached type of a Tensor Memory address register. */
+    void tensor_memory_address(
+        const TensorMemoryAddress& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_register_alternative_binding(value.value, module, locations,
+                                         fallback, "Tensor Memory address",
+                                         diagnostics);
+    }
+
+    /** Check both cached matrix scale selector register types. */
+    void matrix_scale_selector(
+        const ResolvedMatrixScaleSelector& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_register_alternative_binding(value.byte_id, module, locations,
+                                         fallback, "Matrix scale selector",
+                                         diagnostics);
+      check_register_alternative_binding(value.thread_id, module, locations,
+                                         fallback, "Matrix scale selector",
+                                         diagnostics);
+    }
+
+    /** Check the cached type of a shared matrix descriptor register. */
+    void shared_matrix_descriptor(
+        const ResolvedSharedMatrixDescriptor& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_cached_register_binding(module, value.register_ref, locations,
+                                    fallback, "Shared matrix descriptor",
+                                    diagnostics);
+    }
+
+    /** Check each nested coordinate at its own preserved source range. */
+    void tensor_operand(const ResolvedTensorOperand& value,
+                        std::span<const SourceRange>,
+                        checker::AddressSymbolResolutionPolicy) override {
+      for (size_t index = 0; index < value.coordinates.elements.size();
+           ++index) {
+        const auto* coordinate = std::get_if<ResolvedRegisterRef>(
+            &value.coordinates.elements[index]);
+        if (!coordinate)
+          continue;
+        const std::array<SourceRange, 1> range{
+            index < value.coordinate_ranges.size()
+                ? value.coordinate_ranges[index]
+                : fallback};
+        check_cached_register_binding(module, *coordinate, range, fallback,
+                                      "Tensor coordinate", diagnostics);
+      }
+    }
+
+    /** Borrowed module whose symbol table owns all observed identities. */
+    const ResolvedModule& module;
+    /** Owned instruction range for coordinates without element provenance. */
+    SourceRange fallback;
+    /** Borrowed destination for declaration mismatch diagnostics. */
+    checker::CheckDiagnostics& diagnostics;
+  };
+
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    if (!function.body[index])
+      continue;
+    TypeObserver observer(module, function.instruction_ranges[index],
+                          diagnostics);
+    function.body[index]->visit_references(observer);
   }
 }
 
@@ -853,10 +1214,7 @@ void check_st_bulk_size_bindings(const ResolvedModule& module,
                                  const ResolvedFunction& function,
                                  checker::CheckDiagnostics& diagnostics) {
   for (size_t index = 0; index < function.body.size(); ++index) {
-    const auto* store = instruction_if<St>(function.body[index]);
-    if (!store)
-      continue;
-    const auto* bulk = std::get_if<St::BulkZero>(&store->variant);
+    const auto* bulk = instruction_if<StBulkZero>(function.body[index]);
     if (!bulk)
       continue;
     const auto* size = std::get_if<ResolvedRegisterRef>(&bulk->size.value);
@@ -902,10 +1260,8 @@ void check_cvta_constant_pointer_restriction(
     return;
   for (const auto& function : module.functions) {
     for (size_t index = 0; index < function.body.size(); ++index) {
-      const auto* cvta = instruction_if<Cvta>(function.body[index]);
-      if (cvta == nullptr ||
-          (!std::holds_alternative<Cvta::ConstU32>(cvta->variant) &&
-           !std::holds_alternative<Cvta::ConstU64>(cvta->variant))) {
+      if (!instruction_if<CvtaConstU32>(function.body[index]) &&
+          !instruction_if<CvtaConstU64>(function.body[index])) {
         continue;
       }
       diagnostics.push_back({
@@ -1494,64 +1850,81 @@ void check_call_returns(
                          fallback_range);
   }
 }
-
-/** Check all owned call layouts against O(1) direct or metadata signatures. */
+/** Check all owned call layouts against direct or metadata signatures. */
 void check_typed_call_literals(
     const ResolvedModule& module, const ResolvedFunction& function,
     const OwnedSignatureIndex& signatures,
     const std::unordered_map<uint32_t, CallArgumentProperties>& declarations,
     checker::CheckDiagnostics& diagnostics) {
-  for (size_t index = 0; index < function.body.size(); ++index) {
-    if (const auto* call = instruction_if<Call>(function.body[index])) {
-      std::visit(
-          [&](const auto& selected) {
-            if constexpr (requires { selected.operands; }) {
-              std::visit(
-                  [&](const auto& operands) {
-                    const declaration_semantics::FunctionSignature* signature =
-                        nullptr;
-                    if constexpr (requires { operands.metadata.value; }) {
-                      if (const auto metadata = indirect_metadata_identity(
-                              operands.metadata.value)) {
-                        signature = metadata_signature(signatures, *metadata);
-                      }
-                    } else if constexpr (requires {
-                                           operands.target.value.symbol_id;
-                                         }) {
-                      if (operands.target.value.symbol_id) {
-                        signature =
-                            direct_signature(module, signatures,
-                                             *operands.target.value.symbol_id);
-                      }
-                    }
-                    if (signature == nullptr) {
-                      append_model_mismatch(
-                          diagnostics, function.instruction_ranges[index],
-                          "Resolved module call has no retained formal "
-                          "signature.");
-                      return;
-                    }
-                    const ResolvedCallArguments* inputs = nullptr;
-                    if constexpr (requires { operands.arguments.value.values; })
-                      inputs = &operands.arguments.value;
-                    const ResolvedCallParameterRef* returns = nullptr;
-                    if constexpr (requires {
-                                    operands.return_value.value.symbol_id;
-                                  }) {
-                      returns = &operands.return_value.value;
-                    }
-                    check_call_inputs(inputs, signature->parameters,
-                                      declarations, diagnostics,
-                                      function.instruction_ranges[index]);
-                    check_call_returns(returns, signature->return_parameters,
-                                       declarations, diagnostics,
-                                       function.instruction_ranges[index]);
-                  },
-                  selected.operands);
-            }
-          },
-          call->variant);
+  /** Copy only values needed after the synchronous borrowed reference visit. */
+  struct CallContractObserver final : detail::IReferenceObserver {
+    /** Retained direct callee identity, when the selected layout binds one. */
+    std::optional<binding::SymbolId> direct_target;
+    /** Retained indirect metadata identity, when the layout binds one. */
+    std::optional<binding::SymbolId> indirect_metadata;
+    /** Owned argument group; no borrowed reference escapes a callback. */
+    std::optional<ResolvedCallArguments> inputs;
+    /** Owned return parameter; no borrowed reference escapes a callback. */
+    std::optional<ResolvedCallParameterRef> returns;
+    /** Whether a valid selected layout exposed a callee operand. */
+    bool saw_target{};
+    /** Capture a direct callee's bound identity. */
+    void function_ref(const ResolvedFunctionRef& value,
+                      std::span<const SourceRange>,
+                      checker::AddressSymbolResolutionPolicy) override {
+      direct_target = value.symbol_id;
+      saw_target = true;
     }
+    /** Capture indirect metadata without retaining the borrowed value. */
+    void indirect_callee(const ResolvedIndirectCallee& value,
+                         std::span<const SourceRange>,
+                         checker::AddressSymbolResolutionPolicy) override {
+      if (const auto metadata = indirect_metadata_identity(value))
+        indirect_metadata = metadata;
+      saw_target = true;
+    }
+    /** Copy resolved call inputs for later ABI comparison. */
+    void call_arguments(const ResolvedCallArguments& value,
+                        std::span<const SourceRange>,
+                        checker::AddressSymbolResolutionPolicy) override {
+      inputs = value;
+    }
+    /** Copy the resolved return operand for later ABI comparison. */
+    void call_parameter_ref(const ResolvedCallParameterRef& value,
+                            std::span<const SourceRange>,
+                            checker::AddressSymbolResolutionPolicy) override {
+      returns = value;
+    }
+  };
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    const auto* call = instruction_if<CallDirect>(function.body[index]);
+    if (!call)
+      continue;
+    CallContractObserver observer;
+    call->visit_references(observer);
+    if (!observer.saw_target) {
+      append_model_mismatch(
+          diagnostics, function.instruction_ranges[index],
+          "Resolved call has no valid selected layout target.");
+      continue;
+    }
+    const declaration_semantics::FunctionSignature* signature = nullptr;
+    if (observer.indirect_metadata)
+      signature = metadata_signature(signatures, *observer.indirect_metadata);
+    else if (observer.direct_target)
+      signature = direct_signature(module, signatures, *observer.direct_target);
+    if (!signature) {
+      append_model_mismatch(
+          diagnostics, function.instruction_ranges[index],
+          "Resolved module call has no retained formal signature.");
+      continue;
+    }
+    check_call_inputs(observer.inputs ? &*observer.inputs : nullptr,
+                      signature->parameters, declarations, diagnostics,
+                      function.instruction_ranges[index]);
+    check_call_returns(observer.returns ? &*observer.returns : nullptr,
+                       signature->return_parameters, declarations, diagnostics,
+                       function.instruction_ranges[index]);
   }
 }
 
@@ -1748,7 +2121,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
+      check_tcgen_cta_groups(function, diagnostics);
       check_cp_async_control_bindings(module, function, diagnostics);
+      check_tensor_coordinate_bindings(module, function, diagnostics);
       check_st_bulk_size_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from pathlib import Path
 import stat
@@ -14,9 +15,10 @@ from ptx_frontend.code_gen.context import build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
 from ptx_frontend.spec.database import (
-    discover_codegen_category_inputs,
+    CodegenCategoryInputs,
     load_codegen_database,
     load_codegen_database_from_files,
+    load_codegen_database_with_category_inputs,
 )
 
 
@@ -47,6 +49,14 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--jobs",
+        type=positive_integer,
+        default=6,
+        metavar="N",
+        help="Maximum concurrent artifact writers (default: 6).",
+    )
+
+    parser.add_argument(
         "--spec-file",
         action="append",
         type=Path,
@@ -55,6 +65,12 @@ def parse_arguments() -> argparse.Namespace:
             "Explicit PTX instruction specification input for a "
             "category-local generation job. May be repeated."
         ),
+    )
+
+    parser.add_argument(
+        "--defer-finalization",
+        action="store_true",
+        help="Write the full plan without cleanup or manifest publication.",
     )
 
     mode = parser.add_mutually_exclusive_group()
@@ -87,6 +103,25 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
 
+    mode.add_argument(
+        "--incremental-batch",
+        action="store_true",
+        help="Generate the selected build categories and shared artifacts in one process.",
+    )
+
+    parser.add_argument(
+        "--batch-category",
+        action="append",
+        default=[],
+        help="Category to regenerate in --incremental-batch mode; may be repeated.",
+    )
+
+    parser.add_argument(
+        "--batch-global",
+        action="store_true",
+        help="Regenerate shared artifacts and finalize --incremental-batch output.",
+    )
+
     args = parser.parse_args()
 
     if args.category is not None and not args.spec_file:
@@ -94,6 +129,20 @@ def parse_arguments() -> argparse.Namespace:
 
     if args.category is None and args.spec_file:
         parser.error("--spec-file is valid only with --category")
+
+    if args.defer_finalization and (
+        args.category is not None or args.global_artifacts
+        or args.list_outputs or args.describe_build or args.incremental_batch
+    ):
+        parser.error("--defer-finalization requires full generation")
+
+    if args.incremental_batch:
+        if not args.batch_category and not args.batch_global:
+            parser.error("--incremental-batch requires selected work")
+        if len(args.batch_category) != len(set(args.batch_category)):
+            parser.error("--batch-category must not repeat a category")
+    elif args.batch_category or args.batch_global:
+        parser.error("--batch-category and --batch-global require --incremental-batch")
 
     return args
 
@@ -114,10 +163,15 @@ def main() -> None:
 
     backend = load_cpp_backend(backend_spec)
 
+    category_inputs: tuple[CodegenCategoryInputs, ...] = ()
     if args.category is not None:
         database = load_codegen_database_from_files(
             spec_files=spec_files,
             category=args.category,
+        )
+    elif args.describe_build:
+        database, category_inputs = load_codegen_database_with_category_inputs(
+            spec_dir=spec_dir
         )
     else:
         database = load_codegen_database(spec_dir=spec_dir)
@@ -128,7 +182,7 @@ def main() -> None:
     if args.describe_build:
         print(
             json.dumps(
-                describe_build(plan, spec_dir=spec_dir),
+                describe_build(plan, category_inputs=category_inputs),
                 indent=2,
                 sort_keys=True,
             )
@@ -140,8 +194,24 @@ def main() -> None:
             print(path)
         return
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if getattr(args, "incremental_batch", False):
+        selected_categories = set(args.batch_category)
+        for category in args.batch_category:
+            plan.artifacts_for_category(category)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        category_artifacts = tuple(
+            artifact for artifact in plan.artifacts
+            if artifact.category in selected_categories
+        )
+        if category_artifacts:
+            write_artifacts(context, category_artifacts, args.jobs)
+        if args.batch_global:
+            write_artifacts(context, plan.global_artifacts, args.jobs)
+            remove_obsolete_generated_files(output_dir, plan.paths)
+            write_output_manifest(output_dir, plan.paths)
+        return
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     full_generation = args.category is None and not args.global_artifacts
 
     if args.category is not None:
@@ -150,22 +220,54 @@ def main() -> None:
     elif args.global_artifacts:
         artifacts = plan.global_artifacts
 
-        # One full-context job owns global housekeeping.
-        remove_obsolete_generated_files(output_dir, plan.paths)
-
     else:
         artifacts = plan.artifacts
+
+    write_artifacts(context, artifacts, args.jobs)
+
+    if (full_generation or args.global_artifacts) and not getattr(
+        args, "defer_finalization", False
+    ):
         remove_obsolete_generated_files(output_dir, plan.paths)
-
-    for artifact in artifacts:
-        write_formatted_artifact(
-            context,
-            artifact.emit,
-            artifact.path,
-        )
-
-    if full_generation or args.global_artifacts:
         write_output_manifest(output_dir, plan.paths)
+
+
+def positive_integer(value: str) -> int:
+    """Parse a strictly positive worker count for the command line."""
+
+    try:
+        jobs = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "--jobs must be a positive integer"
+        ) from error
+    if jobs < 1:
+        raise argparse.ArgumentTypeError("--jobs must be a positive integer")
+    return jobs
+
+
+def write_artifacts(context, artifacts, jobs: int) -> None:
+    """Write independent planned artifacts, joining all workers on failure."""
+
+    if jobs == 1:
+        for artifact in artifacts:
+            write_formatted_artifact(context, artifact.emit, artifact.path)
+        return
+
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = [
+            executor.submit(
+                write_formatted_artifact, context, artifact.emit, artifact.path
+            )
+            for artifact in artifacts
+        ]
+        try:
+            for future in as_completed(futures):
+                future.result()
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
 
 
 def validate_directory(path: Path, option: str) -> None:
@@ -248,6 +350,8 @@ def remove_obsolete_generated_files(
         "public/ptx_frontend/resolved_ir/model/*/*/model.gen.hpp",
         "public/ptx_frontend/resolved_ir/model/*/*/resolution.gen.hpp",
         "public/ptx_frontend/resolved_ir/model/*/*/checker.gen.hpp",
+        "public/ptx_frontend/resolved_ir_experiment/*.gen.hpp",
+        "public/ptx_frontend/resolved_ir_experiment/model/*/*.gen.hpp",
         "private/ptx_parser_*.gen.hpp",
         "private/ptx_parser_*.gen.cpp",
         "private/resolved_ir_*.gen.cpp",
@@ -280,13 +384,28 @@ def read_output_manifest(output_dir: Path) -> set[str]:
 
 
 def write_output_manifest(output_dir: Path, active_paths: tuple[Path, ...]) -> None:
-    """Record the output paths owned by the successfully completed plan."""
+    """Publish the successful output set atomically, retaining identical mtimes."""
 
     manifest = output_dir / ".ptx_resolved_ir_outputs.txt"
     paths = sorted(path.relative_to(output_dir).as_posix() for path in active_paths)
     content = "\n".join(paths) + "\n"
-    if not manifest.is_file() or manifest.read_text(encoding="utf-8") != content:
-        manifest.write_text(content, encoding="utf-8")
+    if manifest.is_file() and manifest.read_text(encoding="utf-8") == content:
+        return
+    manifest_mode = (
+        stat.S_IMODE(manifest.stat().st_mode) if manifest.exists() else 0o644
+    )
+    descriptor, candidate_name = tempfile.mkstemp(
+        prefix=".ptx_resolved_ir_outputs.", suffix=".tmp", dir=output_dir
+    )
+    candidate = Path(candidate_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+        candidate.chmod(manifest_mode)
+        os.replace(candidate, manifest)
+    finally:
+        if candidate.exists():
+            candidate.unlink()
 
 
 def is_output_relative_path(path: str) -> bool:
@@ -299,13 +418,13 @@ def is_output_relative_path(path: str) -> bool:
 def describe_build(
     plan,
     *,
-    spec_dir: Path,
+    category_inputs: tuple[CodegenCategoryInputs, ...],
 ) -> dict[str, object]:
     """Describe category/global inputs and outputs for the native build graph."""
 
     inputs = {
         group.category: tuple(Path(str(path)).resolve() for path in group.spec_files)
-        for group in discover_codegen_category_inputs(spec_dir=spec_dir)
+        for group in category_inputs
     }
 
     categories: list[dict[str, object]] = []

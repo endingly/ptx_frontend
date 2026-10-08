@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <filesystem>
@@ -10,23 +9,26 @@
 #include <string_view>
 
 #include <ptx_frontend/base/ptx_target.hpp>
-#include <ptx_frontend/resolved_ir/checker/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/barrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/clusterlaunchcontrol.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/fence.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
+/** Parse a module fixture without changing the caller's diagnostic assertions. */
 SyntaxModuleParseResult parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
   return parser.parseModule();
 }
 
+/** Read a synchronization corpus fixture as owned source text. */
 std::string readCorpusFile(const std::filesystem::path& file) {
   std::ifstream input(file);
   if (!input)
@@ -34,18 +36,20 @@ std::string readCorpusFile(const std::filesystem::path& file) {
   return {std::istreambuf_iterator<char>{input}, {}};
 }
 
-/** Resolve a full module and retain only synchronization instruction families. */
+/** Resolve a full module with every supported instruction family. */
 auto resolveSynchronizationModule(const syntax_ast::AstModule& ast) {
-  return test_support::resolveTypedModule<Barrier, Clusterlaunchcontrol, Fence,
-                                          Mbarrier>(
-      ast, test_support::ModulePipeline::AvailableContext);
+  return resolveModule(ast);
 }
 
+/** Corpus source name and expected target directive. */
 struct CorpusCase {
+  /** File name relative to the m13 corpus directory. */
   std::string_view file_name;
+  /** Expected target spelling from the parsed source. */
   std::string_view target;
 };
 
+/** Verify parser directives and module resolution for a corpus fixture. */
 void expectM13CorpusModule(const CorpusCase& corpus_case) {
   const auto corpus = std::filesystem::path{__FILE__}
                           .parent_path()
@@ -60,17 +64,15 @@ void expectM13CorpusModule(const CorpusCase& corpus_case) {
   ASSERT_TRUE(parsed.has_value()) << file;
   ASSERT_GE(parsed->items.size(), 4u);
   EXPECT_EQ(
-      test_ir_access::get<syntax_ast::AstVersionDirective>(parsed->items[0])
-          .version.text,
+      std::get<syntax_ast::AstVersionDirective>(parsed->items[0]).version.text,
       "9.3");
   const auto& target =
-      test_ir_access::get<syntax_ast::AstTargetDirective>(parsed->items[1]);
+      std::get<syntax_ast::AstTargetDirective>(parsed->items[1]);
   ASSERT_EQ(target.targets.size(), 1u);
   EXPECT_EQ(target.targets[0].text, corpus_case.target);
-  EXPECT_EQ(
-      test_ir_access::get<syntax_ast::AstAddressSizeDirective>(parsed->items[2])
-          .bit_width.text,
-      "64");
+  EXPECT_EQ(std::get<syntax_ast::AstAddressSizeDirective>(parsed->items[2])
+                .bit_width.text,
+            "64");
 
   const auto resolved =
       test_support::resolveAndCheckAvailableModuleSnapshot(*parsed);
@@ -93,9 +95,8 @@ TEST(ResolvedModule, RejectsM13MatchSinkBoundaryPairsAtTheirDestination) {
   const auto reject = [](std::string_view source) {
     const auto ast = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
-    const auto& instruction = test_ir_access::get<syntax_ast::AstInstruction>(
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back())
-            .body.back());
+    const auto& instruction = std::get<syntax_ast::AstInstruction>(
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
     const auto resolved = resolveSynchronizationModule(*ast);
     ASSERT_FALSE(resolved.has_value());
     ASSERT_FALSE(resolved.error().empty());
@@ -118,22 +119,19 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
   ASSERT_MODULE_PARSE_SUCCEEDS(mbarrier_ast);
   const auto mbarrier = resolveSynchronizationModule(*mbarrier_ast);
   ASSERT_TRUE(mbarrier.has_value());
-  const auto& mbarrier_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(
-              mbarrier_ast->items.back())
-              .body.front());
-  const auto mbarrier_checked = checker::check(
-      test_ir_access::get<Mbarrier>(mbarrier->functions.front().body.front()),
+  const auto& mbarrier_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(mbarrier_ast->items.back())
+          .body.front());
+  const auto mbarrier_checked = mbarrier->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
                        .instruction_range = mbarrier_instruction.range});
   ASSERT_FALSE(mbarrier_checked.has_value());
   EXPECT_EQ(mbarrier_checked.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
-  EXPECT_EQ(mbarrier_checked.error().front().range,
-            test_ir_access::get<syntax_ast::AstAddress>(
-                mbarrier_instruction.operands.front())
-                .range);
+  EXPECT_EQ(
+      mbarrier_checked.error().front().range,
+      std::get<syntax_ast::AstAddress>(mbarrier_instruction.operands.front())
+          .range);
 
   const auto proxy_ast = parseModule(R"ptx(
 .global .align 16 .b8 global_value[128];
@@ -142,13 +140,10 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
   ASSERT_MODULE_PARSE_SUCCEEDS(proxy_ast);
   const auto proxy = resolveSynchronizationModule(*proxy_ast);
   ASSERT_TRUE(proxy.has_value());
-  const auto& proxy_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(proxy_ast->items.back())
-              .body.front());
+  const auto& proxy_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(proxy_ast->items.back()).body.front());
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
-  const auto proxy_checked = checker::check(
-      test_ir_access::get<Fence>(proxy->functions.front().body.front()),
+  const auto proxy_checked = proxy->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3},
                                   .sm_version = 90,
                                   .capabilities = cluster_capabilities},
@@ -156,10 +151,10 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
   ASSERT_FALSE(proxy_checked.has_value());
   EXPECT_EQ(proxy_checked.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
-  EXPECT_EQ(proxy_checked.error().front().range,
-            test_ir_access::get<syntax_ast::AstImmediate>(
-                proxy_instruction.operands.back())
-                .syntax.range);
+  EXPECT_EQ(
+      proxy_checked.error().front().range,
+      std::get<syntax_ast::AstImmediate>(proxy_instruction.operands.back())
+          .syntax.range);
 
   const auto barrier_ast = parseModule(R"ptx(
 .entry kernel() { barrier.cluster.arrive; }
@@ -167,21 +162,17 @@ TEST(ResolvedModule, RejectsM13SynchronizationCorpusLocalLegalityFailures) {
   ASSERT_MODULE_PARSE_SUCCEEDS(barrier_ast);
   const auto barrier = resolveSynchronizationModule(*barrier_ast);
   ASSERT_TRUE(barrier.has_value());
-  const auto& barrier_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(
-              barrier_ast->items.back())
-              .body.front());
-  const auto no_capability = checker::check(
-      test_ir_access::get<Barrier>(barrier->functions.front().body.front()),
+  const auto& barrier_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(barrier_ast->items.back())
+          .body.front());
+  const auto no_capability = barrier->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
                        .instruction_range = barrier_instruction.range});
   ASSERT_FALSE(no_capability.has_value());
   EXPECT_EQ(no_capability.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedAvailability);
   EXPECT_EQ(no_capability.error().front().range, barrier_instruction.range);
-  const auto old_target = checker::check(
-      test_ir_access::get<Barrier>(barrier->functions.front().body.front()),
+  const auto old_target = barrier->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {7, 7},
                                   .sm_version = 90,
                                   .capabilities = cluster_capabilities},
@@ -201,16 +192,12 @@ clusterlaunchcontrol.query_cancel.is_canceled.pred.b128 %p0, %r0;
   ASSERT_MODULE_PARSE_SUCCEEDS(query_ast);
   const auto query = resolveSynchronizationModule(*query_ast);
   ASSERT_TRUE(query.has_value());
-  const auto& query_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(query_ast->items.back())
-              .body.back());
+  const auto& query_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(query_ast->items.back()).body.back());
   const auto sm100 = base::find_target_profile("sm_100");
   ASSERT_TRUE(sm100.has_value());
-  const auto query_checked = checker::check(
-      test_ir_access::get<Clusterlaunchcontrol>(
-          query->functions.front().body.front()),
-      checker::Context{
+  const auto query_checked =
+      query->functions.front().body.front()->check(checker::Context{
           .target = {.ptx_version = {9, 3},
                      .sm_version = 100,
                      .enabled_family_features = sm100->enabled_family_features,
@@ -237,13 +224,12 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   const auto sink = resolveSynchronizationModule(*sink_ast);
   ASSERT_TRUE(sink.has_value()) << sink.error().front().message;
   const auto& sink_function =
-      test_ir_access::get<syntax_ast::AstFunction>(sink_ast->items.back());
+      std::get<syntax_ast::AstFunction>(sink_ast->items.back());
   const auto& generic_sink_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(sink_function.body[0]);
+      std::get<syntax_ast::AstInstruction>(sink_function.body[0]);
   const auto& cluster_sink_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(sink_function.body[1]);
-  const auto old_sink = checker::check(
-      test_ir_access::get<Mbarrier>(sink->functions.front().body[0]),
+      std::get<syntax_ast::AstInstruction>(sink_function.body[1]);
+  const auto old_sink = sink->functions.front().body[0]->check(
       checker::Context{.target = {.ptx_version = {7, 0}, .sm_version = 80},
                        .instruction_range = generic_sink_instruction.range});
   ASSERT_FALSE(old_sink.has_value());
@@ -251,14 +237,13 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(old_sink.error().front().range,
             sourceRange(generic_sink_instruction.operands.front()));
-  EXPECT_TRUE(
-      checker::check(
-          test_ir_access::get<Mbarrier>(sink->functions.front().body[0]),
-          checker::Context{.target = {.ptx_version = {7, 1}, .sm_version = 80},
-                           .instruction_range = generic_sink_instruction.range})
-          .has_value());
-  const auto no_cluster = checker::check(
-      test_ir_access::get<Mbarrier>(sink->functions.front().body[1]),
+  EXPECT_TRUE(sink->functions.front()
+                  .body[0]
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {7, 1}, .sm_version = 80},
+                      .instruction_range = generic_sink_instruction.range})
+                  .has_value());
+  const auto no_cluster = sink->functions.front().body[1]->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90},
                        .instruction_range = cluster_sink_instruction.range});
   ASSERT_FALSE(no_cluster.has_value());
@@ -273,12 +258,9 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   ASSERT_MODULE_PARSE_SUCCEEDS(count_ast);
   const auto count = resolveSynchronizationModule(*count_ast);
   ASSERT_TRUE(count.has_value()) << count.error().front().message;
-  const auto& count_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(count_ast->items.back())
-              .body.back());
-  const auto invalid_count = checker::check(
-      test_ir_access::get<Mbarrier>(count->functions.front().body.front()),
+  const auto& count_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(count_ast->items.back()).body.back());
+  const auto invalid_count = count->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3},
                                   .sm_version = 90,
                                   .capabilities = cluster_capabilities},
@@ -286,10 +268,10 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   ASSERT_FALSE(invalid_count.has_value());
   EXPECT_EQ(invalid_count.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
-  EXPECT_EQ(invalid_count.error().front().range,
-            test_ir_access::get<syntax_ast::AstImmediate>(
-                count_instruction.operands.back())
-                .syntax.range);
+  EXPECT_EQ(
+      invalid_count.error().front().range,
+      std::get<syntax_ast::AstImmediate>(count_instruction.operands.back())
+          .syntax.range);
 
   const auto parity_ast = parseModule(R"ptx(
 .shared .align 8 .b64 bar;
@@ -310,26 +292,24 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
   };
   const auto& parity_function =
-      test_ir_access::get<syntax_ast::AstFunction>(parity_ast->items.back());
+      std::get<syntax_ast::AstFunction>(parity_ast->items.back());
   for (const auto index : {0u, 1u, 3u, 4u})
-    EXPECT_TRUE(checker::check(test_ir_access::get<Mbarrier>(
-                                   parity->functions.front().body[index]),
-                               mbarrier_context)
+    EXPECT_TRUE(parity->functions.front()
+                    .body[index]
+                    ->check(mbarrier_context)
                     .has_value());
   for (const auto index : {2u, 5u}) {
-    const auto invalid_parity = checker::check(
-        test_ir_access::get<Mbarrier>(parity->functions.front().body[index]),
-        mbarrier_context);
+    const auto invalid_parity =
+        parity->functions.front().body[index]->check(mbarrier_context);
     ASSERT_FALSE(invalid_parity.has_value());
     EXPECT_EQ(invalid_parity.error().front().kind,
               checker::CheckDiagnosticKind::ImmediateValueMismatch);
     const auto& syntax_instruction =
-        test_ir_access::get<syntax_ast::AstInstruction>(
-            parity_function.body[index + 1]);
-    EXPECT_EQ(invalid_parity.error().front().range,
-              test_ir_access::get<syntax_ast::AstImmediate>(
-                  syntax_instruction.operands.back())
-                  .syntax.range);
+        std::get<syntax_ast::AstInstruction>(parity_function.body[index + 1]);
+    EXPECT_EQ(
+        invalid_parity.error().front().range,
+        std::get<syntax_ast::AstImmediate>(syntax_instruction.operands.back())
+            .syntax.range);
   }
 
   const auto reports_ast = parseModule(R"ptx(
@@ -348,9 +328,7 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   const auto reports = resolveSynchronizationModule(*reports_ast);
   ASSERT_TRUE(reports.has_value()) << reports.error().front().message;
   for (const auto& instruction : reports->functions.front().body)
-    EXPECT_TRUE(checker::check(test_ir_access::get<Mbarrier>(instruction),
-                               mbarrier_context)
-                    .has_value());
+    EXPECT_TRUE(instruction->check(mbarrier_context).has_value());
   const auto invalid_conditional_ast = parseModule(R"ptx(
 .shared .align 8 .b64 bar;
 .entry kernel() { .reg .pred %p<2>; .reg .b8 %report; .reg .b64 %state;
@@ -360,11 +338,9 @@ TEST(ResolvedModule, ChecksM13MbarrierBoundaryMatrix) {
   const auto invalid_conditional =
       resolveSynchronizationModule(*invalid_conditional_ast);
   ASSERT_FALSE(invalid_conditional.has_value());
-  const auto& conditional_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(
-              invalid_conditional_ast->items.back())
-              .body.back());
+  const auto& conditional_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(invalid_conditional_ast->items.back())
+          .body.back());
   EXPECT_EQ(invalid_conditional.error().front().range,
             conditional_instruction.range);
 }
@@ -391,20 +367,17 @@ TEST(ResolvedModule, ChecksM13ClusterlaunchcontrolBoundaryMatrix) {
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
     const auto resolved = resolveSynchronizationModule(*ast);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    const auto& instruction = test_ir_access::get<syntax_ast::AstInstruction>(
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back())
-            .body.back());
-    const auto checked =
-        checker::check(test_ir_access::get<Clusterlaunchcontrol>(
-                           resolved->functions.front().body.front()),
-                       context_for(*profile, instruction.range));
+    const auto& instruction = std::get<syntax_ast::AstInstruction>(
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
+    const auto checked = resolved->functions.front().body.front()->check(
+        context_for(*profile, instruction.range));
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               checker::CheckDiagnosticKind::AddressAlignmentMismatch);
-    EXPECT_EQ(checked.error().front().range,
-              test_ir_access::get<syntax_ast::AstAddress>(
-                  instruction.operands[operand_index])
-                  .range);
+    EXPECT_EQ(
+        checked.error().front().range,
+        std::get<syntax_ast::AstAddress>(instruction.operands[operand_index])
+            .range);
   };
   check_alignment(R"ptx(
 .shared .align 8 .b8 response[16];
@@ -427,22 +400,18 @@ TEST(ResolvedModule, ChecksM13ClusterlaunchcontrolBoundaryMatrix) {
   ASSERT_MODULE_PARSE_SUCCEEDS(multicast_ast);
   const auto multicast = resolveSynchronizationModule(*multicast_ast);
   ASSERT_TRUE(multicast.has_value()) << multicast.error().front().message;
-  const auto& multicast_instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(
-          test_ir_access::get<syntax_ast::AstFunction>(
-              multicast_ast->items.back())
-              .body.back());
-  const auto& resolved_multicast = test_ir_access::get<Clusterlaunchcontrol>(
-      multicast->functions.front().body.front());
-  EXPECT_TRUE(checker::check(resolved_multicast,
-                             context_for(*profile, multicast_instruction.range))
+  const auto& multicast_instruction = std::get<syntax_ast::AstInstruction>(
+      std::get<syntax_ast::AstFunction>(multicast_ast->items.back())
+          .body.back());
+  const auto& resolved_multicast = *multicast->functions.front().body.front();
+  EXPECT_TRUE(resolved_multicast
+                  .check(context_for(*profile, multicast_instruction.range))
                   .has_value());
   EXPECT_TRUE(
-      checker::check(resolved_multicast,
-                     context_for(*family_profile, multicast_instruction.range))
+      resolved_multicast
+          .check(context_for(*family_profile, multicast_instruction.range))
           .has_value());
-  const auto no_family = checker::check(
-      resolved_multicast,
+  const auto no_family = resolved_multicast.check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
                        .instruction_range = multicast_instruction.range});
   ASSERT_FALSE(no_family.has_value());
@@ -467,14 +436,12 @@ TEST(ResolvedModule, ChecksMbarrierParityIntegerSourceValues) {
     const auto ast = parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
     const auto resolved = resolveSynchronizationModule(*ast);
-    const auto& instruction = test_ir_access::get<syntax_ast::AstInstruction>(
-        test_ir_access::get<syntax_ast::AstFunction>(ast->items.back())
-            .body.back());
+    const auto& instruction = std::get<syntax_ast::AstInstruction>(
+        std::get<syntax_ast::AstFunction>(ast->items.back()).body.back());
     if (!expected_valid) {
       ASSERT_FALSE(resolved.has_value());
       EXPECT_EQ(resolved.error().front().range,
-                test_ir_access::get<syntax_ast::AstImmediate>(
-                    instruction.operands.back())
+                std::get<syntax_ast::AstImmediate>(instruction.operands.back())
                     .syntax.range);
       if (expect_resolution_failure) {
         EXPECT_FALSE(resolved.error().front().checker_kind.has_value());
@@ -488,8 +455,7 @@ TEST(ResolvedModule, ChecksMbarrierParityIntegerSourceValues) {
       return;
     }
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    const auto checked = checker::check(
-        test_ir_access::get<Mbarrier>(resolved->functions.front().body.front()),
+    const auto checked = resolved->functions.front().body.front()->check(
         checker::Context{.target = {.ptx_version = {8, 0}, .sm_version = 80},
                          .instruction_range = instruction.range});
     EXPECT_EQ(checked.has_value(), expected_valid) << literal;

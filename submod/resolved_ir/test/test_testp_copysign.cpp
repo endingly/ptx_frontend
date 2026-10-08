@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
 
 #include <array>
 #include <optional>
@@ -20,23 +19,23 @@ namespace {
 using checker::PtxVersion;
 
 /** Return the property selected by either floating-point `testp` variant. */
-TestProperty test_property_value(const Testp& instruction) {
-  return test_ir_access::visit(
-      [](const auto& variant) { return variant.property.value; },
-      instruction.variant);
+TestProperty test_property_value(const Instruction& instruction) {
+  if (const auto* f32 = dynamic_cast<const TestpF32*>(&instruction))
+    return f32->property.value;
+  return dynamic_cast<const TestpF64&>(instruction).property.value;
 }
 
 /** Resolve a standalone `testp` form after releasing its parsed AST. */
-std::optional<Testp> resolve_owned_testp(std::string_view source) {
+std::unique_ptr<Instruction> resolve_owned_testp(std::string_view source) {
   const auto parsed = test_helpers::parseInstruction(source);
   EXPECT_TRUE(parsed.has_value());
   if (!parsed)
-    return std::nullopt;
-  const auto resolved = resolve<Testp>(*parsed);
+    return {};
+  auto resolved = resolveTestp(*parsed);
   EXPECT_TRUE(resolved.has_value());
   if (!resolved)
-    return std::nullopt;
-  return *resolved;
+    return {};
+  return std::move(*resolved);
 }
 
 TEST(TestpCompleteness, ResolvesEveryPropertyForBothFloatingTypes) {
@@ -68,7 +67,7 @@ TEST(TestpCompleteness, RequiresPredicatesFloatingTypesAndKnownProperties) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_TRUE(parsed.has_value());
-    EXPECT_FALSE(resolve<Testp>(*parsed).has_value());
+    EXPECT_FALSE(resolveTestp(*parsed).has_value());
   }
 }
 
@@ -79,13 +78,12 @@ TEST(TestpCompleteness, AcceptsFloatingSourceLiterals) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Testp>(*parsed);
+    const auto resolved = resolveTestp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_TRUE(
-        checker::check(*resolved,
-                       checker::Context{
-                           .target = {.ptx_version = {2, 0}, .sm_version = 20}})
-            .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{
+                        .target = {.ptx_version = {2, 0}, .sm_version = 20}})
+                    .has_value());
   }
 }
 
@@ -94,25 +92,22 @@ TEST(TestpCompleteness, ChecksIndependentPtxAndSmBoundariesAndCorruption) {
   ASSERT_TRUE(resolved);
   const checker::Context current{
       .target = {.ptx_version = {2, 0}, .sm_version = 20}};
-  EXPECT_TRUE(checker::check(*resolved, current).has_value());
-  const auto old_ptx = checker::check(
-      *resolved,
+  EXPECT_TRUE(resolved->check(current).has_value());
+  const auto old_ptx = resolved->check(
       checker::Context{.target = {.ptx_version = {1, 5}, .sm_version = 20}});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm = checker::check(
-      *resolved,
+  const auto old_sm = resolved->check(
       checker::Context{.target = {.ptx_version = {2, 0}, .sm_version = 13}});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  auto& property =
-      test_ir_access::get<Testp::F64>(resolved->variant).property.value;
+  auto& property = dynamic_cast<TestpF64&>(*resolved).property.value;
   property = TestProperty::Invalid;
-  EXPECT_FALSE(checker::check(*resolved, current).has_value());
+  EXPECT_FALSE(resolved->check(current).has_value());
   property = static_cast<TestProperty>(255);
-  EXPECT_FALSE(checker::check(*resolved, current).has_value());
+  EXPECT_FALSE(resolved->check(current).has_value());
 }
 
 /** Enforce the independent PTX and SM minima for both scalar widths and opcodes. */
@@ -126,12 +121,7 @@ TEST(TestpCopysignCompleteness, ChecksAvailabilityForBothTypesAndOpcodes) {
     const auto resolved = resolveInstruction(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = {2, 0}, .sm_version = 20}).has_value());
@@ -174,14 +164,11 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
   ASSERT_TRUE(validateModule(*owned_module,
                              ModuleValidationPolicy::RequireCompleteContext)
                   .has_value());
-  auto& f32_testp = test_ir_access::get<Testp::F32>(
-      test_ir_access::get<Testp>(owned_module->functions.front().body.front())
-          .variant);
+  auto& f32_testp =
+      dynamic_cast<TestpF32&>(*owned_module->functions.front().body.front());
   const auto original_f32_source = f32_testp.src.value;
-  const auto f64_source = test_ir_access::get<ResolvedRegisterRef>(
-      test_ir_access::get<Testp::F64>(
-          test_ir_access::get<Testp>(owned_module->functions.front().body[1])
-              .variant)
+  const auto f64_source = std::get<ResolvedRegisterRef>(
+      dynamic_cast<const TestpF64&>(*owned_module->functions.front().body[1])
           .src.value);
   f32_testp.src.value = f64_source;
   const auto invalid_testp = validateModule(
@@ -191,15 +178,12 @@ TEST(TestpCompleteness, OwnsDeclaredOperandsAndRevalidatesCorruption) {
             checker::CheckDiagnosticKind::OperandTypeMismatch);
   f32_testp.src.value = original_f32_source;
 
-  auto& copysign = test_ir_access::get<Copysign::F64>(
-      test_ir_access::get<Copysign>(owned_module->functions.front().body[2])
-          .variant);
-  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(copysign.sign_source.value)
-                .spelling,
+  auto& copysign =
+      dynamic_cast<CopysignF64&>(*owned_module->functions.front().body[2]);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(copysign.sign_source.value).spelling,
             "%fd2");
   EXPECT_EQ(
-      test_ir_access::get<ResolvedRegisterRef>(copysign.magnitude_source.value)
-          .spelling,
+      std::get<ResolvedRegisterRef>(copysign.magnitude_source.value).spelling,
       "%bd1");
   copysign.magnitude_source.value = original_f32_source;
   const auto invalid_copysign = validateModule(
@@ -213,15 +197,13 @@ TEST(CopysignCompleteness, RetainsSignThenMagnitudeSourceIdentity) {
   const auto parsed =
       test_helpers::parseInstruction("copysign.f64 %fd0, %fd1, %fd2;");
   ASSERT_TRUE(parsed.has_value());
-  const auto resolved = resolve<Copysign>(*parsed);
+  const auto resolved = resolveCopysign(*parsed);
   ASSERT_TRUE(resolved.has_value());
-  const auto& variant = test_ir_access::get<Copysign::F64>(resolved->variant);
-  EXPECT_EQ(test_ir_access::get<ResolvedRegisterRef>(variant.sign_source.value)
-                .spelling,
+  const auto& variant = dynamic_cast<const CopysignF64&>(**resolved);
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(variant.sign_source.value).spelling,
             "%fd1");
   EXPECT_EQ(
-      test_ir_access::get<ResolvedRegisterRef>(variant.magnitude_source.value)
-          .spelling,
+      std::get<ResolvedRegisterRef>(variant.magnitude_source.value).spelling,
       "%fd2");
 }
 
@@ -231,18 +213,18 @@ TEST(CopysignCompleteness, RejectsWrongTypesAndChecksAvailability) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_TRUE(parsed.has_value());
-    EXPECT_FALSE(resolve<Copysign>(*parsed).has_value());
+    EXPECT_FALSE(resolveCopysign(*parsed).has_value());
   }
   const auto parsed =
       test_helpers::parseInstruction("copysign.f32 %f0, 1.0, -2.0;");
   ASSERT_TRUE(parsed.has_value());
-  const auto resolved = resolve<Copysign>(*parsed);
+  const auto resolved = resolveCopysign(*parsed);
   ASSERT_TRUE(resolved.has_value());
-  EXPECT_TRUE(checker::check(
-                  *resolved,
-                  checker::Context{.target = {.ptx_version = PtxVersion{2, 0},
-                                              .sm_version = 20}})
-                  .has_value());
+  EXPECT_TRUE(
+      (*resolved)
+          ->check(checker::Context{
+              .target = {.ptx_version = PtxVersion{2, 0}, .sm_version = 20}})
+          .has_value());
 }
 
 /** Validate both `copysign` source roles against declared containers and literals. */

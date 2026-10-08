@@ -1,5 +1,10 @@
 # Resolved IR incremental rebuild benchmark
 
+Historical measurement record: the probe script and the `test_resolved_ir`
+target were retired with the canonical direct-class IR promotion. The commands
+below document the original measurement setup and are no longer executable from
+this tree.
+
 The companion script temporarily adds `condition_code_effect: carry_out` to
 `selp_u32` in `comparison_and_selection.yaml`. This changes the generated
 category model header without changing C++ type names or layouts. It checks

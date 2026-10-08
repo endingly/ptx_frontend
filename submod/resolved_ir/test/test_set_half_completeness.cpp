@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -7,11 +6,10 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -70,26 +68,52 @@ TEST(SetHalfCompleteness, ResolvesEveryTypedCohort) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Set>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 30u);
+  constexpr InstructionKind expected_kinds[] = {
+      InstructionKind::SetHalfF16Bit,
+      InstructionKind::SetHalfF16BitBoolean,
+      InstructionKind::SetHalfF16Integer,
+      InstructionKind::SetHalfF16IntegerBoolean,
+      InstructionKind::SetHalfF16F16,
+      InstructionKind::SetHalfF16F16Boolean,
+      InstructionKind::SetHalfF16F32,
+      InstructionKind::SetHalfF16F32Boolean,
+      InstructionKind::SetHalfF16F64,
+      InstructionKind::SetHalfF16F64Boolean,
+      InstructionKind::SetHalfBf16Bit,
+      InstructionKind::SetHalfBf16BitBoolean,
+      InstructionKind::SetHalfBf16Integer,
+      InstructionKind::SetHalfBf16IntegerBoolean,
+      InstructionKind::SetHalfBf16F16,
+      InstructionKind::SetHalfBf16F16Boolean,
+      InstructionKind::SetHalfBf16WideFloat,
+      InstructionKind::SetHalfBf16WideFloatBoolean,
+      InstructionKind::SetHalfIntegerF16,
+      InstructionKind::SetHalfIntegerF16Boolean,
+      InstructionKind::SetHalfIntegerBf16,
+      InstructionKind::SetHalfIntegerBf16Boolean,
+      InstructionKind::SetHalfNativeF16x2,
+      InstructionKind::SetHalfNativeF16x2Boolean,
+      InstructionKind::SetHalfIntegerF16x2,
+      InstructionKind::SetHalfIntegerF16x2Boolean,
+      InstructionKind::SetHalfNativeBf16x2,
+      InstructionKind::SetHalfNativeBf16x2Boolean,
+      InstructionKind::SetHalfIntegerBf16x2,
+      InstructionKind::SetHalfIntegerBf16x2Boolean,
+  };
   for (size_t i = 0; i < body.size(); ++i) {
     SCOPED_TRACE(i);
-    const auto* instruction = test_ir_access::get_if<Set>(&body[i]);
-    ASSERT_NE(instruction, nullptr);
-    EXPECT_EQ(instruction->variant.index(), i + 10u);
+    ASSERT_NE(body[i], nullptr);
+    EXPECT_EQ(body[i]->instruction_kind(), expected_kinds[i]);
   }
-  const auto& half = test_ir_access::get<Set::HalfF16F16Boolean>(
-      test_ir_access::get<Set>(body[5]).variant);
+  const auto& half = dynamic_cast<const SetHalfF16F16Boolean&>(*body[5]);
   EXPECT_TRUE(half.ftz.value);
-  EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicate>(half.combine.value).negated);
-  const auto& bfloat = test_ir_access::get<Set::HalfBf16F16Boolean>(
-      test_ir_access::get<Set>(body[15]).variant);
-  EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicate>(bfloat.combine.value).negated);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(half.combine.value).negated);
+  const auto& bfloat = dynamic_cast<const SetHalfBf16F16Boolean&>(*body[15]);
+  EXPECT_TRUE(std::get<ResolvedPredicate>(bfloat.combine.value).negated);
 }
 
 /** Reject comparator and FTZ controls outside their source-type domains. */
@@ -109,7 +133,7 @@ TEST(SetHalfCompleteness, RejectsIllegalControlsAndPredicateSources) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolve<Set>(*parsed).has_value());
+    EXPECT_FALSE(resolveSet(*parsed).has_value());
   }
 }
 
@@ -139,8 +163,7 @@ TEST(SetHalfCompleteness, RejectsIllegalSourceAndDestinationContainers) {
   .reg .s32 %s0;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -169,8 +192,7 @@ TEST(SetHalfCompleteness, ChecksScalarResultContainers) {
   .reg .s16 %sd0;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    const auto result = test_support::resolveTypedModule<Set>(
-        *parsed, test_support::ModulePipeline::CompleteContext);
+    const auto result = resolveAndValidateModule(*parsed);
     EXPECT_EQ(result.has_value(), accepted);
   }
 }
@@ -201,8 +223,7 @@ TEST(SetHalfCompleteness, ChecksPackedResultContainers) {
   .reg .u32 %u0, %u1;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    const auto result = test_support::resolveTypedModule<Set>(
-        *parsed, test_support::ModulePipeline::CompleteContext);
+    const auto result = resolveAndValidateModule(*parsed);
     EXPECT_EQ(result.has_value(), accepted);
   }
 }
@@ -250,43 +271,43 @@ TEST(SetHalfCompleteness, EnforcesPtxAndTargetBoundaries) {
     SCOPED_TRACE(entry.source);
     const auto parsed = test_helpers::parseInstruction(entry.source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Set>(*parsed);
+    auto resolved = resolveSet(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_FALSE(
-        checker::check(*resolved, checker::Context{.target = entry.below_ptx}));
-    EXPECT_FALSE(
-        checker::check(*resolved, checker::Context{.target = entry.below_sm}));
-    EXPECT_TRUE(
-        checker::check(*resolved, checker::Context{.target = entry.supported}));
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{.target = entry.below_ptx})
+                     .has_value());
+    EXPECT_FALSE((*resolved)
+                     ->check(checker::Context{.target = entry.below_sm})
+                     .has_value());
+    EXPECT_TRUE((*resolved)
+                    ->check(checker::Context{.target = entry.supported})
+                    .has_value());
   }
 }
 
 /** Owned half SET controls and predicate sources survive the syntax lifetime. */
 TEST(SetHalfCompleteness, RevalidatesOwnedAndMutatedInstruction) {
-  std::optional<Set> owned;
+  std::unique_ptr<Instruction> owned;
   {
     const std::string source = "set.num.xor.ftz.f16x2.f16x2 %b0, %b1, %b2, !0;";
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Set>(*parsed);
+    auto resolved = resolveSet(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    owned = *resolved;
+    owned = std::move(*resolved);
   }
-  ASSERT_TRUE(owned.has_value());
-  auto& packed =
-      test_ir_access::get<Set::HalfNativeF16x2Boolean>(owned->variant);
+  ASSERT_NE(owned, nullptr);
+  auto& packed = dynamic_cast<SetHalfNativeF16x2Boolean&>(*owned);
   EXPECT_TRUE(packed.ftz.value);
-  EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicateConstant>(packed.combine.value)
-          .value);
+  EXPECT_TRUE(std::get<ResolvedPredicateConstant>(packed.combine.value).value);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 100}};
-  EXPECT_TRUE(checker::check(*owned, context));
+  EXPECT_TRUE(owned->check(context).has_value());
   packed.comparison.value = ComparisonOperator::Lo;
-  EXPECT_FALSE(checker::check(*owned, context));
+  EXPECT_FALSE(owned->check(context).has_value());
   packed.comparison.value = ComparisonOperator::Num;
   packed.src1.value.declared_type = ScalarType::U32;
-  EXPECT_FALSE(checker::check(*owned, context));
+  EXPECT_FALSE(owned->check(context).has_value());
 }
 
 }  // namespace

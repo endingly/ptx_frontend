@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -23,10 +22,9 @@ using test_helpers::parseModule;
 void expect_ldu(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Ldu>(*ast);
+  const auto resolved = resolveLdu(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range});
   ASSERT_TRUE(checked.has_value())
       << (checked.error().empty() ? "LDU rejected without a diagnostic"
@@ -37,11 +35,10 @@ void expect_ldu(std::string_view source, checker::TargetInfo target) {
 void expect_ldu_rejected(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Ldu>(*ast);
+  const auto resolved = resolveLdu(*ast);
   if (!resolved)
     return;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -171,21 +168,21 @@ TEST(LduCompleteness, ChecksModuleAddressAndDestinationContracts) {
 TEST(LduCompleteness, RevalidatesOwnedMutation) {
   const auto ast = parseInstruction("ldu.global.v2.u32 {%r1, %r2}, [%rd0];");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  auto resolved = resolve<Ldu>(*ast);
+  auto resolved = resolveLdu(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& vector = test_ir_access::get<Ldu::ExplicitV2>(resolved->variant);
+  auto& vector = dynamic_cast<LduExplicitV2&>(**resolved);
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
       .instruction_range = ast->range};
-  ASSERT_TRUE(checker::check(*resolved, context));
+  ASSERT_TRUE((*resolved)->check(context));
   vector.vector.value = VectorArity::V8;
-  EXPECT_FALSE(checker::check(*resolved, context));
+  EXPECT_FALSE((*resolved)->check(context));
   vector.vector.value = VectorArity::V2;
   vector.type.value = ScalarType::F16;
-  EXPECT_FALSE(checker::check(*resolved, context));
+  EXPECT_FALSE((*resolved)->check(context));
   vector.type.value = ScalarType::U32;
   vector.address.value.unified = true;
-  EXPECT_FALSE(checker::check(*resolved, context));
+  EXPECT_FALSE((*resolved)->check(context));
 }
 
 /** Retained symbol alignment is rechecked after the source AST is destroyed. */
@@ -211,10 +208,9 @@ TEST(LduCompleteness, RevalidatesOwnedBoundAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& load = test_ir_access::get<Ldu::ExplicitV4>(
-      test_ir_access::get<Ldu>(owned->functions.front().body.front()).variant);
-  auto& symbol =
-      test_ir_access::get<ResolvedSymbolRef>(load.address.value.base);
+  auto& load =
+      dynamic_cast<LduExplicitV4&>(*owned->functions.front().body.front());
+  auto& symbol = std::get<ResolvedSymbolRef>(load.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 16u);
   symbol.address_alignment = 4;
   const auto invalid =

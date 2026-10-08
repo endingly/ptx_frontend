@@ -1,6 +1,6 @@
 #include "test_module_snapshot.hpp"
-#include "test_instruction_visit.hpp"
-#include "test_module_projection_detail.hpp"
+
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/abs.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/div.gen.hpp>
@@ -24,34 +24,13 @@ std::vector<StorageSnapshot> projectStorage(const ResolvedModule& module) {
         .first_constant_bits = [&]() -> std::optional<uint64_t> {
           if (storage.initializer.empty())
             return std::nullopt;
-          if (const auto* value = test_ir_access::get_if<StorageConstant>(
+          if (const auto* value = std::get_if<StorageConstant>(
                   &storage.initializer.front().value))
             return value->bits;
           return std::nullopt;
         }(),
     });
   return projected;
-}
-
-std::expected<void, std::vector<ResolveDiagnostic>> withResolvedModule(
-    const syntax_ast::AstModule& ast, ModulePipeline pipeline,
-    const std::function<void(const ResolvedModule&)>& project) {
-  std::expected<ResolvedModule, ModuleResolveDiagnostics> resolved =
-      [&]() -> std::expected<ResolvedModule, ModuleResolveDiagnostics> {
-    switch (pipeline) {
-      case ModulePipeline::ResolveOnly:
-        return resolveModuleOnly(ast);
-      case ModulePipeline::AvailableContext:
-        return resolveModule(ast);
-      case ModulePipeline::CompleteContext:
-        return resolveAndValidateModule(ast);
-    }
-    __builtin_unreachable();
-  }();
-  if (!resolved)
-    return std::unexpected(std::move(resolved.error()));
-  project(*resolved);
-  return {};
 }
 
 }  // namespace detail
@@ -124,9 +103,7 @@ resolveAndCheckInstructionSnapshot(const syntax_ast::AstModule& ast,
     return std::unexpected(std::move(resolved.error()));
   for (const auto& function : resolved->functions) {
     for (const auto& instruction : function.body) {
-      const auto checked = test_ir_access::visit(
-          [&](const auto& value) { return checker::check(value, context); },
-          instruction);
+      const auto checked = instruction->check(context);
       if (!checked) {
         std::vector<ResolveDiagnostic> diagnostics;
         diagnostics.reserve(checked.error().size());
@@ -160,10 +137,9 @@ checkUnifiedLoadMutation(const syntax_ast::AstModule& ast) {
   if (!resolved)
     return std::unexpected(std::move(resolved.error()));
   auto before = validateModule(*resolved);
-  auto& load =
-      test_ir_access::get<Ld>(resolved->functions.front().body.front());
-  test_ir_access::get<Ld::ExplicitScalar>(load.variant).address.value.unified =
-      false;
+  auto& load = dynamic_cast<LdExplicitScalar&>(
+      *resolved->functions.front().body.front());
+  load.address.value.unified = false;
   return UnifiedLoadMutationCheck{std::move(before), validateModule(*resolved)};
 }
 
@@ -190,27 +166,18 @@ checkOwnedModuleMutation(std::string source, OwnedMutationScenario scenario) {
   auto& body = resolved->functions.front().body;
   switch (scenario) {
     case OwnedMutationScenario::DivSourceWidth: {
-      auto& f32 = test_ir_access::get<Div::RnF32>(
-          test_ir_access::get<Div>(body[0]).variant);
-      f32.src2.value = test_ir_access::get<Div::RnF64>(
-                           test_ir_access::get<Div>(body[1]).variant)
-                           .src2.value;
+      auto& f32 = dynamic_cast<DivRnF32&>(*body[0]);
+      f32.src2.value = dynamic_cast<DivRnF64&>(*body[1]).src2.value;
       break;
     }
     case OwnedMutationScenario::AbsSourceWidth: {
-      auto& f32 = test_ir_access::get<Abs::F32>(
-          test_ir_access::get<Abs>(body[0]).variant);
-      f32.src.value = test_ir_access::get<Neg::F64>(
-                          test_ir_access::get<Neg>(body[1]).variant)
-                          .src.value;
+      auto& f32 = dynamic_cast<AbsF32&>(*body[0]);
+      f32.src.value = dynamic_cast<NegF64&>(*body[1]).src.value;
       break;
     }
     case OwnedMutationScenario::RcpSourceWidth: {
-      auto& f32 = test_ir_access::get<Rcp::RnF32>(
-          test_ir_access::get<Rcp>(body[0]).variant);
-      f32.src.value = test_ir_access::get<Rcp::RnF64>(
-                          test_ir_access::get<Rcp>(body[1]).variant)
-                          .src.value;
+      auto& f32 = dynamic_cast<RcpRnF32&>(*body[0]);
+      f32.src.value = dynamic_cast<RcpRnF64&>(*body[1]).src.value;
       break;
     }
   }

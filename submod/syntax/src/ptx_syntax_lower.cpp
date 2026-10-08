@@ -282,6 +282,21 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstTensorOperand>) {
+          auto address = std::get<syntax_ast::AstAddress>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.tensor_map}));
+          // The tensor-map address is the first member of the outer brackets.
+          address.bracketed = true;
+          auto coordinates = std::get<syntax_ast::AstVectorPack>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.coordinates}));
+          return syntax_ast::AstTensorOperand{
+              std::move(address),
+              std::move(coordinates),
+              cst.token(value.left_bracket).range,
+              cst.token(value.comma).range,
+              cst.token(value.right_bracket).range,
+              cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallParameterList>) {
           std::vector<syntax_ast::AstCallParameter> parameters;
           parameters.reserve(value.parameters.size());
@@ -332,9 +347,29 @@ syntax_ast::AstInstruction lowerInstructionNode(
       .range = cst.sourceRange(root.token_range),
   };
 
-  ast.modifiers.reserve(root.modifiers.size());
-  for (const auto modifier : root.modifiers)
-    ast.modifiers.push_back({leafSyntax(cst, modifier)});
+  ast.modifiers.reserve(root.modifiers.size() + 1);
+  const bool tcgen_copy = cst.token(root.opcode).text == "tcgen05" &&
+                          !root.modifiers.empty() &&
+                          cst.token(root.modifiers.front()).text == ".cp";
+  for (const auto modifier : root.modifiers) {
+    const auto token = leafSyntax(cst, modifier);
+    // The lexer keeps each format pair in one token. Copy has two independent
+    // modifier slots, so preserve a source subrange for each written suffix.
+    if (tcgen_copy && (token.text == ".b8x16.b6x16_p32" ||
+                       token.text == ".b8x16.b4x16_p64")) {
+      constexpr int32_t kDestinationColumns = 6;
+      const SourcePos split{token.range.start.line,
+                            token.range.start.column + kDestinationColumns};
+      ast.modifiers.push_back(
+          {syntax_ast::AstSyntax{token.text.substr(0, kDestinationColumns),
+                                 SourceRange{token.range.start, split}}});
+      ast.modifiers.push_back(
+          {syntax_ast::AstSyntax{token.text.substr(kDestinationColumns),
+                                 SourceRange{split, token.range.end}}});
+    } else {
+      ast.modifiers.push_back({token});
+    }
+  }
 
   ast.operands.reserve(root.operands.size());
   for (const auto& operand : root.operands)

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,20 +27,20 @@ TEST(ResolveLop3, SelectsFrozenB32LutVariant) {
        {"lop3.b32 %r0, %r1, %r2, %r3, 0x1a;", "lop3.b32 %r0, %r1, %r2, %r3, 0;",
         "lop3.b32 %r0, %r1, %r2, %r3, 255;"}) {
     SCOPED_TRACE(source);
-    const auto resolved = resolve<Lop3>(parse_instruction(source));
+    const auto resolved = resolveLop3(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    ASSERT_NE(test_ir_access::get_if<Lop3::B32>(&resolved->variant), nullptr);
-    EXPECT_EQ(Lop3::B32::type, ScalarType::B32);
+    ASSERT_NE(dynamic_cast<Lop3B32*>(resolved->get()), nullptr);
+    EXPECT_EQ(Lop3B32::type, ScalarType::B32);
   }
 }
 
 TEST(ResolveLop3, SelectsBoolopLayoutAndRejectsNonImmediateLut) {
-  const auto boolop = resolve<Lop3>(
+  const auto boolop = resolveLop3(
       parse_instruction("lop3.and.b32 _|%p0, 1, %r2, 3, 0x1a, !%p1;"));
   ASSERT_TRUE(boolop.has_value()) << boolop.error().message;
-  ASSERT_NE(test_ir_access::get_if<Lop3::BoolopB32>(&boolop->variant), nullptr);
+  ASSERT_NE(dynamic_cast<Lop3BoolopB32*>(boolop->get()), nullptr);
   EXPECT_FALSE(
-      resolve<Lop3>(parse_instruction("lop3.b32 %r0, %r1, %r2, %r3, %r4;"))
+      resolveLop3(parse_instruction("lop3.b32 %r0, %r1, %r2, %r3, %r4;"))
           .has_value());
 }
 
@@ -58,24 +57,25 @@ TEST(ResolvedIrChecker, ChecksGeneratedLop3AvailabilityAndLutRange) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto lop3 = resolve<Lop3>(*ast);
+    const auto lop3 = resolveLop3(*ast);
     ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
-    const auto old_ptx = check(
-        *lop3, Context{.target = {.ptx_version = {4, 2}, .sm_version = 50},
-                       .instruction_range = ast->range});
+    const auto old_ptx = (*lop3)->check(
+        Context{.target = {.ptx_version = {4, 2}, .sm_version = 50},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
-    const auto old_sm = check(
-        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 49},
-                       .instruction_range = ast->range});
+    const auto old_sm = (*lop3)->check(
+        Context{.target = {.ptx_version = {4, 3}, .sm_version = 49},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
-    EXPECT_TRUE(check(*lop3, Context{.target = {.ptx_version = {4, 3},
-                                                .sm_version = 50},
-                                     .instruction_range = ast->range})
-                    .has_value());
+    EXPECT_TRUE(
+        (*lop3)
+            ->check(Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                            .instruction_range = ast->range})
+            .has_value());
   }
 
   for (const auto source : {"lop3.b32 %r0, %r1, %r2, %r3, 256;",
@@ -84,11 +84,11 @@ TEST(ResolvedIrChecker, ChecksGeneratedLop3AvailabilityAndLutRange) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto lop3 = resolve<Lop3>(*ast);
+    const auto lop3 = resolveLop3(*ast);
     ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
-    const auto checked = check(
-        *lop3, Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
-                       .instruction_range = ast->range});
+    const auto checked = (*lop3)->check(
+        Context{.target = {.ptx_version = {4, 3}, .sm_version = 50},
+                .instruction_range = ast->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
               CheckDiagnosticKind::ImmediateValueMismatch);
@@ -99,23 +99,24 @@ TEST(ResolvedIrChecker, ChecksGeneratedLop3BoolopAvailability) {
   PtxSyntaxParser parser("lop3.or.b32 _|%p0, 1, %r1, 3, 255, !%p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto lop3 = resolve<Lop3>(*ast);
+  const auto lop3 = resolveLop3(*ast);
   ASSERT_TRUE(lop3.has_value()) << lop3.error().message;
-  const auto old_ptx =
-      check(*lop3, Context{.target = {.ptx_version = {8, 1}, .sm_version = 70},
-                           .instruction_range = ast->range});
+  const auto old_ptx = (*lop3)->check(
+      Context{.target = {.ptx_version = {8, 1}, .sm_version = 70},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm =
-      check(*lop3, Context{.target = {.ptx_version = {8, 2}, .sm_version = 69},
-                           .instruction_range = ast->range});
+  const auto old_sm = (*lop3)->check(
+      Context{.target = {.ptx_version = {8, 2}, .sm_version = 69},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      check(*lop3, Context{.target = {.ptx_version = {8, 2}, .sm_version = 70},
-                           .instruction_range = ast->range})
+      (*lop3)
+          ->check(Context{.target = {.ptx_version = {8, 2}, .sm_version = 70},
+                          .instruction_range = ast->range})
           .has_value());
 }
 
@@ -124,15 +125,15 @@ TEST(ResolvedIrChecker, RevalidationRejectsMutatedLop3PredicateDestination) {
   PtxSyntaxParser parser("lop3.and.b32 _|%p0, 1, %r1, 3, 255, !%p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  auto resolved = resolve<Lop3>(*ast);
+  auto resolved = resolveLop3(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination = test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
-                          .dst.value.predicate;
+  auto& destination =
+      dynamic_cast<Lop3BoolopB32&>(**resolved).dst.value.predicate;
   ASSERT_TRUE(destination.has_value());
   destination->value.negated = true;
-  const auto checked = check(
-      *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                         .instruction_range = ast->range});
+  const auto checked = (*resolved)->check(
+      Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = ast->range});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             CheckDiagnosticKind::UnsupportedOperandShape);
@@ -143,14 +144,13 @@ TEST(ResolvedIrChecker, RevalidationRejectsMissingLop3PredicateLane) {
   PtxSyntaxParser parser("lop3.and.b32 %r0|%p0, 1, %r1, 3, 255, %p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  auto resolved = resolve<Lop3>(*ast);
+  auto resolved = resolveLop3(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination =
-      test_ir_access::get<Lop3::BoolopB32>(resolved->variant).dst.value;
+  auto& destination = dynamic_cast<Lop3BoolopB32&>(**resolved).dst.value;
   destination.predicate.reset();
-  const auto checked = check(
-      *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                         .instruction_range = ast->range});
+  const auto checked = (*resolved)->check(
+      Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = ast->range});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             CheckDiagnosticKind::UnsupportedOperandShape);
@@ -161,15 +161,14 @@ TEST(ResolvedIrChecker, RevalidationRejectsEmptyLop3PairedDestination) {
   PtxSyntaxParser parser("lop3.and.b32 %r0|%p0, 1, %r1, 3, 255, %p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  auto resolved = resolve<Lop3>(*ast);
+  auto resolved = resolveLop3(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& destination =
-      test_ir_access::get<Lop3::BoolopB32>(resolved->variant).dst.value;
+  auto& destination = dynamic_cast<Lop3BoolopB32&>(**resolved).dst.value;
   destination.data.reset();
   destination.predicate.reset();
-  const auto checked = check(
-      *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                         .instruction_range = ast->range});
+  const auto checked = (*resolved)->check(
+      Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = ast->range});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             CheckDiagnosticKind::UnsupportedOperandShape);
@@ -180,14 +179,14 @@ TEST(ResolvedIrChecker, RevalidationAllowsLop3DataSinkWithPredicateLane) {
   PtxSyntaxParser parser("lop3.and.b32 %r0|%p0, 1, %r1, 3, 255, %p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  auto resolved = resolve<Lop3>(*ast);
+  auto resolved = resolveLop3(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
-      .dst.value.data.reset();
-  EXPECT_TRUE(check(*resolved, Context{.target = {.ptx_version = {9, 3},
-                                                  .sm_version = 100},
-                                       .instruction_range = ast->range})
-                  .has_value());
+  dynamic_cast<Lop3BoolopB32&>(**resolved).dst.value.data.reset();
+  EXPECT_TRUE(
+      (*resolved)
+          ->check(Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
+                          .instruction_range = ast->range})
+          .has_value());
 }
 
 /** Revalidation requires the lop3 paired predicate lane to retain `.pred`. */
@@ -195,15 +194,15 @@ TEST(ResolvedIrChecker, RevalidationRejectsWrongLop3PredicateLaneType) {
   PtxSyntaxParser parser("lop3.and.b32 %r0|%p0, 1, %r1, 3, 255, %p1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  auto resolved = resolve<Lop3>(*ast);
+  auto resolved = resolveLop3(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& predicate = test_ir_access::get<Lop3::BoolopB32>(resolved->variant)
-                        .dst.value.predicate;
+  auto& predicate =
+      dynamic_cast<Lop3BoolopB32&>(**resolved).dst.value.predicate;
   ASSERT_TRUE(predicate.has_value());
   predicate->value.register_ref.declared_type = ScalarType::U32;
-  const auto checked = check(
-      *resolved, Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                         .instruction_range = ast->range});
+  const auto checked = (*resolved)->check(
+      Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = ast->range});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
             CheckDiagnosticKind::OperandTypeMismatch);

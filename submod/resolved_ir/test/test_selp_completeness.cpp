@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <optional>
 #include <string>
@@ -7,11 +6,9 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/selp.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -49,16 +46,14 @@ TEST(SelpCompleteness, ResolvesAndChecksEveryOrdinaryType) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Selp>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 11u);
   for (std::size_t index = 0; index < body.size(); ++index) {
-    const auto& selp = test_ir_access::get<Selp>(body[index]);
-    EXPECT_EQ(test_ir_access::holds_alternative<Selp::U32>(selp.variant),
+    EXPECT_EQ(dynamic_cast<const SelpU32*>(body[index].get()) != nullptr,
               index == 4);
-    EXPECT_EQ(test_ir_access::holds_alternative<Selp::Scalar>(selp.variant),
+    EXPECT_EQ(dynamic_cast<const SelpScalar*>(body[index].get()) != nullptr,
               index != 4);
   }
 }
@@ -78,7 +73,7 @@ TEST(SelpCompleteness, RejectsUnsupportedShapesAndModifiers) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(resolve<Selp>(*parsed).has_value());
+    EXPECT_FALSE(resolveSelp(*parsed).has_value());
   }
 }
 
@@ -91,28 +86,25 @@ TEST(SelpCompleteness, PreservesPredicateSourceTruthValues) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Selp>(*parsed);
+    const auto resolved = resolveSelp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto& predicate = test_ir_access::visit(
-        [](const auto& variant) -> const ResolvedPredicateSource& {
-          return variant.predicate.value;
-        },
-        resolved->variant);
-    ASSERT_TRUE(test_ir_access::holds_alternative<ResolvedPredicateConstant>(
-        predicate));
-    EXPECT_EQ(test_ir_access::get<ResolvedPredicateConstant>(predicate).value,
-              expected);
+    const auto* u32 = dynamic_cast<const SelpU32*>(resolved->get());
+    const auto& predicate =
+        u32 ? u32->predicate.value
+            : dynamic_cast<const SelpScalar&>(**resolved).predicate.value;
+    ASSERT_TRUE(std::holds_alternative<ResolvedPredicateConstant>(predicate));
+    EXPECT_EQ(std::get<ResolvedPredicateConstant>(predicate).value, expected);
   }
 
   const auto parsed =
       test_helpers::parseInstruction("selp.s32 %r0, %r1, %r2, !%p0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolve<Selp>(*parsed);
+  const auto resolved = resolveSelp(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
   const auto& predicate =
-      test_ir_access::get<Selp::Scalar>(resolved->variant).predicate.value;
-  ASSERT_TRUE(test_ir_access::holds_alternative<ResolvedPredicate>(predicate));
-  EXPECT_TRUE(test_ir_access::get<ResolvedPredicate>(predicate).negated);
+      dynamic_cast<const SelpScalar&>(**resolved).predicate.value;
+  ASSERT_TRUE(std::holds_alternative<ResolvedPredicate>(predicate));
+  EXPECT_TRUE(std::get<ResolvedPredicate>(predicate).negated);
 }
 
 /** Check declarations, numeric immediates, and predicate shape in a full module. */
@@ -133,8 +125,7 @@ TEST(SelpCompleteness, RejectsWrongSourceImmediateAndPredicate) {
   .reg .f32 %f;
 )ptx") + std::string(source) + "\n}\n");
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-    EXPECT_FALSE(
-        test_support::resolveAndValidateModuleSnapshot(*parsed).has_value());
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
   }
 }
 
@@ -143,28 +134,27 @@ TEST(SelpCompleteness, GatesOnlyF64AtSm13) {
   const auto parsed =
       test_helpers::parseInstruction("selp.f64 %fd0, %fd1, %fd2, %p0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-  const auto resolved = resolve<Selp>(*parsed);
+  const auto resolved = resolveSelp(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto old_target = checker::check(
-      *resolved,
+  const auto old_target = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {1, 0}, .sm_version = 12}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedSmVersion);
-  EXPECT_TRUE(checker::check(*resolved,
-                             checker::Context{.target = {.ptx_version = {1, 0},
-                                                         .sm_version = 13}})
+  EXPECT_TRUE((*resolved)
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {1, 0}, .sm_version = 13}})
                   .has_value());
 
   const auto f32_parsed =
       test_helpers::parseInstruction("selp.f32 %f0, %f1, %f2, %p0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(f32_parsed);
-  const auto f32 = resolve<Selp>(*f32_parsed);
+  const auto f32 = resolveSelp(*f32_parsed);
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  EXPECT_TRUE(
-      checker::check(*f32, checker::Context{.target = {.ptx_version = {1, 0},
-                                                       .sm_version = 0}})
-          .has_value());
+  EXPECT_TRUE((*f32)
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {1, 0}, .sm_version = 0}})
+                  .has_value());
 }
 
 /** Public IR revalidation rejects a type outside the selected scalar domain. */
@@ -172,37 +162,35 @@ TEST(SelpCompleteness, RejectsMutatedTypeValue) {
   const auto parsed =
       test_helpers::parseInstruction("selp.s32 %r0, %r1, %r2, %p0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-  auto resolved = resolve<Selp>(*parsed);
+  auto resolved = resolveSelp(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& scalar = test_ir_access::get<Selp::Scalar>(resolved->variant);
+  auto& scalar = dynamic_cast<SelpScalar&>(**resolved);
   scalar.type.value = ScalarType::F16;
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   EXPECT_FALSE(checked.has_value());
 }
 
 /** Recheck a selected type and constant after source and AST destruction. */
 TEST(SelpCompleteness, RevalidatesOwnedInstructionAfterSourceRelease) {
-  std::optional<Selp> owned;
+  std::unique_ptr<Instruction> owned;
   {
     const std::string source = "selp.f64 %fd0, %fd1, %fd2, !2;";
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Selp>(*parsed);
+    auto resolved = resolveSelp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    owned = *resolved;
+    owned = std::move(*resolved);
   }
-  ASSERT_TRUE(owned.has_value());
-  const auto& variant = test_ir_access::get<Selp::Scalar>(owned->variant);
+  ASSERT_NE(owned, nullptr);
+  const auto& variant = dynamic_cast<const SelpScalar&>(*owned);
   EXPECT_EQ(variant.type.value, ScalarType::F64);
   EXPECT_FALSE(
-      test_ir_access::get<ResolvedPredicateConstant>(variant.predicate.value)
-          .value);
-  EXPECT_TRUE(
-      checker::check(*owned, checker::Context{.target = {.ptx_version = {9, 3},
-                                                         .sm_version = 100}})
-          .has_value());
+      std::get<ResolvedPredicateConstant>(variant.predicate.value).value);
+  EXPECT_TRUE(owned
+                  ->check(checker::Context{
+                      .target = {.ptx_version = {9, 3}, .sm_version = 100}})
+                  .has_value());
 }
 
 }  // namespace

@@ -19,11 +19,11 @@ from ptx_frontend.code_gen.emit.checker_descriptors import (
     generate_resolved_checker_descriptor_source,
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
-    generate_resolved_ir_category_header,
-    generate_resolved_ir_opcode_header,
-    generate_resolved_ir_header,
+    generate_resolved_opcode_header,
 )
-from ptx_frontend.code_gen.emit.category_source import generate_resolved_ir_category_source
+from ptx_frontend.code_gen.emit.resolved_source import (
+    generate_resolved_opcode_source,
+)
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
 )
@@ -153,7 +153,7 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             _operand(
                 "matrix_fragment",
                 "fragment",
-                cardinality={"min": 1, "max": 65},
+                cardinality={"min": 1, "max": 129},
                 element_kinds=["reg"],
             ),
             _operand(
@@ -182,9 +182,10 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
                 vector={"arity": 2},
             ),
         ):
-            self.assertTrue(
-                list(self.operand_validator.iter_errors(cast(Any, operand)))
-            )
+            with self.subTest(operand=operand):
+                self.assertTrue(
+                    list(self.operand_validator.iter_errors(cast(Any, operand)))
+                )
 
     def test_predicate_sources_accept_integer_constants_and_negation(self) -> None:
         source_shapes = (
@@ -381,13 +382,13 @@ class ModernOperandPrimitiveTests(unittest.TestCase):
             descriptor_path = directory_path / "resolved_descriptor.gen.cpp"
             source_path = directory_path / "resolved_ir_test.gen.cpp"
             syntax_path = directory_path / "syntax_descriptor.gen.cpp"
-            generate_resolved_ir_opcode_header(
+            generate_resolved_opcode_header(
                 build_test_generation_context(database),
                 category="test", opcode=instruction.opcode,
                 output_path=header_path,
             )
             generate_resolved_descriptor_source(build_test_generation_context(database), category="test", output_path=descriptor_path)
-            generate_resolved_ir_category_source(build_test_generation_context(database), category="test", output_path=source_path
+            generate_resolved_opcode_source(build_test_generation_context(database), category="test", opcode=instruction.opcode, output_path=source_path
             )
             generate_syntax_descriptor_source(build_test_generation_context(database), category="test", output_path=syntax_path)
             header = header_path.read_text(encoding="utf-8")

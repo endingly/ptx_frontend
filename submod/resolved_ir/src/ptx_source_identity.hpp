@@ -268,6 +268,10 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           for (const auto& element : node.elements)
             std::visit([&output](const auto& item) { operand(output, item); },
                        element);
+        } else if constexpr (std::same_as<Node, syntax_ast::AstTensorOperand>) {
+          tag(output, "operand-tensor");
+          operand(output, node.tensor_map);
+          operand(output, node.coordinates);
         } else if constexpr (std::same_as<Node,
                                           syntax_ast::AstCallParameterList>) {
           tag(output, "operand-call-parameters");

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/mad.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -25,49 +25,46 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveMad, SelectsFrozenLoU32VariantAndImmediateSource) {
   const auto resolved =
-      resolve<Mad>(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
+      resolveMad(parse_instruction("mad.lo.u32 %r0, %r1, 7, %r2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mad = test_ir_access::get_if<Mad::LoU32>(&resolved->variant);
+  const auto* mad = dynamic_cast<MadLoU32*>(resolved->get());
   ASSERT_NE(mad, nullptr);
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<ResolvedImmediate>(mad->src2.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mad->src2.value));
 }
 
 TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
   const auto lo =
-      resolve<Mad>(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
+      resolveMad(parse_instruction("mad.lo.s32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(lo.has_value()) << lo.error().message;
-  ASSERT_NE(test_ir_access::get_if<Mad::LoS32>(&lo->variant), nullptr);
-  EXPECT_TRUE(Mad::LoS32::lo);
-  EXPECT_EQ(Mad::LoS32::type, ScalarType::S32);
+  ASSERT_NE(dynamic_cast<MadLoS32*>(lo->get()), nullptr);
+  EXPECT_TRUE(MadLoS32::lo);
+  EXPECT_EQ(MadLoS32::type, ScalarType::S32);
 
   const auto wide =
-      resolve<Mad>(parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
+      resolveMad(parse_instruction("mad.wide.u32 %rd0, %r1, %r2, %rd3;"));
   ASSERT_TRUE(wide.has_value()) << wide.error().message;
-  ASSERT_NE(test_ir_access::get_if<Mad::WideU32>(&wide->variant), nullptr);
-  EXPECT_TRUE(Mad::WideU32::wide);
-  EXPECT_EQ(Mad::WideU32::type, ScalarType::U32);
+  ASSERT_NE(dynamic_cast<MadWideU32*>(wide->get()), nullptr);
+  EXPECT_TRUE(MadWideU32::wide);
+  EXPECT_EQ(MadWideU32::type, ScalarType::U32);
 
   const auto rn =
-      resolve<Mad>(parse_instruction("mad.rn.f32 %f0, %f1, %f2, %f3;"));
+      resolveMad(parse_instruction("mad.rn.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(rn.has_value()) << rn.error().message;
-  ASSERT_NE(test_ir_access::get_if<Mad::RnF32>(&rn->variant), nullptr);
-  EXPECT_EQ(Mad::RnF32::rounding, RoundingMode::Rn);
-  EXPECT_EQ(Mad::RnF32::type, ScalarType::F32);
+  ASSERT_NE(dynamic_cast<MadRnF32*>(rn->get()), nullptr);
+  EXPECT_EQ(MadRnF32::rounding, RoundingMode::Rn);
+  EXPECT_EQ(MadRnF32::type, ScalarType::F32);
 
   const auto directed =
-      resolve<Mad>(parse_instruction("mad.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+      resolveMad(parse_instruction("mad.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(directed.has_value()) << directed.error().message;
-  const auto* directed_variant =
-      test_ir_access::get_if<Mad::DirectedF32>(&directed->variant);
+  const auto* directed_variant = dynamic_cast<MadDirectedF32*>(directed->get());
   ASSERT_NE(directed_variant, nullptr);
   EXPECT_EQ(directed_variant->rounding.value, RoundingMode::Rz);
 
   const auto f64 =
-      resolve<Mad>(parse_instruction("mad.rp.f64 %d0, %d1, %d2, %d3;"));
+      resolveMad(parse_instruction("mad.rp.f64 %d0, %d1, %d2, %d3;"));
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
-  const auto* f64_variant =
-      test_ir_access::get_if<Mad::DirectedF64>(&f64->variant);
+  const auto* f64_variant = dynamic_cast<MadDirectedF64*>(f64->get());
   ASSERT_NE(f64_variant, nullptr);
   EXPECT_EQ(f64_variant->rounding.value, RoundingMode::Rp);
 }
@@ -78,7 +75,8 @@ TEST(ResolveMad, RejectsIllegalModifiers) {
         "mad.f32 %f0, %f1, %f2, %f3;", "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
         "mad.rn.sat.f64 %d0, %d1, %d2, %d3;",
         "mad.lo.cc.s16 %r0, %r1, %r2, %r3;"}) {
-    const auto selected = selectVariant<Mad>(parse_instruction(source));
+    const auto selected =
+        select_variant_name(parse_instruction(source), mad_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -94,16 +92,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadLoU32Availability) {
   PtxSyntaxParser parser("mad.lo.u32 %r0, %r1, %r2, %r3;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mad = resolve<Mad>(*ast);
+  const auto mad = resolveMad(*ast);
   ASSERT_TRUE(mad.has_value()) << mad.error().message;
   const auto rejected =
-      check(*mad, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mad)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mad, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mad)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -115,16 +114,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadLoS32AndWideU32Availability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto mad = resolve<Mad>(*ast);
+    const auto mad = resolveMad(*ast);
     ASSERT_TRUE(mad.has_value()) << mad.error().message;
-    const auto rejected =
-        check(*mad, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                            .instruction_range = ast->range});
+    const auto rejected = (*mad)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(rejected.has_value());
     EXPECT_EQ(rejected.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        check(*mad, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*mad)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }
@@ -134,22 +134,23 @@ TEST(ResolvedIrChecker, ChecksGeneratedMadRnF32Availability) {
   PtxSyntaxParser parser("mad.rn.f32 %f0, %f1, %f2, %f3;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mad = resolve<Mad>(*ast);
+  const auto mad = resolveMad(*ast);
   ASSERT_TRUE(mad.has_value()) << mad.error().message;
   const auto old_ptx =
-      check(*mad, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                          .instruction_range = ast->range});
+      (*mad)->check(Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   const auto old_sm =
-      check(*mad, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                          .instruction_range = ast->range});
+      (*mad)->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      check(*mad, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+      (*mad)
+          ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
                           .instruction_range = ast->range})
           .has_value());
 }

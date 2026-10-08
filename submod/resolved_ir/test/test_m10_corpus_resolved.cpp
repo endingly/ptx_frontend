@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -7,18 +6,20 @@
 #include <stdexcept>
 #include <string>
 
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/matrix.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/matrix/ldmatrix.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/matrix/mma.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/atom.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/vote.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
+/** Parse a complete corpus fixture and report unexpected syntax failure. */
 syntax_ast::AstModule parseModule(std::string_view source) {
   PtxSyntaxParser parser(source);
   auto module = parser.parseModule();
@@ -28,12 +29,6 @@ syntax_ast::AstModule parseModule(std::string_view source) {
                                  : module.diagnostics.front().message);
   }
   return std::move(*module);
-}
-
-/** Keep the instruction types inspected by the negative corpus cases. */
-auto resolveSelectedModule(const syntax_ast::AstModule& ast) {
-  return test_support::resolveTypedModule<Atom, Cp, Ldmatrix, Mma, Vote>(
-      ast, test_support::ModulePipeline::AvailableContext);
 }
 
 TEST(ResolvedModule, ResolvesAndChecksEveryM10CorpusModule) {
@@ -66,20 +61,20 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   const checker::Context current{
       .target = {.ptx_version = {9, 3}, .sm_version = 80},
   };
-  const auto invalid_copy = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_copy = resolveModule(parseModule(R"ptx(
 .global .u32 global_value;
 .shared .u32 shared_value;
 .entry kernel() { cp.async.ca.shared.global [shared_value], [global_value], 3; }
 )ptx"));
   ASSERT_TRUE(invalid_copy.has_value()) << invalid_copy.error().front().message;
-  const auto copy_check = checker::check(
-      test_ir_access::get<Cp>(invalid_copy->functions.front().body.front()),
-      current);
+  const auto copy_check = dynamic_cast<const CpAsyncCaSharedGlobal&>(
+                              *invalid_copy->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(copy_check.has_value());
   EXPECT_EQ(copy_check.error().front().kind,
             checker::CheckDiagnosticKind::ImmediateValueMismatch);
 
-  const auto invalid_atom = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_atom = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .local .u32 local_value;
   .reg .u32 %r<2>;
@@ -87,14 +82,14 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(invalid_atom.has_value()) << invalid_atom.error().front().message;
-  const auto atom_check = checker::check(
-      test_ir_access::get<Atom>(invalid_atom->functions.front().body.front()),
-      current);
+  const auto atom_check = dynamic_cast<const AtomGlobalAddU32&>(
+                              *invalid_atom->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(atom_check.has_value());
   EXPECT_EQ(atom_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
-  const auto invalid_vote = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_vote = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b0;
   .reg .pred %p0;
@@ -103,14 +98,14 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(invalid_vote.has_value()) << invalid_vote.error().front().message;
-  const auto vote_check = checker::check(
-      test_ir_access::get<Vote>(invalid_vote->functions.front().body.front()),
-      current);
+  const auto vote_check = dynamic_cast<const VoteSyncBallotB32&>(
+                              *invalid_vote->functions.front().body.front())
+                              .check(current);
   ASSERT_FALSE(vote_check.has_value());
   EXPECT_EQ(vote_check.error().front().kind,
             checker::CheckDiagnosticKind::OperandTypeMismatch);
 
-  const auto invalid_shfl = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_shfl = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .b32 %b0;
   .reg .u32 %u0;
@@ -119,7 +114,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_FALSE(invalid_shfl.has_value());
 
-  const auto invalid_ldmatrix = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_ldmatrix = resolveModule(parseModule(R"ptx(
 .global .b16 global_matrix;
 .entry kernel() {
   .reg .b32 %m<2>;
@@ -129,14 +124,14 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
   ASSERT_TRUE(invalid_ldmatrix.has_value())
       << invalid_ldmatrix.error().front().message;
   const auto ldmatrix_check =
-      checker::check(test_ir_access::get<Ldmatrix>(
-                         invalid_ldmatrix->functions.front().body.front()),
-                     current);
+      dynamic_cast<const LdmatrixSyncAlignedM8n8X2SharedB16&>(
+          *invalid_ldmatrix->functions.front().body.front())
+          .check(current);
   ASSERT_FALSE(ldmatrix_check.has_value());
   EXPECT_EQ(ldmatrix_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
 
-  const auto invalid_mma = resolveSelectedModule(parseModule(R"ptx(
+  const auto invalid_mma = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .f32 %d<3>;
   .reg .f32 %c<4>;
@@ -147,7 +142,7 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 )ptx"));
   ASSERT_FALSE(invalid_mma.has_value());
 
-  const auto valid_mma = resolveSelectedModule(parseModule(R"ptx(
+  const auto valid_mma = resolveModule(parseModule(R"ptx(
 .entry kernel() {
   .reg .f32 %d<4>;
   .reg .f32 %c<4>;
@@ -157,9 +152,11 @@ TEST(ResolvedModule, RejectsM10CorpusNegativeBoundaries) {
 }
 )ptx"));
   ASSERT_TRUE(valid_mma.has_value()) << valid_mma.error().front().message;
-  const auto old_target = checker::check(
-      test_ir_access::get<Mma>(valid_mma->functions.front().body.front()),
-      checker::Context{.target = {.ptx_version = {6, 4}, .sm_version = 80}});
+  const auto old_target =
+      dynamic_cast<const MmaSyncAlignedM16n8k8RowColF32F16F16F32&>(
+          *valid_mma->functions.front().body.front())
+          .check(checker::Context{
+              .target = {.ptx_version = {6, 4}, .sm_version = 80}});
   ASSERT_FALSE(old_target.has_value());
   EXPECT_EQ(old_target.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedPtxVersion);

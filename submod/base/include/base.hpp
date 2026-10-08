@@ -57,7 +57,13 @@ namespace ptx_frontend::base {
   X(E2m3x4, ".e2m3x4", Float, 4, InstructionOnly)   \
   X(E3m2x4, ".e3m2x4", Float, 4, InstructionOnly)   \
   X(UE8M0x2, ".ue8m0x2", Float, 2, InstructionOnly) \
-  X(S2f6x2, ".s2f6x2", Float, 2, InstructionOnly)
+  X(S2f6x2, ".s2f6x2", Float, 2, InstructionOnly)   \
+  X(B1, ".b1", Bit, 1, InstructionOnly)             \
+  X(E3m2, ".e3m2", Float, 1, InstructionOnly)       \
+  X(E2m3, ".e2m3", Float, 1, InstructionOnly)       \
+  X(E2m1, ".e2m1", Float, 1, InstructionOnly)       \
+  X(UE8M0, ".ue8m0", Float, 1, InstructionOnly)     \
+  X(UE4M3, ".ue4m3", Float, 1, InstructionOnly)
 
 /** Modeled PTX scalar identities in their stable public numeric order. */
 enum class ScalarType : uint8_t {
@@ -228,6 +234,20 @@ enum class AsyncCompletionKind : uint8_t {
   AsyncGroup,
   BulkGroup,
   MbarrierCompleteTxBytes,
+  /** Commit/wait identity of the independent warpgroup MMA queue. */
+  WgmmaGroup,
+  TcgenLoadWait,
+  TcgenStoreWait,
+  TcgenMbarrierArriveOne,
+};
+
+/** Action expressed by one WGMMA instruction, without dynamic sequence proof. */
+enum class WgmmaProtocolAction : uint8_t {
+  None,
+  Issue,
+  RegisterFence,
+  Commit,
+  Wait,
 };
 
 /** Semantic value of a PTX mbarrier .phase_type qualifier. */

@@ -24,23 +24,24 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Cp::VariantType expected) {
-    const auto selected = selectVariant<Cp>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected =
+        select_variant_name(parse_instruction(source), cp_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
   expect_variant("cp.async.mbarrier.arrive.b64 [%rd0];",
-                 Cp::VariantType::AsyncMbarrierArriveGenericOrShared);
+                 "AsyncMbarrierArriveGenericOrShared");
   expect_variant("cp.async.mbarrier.arrive.shared.b64 [shared_value];",
-                 Cp::VariantType::AsyncMbarrierArriveGenericOrShared);
+                 "AsyncMbarrierArriveGenericOrShared");
   expect_variant("cp.async.mbarrier.arrive.shared::cta.b64 [shared_value];",
-                 Cp::VariantType::AsyncMbarrierArriveSharedCta);
+                 "AsyncMbarrierArriveSharedCta");
   expect_variant("cp.async.mbarrier.arrive.noinc.b64 [%rd0];",
-                 Cp::VariantType::AsyncMbarrierArriveNoincGenericOrShared);
+                 "AsyncMbarrierArriveNoincGenericOrShared");
   expect_variant(
       "cp.async.mbarrier.arrive.noinc.shared::cta.b64 [shared_value];",
-      Cp::VariantType::AsyncMbarrierArriveNoincSharedCta);
+      "AsyncMbarrierArriveNoincSharedCta");
 
   for (const std::string_view source : {
            "cp.async.mbarrier.arrive.shared::cluster.b64 [%rd0];",
@@ -49,25 +50,30 @@ TEST(SelectVariantCp, SelectsAsyncMbarrierArriveForms) {
            "cp.async.mbarrier.arrive.b64.noinc [%rd0];",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Cp>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), cp_syntax_descriptor())
+            .has_value());
   }
   EXPECT_FALSE(
-      resolve<Cp>(parse_instruction("cp.async.mbarrier.arrive.b64 [%rd0], 1;"))
+      resolveCp(parse_instruction("cp.async.mbarrier.arrive.b64 [%rd0], 1;"))
           .has_value());
 }
 
 TEST(SelectVariantCp, SeparatesOriginalAndSourceControlledCopyByArity) {
-  const auto original = selectVariant<Cp>(
-      parse_instruction("cp.async.ca.shared.global [dst], [src], 4;"));
+  const auto original = select_variant_name(
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4;"),
+      cp_syntax_descriptor());
   ASSERT_TRUE(original.has_value());
-  EXPECT_EQ(*original, Cp::VariantType::AsyncCaSharedGlobal);
-  const auto extended = selectVariant<Cp>(
-      parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2;"));
+  EXPECT_EQ(*original, "AsyncCaSharedGlobal");
+  const auto extended = select_variant_name(
+      parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2;"),
+      cp_syntax_descriptor());
   ASSERT_TRUE(extended.has_value());
-  EXPECT_EQ(*extended, Cp::VariantType::AsyncCaSharedGlobalControl);
+  EXPECT_EQ(*extended, "AsyncCaSharedGlobalControl");
   EXPECT_FALSE(
-      selectVariant<Cp>(
-          parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2, 1;"))
+      select_variant_name(
+          parse_instruction("cp.async.ca.shared.global [dst], [src], 4, 2, 1;"),
+          cp_syntax_descriptor())
           .has_value());
 }
 

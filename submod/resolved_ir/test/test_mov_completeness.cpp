@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <expected>
@@ -8,12 +7,8 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/data_movement.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
-#include <ptx_frontend/resolved_ir/resolution/data_movement.gen.hpp>
-#include "test_module_projection.hpp"
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -23,7 +18,8 @@ using test_helpers::parseInstruction;
 using test_helpers::parseModule;
 
 /** Resolve one source instruction after requiring syntax recovery-free parsing. */
-std::expected<Mov, ResolveDiagnostic> resolve_mov(std::string_view source) {
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve_mov(
+    std::string_view source) {
   const auto parsed = parseInstruction(source);
   if (!parsed || !parsed.diagnostics.empty()) {
     return std::unexpected(ResolveDiagnostic{
@@ -32,10 +28,10 @@ std::expected<Mov, ResolveDiagnostic> resolve_mov(std::string_view source) {
                        : parsed.diagnostics.front().message,
     });
   }
-  const auto resolved = resolve<Mov>(*parsed);
+  auto resolved = resolveMov(*parsed);
   if (!resolved)
     return std::unexpected(resolved.error());
-  return *resolved;
+  return std::move(*resolved);
 }
 
 /** Predicate register and special-register sources retain complementation. */
@@ -52,30 +48,24 @@ TEST(MovCompleteness, PreservesPlainAndNegatedPredicateSources) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Mov>(
-      *parsed, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
 
-  const auto& plain =
-      test_ir_access::get<Mov::Pred>(test_ir_access::get<Mov>(body[0]).variant);
-  const auto& plain_source =
-      test_ir_access::get<ResolvedPredicate>(plain.src.value);
+  const auto& plain = dynamic_cast<const MovPred&>(*body[0]);
+  const auto& plain_source = std::get<ResolvedPredicate>(plain.src.value);
   EXPECT_FALSE(plain_source.negated);
   EXPECT_EQ(plain_source.register_ref.spelling, "%p0");
 
-  const auto& negated =
-      test_ir_access::get<Mov::Pred>(test_ir_access::get<Mov>(body[1]).variant);
-  const auto& negated_source =
-      test_ir_access::get<ResolvedPredicate>(negated.src.value);
+  const auto& negated = dynamic_cast<const MovPred&>(*body[1]);
+  const auto& negated_source = std::get<ResolvedPredicate>(negated.src.value);
   EXPECT_TRUE(negated_source.negated);
   EXPECT_EQ(negated_source.register_ref.spelling, "%p0");
 
-  const auto& special =
-      test_ir_access::get<Mov::Pred>(test_ir_access::get<Mov>(body[2]).variant);
+  const auto& special = dynamic_cast<const MovPred&>(*body[2]);
   const auto& special_source =
-      test_ir_access::get<ResolvedPredicateSpecialRegister>(special.src.value);
+      std::get<ResolvedPredicateSpecialRegister>(special.src.value);
   EXPECT_FALSE(special_source.negated);
   EXPECT_EQ(special_source.register_ref.id,
             base::lookup("%is_explicit_cluster")->id);
@@ -83,12 +73,8 @@ TEST(MovCompleteness, PreservesPlainAndNegatedPredicateSources) {
   const checker::Context predicate_target{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
   };
-  EXPECT_TRUE(
-      checker::check(test_ir_access::get<Mov>(body[0]), predicate_target)
-          .has_value());
-  EXPECT_TRUE(
-      checker::check(test_ir_access::get<Mov>(body[1]), predicate_target)
-          .has_value());
+  EXPECT_TRUE(body[0]->check(predicate_target).has_value());
+  EXPECT_TRUE(body[1]->check(predicate_target).has_value());
 }
 
 /** Predicate destinations remain registers and cannot be complemented. */
@@ -111,13 +97,12 @@ TEST(MovCompleteness, ResolvesPredicateConstantsAndNegatedSpecialRegisters) {
     SCOPED_TRACE(source);
     const auto resolved = resolve_mov(source);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto& pred = test_ir_access::get<Mov::Pred>(resolved->variant);
+    const auto& pred = dynamic_cast<const MovPred&>(**resolved);
     const auto* constant =
-        test_ir_access::get_if<ResolvedPredicateConstant>(&pred.src.value);
+        std::get_if<ResolvedPredicateConstant>(&pred.src.value);
     ASSERT_NE(constant, nullptr);
     EXPECT_EQ(constant->value, expected);
-    EXPECT_TRUE(checker::check(
-        *resolved,
+    EXPECT_TRUE((*resolved)->check(
         checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}}));
   }
 
@@ -130,27 +115,22 @@ TEST(MovCompleteness, ResolvesPredicateConstantsAndNegatedSpecialRegisters) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Mov>(
-      *parsed, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto& pred = test_ir_access::get<Mov::Pred>(
-      test_ir_access::get<Mov>(resolved->functions.front().body.front())
-          .variant);
+  const auto& pred =
+      dynamic_cast<const MovPred&>(*resolved->functions.front().body.front());
   const auto* special =
-      test_ir_access::get_if<ResolvedPredicateSpecialRegister>(&pred.src.value);
+      std::get_if<ResolvedPredicateSpecialRegister>(&pred.src.value);
   ASSERT_NE(special, nullptr);
   EXPECT_TRUE(special->negated);
   EXPECT_EQ(special->register_ref.id, base::lookup("%is_explicit_cluster")->id);
-  const auto& instruction =
-      test_ir_access::get<Mov>(resolved->functions.front().body.front());
+  const auto& instruction = *resolved->functions.front().body.front();
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};
-  EXPECT_TRUE(checker::check(
-      instruction,
+  EXPECT_TRUE(instruction.check(
       checker::Context{.target = {.ptx_version = {9, 3},
                                   .sm_version = 90,
                                   .capabilities = cluster_capabilities}}));
-  EXPECT_FALSE(checker::check(
-      instruction,
+  EXPECT_FALSE(instruction.check(
       checker::Context{.target = {.ptx_version = {9, 3},
                                   .sm_version = 89,
                                   .capabilities = cluster_capabilities}}));
@@ -182,50 +162,41 @@ TEST(MovCompleteness, SeparatesScalarFromBitPackUnpack) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Mov>(
-      *parsed, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
 
-  const auto& pack = test_ir_access::get<Mov::B128PackUnpack>(
-      test_ir_access::get<Mov>(body[0]).variant);
+  const auto& pack = dynamic_cast<const MovB128PackUnpack&>(*body[0]);
   EXPECT_EQ(pack.type, ScalarType::B128);
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<Mov::B128PackUnpack::PackOperands>(
-          pack.operands));
+  EXPECT_TRUE(pack.dst_register.has_value() &&
+              pack.src_register_vector.has_value());
 
-  const auto& unpack = test_ir_access::get<Mov::B128PackUnpack>(
-      test_ir_access::get<Mov>(body[1]).variant);
+  const auto& unpack = dynamic_cast<const MovB128PackUnpack&>(*body[1]);
   EXPECT_EQ(unpack.type, ScalarType::B128);
-  const auto& unpack_operands =
-      test_ir_access::get<Mov::B128PackUnpack::UnpackOperands>(unpack.operands);
-  ASSERT_EQ(unpack_operands.dst.value.elements.size(), 2u);
-  EXPECT_FALSE(unpack_operands.dst.value.elements[1].has_value());
+  ASSERT_TRUE(unpack.dst_register_vector.has_value());
+  ASSERT_TRUE(unpack.src_register.has_value());
+  ASSERT_EQ(unpack.dst_register_vector->value.elements.size(), 2u);
+  EXPECT_FALSE(unpack.dst_register_vector->value.elements[1].has_value());
 
-  const auto& vector_special = test_ir_access::get<Mov::V4U32>(
-      test_ir_access::get<Mov>(body[2]).variant);
+  const auto& vector_special = dynamic_cast<const MovV4U32&>(*body[2]);
   EXPECT_EQ(vector_special.type.value, ScalarType::U32);
   EXPECT_EQ(vector_special.src.value.spelling, "%clusterid");
 
   const checker::Context b128_target{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
   };
-  EXPECT_TRUE(checker::check(test_ir_access::get<Mov>(body[0]), b128_target)
-                  .has_value());
-  EXPECT_TRUE(checker::check(test_ir_access::get<Mov>(body[1]), b128_target)
-                  .has_value());
+  EXPECT_TRUE(body[0]->check(b128_target).has_value());
+  EXPECT_TRUE(body[1]->check(b128_target).has_value());
 }
 
 TEST(MovCompleteness, RevalidatesTheScalarTypeDomain) {
-  const auto resolved = resolve_mov("mov.b32 %r0, %r1;");
+  auto resolved = resolve_mov("mov.b32 %r0, %r1;");
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto scalar = *resolved;
-  test_ir_access::get<Mov::Scalar>(scalar.variant).type.value =
-      ScalarType::B128;
+  auto scalar = std::move(*resolved);
+  dynamic_cast<MovScalar&>(*scalar).type.value = ScalarType::B128;
 
-  const auto checked = checker::check(
-      scalar,
+  const auto checked = scalar->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(checked.has_value());
   ASSERT_FALSE(checked.error().empty());

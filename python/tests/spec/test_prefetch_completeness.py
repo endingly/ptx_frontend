@@ -2,8 +2,7 @@
 
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
-from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.database import get_packaged_spec_database
 
 
 class PrefetchCompletenessTest(unittest.TestCase):
@@ -12,7 +11,7 @@ class PrefetchCompletenessTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """Read the canonical packaged specification once."""
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         cls.instructions = {
             instruction.opcode: instruction
             for instruction in database.instructions

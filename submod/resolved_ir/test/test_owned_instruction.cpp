@@ -1,19 +1,20 @@
-
-
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
-#include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Resolve a source module and release its AST before returning owned payloads. */
+/** Resolve a source module and release the AST before returning its body. */
 std::optional<ResolvedModule> owned_add_module() {
   auto parsed = test_helpers::parseModule(R"ptx(
 .version 9.0
@@ -31,73 +32,56 @@ std::optional<ResolvedModule> owned_add_module() {
   return std::move(*resolved);
 }
 
-/** Exercise independent copies and address-stable moves of typed payloads. */
+/** Exact clones own independent payloads; moved pointers preserve borrows. */
 TEST(OwnedInstruction, DeepCopyMoveAndVectorGrowth) {
-  EXPECT_EQ(sizeof(OwnedInstruction), 2 * sizeof(void*));
+  EXPECT_EQ(sizeof(std::unique_ptr<Instruction>), sizeof(void*));
   auto module = owned_add_module();
   ASSERT_TRUE(module);
-  ASSERT_EQ(module->functions.front().body.size(), 1u);
-  const OwnedInstruction& original = module->functions.front().body.front();
-  const Add* original_add = original.get_if<Add>();
-  ASSERT_NE(original_add, nullptr);
-  EXPECT_EQ(original.opcode_name(), "add");
-  EXPECT_EQ(original.get_if<Call>(), nullptr);
+  auto& body = module->functions.front().body;
+  ASSERT_EQ(body.size(), 1u);
+  const auto* original =
+      dynamic_cast<const AddIntegerNoSat*>(body.front().get());
+  ASSERT_NE(original, nullptr);
+  EXPECT_EQ(body.front()->opcode_name(), "add");
+  EXPECT_EQ(dynamic_cast<const CallDirect*>(body.front().get()), nullptr);
 
-  OwnedInstruction copy(original);
-  ASSERT_NE(copy.get_if<Add>(), nullptr);
-  EXPECT_NE(copy.get_if<Add>(), original_add);
-  auto& copied_variant =
-      std::get<Add::IntegerNoSat>(copy.get_if<Add>()->variant);
-  copied_variant.type.value = ScalarType::S32;
-  EXPECT_EQ(std::get<Add::IntegerNoSat>(original_add->variant).type.value,
-            ScalarType::U32);
-  copy = copy;
-  EXPECT_NE(copy.get_if<Add>(), original_add);
+  auto copy = body.front()->clone();
+  auto* copied = dynamic_cast<AddIntegerNoSat*>(copy.get());
+  ASSERT_NE(copied, nullptr);
+  EXPECT_NE(copied, original);
+  copied->type.value = ScalarType::S32;
+  EXPECT_EQ(original->type.value, ScalarType::U32);
+  auto self_copy = copy->clone();
+  EXPECT_NE(self_copy.get(), copy.get());
 
-  const Add* borrowed = copy.get_if<Add>();
-  OwnedInstruction moved(std::move(copy));
-  EXPECT_FALSE(copy);
-  EXPECT_EQ(copy.opcode_name(), "");
-  EXPECT_EQ(copy.get_if<Add>(), nullptr);
-  EXPECT_EQ(moved.get_if<Add>(), borrowed);
-
-  std::vector<OwnedInstruction> owners;
+  const auto* borrowed = copy.get();
+  auto moved = std::move(copy);
+  EXPECT_EQ(copy, nullptr);
+  EXPECT_EQ(moved.get(), borrowed);
+  std::vector<std::unique_ptr<Instruction>> owners;
   owners.push_back(std::move(moved));
-  EXPECT_FALSE(moved);
+  EXPECT_EQ(moved, nullptr);
   for (int index = 0; index < 64; ++index)
-    owners.push_back(original);
-  EXPECT_EQ(owners.front().get_if<Add>(), borrowed);
+    owners.push_back(body.front()->clone());
+  EXPECT_EQ(owners.front().get(), borrowed);
 
-  OwnedInstruction assigned;
-  assigned = original;
-  ASSERT_NE(assigned.get_if<Add>(), nullptr);
-  EXPECT_NE(assigned.get_if<Add>(), original_add);
-  const Add* assigned_borrow = assigned.get_if<Add>();
-  assigned = std::move(assigned);
-  EXPECT_EQ(assigned.get_if<Add>(), assigned_borrow);
+  auto assigned = body.front()->clone();
+  ASSERT_NE(dynamic_cast<AddIntegerNoSat*>(assigned.get()), nullptr);
+  EXPECT_NE(assigned.get(), original);
   assigned = std::move(owners.front());
-  EXPECT_EQ(assigned.get_if<Add>(), borrowed);
-  EXPECT_FALSE(owners.front());
+  EXPECT_EQ(assigned.get(), borrowed);
+  EXPECT_EQ(owners.front(), nullptr);
   EXPECT_TRUE(validateModule(*module));
 }
 
-/** Reject empty owners safely during standalone queries and owned validation. */
+/** A null body slot is validated without an invalid virtual call. */
 TEST(OwnedInstruction, EmptyStateAndOwnedValidation) {
-  OwnedInstruction empty;
-  EXPECT_FALSE(empty);
-  EXPECT_EQ(empty.opcode_name(), "");
-  EXPECT_EQ(empty.get_if<Add>(), nullptr);
-  const checker::Context context{};
-  const auto empty_check = empty.check(context);
-  ASSERT_FALSE(empty_check);
-  EXPECT_EQ(empty_check.error().front().kind,
-            checker::CheckDiagnosticKind::ModuleSourceMismatch);
-  empty.visit_references(
-      detail::OwnedReferenceSink{.state = nullptr, .accept = nullptr});
+  std::unique_ptr<Instruction> empty;
+  EXPECT_EQ(empty, nullptr);
   auto module = owned_add_module();
   ASSERT_TRUE(module);
-  module->functions.front().body.front().visit_references(
-      detail::OwnedReferenceSink{.state = nullptr, .accept = nullptr});
+  detail::IReferenceObserver no_op;
+  module->functions.front().body.front()->visit_references(no_op);
   module->functions.front().body.front() = std::move(empty);
   const auto checked = validateModule(*module);
   ASSERT_FALSE(checked);

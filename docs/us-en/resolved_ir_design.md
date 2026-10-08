@@ -33,51 +33,62 @@ independent identity for a non-predicate `.reg` indirect target or a bound
 function-local `.callprototype`/`.calltargets` label. Its enclosing
 `ResolvedFunction` owns the matching ordered metadata payload and normalized
 ABI separately, so an operand remains compact without making the metadata
-unavailable. Generated `Call::Direct` now has three additional
+unavailable. The final `CallDirect` class now has three additional
 `IndirectCall` layouts (target/metadata, target/input/metadata, and
 return/target/input/metadata), each available from PTX 2.1 / SM 20; normal
 module indirect calls preserve the bound target and metadata identities, then
 reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
-The public model entry point is
-`<ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>`. It aggregates the
-handwritten foundation, generated typed instruction records, the
-`OwnedInstruction` outer value, and handwritten module containers. The narrower
-`ptx_resolved_ir_module.hpp` includes only foundation data and the owner header. These model headers retain owned data and read-only
-descriptors without requiring a complete Syntax AST. Resolution is exposed
-through `ptx_resolved_ir_resolution.hpp`, checking through
-`ptx_resolved_ir_checker.hpp`; `ptx_resolved_ir.hpp` remains the broad aggregate.
+The active public entry point is
+`<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`.
+It aggregates handwritten foundation and module containers with generated
+final semantic-form classes. Narrow per-opcode headers live under
+`model/<category>/<opcode>.gen.hpp`. Model headers retain owned data and
+read-only descriptors, complete owned diagnostics, and selector declarations
+without requiring a complete Syntax AST. Include parsing headers when calling
+a standalone resolver, and `ptx_resolved_ir_resolution.hpp` for module or
+bound-context resolution. Resolution is
+exposed through `ptx_resolved_ir_resolution.hpp`, and checking through virtual
+`Instruction::check` plus the handwritten support header
+`ptx_resolved_ir_checker_support.hpp`.
 
 The public layer also provides an opcode-independent boundary:
 
 ```cpp
-std::expected<OwnedInstruction, ResolveDiagnostic>
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
 resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
-`OwnedInstruction` is the sole outer instruction value and the element type of
-`ResolvedFunction::body`. There is no implicit `std::visit` or `std::get_if`
-conversion for an owner. The broad aggregate still exposes typed opcode records
-and `InstructionUnion` for explicit whole-model consumers; module implementation,
-central dispatch, and module availability include only the required narrow headers.
+`ResolvedFunction::body` is a vector of `unique_ptr<Instruction>`. Each modeled
+semantic form is a distinct final class with an immutable kind. There is no
+opcode owner wrapper or instruction union in the active API; selected small
+operand-layout payloads may still use typed variants. Exact-class
+queries use `dynamic_cast` to a final class, not opcode identity alone; the
+module implementation has a constrained private helper for these casts. Copying a
+`ResolvedFunction` clones every non-null instruction and all metadata, while
+preserving null slots so validation can reject them. Borrows survive vector
+growth and function moves, and end with instruction destruction or replacement.
+Internal `IReferenceObserver` callbacks borrow typed foundation values and
+location spans synchronously; validation forbids reentrant payload mutation.
+Source ranges, symbol identity, Call literal normalization, and the distinct
+resolution-only versus final-validation guarantees remain in force.
 
-An owner holds one heap-allocated typed opcode record and one pointer to an
-immutable table emitted in that opcode's existing generated translation unit.
-Its two-pointer handle deep-copies the record, moves without moving the payload,
-and safely represents an empty default or moved-from state. `get_if<T>()` checks
-exact generated record identity and returns a borrowed typed pointer; it is
-null for a different opcode or empty owner. The borrow survives moving the
-owner and vector growth, and ends on replacement or destruction. Validation
-rejects an empty instruction in a module body. Internal reference traversal
-borrows foundation payloads only during immutable validation, which forbids
-reentrant payload mutation; its location spans are consumed synchronously.
-Source ranges, typed inner variants, symbol
-identity, Call literal normalization, and the existing resolution-only versus
-final-validation guarantees retain their usual contracts. The owner does not establish a stable public visitor policy.
+Matrix data forms expose immutable class topology through
+`matrix_descriptor()`; mutable operand fields retain source-selected values and
+locations. Neither a mutable logical-form tag nor a `matrix_logical_index`
+lookup is part of this contract. Shared matrix descriptors retain a bound
+register identity while their runtime bits remain opaque. The separate
+[`TensorMapKnownFacts` query](tensor_map_known_facts.md) accepts caller-supplied
+descriptor facts. Its
+`project_tensor_known_access_context(const Instruction&, const checker::Context&)`
+adapter copies selected typed TMA access facts without retaining the AST:
+non-tensor forms yield no access or diagnostics, malformed tensor metadata
+yields diagnostics without access, and target unavailability preserves the
+copied access with availability false. It does not decode raw descriptor bytes.
 
 The module entry points have distinct success contracts:
 
@@ -191,8 +202,8 @@ Diagnostic ordering and existing early-return boundaries are unchanged. The
 existing aggregate fields remain in order, with new optional categories appended.
 
 `resolveInstruction` is generated from the instruction database and dispatches
-to the existing `resolve<T>` specialization. This keeps opcode dispatch out of
-callers while retaining the strongly typed per-opcode structures.
+to per-opcode functions such as `resolveAdd`, each constructing an exact final
+semantic-form class. This keeps opcode dispatch out of callers.
 `resolveModule` first builds a `SymbolTable`, then constructs an explicit
 `ResolveContext` for each function scope. The resulting `ResolvedModule` owns
 that table, and each `ResolvedFunction` is identified by its function
@@ -203,7 +214,7 @@ selects entry header inputs in source order.
 its bound `SymbolId` and a source-order boundary in the recursively flattened
 instruction body: labels before the first instruction are at zero, consecutive
 labels share a boundary, and a trailing label is at `body.size()`. Standalone
-`resolveInstruction` and `resolve<T>` remain declaration-free for
+`resolveInstruction` and per-opcode resolvers remain declaration-free for
 single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
 fields; owned, normalized parameter and storage metadata are deliberate exceptions.
@@ -507,25 +518,23 @@ which continues to describe address-value semantics such as `mov`.
 
 ## Opcode-generated structures
 
-Every opcode generates one outer struct. `VariantType` and `std::variant`
-represent the variant uniquely selected by the modifier combination:
+Every semantic form generates one final class derived from `Instruction`. An
+opcode has a narrow generated header with all of its forms, descriptor access,
+and a per-opcode resolver. For example:
 
 ```cpp
-struct Add {
-  enum class VariantType { IntegerNoSat, Sat, PackedOptionalSat };
-
-  struct IntegerNoSat {
-    ResolvedOperandLayoutTag operand_layout;
-    WithLocs<ScalarType> type;
-    WithLocs<ResolvedRegisterRef> dst;
-    WithLocs<RegOrImm> src1;
-    WithLocs<RegOrImm> src2;
-  };
-  using Variant = std::variant<IntegerNoSat /* ... */>;
-  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
-  Variant variant;
+class AddIntegerNoSat final : public Instruction {
+public:
+  ResolvedOperandLayoutTag operand_layout;
+  WithLocs<ScalarType> type;
+  WithLocs<ResolvedRegisterRef> dst;
+  WithLocs<RegOrImm> src1;
+  WithLocs<RegOrImm> src2;
 };
 ```
+
+The optional `execution_predicate` and virtual operations are inherited from
+`Instruction`.
 
 A fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
 `.sat` is fixed while the type is an allowed value with its own availability,
@@ -549,27 +558,27 @@ Add without becoming a global spelling-to-kind map.
 ## Multiple operand layouts in one variant
 
 The same modifier combination can admit different operand shapes. It must not
-be split into artificial modifier variants. Instead, generate a layout tag and
-a nested payload variant. `bar.sync a{, b}` is represented as:
+be split into artificial semantic forms. A final form class retains one layout
+tag, direct fields present in every layout, and typed optional fields present
+only in some layouts. `bar.sync a{, b}` is represented approximately as:
 
 ```cpp
-struct Bar::Sync {
+class BarSync final : public Instruction {
+public:
   ResolvedOperandLayoutTag operand_layout;
   inline static constexpr bool sync = true;
-  struct BarrierOperands { WithLocs<RegOrImm> barrier; };
-  struct BarrierAndThreadCountOperands {
-    WithLocs<RegOrImm> barrier;
-    WithLocs<RegOrImm> thread_count;
-  };
-  using Operands = std::variant<BarrierOperands,
-                                BarrierAndThreadCountOperands>;
-  Operands operands;
+  std::optional<WithLocs<ResolvedImmediate>> barrier_immediate;
+  std::optional<WithLocs<RegOrImm>> barrier_reg_or_imm;
+  std::optional<WithLocs<RegOrImm>> thread_count;
 };
 ```
 
 `ResolvedOperandLayoutTag` is the index of the layout in generated descriptors.
-The checker verifies tag validity, tag/payload-alternative agreement, and every
-operand binding. A disagreement is corrupted Resolved IR and produces
+The checker verifies tag validity, required and forbidden optional-field
+presence, and every operand binding before dereferencing a layout-specific
+field. Fields with the same descriptor ID but different C++ value types get
+deterministic value-kind suffixes, as `barrier_immediate` and
+`barrier_reg_or_imm` illustrate. A disagreement is corrupted Resolved IR and produces
 `OperandLayoutPayloadMismatch`.
 
 `Flat` handles comma-separated positional slots. `Call` is the only other
@@ -580,15 +589,15 @@ be disguised as `Flat`.
 
 ## Resolution protocol
 
-`resolve<T>(const AstInstruction&)` and its `ResolveContext` overload share one
-generated opcode-specific implementation. Shared logic performs these steps:
+Each per-opcode resolver and its `ResolveContext` overload share one generated
+implementation. Shared logic performs these steps:
 
 1. The common matcher diagnoses spellings unknown to the whole syntax
    descriptor, then binds spellings to ordered slots separately inside each
    candidate variant. Required/fixed slots may share a spelling when their
    positions disambiguate it; repeated optional spellings are rejected by the
    database. Reusing one slot is a user diagnostic.
-2. `selectVariant<T>` selects exactly one variant from those variant-local
+2. `select_variant_name` selects exactly one semantic form from those form-local
    bindings. `absent`, `optional`, and `required/fixed` match by slot and
    allowed value in canonical or explicitly declared alias order. Order aliases
    do not create new semantic variants or change field bindings.
@@ -600,29 +609,29 @@ generated opcode-specific implementation. Shared logic performs these steps:
    ordinary registers must resolve to visible `.reg` declarations; both retain
    their `SymbolId` and declaration type, while a direct branch target must bind
    to a label in the current function.
-5. The generated builder places fields in the selected struct or payload.
+5. The generated builder constructs the exact final class and populates its
+   direct and optional fields.
 
 No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-`selectVariant<T>` remains a common template adapter in the small handwritten
-`ptx_resolved_ir_selection.hpp` header, so every type satisfying `PtxOperator` can use it
-directly. It passes the descriptor to an out-of-line non-template matcher and
-converts the selected variant name to the opcode's `VariantType`. Generated
-model and explicit-specialization declarations for `resolve<T>` and `check<T>`
-share one full opcode header under the YAML `codegen_category`. A narrow
-model-only opcode and category headers remain available to consumers with an incomplete syntax AST. The model aggregate and instruction union include those narrow category headers. The aggregate
-`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`,
-`ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp`, and
-`ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` headers retain the whole-model public API; a
-category-local consumer can include only its full opcode header or category aggregate.
-The explicit `InstructionUnion` remains in its own aggregate header in
-canonical instruction order. Specialization definitions are non-inline and
-emitted with all three descriptor families into `resolved_ir_<category>_<opcode>.gen.cpp`, which is compiled into the
-library. This boundary keeps only the small type adapter as a template while
-preventing every consumer translation unit from reparsing the matcher or
-instantiating large resolve builders and checker visits/lambdas.
+`select_variant_name` is the non-template descriptor matcher. At the resolver
+boundary its selected name maps once to a typed form index; subsequent
+construction uses typed dispatch. Generated final class definitions and
+resolver declarations use a stable per-opcode aggregate header under the YAML
+`codegen_category`; callers with only model needs can use the generated base
+header. The aggregate `ptx_resolved_ir.gen.hpp` includes all opcode
+aggregates. An opcode with more than 64 forms has deterministic public
+`*_forms_NNN.gen.hpp` declaration shards and private `*_methods_NNN.gen.cpp`
+and `*_descriptors_NNN.gen.cpp` shards, each covering at most 64 forms. The
+per-opcode header remains the public include entry point. Its descriptor
+getters have a `const&`/`noexcept` contract: a bounded, one-time function-local
+`static const std::array` concatenates canonical shard rows into stable
+contiguous storage without a heap allocation. Non-inline method definitions
+are compiled into the library. The internal fixed-domain observer is not a
+public all-family visitor template; adding a form to an existing shard does
+not promise zero recompilation elsewhere.
 
 ## Three descriptors
 
@@ -650,7 +659,7 @@ select a different semantic branch.
 
 ## Checker contract
 
-Each generated `checker::check<T>` wrapper uses common checking for:
+Each final form's virtual `Instruction::check` override uses common checking for:
 
 - membership of every projected dynamic modifier value in the selected
   variant's generated semantic domain. This check is independent of source
@@ -661,7 +670,7 @@ Each generated `checker::check<T>` wrapper uses common checking for:
   outside this domain.
 - minimum PTX version, SM version, and target family for the variant, selected operand layout, and actual modifier value;
 - layout-tag bounds;
-- layout-tag/payload agreement;
+- layout-tag and required/forbidden optional-field agreement;
 - operand field identity, resolved shape, and immediate or bound-register
   declaration types from structured descriptors.
 - special-register intrinsic metadata and contextual type/availability selected
@@ -712,9 +721,10 @@ constraints remain outside its ABI.
 - A new multi-layout instruction needs tests for normal resolution, an invalid
   layout tag, and a tag/payload mismatch.
 
-Implementation entry points are `submod/resolved_ir/include/ptx_resolved_ir.hpp`,
-`submod/resolved_ir/include/ptx_resolved_ir_checker.hpp`, and generated
-`ptx_frontend/resolved_ir/resolved_ir.gen.hpp`.
+Implementation entry points are
+`submod/resolved_ir/include/ptx_resolved_ir.hpp`,
+`submod/resolved_ir/include/ptx_resolved_ir_checker_support.hpp`, and generated
+`ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp`.
 
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered

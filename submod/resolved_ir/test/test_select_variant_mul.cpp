@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/mul.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -25,48 +25,46 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveMul, SelectsFrozenLoU32VariantAndImmediateSource) {
   const auto resolved =
-      resolve<Mul>(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
+      resolveMul(parse_instruction("mul.lo.u32 %r0, %r1, 7;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = test_ir_access::get_if<Mul::LoU32>(&resolved->variant);
+  const auto* mul = dynamic_cast<MulLoU32*>(resolved->get());
   ASSERT_NE(mul, nullptr);
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<ResolvedImmediate>(mul->src2.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src2.value));
 }
 
 TEST(ResolveMul, SelectsM12HiAndWideU32Variants) {
-  const auto hi = resolve<Mul>(parse_instruction("mul.hi.u32 %r0, %r1, %r2;"));
+  const auto hi = resolveMul(parse_instruction("mul.hi.u32 %r0, %r1, %r2;"));
   ASSERT_TRUE(hi.has_value()) << hi.error().message;
-  const auto* hi_variant = test_ir_access::get_if<Mul::HiU32>(&hi->variant);
+  const auto* hi_variant = dynamic_cast<MulHiU32*>(hi->get());
   ASSERT_NE(hi_variant, nullptr);
-  EXPECT_TRUE(Mul::HiU32::hi);
-  EXPECT_EQ(Mul::HiU32::type, ScalarType::U32);
+  EXPECT_TRUE(MulHiU32::hi);
+  EXPECT_EQ(MulHiU32::type, ScalarType::U32);
 
   const auto wide =
-      resolve<Mul>(parse_instruction("mul.wide.u32 %rd0, %r1, %r2;"));
+      resolveMul(parse_instruction("mul.wide.u32 %rd0, %r1, %r2;"));
   ASSERT_TRUE(wide.has_value()) << wide.error().message;
-  const auto* wide_variant =
-      test_ir_access::get_if<Mul::WideU32>(&wide->variant);
+  const auto* wide_variant = dynamic_cast<MulWideU32*>(wide->get());
   ASSERT_NE(wide_variant, nullptr);
-  EXPECT_TRUE(Mul::WideU32::wide);
-  EXPECT_EQ(Mul::WideU32::type, ScalarType::U32);
+  EXPECT_TRUE(MulWideU32::wide);
+  EXPECT_EQ(MulWideU32::type, ScalarType::U32);
 }
 
 TEST(ResolveMul, SelectsM12WideS32Variant) {
   const auto resolved =
-      resolve<Mul>(parse_instruction("mul.wide.s32 %rd0, %r1, -7;"));
+      resolveMul(parse_instruction("mul.wide.s32 %rd0, %r1, -7;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* wide = test_ir_access::get_if<Mul::WideS32>(&resolved->variant);
+  const auto* wide = dynamic_cast<MulWideS32*>(resolved->get());
   ASSERT_NE(wide, nullptr);
-  EXPECT_TRUE(Mul::WideS32::wide);
-  EXPECT_EQ(Mul::WideS32::type, ScalarType::S32);
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<ResolvedImmediate>(wide->src2.value));
+  EXPECT_TRUE(MulWideS32::wide);
+  EXPECT_EQ(MulWideS32::type, ScalarType::S32);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(wide->src2.value));
 }
 
 TEST(ResolveMul, RejectsIllegalWide64Variants) {
   for (const auto source :
        {"mul.u32 %r0, %r1, %r2;", "mul.wide.s64 %rd0, %r1, %r2;"}) {
-    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    const auto selected =
+        select_variant_name(parse_instruction(source), mul_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -74,18 +72,19 @@ TEST(ResolveMul, RejectsIllegalWide64Variants) {
 
 TEST(ResolveMul, SelectsFrozenRnF32Variant) {
   const auto resolved =
-      resolve<Mul>(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
+      resolveMul(parse_instruction("mul.rn.f32 %f0, %f1, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = test_ir_access::get_if<Mul::RnF32>(&resolved->variant);
+  const auto* mul = dynamic_cast<MulRnF32*>(resolved->get());
   ASSERT_NE(mul, nullptr);
   EXPECT_EQ(mul->rounding.value, RoundingMode::Rn);
-  EXPECT_EQ(Mul::RnF32::type, ScalarType::F32);
+  EXPECT_EQ(MulRnF32::type, ScalarType::F32);
 }
 
 TEST(ResolveMul, RejectsIllegalFloatingModifierCombinations) {
   for (const auto source :
        {"mul.sat.f64 %fd0, %fd1, %fd2;", "mul.sat.f32x2 %rd0, %rd1, %rd2;"}) {
-    const auto selected = selectVariant<Mul>(parse_instruction(source));
+    const auto selected =
+        select_variant_name(parse_instruction(source), mul_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -93,12 +92,11 @@ TEST(ResolveMul, RejectsIllegalFloatingModifierCombinations) {
 
 TEST(ResolveMul, SelectsImmediateFloatingOperand) {
   const auto resolved =
-      resolve<Mul>(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
+      resolveMul(parse_instruction("mul.rn.f32 %f0, 1.0, %f2;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* mul = test_ir_access::get_if<Mul::RnF32>(&resolved->variant);
+  const auto* mul = dynamic_cast<MulRnF32*>(resolved->get());
   ASSERT_NE(mul, nullptr);
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<ResolvedImmediate>(mul->src1.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mul->src1.value));
 }
 
 }  // namespace
@@ -111,16 +109,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulLoU32Availability) {
   PtxSyntaxParser parser("mul.lo.u32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mul = resolve<Mul>(*ast);
+  const auto mul = resolveMul(*ast);
   ASSERT_TRUE(mul.has_value()) << mul.error().message;
   const auto rejected =
-      check(*mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mul)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mul, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mul)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -129,16 +128,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulHiU32Availability) {
   PtxSyntaxParser parser("mul.hi.u32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mul = resolve<Mul>(*ast);
+  const auto mul = resolveMul(*ast);
   ASSERT_TRUE(mul.has_value()) << mul.error().message;
   const auto rejected =
-      check(*mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mul)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mul, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mul)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -147,16 +147,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulWideU32Availability) {
   PtxSyntaxParser parser("mul.wide.u32 %rd0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mul = resolve<Mul>(*ast);
+  const auto mul = resolveMul(*ast);
   ASSERT_TRUE(mul.has_value()) << mul.error().message;
   const auto rejected =
-      check(*mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mul)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mul, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mul)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -165,16 +166,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulWideS32Availability) {
   PtxSyntaxParser parser("mul.wide.s32 %rd0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mul = resolve<Mul>(*ast);
+  const auto mul = resolveMul(*ast);
   ASSERT_TRUE(mul.has_value()) << mul.error().message;
   const auto rejected =
-      check(*mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mul)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mul, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mul)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }
@@ -183,16 +185,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedMulRnF32Availability) {
   PtxSyntaxParser parser("mul.rn.f32 %f0, %f1, %f2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto mul = resolve<Mul>(*ast);
+  const auto mul = resolveMul(*ast);
   ASSERT_TRUE(mul.has_value()) << mul.error().message;
   const auto rejected =
-      check(*mul, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*mul)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_TRUE(
-      check(*mul, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*mul)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

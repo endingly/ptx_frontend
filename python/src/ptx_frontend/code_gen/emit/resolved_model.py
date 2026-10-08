@@ -1,152 +1,419 @@
-"""Emit resolved instruction model declarations."""
+"""Emit direct resolved IR classes from the canonical lowering."""
 
 from __future__ import annotations
 
-
+from dataclasses import replace
 from pathlib import Path
 
-from ptx_frontend.base.utils import generated_at_comment
-from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.ir.resolved_ir import (
-    ResolvedField, ResolvedFieldStorage, ResolvedInstruction,
-    ResolvedOperandLayout, ResolvedVariant,
-)
-from ptx_frontend.spec.model import CodegenUnit
+from ptx_frontend.base.utils import file_stem_to_pascal_case
+from ptx_frontend.code_gen.context import GenerationContext, GenerationInstruction
+from ptx_frontend.code_gen.emit.matrix import emit_matrix_descriptor
+from ptx_frontend.code_gen.resolved_layout import operand_slots
 from ptx_frontend.code_gen.resolved_field_names import (
-    condition_code_cpp_value, field_cpp_constant_expr, field_cpp_type,
+    condition_code_cpp_value,
+    field_cpp_constant_expr,
+    field_cpp_type,
 )
-from .references import emit_reference_visitor
-from .resolved_resolver import _emit_resolve_specialization_declaration
-from .resolved_checker import emit_check_specialization_declaration
+from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldStorage
+from ptx_frontend.ir.tensor_reduction import (
+    TENSOR_REDUCTION_ELEMENT_TYPES, TensorReductionOp,
+)
+from ptx_frontend.spec.model import SemanticRule
 
-def generate_resolved_ir_category_header(
-    context: GenerationContext,
-    *,
-    category: str,
-    output_path: Path,
+
+INCLUDE_ROOT = "ptx_frontend/resolved_ir"
+FORM_SHARD_SIZE = 64
+
+
+def form_shards(entry: GenerationInstruction) -> tuple[tuple[int, ...], ...]:
+    """Partition large opcode forms in canonical order for bounded generation."""
+
+    count = len(entry.resolved.variants)
+    if count <= FORM_SHARD_SIZE:
+        return ()
+    return tuple(
+        tuple(range(start, min(start + FORM_SHARD_SIZE, count)))
+        for start in range(0, count, FORM_SHARD_SIZE)
+    )
+
+
+def form_name(entry: GenerationInstruction, variant) -> str:
+    """Return the unique final C++ identity of one semantic form."""
+
+    return entry.cpp_name + variant.cpp_name
+
+
+def method_name(cpp_type: str) -> str:
+    """Return the stable observer callback for one foundation reference type."""
+
+    if cpp_type not in REFERENCE_TYPES:
+        raise ValueError(f"reference payload lacks typed observer callback: {cpp_type}")
+    aliases = {
+        "ResolvedPredicate": "predicate",
+        "ResolvedRegisterRef": "reg",
+        "RegOrImm": "reg_or_imm",
+    }
+    if cpp_type in aliases:
+        return aliases[cpp_type]
+    text = cpp_type.removeprefix("Resolved")
+    result = ""
+    for index, char in enumerate(text):
+        if char.isupper() and index and (
+            text[index - 1].islower()
+            or (index + 1 < len(text) and text[index + 1].islower())
+        ):
+            result += "_"
+        result += char.lower()
+    return result
+
+
+REFERENCE_TYPES = (
+    "RegOrImm", "ResolvedAddress", "ResolvedBranchTarget",
+    "ResolvedBranchTargetSet", "ResolvedCallArguments", "ResolvedCallParameterRef",
+    "ResolvedCpAsyncSourceControl", "ResolvedFunctionRef", "ResolvedIndirectCallee",
+    "ResolvedMbarrierStateToken", "ResolvedMovSource", "ResolvedPredicate",
+    "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
+    "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
+    "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
+    "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
+    "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
+    "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
+)
+
+
+def generate_resolved_base_header(
+    context: GenerationContext, *, output_path: Path
 ) -> None:
-    """Generate an ordered, include-only category compatibility header."""
+    """Emit common polymorphic identity and typed borrowed-reference contracts."""
 
-    opcodes = tuple(
-        entry.specification.opcode
-        for entry in context.entries
-        if entry.specification.codegen_category == category
+    from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
+    from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
+
+    for entry in context.entries:
+        for variant in entry.resolved.variants:
+            for layout in variant.operand_layouts:
+                for field in layout.fields:
+                    if field.value_kind in REFERENCE_VALUE_KINDS:
+                        method_name(field_value_cpp_type(field, backend=context.backend))
+    opcode_enum = "\n".join(f"  {entry.cpp_name}," for entry in context.entries)
+    kinds = "\n".join(
+        f"  {form_name(entry, variant)},"
+        for entry in context.entries for variant in entry.resolved.variants
     )
-    if not opcodes:
-        raise ValueError(f"instruction category {category!r} is empty")
-
-    includes = "\n".join(
-        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp>"
-        for opcode in opcodes
+    callbacks = "\n".join(
+        f"  /** Observe a borrowed {cpp_type} and its source locations synchronously. */\n"
+        f"  virtual void {method_name(cpp_type)}(const {cpp_type}&, "
+        "std::span<const SourceRange>,\n"
+        "      checker::AddressSymbolResolutionPolicy) {}"
+        for cpp_type in REFERENCE_TYPES
     )
-    content = f"""\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
-#pragma once
-
-{includes}
-"""
+    reduction_domain = (
+        _emit_tensor_reduction_domain()
+        if any(variant.tensor_reduction_op is not None
+               for entry in context.entries for variant in entry.resolved.variants)
+        else ""
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content, encoding="utf-8")
-
-
-def generate_resolved_ir_category_model_header(
-    context: GenerationContext,
-    *,
-    category: str,
-    output_path: Path,
-) -> None:
-    """Aggregate narrow model leaves without completing the syntax AST."""
-
-    opcodes = tuple(
-        entry.specification.opcode
-        for entry in context.entries
-        if entry.specification.codegen_category == category
-    )
-    if not opcodes:
-        raise ValueError(f"instruction category {category!r} is empty")
-    includes = "\n".join(
-        f"#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp>"
-        for opcode in opcodes
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        f"""\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
+    output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
 #pragma once
 
-{includes}
-""",
-        encoding="utf-8",
-    )
-
-
-def generate_resolved_ir_opcode_header(
-    context: GenerationContext,
-    *,
-    category: str,
-    opcode: str,
-    output_path: Path,
-) -> None:
-    """Generate one self-contained model and reference visitor leaf header."""
-
-    instructions = tuple(
-        entry.resolved
-        for entry in context.entries
-        if entry.specification.codegen_category == category
-        and entry.specification.opcode == opcode
-    )
-    if len(instructions) != 1:
-        raise ValueError(f"expected one opcode {opcode!r} in category {category!r}")
-    instruction = instructions[0]
-    definition = emit_resolved_instruction_definition(instruction, context.backend)
-    reference_visitor = emit_reference_visitor(instruction, context.backend)
-    content = f"""\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
-#pragma once
-
-#include <concepts>
-#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <memory>
 #include <optional>
 #include <span>
-#include <string>
-#include <variant>
-#include <vector>
+#include <string_view>
 
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_checker_support.hpp>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_diagnostics.hpp>
+
+namespace ptx_frontend::syntax_ast {{
+struct AstInstruction;
+}}  // namespace ptx_frontend::syntax_ast
 
 namespace ptx_frontend::resolved_ir {{
 
-{definition}
+struct ResolveContext;
+
+/** Opcode-family identity; numeric values are not an ABI contract. */
+enum class Opcode : std::uint32_t {{
+{opcode_enum}
+}};
+
+/** Exact semantic form identity; each enumerator names one final class. */
+enum class InstructionKind : std::uint32_t {{
+{kinds}
+}};
+
+{reduction_domain}
 
 namespace detail {{
-
-{reference_visitor}
-
+/** Internal synchronous observer of borrowed typed reference payloads.
+ * A callback may not retain its references or spans or reenter payload mutation.
+ */
+struct IReferenceObserver {{
+  /** Destroy a caller-owned concrete observer through this interface. */
+  virtual ~IReferenceObserver() = default;
+{callbacks}
+}};
 }}  // namespace detail
 
-class OwnedInstruction;
-/** Box this exact opcode record through its generated ownership bridge. */
-OwnedInstruction box_instruction({instruction.cpp_name} value);
+/** Owned common instruction state with exact polymorphic semantic identity. */
+class Instruction {{
+ public:
+  /** Mark an exact final instruction type for constrained queries. */
+  static constexpr bool is_instruction = true;
+  /** Owned execution guard and source provenance, visited before operands. */
+  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
+  /** Destroy the exact derived payload. */
+  virtual ~Instruction();
+  /** Allocate an independent deep copy of all owned state. */
+  virtual std::unique_ptr<Instruction> clone() const = 0;
+  /** Return the exact immutable semantic identity of this object. */
+  virtual InstructionKind instruction_kind() const noexcept = 0;
+  /** Return its opcode-family identity. */
+  Opcode opcode_kind() const noexcept;
+  /** Return its canonical opcode mnemonic. */
+  std::string_view opcode_name() const noexcept;
+  /** Check mutable fields without module-level context. */
+  virtual checker::CheckResult check(const checker::Context&) const = 0;
+  /** Borrow references in predicate-first descriptor operand order. */
+  virtual void visit_references(detail::IReferenceObserver&) const = 0;
+
+ protected:
+  /** Construct an instruction with no execution guard. */
+  Instruction() = default;
+  /** Copy common owned state for a concrete clone. */
+  Instruction(const Instruction&) = default;
+  /** Move common owned state. */
+  Instruction(Instruction&&) = default;
+  /** Copy common owned state. */
+  Instruction& operator=(const Instruction&) = default;
+  /** Move common owned state. */
+  Instruction& operator=(Instruction&&) = default;
+}};
+
+/** Resolve syntax to one owned exact final instruction. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveInstruction(
+    const syntax_ast::AstInstruction&);
+/** Resolve syntax using a bound declaration context. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveInstruction(
+    const syntax_ast::AstInstruction&, const ResolveContext&);
 
 }}  // namespace ptx_frontend::resolved_ir
-"""
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content, encoding="utf-8")
+""", encoding="utf-8")
 
 
-def generate_resolved_ir_opcode_full_header(
-    context: GenerationContext,
-    *,
-    category: str,
-    opcode: str,
-    output_path: Path,
+def _field_declaration(field: ResolvedField, backend, name: str) -> str:
+    """Emit one direct modifier or operand member with its ownership contract."""
+
+    cpp_type = field_cpp_type(field, backend=backend)
+    if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
+        return (
+            f"  /** Semantic constant implied by this form. */\n"
+            f"  inline static constexpr {cpp_type} {name} = "
+            f"{field_cpp_constant_expr(field, backend=backend)};"
+        )
+    return f"  /** Owned resolved {field.name} value and source locations. */\n  {cpp_type} {name};"
+
+
+def _tensor_cta_group_contract(variant) -> str:
+    """Emit a copied written/effective CTA-group role for exact tensor forms."""
+
+    if variant.tensor_access_mode is None:
+        return ""
+    if not variant.tensor_cta_group_applicable:
+        return """  /** This tensor form has no CTA-group routing role. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const noexcept {
+    return std::nullopt;
+  }"""
+    one = "MulticastDestinations" if variant.tensor_multicast else "Destination"
+    two = "MulticastParityPeers" if variant.tensor_multicast else "DestinationOrPeer"
+    if not any(field.source_name == "cta_group" for field in variant.modifier_fields):
+        return f"""  /** Omitted spelling defaults to group one on this tensor load. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {{
+    return TensorCtaGroupRole{{.spelled = std::nullopt,
+                               .effective = TensorCtaGroup::One,
+                               .routing = TensorCtaSignalRouting::{one}}};
+  }}"""
+    return f"""  /** Copy written group and mbarrier-routing role after source checks. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {{
+    if (cta_group.locs.empty() ||
+        (cta_group.value != TensorCtaGroup::One &&
+         cta_group.value != TensorCtaGroup::Two)) return std::nullopt;
+    return TensorCtaGroupRole{{.spelled = cta_group,
+                               .effective = cta_group.value,
+                               .routing = cta_group.value == TensorCtaGroup::One
+                                   ? TensorCtaSignalRouting::{one}
+                                   : TensorCtaSignalRouting::{two}}};
+  }}"""
+
+
+def _tensor_map_replace_contract(variant) -> str:
+    """Project canonical fixed tensor-map replacement field and encoded values."""
+
+    fields = [field.source_name.removeprefix("field_")
+              for field in variant.modifier_fields
+              if field.source_name.startswith("field_")]
+    if not fields:
+        return ""
+    if len(fields) != 1:
+        raise ValueError("tensor-map replacement must have one fixed field")
+    field = fields[0]
+    value_type = {
+        "elemtype": "TensorMapElementType",
+        "interleave_layout": "TensorMapInterleaveLayout",
+        "swizzle_mode": "TensorMapSwizzleMode",
+        "swizzle_atomicity": "TensorMapSwizzleAtomicity",
+        "fill_mode": "TensorMapFillMode",
+    }.get(field)
+    encoded = (
+        f"""  /** Decode the original code after owned-value consistency checks. */
+  std::optional<{value_type}> encoded_value() const noexcept {{
+    return project_tensor_map_encoded_value<{value_type}>(
+        replacement_field, new_val.value);
+  }}"""
+        if value_type else ""
+    )
+    return f"""  /** Closed identity of this encoded tensor-map field. */
+  inline static constexpr TensorMapReplaceField replacement_field =
+      TensorMapReplaceField::{file_stem_to_pascal_case(field)};
+  /** Copy an opaque descriptor reference when source locations are present. */
+  std::optional<ResolvedTensorMapRef> tensor_map_ref() const {{
+    if (tensor_map.locs.empty()) return std::nullopt;
+    return ResolvedTensorMapRef{{tensor_map.value, tensor_map.locs.front()}};
+  }}
+{encoded}"""
+
+
+def _form_contract(variant, backend) -> str:
+    """Emit immutable exact-form semantic facts without opcode wrappers."""
+
+    parts = []
+    if variant.tensor_reduction_op is not None:
+        parts.append(
+            "  /** Closed tiled tensor-reduction operation. */\n"
+            "  inline static constexpr TensorReductionOp tensor_reduction_op = "
+            f"TensorReductionOp::{file_stem_to_pascal_case(variant.tensor_reduction_op.value)};"
+        )
+    group = _tensor_cta_group_contract(variant)
+    if group:
+        parts.append(group)
+    replacement = _tensor_map_replace_contract(variant)
+    if replacement:
+        parts.append(replacement)
+    if variant.matrix is not None:
+        parts.append(
+            "  /** Canonical topology independent of mutable operand state. */\n"
+            "  inline static constexpr MatrixInstructionDescriptor matrix_topology =\n      "
+            + emit_matrix_descriptor(variant.matrix, backend) + ";\n"
+            "  /** Borrow the immutable topology of this exact final form. */\n"
+            "  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept {\n"
+            "    return &matrix_topology;\n  }"
+        )
+    parts.extend(_tcgen_form_contract(variant))
+    return "\n".join(parts)
+
+
+def _tcgen_form_contract(variant) -> list[str]:
+    """Expose closed Tensor Memory form facts without a mutable opcode wrapper."""
+
+    result: list[str] = []
+    allocation = {
+        SemanticRule.TENSOR_MEMORY_ALLOC: ("Alloc", "RequiresPermit"),
+        SemanticRule.TENSOR_MEMORY_DEALLOC: ("Dealloc", "ReleasesAllocation"),
+        SemanticRule.TENSOR_MEMORY_RELINQUISH_ALLOC_PERMIT:
+            ("RelinquishAllocPermit", "RelinquishesPermit"),
+    }
+    if variant.rule in allocation:
+        action, effect = allocation[variant.rule]
+        result.append(
+            "  /** Canonical allocation-management action. */\n"
+            f"  inline static constexpr TcgenAllocationAction allocation_action = TcgenAllocationAction::{action};\n"
+            "  /** Local permit obligation/effect; no CFG state is inferred. */\n"
+            f"  inline static constexpr TcgenAllocationPermitEffect permit_effect = TcgenAllocationPermitEffect::{effect};"
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        spelling = variant.tcgen_commit_address_spelling
+        if spelling is None:
+            raise ValueError("TCGEN commit lacks address spelling")
+        result.append(
+            "  /** Written qualifier; barrier access uses generic proxy. */\n"
+            f"  inline static constexpr TcgenCommitAddressSpelling address_spelling = TcgenCommitAddressSpelling::{file_stem_to_pascal_case(spelling.value)};\n"
+            "  /** Whether a mask selects peer-CTA barriers. */\n"
+            f"  inline static constexpr bool multicast = {'true' if variant.tcgen_commit_multicast else 'false'};\n"
+            "  /** Cluster-scoped arrive-on count. */\n"
+            "  inline static constexpr uint8_t arrive_count = 1;\n"
+            "  /** Mbarrier signal scope. */\n"
+            "  inline static constexpr base::MemoryScope signal_scope = base::MemoryScope::Cluster;\n"
+            "  /** Barrier access uses the generic proxy. */\n"
+            "  inline static constexpr bool generic_proxy_access = true;"
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_FENCE:
+        direction = variant.tcgen_fence_direction
+        if direction is None:
+            raise ValueError("TCGEN fence lacks direction")
+        result.append(
+            "  /** Specialized ordering direction; not a completion promise. */\n"
+            f"  inline static constexpr TcgenFenceDirection direction = TcgenFenceDirection::{file_stem_to_pascal_case(direction.value)};"
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COPY:
+        shape_names = {
+            "32x32b": "S32x32b", "16x64b": "S16x64b", "16x128b": "S16x128b",
+            "16x256b": "S16x256b", "16x32bx2": "S16x32bx2",
+            "s128x256b": "S128x256b", "s4x256b": "S4x256b",
+            "s128x128b": "S128x128b", "s64x128b": "S64x128b", "s32x128b": "S32x128b",
+        }
+        multicast_names = {
+            "none": "None", "warpx2_02_13": "WarpX2_02_13",
+            "warpx2_01_23": "WarpX2_01_23", "warpx4": "WarpX4",
+        }
+        pairs = ",\n".join(
+            "      {TcgenDataMovementShape::%s, TcgenCopyMulticast::%s}" %
+            (shape_names[shape], multicast_names[multicast])
+            for shape, multicast in variant.tcgen_copy_pairs
+        )
+        masks = ", ".join(
+            str(sum(1 << index for index, present in enumerate(row) if present))
+            for row in variant.tcgen_copy_formats
+        )
+        result.append(
+            "  /** Canonical shape/multicast rows in static storage. */\n"
+            f"  inline static constexpr TcgenCopyShapePair copy_pairs[] = {{\n{pairs}\n  }};\n"
+            "  /** Destination/source format masks in field order. */\n"
+            f"  inline static constexpr uint8_t copy_format_masks[] = {{{masks}}};\n"
+            "  /** Opaque Table 43 source role, without bit decoding. */\n"
+            "  inline static constexpr bool has_tcgen_copy_descriptor = true;"
+        )
+        result.append(
+            "  /** Borrow a validated opaque descriptor role from the owned copy. */\n"
+            "  std::optional<TcgenCopyDescriptorView> descriptor_view() const noexcept {\n"
+            "    return tcgen_copy_descriptor_view(s_desc.value);\n  }"
+        )
+    return result
+
+
+def _opcode_entrypoints(entry: GenerationInstruction) -> str:
+    """Declare an opcode's metadata and resolver once in its public aggregate."""
+
+    opcode = entry.specification.opcode
+    prefix = opcode.replace(".", "_").replace("-", "_")
+    return f"""/** Return static-lifetime syntax selection metadata for {opcode}. */
+const check_end::SyntaxInstructionDescriptor& {prefix}_syntax_descriptor() noexcept;
+/** Return static-lifetime resolved field metadata for {opcode}. */
+const check_end::ResolvedInstructionDescriptor& {prefix}_resolved_descriptor() noexcept;
+/** Return static-lifetime legality metadata for {opcode}. */
+const checker::InstructionDescriptor& {prefix}_checker_descriptor() noexcept;
+/** Resolve one {opcode} syntax instruction to its exact final form. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{entry.cpp_name}(
+    const syntax_ast::AstInstruction&, const ResolveContext* = nullptr);"""
+
+
+def generate_resolved_opcode_header(
+    context: GenerationContext, *, category: str, opcode: str, output_path: Path,
+    include_entrypoints: bool = True,
 ) -> None:
-    """Emit one opcode's model, selection, resolver, and checker public API."""
+    """Emit one opcode's classes, with declarations only in its aggregate."""
 
     entries = tuple(
         entry for entry in context.entries
@@ -154,196 +421,181 @@ def generate_resolved_ir_opcode_full_header(
         and entry.specification.opcode == opcode
     )
     if len(entries) != 1:
-        raise ValueError(f"expected one opcode {opcode!r} in category {category!r}")
-    instruction = entries[0].resolved
-    resolve_declaration = _emit_resolve_specialization_declaration(instruction)
-    check_declaration = emit_check_specialization_declaration(instruction)
+        raise ValueError(f"expected one {category}/{opcode} entry")
+    entry = entries[0]
+    shards = form_shards(entry)
+    if shards:
+        includes = "\n".join(
+            f"#include <{INCLUDE_ROOT}/model/{category}/"
+            f"{opcode}_forms_{index:03d}.gen.hpp>"
+            for index in range(len(shards))
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            "// Generated by ptx_frontend resolved IR code generation. Do not edit.\n"
+            "#pragma once\n\n" + includes + "\n\n"
+            "namespace ptx_frontend::resolved_ir {\n\n"
+            + _opcode_entrypoints(entry)
+            + "\n\n}  // namespace ptx_frontend::resolved_ir\n",
+            encoding="utf-8",
+        )
+        return
+    definitions: list[str] = []
+    for variant in entry.resolved.variants:
+        name = form_name(entry, variant)
+        contract = _form_contract(variant, context.backend)
+        slots = operand_slots(variant, context.backend)
+        modifiers = "\n".join(
+            _field_declaration(field, context.backend, field.name)
+            for field in variant.modifier_fields
+        )
+        operands = "\n".join(
+            (
+                f"  /** Layout-specific owned {slot.field.name}; engaged exactly "
+                "for layouts that bind it. */\n"
+                f"  std::optional<{field_cpp_type(slot.field, backend=context.backend)}> "
+                f"{slot.member_name};"
+            ) if slot.optional else _field_declaration(
+                slot.field, context.backend, slot.member_name
+            )
+            for slot in slots
+        )
+        atomic = (
+            "  /** Written atomic address suffix and source provenance. */\n"
+            "  WithLocs<AtomicAddressQualifier> address_qualifier;\n"
+            if entry.resolved.atomic_address_qualifier is not None else ""
+        )
+        definitions.append(f"""/** Exact {opcode} {variant.cpp_name} form; operands are direct typed members. */
+class {name} final : public Instruction {{
+ public:
+  /** Fixed opcode family without per-instance storage. */
+  static constexpr Opcode opcode = Opcode::{entry.cpp_name};
+  /** Fixed semantic identity without per-instance storage. */
+  static constexpr InstructionKind kind = InstructionKind::{name};
+  /** Implicit CC.CF effect under the execution predicate. */
+  inline static constexpr ConditionCodeEffect condition_code_effect =
+      {condition_code_cpp_value(variant.condition_code_effect)};
+  /** Instruction-local asynchronous completion identity. */
+  inline static constexpr base::AsyncCompletionKind completion_kind =
+      base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
+  /** Programmer-expressed WGMMA action; sequence obligations remain external. */
+  inline static constexpr base::WgmmaProtocolAction wgmma_protocol_action =
+      base::WgmmaProtocolAction::{''.join(part.title() for part in variant.wgmma_protocol_action.value.split('_'))};
+{contract}
+  /** Selected layout identity and resolution provenance. */
+  ResolvedOperandLayoutTag operand_layout;
+{atomic}{modifiers}
+{operands}
+  /** Construct a mutable resolved form before fields are populated. */
+  {name}() = default;
+  /** Return the exact semantic identity. */
+  InstructionKind instruction_kind() const noexcept override;
+  /** Deep-copy all common and concrete owned state. */
+  std::unique_ptr<Instruction> clone() const override;
+  /** Check this form and its selected operand layout. */
+  checker::CheckResult check(const checker::Context&) const override;
+  /** Borrow references synchronously in predicate-first order. */
+  void visit_references(detail::IReferenceObserver&) const override;
+}};""")
+    definition = "\n\n".join(definitions)
+    entrypoints = _opcode_entrypoints(entry) if include_entrypoints else ""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        f"""\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
+    output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
 #pragma once
 
-#include <ptx_frontend/resolved_ir/model/{category}/{opcode}/model.gen.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_selection.hpp>
+#include <expected>
+#include <memory>
+#include <optional>
+#include <{INCLUDE_ROOT}/ptx_instruction_base.hpp>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_selection.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 
-{resolve_declaration}
+{definition}
+
+{entrypoints}
 
 }}  // namespace ptx_frontend::resolved_ir
+""", encoding="utf-8")
 
-namespace ptx_frontend::resolved_ir::checker {{
 
-{check_declaration}
+def _emit_tensor_reduction_domain() -> str:
+    """Emit the closed conditional operation/type query, not descriptor decoding."""
 
-}}  // namespace ptx_frontend::resolved_ir::checker
-""",
-        encoding="utf-8",
+    enum_members = "\n".join(
+        f"  {file_stem_to_pascal_case(op.value)}," for op in TensorReductionOp
     )
+    cases = "\n".join(
+        "    case TensorReductionOp::"
+        f"{file_stem_to_pascal_case(op.value)}:\n"
+        "      switch (element_type) {\n"
+        + "\n".join(
+            f"        case base::ScalarType::{scalar.upper()}:"
+            for scalar in TENSOR_REDUCTION_ELEMENT_TYPES[op]
+        )
+        + "\n          return true;\n"
+        "        default:\n          return false;\n      }"
+        for op in TensorReductionOp
+    )
+    return f"""/** Encoded tiled tensor-reduction operation; descriptor contents remain opaque. */
+enum class TensorReductionOp : uint8_t {{
+{enum_members}
+}};
+
+/** Whether an operation permits a descriptor element type if that type is known.
+ * This does not inspect or validate a tensor-map descriptor instance.
+ */
+constexpr bool tensor_reduction_accepts_element_type(
+    TensorReductionOp operation, base::ScalarType element_type) noexcept {{
+  switch (operation) {{
+{cases}
+    default:
+      return false;
+  }}
+}}
+"""
 
 
-def generate_resolved_instruction_union_header(
-    context: GenerationContext,
-    *,
-    output_path: Path,
+def generate_resolved_form_shard_header(
+    context: GenerationContext, *, category: str, opcode: str,
+    shard_index: int, output_path: Path,
 ) -> None:
-    """Generate the aggregate instruction union in canonical context order."""
+    """Emit one canonical slice of exact public classes from the same model."""
 
-    category_headers = tuple(sorted({
-        entry.specification.codegen_category for entry in context.entries
-    }))
-    includes = "\n".join(
-        f'#include <ptx_frontend/resolved_ir/model/{category}/model.gen.hpp>'
-        for category in category_headers
+    entry = next(
+        item for item in context.entries
+        if item.specification.codegen_category == category
+        and item.specification.opcode == opcode
     )
-    content = f"""\\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
+    indices = form_shards(entry)[shard_index]
+    resolved = replace(
+        entry.resolved,
+        variants=tuple(entry.resolved.variants[index] for index in indices),
+    )
+    partial = GenerationContext(
+        backend=context.backend,
+        entries=(replace(entry, resolved=resolved),),
+    )
+    generate_resolved_opcode_header(
+        partial, category=category, opcode=opcode, output_path=output_path,
+        include_entrypoints=False,
+    )
+
+
+def generate_resolved_umbrella_header(
+    context: GenerationContext, *, output_path: Path
+) -> None:
+    """Expose all generated final forms through one installed aggregate header."""
+
+    includes = "\n".join(
+        f"#include <{INCLUDE_ROOT}/model/"
+        f"{entry.specification.codegen_category}/{entry.specification.opcode}.gen.hpp>"
+        for entry in context.entries
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
 #pragma once
 
-#include <variant>
-
+#include <{INCLUDE_ROOT}/ptx_instruction_base.hpp>
 {includes}
-
-namespace ptx_frontend::resolved_ir {{
-
-{_emit_resolved_instruction_union(context.instructions)}
-
-}}  // namespace ptx_frontend::resolved_ir
-"""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content, encoding="utf-8")
-
-
-def generate_resolved_ir_header(
-    context: GenerationContext,
-    *,
-    output_path: Path,
-) -> None:
-    """Generate the aggregate compatibility model header."""
-
-    category_headers = tuple(sorted({
-        entry.specification.codegen_category for entry in context.entries
-    }))
-
-    includes = "\n".join(
-        f'#include <ptx_frontend/resolved_ir/model/{category}/model.gen.hpp>'
-        for category in category_headers
-    )
-    content = f"""\\
-// Generated by python/scripts/gen_all.py. Do not edit.
-{generated_at_comment()}
-#pragma once
-
-{includes}
-#include <ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp>
-"""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(content, encoding="utf-8")
-
-
-def _emit_resolved_instruction_union(
-    instructions: tuple[ResolvedInstruction, ...],
-) -> str:
-    """Emit the model-owned resolved instruction alternative union."""
-
-    alternatives = ", ".join(instruction.cpp_name for instruction in instructions)
-    return f"""\
-using InstructionUnion = std::variant<{alternatives}>;
-"""
-
-
-def emit_resolved_instruction_definition(instruction: ResolvedInstruction, backend: CodegenUnit) -> str:
-    """Emit one opcode-level C++ resolved instruction struct."""
-
-    variant_names = ", ".join(variant.cpp_name for variant in instruction.variants)
-    variant_enum_values = "\n".join(
-        f"    {variant.cpp_name}," for variant in instruction.variants
-    )
-    variant_definitions = "\n\n".join(
-        _emit_resolved_variant_definition(variant, backend) for variant in instruction.variants
-    )
-
-    atomic_qualifier = (
-        "  /** Written address suffix, distinct from address provenance. */\n"
-        "  WithLocs<AtomicAddressQualifier> address_qualifier;\n"
-        if instruction.atomic_address_qualifier is not None else ""
-    )
-    definition = f"""\
-struct {instruction.cpp_name} {{
-  enum class VariantType {{
-{variant_enum_values}
-  }};
-
-{variant_definitions}
-
-  using Variant = std::variant<{variant_names}>;
-  std::optional<WithLocs<ResolvedPredicate>> execution_predicate;
-{atomic_qualifier}\
-  Variant variant;
-
-  static const check_end::SyntaxInstructionDescriptor&
-  get_syntax_descriptor() noexcept;
-  static const check_end::ResolvedInstructionDescriptor&
-  get_resolved_descriptor() noexcept;
-  static const checker::InstructionDescriptor&
-  get_checker_descriptor() noexcept;
-}};"""
-    return definition
-
-
-def _emit_resolved_variant_definition(variant: ResolvedVariant, backend: CodegenUnit) -> str:
-    modifier_fields = "\n".join(
-        _emit_resolved_field(field, backend) for field in variant.modifier_fields
-    )
-    if len(variant.operand_layouts) == 1:
-        operand_fields = "\n".join(
-            _emit_resolved_field(field, backend) for field in variant.operand_layouts[0].fields
-        )
-        body = f"{modifier_fields}\n{operand_fields}"
-    else:
-        layout_structs = "\n\n".join(
-            _emit_operand_layout_definition(layout, backend)
-            for layout in variant.operand_layouts
-        )
-        alternatives = ", ".join(
-            f"{layout.cpp_name}Operands" for layout in variant.operand_layouts
-        )
-        body = f"""{modifier_fields}
-
-{layout_structs}
-
-    using Operands = std::variant<{alternatives}>;
-    Operands operands;"""
-
-    return f"""\
-  // YAML: {variant.variant_id}
-  struct {variant.cpp_name} {{
-    /** Implicit CC.CF effect, gated by the enclosing execution predicate. */
-    inline static constexpr ConditionCodeEffect condition_code_effect =
-        {condition_code_cpp_value(variant.condition_code_effect)};
-    /** Instruction-local completion identity; no runtime group state is implied. */
-    inline static constexpr base::AsyncCompletionKind completion_kind =
-        base::AsyncCompletionKind::{''.join(part.title() for part in variant.completion_kind.value.split('_'))};
-    ResolvedOperandLayoutTag operand_layout;
-{body}
-  }};"""
-
-
-def _emit_operand_layout_definition(layout: ResolvedOperandLayout, backend: CodegenUnit) -> str:
-    fields = "\n".join(_emit_resolved_field(field, backend) for field in layout.fields)
-    return f"""    // YAML operand layout: {layout.layout_id}
-    struct {layout.cpp_name}Operands {{
-{fields}
-    }};"""
-
-
-def _emit_resolved_field(field: ResolvedField, backend: CodegenUnit) -> str:
-    if field.storage is ResolvedFieldStorage.STATIC_CONSTANT:
-        return (
-            f"    inline static constexpr {field_cpp_type(field, backend=backend)} {field.name} = "
-            f"{field_cpp_constant_expr(field, backend=backend)};"
-        )
-    return f"    {field_cpp_type(field, backend=backend)} {field.name};"
+""", encoding="utf-8")

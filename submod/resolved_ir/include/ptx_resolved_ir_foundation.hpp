@@ -26,6 +26,7 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+struct ResolvedTensorOperand;
 enum class ResolvedRegisterClass : uint8_t;
 
 /**
@@ -63,6 +64,108 @@ enum class AtomicAddressQualifier : uint8_t {
 };
 /** Semantic value of a PTX vector-arity modifier such as ``.v2``. */
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
+/** Closed written CTA-group size shared by tensor-copy and Tensor Memory syntax. */
+enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Closed register-transfer shape, distinct from an MMA matrix shape. */
+enum class TcgenDataMovementShape : uint8_t {
+  S32x32b,
+  S16x64b,
+  S16x128b,
+  S16x256b,
+  S16x32bx2,
+  S128x256b,
+  S4x256b,
+  S128x128b,
+  S64x128b,
+  S32x128b
+};
+/** Closed multicast topology written by a Tensor Memory copy. */
+enum class TcgenCopyMulticast : uint8_t {
+  None,
+  WarpX2_02_13,
+  WarpX2_01_23,
+  WarpX4
+};
+/** Copy decompression selected by destination and source format tokens. */
+enum class TcgenCopyFormat : uint8_t { None, B6x16P32, B4x16P64 };
+/** Canonical legal copy shape and multicast pair. */
+struct TcgenCopyShapePair {
+  /** Written movement shape. */
+  TcgenDataMovementShape shape;
+  /** Written multicast topology or unicast omission. */
+  TcgenCopyMulticast multicast;
+};
+/** Number of repeated transfer shapes selected by a written suffix. */
+enum class TcgenRepeat : uint8_t { X1, X2, X4, X8, X16, X32, X64, X128 };
+/** Reduction applied to each lane's loaded columns. */
+enum class TcgenReductionOp : uint8_t { Min, Max };
+/** Same-thread register-transfer completion class. */
+enum class TcgenWaitClass : uint8_t { Load, Store };
+/** Written commit address qualifier; access still uses the generic proxy. */
+enum class TcgenCommitAddressSpelling : uint8_t { Generic, SharedCluster };
+/** Ordering direction of an operand-free specialized TCGEN fence. */
+enum class TcgenFenceDirection : uint8_t { BeforeThreadSync, AfterThreadSync };
+/** Allocation-management action independent of written opcode modifiers. */
+enum class TcgenAllocationAction : uint8_t {
+  Alloc,
+  Dealloc,
+  RelinquishAllocPermit
+};
+/** Local permission effect; execution ordering remains a runtime obligation. */
+enum class TcgenAllocationPermitEffect : uint8_t {
+  RequiresPermit,
+  ReleasesAllocation,
+  RelinquishesPermit
+};
+/** Number of participating warps issuing an allocation-management operation. */
+enum class TcgenIssueGranularity : uint8_t { OneWarp, WarpPair };
+/** Map an instruction's CTA group to its participating-warp count. */
+constexpr TcgenIssueGranularity tcgen_issue_granularity(
+    TcgenCtaGroup group) noexcept {
+  return group == TcgenCtaGroup::Two ? TcgenIssueGranularity::WarpPair
+                                     : TcgenIssueGranularity::OneWarp;
+}
+/** Tensor-copy spelling of the closed CTA-group value; no TCGEN body rule follows. */
+using TensorCtaGroup = TcgenCtaGroup;
+/** Signal destination selected by a tensor-copy CTA group and multicast mode. */
+enum class TensorCtaSignalRouting : uint8_t {
+  Destination,
+  DestinationOrPeer,
+  MulticastDestinations,
+  MulticastParityPeers
+};
+/** Owned written group plus effective mbarrier-routing interpretation. */
+struct TensorCtaGroupRole {
+  /** Absent for omitted spelling; present value owns its source locations. */
+  std::optional<WithLocs<TensorCtaGroup>> spelled;
+  /** Omitted spelling defaults to one only on applicable tensor loads. */
+  TensorCtaGroup effective = TensorCtaGroup::One;
+  /** Routing obligation; actual CTA ownership remains unknown at compile time. */
+  TensorCtaSignalRouting routing = TensorCtaSignalRouting::Destination;
+};
+/** Dimension count encoded by a tiled tensor instruction. */
+enum class TensorRank : uint8_t { One = 1, Two, Three, Four, Five };
+/** Tensor transfer interpretation represented by this operand. */
+/** Instruction-selected interpretation of a tensor coordinate vector. */
+enum class TensorAccessMode : uint8_t {
+  Tiled,
+  Im2colNoOffs,
+  Im2col,
+  Im2colW,
+  Im2colW128,
+  TileGather4,
+  TileScatter4
+};
+/** Source-order meaning of a gather/scatter coordinate position. */
+enum class TensorGatherScatterCoordinateRole : uint8_t {
+  Column,
+  Row0,
+  Row1,
+  Row2,
+  Row3
+};
+/** A scalar mask whose bits select destination CTA ranks for a cluster copy. */
+enum class TensorCtaMaskRole : uint8_t { MulticastCluster };
 /** Return the scalar lane count, or zero for the invalid sentinel. */
 constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   switch (arity) {
@@ -77,6 +180,139 @@ constexpr uint8_t vector_arity_count(VectorArity arity) noexcept {
   }
   return 0;
 }
+/** Warp-level and warpgroup matrix family, independent of opcode spelling. */
+enum class MatrixFamily : uint8_t {
+  LDMATRIX,
+  STMATRIX,
+  MOVMATRIX,
+  MMA,
+  MMA_SPARSE,
+  WMMA_LOAD,
+  WMMA_STORE,
+  WMMA_MMA,
+  WGMMA,
+  WGMMA_SPARSE
+};
+/** Logical matrix element, independent of register packing. */
+enum class MatrixElementType : uint8_t {
+  B1,
+  B8,
+  B8X16,
+  B16,
+  B4X16_P64,
+  B6X16_P32,
+  F16,
+  BF16,
+  TF32,
+  F32,
+  F64,
+  S8,
+  U8,
+  S32,
+  S4,
+  U4,
+  E4M3,
+  E5M2,
+  E3M2,
+  E2M3,
+  E2M1
+};
+/** Row or column placement of a logical matrix operand. */
+enum class MatrixLayout : uint8_t { NONE, ROW, COL };
+/** MMA numeric format, including block-scaled formats. */
+enum class MatrixKind : uint8_t { CLASSIC, F8F6F4, MXF8F6F4, MXF4, MXF4NVF4 };
+/** Single-bit multiply replacement before population count. */
+enum class MatrixBitOperation : uint8_t { NONE, XOR, AND };
+/** Sparse metadata ordering requirement. */
+enum class MatrixSparseOrder : uint8_t { NONE, NATIVE, ORDERED };
+/** Logical scale-factor type selected by block-scaled MMA. */
+enum class MatrixScaleType : uint8_t { NONE, UE8M0, UE4M3 };
+/** Written matrix address qualifier, independent of address provenance. */
+enum class MatrixAddressQualifier : uint8_t {
+  NONE,
+  GLOBAL,
+  SHARED,
+  SHARED_CTA
+};
+/** Logical register-fragment role in a matrix instruction. */
+enum class MatrixFragmentRole : uint8_t { D, A, B, C };
+/** Logical M×N×K shape; raw movement instructions use K=0. */
+struct MatrixShape {
+  uint16_t m = 0;
+  uint16_t n = 0;
+  uint16_t k = 0;
+  /** Compare logical dimensions. */
+  bool operator==(const MatrixShape&) const = default;
+};
+/** One register fragment's semantic role, packing and lane count. */
+struct MatrixFragmentShape {
+  /** Stable generated operand name in static storage. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::D;
+  MatrixElementType element_type = MatrixElementType::B16;
+  base::ScalarType register_type = base::ScalarType::Invalid;
+  /** Number of register lanes in the corresponding owned operand. */
+  uint8_t register_count = 0;
+  /** Compare the exact register-fragment contract. */
+  bool operator==(const MatrixFragmentShape&) const = default;
+};
+/** Generated immediate domains for one A/B block-scale selector tuple. */
+struct MatrixScaleSelectorDescriptor {
+  /** Static operand name locating the owned two-slot tuple. */
+  std::string_view operand_field_id{};
+  MatrixFragmentRole role = MatrixFragmentRole::A;
+  /** Bit i permits immediate byte ID i. */
+  uint8_t byte_mask = 0;
+  /** Largest permitted immediate thread ID, inclusive. */
+  uint8_t thread_max = 0;
+  /** Compare the typed selector contract. */
+  bool operator==(const MatrixScaleSelectorDescriptor&) const = default;
+};
+/** Source location of a warpgroup operand within shared/register forms. */
+enum class WgmmaSourcePlacement : uint8_t { NONE, SHARED, REGISTER };
+/** Sparse metadata carrier for a warpgroup matrix operation. */
+enum class WgmmaSparseMetadataKind : uint8_t {
+  NONE,
+  TWO_OF_FOUR,
+  ONE_OF_TWO_TF32
+};
+/** Marker for the fixed 128-thread warpgroup execution contract. */
+struct WarpGroup128 {
+  /** PTX warpgroup size; participation uniformity is a runtime obligation. */
+  inline static constexpr uint16_t thread_count = 128;
+  /** Compare the marker without inferring runtime scheduling. */
+  bool operator==(const WarpGroup128&) const = default;
+};
+/** Immutable generated matrix topology, copied into resolved metadata. */
+struct MatrixInstructionDescriptor {
+  MatrixFamily family = MatrixFamily::MMA;
+  MatrixShape shape{};
+  MatrixLayout a_layout = MatrixLayout::NONE;
+  MatrixLayout b_layout = MatrixLayout::NONE;
+  MatrixLayout c_layout = MatrixLayout::NONE;
+  MatrixLayout d_layout = MatrixLayout::NONE;
+  MatrixKind kind = MatrixKind::CLASSIC;
+  MatrixBitOperation bit_operation = MatrixBitOperation::NONE;
+  MatrixSparseOrder sparse_order = MatrixSparseOrder::NONE;
+  MatrixScaleType scale_type = MatrixScaleType::NONE;
+  MatrixAddressQualifier address_qualifier = MatrixAddressQualifier::NONE;
+  std::optional<MatrixElementType> source_packing;
+  std::optional<MatrixElementType> destination_packing;
+  bool transpose = false;
+  uint8_t matrix_count = 0;
+  uint8_t scale_vector_size = 0;
+  /** Only the first fragment_count entries are live. */
+  std::array<MatrixFragmentShape, 4> fragments{};
+  uint8_t fragment_count = 0;
+  /** Only the first scale_selector_count entries are live. */
+  std::array<MatrixScaleSelectorDescriptor, 2> scale_selectors{};
+  uint8_t scale_selector_count = 0;
+  WgmmaSourcePlacement source_placement = WgmmaSourcePlacement::NONE;
+  WgmmaSparseMetadataKind sparse_metadata_kind = WgmmaSparseMetadataKind::NONE;
+  std::optional<WarpGroup128> warpgroup;
+  /** Compare the complete instruction-local topology and controls. */
+  bool operator==(const MatrixInstructionDescriptor&) const = default;
+};
 /** Function provenance retained for resolved memory addresses. */
 enum class EnclosingFunctionKind : uint8_t { Unknown, Entry, Device };
 /** Parameter role independent of binding-layer enum types. */
@@ -128,7 +364,8 @@ enum class OperandShape : uint16_t {
   IndirectCallee = 1 << 11,
   BranchTargetSet = 1 << 12,
   ShflDestination = 1 << 13,
-  PredicatePair = 1 << 14
+  PredicatePair = 1 << 14,
+  TensorOperand = 1 << 15
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -159,7 +396,7 @@ struct PtxVersion {
   constexpr auto operator<=>(const PtxVersion&) const = default;
 };
 /** Fixed DNF capacity shared by generated availability descriptors. */
-inline constexpr size_t kMaxAvailabilityClauses = 5;
+inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
 /** One AND-clause in a bounded generated target-availability expression. */
@@ -219,7 +456,8 @@ enum class AddressBaseKind : uint8_t { Unknown, Register, Immediate, Symbol };
 enum class AddressOffsetDomain : uint8_t { Unrestricted, Signed32 };
 enum class MbarrierStateTokenForm : uint8_t { Register, RegisterOrSink, Sink };
 inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
-inline constexpr size_t kMaxOperandElements = 64;
+/** Largest explicit register fragment; ordinary operand limits remain narrower. */
+inline constexpr size_t kMaxOperandElements = 128;
 /** Semantic constraints for one generated operand position. */
 struct OperandDescriptor {
   std::string_view target_field_id;
@@ -256,6 +494,12 @@ struct OperandDescriptor {
   AddressBasePolicy address_base_policy = AddressBasePolicy::Any;
   AddressOffsetDomain address_offset_domain = AddressOffsetDomain::Unrestricted;
   ParameterAddressConstraint parameter_constraint;
+  /** Required owned tensor mode; absent for every non-tensor operand. */
+  std::optional<TensorAccessMode> expected_tensor_mode;
+  /** Fixed instruction tensor dimension, independent of coordinate count. */
+  std::optional<TensorRank> expected_tensor_rank;
+  /** Present only for the mask coupled to tensor cluster multicast. */
+  std::optional<TensorCtaMaskRole> tensor_cta_mask_role;
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
       ImmediateConversionPolicy::Narrow;
@@ -276,6 +520,11 @@ struct FieldView {
   std::optional<MemoryScope> memory_scope;
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
+  std::optional<TcgenCtaGroup> tcgen_cta_group;
+  std::optional<TcgenDataMovementShape> tcgen_shape;
+  std::optional<TcgenRepeat> tcgen_repeat;
+  std::optional<TcgenReductionOp> tcgen_reduction_op;
+  std::optional<TcgenWaitClass> tcgen_wait_class;
   std::optional<AsyncProxyKind> async_proxy_kind;
   std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
@@ -301,6 +550,8 @@ struct OperandView {
   std::optional<binding::SymbolId> register_symbol_id;
   /** Resolved register category, independent of an unknown declaration type. */
   std::optional<ResolvedRegisterClass> register_class;
+  /** Declared vector lane count; scalar TCGEN sources require absence. */
+  std::optional<uint8_t> register_vector_width;
   /** A cp.async fourth operand is an explicit cache policy, not source size. */
   bool cp_async_cache_policy = false;
   bool is_sink = false;
@@ -332,9 +583,23 @@ struct OperandView {
       ParameterAddressQualifier::Default;
   std::array<ScalarType, kMaxOperandElements> vector_element_types{};
   std::array<OperandShape, kMaxOperandElements> vector_element_shapes{};
+  /** Original integer source for each immediate vector lane, when present. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_source_bits{};
+  /** Current owned integer payload for each immediate vector lane. */
+  std::array<std::optional<uint64_t>, kMaxOperandElements>
+      vector_immediate_bits{};
+  /** Signed negativity accompanies vector_immediate_source_bits. */
+  std::array<bool, kMaxOperandElements> vector_immediate_negative{};
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
+  /** Composite tensor coordinates with a statically negative immediate. */
+  bool tensor_has_negative_immediate = false;
+  /** Composite tensor rank encoded by the owned operand. */
+  std::optional<TensorRank> tensor_rank;
+  /** Borrowed owned payload for rank, provenance, and signedness checks. */
+  const ResolvedTensorOperand* tensor_operand = nullptr;
   /** Original element count before fixed-size checker projection. */
   size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -379,6 +644,11 @@ enum class ModifierValueKind : uint8_t {
   MemoryScope,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -400,6 +670,11 @@ struct ModifierValueAvailabilityDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
@@ -425,6 +700,11 @@ struct ModifierValueDomainDescriptor {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
 };
@@ -446,6 +726,11 @@ struct ModifierValueView {
   MemoryScope memory_scope = MemoryScope::None;
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
@@ -574,6 +859,35 @@ struct ResolvedRegisterRef {
   std::optional<ScalarType> declared_type;
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
+};
+/** Borrowed opaque Table 43 source register selected by one Tensor Memory copy.
+ * The pointer is valid only while its owning instruction payload lives.
+ */
+struct TcgenCopyDescriptorView {
+  /** Scalar 64-bit source register, borrowed from the owning copy form. */
+  const ResolvedRegisterRef* source;
+};
+/** Validate known carrier metadata before exposing an opaque descriptor role. */
+inline std::optional<TcgenCopyDescriptorView> tcgen_copy_descriptor_view(
+    const ResolvedRegisterRef& source) noexcept {
+  if (source.register_class != ResolvedRegisterClass::General ||
+      source.vector_width || (source.symbol_id && !source.declared_type))
+    return std::nullopt;
+  if (source.declared_type) {
+    const auto kind = base::scalar_kind(*source.declared_type);
+    if (base::scalar_size_of(*source.declared_type) != 8 ||
+        (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
+         kind != base::ScalarKind::Unsigned))
+      return std::nullopt;
+  }
+  return TcgenCopyDescriptorView{&source};
+}
+/** Runtime-opaque shared-memory matrix descriptor carried by a bound register. */
+struct ResolvedSharedMatrixDescriptor {
+  /** Bound b64 register whose runtime value is the matrix descriptor. */
+  ResolvedRegisterRef register_ref;
+  /** Compare source register identity, not unknown runtime contents. */
+  bool operator==(const ResolvedSharedMatrixDescriptor&) const = default;
 };
 struct ResolvedMbarrierStateToken {
   std::optional<ResolvedRegisterRef> register_ref;
@@ -764,10 +1078,216 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Owned 32-bit Tensor Memory address source, without allocation provenance. */
+struct TensorMemoryAddress {
+  /** Register or converted immediate; locations live in its WithLocs owner. */
+  RegOrImm value;
+  /** True only when the source spelled required simple brackets. */
+  bool bracketed = false;
+  /** Compare the exact source payload after syntax release. */
+  bool operator==(const TensorMemoryAddress&) const = default;
+};
+/** Evaluated integer source for a split Tensor Memory transfer. */
+enum class TcgenIntegerSourceKind : uint8_t { Signed, Unsigned };
+/** Owned split offset without a fabricated use conversion. */
+struct TcgenHalfSplitOffset {
+  /** Two's-complement evaluated integer source bits. */
+  uint64_t source_bits = 0;
+  /** Whether the source literal is signed or unsigned. */
+  TcgenIntegerSourceKind source_kind = TcgenIntegerSourceKind::Signed;
+  /** Compare the exact source payload. */
+  bool operator==(const TcgenHalfSplitOffset&) const = default;
+};
+/** Owned block-scale selector pair in byte-ID then thread-ID order. */
+struct ResolvedMatrixScaleSelector {
+  RegOrImm byte_id;
+  RegOrImm thread_id;
+  /** Compare both selector values after syntax release. */
+  bool operator==(const ResolvedMatrixScaleSelector&) const = default;
+};
 struct ResolvedTensorCoordinate {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedTensorCoordinate&) const = default;
 };
+/** Owned unsigned-16 instruction-use information for an im2col read. */
+struct ResolvedTensorIm2colInfo {
+  /** W/H/D offsets or W halo/offset; values retain original literal provenance. */
+  std::vector<RegOrImm> elements;
+  /** Full brace-pack range, independent of individual element ranges. */
+  SourceRange pack_range;
+  bool operator==(const ResolvedTensorIm2colInfo&) const = default;
+};
+/** Semantic role of one im2col information element. */
+enum class TensorIm2colInfoRole : uint8_t {
+  OffsetW,
+  OffsetH,
+  OffsetD,
+  Halo,
+  Offset
+};
+/** Owned descriptor pointer with its storage identity and address metadata. */
+struct ResolvedTensorMapRef {
+  ResolvedAddress address;
+  SourceRange range;
+};
+/** One owned composite descriptor and coordinate operand. */
+struct ResolvedTensorOperand {
+  ResolvedTensorMapRef tensor_map;
+  ResolvedTensorCoordinate coordinates;
+  TensorRank rank = TensorRank::One;
+  TensorAccessMode mode = TensorAccessMode::Tiled;
+  /** Coordinate element ranges, independent of the enclosing operand range. */
+  std::vector<SourceRange> coordinate_ranges;
+};
+
+/** Return a role only when the owned mode, rank, and info arity agree. */
+std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(
+    const ResolvedTensorOperand& tensor, const ResolvedTensorIm2colInfo& info,
+    size_t index);
+
+/** Return a role only for a rank-two, five-coordinate gather/scatter tensor. */
+std::optional<TensorGatherScatterCoordinateRole>
+tensor_gather_scatter_coordinate_role(const ResolvedTensorOperand& tensor,
+                                      size_t index) noexcept;
+
+/** Encoded field identity of a tiled tensor-map replacement. */
+enum class TensorMapReplaceField : uint8_t {
+  GlobalAddress,
+  Rank,
+  BoxDim,
+  GlobalDim,
+  GlobalStride,
+  ElementStride,
+  Elemtype,
+  InterleaveLayout,
+  SwizzleMode,
+  SwizzleAtomicity,
+  FillMode,
+};
+
+/** Table 33 element encoding; code 15 has direction-dependent interpretation. */
+enum class TensorMapElementType : uint8_t {
+  U8,
+  U16,
+  U32,
+  S32,
+  U64,
+  S64,
+  F16,
+  F32,
+  F32Ftz,
+  F64,
+  BF16,
+  TF32,
+  TF32Ftz,
+  B4x16,
+  B4x16P64,
+  B6x16P32OrB6p2x16,
+};
+/** Table 33 interleave-layout encoding. */
+enum class TensorMapInterleaveLayout : uint8_t { None, Bytes16, Bytes32 };
+/** Table 33 swizzle-mode encoding. */
+enum class TensorMapSwizzleMode : uint8_t {
+  None,
+  Bytes32,
+  Bytes64,
+  Bytes128,
+  Bytes96,
+};
+/** Table 33 swizzle-atomicity encoding. */
+enum class TensorMapSwizzleAtomicity : uint8_t {
+  Bytes16,
+  Bytes32,
+  Bytes32Flip8,
+  Bytes64,
+};
+/** Table 33 out-of-bounds fill encoding. */
+enum class TensorMapFillMode : uint8_t { Zero, OobNan };
+
+/** One exact field/code association shared by public projections and checks. */
+struct TensorMapEncodedCode {
+  /** Encoded descriptor field, independent of descriptor contents. */
+  TensorMapReplaceField field;
+  /** Original integer source code, before any operand-width conversion. */
+  uint8_t code;
+  /** Field-specific interpretation of that code. */
+  std::variant<TensorMapElementType, TensorMapInterleaveLayout,
+               TensorMapSwizzleMode, TensorMapSwizzleAtomicity,
+               TensorMapFillMode>
+      value;
+};
+
+/** Closed PTX 9.3 Table 33 code set; one row is one valid field/code pair. */
+inline constexpr std::array<TensorMapEncodedCode, 30> tensor_map_encoded_codes{{
+    {TensorMapReplaceField::Elemtype, 0, TensorMapElementType::U8},
+    {TensorMapReplaceField::Elemtype, 1, TensorMapElementType::U16},
+    {TensorMapReplaceField::Elemtype, 2, TensorMapElementType::U32},
+    {TensorMapReplaceField::Elemtype, 3, TensorMapElementType::S32},
+    {TensorMapReplaceField::Elemtype, 4, TensorMapElementType::U64},
+    {TensorMapReplaceField::Elemtype, 5, TensorMapElementType::S64},
+    {TensorMapReplaceField::Elemtype, 6, TensorMapElementType::F16},
+    {TensorMapReplaceField::Elemtype, 7, TensorMapElementType::F32},
+    {TensorMapReplaceField::Elemtype, 8, TensorMapElementType::F32Ftz},
+    {TensorMapReplaceField::Elemtype, 9, TensorMapElementType::F64},
+    {TensorMapReplaceField::Elemtype, 10, TensorMapElementType::BF16},
+    {TensorMapReplaceField::Elemtype, 11, TensorMapElementType::TF32},
+    {TensorMapReplaceField::Elemtype, 12, TensorMapElementType::TF32Ftz},
+    {TensorMapReplaceField::Elemtype, 13, TensorMapElementType::B4x16},
+    {TensorMapReplaceField::Elemtype, 14, TensorMapElementType::B4x16P64},
+    {TensorMapReplaceField::Elemtype, 15,
+     TensorMapElementType::B6x16P32OrB6p2x16},
+    {TensorMapReplaceField::InterleaveLayout, 0,
+     TensorMapInterleaveLayout::None},
+    {TensorMapReplaceField::InterleaveLayout, 1,
+     TensorMapInterleaveLayout::Bytes16},
+    {TensorMapReplaceField::InterleaveLayout, 2,
+     TensorMapInterleaveLayout::Bytes32},
+    {TensorMapReplaceField::SwizzleMode, 0, TensorMapSwizzleMode::None},
+    {TensorMapReplaceField::SwizzleMode, 1, TensorMapSwizzleMode::Bytes32},
+    {TensorMapReplaceField::SwizzleMode, 2, TensorMapSwizzleMode::Bytes64},
+    {TensorMapReplaceField::SwizzleMode, 3, TensorMapSwizzleMode::Bytes128},
+    {TensorMapReplaceField::SwizzleMode, 4, TensorMapSwizzleMode::Bytes96},
+    {TensorMapReplaceField::SwizzleAtomicity, 0,
+     TensorMapSwizzleAtomicity::Bytes16},
+    {TensorMapReplaceField::SwizzleAtomicity, 1,
+     TensorMapSwizzleAtomicity::Bytes32},
+    {TensorMapReplaceField::SwizzleAtomicity, 2,
+     TensorMapSwizzleAtomicity::Bytes32Flip8},
+    {TensorMapReplaceField::SwizzleAtomicity, 3,
+     TensorMapSwizzleAtomicity::Bytes64},
+    {TensorMapReplaceField::FillMode, 0, TensorMapFillMode::Zero},
+    {TensorMapReplaceField::FillMode, 1, TensorMapFillMode::OobNan},
+}};
+
+/** Decode an exact source code only when the owned .b32 value is consistent. */
+constexpr std::optional<TensorMapEncodedCode> tensor_map_encoded_code(
+    TensorMapReplaceField field, const ResolvedImmediate& immediate) noexcept {
+  if (immediate.type != ScalarType::B32 || !immediate.integer_source_bits ||
+      immediate.is_negative ||
+      immediate.bits != (*immediate.integer_source_bits & uint64_t{0xffffffff}))
+    return std::nullopt;
+  for (const auto& entry : tensor_map_encoded_codes)
+    if (entry.field == field && entry.code == *immediate.integer_source_bits)
+      return entry;
+  return std::nullopt;
+}
+
+/** Project one field3 source code into its closed, field-specific enum. */
+template <typename Value>
+  requires(std::same_as<Value, TensorMapElementType> ||
+           std::same_as<Value, TensorMapInterleaveLayout> ||
+           std::same_as<Value, TensorMapSwizzleMode> ||
+           std::same_as<Value, TensorMapSwizzleAtomicity> ||
+           std::same_as<Value, TensorMapFillMode>)
+constexpr std::optional<Value> project_tensor_map_encoded_value(
+    TensorMapReplaceField field, const ResolvedImmediate& immediate) noexcept {
+  const auto decoded = tensor_map_encoded_code(field, immediate);
+  if (!decoded)
+    return std::nullopt;
+  if (const auto* value = std::get_if<Value>(&decoded->value))
+    return *value;
+  return std::nullopt;
+}
 struct ResolvedShflSyncDestination {
   std::optional<WithLoc<ResolvedRegisterRef>> data;
   std::optional<WithLoc<ResolvedPredicate>> predicate;

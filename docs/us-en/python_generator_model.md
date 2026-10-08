@@ -34,6 +34,17 @@ The model carries only fields currently consumed by the frontend generator.
 YAML documentation, examples, and constraints that have no generator consumer
 must not silently leak into the C++ representation.
 
+`get_packaged_spec_database()` validates and merges the packaged specification
+on its first successful call in each process, then returns that same snapshot
+for the process lifetime. Concurrent first calls initialize it once; a failed
+load can be retried. Treat the returned model as read-only by convention:
+its frozen dataclasses still contain mutable nested dictionaries and lists,
+so changing one can affect every caller. Use `copy.deepcopy()` before local
+mutation. The compatibility `ptx_frontend.code_gen.database` module exports
+the same API. The `load_*` functions always read their requested instruction
+YAML afresh, including the packaged specifications; use them when edits after
+the first snapshot must be visible. No other spec directory is cached.
+
 After merging an opcode, the database validates the selector language. Active
 modifier slots may share spellings only when required/fixed positions make
 ordered binding unambiguous. Canonical modifier sequences and explicit
@@ -133,9 +144,9 @@ representations only while emitting output.
 
 ## C++ emitters and artifacts
 
-`python/scripts/gen_all.py` atomically generates the public declarations,
-runtime mappings, dispatch, category-partitioned implementations, and
-descriptors required by the Resolved IR stage:
+`python -m ptx_frontend.code_gen` generates the public direct-class
+declarations, runtime mappings, dispatch, and category-partitioned
+implementations required by Resolved IR:
 
 For one run, `GenerationContext` owns a single ordered sequence of bindings:
 each normalized `InstructionSpec` is paired with its once-lowered,
@@ -157,66 +168,85 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | one opcode's model, variant selection adapter, and resolver/checker declarations |
-| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>/model.gen.hpp` | `emit.resolved_model` | narrow model and reference visitor without a complete syntax AST dependency |
-| `public/ptx_frontend/resolved_ir/model/<category>/model.gen.hpp` | `emit.resolved_model` | include-only aggregate of narrow opcode model leaves for the model and union APIs |
-| `public/ptx_frontend/resolved_ir/model/<category>.gen.hpp` | `emit.resolved_model` | include-only aggregate of the category's full opcode headers |
-| `public/ptx_frontend/resolved_ir/resolved_instruction_union.gen.hpp` | `emit.resolved_model` | canonical-order `InstructionUnion` for explicit whole-model consumers |
-| `public/ptx_frontend/resolved_ir/resolved_ir.gen.hpp` | `emit.resolved_model` | model-only aggregate of narrow category headers and the union |
-| `public/ptx_frontend/resolved_ir/resolution/<category>.gen.hpp` | `emit.resolved_resolver` | include-only category wrapper for resolver declarations |
-| `public/ptx_frontend/resolved_ir/checker/<category>.gen.hpp` | `emit.resolved_checker` | checker support, narrow category model, and checker specialization declarations without the Syntax AST dependency |
-| `public/ptx_frontend/resolved_ir/resolved_ir_resolution.gen.hpp` / `public/ptx_frontend/resolved_ir/resolved_ir_checker.gen.hpp` | resolver / checker emitters | aggregate compatibility wrappers for whole-model consumers |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, exact form identities, and observer contract |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | stable per-opcode aggregate: direct classes for small opcodes, or bounded form-shard includes; descriptor getters and resolver declarations |
+| `public/ptx_frontend/resolved_ir/model/<category>/<opcode>_forms_NNN.gen.hpp` | `emit.resolved_model` | final-class declarations for one canonical shard of at most 64 forms when needed |
+| `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate of all opcode headers |
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
-| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch through narrow per-op owner bridges |
-| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.category_source` | one opcode's three descriptor families, out-of-line resolver/checker definitions, and typed owner lifecycle, check, reference, and resolver bridges |
+| `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
+| `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | stable opcode resolver, selector, and descriptor-getter entry points; unsharded methods and rows for small opcodes |
+| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | bounded method definitions and static descriptor rows for canonical form shards |
 
 The generated public headers are under
 `generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build
 tree and install under the same path relative to `include`. Private generated
 sources and support headers remain under `generated/private` and are not
-installed. `submod/resolved_ir` includes the
-project-level `cmake/generate_ptx_frontend.cmake` helper, which invokes
-`gen_all.py` atomically to list and generate all outputs before compiling them
-into `resolved_ir`. The top level only orchestrates submodules and provides the
-facade target.
+installed. The source build calls `cmake/ptx_resolved_ir_codegen.cmake` from
+`submod/resolved_ir/CMakeLists.txt`; that helper uses the Python codegen CLI's
+`--describe-build` mode to discover one authoritative plan of category inputs,
+category outputs, and shared outputs. One aggregate build command starts a
+single Python batch for changed categories and required shared outputs. That
+batch loads the backend, normalized instruction model, context, and plan once.
+The configure-time description is a separate process. Category completion
+stamps track contributing spec files and input membership; shared outputs
+track all specs. Schemas, backend mapping, and generator sources invalidate
+every category. CMake reconfiguration detects added and removed inputs.
+Missing generated byproducts or completion markers trigger repair under Ninja;
+a Makefile target checks for them before accepting a clean stamp. The batch
+invalidates selected markers before writing, so a later failure is retried
+even if it restored the missing file. Shared artifacts follow successful
+category emission; only then does cleanup run and the manifest publish.
+A failed run can leave successfully written artifacts but retains the previous
+successful manifest. Dirty selection uses build timestamps and does not claim
+to detect content changes that preserve input mtimes. The CLI defaults to six
+artifact writers (`--jobs 6`); `--jobs 1` is serial. CMake sets that one-process
+budget with `PTX_FRONTEND_CODEGEN_JOBS` (default `6`). An unchanged build starts
+no generator Python process. Each artifact uses a sibling candidate, formats
+it, and replaces the output atomically only when bytes differ.
 
-Syntax descriptor storage implements getters on generated Resolved IR opcode
-types and is consumed by variant selection and resolution. It shares each
-opcode's private source with resolved and checker descriptor storage.
+Syntax descriptor storage supplies per-opcode free getters consumed by variant
+selection and resolution. Unsharded opcodes keep their syntax, resolved, and
+checker descriptor rows together; sharded opcodes keep the public getters in
+the stable entry-point source and their rows in private descriptor shards.
 
-The generated owner path does not change the YAML schema or normalized
-instruction model. Each opcode's existing generated `.cpp` owns its immutable
-operation table and boxes its typed resolved record. The central dispatch
-selects a per-op resolver through narrow declarations and does not include the
-complete union. New reference-bearing foundation payload types must have an
-explicit module collector; generation tests compare current emitted payloads
-with that collector, and generated owner bridges enforce the payload concept at
-compile time. The owner retains the existing typed inner variant and checker logic.
+The direct-class path keeps the YAML schema and normalized instruction model.
+Each semantic form is a final subclass of `Instruction`, with common fields as
+direct members and layout-specific fields as typed optionals. Resolution returns
+`std::unique_ptr<Instruction>`. The generated opcode source and, when needed,
+its method shards provide out-of-line resolution, checking, clone, and
+reference visitation definitions.
+The central dispatch selects a per-op resolver without an instruction union.
 
 The public opcode headers contain no generated resolver or checker bodies. The
-selection adapter lives in the small handwritten `ptx_resolved_ir_selection.hpp`;
-the narrow opcode and category model headers remain usable with an incomplete syntax AST.
-The model aggregate and instruction union include these narrow category headers.
+selection adapter lives in handwritten `ptx_resolved_ir_selection.hpp`;
+opcode model headers remain usable with an incomplete syntax AST. The installed
+`ptx_resolved_ir.hpp` includes the generated aggregate and module resolution API.
 Generation uses the
 normalized `codegen_category`, which is separate from PTX documentation
 `source_categories`. Every definition of one opcode must use the same
-`codegen_category`. The generator creates one stable source per opcode,
-which CMake compiles into the `resolved_ir` library. Consumers retain
-one include entry point, while the complex `std::visit` code, lambdas, and
-resolve builders are compiled only once inside the library.
+`codegen_category`. The generator keeps one stable public aggregate and
+private entry-point source per opcode. Above 64 forms it partitions
+declarations, methods, and descriptor rows into deterministic shards of at
+most 64 forms, compiled into the `resolved_ir` library. Consumers retain the
+same opcode include entry point. A shard does not promise that adding a form
+has no compile fanout.
+
+The public syntax, resolved, and checker descriptor getters return `const&`
+and are `noexcept`. For a sharded opcode, each getter uses a bounded one-time
+function-local `static const std::array` to concatenate canonical static
+shard rows into contiguous, stable-lifetime storage without heap allocation.
+The public aggregate and exact final-class identities remain the compatibility
+boundary; no mutable logical-form tag or opcode wrapper is introduced.
 
 The generator formats a sibling candidate before comparing bytes with an
 existing artifact. Identical formatted output, including the output manifest,
-keeps its modification time. Whole-module APIs continue to include the
-aggregate model and complete union; category-local consumers include only their
-full opcode header or its category aggregate.
+keeps its modification time. Consumers can include the aggregate or a single
+opcode header.
 
-The comparison and selection spec now owns the generated
-`comparison_and_selection` category. Code using `Set`, `Setp`, `Selp`, or `Slct`
-through category-local headers must include
-`model/comparison_and_selection.gen.hpp` and the matching `resolution/` and
-`checker/` headers in place of their former `arithmetic.gen.hpp` paths. The
-installed aggregate headers still expose the complete instruction model.
+The comparison and selection spec owns the generated
+`comparison_and_selection` category. Narrow consumers use individual headers
+such as `model/comparison_and_selection/set.gen.hpp`; the aggregate exposes all
+forms.
 
 Each generated file opens its outer namespace once. Private storage shares one
 anonymous or `generated_detail` namespace; getters are in
@@ -238,8 +268,8 @@ snapshots cannot select each other's C++ spelling.
 
 ### Backend configuration boundary
 
-`instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and
-`instructions/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
+`python/src/ptx_frontend/spec/resources/ptx_cpp_backend_spec/ptx_frontend.yaml` and
+`python/src/ptx_frontend/spec/resources/ptx-cpp-backend-v2.schema.yaml` form a separate C++ backend
 mapping layer. `ptx_frontend.code_gen.cpp_backend` normalizes its
 `domains` into `DomainBackend`; Syntax, Resolved, and checker emitters use only
 typed lookups for C++ spellings. Lookup APIs require a `CppDomain` enum member,
@@ -283,8 +313,9 @@ generation-only mappings and do not produce runtime tables.
 
 - YAML identifiers deterministically become PascalCase C++ names; collisions
   are errors.
-- A variant with one layout stores operand fields directly. Multiple layouts
-  generate nested `*Operands` structs and a `std::variant` payload.
+- Each final form stores common operand fields directly and fields present
+  only in some layouts as typed optionals. Fixed small operand domains may
+  themselves use typed variants; the opcode owner remains `unique_ptr<Instruction>`.
 - `ResolvedOperandLayoutTag` always indexes the matching syntax/resolved
   descriptor layout.
 - Emitters choose only mechanically necessary C++ syntax. They never re-add
@@ -294,9 +325,13 @@ generation-only mappings and do not produce runtime tables.
 
 ## Tests and change process
 
+`python/tests` verifies the packaged specification inputs, normalization,
+Syntax/Resolved models, and generator outputs and CLI behavior. In particular,
 `python/tests/ir` tests YAML -> normalized model -> descriptor/emitted-source
 structure. A new model field needs normalization, IR-model, and emitted-ABI
-coverage. C++ tests cover the real parser/resolver/checker path.
+coverage. Frozen `corpus/` fixtures, their provenance ledger, and
+`tools/corpus` maintenance are separate repository evidence outside this Python
+generator suite. C++ tests cover the real parser/resolver/checker path.
 
 Extend schema and normalized dataclasses first, then Syntax/Resolved models,
 then emitters and tests. Do not make an emitter read a new raw YAML field: that

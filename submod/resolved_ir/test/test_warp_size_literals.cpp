@@ -1,31 +1,25 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <limits>
 #include <string_view>
 #include <utility>
-#include <variant>
 
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/data_movement.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Return the immediate source held by a scalar move instruction. */
-const ResolvedImmediate& scalarMovImmediate(
-    const std::variant<std::monostate, Mov, Add>& instruction) {
-  const auto& mov = test_ir_access::get<Mov>(instruction);
-  const auto& scalar = test_ir_access::get<Mov::Scalar>(mov.variant);
-  const auto& operands =
-      test_ir_access::get<Mov::Scalar::ScalarOperands>(scalar.operands);
-  return test_ir_access::get<ResolvedImmediate>(operands.src.value);
+/** Return the immediate source from a scalar move's selected layout. */
+const ResolvedImmediate& scalarMovImmediate(const Instruction& instruction) {
+  const auto& mov = dynamic_cast<const MovScalar&>(instruction);
+  return std::get<ResolvedImmediate>(mov.src_mov_source.value().value);
 }
 
 /** Resolve WARP_SZ through parser, module binding, and typed instruction uses. */
@@ -46,33 +40,32 @@ TEST(WarpSizeLiteral, ResolvesSourceConstantInInstructionAndDeclarationUses) {
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(module);
 
-  const auto resolved = test_support::resolveTypedModule<Mov, Add>(
-      *module, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*module);
+  const auto snapshot = test_support::resolveModuleSnapshot(*module);
 
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  ASSERT_EQ(resolved->storage_declarations.size(), 1u);
-  const auto& initializer = resolved->storage_declarations.front();
+  ASSERT_TRUE(snapshot.has_value()) << snapshot.error().front().message;
+  ASSERT_EQ(snapshot->storage_declarations.size(), 1u);
+  const auto& initializer = snapshot->storage_declarations.front();
   ASSERT_EQ(initializer.initializer_count, 1u);
   ASSERT_TRUE(initializer.first_constant_bits.has_value());
   EXPECT_EQ(*initializer.first_constant_bits, 32u);
 
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 4u);
-  const auto& mov = scalarMovImmediate(body[0]);
+  const auto& mov = scalarMovImmediate(*body[0]);
   EXPECT_EQ(mov.type, ScalarType::U32);
   EXPECT_EQ(mov.bits, 32u);
   EXPECT_EQ(mov.integer_source_bits, 32u);
   EXPECT_FALSE(mov.is_negative);
 
-  const auto& add = test_ir_access::get<Add::IntegerNoSat>(
-      test_ir_access::get<Add>(body[1]).variant);
-  const auto& add_immediate =
-      test_ir_access::get<ResolvedImmediate>(add.src2.value);
+  const auto& add = dynamic_cast<const AddIntegerNoSat&>(*body[1]);
+  const auto& add_immediate = std::get<ResolvedImmediate>(add.src2.value);
   EXPECT_EQ(add_immediate.type, ScalarType::U32);
   EXPECT_EQ(add_immediate.bits, 32u);
   EXPECT_EQ(add_immediate.integer_source_bits, 32u);
 
-  const auto& negative = scalarMovImmediate(body[2]);
+  const auto& negative = scalarMovImmediate(*body[2]);
   EXPECT_EQ(negative.type, ScalarType::S32);
   EXPECT_EQ(negative.bits, 0xffffffe0U);
   EXPECT_EQ(negative.integer_source_bits,

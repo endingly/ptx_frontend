@@ -110,9 +110,11 @@ EXPECTED_SECTIONS = {
         "isspacep": {"9.7.9.20"},
         "cvta": {"9.7.9.21"},
         "cvt": {"9.7.9.22", "9.7.9.23"},
+        "tensormap": {"9.7.14.17", "9.7.9.27"},
         "cp": {"9.7.9.26.3.1", "9.7.9.26.3.2", "9.7.9.26.3.3",
                "9.7.9.26.4.1", "9.7.9.26.4.2", "9.7.9.26.4.3",
-               "9.7.9.26.6.1", "9.7.9.26.6.2", "9.7.14.16.18"},
+               "9.7.9.26.5.2", "9.7.9.26.5.3", "9.7.9.26.5.4", "9.7.9.26.6.1",
+               "9.7.9.26.6.2", "9.7.14.16.18"},
     },
     "control_flow.yaml": {
         "bra": {"9.7.13.3"},
@@ -148,14 +150,45 @@ EXPECTED_SECTIONS = {
         },
     },
     "warp_level_matrix_multiply_accumulate.yaml": {
-        "mma": {"9.7.15.5.14"},
+        "mma": {"9.7.15.5.14", "9.7.15.6.3"},
         "ldmatrix": {"9.7.15.5.15"},
+        "stmatrix": {"9.7.15.5.16"},
+        "movmatrix": {"9.7.15.5.17"},
+        "wmma": {"9.7.15.4", "9.7.15.4.3", "9.7.15.4.4", "9.7.15.4.5"},
     },
-    "miscellaneous.yaml": {"trap": {"9.7.20.4"}, "setmaxnreg": {"9.7.20.5"}},
+    "miscellaneous.yaml": {
+        "brkpt": {"9.7.20.1"},
+        "nanosleep": {"9.7.20.2"},
+        "pmevent": {"9.7.20.3"},
+        "trap": {"9.7.20.4"},
+        "setmaxnreg": {"9.7.20.5"},
+    },
 }
 
 
 class PtxSpecTaxonomyTests(unittest.TestCase):
+    def test_tiled_tensor_coordinates_narrow_at_operand_use(self) -> None:
+        """Keep every tiled tensor rank and direction on PTX integer conversion."""
+        spec = load_yaml(SPEC_DIR / "data_movement_and_conversion.yaml")
+        operands = [
+            operand
+            for instruction in spec["instructions"]
+            for variant in instruction["variants"]
+            if variant["name"].startswith(
+                ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_")
+            )
+            for layout in (
+                variant.get("operand_layouts")
+                or ({"operands": variant.get("operands", [])},)
+            )
+            for operand in layout["operands"]
+            if operand["kind"] == "tensor_operand"
+        ]
+        self.assertEqual(len(operands), 177)
+        self.assertTrue(
+            all(operand["immediate_conversion"] == "narrow" for operand in operands)
+        )
+
     def test_ptx_93_taxonomy_files_and_sections(self) -> None:
         paths = {
             entry.name
@@ -164,7 +197,12 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             and entry.name.endswith(".yaml")
             and not entry.name.endswith(".schema.yaml")
         }
-        self.assertEqual(paths, set(EXPECTED_FILES))
+        self.assertEqual(
+            paths,
+            set(EXPECTED_FILES)
+            | {"asynchronous_warpgroup_matrix_multiply_accumulate.yaml",
+               "tensor_memory_data_movement.yaml"},
+        )
 
         for name, (category, codegen_category, section) in EXPECTED_FILES.items():
             spec = load_yaml(SPEC_DIR.joinpath(name))

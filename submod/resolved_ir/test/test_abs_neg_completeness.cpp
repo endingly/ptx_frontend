@@ -1,40 +1,31 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
 
 #include <expected>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/abs.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/neg.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Resolve one of the two unary operators without importing the global union. */
-std::expected<std::variant<Abs, Neg>, ResolveDiagnostic> resolveAbsOrNeg(
+/** Resolve either unary opcode while retaining its exact semantic class. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveAbsOrNeg(
     const syntax_ast::AstInstruction& ast) {
-  if (ast.opcode.syntax.text == "abs") {
-    auto resolved = resolve<Abs>(ast);
-    if (!resolved)
-      return std::unexpected(std::move(resolved.error()));
-    return std::variant<Abs, Neg>{std::in_place_type<Abs>,
-                                  std::move(*resolved)};
-  }
-  auto resolved = resolve<Neg>(ast);
-  if (!resolved)
-    return std::unexpected(std::move(resolved.error()));
-  return std::variant<Abs, Neg>{std::in_place_type<Neg>, std::move(*resolved)};
+  if (ast.opcode.syntax.text == "abs")
+    return resolveAbs(ast);
+  return resolveNeg(ast);
 }
 
-/** Resolve every second-slice unary form against declared physical containers. */
+/** Resolve every floating unary cohort with complete declaration context. */
 TEST(AbsNegCompleteness, ResolvesEveryFloatingCohort) {
   const auto parsed = test_helpers::parseModule(R"ptx(
 .version 9.3
@@ -61,18 +52,14 @@ TEST(AbsNegCompleteness, ResolvesEveryFloatingCohort) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Abs, Neg>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  ASSERT_EQ(resolved->functions.front().body.size(), 12u);
-  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::F32>(
-      test_ir_access::get<Abs>(resolved->functions.front().body[0]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Abs::Bf16x2>(
-      test_ir_access::get<Abs>(resolved->functions.front().body[5]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::F16x2>(
-      test_ir_access::get<Neg>(resolved->functions.front().body[9]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Neg::Bf16x2>(
-      test_ir_access::get<Neg>(resolved->functions.front().body[11]).variant));
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 12u);
+  EXPECT_NE(dynamic_cast<AbsF32*>(body[0].get()), nullptr);
+  EXPECT_NE(dynamic_cast<AbsBf16x2*>(body[5].get()), nullptr);
+  EXPECT_NE(dynamic_cast<NegF16x2*>(body[9].get()), nullptr);
+  EXPECT_NE(dynamic_cast<NegBf16x2*>(body[11].get()), nullptr);
 }
 
 /** Accept floating literals and matching bit containers for scalar FP forms. */
@@ -90,13 +77,12 @@ TEST(AbsNegCompleteness, AcceptsScalarFloatingLiteralsAndBitContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Abs, Neg>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   EXPECT_EQ(resolved->functions.front().body.size(), 4u);
 }
 
-/** Reject unsupported modifiers, non-floating literals, sinks, and operand counts. */
+/** Reject unsupported modifiers, non-floating literals, sinks, and counts. */
 TEST(AbsNegCompleteness, RejectsForbiddenForms) {
   for (const auto source : {
            "abs.ftz.f64 %fd0, %fd1;",
@@ -115,19 +101,19 @@ TEST(AbsNegCompleteness, RejectsForbiddenForms) {
   }
 }
 
-/** Check independently old PTX and SM values for the non-uniform cohorts. */
+/** Check distinct PTX and SM availability boundaries for each unary cohort. */
 TEST(AbsNegCompleteness, ChecksDistinctCohortAvailability) {
-  /** One independent minimum and predecessor pair for a selected unary form. */
+  /** A selected instruction and its minimum and predecessor targets. */
   struct AvailabilityCase {
-    /** Complete instruction text for this selected variant. */
+    /** Complete source instruction. */
     const char* source;
-    /** First PTX version accepted by the selected variant. */
+    /** Minimum supported PTX version. */
     checker::PtxVersion minimum_ptx;
-    /** First SM version accepted by the selected variant. */
+    /** Minimum supported SM version. */
     unsigned minimum_sm;
-    /** A valid older PTX version when the form has one. */
+    /** Older PTX version when one exists. */
     std::optional<checker::PtxVersion> older_ptx;
-    /** A valid older SM version when the form has one. */
+    /** Older SM version when one exists. */
     std::optional<unsigned> older_sm;
   };
   for (const auto& availability : {
@@ -170,35 +156,29 @@ TEST(AbsNegCompleteness, ChecksDistinctCohortAvailability) {
     const auto resolved = resolveAbsOrNeg(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(check_at({.ptx_version = availability.minimum_ptx,
                           .sm_version = availability.minimum_sm})
                     .has_value());
     if (availability.older_ptx) {
-      const auto ptx_failure =
-          check_at({.ptx_version = *availability.older_ptx,
-                    .sm_version = availability.minimum_sm});
-      ASSERT_FALSE(ptx_failure.has_value());
-      EXPECT_EQ(ptx_failure.error().front().kind,
+      const auto failure = check_at({.ptx_version = *availability.older_ptx,
+                                     .sm_version = availability.minimum_sm});
+      ASSERT_FALSE(failure.has_value());
+      EXPECT_EQ(failure.error().front().kind,
                 checker::CheckDiagnosticKind::UnsupportedPtxVersion);
     }
     if (availability.older_sm) {
-      const auto sm_failure = check_at({.ptx_version = availability.minimum_ptx,
-                                        .sm_version = *availability.older_sm});
-      ASSERT_FALSE(sm_failure.has_value());
-      EXPECT_EQ(sm_failure.error().front().kind,
+      const auto failure = check_at({.ptx_version = availability.minimum_ptx,
+                                     .sm_version = *availability.older_sm});
+      ASSERT_FALSE(failure.has_value());
+      EXPECT_EQ(failure.error().front().kind,
                 checker::CheckDiagnosticKind::UnsupportedSmVersion);
     }
   }
 }
 
-/** Gate the optional FP32 FTZ spelling without raising the base instruction floor. */
+/** FTZ raises the PTX requirement without changing the base F32 instruction. */
 TEST(AbsNegCompleteness, ChecksFp32FtzValueAvailability) {
   for (const auto source : {"abs.ftz.f32 %f0, %f1;", "neg.ftz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
@@ -207,13 +187,8 @@ TEST(AbsNegCompleteness, ChecksFp32FtzValueAvailability) {
     const auto resolved = resolveAbsOrNeg(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::PtxVersion version) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(
-                instruction, checker::Context{.target = {.ptx_version = version,
-                                                         .sm_version = 100}});
-          },
-          *resolved);
+      return (*resolved)->check(checker::Context{
+          .target = {.ptx_version = version, .sm_version = 100}});
     };
     const auto before_ftz = check_at({1, 3});
     ASSERT_FALSE(before_ftz.has_value());
@@ -223,7 +198,7 @@ TEST(AbsNegCompleteness, ChecksFp32FtzValueAvailability) {
   }
 }
 
-/** Retain bound operand identities after source destruction and reject width drift. */
+/** Retain bound operands after AST release and reject a later width mutation. */
 TEST(AbsNegCompleteness, OwnsBoundOperandsAndRevalidatesWrongWidth) {
   std::string source = R"ptx(
 .version 9.3

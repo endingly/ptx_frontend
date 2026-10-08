@@ -25,20 +25,23 @@ The source covers a targeted module with these representative forms:
   increment, exchange, and bitwise cohorts, including legacy and explicit
   relaxed-CTA forms with register and immediate value sources. Atomic
   destinations use `ResolvedRegisterOrSink` so `_` stays distinct in owned IR.
-  Non-CAS scalar variants select typed `NoHintOperands` or
-  `WithPolicyOperands`; the consumer reads the selected no-hint layout.
+  Non-CAS scalar forms expose direct typed operands and an optional
+  `cache_policy` for the policy layout; the consumer checks the no-hint form.
 - 64-bit global `atom.add.u64`, `atom.min.s64`, `atom.cas.b64`, and
   `red.xor.b64`, including both explicit qualifier orders and typed sources.
 - float global `atom`/`red` add at `.f32` and `.f64`, with bit-container
   registers, decimal and bit-pattern sources, and both qualifier orders.
-- `red.async` shared completion and global release as separate `Red::Async...`
-  alternatives, with retained address qualifier and MMIO suffix. Consumers
-  migrating from synchronous `Red` layouts should handle these two- and
-  three-operand alternatives explicitly.
+- `red.async` shared completion and global release as separate exact
+  `RedAsyncSharedAddU32` and `RedAsyncReleaseAddU64` classes, with retained
+  address qualifier and MMIO suffix. Their direct operands represent the two-
+  and three-operand forms explicitly.
 - non-tensor `cp.async.bulk` mbarrier and bulk-group copies, bulk group
-  commit/read-wait controls, and `st.bulk` zero fill as owned public variants.
+  commit/read-wait controls, and `st.bulk` zero fill as owned exact classes.
   The consumer checks each copy's static completion identity after destroying
   the parser and AST.
+- tiled tensor prefetch, global-to-cluster load, and CTA-shared-to-global store
+  with an owned tensor-map pointer and coordinates. The consumer checks rank,
+  explicit `.tile`, and the two completion identities after AST destruction.
 
 The main module uses PTX 9.3 and `sm_121a`, which supplies the exact target
 context for the scaled `s2f6x2` form; the bulk fixture uses `sm_100f`. The
@@ -46,7 +49,7 @@ program also checks the public scalar and
 rounding enum values at compile time. It resolves the syntax while parser state
 is alive, moves the result into an owned resolved module, and validates that
 owned model after the source, parser, and AST have left scope. Runtime checks
-inspect the typed instruction variants and revalidate deliberate invalid
+inspect exact instruction classes and revalidate deliberate invalid
 modifier, layout, property, comparison, and selection type mutations, including
 in Release builds.
 

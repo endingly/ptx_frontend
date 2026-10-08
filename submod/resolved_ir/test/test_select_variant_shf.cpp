@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,23 +24,21 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveShf, SelectsEveryDirectionAndModeVariant) {
   const auto left =
-      resolve<Shf>(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
+      resolveShf(parse_instruction("shf.l.clamp.b32 %r0, %r1, %r2, 8;"));
   ASSERT_TRUE(left.has_value()) << left.error().message;
-  ASSERT_NE(test_ir_access::get_if<Shf::LClampB32>(&left->variant), nullptr);
+  ASSERT_NE(dynamic_cast<ShfLClampB32*>(left->get()), nullptr);
   const auto right =
-      resolve<Shf>(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
+      resolveShf(parse_instruction("shf.r.wrap.b32 %r0, %r1, %r2, %r3;"));
   ASSERT_TRUE(right.has_value()) << right.error().message;
-  ASSERT_NE(test_ir_access::get_if<Shf::RWrapB32>(&right->variant), nullptr);
+  ASSERT_NE(dynamic_cast<ShfRWrapB32*>(right->get()), nullptr);
   const auto left_wrap =
-      resolve<Shf>(parse_instruction("shf.l.wrap.b32 %r0, 1, %r2, 32;"));
+      resolveShf(parse_instruction("shf.l.wrap.b32 %r0, 1, %r2, 32;"));
   ASSERT_TRUE(left_wrap.has_value()) << left_wrap.error().message;
-  ASSERT_NE(test_ir_access::get_if<Shf::LWrapB32>(&left_wrap->variant),
-            nullptr);
+  ASSERT_NE(dynamic_cast<ShfLWrapB32*>(left_wrap->get()), nullptr);
   const auto right_clamp =
-      resolve<Shf>(parse_instruction("shf.r.clamp.b32 %r0, %r1, 2, 33;"));
+      resolveShf(parse_instruction("shf.r.clamp.b32 %r0, %r1, 2, 33;"));
   ASSERT_TRUE(right_clamp.has_value()) << right_clamp.error().message;
-  ASSERT_NE(test_ir_access::get_if<Shf::RClampB32>(&right_clamp->variant),
-            nullptr);
+  ASSERT_NE(dynamic_cast<ShfRClampB32*>(right_clamp->get()), nullptr);
 }
 
 }  // namespace
@@ -59,22 +56,23 @@ TEST(ResolvedIrChecker, ChecksGeneratedShfAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto shf = resolve<Shf>(*ast);
+    const auto shf = resolveShf(*ast);
     ASSERT_TRUE(shf.has_value()) << shf.error().message;
-    const auto old_ptx =
-        check(*shf, Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*shf)->check(
+        Context{.target = {.ptx_version = {3, 0}, .sm_version = 32},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
-    const auto old_sm =
-        check(*shf, Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
-                            .instruction_range = ast->range});
+    const auto old_sm = (*shf)->check(
+        Context{.target = {.ptx_version = {3, 1}, .sm_version = 31},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
     EXPECT_TRUE(
-        check(*shf, Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
+        (*shf)
+            ->check(Context{.target = {.ptx_version = {3, 1}, .sm_version = 32},
                             .instruction_range = ast->range})
             .has_value());
   }

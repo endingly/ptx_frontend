@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
+#include <variant>
 
 #include <array>
 #include <cstdint>
@@ -440,10 +440,9 @@ TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
   const auto high_word_ast = high_word_parser.parseInstruction();
   ASSERT_TRUE(high_word_ast.has_value())
       << high_word_ast.diagnostics.front().message;
-  const auto high_word =
-      resolve_immediate_literal(test_ir_access::get<syntax_ast::AstImmediate>(
-                                    high_word_ast->operands.back()),
-                                ScalarType::U32);
+  const auto high_word = resolve_immediate_literal(
+      std::get<syntax_ast::AstImmediate>(high_word_ast->operands.back()),
+      ScalarType::U32);
   ASSERT_TRUE(high_word.has_value()) << high_word.error().message;
   EXPECT_EQ(high_word->bits, 0U);
   ASSERT_TRUE(high_word->integer_source_bits.has_value());
@@ -474,10 +473,9 @@ TEST(ResolvedIrChecker, PreservesIntegerSourceBitsForFixedConstraints) {
   const auto minus_zero_ast = minus_zero_parser.parseInstruction();
   ASSERT_TRUE(minus_zero_ast.has_value())
       << minus_zero_ast.diagnostics.front().message;
-  const auto minus_zero =
-      resolve_immediate_literal(test_ir_access::get<syntax_ast::AstImmediate>(
-                                    minus_zero_ast->operands.back()),
-                                ScalarType::U32);
+  const auto minus_zero = resolve_immediate_literal(
+      std::get<syntax_ast::AstImmediate>(minus_zero_ast->operands.back()),
+      ScalarType::U32);
   ASSERT_TRUE(minus_zero.has_value()) << minus_zero.error().message;
   EXPECT_FALSE(minus_zero->is_negative);
   control.immediate_bits = minus_zero->bits;

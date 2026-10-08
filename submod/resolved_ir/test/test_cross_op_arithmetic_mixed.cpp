@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <limits>
 #include <string>
@@ -32,59 +31,55 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
  */
 TEST(ResolveLogic, NarrowsFixedB32ImmediateDataOperands) {
   const auto and_boundary =
-      resolve<And>(parse_instruction("and.b32 %r0, %r1, 4294967295;"));
+      resolveAnd(parse_instruction("and.b32 %r0, %r1, 4294967295;"));
   ASSERT_TRUE(and_boundary.has_value()) << and_boundary.error().message;
-  const auto* and_b32 =
-      test_ir_access::get_if<And::B32>(&and_boundary->variant);
+  const auto* and_b32 = dynamic_cast<AndB32*>(and_boundary->get());
   ASSERT_NE(and_b32, nullptr);
   const auto* and_immediate =
-      test_ir_access::get_if<ResolvedImmediate>(&and_b32->src2.value);
+      std::get_if<ResolvedImmediate>(&and_b32->src2.value);
   ASSERT_NE(and_immediate, nullptr);
   EXPECT_EQ(and_immediate->bits, 0xffffffffU);
   EXPECT_EQ(and_immediate->integer_source_bits, 0xffffffffU);
 
   const auto and_resolved =
-      resolve<And>(parse_instruction("and.b32 %r0, %r1, 4294967296;"));
+      resolveAnd(parse_instruction("and.b32 %r0, %r1, 4294967296;"));
   ASSERT_TRUE(and_resolved.has_value()) << and_resolved.error().message;
-  and_b32 = test_ir_access::get_if<And::B32>(&and_resolved->variant);
+  and_b32 = dynamic_cast<AndB32*>(and_resolved->get());
   ASSERT_NE(and_b32, nullptr);
-  and_immediate =
-      test_ir_access::get_if<ResolvedImmediate>(&and_b32->src2.value);
+  and_immediate = std::get_if<ResolvedImmediate>(&and_b32->src2.value);
   ASSERT_NE(and_immediate, nullptr);
   EXPECT_EQ(and_immediate->bits, 0U);
   EXPECT_EQ(and_immediate->integer_source_bits, 0x100000000ULL);
 
   const auto or_resolved =
-      resolve<Or>(parse_instruction("or.b32 %r0, %r1, 0x100000000;"));
+      resolveOr(parse_instruction("or.b32 %r0, %r1, 0x100000000;"));
   ASSERT_TRUE(or_resolved.has_value()) << or_resolved.error().message;
-  const auto* or_b32 = test_ir_access::get_if<Or::B32>(&or_resolved->variant);
+  const auto* or_b32 = dynamic_cast<OrB32*>(or_resolved->get());
   ASSERT_NE(or_b32, nullptr);
   const auto* or_immediate =
-      test_ir_access::get_if<ResolvedImmediate>(&or_b32->src2.value);
+      std::get_if<ResolvedImmediate>(&or_b32->src2.value);
   ASSERT_NE(or_immediate, nullptr);
   EXPECT_EQ(or_immediate->bits, 0U);
   EXPECT_EQ(or_immediate->integer_source_bits, 0x100000000ULL);
 
   const auto xor_resolved =
-      resolve<Xor>(parse_instruction("xor.b32 %r0, %r1, 4294967296;"));
+      resolveXor(parse_instruction("xor.b32 %r0, %r1, 4294967296;"));
   ASSERT_TRUE(xor_resolved.has_value()) << xor_resolved.error().message;
-  const auto* xor_b32 =
-      test_ir_access::get_if<Xor::B32>(&xor_resolved->variant);
+  const auto* xor_b32 = dynamic_cast<XorB32*>(xor_resolved->get());
   ASSERT_NE(xor_b32, nullptr);
   const auto* xor_immediate =
-      test_ir_access::get_if<ResolvedImmediate>(&xor_b32->src2.value);
+      std::get_if<ResolvedImmediate>(&xor_b32->src2.value);
   ASSERT_NE(xor_immediate, nullptr);
   EXPECT_EQ(xor_immediate->bits, 0U);
   EXPECT_EQ(xor_immediate->integer_source_bits, 0x100000000ULL);
 
   const auto not_resolved =
-      resolve<Not>(parse_instruction("not.b32 %r0, 0xffffffffffffffff;"));
+      resolveNot(parse_instruction("not.b32 %r0, 0xffffffffffffffff;"));
   ASSERT_TRUE(not_resolved.has_value()) << not_resolved.error().message;
-  const auto* not_b32 =
-      test_ir_access::get_if<Not::B32>(&not_resolved->variant);
+  const auto* not_b32 = dynamic_cast<NotB32*>(not_resolved->get());
   ASSERT_NE(not_b32, nullptr);
   const auto* not_immediate =
-      test_ir_access::get_if<ResolvedImmediate>(&not_b32->src.value);
+      std::get_if<ResolvedImmediate>(&not_b32->src.value);
   ASSERT_NE(not_immediate, nullptr);
   EXPECT_EQ(not_immediate->bits, 0xffffffffU);
   EXPECT_EQ(not_immediate->integer_source_bits,
@@ -105,9 +100,11 @@ TEST(SelectVariantMixedPrecision, RejectsUnsupportedReorderingAndDuplicates) {
       SCOPED_TRACE(source);
       const auto ast = parse_instruction(source);
       if (opcode == "add")
-        EXPECT_FALSE(selectVariant<Add>(ast).has_value());
+        EXPECT_FALSE(
+            select_variant_name(ast, add_syntax_descriptor()).has_value());
       else
-        EXPECT_FALSE(selectVariant<Sub>(ast).has_value());
+        EXPECT_FALSE(
+            select_variant_name(ast, sub_syntax_descriptor()).has_value());
     }
   }
 }

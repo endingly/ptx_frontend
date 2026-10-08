@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <expected>
 #include <optional>
@@ -7,6 +6,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
@@ -164,8 +164,7 @@ TEST(ModuleDiagnostics, ProjectsStorageOnlyDeclarationDiagnostic) {
             declaration_semantics::DeclarationDiagnosticKind::
                 UnsupportedStorageDeclaration);
   EXPECT_EQ(diagnostic.range,
-            test_ir_access::get<syntax_ast::AstVariableDeclaration>(
-                ast->items.front())
+            std::get<syntax_ast::AstVariableDeclaration>(ast->items.front())
                 .type.range);
   EXPECT_FALSE(diagnostic.previous_range);
   EXPECT_FALSE(diagnostic.binding_kind);
@@ -206,10 +205,9 @@ TEST(ModuleDiagnostics,
             unchecked_module->original_instruction_range);
   auto same_source_expected = expected.error().front();
   const auto& checked_function =
-      test_ir_access::get<syntax_ast::AstFunction>(checked_ast->items.back());
-  same_source_expected.range = test_ir_access::get<syntax_ast::AstInstruction>(
-                                   checked_function.body.back())
-                                   .range;
+      std::get<syntax_ast::AstFunction>(checked_ast->items.back());
+  same_source_expected.range =
+      std::get<syntax_ast::AstInstruction>(checked_function.body.back()).range;
 
   const auto resolved = test_support::resolveModuleSnapshot(*checked_ast);
   ASSERT_FALSE(resolved.has_value());
@@ -228,10 +226,9 @@ TEST(ModuleDiagnostics, NativeResolutionFailureDefaultsToResolutionStage) {
 }
 )ptx");
   ASSERT_TRUE(ast);
-  const auto& function =
-      test_ir_access::get<syntax_ast::AstFunction>(ast->items.front());
+  const auto& function = std::get<syntax_ast::AstFunction>(ast->items.front());
   const auto& instruction =
-      test_ir_access::get<syntax_ast::AstInstruction>(function.body.back());
+      std::get<syntax_ast::AstInstruction>(function.body.back());
   const auto resolved = test_support::resolveModuleSnapshot(*ast);
 
   ASSERT_FALSE(resolved.has_value());

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_visit.hpp"
 
 #include <expected>
 #include <optional>
@@ -8,38 +7,25 @@
 #include <utility>
 #include <variant>
 
-#include <ptx_frontend/resolved_ir/checker/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/arithmetic.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/arithmetic.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rcp.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/rsqrt.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/arithmetic/sqrt.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
+#include "test_module_snapshot.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
 namespace {
 
-/** Resolve the tested unary-float families without the global instruction union. */
-std::expected<std::variant<Rcp, Sqrt, Rsqrt>, ResolveDiagnostic>
+/** Resolve one unary floating instruction to its exact final class. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
 resolveUnaryFloat(const syntax_ast::AstInstruction& ast) {
-  if (ast.opcode.syntax.text == "rcp") {
-    auto resolved = resolve<Rcp>(ast);
-    if (!resolved)
-      return std::unexpected(std::move(resolved.error()));
-    return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Rcp>,
-                                          std::move(*resolved)};
-  }
-  if (ast.opcode.syntax.text == "sqrt") {
-    auto resolved = resolve<Sqrt>(ast);
-    if (!resolved)
-      return std::unexpected(std::move(resolved.error()));
-    return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Sqrt>,
-                                          std::move(*resolved)};
-  }
-  auto resolved = resolve<Rsqrt>(ast);
-  if (!resolved)
-    return std::unexpected(std::move(resolved.error()));
-  return std::variant<Rcp, Sqrt, Rsqrt>{std::in_place_type<Rsqrt>,
-                                        std::move(*resolved)};
+  if (ast.opcode.syntax.text == "rcp")
+    return resolveRcp(ast);
+  if (ast.opcode.syntax.text == "sqrt")
+    return resolveSqrt(ast);
+  return resolveRsqrt(ast);
 }
 
 /** Resolve each typed reciprocal and square-root mode with legal floating operands. */
@@ -57,42 +43,30 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
-  const auto resolved = test_support::resolveTypedModule<Rcp, Sqrt, Rsqrt>(
-      *parsed, test_support::ModulePipeline::CompleteContext);
+  const auto resolved = resolveAndValidateModule(*parsed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto& body = resolved->functions.front().body;
-  const auto& rcp_approx = test_ir_access::get<Rcp::ApproxF32>(
-      test_ir_access::get<Rcp>(body[0]).variant);
-  EXPECT_TRUE(Rcp::ApproxF32::approx);
+  const auto& rcp_approx = dynamic_cast<const RcpApproxF32&>(*body[0]);
+  EXPECT_TRUE(RcpApproxF32::approx);
   EXPECT_TRUE(rcp_approx.ftz.value);
-  EXPECT_EQ(test_ir_access::get<Rcp::DirectedF32>(
-                test_ir_access::get<Rcp>(body[1]).variant)
-                .rounding.value,
+  EXPECT_EQ(dynamic_cast<const RcpDirectedF32&>(*body[1]).rounding.value,
             RoundingMode::Rz);
-  EXPECT_EQ(Rcp::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(test_ir_access::get<Rcp::DirectedF64>(
-                test_ir_access::get<Rcp>(body[3]).variant)
-                .rounding.value,
+  EXPECT_EQ(RcpRnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(dynamic_cast<const RcpDirectedF64&>(*body[3]).rounding.value,
             RoundingMode::Rp);
-  EXPECT_TRUE(Rcp::ApproxFtzF64::approx);
-  EXPECT_TRUE(Rcp::ApproxFtzF64::ftz);
-  EXPECT_TRUE(Sqrt::ApproxF32::approx);
-  EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF32>(
-                test_ir_access::get<Sqrt>(body[6]).variant)
-                .rounding.value,
+  EXPECT_TRUE(RcpApproxFtzF64::approx);
+  EXPECT_TRUE(RcpApproxFtzF64::ftz);
+  EXPECT_TRUE(SqrtApproxF32::approx);
+  EXPECT_EQ(dynamic_cast<const SqrtDirectedF32&>(*body[6]).rounding.value,
             RoundingMode::Rm);
-  EXPECT_EQ(Sqrt::RnF64::rounding, RoundingMode::Rn);
-  EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF64>(
-                test_ir_access::get<Sqrt>(body[8]).variant)
-                .rounding.value,
+  EXPECT_EQ(SqrtRnF64::rounding, RoundingMode::Rn);
+  EXPECT_EQ(dynamic_cast<const SqrtDirectedF64&>(*body[8]).rounding.value,
             RoundingMode::Rp);
-  EXPECT_TRUE(Rsqrt::ApproxF32::approx);
-  EXPECT_TRUE(test_ir_access::get<Rsqrt::ApproxF32>(
-                  test_ir_access::get<Rsqrt>(body[9]).variant)
-                  .ftz.value);
-  EXPECT_TRUE(Rsqrt::ApproxF64::approx);
-  EXPECT_TRUE(Rsqrt::ApproxFtzF64::approx);
-  EXPECT_TRUE(Rsqrt::ApproxFtzF64::ftz);
+  EXPECT_TRUE(RsqrtApproxF32::approx);
+  EXPECT_TRUE(dynamic_cast<const RsqrtApproxF32&>(*body[9]).ftz.value);
+  EXPECT_TRUE(RsqrtApproxF64::approx);
+  EXPECT_TRUE(RsqrtApproxFtzF64::approx);
+  EXPECT_TRUE(RsqrtApproxFtzF64::ftz);
 
   for (const auto [source, expected] : {
            std::pair{"rcp.rz.f32 %f0, %f1;", RoundingMode::Rz},
@@ -105,17 +79,17 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
     const auto parsed_instruction = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
     if (std::string_view{source}.starts_with("rcp")) {
-      const auto instruction = resolve<Rcp>(*parsed_instruction);
+      const auto instruction = resolveRcp(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(test_ir_access::get<Rcp::DirectedF32>(instruction->variant)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const RcpDirectedF32&>(**instruction).rounding.value,
+          expected);
     } else {
-      const auto instruction = resolve<Sqrt>(*parsed_instruction);
+      const auto instruction = resolveSqrt(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF32>(instruction->variant)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const SqrtDirectedF32&>(**instruction).rounding.value,
+          expected);
     }
   }
   for (const auto [source, expected] : {
@@ -129,17 +103,17 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
     const auto parsed_instruction = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
     if (std::string_view{source}.starts_with("rcp")) {
-      const auto instruction = resolve<Rcp>(*parsed_instruction);
+      const auto instruction = resolveRcp(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(test_ir_access::get<Rcp::DirectedF64>(instruction->variant)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const RcpDirectedF64&>(**instruction).rounding.value,
+          expected);
     } else {
-      const auto instruction = resolve<Sqrt>(*parsed_instruction);
+      const auto instruction = resolveSqrt(*parsed_instruction);
       ASSERT_TRUE(instruction.has_value()) << instruction.error().message;
-      EXPECT_EQ(test_ir_access::get<Sqrt::DirectedF64>(instruction->variant)
-                    .rounding.value,
-                expected);
+      EXPECT_EQ(
+          dynamic_cast<const SqrtDirectedF64&>(**instruction).rounding.value,
+          expected);
     }
   }
 }
@@ -228,12 +202,7 @@ TEST(UnaryFloatCompleteness, ChecksIndependentAvailability) {
     const auto resolved = resolveUnaryFloat(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     const auto check_at = [&](checker::TargetInfo target) {
-      return test_ir_access::visit(
-          [&](const auto& instruction) {
-            return checker::check(instruction,
-                                  checker::Context{.target = target});
-          },
-          *resolved);
+      return (*resolved)->check(checker::Context{.target = target});
     };
     EXPECT_TRUE(
         check_at({.ptx_version = item.ptx, .sm_version = item.sm}).has_value());

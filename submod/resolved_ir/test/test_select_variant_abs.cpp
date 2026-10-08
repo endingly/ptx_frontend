@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,25 +23,27 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 }
 
 TEST(ResolveAbs, SelectsFrozenSignedAndFloatVariants) {
-  const auto s32 = resolve<Abs>(parse_instruction("abs.s32 %r0, %r1;"));
+  const auto s32 = resolveAbs(parse_instruction("abs.s32 %r0, %r1;"));
   ASSERT_TRUE(s32.has_value()) << s32.error().message;
-  ASSERT_NE(test_ir_access::get_if<Abs::S32>(&s32->variant), nullptr);
-  EXPECT_EQ(Abs::S32::type, ScalarType::S32);
+  ASSERT_NE(dynamic_cast<AbsS32*>(s32->get()), nullptr);
+  EXPECT_EQ(AbsS32::type, ScalarType::S32);
 
-  const auto f32 = resolve<Abs>(parse_instruction("abs.f32 %f0, %f1;"));
+  const auto f32 = resolveAbs(parse_instruction("abs.f32 %f0, %f1;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  ASSERT_NE(test_ir_access::get_if<Abs::F32>(&f32->variant), nullptr);
-  EXPECT_EQ(Abs::F32::type, ScalarType::F32);
+  ASSERT_NE(dynamic_cast<AbsF32*>(f32->get()), nullptr);
+  EXPECT_EQ(AbsF32::type, ScalarType::F32);
 }
 
 TEST(ResolveAbs, RejectsInvalidForms) {
   for (const auto source : {"abs.sat.s32 %r0, %r1;", "abs.ftz.f64 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Abs>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), abs_syntax_descriptor())
+            .has_value());
   }
-  EXPECT_FALSE(resolve<Abs>(parse_instruction("abs.s32 %r0;")).has_value());
+  EXPECT_FALSE(resolveAbs(parse_instruction("abs.s32 %r0;")).has_value());
   EXPECT_FALSE(
-      resolve<Abs>(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
+      resolveAbs(parse_instruction("abs.f32 %f0, %f1, %f2;")).has_value());
 }
 
 }  // namespace
@@ -57,16 +58,17 @@ TEST(ResolvedIrChecker, ChecksGeneratedAbsAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto abs = resolve<Abs>(*ast);
+    const auto abs = resolveAbs(*ast);
     ASSERT_TRUE(abs.has_value()) << abs.error().message;
-    const auto old_ptx =
-        check(*abs, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                            .instruction_range = ast->range});
+    const auto old_ptx = (*abs)->check(
+        Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
     EXPECT_TRUE(
-        check(*abs, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+        (*abs)
+            ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                             .instruction_range = ast->range})
             .has_value());
   }

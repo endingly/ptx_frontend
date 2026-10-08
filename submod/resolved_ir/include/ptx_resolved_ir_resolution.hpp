@@ -1,6 +1,6 @@
 #pragma once
 
-// Module resolution API with the owned instruction value and narrow support headers.
+// Module resolution API with exact heap-owned instruction values.
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_support.hpp>
@@ -18,12 +18,13 @@ enum class ModuleValidationPolicy : uint8_t {
 using ModuleResolveDiagnostics = std::vector<ResolveDiagnostic>;
 
 /** Resolve one standalone instruction without declaration binding. */
-std::expected<OwnedInstruction, ResolveDiagnostic> resolveInstruction(
-    const syntax_ast::AstInstruction& ast);
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast);
 
 /** Resolve one instruction against an explicit declaration-binding context. */
-std::expected<OwnedInstruction, ResolveDiagnostic> resolveInstruction(
-    const syntax_ast::AstInstruction& ast, const ResolveContext& context);
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>
+resolveInstruction(const syntax_ast::AstInstruction& ast,
+                   const ResolveContext& context);
 
 /**
  * Build the owned model and run declaration checks available from source.

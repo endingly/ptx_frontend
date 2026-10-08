@@ -29,7 +29,9 @@ using ResolvedFieldValue = std::variant<
     WithLocs<PrefetchSize>, WithLocs<MemoryConsistency>, WithLocs<MemoryScope>,
     WithLocs<VectorArity>, WithLocs<MemoryStateSpace>,
     WithLocs<MbarrierPhaseType>, WithLocs<MbarrierLayout>,
-    WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>,
+    WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>, WithLocs<TcgenCtaGroup>,
+    WithLocs<TcgenDataMovementShape>, WithLocs<TcgenRepeat>,
+    WithLocs<TcgenReductionOp>, WithLocs<TcgenWaitClass>,
     WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedMbarrierStateToken>,
     WithLocs<ResolvedRegisterOrSink>, WithLocs<ResolvedImmediate>,
     WithLocs<RegOrImm>, WithLocs<ResolvedShflSyncDestination>,
@@ -41,7 +43,10 @@ using ResolvedFieldValue = std::variant<
     WithLocs<ResolvedVectorRegisterRef>,
     WithLocs<ResolvedVectorSpecialRegisterRef>, WithLocs<ResolvedSymbolRef>,
     WithLocs<ResolvedAddress>, WithLocs<ResolvedRegisterVector>,
-    WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedFunctionRef>,
+    WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedTensorIm2colInfo>,
+    WithLocs<ResolvedTensorOperand>, WithLocs<TensorMemoryAddress>,
+    WithLocs<TcgenHalfSplitOffset>, WithLocs<ResolvedMatrixScaleSelector>,
+    WithLocs<ResolvedSharedMatrixDescriptor>, WithLocs<ResolvedFunctionRef>,
     WithLocs<ResolvedIndirectCallee>, WithLocs<ResolvedCallParameterRef>,
     WithLocs<ResolvedCallArguments>>;
 /** Resolver-only lookup table keyed by generated field IDs. */

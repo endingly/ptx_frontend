@@ -1,16 +1,13 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include <ptx_frontend/resolved_ir/checker/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/comparison_and_selection.gen.hpp>
-#include <ptx_frontend/resolved_ir/resolution/comparison_and_selection.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/comparison_and_selection/setp.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
-#include "test_module_projection.hpp"
 #include "test_syntax_parse_helpers.hpp"
 
 namespace ptx_frontend::resolved_ir {
@@ -57,8 +54,7 @@ TEST(SetpCompleteness, ResolvesAndChecksEveryPtx93Family) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  const auto resolved = test_support::resolveTypedModule<Setp>(
-      *parsed_module, test_support::ModulePipeline::AvailableContext);
+  const auto resolved = resolveModule(*parsed_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.size(), 1u);
   ASSERT_EQ(resolved->functions.front().body.size(), 16u);
@@ -68,8 +64,7 @@ TEST(SetpCompleteness, ResolvesAndChecksEveryPtx93Family) {
       .instruction_range = parsed_module->range,
   };
   for (const auto& instruction : resolved->functions.front().body) {
-    const auto& setp = test_ir_access::get<Setp>(instruction);
-    const auto checked = checker::check(setp, context);
+    const auto checked = instruction->check(context);
     ASSERT_TRUE(checked.has_value()) << checked.error().front().message;
   }
 }
@@ -89,12 +84,10 @@ TEST(SetpCompleteness, EnforcesTypeSpecificAvailability) {
     SCOPED_TRACE(source);
     const auto parsed_instruction = parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
-    const auto resolved = resolve<Setp>(*parsed_instruction);
+    const auto resolved = resolveSetp(*parsed_instruction);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto checked = checker::check(
-        *resolved,
-        checker::Context{.target = target,
-                         .instruction_range = parsed_instruction->range});
+    const auto checked = (*resolved)->check(checker::Context{
+        .target = target, .instruction_range = parsed_instruction->range});
     ASSERT_FALSE(checked.has_value());
     EXPECT_TRUE(checked.error().front().kind ==
                     checker::CheckDiagnosticKind::UnsupportedPtxVersion ||
@@ -117,7 +110,7 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
     SCOPED_TRACE(source);
     const auto parsed_instruction = parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
-    EXPECT_FALSE(resolve<Setp>(*parsed_instruction).has_value());
+    EXPECT_FALSE(resolveSetp(*parsed_instruction).has_value());
   }
 
   const auto parsed_module = parseModule(R"ptx(
@@ -130,7 +123,7 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module);
-  EXPECT_FALSE(test_support::resolveModuleSnapshot(*parsed_module).has_value());
+  EXPECT_FALSE(resolveModule(*parsed_module).has_value());
 
   const auto valid_module = parseModule(R"ptx(
 .version 9.3
@@ -142,15 +135,12 @@ TEST(SetpCompleteness, RejectsIllegalModifierAndDestinationForms) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(valid_module);
-  auto resolved = test_support::resolveTypedModule<Setp>(
-      *valid_module, test_support::ModulePipeline::AvailableContext);
+  auto resolved = resolveModule(*valid_module);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  auto& packed = test_ir_access::get<Setp::F16x2>(
-      test_ir_access::get<Setp>(resolved->functions.front().body.front())
-          .variant);
+  auto& packed =
+      dynamic_cast<SetpF16x2&>(*resolved->functions.front().body.front());
   packed.src1.value.declared_type = ScalarType::F16;
-  const auto checked = checker::check(
-      test_ir_access::get<Setp>(resolved->functions.front().body.front()),
+  const auto checked = resolved->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
                        .instruction_range = parsed_module->range});
   ASSERT_FALSE(checked.has_value());
@@ -163,17 +153,15 @@ TEST(SetpCompleteness, RevalidationRejectsAllSinkPair) {
   const auto parsed_instruction =
       parseInstruction("setp.eq.u32 %p0|%p1, %r0, %r1;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed_instruction);
-  auto resolved = resolve<Setp>(*parsed_instruction);
+  auto resolved = resolveSetp(*parsed_instruction);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  auto& unsigned_variant =
-      test_ir_access::get<Setp::Unsigned>(resolved->variant);
-  auto& operands = test_ir_access::get<Setp::Unsigned::PairOperands>(
-      unsigned_variant.operands);
-  operands.dst.value.first.reset();
-  operands.dst.value.second.reset();
+  auto& unsigned_variant = dynamic_cast<SetpUnsigned&>(**resolved);
+  ASSERT_TRUE(unsigned_variant.dst_predicate_pair_or_sink.has_value());
+  auto& pair = unsigned_variant.dst_predicate_pair_or_sink->value;
+  pair.first.reset();
+  pair.second.reset();
 
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
                        .instruction_range = parsed_instruction->range});
   ASSERT_FALSE(checked.has_value());
@@ -191,11 +179,11 @@ TEST(SetpCompleteness, EnforcesBooleanBeforeFtz) {
       const std::string prefix = std::string("setp.lt.") + combine;
       const auto valid = parseInstruction(prefix + ".ftz." + type + operands);
       ASSERT_INSTRUCTION_PARSE_SUCCEEDS(valid);
-      EXPECT_TRUE(resolve<Setp>(*valid));
+      EXPECT_TRUE(resolveSetp(*valid));
       const auto invalid = parseInstruction(std::string("setp.lt.ftz.") +
                                             combine + "." + type + operands);
       ASSERT_INSTRUCTION_PARSE_SUCCEEDS(invalid);
-      EXPECT_FALSE(resolve<Setp>(*invalid));
+      EXPECT_FALSE(resolveSetp(*invalid));
     }
   }
 }
@@ -212,31 +200,24 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
     SCOPED_TRACE(source);
     const auto parsed = parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
-    const auto resolved = resolve<Setp>(*parsed);
+    const auto resolved = resolveSetp(*parsed);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    const auto& variant =
-        test_ir_access::get<Setp::UnsignedBoolean>(resolved->variant);
-    const auto& operands =
-        test_ir_access::get<Setp::UnsignedBoolean::SingleOperands>(
-            variant.operands);
-    const auto* constant = test_ir_access::get_if<ResolvedPredicateConstant>(
-        &operands.combine.value);
+    const auto& variant = dynamic_cast<const SetpUnsignedBoolean&>(**resolved);
+    const auto* constant =
+        std::get_if<ResolvedPredicateConstant>(&variant.combine.value);
     ASSERT_NE(constant, nullptr);
     EXPECT_EQ(constant->value, expected);
-    EXPECT_TRUE(checker::check(
-        *resolved, checker::Context{
-                       .target = {.ptx_version = {9, 3}, .sm_version = 100}}));
+    EXPECT_TRUE((*resolved)->check(checker::Context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 100}}));
   }
 
   const auto half = parseInstruction("setp.eq.and.f16 %p0, %h0, %h1, !0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(half);
-  auto resolved_half = resolve<Setp>(*half);
+  auto resolved_half = resolveSetp(*half);
   ASSERT_TRUE(resolved_half.has_value()) << resolved_half.error().message;
-  auto& half_variant =
-      test_ir_access::get<Setp::F16Boolean>(resolved_half->variant);
+  auto& half_variant = dynamic_cast<SetpF16Boolean&>(**resolved_half);
   EXPECT_TRUE(
-      test_ir_access::get<ResolvedPredicateConstant>(half_variant.combine.value)
-          .value);
+      std::get<ResolvedPredicateConstant>(half_variant.combine.value).value);
 
   const auto special_info = base::lookup("%is_explicit_cluster");
   ASSERT_TRUE(special_info.has_value());
@@ -244,10 +225,11 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
       .register_ref = {.spelling = "%is_explicit_cluster",
                        .id = special_info->id},
   };
-  const auto rechecked = checker::check(
-      *resolved_half,
-      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100},
-                       .instruction_range = half->range});
+  const auto rechecked =
+      (*resolved_half)
+          ->check(checker::Context{
+              .target = {.ptx_version = {9, 3}, .sm_version = 100},
+              .instruction_range = half->range});
   ASSERT_FALSE(rechecked.has_value());
   EXPECT_EQ(rechecked.error().front().kind,
             checker::CheckDiagnosticKind::UnsupportedOperandShape);
@@ -257,7 +239,7 @@ TEST(SetpCompleteness, CanonicalizesBooleanPredicateConstants) {
 TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
   const auto floating = parseInstruction("setp.eq.and.u32 %p0, %r0, %r1, 1.0;");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(floating);
-  EXPECT_FALSE(resolve<Setp>(*floating).has_value());
+  EXPECT_FALSE(resolveSetp(*floating).has_value());
 
   const auto special = parseModule(R"ptx(
 .version 9.3
@@ -269,7 +251,7 @@ TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(special);
-  EXPECT_FALSE(test_support::resolveModuleSnapshot(*special).has_value());
+  EXPECT_FALSE(resolveModule(*special).has_value());
 }
 
 /** Half/bfloat SETP cannot receive an immediate in either data-source slot. */
@@ -285,7 +267,7 @@ TEST(SetpCompleteness, RejectsHalfAndBfloatImmediates) {
         SCOPED_TRACE(source);
         const auto ast = parseInstruction(source);
         ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-        EXPECT_FALSE(resolve<Setp>(*ast));
+        EXPECT_FALSE(resolveSetp(*ast));
       }
     }
   }

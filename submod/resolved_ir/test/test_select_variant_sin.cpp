@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,13 +24,12 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveSin, SelectsFrozenApproxVariant) {
   const auto resolved =
-      resolve<Sin>(parse_instruction("sin.approx.ftz.f32 %f0, %f1;"));
+      resolveSin(parse_instruction("sin.approx.ftz.f32 %f0, %f1;"));
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  ASSERT_NE(test_ir_access::get_if<Sin::ApproxF32>(&resolved->variant),
-            nullptr);
-  EXPECT_EQ(Sin::ApproxF32::type, ScalarType::F32);
-  EXPECT_TRUE(Sin::ApproxF32::approx);
-  EXPECT_TRUE(test_ir_access::get<Sin::ApproxF32>(resolved->variant).ftz.value);
+  ASSERT_NE(dynamic_cast<SinApproxF32*>(resolved->get()), nullptr);
+  EXPECT_EQ(SinApproxF32::type, ScalarType::F32);
+  EXPECT_TRUE(SinApproxF32::approx);
+  EXPECT_TRUE(dynamic_cast<SinApproxF32&>(**resolved).ftz.value);
 }
 
 TEST(ResolveSin, RejectsInvalidForms) {
@@ -39,7 +37,9 @@ TEST(ResolveSin, RejectsInvalidForms) {
        {"sin.f32 %f0, %f1;", "sin.approx.f64 %d0, %d1;",
         "sin.approx.f32x2 %f0, %f1;", "sin.approx.sat.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(selectVariant<Sin>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(
+        select_variant_name(parse_instruction(source), sin_syntax_descriptor())
+            .has_value());
   }
 }
 

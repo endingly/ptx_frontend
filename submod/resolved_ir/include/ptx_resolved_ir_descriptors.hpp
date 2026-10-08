@@ -27,7 +27,8 @@ enum class OperandSyntaxShape : uint16_t {
   BranchTarget = 1 << 9,
   BranchTargetSet = 1 << 10,
   RegisterPredicatePair = 1 << 11,
-  NegatedImmediate = 1 << 12
+  NegatedImmediate = 1 << 12,
+  TensorOperand = 1 << 13
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -52,6 +53,11 @@ enum class ResolvedValueKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair,
   Register,
@@ -74,6 +80,14 @@ enum class ResolvedValueKind : uint8_t {
   Address,
   RegisterVector,
   TensorCoordinate,
+  TensorIm2colInfo,
+  TensorOperand,
+  TensorMemoryAddress,
+  TcgenBracketedAddress,
+  TcgenHalfSplitOffset,
+  MatrixScaleSelector,
+  SharedMatrixDescriptor,
+  WgmmaScaleD,
   DirectCallTarget,
   IndirectCallee,
   BranchTargetSet,
@@ -137,6 +151,11 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MemoryStateSpace,
   MbarrierPhaseType,
   MbarrierLayout,
+  TcgenCtaGroup,
+  TcgenDataMovementShape,
+  TcgenRepeat,
+  TcgenReductionOp,
+  TcgenWaitClass,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -154,6 +173,11 @@ struct ResolvedModifierDefaultDescriptor {
   base::MbarrierPhaseType mbarrier_phase_type =
       base::MbarrierPhaseType::Primary;
   base::MbarrierLayout mbarrier_layout = base::MbarrierLayout::V0;
+  TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
+  TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
+  TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
+  TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
   base::AsyncProxyKind async_proxy_kind = base::AsyncProxyKind::Async;
   base::ProxyKindPair proxy_kind_pair = base::ProxyKindPair::TensormapToGeneric;
   base::MemoryConsistency memory_consistency = base::MemoryConsistency::Omitted;
@@ -178,6 +202,8 @@ struct ResolvedVariantDescriptor {
   std::span<const ResolvedFieldDescriptor> fields;
   std::span<const ResolvedModifierBindingDescriptor> modifier_bindings;
   std::span<const ResolvedOperandLayoutDescriptor> operand_layouts;
+  /** Present only when this exact form has canonical matrix topology. */
+  std::optional<MatrixInstructionDescriptor> matrix;
 };
 struct ResolvedInstructionDescriptor {
   std::string_view opcode_name;

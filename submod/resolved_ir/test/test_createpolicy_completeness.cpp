@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <cstdint>
@@ -70,41 +69,31 @@ TEST(CreatepolicyCompleteness, ResolvesDocumentedTopologies) {
   ASSERT_TRUE(validateModule(*resolved));
   const auto& body = resolved->functions.front().body;
   ASSERT_EQ(body.size(), 9u);
-  const auto& first = test_ir_access::get<Createpolicy>(body[0]);
   const auto& fractional =
-      test_ir_access::get<Createpolicy::FractionalL2B64>(first.variant);
+      dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[0]);
   EXPECT_EQ(fractional.primary_priority.value, EvictionPriority::EvictLast);
-  EXPECT_TRUE(test_ir_access::holds_alternative<
-              Createpolicy::FractionalL2B64::WithFractionOperands>(
-      fractional.operands));
-  EXPECT_TRUE(test_ir_access::holds_alternative<
-              Createpolicy::FractionalL2B64::DefaultOperands>(
-      test_ir_access::get<Createpolicy::FractionalL2B64>(
-          test_ir_access::get<Createpolicy>(body[1]).variant)
-          .operands));
+  EXPECT_TRUE(fractional.fraction.has_value());
+  EXPECT_FALSE(dynamic_cast<const CreatepolicyFractionalL2B64&>(*body[1])
+                   .fraction.has_value());
   const auto& secondary =
-      test_ir_access::get<Createpolicy::FractionalL2SecondaryB64>(
-          test_ir_access::get<Createpolicy>(body[2]).variant);
+      dynamic_cast<const CreatepolicyFractionalL2SecondaryB64&>(*body[2]);
   EXPECT_EQ(secondary.secondary_priority.value,
             EvictionPriority::EvictUnchanged);
-  EXPECT_TRUE(test_ir_access::holds_alternative<
-              Createpolicy::FractionalL2SecondaryB64::DefaultOperands>(
-      test_ir_access::get<Createpolicy::FractionalL2SecondaryB64>(
-          test_ir_access::get<Createpolicy>(body[3]).variant)
-          .operands));
-  EXPECT_TRUE(
-      test_ir_access::holds_alternative<Createpolicy::RangeGenericL2B64>(
-          test_ir_access::get<Createpolicy>(body[4]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<
-              Createpolicy::RangeGenericL2SecondaryB64>(
-      test_ir_access::get<Createpolicy>(body[5]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Createpolicy::RangeGlobalL2B64>(
-      test_ir_access::get<Createpolicy>(body[6]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<
-              Createpolicy::RangeGlobalL2SecondaryB64>(
-      test_ir_access::get<Createpolicy>(body[7]).variant));
-  EXPECT_TRUE(test_ir_access::holds_alternative<Createpolicy::CvtL2B64>(
-      test_ir_access::get<Createpolicy>(body[8]).variant));
+  EXPECT_FALSE(
+      dynamic_cast<const CreatepolicyFractionalL2SecondaryB64&>(*body[3])
+          .fraction.has_value());
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyRangeGenericL2B64*>(
+                  body[4].get()) != nullptr);
+  EXPECT_NE(dynamic_cast<const CreatepolicyRangeGenericL2SecondaryB64*>(
+                body[5].get()),
+            nullptr);
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyRangeGlobalL2B64*>(
+                  body[6].get()) != nullptr);
+  EXPECT_NE(
+      dynamic_cast<const CreatepolicyRangeGlobalL2SecondaryB64*>(body[7].get()),
+      nullptr);
+  EXPECT_TRUE(dynamic_cast<const CreatepolicyCvtL2B64*>(body[8].get()) !=
+              nullptr);
 }
 
 /** All createpolicy topologies start at PTX 7.4 and SM 80. */
@@ -139,9 +128,7 @@ TEST(CreatepolicyCompleteness, ChecksFractionBounds) {
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
     const auto resolved = resolveModuleOnly(*ast);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-    const auto checked = checker::check(
-        test_ir_access::get<Createpolicy>(
-            resolved->functions.front().body.front()),
+    const auto checked = resolved->functions.front().body.front()->check(
         checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 80}});
     ASSERT_FALSE(checked.has_value());
     EXPECT_EQ(checked.error().front().kind,
@@ -173,9 +160,7 @@ TEST(CreatepolicyCompleteness, ChecksRangeSizesAndAddress) {
   ASSERT_MODULE_PARSE_SUCCEEDS(reversed);
   const auto resolved = resolveModuleOnly(*reversed);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
-  const auto checked = checker::check(
-      test_ir_access::get<Createpolicy>(
-          resolved->functions.front().body.front()),
+  const auto checked = resolved->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 80}});
   ASSERT_FALSE(checked.has_value());
   EXPECT_EQ(checked.error().front().kind,
@@ -286,13 +271,10 @@ TEST(CreatepolicyCompleteness, RevalidatesOwnedImmediateMutation) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& fractional = test_ir_access::get<Createpolicy::FractionalL2B64>(
-      test_ir_access::get<Createpolicy>(owned->functions.front().body[0])
-          .variant);
-  auto& fraction = test_ir_access::get<ResolvedImmediate>(
-      test_ir_access::get<Createpolicy::FractionalL2B64::WithFractionOperands>(
-          fractional.operands)
-          .fraction.value);
+  auto& fractional = dynamic_cast<CreatepolicyFractionalL2B64&>(
+      *owned->functions.front().body[0]);
+  ASSERT_TRUE(fractional.fraction.has_value());
+  auto& fraction = std::get<ResolvedImmediate>(fractional.fraction->value);
   ASSERT_EQ(fraction.bits, 0x3f000000u);
   fraction.bits = 0x7fc00000u;
   const auto invalid_fraction =
@@ -300,11 +282,9 @@ TEST(CreatepolicyCompleteness, RevalidatesOwnedImmediateMutation) {
   ASSERT_FALSE(invalid_fraction.has_value());
   fraction.bits = 0x3f000000u;
 
-  auto& range = test_ir_access::get<Createpolicy::RangeGenericL2B64>(
-      test_ir_access::get<Createpolicy>(owned->functions.front().body[1])
-          .variant);
-  auto& primary =
-      test_ir_access::get<ResolvedImmediate>(range.primary_size.value);
+  auto& range = dynamic_cast<CreatepolicyRangeGenericL2B64&>(
+      *owned->functions.front().body[1]);
+  auto& primary = std::get<ResolvedImmediate>(range.primary_size.value);
   ASSERT_EQ(primary.bits, 128u);
   primary.bits = 512;
   const auto invalid_range =
@@ -339,18 +319,13 @@ TEST(CreatepolicyCompleteness, RevalidatesEachOwnedRangeSizeWithoutAst) {
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
   auto& body = owned->functions.front().body;
   ASSERT_EQ(body.size(), 3u);
-  auto& static_range = test_ir_access::get<Createpolicy::RangeGenericL2B64>(
-      test_ir_access::get<Createpolicy>(body[0]).variant);
+  auto& static_range = dynamic_cast<CreatepolicyRangeGenericL2B64&>(*body[0]);
   const auto& dynamic_primary =
-      test_ir_access::get<Createpolicy::RangeGenericL2B64>(
-          test_ir_access::get<Createpolicy>(body[1]).variant);
+      dynamic_cast<CreatepolicyRangeGenericL2B64&>(*body[1]);
   const auto& dynamic_total =
-      test_ir_access::get<Createpolicy::RangeGenericL2B64>(
-          test_ir_access::get<Createpolicy>(body[2]).variant);
-  auto& primary =
-      test_ir_access::get<ResolvedImmediate>(static_range.primary_size.value);
-  auto& total =
-      test_ir_access::get<ResolvedImmediate>(static_range.total_size.value);
+      dynamic_cast<CreatepolicyRangeGenericL2B64&>(*body[2]);
+  auto& primary = std::get<ResolvedImmediate>(static_range.primary_size.value);
+  auto& total = std::get<ResolvedImmediate>(static_range.total_size.value);
   const auto original_primary = primary;
   const auto original_total = total;
   const auto register_primary = dynamic_primary.primary_size.value;
@@ -358,7 +333,7 @@ TEST(CreatepolicyCompleteness, RevalidatesEachOwnedRangeSizeWithoutAst) {
   const checker::Context context{
       .target = {.ptx_version = {9, 3}, .sm_version = 80}};
   const auto check = [&]() {
-    return checker::check(test_ir_access::get<Createpolicy>(body[0]), context);
+    return body[0]->check(context);
   };
   const auto expect_rejected_at = [&](const SourceRange& expected) {
     const auto result = check();
@@ -385,20 +360,20 @@ TEST(CreatepolicyCompleteness, RevalidatesEachOwnedRangeSizeWithoutAst) {
   total = original_total;
 
   static_range.primary_size.value = register_primary;
-  test_ir_access::get<ResolvedImmediate>(static_range.total_size.value).bits =
+  std::get<ResolvedImmediate>(static_range.total_size.value).bits =
       static_cast<uint64_t>(UINT32_MAX) + 1;
   expect_rejected_at(total_range);
   static_range.primary_size.value = original_primary;
   static_range.total_size.value = register_total;
-  test_ir_access::get<ResolvedImmediate>(static_range.primary_size.value).bits =
+  std::get<ResolvedImmediate>(static_range.primary_size.value).bits =
       static_cast<uint64_t>(UINT32_MAX) + 1;
   expect_rejected_at(primary_range);
   static_range.total_size.value = original_total;
-  test_ir_access::get<ResolvedImmediate>(static_range.primary_size.value).type =
+  std::get<ResolvedImmediate>(static_range.primary_size.value).type =
       ScalarType::U64;
   expect_rejected_at(primary_range);
   static_range.primary_size.value = original_primary;
-  test_ir_access::get<ResolvedImmediate>(static_range.total_size.value).type =
+  std::get<ResolvedImmediate>(static_range.total_size.value).type =
       ScalarType::U64;
   expect_rejected_at(total_range);
   static_range.total_size.value = original_total;

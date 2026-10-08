@@ -25,8 +25,9 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 /** Select standalone CTA and cluster barriers without aliasing their forms. */
 TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Barrier::VariantType expected) {
-    const auto selected = selectVariant<Barrier>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              barrier_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
@@ -35,52 +36,43 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.sync 0;",
            "barrier.sync.aligned %r0, 32;",
        }) {
-    expect_variant(source, Barrier::VariantType::Sync);
+    expect_variant(source, "Sync");
   }
   for (const std::string_view source : {
            "barrier.cta.sync 0;",
            "barrier.cta.sync.aligned %r0, %r1;",
        }) {
-    expect_variant(source, Barrier::VariantType::CtaSync);
+    expect_variant(source, "CtaSync");
   }
   for (const std::string_view source : {
            "barrier.arrive 0, 32;",
            "barrier.arrive.aligned %r0, %r1;",
        }) {
-    expect_variant(source, Barrier::VariantType::Arrive);
+    expect_variant(source, "Arrive");
   }
   for (const std::string_view source : {
            "barrier.cta.arrive 15, 64;",
            "barrier.cta.arrive.aligned %r0, 32;",
        }) {
-    expect_variant(source, Barrier::VariantType::CtaArrive);
+    expect_variant(source, "CtaArrive");
   }
   for (const auto& [source, expected] :
-       std::array<std::pair<std::string_view, Barrier::VariantType>, 12>{{
-           {"barrier.red.popc.u32 %r0, 0, %p0;",
-            Barrier::VariantType::RedPopcU32},
-           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;",
-            Barrier::VariantType::RedPopcU32},
-           {"barrier.cta.red.popc.u32 %r0, 0, %p0;",
-            Barrier::VariantType::CtaRedPopcU32},
+       std::array<std::pair<std::string_view, std::string_view>, 12>{{
+           {"barrier.red.popc.u32 %r0, 0, %p0;", "RedPopcU32"},
+           {"barrier.red.popc.aligned.u32 %r0, 15, 32, !%p0;", "RedPopcU32"},
+           {"barrier.cta.red.popc.u32 %r0, 0, %p0;", "CtaRedPopcU32"},
            {"barrier.cta.red.popc.aligned.u32 %r0, %r1, %r2, !%p0;",
-            Barrier::VariantType::CtaRedPopcU32},
-           {"barrier.red.and.pred %p0, 0, %p1;",
-            Barrier::VariantType::RedAndPred},
-           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;",
-            Barrier::VariantType::RedAndPred},
-           {"barrier.cta.red.and.pred %p0, 0, %p1;",
-            Barrier::VariantType::CtaRedAndPred},
+            "CtaRedPopcU32"},
+           {"barrier.red.and.pred %p0, 0, %p1;", "RedAndPred"},
+           {"barrier.red.and.aligned.pred %p0, 15, 32, !%p1;", "RedAndPred"},
+           {"barrier.cta.red.and.pred %p0, 0, %p1;", "CtaRedAndPred"},
            {"barrier.cta.red.and.aligned.pred %p0, %r1, %r2, !%p1;",
-            Barrier::VariantType::CtaRedAndPred},
-           {"barrier.red.or.pred %p0, 0, %p1;",
-            Barrier::VariantType::RedOrPred},
-           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;",
-            Barrier::VariantType::RedOrPred},
-           {"barrier.cta.red.or.pred %p0, 0, %p1;",
-            Barrier::VariantType::CtaRedOrPred},
+            "CtaRedAndPred"},
+           {"barrier.red.or.pred %p0, 0, %p1;", "RedOrPred"},
+           {"barrier.red.or.aligned.pred %p0, 15, 32, !%p1;", "RedOrPred"},
+           {"barrier.cta.red.or.pred %p0, 0, %p1;", "CtaRedOrPred"},
            {"barrier.cta.red.or.aligned.pred %p0, %r1, %r2, !%p1;",
-            Barrier::VariantType::CtaRedOrPred},
+            "CtaRedOrPred"},
        }}) {
     expect_variant(source, expected);
   }
@@ -90,14 +82,14 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.cluster.arrive.release.aligned;",
            "barrier.cluster.arrive.relaxed;",
        }) {
-    expect_variant(source, Barrier::VariantType::ClusterArrive);
+    expect_variant(source, "ClusterArrive");
   }
   for (const std::string_view source : {
            "barrier.cluster.wait;",
            "barrier.cluster.wait.aligned;",
            "barrier.cluster.wait.acquire.aligned;",
        }) {
-    expect_variant(source, Barrier::VariantType::ClusterWait);
+    expect_variant(source, "ClusterWait");
   }
 
   for (const std::string_view source : {
@@ -116,7 +108,8 @@ TEST(SelectVariantBarrier, SelectsCtaAndClusterForms) {
            "barrier.cluster.wait.release;",
            "barrier.cluster.arrive.aligned.release;",
        }) {
-    const auto selected = selectVariant<Barrier>(parse_instruction(source));
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              barrier_syntax_descriptor());
     EXPECT_FALSE(selected.has_value()) << source;
   }
 }

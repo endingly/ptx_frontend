@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
+from threading import Lock
 from typing import Any, TypeVar
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
@@ -18,6 +19,7 @@ from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
+from .synatax_shapes import OPERAND_SYNTAX_SHAPES
 
 PTX_INSTRUCTION_SCHEMA = packaged_spec_schema()
 
@@ -76,6 +78,18 @@ def load_codegen_database(*, spec_dir: Traversable) -> CodegenDatabase:
     return load_codegen_database_from_files(
         spec_files=spec_files,
     )
+
+
+def load_codegen_database_with_category_inputs(
+    *, spec_dir: Traversable
+) -> tuple[CodegenDatabase, tuple[CodegenCategoryInputs, ...]]:
+    """Load one normalized snapshot and retain each category's source files."""
+
+    spec_files = discover_spec_files(spec_dir)
+    if not spec_files:
+        raise ValueError(f"no PTX instruction specs found in {spec_dir}")
+    records = _load_normalized_spec_files(spec_files)
+    return _database_from_records(records), _category_inputs_from_records(records)
 
 
 @cache
@@ -194,14 +208,23 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
         for right_index in range(left_index + 1, len(instruction.variants)):
             right = instruction.variants[right_index]
             if languages[left_index] & languages[right_index]:
-                left_arities = {len(layout.operands) for layout in left.operand_layouts}
-                right_arities = {len(layout.operands) for layout in right.operand_layouts}
-                if left_arities.isdisjoint(right_arities):
+                if all(
+                    len(left_layout.operands) != len(right_layout.operands)
+                    or any(
+                        not (OPERAND_SYNTAX_SHAPES[left_operand.kind]
+                             & OPERAND_SYNTAX_SHAPES[right_operand.kind])
+                        for left_operand, right_operand in zip(
+                            left_layout.operands, right_layout.operands
+                        )
+                    )
+                    for left_layout in left.operand_layouts
+                    for right_layout in right.operand_layouts
+                ):
                     continue
                 raise ValueError(
                     f"opcode {instruction.opcode!r} variants {left.name!r} and "
                     f"{right.name!r} accept an overlapping modifier combination "
-                    "at the same operand count"
+                    "at the same operand count and syntax shapes"
                 )
 
 
@@ -358,6 +381,14 @@ def load_codegen_database_from_files(
 
     records = _load_normalized_spec_files(spec_files)
 
+    return _database_from_records(records, category=category)
+
+
+def _database_from_records(
+    records: tuple[_NormalizedSpecFile, ...], *, category: str | None = None
+) -> CodegenDatabase:
+    """Merge a validated snapshot, optionally selecting one codegen category."""
+
     definitions = tuple(
         instruction
         for record in records
@@ -396,6 +427,14 @@ def discover_codegen_category_inputs(
 
     records = _load_normalized_spec_files(spec_files)
 
+    return _category_inputs_from_records(records)
+
+
+def _category_inputs_from_records(
+    records: tuple[_NormalizedSpecFile, ...]
+) -> tuple[CodegenCategoryInputs, ...]:
+    """Associate normalized records with all categories they contribute to."""
+
     files_by_category: dict[str, list[Traversable]] = {}
 
     for record in records:
@@ -422,13 +461,37 @@ def load_spec_database(*, spec_dir: Traversable) -> CodegenDatabase:
 
 
 def load_packaged_spec_database() -> CodegenDatabase:
-    """Load the PTX instruction specs shipped with the installed wheel."""
+    """Freshly load the PTX instruction specs shipped with the installed wheel."""
 
     return load_spec_database(spec_dir=packaged_spec_dir())
 
 
+# One validated snapshot is shared by callers for the process lifetime.
+_packaged_spec_lock = Lock()
+_packaged_spec_snapshot: CodegenDatabase | None = None
+
+
+def get_packaged_spec_database() -> CodegenDatabase:
+    """Return the shared, validated packaged-spec snapshot for read-only use.
+
+    The first successful call loads the packaged files once per process. The
+    returned object is shared for that process lifetime. Its frozen dataclasses
+    contain mutable nested fields, so callers must treat the whole snapshot as
+    read-only. Use ``copy.deepcopy`` before mutation or a ``load_*`` API when
+    current instruction YAML is required. A failed first load is retried.
+    """
+
+    global _packaged_spec_snapshot
+    with _packaged_spec_lock:
+        if _packaged_spec_snapshot is None:
+            _packaged_spec_snapshot = load_packaged_spec_database()
+        snapshot = _packaged_spec_snapshot
+    return snapshot
+
+
 __all__ = [
     "discover_spec_files",
+    "get_packaged_spec_database",
     "load_packaged_spec_database",
     "load_spec_database",
     "CodegenDatabase",

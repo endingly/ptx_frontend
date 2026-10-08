@@ -2,13 +2,12 @@
 
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import (
     ModifierPresence,
     OperandKind,
     OperandRegisterWidthPolicy,
 )
-from ptx_frontend.spec.resources import packaged_spec_dir
 
 
 class AbsNegCompletenessTests(unittest.TestCase):
@@ -21,7 +20,7 @@ class AbsNegCompletenessTests(unittest.TestCase):
         instructions = {
             item.opcode
             : item
-            for item in load_codegen_database(spec_dir=packaged_spec_dir()).instructions
+            for item in get_packaged_spec_database().instructions
         }
         cls.abs_variants = {variant.name: variant for variant in instructions["abs"].variants}
         cls.neg_variants = {variant.name: variant for variant in instructions["neg"].variants}

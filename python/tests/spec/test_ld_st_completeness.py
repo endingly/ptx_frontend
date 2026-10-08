@@ -1,13 +1,10 @@
 """Database regression coverage for PTX 9.3 LD/ST memory contracts."""
 
-from pathlib import Path
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
-from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierKind, ModifierPresence
 
-SPEC_DIR = packaged_spec_dir()
 
 
 class LdStCompletenessTest(unittest.TestCase):
@@ -16,7 +13,7 @@ class LdStCompletenessTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """Load the source-tree instruction database once for these checks."""
-        cls.database = load_codegen_database(spec_dir=SPEC_DIR)
+        cls.database = get_packaged_spec_database()
 
     def test_ldu_type_and_vector_matrix(self) -> None:
         """Keep the documented uniform-load forms within 128 vector bits."""

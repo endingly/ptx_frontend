@@ -1,7 +1,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
-#include <ptx_frontend/resolved_ir/ptx_resolved_ir_model.hpp>
 
 #include <gtest/gtest.h>
+
 #include <concepts>
 
 template <typename T>
@@ -9,9 +9,11 @@ concept CompleteType = requires { sizeof(T); };
 
 static_assert(!CompleteType<ptx_frontend::syntax_ast::AstModule>);
 
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
+
 namespace ptx_frontend::resolved_ir {
 
-/** Verify model-only headers provide owned records without parser declarations. */
+/** Base/module headers provide owned operand records without parser bodies. */
 TEST(ResolvedIrModelHeaders, ExposeOwnedModelRecords) {
   ResolvedRegisterRef register_ref{
       .spelling = "%r0", .register_class = ResolvedRegisterClass::General};
@@ -21,7 +23,7 @@ TEST(ResolvedIrModelHeaders, ExposeOwnedModelRecords) {
   EXPECT_EQ(literal.spelling, "1");
 }
 
-/** Verify the model aggregate retains handwritten module containers. */
+/** Module header owns function containers with a pointer-based body. */
 TEST(ResolvedIrModelHeaders, ExposeHandwrittenModuleContainers) {
   ResolvedModule module{};
   module.functions.emplace_back();

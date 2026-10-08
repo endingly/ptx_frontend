@@ -21,12 +21,13 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 /** Distinguish the three source-level memory-barrier scope spellings. */
 TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
   for (const auto [source, expected] :
-       std::array<std::pair<std::string_view, Membar::VariantType>, 3>{{
-           {"membar.cta;", Membar::VariantType::Cta},
-           {"membar.gl;", Membar::VariantType::Gl},
-           {"membar.sys;", Membar::VariantType::Sys},
+       std::array<std::pair<std::string_view, std::string_view>, 3>{{
+           {"membar.cta;", "Cta"},
+           {"membar.gl;", "Gl"},
+           {"membar.sys;", "Sys"},
        }}) {
-    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              membar_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << source;
     EXPECT_EQ(*selected, expected);
   }
@@ -36,23 +37,27 @@ TEST(SelectVariantMembar, SelectsEachMemoryBarrierLevel) {
            "membar.cluster;",
            "membar.cta.sys;",
        }) {
-    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     membar_syntax_descriptor())
+                     .has_value())
         << source;
   }
 }
 
 /** Select alias-proxy ordering without accepting incomplete suffixes. */
 TEST(SelectVariantMembar, SelectsFixedProxyAlias) {
-  const auto selected =
-      selectVariant<Membar>(parse_instruction("membar.proxy.alias;"));
+  const auto selected = select_variant_name(
+      parse_instruction("membar.proxy.alias;"), membar_syntax_descriptor());
   ASSERT_TRUE(selected.has_value()) << selected.error().message;
-  EXPECT_EQ(*selected, Membar::VariantType::ProxyAlias);
+  EXPECT_EQ(*selected, "ProxyAlias");
   for (const std::string_view source : {
            "membar.proxy;",
            "membar.alias;",
            "membar.proxy.alias.cta;",
        }) {
-    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     membar_syntax_descriptor())
+                     .has_value())
         << source;
   }
 }
@@ -64,20 +69,24 @@ TEST(SelectVariantMembar, SelectsAsyncProxySpaces) {
            "membar.proxy.async.global;",
            "membar.proxy.async.shared::cta;",
        }) {
-    const auto selected = selectVariant<Membar>(parse_instruction(source));
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              membar_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << source;
-    EXPECT_EQ(*selected, Membar::VariantType::ProxyAsync);
+    EXPECT_EQ(*selected, "ProxyAsync");
   }
-  const auto cluster = selectVariant<Membar>(
-      parse_instruction("membar.proxy.async.shared::cluster;"));
+  const auto cluster = select_variant_name(
+      parse_instruction("membar.proxy.async.shared::cluster;"),
+      membar_syntax_descriptor());
   ASSERT_TRUE(cluster.has_value()) << cluster.error().message;
-  EXPECT_EQ(*cluster, Membar::VariantType::ProxyAsyncSharedCluster);
+  EXPECT_EQ(*cluster, "ProxyAsyncSharedCluster");
   for (const std::string_view source : {
            "membar.proxy.async.shared;",
            "membar.proxy.async.shared::cluster.global;",
            "membar.proxy.global;",
        }) {
-    EXPECT_FALSE(selectVariant<Membar>(parse_instruction(source)).has_value())
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     membar_syntax_descriptor())
+                     .has_value())
         << source;
   }
 }

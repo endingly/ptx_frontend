@@ -269,3 +269,324 @@ RSS 数字是每秒采样一次并求和：GCC 统计 `cc1plus`，Clang 统计
 `clang++-21` 与 `clang-21`。共享页可能重复计算，这不是完整进程树或
 cgroup 峰值。这些本机单次结果不能证明 CI 上的最佳并行度或内存安全，
 也不能证明单 op 文件布局在 Clang 下快于 main。
+
+## 2026-10-04 OwnedInstruction 编译后续测量
+
+本次以 #216 之后的 main `386aebb` 为基线，对比同一源码工作树中尚未提交的
+测试局部优化和私有生成器优化。每次 `test_resolved_ir` 构建均从独立的空 Ninja
+目录开始，使用 Clang 21.1.8、Debug、6 个并行任务、禁用 ccache、相同的
+已安装 vcpkg 依赖，以及 C/C++ Debug 选项 `-g0`。测试目标另追加
+`-gline-tables-only`；生成代码与库对象仍使用 `-g0`。计时包含生成、263 个
+C++ 对象编译及链接，不包含配置；测量期间没有其他并发编译。
+
+| 源码 | 测试目标清洁构建 | C++ 对象数 | Ninja 步骤数 |
+| --- | ---: | ---: | ---: |
+| Main 基线 | 279.37 秒 | 263 | 280 |
+| 仅缩小测试 checker 调用及头文件依赖 | 278.26 秒 | 263 | 280 |
+| 再加入按家族过滤的 owned 投影及立即实例化的索引式引用访问器（中间方案） | 277.22 秒 | 263 | 280 |
+| 最终方案：延迟实例化的索引访问器与精确 opcode 测试头文件 | 254.40 秒 | 263 | 280 |
+
+前两个候选方案与基线间约 1–2 秒的差异落在单次运行波动范围内。最终方案
+在这次匹配的单次测量中快 24.97 秒（8.9%）。测试对象编译时间区间从
+142.37 秒缩短到 119.86 秒；Resolved IR 库对象区间仍约为 90 秒。
+Ninja 中可重叠的各对象墙钟时长之和从 1,245.89 秒降至 1,112.25 秒；
+该和既不是 CPU 用时，也不是完整构建用时。测试改动删除了仅为调用既有
+`OwnedInstruction::check` 而实例化所有 opcode 的访问器。typed 投影测试
+改为复制选中家族的既有 `OwnedInstruction` owner，在未选中的源码位置保留
+空 owner，从而避开对所选 opcode record 类型构成的 variant 深拷贝。
+部分普通测试改为包含精确 opcode 头文件，不再依赖类别或聚合头；显式验证
+公开头文件兼容性的测试仍保留这些头文件。生成引用访问器在受限的泛型 lambda
+中按规范 variant 与 operand-layout 索引分派，保持回调顺序及
+`std::bad_variant_access` 兜底分支。
+
+使用同一构建的 `compile_commands.json`、将对象写入临时路径，并串行单独
+编译所得的归因数据如下：
+
+| 编译单元 | 改动前 | 改动后 |
+| --- | ---: | ---: |
+| collective typed 投影测试 | 27.52 秒 | 2.75 秒 |
+| module typed 投影测试 | 20.75 秒 | 2.60 秒 |
+| 生成的 Cp 源文件 | 28.73 秒 | 26.51 秒 |
+| 生成的 Mbarrier 源文件 | 26.03 秒 | 24.03 秒 |
+
+投影对比的前后两次都使用基线生成头文件；生成源文件对比则仅在两次编译间
+重新生成引用访问器。最初的直接索引切换使两个未改动的聚合头测试编译
+分别从 5.34 秒升至 8.29 秒、从 5.34 秒升至 8.24 秒。让切换分支依赖
+精确 opcode 后，两者恢复到 5.58 秒和 5.53 秒，同时保留生成源文件的
+编译收益。最终清洁构建的 Ninja 日志中，最长对象为 Cp（28.59 秒）、
+Mbarrier（24.73 秒）和 instruction-variants 测试（16.83 秒）；
+两个投影对象不再居首。最终构建与基线一样发现 133 个
+suite、910 个测试，GTest 列表哈希相同，且 910 个测试全部通过。
+Resolved IR 的 119 个 Python 测试和 generation-plan 的 25 个测试也通过。
+本次未采样可比的完整构建编译器 RSS 和 cgroup 内存峰值。
+本地日志位于 `/tmp/ptx-compile-baseline.hfBBvj`、
+`/tmp/ptx-compile-candidate.Yarq9p`、`/tmp/ptx-compile-measured.IDV8uT`
+和 `/tmp/ptx-compile-narrow.dBDSvt`；这些临时路径不可移植。
+
+这些数据只覆盖当前 main，不覆盖待合并的 matrix 或 tensor 分支。合并
+引用访问器生成逻辑时，共享物理存储的 matrix layout 必须保留逻辑 variant
+到存储 variant 的映射；当前 main 的直接索引只适用于逻辑与物理备选项一致
+的情形。单 opcode 的 Cp 与 Mbarrier 源文件仍是明显编译成本：其 7.8 和
+5.8 MiB 的生成定义合并了描述符、resolver、checker 与 owner bridge。
+本实验尚不能证明拆分生成文件拓扑是安全或更快的方案。
+
+## 2026-10-04 Descriptor 分区原型
+
+本次以此前最终布局的 `125615b3ba48a0b45030d8806a5f76796a26396f` 为基线，
+测量了一个尚未提交、现已撤回的通用原型。当时的实验性 CMake cache 列表
+`PTX_RESOLVED_IR_DESCRIPTOR_PARTITION_OPCODES` 显式选择 canonical opcode，
+将其 syntax、resolved、checker descriptor storage 放入单独的私有源文件；默认
+列表为空。本次只选取 `cp` 与 `mbarrier` 测量，生成器测试还用 `add` 验证了
+同一机制。选中 opcode 的公开强类型 getter 保持原签名，转发至私有 accessor。
+两条指令生成的六个 storage struct 正文与基线逐字节相同。
+
+基线与原型都使用 Clang 21.1.8、Ninja、Debug `-g0`、相同 vcpkg 依赖树、
+禁用 ccache、6 个并行任务，以及 `test_resolved_ir` 目标。测试另加
+`-gline-tables-only`。配置时间不计入构建。基线输出在
+`/tmp/ptx-compile-narrow.dBDSvt`；原型输出、编译器 trace 与日志在
+`/tmp/ptx-descriptor-proto.JZ9pyk`。这些临时路径不是可移植的复现输入。
+
+| 清洁目标构建 | 基线 | 选中分区的原型 |
+| --- | ---: | ---: |
+| 单次墙钟耗时 | 254.40 秒 | 246.89 秒 |
+| C++ object / Ninja 步骤 | 263 / 280 | 266 / 283 |
+| Resolved IR 测试 | 910 / 133 suite | 911 / 134 suite |
+
+原型增加两个 descriptor object 和一个 descriptor 生命周期测试 object。
+原有 910 个测试全部保留在发现列表中，新增测试也通过。完整目标的墙钟差异
+只来自共享主机上的单次运行，不能归因于分区：新测试 object 和构建调度也有影响。
+另按各自 `compile_commands.json` 用临时 object 输出，串行单独编译所选对象：
+
+| 指令 | 基线源文件 | 原型强类型源文件 + descriptor 源文件 | 单独编译的强类型源文件 RSS 峰值：基线 → 原型 |
+| --- | ---: | ---: | ---: |
+| Cp | 25.974 秒 | 24.105 + 2.863 = 26.968 秒 | 1,468,576 → 1,446,336 KiB |
+| Mbarrier | 22.698 秒 | 22.070 + 2.561 = 24.631 秒 | 1,263,028 → 1,213,404 KiB |
+
+两个独立 descriptor 编译进程的 RSS 峰值分别为 249,664 KiB 与
+240,652 KiB。表内 RSS 是单进程高水位，不是 6 并行或完整构建的内存峰值。
+串行合计编译时间对 Cp 增加 0.994 秒，对 Mbarrier 增加 1.933 秒。
+另外的 Clang `-ftime-trace` 记录：Cp 的 `ExecuteCompiler` 从基线
+29.631 秒变为 27.065 + 2.907 = 29.972 秒；Mbarrier 从 25.899 秒
+变为 24.131 + 2.741 = 26.872 秒。耗时靠前的函数实例化仍包含
+`std::expected<T>` 构造及嵌套的 `std::variant` 移动/拷贝 visitor，
+单项约 2–2.5 秒。嵌套 trace 事件会重叠，不能独立相加。
+
+选中分区的构建通过全部 911 个测试；再次构建没有工作。已安装的
+`examples/conversion_consumer` 配置、链接和运行均通过，私有 accessor 头
+未被安装。在另一构建目录中将选项从选中切换为空后，生成器恢复原布局，
+四个分区文件从输出清单和生成目录中删除。这两个测量样本不支持默认启用
+descriptor 分区。本次原型的代码、测试、构建改动及 lexer 文件命名改动均已撤回，
+仅保留这份中英文测量记录；当前代码不提供上述实验选项。今后的布局方案需要
+新的测量结果与 core review。`.gen.hpp` / `.gen.cpp` 命名要求仅适用于
+Python 生成的文件，不适用于 Flex lexer 输出。
+
+## 2026-10-05 活跃 Resolved IR 迁移测量
+
+本节保留直接类模块仍使用 `resolved_ir_experiment` 名称时的测量记录。当前模块已使用
+规范的 `resolved_ir` 路径与目标；下方命令和产物名称按测量当时保留。
+`tools/owned_ir_experiment/README.md` 的早期运行期数字使用不同的测试程序、
+工作负载、处理流程及驱动，不能与本节的 Google Benchmark 测量直接比较。
+
+本节测量基于 `5f8d639` 的未提交活跃 `resolved_ir_experiment` 迁移，
+以 10 月 4 日最终构建的**历史记录**为参照；未重新构建或运行旧实现。
+两次清洁测试目标构建均使用 Clang 21.1.8、Ninja、C/C++ Debug `-g0`、
+仅测试目标附加 `-gline-tables-only`、6 个并行任务、禁用 ccache、相同的
+已有 vcpkg 依赖目录，以及 CMake 4.3.3。新目标通过临时
+`CMAKE_PROJECT_TOP_LEVEL_INCLUDES` 延迟 hook 附加测试标志。配置时间
+不计入，生成、编译、归档和链接计入。新目标从空构建目录开始，期间没有
+其他构建。历史记录没有足够信息确认主机硬件和负载相同；两个墙钟时间
+都只是单次观测。
+
+| 清洁 Debug 目标指标 | 历史 `test_resolved_ir` | 活跃 `resolved_ir_experiment_tests` |
+| --- | ---: | ---: |
+| 目标构建墙钟时间 | 254.40 秒 | 270.85 秒 |
+| C++ object / Ninja 步骤 | 263 / 280 | 263 / 274 |
+| 生成输出边的墙钟跨度 | 57.17 秒 | 105.61 秒 |
+| Resolved 库 object / 编译区间 | 102 / 90.28 秒 | 103 / 66.83 秒 |
+| 测试 object / 编译区间 | 150 / 119.86 秒 | 149 / 96.64 秒 |
+| 可重叠的 C++ object 墙钟时间之和 | 1,112.25 秒 | 949.65 秒 |
+| 列出的 GTest case / suite | 910 / 133 | 914 / 134 |
+
+新目标总耗时多 16.45 秒（6.5%），因此这次结果未显示清洁构建提速。
+库和测试的编译区间较短，但生成跨度长 48.44 秒。旧生成器有 7 条
+可重叠输出边，新生成器有 1 条；表内跨度是经过的时间，不是可相加的
+CPU 时间。编译区间也彼此重叠。模型大小与测试清单均已变化，不能把
+总耗时差额归因于单一源码。新目标的 914 个测试只通过
+`--gtest_list_tests` 列出，本次测量未运行。新 Ninja 日志中耗时最长的
+object 是生成的 Cp（13.99 秒）、Mbarrier（12.05 秒）和
+instruction-variants 测试（6.85 秒）。
+
+活跃模块新增可选、不会安装的 `frontend_experiment_symbol_table_scaling`
+benchmark 目标，由默认 `OFF` 的既有 `PTX_FRONTEND_BUILD_BENCHMARKS`
+选项控制。驱动保留历史 fixture 生成、case 名称、校验和 checksum；
+仅 Resolved IR 头文件路径与可执行文件错误标签不同。历史模块和驱动未改动。
+计时前在单独的临时 vcpkg 目录安装 Google Benchmark 1.9.5。新 Release
+目标使用 Clang 21.1.8、`-O3 -DNDEBUG`、禁用 ccache，构建并行度为 6；
+清洁构建耗时 196.71 秒，这是准备成本。运行时主机为 AMD Ryzen 9
+5950X，可见 32 个逻辑 CPU、约 23 GiB 内存，cgroup 无 CPU 或内存限额。
+
+下表为 Google Benchmark 5 次重复的**每次迭代 real time 中位数，单位毫秒**；
+每次重复至少采样 0.1 秒。每个生成样本有 N 条有效 `mov.u32` 指令和
+2N 个已绑定 operand 引用。普通单 scope 样本存储 N+1 个 symbol，紧凑
+单 scope 样本存储 2 个；nested 样本使用 2 个函数和词法 block。
+`parse` 解析完整源码并验证 AST；`resolve_module` 从预解析 AST 开始，
+包含自身的绑定、解析、检查、结果验证和析构。两项耗时不是互不重叠的
+阶段。选中的 34 个 case（16 种形状 × 2 种操作，另加 2 个 corpus
+case）共 170 条重复记录，全部通过校验，无 benchmark 错误。每次重复
+的迭代数为 2 至 4,815。
+
+| 逻辑寄存器数 | 声明 | Scope | Parse | Resolve module |
+| ---: | --- | --- | ---: | ---: |
+| 1,000 | ordinary | single | 1.334 | 5.799 |
+| 1,000 | ordinary | nested | 1.284 | 6.029 |
+| 1,000 | compact | single | 0.766 | 3.362 |
+| 1,000 | compact | nested | 0.787 | 3.425 |
+| 2,000 | ordinary | single | 2.810 | 12.303 |
+| 2,000 | ordinary | nested | 2.594 | 11.891 |
+| 2,000 | compact | single | 1.525 | 6.591 |
+| 2,000 | compact | nested | 1.467 | 6.656 |
+| 4,000 | ordinary | single | 6.257 | 28.724 |
+| 4,000 | ordinary | nested | 6.294 | 25.023 |
+| 4,000 | compact | single | 3.083 | 15.989 |
+| 4,000 | compact | nested | 2.996 | 14.018 |
+| 8,000 | ordinary | single | 22.624 | 55.134 |
+| 8,000 | ordinary | nested | 12.525 | 52.340 |
+| 8,000 | compact | single | 6.692 | 28.600 |
+| 8,000 | compact | nested | 7.108 | 28.875 |
+| M12 `natural_kernel_sm80.ptx` corpus | — | — | 0.029 | 0.193 |
+
+共享主机的采样噪声明显：ordinary/single N1000 的 parse real time 变异系数
+为 24.43%，N8000 为 20.83%。没有更多受控重复实验时，不应把表内布局
+差异直接解释为因果效果。
+
+在受检索的受控历史记录和历史测量输出中，没有旧 benchmark 驱动的运行时
+JSON、CSV 或数字计时汇总。因此表内数据仅是新模块的运行时基线，
+**不能**作为旧版到新版的运行时提速数据。单迭代预检、多迭代 JSON、
+日志、Ninja 日志、编译命令及临时测试标志 hook 保存在
+`/tmp/ptx-resolved-measure.qC5wI0`；该路径仅是本机临时记录，不可移植。
+Release 运行命令为：
+
+```sh
+timeout 300s /tmp/ptx-resolved-measure.qC5wI0/release/submod/resolved_ir_experiment/benchmark/frontend_experiment_symbol_table_scaling \
+  --benchmark_filter='symbol_table_scaling/(parse|resolve_module|corpus_parse|corpus_resolve_module)/' \
+  --benchmark_min_time=0.1s --benchmark_repetitions=5 \
+  --benchmark_out=/tmp/ptx-resolved-measure.qC5wI0/runtime-parse-resolve-sampled.json \
+  --benchmark_out_format=json
+```
+
+按上述标志另行完成配置后，实际计时的构建命令为：
+
+```sh
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/debug \
+  --parallel 6 --target resolved_ir_experiment_tests
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
+  --parallel 6 --target frontend_experiment_symbol_table_scaling
+```
+
+两个构建的准确配置缓存和临时测试标志 hook 均保存在 artifact 目录。
+依赖安装与配置在计时命令之前完成。
+
+## Review 分支上直接语义类的 variant 增量构建
+
+这是一组独立的单次增量测量：源码以
+`63369f8bc16f284662ffda4da1848e2d726edc8d` 为父提交，并包含本次修改的递归输入
+与 owned 坐标修复；没有重做上面的历史清洁构建。构建为 Debug，使用 Ninja 1.13.2、
+CMake 4.3.3、Clang 21.1.8、3 个并行编译任务和 6 个 generator 产物 writer。
+Production 标志为 `-g0 -std=gnu++23`，resolved-IR 测试目标另外使用
+`-gline-tables-only`。两者都使用 ccache 4.12.3 和已有 `x64-linux` 依赖树。
+5 GiB 编译缓存接近满额；没有并发运行其他构建。
+
+先将 `ptx_frontend_resolved_ir` 与 `test_resolved_ir` 构建到无工作基线，随后在
+`instructions/ptx_spec/arithmetic.yaml` 的 `abs_s16` 后临时加入一个**合成**
+`abs_s8` variant：
+
+```yaml
+      - name: abs_s8
+        availability: {ptx: "9.3", sm: 120}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8}]
+        examples: [{ptx: "abs.s8 %b0, %b1;", valid: true}]
+```
+
+这是实际的 generator 输入，产生了 `AbsS8` final class 和
+`InstructionKind::AbsS8` 枚举值；它不表示 `abs.s8` 是受支持的 PTX 形式，交付源码中也
+没有该样本。通过普通 `resolved_ir_codegen` 构建先完成 CMake 重新配置与生成，
+再分别计时两个目标。下表的 object 数来自 Ninja 实际执行的编译步骤，
+不是目标中声明的源码数量：
+
+| 增量步骤 | 墙钟时间 | 实际编译的 C++ object |
+| --- | ---: | ---: |
+| 两个目标的无变更基线 | 无工作 | 0 |
+| 重新配置及 `resolved_ir_codegen` | 38.003 秒 | 0 |
+| `ptx_frontend_resolved_ir` | 142.840 秒 | 96：93 个生成源、3 个手写源 |
+| 随后的 `test_resolved_ir` | 176.301 秒 | 129 个测试源 |
+
+Production 和测试编译合计增加 225 次 ccache miss、0 次 hit。
+公共 base 头文件发生变化，因此本来未修改的 opcode 源文件，例如
+`resolved_ir_data_movement_cvta.gen.cpp` 和
+`resolved_ir_parallel_synchronization_and_communication_bar.gen.cpp`，仍被编译。
+无关的测试源 `test_select_variant_cp.cpp` 与 `test_select_variant_xor.cpp` 也被编译。
+这些按目标统计的候选集展示了公共 base 依赖中保留全局 `InstructionKind` 目录的成本；
+不能据此推断清洁构建提速，或其他主机与缓存状态下的成本。移除临时 variant 后，
+两个目标已重建回普通生成状态；再次构建无工作。
+
+复现时先构建两个目标并确认无工作，然后加入上述 variant，在同一配置好的构建目录
+按顺序运行：
+
+```sh
+cmake --build <build-dir> --target resolved_ir_codegen --parallel 3
+ninja -C <build-dir> -j 3 -d explain ptx_frontend_resolved_ir
+ninja -C <build-dir> -j 3 -d explain test_resolved_ir
+```
+
+完成后删除临时 variant，并重新构建两个目标，然后再做测试或其他对比。
+测量使用 `/tmp/ptx-six-cold.drYe8K/build`；本机编译步骤日志位于
+`/tmp/ptx-pr235-review.J2S3oW`，不是可移植的产物。
+
+递归 CMake 输入修复还通过普通 `resolved_ir_codegen` 目标验证。
+临时 `instructions/ptx_spec/__review_probe__/nop.yaml` 使用
+`ptx-instr/v1`、`miscellaneous` category、`control_flow` codegen category、
+一个无 operand 的 `nop_probe_a` variant。增加文件后发现 `nop.gen.hpp`
+及其对应源文件；仅将 variant 名改为 `nop_probe_b` 后类重新生成；移除 YAML 后
+构建重新配置，并删除两个生成文件。输入成员列表在增加及移除时改变，
+样本文件不在交付源码中。复现时在子目录创建带普通 schema 头和一个 bare variant
+的 YAML；在增加、修改 variant 名、删除文件后各运行一次
+`cmake --build <build-dir> --target resolved_ir_codegen`，检查生成的 model leaf 和
+构建树内 `submod/resolved_ir/resolved_spec_inputs.txt`。
+
+## Category generator 构建图验证（2026-10-08）
+
+本次验证基于 `af187f6` 的工作树 generator 修改，使用 Ninja、六个 generator writer
+和已有的 Debug 输出树。第一次完成的 category 构建图运行耗时 239.387 秒，其中
+CMake 重新配置耗时 28.7 秒。此前中断的一次运行已生成部分产物，因此这个数字只
+用于功能验证，不能作为冷构建提速对比。每个重新生成的产物仍经过 candidate 格式化；
+没有使用格式化缓存。
+
+运行前后 manifest 均管理 380 个生成文件。全部 380 个 SHA-256 哈希及已有产物的
+修改时间完全相同。紧接着第二次构建未执行生成，耗时 0.056 秒。删除生成的
+`control_flow/brkpt.gen.hpp` 后，仅 `control_flow` category 和共享 finalizer
+运行（27.365 秒）；修复的头文件字节相同，其他产物修改时间不变，下一次构建无工作。
+
+在 detached 源码副本中，以仅含三个有效 instruction 的小型 spec 测试了实际项目
+CMake 构建图。只修改一个 category 的注释时，仅该 category 与共享 finalizer 重跑；
+只修改 schema 注释时，两个 category 与 finalizer 都重跑。两种修改均保留产物字节
+和修改时间，随后构建无工作。新增一个同时包含 `trap` 第二份定义和合成 `nop` 的
+spec 文件，使 manifest 从 16 个产物增至 18 个。删除该文件后，原有 16 个哈希恢复，
+`nop` 产物被清除，下一次构建无工作。这些合成条目仅用于构建拓扑测试，不表示
+PTX coverage。
+
+该隔离项目还以注入故障验证完成戳。Ninja 在缺失的 category 头文件已修复后，
+让后续 formatter 失败；category 完成戳被移除，旧 manifest 保持完整，下一次构建
+重试成功，再下一次无工作。Unix Makefiles 在 deferred 全量 emission 修复缺失头后，
+注入共享 finalizer 故障；旧 manifest 及修改时间保持不变，global 完成戳不存在。
+紧接着的构建成功完成 finalization，再下一次没有生成。验证日志位于该主机的
+`/tmp/ptx-codegen-topology.log`、`/tmp/ptx-codegen-actual-ninja-failure.log`
+和 `/tmp/ptx-codegen-actual-make.log`。
+
+在完整 Debug 输出树中，修复头文件后重建 `ptx_frontend_resolved_ir` 编译了两个
+C++ object，并在 22.854 秒内成功链接。随后构建 `resolved_ir_smoke` 和
+`test_resolved_ir` 编译了 31 个测试 object，99.461 秒内完成链接。smoke 可执行
+文件通过；159 个 suite 的全部 1,081 个 GoogleTest 用例也通过（4.100 秒）。
+再一次 native target 构建没有工作，耗时 0.052 秒。该主机上的 native 构建与测试
+日志为 `/tmp/ptx-codegen-native-build.log`、
+`/tmp/ptx-codegen-native-tests-build.log`、`/tmp/ptx-codegen-smoke.log` 和
+`/tmp/ptx-codegen-gtest.log`。

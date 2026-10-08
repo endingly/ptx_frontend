@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/shr.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -25,12 +25,11 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveShr, SelectsU32VariantAndAcceptsImmediateAmount) {
   const auto ast = parse_instruction("shr.u32 %r0, %r1, 1;");
-  const auto resolved = resolve<Shr>(ast);
+  const auto resolved = resolveShr(ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto* shr_u32 = test_ir_access::get_if<Shr::U32>(&resolved->variant);
+  const auto* shr_u32 = dynamic_cast<ShrU32*>(resolved->get());
   ASSERT_NE(shr_u32, nullptr);
-  EXPECT_TRUE(test_ir_access::holds_alternative<ResolvedImmediate>(
-      shr_u32->amount.value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(shr_u32->amount.value));
 }
 
 }  // namespace
@@ -43,17 +42,18 @@ TEST(ResolvedIrChecker, ChecksGeneratedShrU32Availability) {
   PtxSyntaxParser parser("shr.u32 %r0, %r1, %r2;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto shr = resolve<Shr>(*ast);
+  const auto shr = resolveShr(*ast);
   ASSERT_TRUE(shr.has_value()) << shr.error().message;
   const auto rejected =
-      check(*shr, Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
-                          .instruction_range = ast->range});
+      (*shr)->check(Context{.target = {.ptx_version = {0, 9}, .sm_version = 0},
+                            .instruction_range = ast->range});
   ASSERT_FALSE(rejected.has_value());
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
   EXPECT_EQ(rejected.error().front().range, ast->range);
   EXPECT_TRUE(
-      check(*shr, Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
+      (*shr)
+          ->check(Context{.target = {.ptx_version = {1, 0}, .sm_version = 0},
                           .instruction_range = ast->range})
           .has_value());
 }

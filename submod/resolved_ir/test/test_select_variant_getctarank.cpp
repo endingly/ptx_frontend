@@ -24,18 +24,18 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Getctarank::VariantType expected) {
-    const auto selected = selectVariant<Getctarank>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(parse_instruction(source),
+                                              getctarank_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("getctarank.shared::cluster.u32 %r0, %r1;",
-                 Getctarank::VariantType::SharedCluster);
+  expect_variant("getctarank.shared::cluster.u32 %r0, %r1;", "SharedCluster");
   expect_variant("getctarank.shared::cluster.u64 %r0, shared_value+4;",
-                 Getctarank::VariantType::SharedCluster);
-  expect_variant("getctarank.u32 %r0, %r1;", Getctarank::VariantType::Generic);
-  expect_variant("getctarank.u64 %r0, %rd1;", Getctarank::VariantType::Generic);
+                 "SharedCluster");
+  expect_variant("getctarank.u32 %r0, %r1;", "Generic");
+  expect_variant("getctarank.u64 %r0, %rd1;", "Generic");
 
   for (const std::string_view source : {
            "getctarank.shared::cluster %r0, %r1;",
@@ -43,10 +43,11 @@ TEST(SelectVariantGetctarank, SelectsSharedClusterAndGenericForms) {
            "getctarank.shared::cluster.u32.u64 %r0, %r1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(
-        selectVariant<Getctarank>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     getctarank_syntax_descriptor())
+                     .has_value());
   }
-  EXPECT_FALSE(resolve<Getctarank>(
+  EXPECT_FALSE(resolveGetctarank(
                    parse_instruction("getctarank.shared::cluster.u32 %r0;"))
                    .has_value());
 }

@@ -34,10 +34,11 @@ TEST(ResolveBfind, SelectsEveryTypeAndShiftAmountForm) {
            "bfind.shiftamt.s64 %r0, %rd1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_TRUE(resolve<Bfind>(parse_instruction(source)).has_value());
+    EXPECT_TRUE(resolveBfind(parse_instruction(source)).has_value());
   }
-  EXPECT_TRUE(Bfind::ShiftamtU32::shiftamt);
-  EXPECT_FALSE(selectVariant<Bfind>(parse_instruction("bfind.b32 %r0, %r1;"))
+  EXPECT_TRUE(BfindShiftamtU32::shiftamt);
+  EXPECT_FALSE(select_variant_name(parse_instruction("bfind.b32 %r0, %r1;"),
+                                   bfind_syntax_descriptor())
                    .has_value());
 }
 
@@ -51,23 +52,24 @@ TEST(ResolvedIrChecker, ChecksGeneratedBfindAvailability) {
   PtxSyntaxParser parser("bfind.shiftamt.u32 %r0, %r1;");
   const auto ast = parser.parseInstruction();
   ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-  const auto bfind = resolve<Bfind>(*ast);
+  const auto bfind = resolveBfind(*ast);
   ASSERT_TRUE(bfind.has_value()) << bfind.error().message;
-  const auto old_ptx =
-      check(*bfind, Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
-                            .instruction_range = ast->range});
+  const auto old_ptx = (*bfind)->check(
+      Context{.target = {.ptx_version = {1, 9}, .sm_version = 20},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
             CheckDiagnosticKind::UnsupportedPtxVersion);
-  const auto old_sm =
-      check(*bfind, Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
-                            .instruction_range = ast->range});
+  const auto old_sm = (*bfind)->check(
+      Context{.target = {.ptx_version = {2, 0}, .sm_version = 19},
+              .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
             CheckDiagnosticKind::UnsupportedSmVersion);
   EXPECT_TRUE(
-      check(*bfind, Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
-                            .instruction_range = ast->range})
+      (*bfind)
+          ->check(Context{.target = {.ptx_version = {2, 0}, .sm_version = 20},
+                          .instruction_range = ast->range})
           .has_value());
 }
 

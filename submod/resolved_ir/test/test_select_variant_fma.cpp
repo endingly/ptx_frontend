@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <tuple>
 
@@ -10,6 +9,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/model/arithmetic/fma.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -27,42 +27,32 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(ResolveFma, SelectsCompleteFmaVariantFamily) {
   const auto expect_variant = [](std::string_view source,
-                                 Fma::VariantType expected) {
-    const auto resolved = resolve<Fma>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto ast = parse_instruction(source);
+    const auto selected = select_variant_name(ast, fma_syntax_descriptor());
+    ASSERT_TRUE(selected.has_value()) << selected.error().message;
+    EXPECT_EQ(*selected, expected);
+    const auto resolved = resolveFma(ast);
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-    EXPECT_EQ(resolved->variant.index(), static_cast<size_t>(expected));
+    EXPECT_EQ((*resolved)->opcode_name(), "fma");
   };
 
-  expect_variant("fma.rn.ftz.sat.f32 %f0, %f1, %f2, %f3;",
-                 Fma::VariantType::RnF32);
-  expect_variant("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;",
-                 Fma::VariantType::DirectedF32);
-  expect_variant("fma.rn.f64 %d0, %d1, %d2, %d3;", Fma::VariantType::RnF64);
-  expect_variant("fma.rp.f64 %d0, %d1, %d2, %d3;",
-                 Fma::VariantType::DirectedF64);
-  expect_variant("fma.rm.ftz.f32x2 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::F32x2);
-  expect_variant("fma.rn.ftz.sat.f16 %h0, %h1, %h2, %h3;",
-                 Fma::VariantType::RnF16);
-  expect_variant("fma.rn.ftz.sat.f16x2 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::RnF16x2);
-  expect_variant("fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;",
-                 Fma::VariantType::HalfRelu);
-  expect_variant("fma.rn.oob.sat.f16x2 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::HalfOob);
-  expect_variant("fma.rn.oob.relu.f16 %h0, %h1, %h2, %h3;",
-                 Fma::VariantType::HalfOobRelu);
-  expect_variant("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::Bf16);
-  expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;", Fma::VariantType::Bf16x2);
-  expect_variant("fma.rn.oob.bf16 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::Bf16Oob);
-  expect_variant("fma.rn.oob.relu.bf16x2 %b0, %b1, %b2, %b3;",
-                 Fma::VariantType::Bf16x2Oob);
-  expect_variant("fma.rp.sat.f32.f16 %f0, %h1, %h2, %f3;",
-                 Fma::VariantType::MixedF32F16);
-  expect_variant("fma.rm.f32.bf16 %f0, %b1, %b2, %f3;",
-                 Fma::VariantType::MixedF32Bf16);
+  expect_variant("fma.rn.ftz.sat.f32 %f0, %f1, %f2, %f3;", "RnF32");
+  expect_variant("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;", "DirectedF32");
+  expect_variant("fma.rn.f64 %d0, %d1, %d2, %d3;", "RnF64");
+  expect_variant("fma.rp.f64 %d0, %d1, %d2, %d3;", "DirectedF64");
+  expect_variant("fma.rm.ftz.f32x2 %b0, %b1, %b2, %b3;", "F32x2");
+  expect_variant("fma.rn.ftz.sat.f16 %h0, %h1, %h2, %h3;", "RnF16");
+  expect_variant("fma.rn.ftz.sat.f16x2 %b0, %b1, %b2, %b3;", "RnF16x2");
+  expect_variant("fma.rn.ftz.relu.f16 %h0, %h1, %h2, %h3;", "HalfRelu");
+  expect_variant("fma.rn.oob.sat.f16x2 %b0, %b1, %b2, %b3;", "HalfOob");
+  expect_variant("fma.rn.oob.relu.f16 %h0, %h1, %h2, %h3;", "HalfOobRelu");
+  expect_variant("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;", "Bf16");
+  expect_variant("fma.rn.bf16x2 %b0, %b1, %b2, %b3;", "Bf16x2");
+  expect_variant("fma.rn.oob.bf16 %b0, %b1, %b2, %b3;", "Bf16Oob");
+  expect_variant("fma.rn.oob.relu.bf16x2 %b0, %b1, %b2, %b3;", "Bf16x2Oob");
+  expect_variant("fma.rp.sat.f32.f16 %f0, %h1, %h2, %f3;", "MixedF32F16");
+  expect_variant("fma.rm.f32.bf16 %f0, %b1, %b2, %f3;", "MixedF32Bf16");
 }
 
 TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
@@ -77,7 +67,7 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
 
   const auto expect_resolved = [&resolved_count](const std::string& source) {
     SCOPED_TRACE(source);
-    const auto resolved = resolve<Fma>(parse_instruction(source));
+    const auto resolved = resolveFma(parse_instruction(source));
     ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
     ++resolved_count;
   };
@@ -142,101 +132,88 @@ TEST(ResolveFma, ResolvesEveryCanonicalModifierCombination) {
 
 TEST(ResolveFma, PreservesExpandedVariantModifiersAndTypes) {
   const auto directed =
-      resolve<Fma>(parse_instruction("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
+      resolveFma(parse_instruction("fma.rz.ftz.sat.f32 %f0, %f1, %f2, %f3;"));
   ASSERT_TRUE(directed.has_value()) << directed.error().message;
-  const auto* directed_f32 =
-      test_ir_access::get_if<Fma::DirectedF32>(&directed->variant);
+  const auto* directed_f32 = dynamic_cast<FmaDirectedF32*>(directed->get());
   ASSERT_NE(directed_f32, nullptr);
   EXPECT_EQ(directed_f32->rounding.value, RoundingMode::Rz);
   EXPECT_TRUE(directed_f32->ftz.value);
   EXPECT_TRUE(directed_f32->saturate.value);
-  EXPECT_EQ(Fma::DirectedF32::type, ScalarType::F32);
+  EXPECT_EQ(FmaDirectedF32::type, ScalarType::F32);
 
-  const auto half_relu = resolve<Fma>(
+  const auto half_relu = resolveFma(
       parse_instruction("fma.rn.ftz.relu.f16x2 %b0, %b1, %b2, %b3;"));
   ASSERT_TRUE(half_relu.has_value()) << half_relu.error().message;
-  const auto* relu = test_ir_access::get_if<Fma::HalfRelu>(&half_relu->variant);
+  const auto* relu = dynamic_cast<FmaHalfRelu*>(half_relu->get());
   ASSERT_NE(relu, nullptr);
   EXPECT_TRUE(relu->ftz.value);
-  EXPECT_TRUE(Fma::HalfRelu::relu);
+  EXPECT_TRUE(FmaHalfRelu::relu);
   EXPECT_EQ(relu->type.value, ScalarType::F16x2);
 
   const auto oob =
-      resolve<Fma>(parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
+      resolveFma(parse_instruction("fma.rn.oob.sat.f16 %h0, %h1, %h2, %h3;"));
   ASSERT_TRUE(oob.has_value()) << oob.error().message;
-  const auto* half_oob = test_ir_access::get_if<Fma::HalfOob>(&oob->variant);
+  const auto* half_oob = dynamic_cast<FmaHalfOob*>(oob->get());
   ASSERT_NE(half_oob, nullptr);
-  EXPECT_TRUE(Fma::HalfOob::oob);
+  EXPECT_TRUE(FmaHalfOob::oob);
   EXPECT_TRUE(half_oob->saturate.value);
   EXPECT_EQ(half_oob->type.value, ScalarType::F16);
 
   const auto bf16 =
-      resolve<Fma>(parse_instruction("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;"));
+      resolveFma(parse_instruction("fma.rn.relu.bf16 %b0, %b1, %b2, %b3;"));
   ASSERT_TRUE(bf16.has_value()) << bf16.error().message;
-  const auto* bfloat = test_ir_access::get_if<Fma::Bf16>(&bf16->variant);
+  const auto* bfloat = dynamic_cast<FmaBf16*>(bf16->get());
   ASSERT_NE(bfloat, nullptr);
   EXPECT_TRUE(bfloat->relu.value);
-  EXPECT_EQ(Fma::Bf16::type, ScalarType::BF16);
+  EXPECT_EQ(FmaBf16::type, ScalarType::BF16);
 
-  const auto mixed = resolve<Fma>(
-      parse_instruction("fma.rp.sat.f32.bf16 %f0, %b1, %b2, %f3;"));
+  const auto mixed =
+      resolveFma(parse_instruction("fma.rp.sat.f32.bf16 %f0, %b1, %b2, %f3;"));
   ASSERT_TRUE(mixed.has_value()) << mixed.error().message;
-  const auto* mixed_bf16 =
-      test_ir_access::get_if<Fma::MixedF32Bf16>(&mixed->variant);
+  const auto* mixed_bf16 = dynamic_cast<FmaMixedF32Bf16*>(mixed->get());
   ASSERT_NE(mixed_bf16, nullptr);
   EXPECT_EQ(mixed_bf16->rounding.value, RoundingMode::Rp);
   EXPECT_TRUE(mixed_bf16->saturate.value);
-  EXPECT_EQ(Fma::MixedF32Bf16::result_type, ScalarType::F32);
-  EXPECT_EQ(Fma::MixedF32Bf16::input_type, ScalarType::BF16);
+  EXPECT_EQ(FmaMixedF32Bf16::result_type, ScalarType::F32);
+  EXPECT_EQ(FmaMixedF32Bf16::input_type, ScalarType::BF16);
 }
 
 TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
-  const auto f32 = resolve<Fma>(parse_instruction(
+  const auto f32 = resolveFma(parse_instruction(
       "fma.rn.f32 %f0, 0d3ff0000000000000, 1.5, 0f3f800000;"));
   ASSERT_TRUE(f32.has_value()) << f32.error().message;
-  const auto* f32_variant = test_ir_access::get_if<Fma::RnF32>(&f32->variant);
+  const auto* f32_variant = dynamic_cast<FmaRnF32*>(f32->get());
   ASSERT_NE(f32_variant, nullptr);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f32_variant->src1.value).type,
-      ScalarType::F32);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f32_variant->src2.value).type,
-      ScalarType::F32);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f32_variant->src3.value).type,
-      ScalarType::F32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src1.value).type,
+            ScalarType::F32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src2.value).type,
+            ScalarType::F32);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f32_variant->src3.value).type,
+            ScalarType::F32);
 
-  const auto f64 = resolve<Fma>(parse_instruction(
+  const auto f64 = resolveFma(parse_instruction(
       "fma.rp.f64 %d0, 0f3f800000, 1.5, 0d3ff0000000000000;"));
   ASSERT_TRUE(f64.has_value()) << f64.error().message;
-  const auto* f64_variant =
-      test_ir_access::get_if<Fma::DirectedF64>(&f64->variant);
+  const auto* f64_variant = dynamic_cast<FmaDirectedF64*>(f64->get());
   ASSERT_NE(f64_variant, nullptr);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f64_variant->src1.value).type,
-      ScalarType::F64);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f64_variant->src2.value).type,
-      ScalarType::F64);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(f64_variant->src3.value).type,
-      ScalarType::F64);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src1.value).type,
+            ScalarType::F64);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src2.value).type,
+            ScalarType::F64);
+  EXPECT_EQ(std::get<ResolvedImmediate>(f64_variant->src3.value).type,
+            ScalarType::F64);
 
-  const auto widened = resolve<Fma>(
+  const auto widened = resolveFma(
       parse_instruction("fma.rn.f64 %d0, 0f00000001, 0f80000000, 0f7f800000;"));
   ASSERT_TRUE(widened.has_value()) << widened.error().message;
-  const auto* widened_variant =
-      test_ir_access::get_if<Fma::RnF64>(&widened->variant);
+  const auto* widened_variant = dynamic_cast<FmaRnF64*>(widened->get());
   ASSERT_NE(widened_variant, nullptr);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(widened_variant->src1.value).bits,
-      0x36a0000000000000ULL);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(widened_variant->src2.value).bits,
-      0x8000000000000000ULL);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(widened_variant->src3.value).bits,
-      0x7ff0000000000000ULL);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src1.value).bits,
+            0x36a0000000000000ULL);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src2.value).bits,
+            0x8000000000000000ULL);
+  EXPECT_EQ(std::get<ResolvedImmediate>(widened_variant->src3.value).bits,
+            0x7ff0000000000000ULL);
 
   for (const auto source : {
            "fma.rn.f16 %h0, 1.0, %h2, %h3;",
@@ -247,43 +224,37 @@ TEST(ResolveFma, AcceptsFloatingImmediatesOnlyWhereTheFormAllowsThem) {
            "fma.rn.f32.bf16 %f0, %b1, %b2, 1;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(resolveFma(parse_instruction(source)).has_value());
   }
 }
 
 TEST(ResolveFma, NarrowsFloatingLiteralsForSinglePrecisionAccumulators) {
-  const auto standard = resolve<Fma>(
+  const auto standard = resolveFma(
       parse_instruction("fma.rn.f32 %f0, 1e300, -1e300, 0d7fefffffffffffff;"));
   ASSERT_TRUE(standard.has_value()) << standard.error().message;
-  const auto* standard_variant =
-      test_ir_access::get_if<Fma::RnF32>(&standard->variant);
+  const auto* standard_variant = dynamic_cast<FmaRnF32*>(standard->get());
   ASSERT_NE(standard_variant, nullptr);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(standard_variant->src1.value).bits,
-      0x7f800000U);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(standard_variant->src2.value).bits,
-      0xff800000U);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(standard_variant->src3.value).bits,
-      0x7f800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src1.value).bits,
+            0x7f800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src2.value).bits,
+            0xff800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(standard_variant->src3.value).bits,
+            0x7f800000U);
 
   const auto mixed =
-      resolve<Fma>(parse_instruction("fma.rn.f32.f16 %f0, %h1, %h2, -1e300;"));
+      resolveFma(parse_instruction("fma.rn.f32.f16 %f0, %h1, %h2, -1e300;"));
   ASSERT_TRUE(mixed.has_value()) << mixed.error().message;
-  const auto* mixed_variant =
-      test_ir_access::get_if<Fma::MixedF32F16>(&mixed->variant);
+  const auto* mixed_variant = dynamic_cast<FmaMixedF32F16*>(mixed->get());
   ASSERT_NE(mixed_variant, nullptr);
-  EXPECT_EQ(
-      test_ir_access::get<ResolvedImmediate>(mixed_variant->src3.value).bits,
-      0xff800000U);
+  EXPECT_EQ(std::get<ResolvedImmediate>(mixed_variant->src3.value).bits,
+            0xff800000U);
 
   for (const auto source : {
            "fma.rn.f64 %d0, 1e400, %d2, %d3;",
            "fma.rn.f64 %d0, 1e-400, %d2, %d3;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(resolve<Fma>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(resolveFma(parse_instruction(source)).has_value());
   }
 }
 
@@ -306,7 +277,8 @@ TEST(ResolveFma, RejectsMissingRoundingAndConflictingFlags) {
            "fma.rn.sat.bf16x2 %b0, %b1, %b2, %b3;",
            "fma.rn.ftz.f32.bf16 %f0, %b1, %b2, %f3;",
        }) {
-    const auto selected = selectVariant<Fma>(parse_instruction(source));
+    const auto selected =
+        select_variant_name(parse_instruction(source), fma_syntax_descriptor());
     SCOPED_TRACE(source);
     EXPECT_FALSE(selected.has_value());
   }
@@ -346,29 +318,30 @@ TEST(ResolvedIrChecker, ChecksEveryGeneratedFmaVariantAvailability) {
     PtxSyntaxParser parser(source);
     const auto ast = parser.parseInstruction();
     ASSERT_TRUE(ast.has_value()) << ast.diagnostics.front().message;
-    const auto fma = resolve<Fma>(*ast);
+    const auto fma = resolveFma(*ast);
     ASSERT_TRUE(fma.has_value()) << fma.error().message;
 
     const auto old_sm =
-        check(*fma, Context{.target = {.ptx_version = {ptx_major, ptx_minor},
-                                       .sm_version = sm - 1U},
-                            .instruction_range = ast->range});
+        (*fma)->check(Context{.target = {.ptx_version = {ptx_major, ptx_minor},
+                                         .sm_version = sm - 1U},
+                              .instruction_range = ast->range});
     ASSERT_FALSE(old_sm.has_value());
     ASSERT_EQ(old_sm.error().size(), 1U);
     EXPECT_EQ(old_sm.error().front().kind,
               CheckDiagnosticKind::UnsupportedSmVersion);
 
-    const auto old_ptx = check(
-        *fma, Context{.target = {.ptx_version = {old_ptx_major, old_ptx_minor},
-                                 .sm_version = sm},
-                      .instruction_range = ast->range});
+    const auto old_ptx = (*fma)->check(
+        Context{.target = {.ptx_version = {old_ptx_major, old_ptx_minor},
+                           .sm_version = sm},
+                .instruction_range = ast->range});
     ASSERT_FALSE(old_ptx.has_value());
     ASSERT_EQ(old_ptx.error().size(), 1U);
     EXPECT_EQ(old_ptx.error().front().kind,
               CheckDiagnosticKind::UnsupportedPtxVersion);
 
     EXPECT_TRUE(
-        check(*fma, Context{.target = {.ptx_version = {ptx_major, ptx_minor},
+        (*fma)
+            ->check(Context{.target = {.ptx_version = {ptx_major, ptx_minor},
                                        .sm_version = sm},
                             .instruction_range = ast->range})
             .has_value());

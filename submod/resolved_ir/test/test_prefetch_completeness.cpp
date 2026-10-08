@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "test_instruction_access.hpp"
 
 #include <array>
 #include <optional>
@@ -23,10 +22,9 @@ using test_helpers::parseModule;
 void expect_prefetch(std::string_view source, checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Prefetch>(*ast);
+  const auto resolved = resolvePrefetch(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().message;
-  const auto checked = checker::check(
-      *resolved,
+  const auto checked = (*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range});
   ASSERT_TRUE(checked.has_value())
       << (checked.error().empty() ? "prefetch rejected without diagnostic"
@@ -38,11 +36,10 @@ void expect_prefetch_rejected(std::string_view source,
                               checker::TargetInfo target) {
   const auto ast = parseInstruction(source);
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-  const auto resolved = resolve<Prefetch>(*ast);
+  const auto resolved = resolvePrefetch(*ast);
   if (!resolved)
     return;
-  EXPECT_FALSE(checker::check(
-      *resolved,
+  EXPECT_FALSE((*resolved)->check(
       checker::Context{.target = target, .instruction_range = ast->range}));
 }
 
@@ -235,15 +232,12 @@ TEST(PrefetchCompleteness, RevalidatesOwnedAddressWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& prefetch = test_ir_access::get<Prefetch::GlobalL2Evict>(
-      test_ir_access::get<Prefetch>(owned->functions.front().body.front())
-          .variant);
-  auto& symbol =
-      test_ir_access::get<ResolvedSymbolRef>(prefetch.address.value.base);
+  auto& prefetch = dynamic_cast<PrefetchGlobalL2Evict&>(
+      *owned->functions.front().body.front());
+  auto& symbol = std::get<ResolvedSymbolRef>(prefetch.address.value.base);
   ASSERT_TRUE(symbol.address_state_space.has_value());
   symbol.address_state_space = base::DeclarationStateSpace::Local;
-  const auto wrong_space = checker::check(
-      test_ir_access::get<Prefetch>(owned->functions.front().body.front()),
+  const auto wrong_space = owned->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(wrong_space.has_value());
   EXPECT_EQ(wrong_space.error().front().kind,
@@ -274,16 +268,13 @@ TEST(PrefetchCompleteness, RevalidatesGenericTensormapWithoutAst) {
   ASSERT_TRUE(owned.has_value());
   ASSERT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
-  auto& prefetch = test_ir_access::get<Prefetch::GenericTensormap>(
-      test_ir_access::get<Prefetch>(owned->functions.front().body.front())
-          .variant);
-  auto& symbol =
-      test_ir_access::get<ResolvedSymbolRef>(prefetch.address.value.base);
+  auto& prefetch = dynamic_cast<PrefetchGenericTensormap&>(
+      *owned->functions.front().body.front());
+  auto& symbol = std::get<ResolvedSymbolRef>(prefetch.address.value.base);
   ASSERT_TRUE(symbol.address_state_space.has_value());
   const auto original_space = symbol.address_state_space;
   symbol.address_state_space = base::DeclarationStateSpace::Shared;
-  const auto invalid = checker::check(
-      test_ir_access::get<Prefetch>(owned->functions.front().body.front()),
+  const auto invalid = owned->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind,

@@ -328,3 +328,379 @@ and `clang-21` for Clang. Shared pages can be counted more than once; they
 are not process-tree or cgroup peaks. These single local runs do not establish
 the best parallelism or memory safety for CI, nor do they show that the per-op
 layout is faster than main under Clang.
+
+## 2026-10-04 owned-instruction compile follow-up
+
+This follow-up measures current main `386aebb` after #216 against uncommitted,
+test-local and generator-emitted visitor optimizations on the same source checkout.
+Each `test_resolved_ir` build started in a separate empty Ninja directory with
+Clang 21.1.8, Debug, six jobs, disabled ccache, the same installed vcpkg tree,
+and C/C++ Debug flags `-g0`. The test target additionally appends
+`-gline-tables-only`; generated and library objects retain `-g0`. The timed
+build includes generation, 263 C++ object compilations, and linking, but not
+configuration. No other compilation ran concurrently.
+
+| Source | Clean target build | C++ objects | Ninja steps |
+| --- | ---: | ---: | ---: |
+| Main baseline | 279.37 s | 263 | 280 |
+| Test checker/include narrowing only | 278.26 s | 263 | 280 |
+| Above plus filtered owned projections and eager index-based reference visitors (intermediate) | 277.22 s | 263 | 280 |
+| Final: lazy index-based visitors and exact-op test includes | 254.40 s | 263 | 280 |
+
+The first two candidate-to-baseline differences are within single-run noise.
+The final candidate is 24.97 seconds (8.9%) faster in this matched single run.
+Its test-object compilation interval fell from 142.37 to 119.86 seconds;
+the resolved-library object interval stayed near 90 seconds. Summed object
+wall durations from the overlapping Ninja jobs fell from 1,245.89 to
+1,112.25 seconds. Those sums are neither CPU time nor total build time.
+The test-only change removed an all-opcode visitor instantiated merely to
+call the existing `OwnedInstruction::check`. Typed projection tests now copy
+selected `OwnedInstruction` owners and leave an empty owner at each
+unselected source position, avoiding a deep-copying variant of the selected
+opcode record types. Selected ordinary tests include exact opcode leaves instead of
+category or aggregate headers, while explicit public-header compatibility
+tests retain those headers. The generated reference visitor dispatches by
+canonical variant and operand-layout index inside a constrained generic
+lambda, retaining callback order and the `std::bad_variant_access` fallback.
+
+Isolated, sequential compiles using the same build's `compile_commands.json`
+and a scratch object output show where the cost changed:
+
+| Translation unit | Before | After |
+| --- | ---: | ---: |
+| Typed collective projection test | 27.52 s | 2.75 s |
+| Typed module projection test | 20.75 s | 2.60 s |
+| Generated Cp source | 28.73 s | 26.51 s |
+| Generated Mbarrier source | 26.03 s | 24.03 s |
+
+The projection comparison used baseline generated headers on both sides of
+the test helper edit. The generated-source comparison regenerated only the
+new reference visitors between compiles. The initial direct index switch
+made two unchanged aggregate-header tests slower (5.34 to 8.29 seconds and
+5.34 to 8.24 seconds). Making the switch body dependent on the exact opcode
+restored them to 5.58 and 5.53 seconds, while retaining the generated-source
+improvement. The final clean-build Ninja log's longest objects were Cp
+(28.59 s), Mbarrier (24.73 s), and the instruction variants test (16.83 s);
+the two projection objects no longer lead that list.
+The final build discovers the same 910 tests in 133 suites as baseline, with
+an identical GTest-list hash, and all 910 pass. The 119 resolved-IR Python
+tests and 25 generation-plan tests also pass. Comparable whole-build
+compiler RSS and cgroup memory peaks were not sampled in this follow-up.
+The local build logs are under `/tmp/ptx-compile-baseline.hfBBvj`,
+`/tmp/ptx-compile-candidate.Yarq9p`, `/tmp/ptx-compile-measured.IDV8uT`,
+and `/tmp/ptx-compile-narrow.dBDSvt`; these temporary paths are not portable.
+
+These measurements cover current main, not the pending matrix or tensor
+branches. A matrix layout with shared physical storage must retain its
+logical-to-storage variant mapping when reconciling the reference
+visitor generator; current main's direct variant index applies only where
+logical and physical alternatives coincide. The single-opcode Cp and
+Mbarrier sources remain material compile costs. Their 7.8 and 5.8 MiB
+generated definitions contain descriptors, resolver, checker, and owner
+bridges together; this experiment does not establish a safe or faster
+generation-topology split.
+
+## 2026-10-04 descriptor partition prototype
+
+The preceding final layout at `125615b3ba48a0b45030d8806a5f76796a26396f`
+was the baseline for an uncommitted prototype that has since been withdrawn.
+The experimental `PTX_RESOLVED_IR_DESCRIPTOR_PARTITION_OPCODES` CMake cache list selected
+canonical opcodes for separate private syntax, resolved, and checker descriptor
+storage. Its default was empty. Only `cp` and `mbarrier` were selected for these
+measurements; the generator also passed a selection test with `add`. Existing
+public typed descriptor getters retained their signatures and forwarded to private
+accessors for selected opcodes. The six emitted storage struct bodies for the
+two samples were byte-identical to the baseline bodies.
+
+The baseline and selected builds used Clang 21.1.8, Ninja, Debug `-g0`, the
+same vcpkg dependency tree, disabled ccache, six jobs, and the
+`test_resolved_ir` target. Tests additionally used `-gline-tables-only`.
+Configuration is excluded. Baseline artifacts are in
+`/tmp/ptx-compile-narrow.dBDSvt`; prototype artifacts, compiler traces, and
+logs are in `/tmp/ptx-descriptor-proto.JZ9pyk`. These are local temporary
+paths, not portable reproduction inputs.
+
+| Clean target | Baseline | Selected prototype |
+| --- | ---: | ---: |
+| One-run wall time | 254.40 s | 246.89 s |
+| C++ objects / Ninja steps | 263 / 280 | 266 / 283 |
+| Resolved IR tests | 910 / 133 suites | 911 / 134 suites |
+
+The prototype adds two descriptor objects and one opcode-descriptor lifetime
+test object. All original 910 tests remain in the discovered list; the new
+test also passes. The whole-target wall difference is one run on a shared
+host and cannot be attributed to the split: the new test object and changed
+build scheduling also affect it. Both selected-op object pairs were examined
+with isolated sequential compiler invocations using their respective
+`compile_commands.json` entries and scratch object outputs:
+
+| Opcode | Baseline source | Prototype typed + descriptor sources | Isolated typed-source peak RSS, baseline → prototype |
+| --- | ---: | ---: | ---: |
+| Cp | 25.974 s | 24.105 + 2.863 = 26.968 s | 1,468,576 → 1,446,336 KiB |
+| Mbarrier | 22.698 s | 22.070 + 2.561 = 24.631 s | 1,263,028 → 1,213,404 KiB |
+
+The separate descriptor compiler processes peaked at 249,664 KiB for Cp and
+240,652 KiB for Mbarrier. The table's RSS figures are single-process high-water
+marks, not a six-job or whole-build memory peak. Serialized combined compile
+time increased by 0.994 s for Cp and 1.933 s for Mbarrier. Separate Clang
+`-ftime-trace` runs likewise recorded `ExecuteCompiler` times of 29.631 s
+baseline versus 27.065 + 2.907 = 29.972 s for Cp, and 25.899 s versus
+24.131 + 2.741 = 26.872 s for Mbarrier. The trace's top function
+instantiations still include `std::expected<T>` construction and nested
+`std::variant` move/copy visitors at roughly 2–2.5 s per event. Nested trace
+events overlap and must not be summed as independent work.
+
+The selected build passed all 911 tests, a second build did no work, and an
+installed `examples/conversion_consumer` configured, linked, and ran. Private
+accessor headers were absent from the install. Switching a separate build from
+selected to empty regenerated the original layout and removed all four
+partition artifacts from both the output manifest and the generated directory.
+The measured samples do not support enabling descriptor partitioning by
+default. All prototype code, tests, build changes, and lexer filename changes
+have been withdrawn; only this paired measurement record is retained. The
+experimental option is not available in the current code. Any future layout
+proposal needs new measurements and core review. The `.gen.hpp` / `.gen.cpp`
+naming requirement applies to Python-generated files, not Flex lexer outputs.
+
+## 2026-10-05 active resolved-IR migration measurement
+
+This section preserves measurements taken while the direct-class module used
+the `resolved_ir_experiment` names. The module now occupies the canonical
+`resolved_ir` path and target; command and artifact names below remain as
+measured. Earlier owned-IR runtime numbers in
+`tools/owned_ir_experiment/README.md` used a separate harness, workload,
+pipeline, and driver and are not directly comparable to these Google Benchmark
+measurements.
+
+This records the uncommitted active `resolved_ir_experiment` migration on top of
+`5f8d639`, using the October 4 final build as a **recorded** reference. The old
+implementation was not rebuilt or run. Both clean test-target builds used
+Clang 21.1.8, Ninja, Debug C/C++ `-g0`, test-only `-gline-tables-only`, six
+jobs, disabled ccache, the same existing vcpkg dependency tree, and CMake
+4.3.3. A temporary `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` deferred hook supplied
+the test-only flag for the new target. Configuration is excluded; generation,
+compilation, archiving, and linking are included. The new build began in an
+empty directory without a competing build. The old record does not establish
+matching host hardware or load; these are single wall-time observations.
+
+| Clean Debug target measure | Historical `test_resolved_ir` | Active `resolved_ir_experiment_tests` |
+| --- | ---: | ---: |
+| Target build wall time | 254.40 s | 270.85 s |
+| C++ objects / Ninja steps | 263 / 280 | 263 / 274 |
+| Generation output-edge wall span | 57.17 s | 105.61 s |
+| Resolved-library objects / compilation interval | 102 / 90.28 s | 103 / 66.83 s |
+| Test objects / compilation interval | 150 / 119.86 s | 149 / 96.64 s |
+| Sum of overlapping C++ object wall durations | 1,112.25 s | 949.65 s |
+| Listed GTest cases / suites | 910 / 133 | 914 / 134 |
+
+The new full target took 16.45 s (6.5%) longer, so this run does not show a
+clean-build improvement. Library and test compilation intervals are shorter;
+generation spans 48.44 s longer. The old generator used seven overlapping
+output edges and the new generator one, so their spans are elapsed time rather
+than additive CPU time. Compiler intervals also overlap. Changed model size
+and test inventory prevent attributing the wall difference to one source.
+The 914 new GTest cases were listed, not executed, in this measurement. The
+longest new objects were generated Cp (13.99 s), generated Mbarrier (12.05 s),
+and the instruction-variants test (6.85 s).
+
+The active module now has an optional, uninstalled
+`frontend_experiment_symbol_table_scaling` target under the existing
+default-`OFF` `PTX_FRONTEND_BUILD_BENCHMARKS` option. Its driver preserves the
+historical fixture generation, case names, validation, and checksums; only the
+resolved-IR header path and executable error label differ. The old module and
+driver remain unchanged. Google Benchmark 1.9.5 was installed into a separate
+temporary vcpkg tree before timing. The new Release target used Clang 21.1.8,
+`-O3 -DNDEBUG`, disabled ccache, and six build jobs; its clean build took
+196.71 s as preparation. The runtime host exposed an AMD Ryzen 9 5950X,
+32 logical CPUs, about 23 GiB RAM, and no cgroup CPU or memory cap.
+
+These are median **real-time milliseconds per iteration** from five Google
+Benchmark repetitions with a 0.1 s minimum per repetition. Each generated
+source has N valid `mov.u32` instructions and 2N bound operand references.
+Ordinary single-scope sources store N+1 symbols; compact single-scope sources
+store two. Nested sources use two functions and lexical blocks. `parse` parses
+and validates a complete source. `resolve_module` starts from a pre-parsed AST
+and includes its own binding, resolution, checks, result validation, and
+destruction. Their times are not disjoint stages. All 34 selected cases
+(16 shapes × 2 operations plus two corpus cases), with 170 repetition records,
+passed validation without errors. Repetitions used 2–4,815 iterations each.
+
+| Logical registers | Declarations | Scopes | Parse | Resolve module |
+| ---: | --- | --- | ---: | ---: |
+| 1,000 | ordinary | single | 1.334 | 5.799 |
+| 1,000 | ordinary | nested | 1.284 | 6.029 |
+| 1,000 | compact | single | 0.766 | 3.362 |
+| 1,000 | compact | nested | 0.787 | 3.425 |
+| 2,000 | ordinary | single | 2.810 | 12.303 |
+| 2,000 | ordinary | nested | 2.594 | 11.891 |
+| 2,000 | compact | single | 1.525 | 6.591 |
+| 2,000 | compact | nested | 1.467 | 6.656 |
+| 4,000 | ordinary | single | 6.257 | 28.724 |
+| 4,000 | ordinary | nested | 6.294 | 25.023 |
+| 4,000 | compact | single | 3.083 | 15.989 |
+| 4,000 | compact | nested | 2.996 | 14.018 |
+| 8,000 | ordinary | single | 22.624 | 55.134 |
+| 8,000 | ordinary | nested | 12.525 | 52.340 |
+| 8,000 | compact | single | 6.692 | 28.600 |
+| 8,000 | compact | nested | 7.108 | 28.875 |
+| M12 `natural_kernel_sm80.ptx` corpus | — | — | 0.029 | 0.193 |
+
+Shared-host sampling noise is material: the parse real-time coefficient of
+variation was 24.43% for ordinary/single N1000 and 20.83% for
+ordinary/single N8000. Individual layout differences in this table should not
+be treated as causal effects without repeated controlled runs.
+
+No numeric old-driver runtime JSON, CSV, or timing summary was found in the
+tracked history or inspected historical artifacts. These are new-module
+runtime baselines, **not** measured old-to-new speedups. The single-iteration
+sanity output, sampled JSON, logs, Ninja logs, compile commands, and temporary
+test-flag hook are under `/tmp/ptx-resolved-measure.qC5wI0`; this is a local,
+nonportable path. The Release runtime command was:
+
+```sh
+timeout 300s /tmp/ptx-resolved-measure.qC5wI0/release/submod/resolved_ir_experiment/benchmark/frontend_experiment_symbol_table_scaling \
+  --benchmark_filter='symbol_table_scaling/(parse|resolve_module|corpus_parse|corpus_resolve_module)/' \
+  --benchmark_min_time=0.1s --benchmark_repetitions=5 \
+  --benchmark_out=/tmp/ptx-resolved-measure.qC5wI0/runtime-parse-resolve-sampled.json \
+  --benchmark_out_format=json
+```
+
+After separate configuration with the flags above, the measured build commands
+were:
+
+```sh
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/debug \
+  --parallel 6 --target resolved_ir_experiment_tests
+CCACHE_DISABLE=1 cmake --build /tmp/ptx-resolved-measure.qC5wI0/release \
+  --parallel 6 --target frontend_experiment_symbol_table_scaling
+```
+
+Both exact configure caches and the temporary test-flag hook are retained in
+the artifact directory. Dependency installation and configuration precede the
+timed commands.
+
+## Direct-class variant addition on the review branch
+
+This separate, single-run incremental experiment used parent revision
+`63369f8bc16f284662ffda4da1848e2d726edc8d` with the recursive-input and
+owned-coordinate repairs in this change. It did not repeat the historical clean
+builds above. The source build was Debug with Ninja 1.13.2, CMake 4.3.3,
+Clang 21.1.8, three concurrent compile jobs, and six generator artifact
+writers. Production used `-g0 -std=gnu++23`; the resolved-IR test target added
+`-gline-tables-only`. Both used ccache 4.12.3 and the existing `x64-linux`
+dependency tree. The 5 GiB compiler cache was near capacity. Other builds were
+not run concurrently.
+
+Both `ptx_frontend_resolved_ir` and `test_resolved_ir` were built to a no-op
+baseline first. A **temporary synthetic** `abs_s8` variant was then inserted
+after `abs_s16` in `instructions/ptx_spec/arithmetic.yaml`:
+
+```yaml
+      - name: abs_s8
+        availability: {ptx: "9.3", sm: 120}
+        modifiers: [{name: type, kind: type, domain: scalar_types, presence: fixed, value: s8}]
+        examples: [{ptx: "abs.s8 %b0, %b1;", valid: true}]
+```
+
+This is a real generator input that produced an `AbsS8` final class and an
+`InstructionKind::AbsS8` enumerator. It is not a claim that `abs.s8` is a
+supported PTX form, and the probe is absent from the delivered source. The
+normal `resolved_ir_codegen` build performed CMake reconfiguration and
+generation before the two timed target builds. Ninja's actual compiler steps,
+not the number of declared target sources, give these counts:
+
+| Incremental step | Wall time | C++ objects compiled |
+| --- | ---: | ---: |
+| No-op baseline, both targets | No work | 0 |
+| Reconfigure and `resolved_ir_codegen` | 38.003 s | 0 |
+| `ptx_frontend_resolved_ir` | 142.840 s | 96: 93 generated, 3 handwritten |
+| `test_resolved_ir`, after production | 176.301 s | 129 test objects |
+
+The production and test compilations added 225 ccache misses and zero hits.
+The generated common base header changed, so otherwise unchanged opcode units
+such as `resolved_ir_data_movement_cvta.gen.cpp` and
+`resolved_ir_parallel_synchronization_and_communication_bar.gen.cpp` were
+compiled. Unrelated test units including `test_select_variant_cp.cpp` and
+`test_select_variant_xor.cpp` were also compiled. These target-specific sets
+show the cost of retaining the global `InstructionKind` catalog in the public
+base dependency. They do not establish a clean-build speedup or a cost on
+another host or cache state. The temporary variant was removed, both targets
+were rebuilt to the ordinary generated state, and a subsequent no-op build
+performed no work.
+
+For reproduction, warm both targets and confirm a no-op build, insert the
+variant above, then run these commands in order against the same configured
+build directory:
+
+```sh
+cmake --build <build-dir> --target resolved_ir_codegen --parallel 3
+ninja -C <build-dir> -j 3 -d explain ptx_frontend_resolved_ir
+ninja -C <build-dir> -j 3 -d explain test_resolved_ir
+```
+
+Remove the inserted variant and build both targets again before testing or
+comparing other changes. The measured source used
+`/tmp/ptx-six-cold.drYe8K/build`; local compiler-step logs are under
+`/tmp/ptx-pr235-review.J2S3oW` and are not portable artifacts.
+
+The recursive CMake input repair was also exercised through the normal
+`resolved_ir_codegen` target. A temporary
+`instructions/ptx_spec/__review_probe__/nop.yaml` contained a bare `nop`
+instruction in category `miscellaneous`, codegen category `control_flow`, with
+variant `nop_probe_a`. Adding it discovered `nop.gen.hpp` and its matching
+source; changing only the variant name to `nop_probe_b` regenerated the class;
+removing the YAML reconfigured the build and removed both generated files.
+The input-membership manifest changed on add and remove, and the probe file is
+absent from the delivered source. To repeat this check, create a nested spec
+with the ordinary `ptx-instr/v1` header and one bare variant, run
+`cmake --build <build-dir> --target resolved_ir_codegen` after each add,
+variant-name edit, and removal, and inspect the generated model leaf and
+`submod/resolved_ir/resolved_spec_inputs.txt` in the build tree.
+
+## Category generator graph verification (2026-10-08)
+
+This verification used working-tree generator changes based on `af187f6`, with
+Ninja, six generator writers, and the existing Debug output tree. The first
+completed category-graph run took 239.387 s, including a 28.7 s CMake
+reconfiguration. Its outputs were partly warm after an interrupted earlier
+run, so this is a functional check, not a cold-build speed comparison. The
+candidate formatter remained active on every emitted artifact; no formatting
+cache was used.
+
+The manifest owned 380 generated files before and after that run. All 380
+SHA-256 hashes and all existing output modification times matched. An immediate
+second build did no generation in 0.056 s. Deleting the generated
+`control_flow/brkpt.gen.hpp` triggered only the `control_flow` category and
+shared finalizer (27.365 s); the restored header had identical bytes, every
+other output kept its modification time, and the next build was a no-op.
+
+A detached source copy with a deliberately small, valid three-instruction
+spec exercised the actual project CMake graph. A comment-only category edit
+reran only that category and the shared finalizer; a schema comment edit reran
+both categories and the finalizer. Both kept output bytes and modification
+times stable, followed by no-op builds. Adding a spec file with a second
+`trap` definition and a synthetic `nop` expanded the manifest from 16 to 18
+outputs. Removing the file restored the original 16 hashes, removed the `nop`
+outputs, and again produced a no-op on the next build. These synthetic entries
+are build-topology probes, not supported PTX coverage.
+
+Failure injection on that isolated project also checked completion markers.
+With Ninja, a missing category header was restored before a later formatter
+failure; the category stamp disappeared, the previous manifest stayed intact,
+and the next build retried successfully before a no-op. With Unix Makefiles, a
+missing header was restored by deferred full emission, then an injected shared
+finalizer failure left the previous manifest and its timestamp intact and the
+global stamp absent. The immediate retry finalized successfully; the following
+build did no generation. Logs are under `/tmp/ptx-codegen-topology.log`,
+`/tmp/ptx-codegen-actual-ninja-failure.log`, and
+`/tmp/ptx-codegen-actual-make.log` on the verification host.
+
+In the full Debug output tree, rebuilding `ptx_frontend_resolved_ir` after the
+header repair compiled two C++ objects and linked successfully in 22.854 s.
+Building `resolved_ir_smoke` and `test_resolved_ir` then compiled 31 test
+objects and linked in 99.461 s. The smoke executable passed, as did all 1,081
+GoogleTest cases in 159 suites (4.100 s). A subsequent native target build did
+no work in 0.052 s. The native build and test logs are
+`/tmp/ptx-codegen-native-build.log`,
+`/tmp/ptx-codegen-native-tests-build.log`, `/tmp/ptx-codegen-smoke.log`, and
+`/tmp/ptx-codegen-gtest.log` on the verification host.

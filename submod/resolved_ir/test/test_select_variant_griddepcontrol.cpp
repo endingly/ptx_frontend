@@ -24,16 +24,15 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
 
 TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
   const auto expect_variant = [](std::string_view source,
-                                 Griddepcontrol::VariantType expected) {
-    const auto selected =
-        selectVariant<Griddepcontrol>(parse_instruction(source));
+                                 std::string_view expected) {
+    const auto selected = select_variant_name(
+        parse_instruction(source), griddepcontrol_syntax_descriptor());
     ASSERT_TRUE(selected.has_value()) << selected.error().message;
     EXPECT_EQ(*selected, expected);
   };
 
-  expect_variant("griddepcontrol.launch_dependents;",
-                 Griddepcontrol::VariantType::LaunchDependents);
-  expect_variant("griddepcontrol.wait;", Griddepcontrol::VariantType::Wait);
+  expect_variant("griddepcontrol.launch_dependents;", "LaunchDependents");
+  expect_variant("griddepcontrol.wait;", "Wait");
 
   for (const std::string_view source : {
            "griddepcontrol;",
@@ -41,11 +40,12 @@ TEST(SelectVariantGriddepcontrol, SelectsActionsAndRejectsInvalidForms) {
            "griddepcontrol.wait.sync;",
        }) {
     SCOPED_TRACE(source);
-    EXPECT_FALSE(
-        selectVariant<Griddepcontrol>(parse_instruction(source)).has_value());
+    EXPECT_FALSE(select_variant_name(parse_instruction(source),
+                                     griddepcontrol_syntax_descriptor())
+                     .has_value());
   }
   EXPECT_FALSE(
-      resolve<Griddepcontrol>(parse_instruction("griddepcontrol.wait %r0;"))
+      resolveGriddepcontrol(parse_instruction("griddepcontrol.wait %r0;"))
           .has_value());
 }
 

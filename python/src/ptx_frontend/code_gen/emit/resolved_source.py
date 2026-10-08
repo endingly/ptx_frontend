@@ -661,9 +661,9 @@ def generate_resolved_descriptor_shard_source(
     indices = form_shards(entry)[shard_index]
     resolved = replace(entry.resolved,
                        variants=tuple(entry.resolved.variants[index] for index in indices))
-    syntax = replace(from_InstructionSpec(entry.specification),
-                     variants=tuple(from_InstructionSpec(entry.specification).variants[index]
-                                    for index in indices))
+    full_syntax = from_InstructionSpec(entry.specification)
+    syntax = replace(full_syntax,
+                     variants=tuple(full_syntax.variants[index] for index in indices))
     syntax_storage = emit_syntax_storage(syntax, context.backend, cpp_name=entry.cpp_name)
     resolved_storage = emit_resolved_storage(resolved, context.backend)
     checker_storage = emit_checker_storage(resolved, context.backend)

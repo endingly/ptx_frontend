@@ -9,7 +9,7 @@ from ptx_frontend.code_gen.context import build_generation_context
 from ptx_frontend.code_gen.emit.value_domains import (
     generate_resolved_value_domain_header,
 )
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import CodegenDatabase
 
 
 REPOSITORY_CPP_BACKEND_SPEC = (
@@ -32,14 +32,12 @@ class ResolvedValueDomainGenerationTests(unittest.TestCase):
             backend_path.write_text(
                 yaml.safe_dump(raw, sort_keys=False), encoding="utf-8"
             )
+            backend = load_cpp_backend(backend_path)
 
             generate_resolved_value_domain_header(
                 build_generation_context(
-                    load_codegen_database(
-                        spec_dir=Path(__file__).resolve().parents[3]
-                        / "instructions/ptx_spec"
-                    ),
-                    load_cpp_backend(backend_path),
+                    CodegenDatabase(spec_schema=backend.spec_schema, instructions=()),
+                    backend,
                 ),
                 output_path=output_path,
             )

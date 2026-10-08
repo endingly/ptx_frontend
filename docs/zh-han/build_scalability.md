@@ -552,3 +552,41 @@ ninja -C <build-dir> -j 3 -d explain test_resolved_ir
 的 YAML；在增加、修改 variant 名、删除文件后各运行一次
 `cmake --build <build-dir> --target resolved_ir_codegen`，检查生成的 model leaf 和
 构建树内 `submod/resolved_ir/resolved_spec_inputs.txt`。
+
+## Category generator 构建图验证（2026-10-08）
+
+本次验证基于 `af187f6` 的工作树 generator 修改，使用 Ninja、六个 generator writer
+和已有的 Debug 输出树。第一次完成的 category 构建图运行耗时 239.387 秒，其中
+CMake 重新配置耗时 28.7 秒。此前中断的一次运行已生成部分产物，因此这个数字只
+用于功能验证，不能作为冷构建提速对比。每个重新生成的产物仍经过 candidate 格式化；
+没有使用格式化缓存。
+
+运行前后 manifest 均管理 380 个生成文件。全部 380 个 SHA-256 哈希及已有产物的
+修改时间完全相同。紧接着第二次构建未执行生成，耗时 0.056 秒。删除生成的
+`control_flow/brkpt.gen.hpp` 后，仅 `control_flow` category 和共享 finalizer
+运行（27.365 秒）；修复的头文件字节相同，其他产物修改时间不变，下一次构建无工作。
+
+在 detached 源码副本中，以仅含三个有效 instruction 的小型 spec 测试了实际项目
+CMake 构建图。只修改一个 category 的注释时，仅该 category 与共享 finalizer 重跑；
+只修改 schema 注释时，两个 category 与 finalizer 都重跑。两种修改均保留产物字节
+和修改时间，随后构建无工作。新增一个同时包含 `trap` 第二份定义和合成 `nop` 的
+spec 文件，使 manifest 从 16 个产物增至 18 个。删除该文件后，原有 16 个哈希恢复，
+`nop` 产物被清除，下一次构建无工作。这些合成条目仅用于构建拓扑测试，不表示
+PTX coverage。
+
+该隔离项目还以注入故障验证完成戳。Ninja 在缺失的 category 头文件已修复后，
+让后续 formatter 失败；category 完成戳被移除，旧 manifest 保持完整，下一次构建
+重试成功，再下一次无工作。Unix Makefiles 在 deferred 全量 emission 修复缺失头后，
+注入共享 finalizer 故障；旧 manifest 及修改时间保持不变，global 完成戳不存在。
+紧接着的构建成功完成 finalization，再下一次没有生成。验证日志位于该主机的
+`/tmp/ptx-codegen-topology.log`、`/tmp/ptx-codegen-actual-ninja-failure.log`
+和 `/tmp/ptx-codegen-actual-make.log`。
+
+在完整 Debug 输出树中，修复头文件后重建 `ptx_frontend_resolved_ir` 编译了两个
+C++ object，并在 22.854 秒内成功链接。随后构建 `resolved_ir_smoke` 和
+`test_resolved_ir` 编译了 31 个测试 object，99.461 秒内完成链接。smoke 可执行
+文件通过；159 个 suite 的全部 1,081 个 GoogleTest 用例也通过（4.100 秒）。
+再一次 native target 构建没有工作，耗时 0.052 秒。该主机上的 native 构建与测试
+日志为 `/tmp/ptx-codegen-native-build.log`、
+`/tmp/ptx-codegen-native-tests-build.log`、`/tmp/ptx-codegen-smoke.log` 和
+`/tmp/ptx-codegen-gtest.log`。

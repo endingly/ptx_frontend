@@ -6,7 +6,8 @@ add_test(
           "${CMAKE_COMMAND}" -E env
           "PYTHONPATH=${PROJECT_SOURCE_DIR}/python/src"
           "${Python3_EXECUTABLE}" -m unittest_parallel
-          -s python/tests -t python -p test_*.py --level=module -v
+          -s python/tests -t python -p test_*.py --level=module
+          --jobs 4 -v
       WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
       CONFIGURATIONS Debug
   )

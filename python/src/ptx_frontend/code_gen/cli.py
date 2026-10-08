@@ -15,9 +15,10 @@ from ptx_frontend.code_gen.context import build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
 from ptx_frontend.spec.database import (
-    discover_codegen_category_inputs,
+    CodegenCategoryInputs,
     load_codegen_database,
     load_codegen_database_from_files,
+    load_codegen_database_with_category_inputs,
 )
 
 
@@ -66,6 +67,12 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--defer-finalization",
+        action="store_true",
+        help="Write the full plan without cleanup or manifest publication.",
+    )
+
     mode = parser.add_mutually_exclusive_group()
 
     mode.add_argument(
@@ -104,6 +111,12 @@ def parse_arguments() -> argparse.Namespace:
     if args.category is None and args.spec_file:
         parser.error("--spec-file is valid only with --category")
 
+    if args.defer_finalization and (
+        args.category is not None or args.global_artifacts
+        or args.list_outputs or args.describe_build
+    ):
+        parser.error("--defer-finalization requires full generation")
+
     return args
 
 
@@ -123,10 +136,15 @@ def main() -> None:
 
     backend = load_cpp_backend(backend_spec)
 
+    category_inputs: tuple[CodegenCategoryInputs, ...] = ()
     if args.category is not None:
         database = load_codegen_database_from_files(
             spec_files=spec_files,
             category=args.category,
+        )
+    elif args.describe_build:
+        database, category_inputs = load_codegen_database_with_category_inputs(
+            spec_dir=spec_dir
         )
     else:
         database = load_codegen_database(spec_dir=spec_dir)
@@ -137,7 +155,7 @@ def main() -> None:
     if args.describe_build:
         print(
             json.dumps(
-                describe_build(plan, spec_dir=spec_dir),
+                describe_build(plan, category_inputs=category_inputs),
                 indent=2,
                 sort_keys=True,
             )
@@ -159,16 +177,15 @@ def main() -> None:
     elif args.global_artifacts:
         artifacts = plan.global_artifacts
 
-        # One full-context job owns global housekeeping.
-        remove_obsolete_generated_files(output_dir, plan.paths)
-
     else:
         artifacts = plan.artifacts
-        remove_obsolete_generated_files(output_dir, plan.paths)
 
     write_artifacts(context, artifacts, args.jobs)
 
-    if full_generation or args.global_artifacts:
+    if (full_generation or args.global_artifacts) and not getattr(
+        args, "defer_finalization", False
+    ):
+        remove_obsolete_generated_files(output_dir, plan.paths)
         write_output_manifest(output_dir, plan.paths)
 
 
@@ -343,13 +360,13 @@ def is_output_relative_path(path: str) -> bool:
 def describe_build(
     plan,
     *,
-    spec_dir: Path,
+    category_inputs: tuple[CodegenCategoryInputs, ...],
 ) -> dict[str, object]:
     """Describe category/global inputs and outputs for the native build graph."""
 
     inputs = {
         group.category: tuple(Path(str(path)).resolve() for path in group.spec_files)
-        for group in discover_codegen_category_inputs(spec_dir=spec_dir)
+        for group in category_inputs
     }
 
     categories: list[dict[str, object]] = []

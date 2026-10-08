@@ -9,6 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import re
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -41,6 +42,7 @@ from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
 )
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+from ptx_frontend.code_gen.model import ConditionCodeEffect
 from ptx_frontend.code_gen.plan import (
     GeneratedArtifact,
     GenerationPlan,
@@ -50,14 +52,15 @@ from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
 from ptx_frontend.spec.database import (
-    discover_codegen_category_inputs,
     load_codegen_database,
     load_codegen_database_from_files,
+    load_codegen_database_with_category_inputs,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_DIR = ROOT / "instructions/ptx_spec"
 BACKEND_SPEC = ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+CONTROL_FLOW_SPEC = SPEC_DIR / "control_flow.yaml"
 
 
 class GeneratorJobsTests(unittest.TestCase):
@@ -86,6 +89,60 @@ class GeneratorJobsTests(unittest.TestCase):
             self.assertEqual(cli.parse_arguments().jobs, 6)
         with patch.object(sys, "argv", base + ["--jobs", "1"]):
             self.assertEqual(cli.parse_arguments().jobs, 1)
+
+    def test_describe_build_discovers_real_spec_without_writing(self) -> None:
+        """Exercise CLI discovery with one unpatched canonical spec file."""
+
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec_dir = root / "spec"
+            spec_dir.mkdir()
+            spec_file = spec_dir / CONTROL_FLOW_SPEC.name
+            shutil.copy2(CONTROL_FLOW_SPEC, spec_file)
+            output = root / "not-created"
+            arguments = [
+                "codegen",
+                "--spec-dir", str(spec_dir),
+                "--backend-spec", str(BACKEND_SPEC),
+                "--output", str(output),
+                "--describe-build",
+            ]
+            stdout = StringIO()
+            with patch.object(sys, "argv", arguments), redirect_stdout(stdout):
+                cli.main()
+
+            description = json.loads(stdout.getvalue())
+            self.assertFalse(output.exists())
+            self.assertEqual(
+                [group["name"] for group in description["categories"]],
+                ["control_flow"],
+            )
+            self.assertEqual(
+                description["categories"][0]["spec_files"],
+                [str(spec_file.resolve())],
+            )
+            database = load_codegen_database(spec_dir=spec_dir)
+            backend = load_cpp_backend(BACKEND_SPEC)
+            expected_plan = build_generation_plan(
+                build_generation_context(database, backend), output.resolve()
+            )
+            self.assertEqual(
+                description["all_outputs"],
+                [str(path) for path in expected_plan.paths],
+            )
+            self.assertEqual(
+                description["global_outputs"],
+                [str(artifact.path) for artifact in expected_plan.global_artifacts],
+            )
+            self.assertEqual(
+                description["categories"][0]["outputs"],
+                [
+                    str(artifact.path)
+                    for artifact in expected_plan.artifacts_for_category("control_flow")
+                ],
+            )
 
     def test_parallel_artifacts_match_serial_bytes_and_stable_manifest(self) -> None:
         from ptx_frontend.code_gen import cli
@@ -190,6 +247,7 @@ class GeneratorJobsTests(unittest.TestCase):
                 global_artifacts=False,
                 list_outputs=False,
                 describe_build=False,
+                defer_finalization=False,
                 jobs=2,
             )
             with (
@@ -227,7 +285,9 @@ class GenerationPlanTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Lower the immutable canonical corpus once for read-only assertions."""
 
-        cls.database = load_codegen_database(spec_dir=SPEC_DIR)
+        cls.database, cls.category_inputs = load_codegen_database_with_category_inputs(
+            spec_dir=SPEC_DIR
+        )
         cls.backend = load_cpp_backend(BACKEND_SPEC)
         cls.context = build_generation_context(cls.database, cls.backend)
         cls._full_tree: tempfile.TemporaryDirectory[str] | None = None
@@ -289,6 +349,64 @@ class GenerationPlanTests(unittest.TestCase):
                              + 3 * shard_count)
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
                                 for path in plan.paths))
+
+    def test_condition_code_effects_are_typed_and_variant_local(self) -> None:
+        """Check all source variants, projected variants, and CC availability."""
+
+        expected = {
+            "add": {"cc": ConditionCodeEffect.CARRY_OUT},
+            "addc": {"plain": ConditionCodeEffect.CARRY_IN,
+                     "cc": ConditionCodeEffect.CARRY_IN_OUT},
+            "sub": {"cc": ConditionCodeEffect.BORROW_OUT},
+            "subc": {"plain": ConditionCodeEffect.BORROW_IN,
+                     "cc": ConditionCodeEffect.BORROW_IN_OUT},
+            "mad": {"hi_cc": ConditionCodeEffect.CARRY_OUT,
+                    "lo_cc": ConditionCodeEffect.CARRY_OUT},
+            "madc": {"hi_plain": ConditionCodeEffect.CARRY_IN,
+                     "lo_plain": ConditionCodeEffect.CARRY_IN,
+                     "hi_cc": ConditionCodeEffect.CARRY_IN_OUT,
+                     "lo_cc": ConditionCodeEffect.CARRY_IN_OUT},
+        }
+        self.assertEqual(len(self.database.instructions), len(self.context.entries))
+        for source, entry in zip(self.database.instructions, self.context.entries):
+            self.assertIs(source, entry.specification)
+            self.assertEqual(len(source.variants), len(entry.resolved.variants))
+            expected_variant_effects = {
+                f"{source.opcode}_{form}_{width}": effect
+                for form, effect in expected.get(source.opcode, {}).items()
+                for width in (32, 64)
+            }
+            for variant, generated in zip(source.variants, entry.resolved.variants):
+                self.assertEqual(generated.variant_id, variant.name)
+                self.assertIsInstance(variant.condition_code_effect, ConditionCodeEffect)
+                self.assertIs(
+                    generated.condition_code_effect,
+                    variant.condition_code_effect,
+                )
+                self.assertIs(
+                    variant.condition_code_effect,
+                    expected_variant_effects.get(
+                        variant.name, ConditionCodeEffect.NONE
+                    ),
+                )
+            if source.opcode not in expected:
+                continue
+            variants = {variant.name: variant for variant in source.variants}
+            for form, effect in expected[source.opcode].items():
+                for width in (32, 64):
+                    variant = variants[f"{source.opcode}_{form}_{width}"]
+                    self.assertIs(variant.condition_code_effect, effect)
+                    if source.opcode in {"mad", "madc"}:
+                        availability = (
+                            {"ptx": "3.0", "sm": 20} if width == 32
+                            else {"ptx": "4.3", "sm": 20}
+                        )
+                    else:
+                        availability = (
+                            {"ptx": "1.2", "sm": 0} if width == 32
+                            else {"ptx": "4.3", "sm": 20}
+                        )
+                    self.assertEqual(variant.availability, availability)
 
     def test_cp_direct_dispatch_names_every_generated_form(self) -> None:
         """Descriptor selection reaches all Cp forms beyond reflection limits."""
@@ -640,66 +758,68 @@ class GenerationPlanTests(unittest.TestCase):
             )
 
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
+        """Cover absent and legacy output roots through the real category loader."""
+
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "not-created"
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--list-outputs",
-                ]
-                listed = StringIO()
-                with redirect_stdout(listed):
-                    cli.main()
-            finally:
-                sys.argv = previous
-            self.assertFalse(output.exists())
-            context = self.context
-            self.assertEqual(
-                listed.getvalue().splitlines(),
-                [
-                    str(path.resolve())
-                    for path in build_generation_plan(context, output.resolve()).paths
-                ],
+            root = Path(directory)
+            spec_dir = root / "spec"
+            spec_dir.mkdir()
+            shutil.copy2(CONTROL_FLOW_SPEC, spec_dir / CONTROL_FLOW_SPEC.name)
+            context = build_generation_context(
+                load_codegen_database(spec_dir=spec_dir), self.backend
             )
-
-    def test_list_outputs_preserves_legacy_files_and_skips_formatting(self) -> None:
-        from ptx_frontend.code_gen import cli
-
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "generated"
-            legacy = output / "private/resolved_ir_legacy.gen.cpp"
-            legacy.parent.mkdir(parents=True)
-            legacy.write_text("retain", encoding="utf-8")
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--list-outputs",
-                ]
-                with patch(
-                    "ptx_frontend.code_gen.cli.format_file_inplace"
-                ) as format_file:
-                    with redirect_stdout(StringIO()):
+            for existing in (False, True):
+                with self.subTest(existing=existing):
+                    output = root / ("generated" if existing else "not-created")
+                    legacy = output / "private/resolved_ir_legacy.gen.cpp"
+                    if existing:
+                        legacy.parent.mkdir(parents=True)
+                        legacy.write_text("retain", encoding="utf-8")
+                    arguments = [
+                        "codegen",
+                        "--spec-dir",
+                        str(spec_dir),
+                        "--backend-spec",
+                        str(BACKEND_SPEC),
+                        "--output",
+                        str(output),
+                        "--list-outputs",
+                    ]
+                    listed = StringIO()
+                    with (
+                        patch.object(sys, "argv", arguments),
+                        patch(
+                            "ptx_frontend.code_gen.cli.format_file_inplace"
+                        ) as format_file,
+                        patch(
+                            "ptx_frontend.code_gen.cli.remove_obsolete_generated_files"
+                        ) as cleanup,
+                        patch(
+                            "ptx_frontend.code_gen.cli.write_output_manifest"
+                        ) as manifest,
+                        redirect_stdout(listed),
+                    ):
                         cli.main()
-            finally:
-                sys.argv = previous
-            self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
-            format_file.assert_not_called()
+                    self.assertEqual(
+                        listed.getvalue().splitlines(),
+                        [
+                            str(path)
+                            for path in build_generation_plan(context, output.resolve()).paths
+                        ],
+                    )
+                    if existing:
+                        self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
+                        self.assertEqual(
+                            [path for path in output.rglob("*") if path.is_file()],
+                            [legacy],
+                        )
+                    else:
+                        self.assertFalse(output.exists())
+                    format_file.assert_not_called()
+                    cleanup.assert_not_called()
+                    manifest.assert_not_called()
 
     def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(
         self,
@@ -849,6 +969,7 @@ class GenerationPlanTests(unittest.TestCase):
                 global_artifacts=False,
                 list_outputs=False,
                 describe_build=False,
+                defer_finalization=False,
                 jobs=6,
             )
             with (
@@ -1102,10 +1223,7 @@ class GenerationPlanTests(unittest.TestCase):
     def test_category_only_context_emits_same_artifacts_as_full_context(self) -> None:
         full_plan, full_output = self.full_generation()
 
-        category_inputs = {
-            group.category: group
-            for group in discover_codegen_category_inputs(spec_dir=SPEC_DIR)
-        }
+        category_inputs = {group.category: group for group in self.category_inputs}
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1145,38 +1263,41 @@ class GenerationPlanTests(unittest.TestCase):
                     )
 
     def test_describe_build_is_read_only(self) -> None:
+        """Match canonical category inputs and every planned output path."""
 
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "not-created"
-
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--describe-build",
-                ]
-
-                stdout = StringIO()
-
-                with redirect_stdout(stdout):
-                    cli.main()
-            finally:
-                sys.argv = previous
-
-            description = json.loads(stdout.getvalue())
-
+            plan = build_generation_plan(self.context, output)
+            description = cli.describe_build(
+                plan, category_inputs=self.category_inputs
+            )
             self.assertFalse(output.exists())
-            self.assertTrue(description["categories"])
-            self.assertTrue(description["global_outputs"])
-            self.assertTrue(description["all_outputs"])
+            self.assertEqual(
+                description["all_outputs"],
+                [str(path) for path in plan.paths],
+            )
+            self.assertEqual(
+                description["global_outputs"],
+                [str(artifact.path) for artifact in plan.global_artifacts],
+            )
+            groups = {group.category: group for group in self.category_inputs}
+            categories = description["categories"]
+            self.assertEqual([item["name"] for item in categories], sorted(groups))
+            for item in categories:
+                group = groups[item["name"]]
+                self.assertEqual(
+                    item["spec_files"],
+                    [str(Path(str(path)).resolve()) for path in group.spec_files],
+                )
+                self.assertEqual(
+                    item["outputs"],
+                    [
+                        str(artifact.path)
+                        for artifact in plan.artifacts_for_category(group.category)
+                    ],
+                )
 
 
 if __name__ == "__main__":

@@ -79,6 +79,18 @@ def load_codegen_database(*, spec_dir: Traversable) -> CodegenDatabase:
     )
 
 
+def load_codegen_database_with_category_inputs(
+    *, spec_dir: Traversable
+) -> tuple[CodegenDatabase, tuple[CodegenCategoryInputs, ...]]:
+    """Load one normalized snapshot and retain each category's source files."""
+
+    spec_files = discover_spec_files(spec_dir)
+    if not spec_files:
+        raise ValueError(f"no PTX instruction specs found in {spec_dir}")
+    records = _load_normalized_spec_files(spec_files)
+    return _database_from_records(records), _category_inputs_from_records(records)
+
+
 @cache
 def _instruction_schema_validator() -> Draft202012Validator:
     """Load the ISA schema once for a database-loading process."""
@@ -368,6 +380,14 @@ def load_codegen_database_from_files(
 
     records = _load_normalized_spec_files(spec_files)
 
+    return _database_from_records(records, category=category)
+
+
+def _database_from_records(
+    records: tuple[_NormalizedSpecFile, ...], *, category: str | None = None
+) -> CodegenDatabase:
+    """Merge a validated snapshot, optionally selecting one codegen category."""
+
     definitions = tuple(
         instruction
         for record in records
@@ -405,6 +425,14 @@ def discover_codegen_category_inputs(
         raise ValueError(f"no PTX instruction specs found in {spec_dir}")
 
     records = _load_normalized_spec_files(spec_files)
+
+    return _category_inputs_from_records(records)
+
+
+def _category_inputs_from_records(
+    records: tuple[_NormalizedSpecFile, ...]
+) -> tuple[CodegenCategoryInputs, ...]:
+    """Associate normalized records with all categories they contribute to."""
 
     files_by_category: dict[str, list[Traversable]] = {}
 

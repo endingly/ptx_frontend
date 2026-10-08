@@ -42,7 +42,7 @@ database = load_packaged_spec_database()
 
 `ptx_frontend.spec` 是面向下游的 Python API，提供可复用的 instruction model、database loader、normalization helper 和 resource accessor，同时与 frontend 自身使用完全相同的底层 model 类型。consumer 应将 `ptx-instr/v1` schema 视为稳定的数据契约。
 
-`ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现 namespace。其会随 wheel 打包的 `cli`、`context`、`plan` 与 `emit` modules 构成确定性的 in-tree generator：冻结 context 只投影一次 backend alias，同一 plan 决定稳定的 listing 与 manifest 顺序。`--jobs` 大于一时，各产物的 emission 与 formatting 完成顺序可变；生成字节不依赖 worker 顺序。CLI 默认使用六个 worker，`--jobs 1` 保持串行生成。源码构建通过 `PTX_FRONTEND_CODEGEN_JOBS` CMake cache 变量设置 worker 数（默认 `6`）。每次 generator 调用最多使用该数量的产物 writer，且与 Ninja 的构建并行度叠加，可按构建机器容量调整。新的下游代码不应依赖这些实现 API。仓库专用的 corpus tools 位于 `tools/corpus`，不打入 wheel；wheel 也不安装 `ptx-frontend-codegen` console script。
+`ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现 namespace。其会随 wheel 打包的 `cli`、`context`、`plan` 与 `emit` modules 构成确定性的 in-tree generator：冻结 context 只投影一次 backend alias，同一 plan 决定稳定的 listing 与 manifest 顺序。`--jobs` 大于一时，各产物的 emission 与 formatting 完成顺序可变；生成字节不依赖 worker 顺序。CLI 默认使用六个 worker，`--jobs 1` 保持串行生成。源码构建通过 `PTX_FRONTEND_CODEGEN_JOBS` CMake cache 变量设置总生成预算（默认 `6`）。使用 Ninja 时，job pool 一次执行一个 category 命令并使用全部 writer 预算；共享命令在 category 完成后也使用该预算。其他 generator 串行执行 category 命令。构建描述来自一次规范化的规格快照，并将来源依赖分配给有贡献的 category。源码构建图位于 `cmake/ptx_resolved_ir_codegen.cmake`；`submod/resolved_ir/CMakeLists.txt` 使用其返回的生成源码和 include 路径。新的下游代码不应依赖这些实现 API。仓库专用的 corpus tools 位于 `tools/corpus`，不打入 wheel；wheel 也不安装 `ptx-frontend-codegen` console script。
 
 ## 测试 profile
 

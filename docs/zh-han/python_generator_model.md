@@ -160,17 +160,20 @@ rendering 或 filesystem 失败。
 私有生成源码和支持头保留在 `generated/private`，不安装。
 源码构建由 `submod/resolved_ir/CMakeLists.txt` 调用
 `cmake/ptx_resolved_ir_codegen.cmake`；该 helper 使用 Python codegen CLI 的
-`--describe-build` 模式取得唯一的 category 输入、category 产物和共享产物计划。每个 category 命令仅依赖
-对其有贡献的规格文件；共享产物依赖全部规格文件。两类命令都追踪 schema、backend mapping
-及 generator Python 源码。CMake 重新配置后，输入成员清单可检测文件新增和移除。
-完成戳让字节不变的生成文件保留修改时间；缺失的生成副产物仍会触发修复。共享命令在全部
-所需 category 成功后执行，随后删除过时产物并发布 manifest。失败的运行可能留下部分
-已写入的产物，但保留上一次成功的 manifest。CLI 默认使用六个产物 writer（`--jobs 6`），
-`--jobs 1` 串行执行。CMake 将 `PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）作为总生成预算：
-Ninja 默认一次执行一个 category 命令，至多使用六个 writer；共享命令也可用全部六个。
-每个产物先在同目录格式化 candidate，比较字节后仅在变化时原子替换。
-对于 Makefile generator，缺失产物检查可用 `--defer-finalization` 写出完整计划；
-此修复不会发布 manifest，普通共享命令成功后才会发布。
+`--describe-build` 模式取得唯一的 category 输入、category 产物和共享产物计划。
+一个聚合构建命令在同一 Python 进程中生成发生变化的 category 及所需共享产物；
+该进程只加载一次 backend、归一化 instruction model、context 和 plan。配置阶段的
+描述命令是独立进程。各 category 的完成戳追踪贡献它的规格文件及输入成员清单；
+共享产物追踪全部规格文件。schema、backend mapping 和 generator 源码会使全部
+category 失效。CMake 重新配置可检测输入的新增和移除。Ninja 可根据缺失的产物或
+完成戳触发修复，Makefile target 则在接受干净的完成戳前检查这些文件。batch
+在写入前删除所选完成戳，因此即使后来失败时已经修复缺失文件，下次仍会重试。
+所需 category 成功后才写共享产物，之后删除过时产物并发布 manifest。失败时可能
+留下部分已写入产物，但保留上一次成功的 manifest。增量选择按构建时间戳判断，
+不保证发现内容已变但输入时间戳未变的情况。CLI 默认使用六个产物 writer
+（`--jobs 6`），`--jobs 1` 串行执行。CMake 通过
+`PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）设置该单进程预算。无变化构建不会启动
+generator Python 进程。每个产物先在同目录格式化 candidate，比较字节后仅在变化时原子替换。
 
 Syntax descriptor storage 提供供 variant selection/resolution 使用的逐 opcode
 自由函数 getter。未分片 opcode 的 syntax、resolved、checker descriptor 行位于同一源文件；

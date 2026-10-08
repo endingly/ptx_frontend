@@ -14,8 +14,8 @@ function(_ptx_resolved_ir_json_array output description)
     set(${output} "${items}" PARENT_SCOPE)
 endfunction()
 
-# Define the Resolved IR generation graph and return only paths needed by its
-# library target. All spec discovery, invalidation and repair state stays local.
+# Define one codegen command per build invocation and return library paths.
+# Per-category stamps are build state, while the aggregate edge owns all outputs.
 function(ptx_configure_resolved_ir_codegen output_sources output_private output_public)
     set(PTX_FRONTEND_CODEGEN_JOBS "6" CACHE STRING
         "Maximum concurrent Resolved IR generator artifact writers")
@@ -33,6 +33,7 @@ function(ptx_configure_resolved_ir_codegen output_sources output_private output_
     set(resolved_generated_root "${CMAKE_CURRENT_BINARY_DIR}/generated")
     set(resolved_generated_private "${resolved_generated_root}/private")
     set(resolved_generated_public "${resolved_generated_root}/public")
+
     file(GLOB_RECURSE resolved_spec_files CONFIGURE_DEPENDS
         "${resolved_spec_dir}/*.yaml")
     list(FILTER resolved_spec_files EXCLUDE REGEX "\\.schema\\.yaml$")
@@ -41,17 +42,25 @@ function(ptx_configure_resolved_ir_codegen output_sources output_private output_
     string(JOIN "\n" resolved_spec_inputs_text ${resolved_spec_files})
     file(GENERATE OUTPUT "${resolved_spec_inputs_manifest}"
         CONTENT "${resolved_spec_inputs_text}\n")
+
     file(GLOB_RECURSE resolved_codegen_python CONFIGURE_DEPENDS
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/base/*.py"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/*.py"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/*.py"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/*.py")
+    set(resolved_codegen_python_membership
+        "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_python_inputs.txt")
+    string(JOIN "\n" resolved_codegen_python_inputs_text
+        ${resolved_codegen_python})
+    file(GENERATE OUTPUT "${resolved_codegen_python_membership}"
+        CONTENT "${resolved_codegen_python_inputs_text}\n")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${resolved_spec_files}
         "${resolved_instruction_schema}"
         "${resolved_backend}"
         "${resolved_backend_schema}"
         ${resolved_codegen_python})
+
     set(resolved_codegen_base_command
         "${CMAKE_COMMAND}" -E env "PYTHONPATH=${PROJECT_SOURCE_DIR}/python/src"
         "${Python3_EXECUTABLE}" -m ptx_frontend.code_gen
@@ -68,114 +77,87 @@ function(ptx_configure_resolved_ir_codegen output_sources output_private output_
         message(FATAL_ERROR
             "Failed to discover resolved IR outputs: ${resolved_codegen_error}")
     endif()
+
     _ptx_resolved_ir_json_array(resolved_generated_outputs
         "${resolved_build_description}" all_outputs)
     set(resolved_generated_sources ${resolved_generated_outputs})
     list(FILTER resolved_generated_sources INCLUDE REGEX "\\.gen\\.cpp$")
+    set(resolved_build_description_file
+        "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_build.json")
+    file(GENERATE OUTPUT "${resolved_build_description_file}"
+        CONTENT "${resolved_build_description}\n")
 
-    # One Ninja category process uses the full artifact-writer budget. This keeps
-    # the dominant large category from being stranded with a fraction of workers.
-    # Other generators serialize category commands through their stamp chain.
-    set(resolved_category_jobs "${PTX_FRONTEND_CODEGEN_JOBS}")
-    set(resolved_codegen_pool_option)
-    if(CMAKE_GENERATOR MATCHES "Ninja")
-        set_property(GLOBAL APPEND PROPERTY JOB_POOLS
-            "ptx_resolved_codegen=1")
-        set(resolved_codegen_pool_option JOB_POOL ptx_resolved_codegen)
-    endif()
-
-    set(resolved_shared_codegen_inputs
-        "${resolved_instruction_schema}" "${resolved_backend}"
-        "${resolved_backend_schema}" ${resolved_codegen_python})
+    # The runner compares contributor and membership mtimes with these stamps.
+    # Their absence is also a Ninja byproduct invalidation signal.
     string(JSON resolved_category_count LENGTH
         "${resolved_build_description}" categories)
-    set(resolved_category_stamps)
-    set(resolved_previous_category_stamp)
     if(resolved_category_count EQUAL 0)
         message(FATAL_ERROR "Resolved IR build description has no categories")
     endif()
+    set(resolved_category_stamps)
+    set(resolved_category_membership_manifests)
     math(EXPR resolved_last_category "${resolved_category_count} - 1")
     foreach(resolved_index RANGE 0 ${resolved_last_category})
         string(JSON resolved_category GET
             "${resolved_build_description}" categories ${resolved_index} name)
         _ptx_resolved_ir_json_array(resolved_category_specs
             "${resolved_build_description}" categories ${resolved_index} spec_files)
-        set(resolved_category_spec_options)
-        foreach(resolved_spec IN LISTS resolved_category_specs)
-            list(APPEND resolved_category_spec_options --spec-file "${resolved_spec}")
-        endforeach()
-        _ptx_resolved_ir_json_array(resolved_category_outputs
-            "${resolved_build_description}" categories ${resolved_index} outputs)
         set(resolved_category_inputs_manifest
             "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_${resolved_category}_inputs.txt")
         string(JOIN "\n" resolved_category_inputs_text ${resolved_category_specs})
         file(GENERATE OUTPUT "${resolved_category_inputs_manifest}"
             CONTENT "${resolved_category_inputs_text}\n")
-        set(resolved_category_stamp
+        list(APPEND resolved_category_membership_manifests
+            "${resolved_category_inputs_manifest}")
+        list(APPEND resolved_category_stamps
             "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_${resolved_category}.stamp")
-        set(resolved_category_dependencies
-            ${resolved_category_specs} "${resolved_category_inputs_manifest}"
-            ${resolved_shared_codegen_inputs})
-        if(NOT CMAKE_GENERATOR MATCHES "Ninja" AND resolved_previous_category_stamp)
-            list(APPEND resolved_category_dependencies
-                "${resolved_previous_category_stamp}")
-        endif()
-        add_custom_command(
-            OUTPUT "${resolved_category_stamp}"
-            BYPRODUCTS ${resolved_category_outputs}
-            COMMAND "${CMAKE_COMMAND}" -E rm -f "${resolved_category_stamp}"
-            COMMAND ${resolved_codegen_base_command}
-                --category "${resolved_category}"
-                ${resolved_category_spec_options}
-                --jobs "${resolved_category_jobs}"
-            COMMAND "${CMAKE_COMMAND}" -E touch "${resolved_category_stamp}"
-            DEPENDS ${resolved_category_dependencies}
-            ${resolved_codegen_pool_option}
-            COMMENT "Generating resolved IR category ${resolved_category}"
-            VERBATIM)
-        list(APPEND resolved_category_stamps "${resolved_category_stamp}")
-        set(resolved_previous_category_stamp "${resolved_category_stamp}")
     endforeach()
 
-    _ptx_resolved_ir_json_array(resolved_global_outputs
-        "${resolved_build_description}" global_outputs)
+    set(resolved_codegen_batch_script
+        "${CMAKE_CURRENT_BINARY_DIR}/run_resolved_codegen_batch.cmake")
+    set(resolved_shared_codegen_inputs
+        "${resolved_instruction_schema}" "${resolved_backend}"
+        "${resolved_backend_schema}" ${resolved_codegen_python}
+        "${resolved_codegen_python_membership}"
+        "${CMAKE_CURRENT_FUNCTION_LIST_FILE}"
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/run_resolved_codegen_batch.cmake.in")
     set(resolved_global_stamp
         "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_global.stamp")
-    set(resolved_codegen_preflight_command)
-    if(NOT CMAKE_GENERATOR MATCHES "Ninja")
-        # Check missing Makefile byproducts before global cleanup can publish a
-        # manifest, even when a spec edit already made the global stamp dirty.
-        set(resolved_codegen_repair_script
-            "${CMAKE_CURRENT_BINARY_DIR}/repair_codegen_outputs.cmake")
-        configure_file(
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/repair_codegen_outputs.cmake.in"
-            "${resolved_codegen_repair_script}" @ONLY)
-        set(resolved_codegen_preflight_command
-            COMMAND "${CMAKE_COMMAND}" -P "${resolved_codegen_repair_script}")
+    set(resolved_aggregate_stamp
+        "${CMAKE_CURRENT_BINARY_DIR}/resolved_codegen_complete.stamp")
+    set(resolved_output_manifest
+        "${resolved_generated_root}/.ptx_resolved_ir_outputs.txt")
+    configure_file(
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/run_resolved_codegen_batch.cmake.in"
+        "${resolved_codegen_batch_script}" @ONLY)
+
+    set(resolved_codegen_pool_option)
+    if(CMAKE_GENERATOR MATCHES "Ninja")
+        set_property(GLOBAL APPEND PROPERTY JOB_POOLS "ptx_resolved_codegen=1")
+        set(resolved_codegen_pool_option JOB_POOL ptx_resolved_codegen)
     endif()
     add_custom_command(
-        OUTPUT "${resolved_global_stamp}"
-        BYPRODUCTS ${resolved_global_outputs}
-        COMMAND "${CMAKE_COMMAND}" -E rm -f "${resolved_global_stamp}"
-        ${resolved_codegen_preflight_command}
-        COMMAND ${resolved_codegen_base_command}
-            --global-artifacts --jobs "${PTX_FRONTEND_CODEGEN_JOBS}"
-        COMMAND "${CMAKE_COMMAND}" -E touch "${resolved_global_stamp}"
-        DEPENDS ${resolved_category_stamps} ${resolved_spec_files}
-            "${resolved_spec_inputs_manifest}" ${resolved_shared_codegen_inputs}
+        OUTPUT "${resolved_aggregate_stamp}"
+        BYPRODUCTS ${resolved_generated_outputs} "${resolved_output_manifest}"
+            ${resolved_category_stamps} "${resolved_global_stamp}"
+        COMMAND "${CMAKE_COMMAND}" -DPTX_ACKNOWLEDGE_EDGE=ON
+            -P "${resolved_codegen_batch_script}"
+        DEPENDS ${resolved_spec_files} "${resolved_spec_inputs_manifest}"
+            ${resolved_category_membership_manifests}
+            "${resolved_build_description_file}"
+            "${resolved_codegen_batch_script}"
+            ${resolved_shared_codegen_inputs}
         ${resolved_codegen_pool_option}
-        COMMENT "Generating shared resolved IR artifacts and finalizing outputs"
+        COMMENT "Generating changed resolved IR categories and shared artifacts"
         VERBATIM)
     if(CMAKE_GENERATOR MATCHES "Ninja")
         add_custom_target(resolved_ir_codegen
-            DEPENDS "${resolved_global_stamp}")
+            DEPENDS "${resolved_aggregate_stamp}")
     else()
-        # Makefile generators do not inspect missing BYPRODUCTS when the stamp
-        # remains present. This target check covers otherwise clean global stamps.
+        # Makefile generators do not inspect missing BYPRODUCTS of a clean stamp.
         add_custom_target(resolved_ir_codegen
-            COMMAND "${CMAKE_COMMAND}" -DPTX_REPAIR_FINALIZE=ON
-                -P "${resolved_codegen_repair_script}"
-            DEPENDS "${resolved_global_stamp}"
+            COMMAND "${CMAKE_COMMAND}" -P "${resolved_codegen_batch_script}"
+            DEPENDS "${resolved_aggregate_stamp}"
             VERBATIM)
     endif()
 

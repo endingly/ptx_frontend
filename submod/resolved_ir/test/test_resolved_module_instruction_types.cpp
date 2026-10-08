@@ -2010,8 +2010,10 @@ TEST(ResolvedModule, RetainsExpandedBitOperationsAndRevalidatesMutations) {
   const auto invalid_destination = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_destination.has_value());
-  EXPECT_EQ(invalid_destination.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(
+      std::ranges::any_of(invalid_destination.error(), [](const auto& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+      }));
   bfind.dst.value.declared_type = ScalarType::U32;
 
   auto& bfe = dynamic_cast<BfeS64&>(*body[3]);
@@ -2020,8 +2022,10 @@ TEST(ResolvedModule, RetainsExpandedBitOperationsAndRevalidatesMutations) {
   const auto invalid_control = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_control.has_value());
-  EXPECT_EQ(invalid_control.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(
+      std::ranges::any_of(invalid_control.error(), [](const auto& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+      }));
 }
 
 /** Verify every logic-and-shift form survives module resolution independently

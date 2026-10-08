@@ -16,7 +16,7 @@ TEST(DescriptorStorage, CpShardBoundariesAndBorrowedLifetime) {
   const auto& syntax = cp_syntax_descriptor();
   const auto& resolved = cp_resolved_descriptor();
   const auto& legality = cp_checker_descriptor();
-  constexpr size_t kExpectedForms = 295;
+  constexpr size_t kExpectedForms = 473;
   ASSERT_EQ(syntax.variants.size(), kExpectedForms);
   ASSERT_EQ(resolved.variants.size(), kExpectedForms);
   ASSERT_EQ(legality.variants.size(), kExpectedForms);
@@ -40,17 +40,23 @@ TEST(DescriptorStorage, CpShardBoundariesAndBorrowedLifetime) {
     EXPECT_EQ(cp_checker_descriptor().variants.data(), legality_view.data());
   }
 
-  const std::array<std::pair<size_t, std::string_view>, 10> boundaries{{
+  const std::array<std::pair<size_t, std::string_view>, 16> boundaries{{
       {0, "AsyncCaSharedGlobal"},
       {63, "ReduceAsyncBulkSharedAdd"},
       {64, "ReduceAsyncBulkSharedMin"},
-      {127, "AsyncBulkTensor4dSharedCta"},
-      {128, "AsyncBulkTensor5dSharedCta"},
-      {191, "AsyncBulkTensor5dSharedCtaIm2colW128CtaGroup"},
-      {192, "AsyncBulkTensor1dSharedClusterMulticastCtaGroup"},
-      {255, "ReduceAsyncBulkTensor5dXor"},
-      {256, "ReduceAsyncBulkTensor3dAddIm2colNoOffs"},
-      {294, "AsyncBulkPrefetchTensor5dIm2colW128"},
+      {127, "AsyncBulkTensor5dSharedCluster"},
+      {128, "AsyncBulkTensor5dSharedClusterCacheHint"},
+      {191, "AsyncBulkTensor3dSharedClusterIm2colWMulticast"},
+      {192, "AsyncBulkTensor3dSharedClusterIm2colWMulticastCacheHint"},
+      {255, "AsyncBulkTensor4dSharedCtaIm2colCtaGroup"},
+      {256, "AsyncBulkTensor4dSharedCtaIm2colCtaGroupCacheHint"},
+      {319, "ReduceAsyncBulkTensor1dMax"},
+      {320, "ReduceAsyncBulkTensor1dMaxCacheHint"},
+      {383, "ReduceAsyncBulkTensor5dMax"},
+      {384, "ReduceAsyncBulkTensor5dMaxCacheHint"},
+      {447, "AsyncBulkPrefetchTensor2dTileGather4"},
+      {448, "AsyncBulkPrefetchTensor2dTileGather4CacheHint"},
+      {472, "AsyncBulkPrefetchTensor5dIm2colW128CacheHint"},
   }};
   for (const auto& [index, name] : boundaries) {
     SCOPED_TRACE(index);
@@ -68,6 +74,10 @@ TEST(DescriptorStorage, CpShardBoundariesAndBorrowedLifetime) {
     EXPECT_EQ(resolved_view[index].variant_name, name);
     EXPECT_EQ(legality_view[index].variant_name, name);
   }
+  EXPECT_TRUE(identities.contains("AsyncCaSharedGlobal"));
+  EXPECT_TRUE(identities.contains("AsyncBulkPrefetchTensor5dIm2colW128"));
+  EXPECT_TRUE(
+      identities.contains("AsyncBulkPrefetchTensor5dIm2colW128CacheHint"));
 }
 
 }  // namespace

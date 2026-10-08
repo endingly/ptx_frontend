@@ -71,6 +71,9 @@ supported surface and its exclusions.
   scope, restricted forms, alias-proxy ordering, and target limits.
 - [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
   and validation entry points.
+- [Tensor async cache controls](docs/us-en/tensor_cache_controls.md) and their
+  [简体中文版本](docs/zh-han/tensor_cache_controls.md) document the supported TMA
+  hint and final policy operands, owned query, and static check boundary.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
 
 ## Build and install

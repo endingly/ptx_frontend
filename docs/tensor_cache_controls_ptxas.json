@@ -1,0 +1,435 @@
+{
+  "description": "Fresh bounded TMA cache-control assembler probes on the current direct-class model; historical cache32 inputs are unavailable and are not replayed here.",
+  "tool": "/usr/local/cuda/bin/ptxas",
+  "tool_version": "CUDA 13.3, V13.3.73; Build cuda_13.3.r13.3/compiler.38244171_0",
+  "specification": "NVIDIA PTX ISA 9.3, CUDA 13.3.0 archive",
+  "replay": "For each case, create an isolated directory, write source_text to case.ptx, and invoke replay_argv there; compare exit success with observed. source_sha256 covers source_text UTF-8 bytes.",
+  "summary": {
+    "cases": 26,
+    "accepted": 12,
+    "rejected": 14
+  },
+  "notes": [
+    "The formal PTX 9.3 grammar permits a written cache hint without a final policy, but PTXAS 13.3.73 rejected the tested hint-only forms.",
+    "PTXAS rejected im2col_absent_info_policy with a vector-expected diagnostic despite optional im2col information in the formal grammar.",
+    "Acceptance only establishes assembly for these exact source modules; no runtime cache effect was measured."
+  ],
+  "cases": [
+    {
+      "id": "im2col_absent_info_policy",
+      "target": "sm_110a",
+      "source_file": "im2col_absent_info_policy.ptx",
+      "source_sha256": "40c8ea62e604658c42360893b9168d5ccf9b9b9a97873b01ae2329f816aeb429",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "im2col_with_info_hint_only",
+      "target": "sm_110a",
+      "source_file": "im2col_with_info_hint_only.ptx",
+      "source_sha256": "67db847f2c1e40f488871c8a8b76afa190c8fb5938187a242d4c02e25416eb55",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0};\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "im2col_with_info_policy",
+      "target": "sm_110a",
+      "source_file": "im2col_with_info_policy.ptx",
+      "source_sha256": "500b2a053cf28bcbe8cb475672ff3d7b98803d06979ee91eaf9b5bf0f06fe565",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0}, %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cluster_hint_only",
+      "target": "sm_100a",
+      "source_file": "load_cluster_hint_only.ptx",
+      "source_sha256": "31c2bc20077cf044278ca2f2d3600de6bb760043b21f76a15b7c3b68abf61a00",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar];\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cluster_unhinted_policy",
+      "target": "sm_100a",
+      "source_file": "load_cluster_unhinted_policy.ptx",
+      "source_sha256": "9dc38d03eb0cc0d9fe9ed33b3b9dfb85b522d5276a7d6e54eacca30f5b0b77e8",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cluster_with_policy",
+      "target": "sm_100a",
+      "source_file": "load_cluster_with_policy.ptx",
+      "source_sha256": "cf5dad3bb2573284911b9aca29edc6747a5d1fae122625727ac60e91d3c6431c",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cluster.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cta_hint_only",
+      "target": "sm_100a",
+      "source_file": "load_cta_hint_only.ptx",
+      "source_sha256": "087e098741131f89eff5cc18fdc2b1e58f699172e31603d3dadae5089b79426b",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar];\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cta_unhinted_policy",
+      "target": "sm_100a",
+      "source_file": "load_cta_unhinted_policy.ptx",
+      "source_sha256": "f0cba642426e1f7f6cf978ca5b342e13ce9a37eb5279846703677d29d13a37f4",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes [dst], [tensor_map, {%r0}], [mbar], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "load_cta_with_policy",
+      "target": "sm_100a",
+      "source_file": "load_cta_with_policy.ptx",
+      "source_sha256": "053d31831d985d2460bd7a0835dcf1cf639d82d075433b3648255dd22ec4da52",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "multicast_group_alias_policy",
+      "target": "sm_110a",
+      "source_file": "multicast_group_alias_policy.ptx",
+      "source_sha256": "95ac7253f6d345185d0df7ffe5a51c8d06ddc4c5ac246b883b8662ca7a09179f",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.cta_group::2.multicast::cluster.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0}, %mask, %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "multicast_group_missing_mask",
+      "target": "sm_110a",
+      "source_file": "multicast_group_missing_mask.ptx",
+      "source_sha256": "337f4647038137c297ea1604de3bd28743345ecbc632ffd91718a62f123644e6",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0}, %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "multicast_group_policy",
+      "target": "sm_110a",
+      "source_file": "multicast_group_policy.ptx",
+      "source_sha256": "5e8aed2a68f790e89971bce5a6987875f0825a098a84b78dd2a2ae4ff15ef244",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.3d.shared::cluster.global.im2col.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2.L2::cache_hint [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0}, %mask, %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "policy_b32",
+      "target": "sm_110a",
+      "source_file": "policy_b32.ptx",
+      "source_sha256": "d3edf338c72b193860ac5c49605c612350f72632f2acc9201894d71aef245323",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], %x32;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "policy_imm_minus_one",
+      "target": "sm_110a",
+      "source_file": "policy_imm_minus_one.ptx",
+      "source_sha256": "c70903bc8365f3228bc78a44a5209dd83c43cf9daf52ddf0a8c97bfc11da359c",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], -1;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "policy_imm_zero",
+      "target": "sm_110a",
+      "source_file": "policy_imm_zero.ptx",
+      "source_sha256": "4f0ad97663b4e721a483d6000148a9cb28b9212f7d1125da026de3844251856f",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], 0;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "policy_s64",
+      "target": "sm_110a",
+      "source_file": "policy_s64.ptx",
+      "source_sha256": "cf5b6598a07d7caaa805a23e1e39d4ba4c4817c300c8e1f61da10e19ec29afe1",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], %s;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "policy_u64",
+      "target": "sm_110a",
+      "source_file": "policy_u64.ptx",
+      "source_sha256": "e93b4fb77a38d9b2d5277f031f2543cd75fe4cedcb718bb3258a393ddd0c2887",
+      "source_text": ".version 9.3\n.target sm_110a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel(){\n.reg .s32 %r<3>;\n.reg .u16 %h0;\n.reg .b16 %mask;\n.reg .b64 %policy;\n.reg .u64 %u;\n.reg .s64 %s;\n.reg .b32 %x32;\ncp.async.bulk.tensor.1d.shared::cta.global.tile.mbarrier::complete_tx::bytes.L2::cache_hint [dst], [tensor_map, {%r0}], [mbar], %u;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_110a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "prefetch_hint_only",
+      "target": "sm_100a",
+      "source_file": "prefetch_hint_only.ptx",
+      "source_sha256": "ed01f621ede4e840f74337748b11d0804635b4d9cf662f1b06a0081535976677",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.prefetch.tensor.1d.L2.global.tile.L2::cache_hint [tensor_map, {%r0}];\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "prefetch_unhinted_policy",
+      "target": "sm_100a",
+      "source_file": "prefetch_unhinted_policy.ptx",
+      "source_sha256": "673ff66f7bad87e2f204684e1acbe3fb7b35994f239bed42b8d7578d1c5d2660",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.prefetch.tensor.1d.L2.global.tile [tensor_map, {%r0}], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "prefetch_with_policy",
+      "target": "sm_100a",
+      "source_file": "prefetch_with_policy.ptx",
+      "source_sha256": "1675331b2d11a93e8e93bbfa57707a742e0eb5f02ea957142d67142f6f175e0f",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.prefetch.tensor.1d.L2.global.tile.L2::cache_hint [tensor_map, {%r0}], %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "reduce_hint_only",
+      "target": "sm_100a",
+      "source_file": "reduce_hint_only.ptx",
+      "source_sha256": "808c63bc1f5120890e706812767121e104288d35b35db7f9a102364d2e45ff18",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.reduce.async.bulk.tensor.1d.global.shared::cta.add.tile.bulk_group.L2::cache_hint [tensor_map, {%r0}], [src];\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "reduce_unhinted_policy",
+      "target": "sm_100a",
+      "source_file": "reduce_unhinted_policy.ptx",
+      "source_sha256": "2bef2576a027e77813e213abad7bea88dc3ce689c14bb25a81656a550f8c6d8f",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.reduce.async.bulk.tensor.1d.global.shared::cta.add.tile.bulk_group [tensor_map, {%r0}], [src], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "reduce_with_policy",
+      "target": "sm_100a",
+      "source_file": "reduce_with_policy.ptx",
+      "source_sha256": "90e3f82426d79c1762781b4ebd17529ebe75c2adc3bd39172fa9b0019cb680ff",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.reduce.async.bulk.tensor.1d.global.shared::cta.add.tile.bulk_group.L2::cache_hint [tensor_map, {%r0}], [src], %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "store_hint_only",
+      "target": "sm_100a",
+      "source_file": "store_hint_only.ptx",
+      "source_sha256": "5421abdf9bb68f4dcd209403c0a137d8e659e480f3e5bbc586263945b1f70518",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group.L2::cache_hint [tensor_map, {%r0}], [src];\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "store_unhinted_policy",
+      "target": "sm_100a",
+      "source_file": "store_unhinted_policy.ptx",
+      "source_sha256": "e9391a5e44f722719cbf4a10a7f90cc8d0f0ac04cbbfc022afeb7f9975dd0a31",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group [tensor_map, {%r0}], [src], %policy;\n}\n",
+      "observed": "rejected",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    },
+    {
+      "id": "store_with_policy",
+      "target": "sm_100a",
+      "source_file": "store_with_policy.ptx",
+      "source_sha256": "c4b1e17012fd3a04c69e16c8844eadae82399efc3f86a49ffe64f9b624a860e8",
+      "source_text": ".version 9.3\n.target sm_100a\n.address_size 64\n.global .align 64 .b8 tensor_map[128];\n.shared .align 16 .b8 dst[1024];\n.shared .align 16 .b8 src[1024];\n.shared .align 8 .b64 mbar;\n.entry kernel() {\n.reg .s32 %r0;\n.reg .b64 %policy;\ncp.async.bulk.tensor.1d.global.shared::cta.tile.bulk_group.L2::cache_hint [tensor_map, {%r0}], [src], %policy;\n}\n",
+      "observed": "accepted",
+      "replay_argv": [
+        "/usr/local/cuda/bin/ptxas",
+        "-O0",
+        "-arch=sm_100a",
+        "case.ptx",
+        "-o",
+        "case.cubin"
+      ]
+    }
+  ]
+}

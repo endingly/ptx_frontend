@@ -320,6 +320,12 @@ declaration `SymbolId`, optional parameterized-member index, and declared
 stable identity. A numbered-register index remains an optional convenience,
 not an identity. The context-free standalone resolver preserves its previous
 boundary: it accepts numbered registers and leaves symbol/type fields empty.
+Owned-module validation traverses generated operand references structurally,
+including register alternatives and nested operand containers. For every bound
+register it compares cached scalar type, vector width, and register class with
+the owned declaration. A mutated public IR cannot validate by retaining stale
+register metadata after its binding changes; operand locations remain the
+diagnostic source when available.
 An instruction's optional execution predicate is stored as the opcode-level
 common field `std::optional<WithLocs<ResolvedPredicate>>`. Module resolution
 requires it to bind to a `.pred` register, while standalone resolution accepts

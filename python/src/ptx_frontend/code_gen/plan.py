@@ -34,6 +34,9 @@ from ptx_frontend.code_gen.emit.tensor_map_known_facts import (
     generate_tensor_map_known_fact_query,
     generate_tensor_map_known_fact_rules,
 )
+from ptx_frontend.code_gen.emit.tensor_cache_controls import (
+    generate_tensor_cache_controls_query,
+)
 from ptx_frontend.code_gen.emit.value_domains import generate_resolved_value_domain_header
 
 
@@ -203,6 +206,10 @@ def build_generation_plan(
         GeneratedArtifact(
             path=output_dir / "private/resolved_ir_tensor_map_known_facts.gen.cpp",
             emit=generate_tensor_map_known_fact_query,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tensor_cache_controls.gen.cpp",
+            emit=generate_tensor_cache_controls_query,
         ),
     ]
     for category in instruction_categories(context):

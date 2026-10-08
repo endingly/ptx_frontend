@@ -18,11 +18,15 @@ class TensorCtaGroupTests(unittest.TestCase):
 
     def test_census_and_parent_preservation(self) -> None:
         resolved = from_instruction_spec(self.cp)
-        new = [v for v in resolved.variants
+        original = [v for v in resolved.variants
+                    if not (v.tensor_access_mode is not None
+                            and v.variant_id.endswith("_cache_hint"))]
+        new = [v for v in original
                if v.variant_id.endswith("_cta_group")]
-        old = [v for v in resolved.variants
+        old = [v for v in original
                if not v.variant_id.endswith("_cta_group")]
-        self.assertEqual(len(resolved.variants), 295)
+        self.assertEqual(len(resolved.variants), 473)
+        self.assertEqual(len(original), 295)
         self.assertEqual(len(new), 45)
         self.assertEqual(sum(len(v.operand_layouts) for v in new), 72)
         self.assertEqual(len(old), 250)
@@ -37,6 +41,11 @@ class TensorCtaGroupTests(unittest.TestCase):
 
     def test_required_closed_group_and_adjacent_alias(self) -> None:
         for variant in self.cp.variants:
+            if variant.name.startswith(("cp_async_bulk_tensor_",
+                                        "cp_reduce_async_bulk_tensor_",
+                                        "cp_async_bulk_prefetch_tensor_")) \
+                    and variant.name.endswith("_cache_hint"):
+                continue
             if not variant.name.endswith("_cta_group"):
                 self.assertFalse(any(m.name == "cta_group"
                                      for m in variant.modifiers))

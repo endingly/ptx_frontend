@@ -241,8 +241,6 @@ TEST(TensorAsync, RejectsInvalidDescriptorAndCoordinateForms) {
            "cp.async.bulk.prefetch.tensor.1d.L2.global [global_map, {%wide}];",
            "cp.async.bulk.prefetch.tensor.1d.L2.global.im2col [global_map, "
            "{%coord}];",
-           "cp.async.bulk.prefetch.tensor.1d.L2.global.L2::cache_hint "
-           "[global_map, {%coord}];",
        }) {
     const auto parsed =
         test_helpers::parseModule(prefix + std::string(instruction) + "\n}");
@@ -359,8 +357,7 @@ TEST(TensorAsync, RejectsOwnedCoordinateBoundToDifferentWidthRegister) {
   EXPECT_EQ(mismatch.error().front().kind,
             checker::CheckDiagnosticKind::ModuleSourceMismatch);
   EXPECT_EQ(mismatch.error().front().message,
-            "Tensor coordinate register type disagrees with its owned "
-            "declaration.");
+            "Resolved register metadata disagrees with its owned declaration.");
   coordinate.symbol_id = original_id;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));

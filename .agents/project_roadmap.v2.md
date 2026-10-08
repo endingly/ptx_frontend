@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11～M13 已完成；M14～M19 尚未开始。
+> - M11～M13 已完成；M14～M19 的逐项计划状态尚未按当前代码重新审计，不能由下方空框推断功能缺失。M14 已实现的切片见第 12 节。
 >
 > ISA 规划基线：
 >
@@ -914,6 +914,14 @@ M14、M16、M17、M18 不得各自重新定义 barrier token、phase 或 async p
 TMA kernel 提供 parse/resolve/check。
 
 完整 multimem 与 Fabric 不属于本 milestone。
+
+当前分支已支持已列出的 tensor load、store、reduction 与 prefetch 形式及其
+`.L2::cache_hint` 和可选末尾 64-bit `cache_policy`，保留 rank、mode、multicast、
+CTA group 和完成方式约束。模块校验从自有绑定检查寄存器元数据；tensor-map descriptor
+的运行时原始字节仍不解码。具体形式和边界以
+[tensor async 覆盖](../docs/zh-han/tensor_async_coverage.md)与
+[缓存控制](../docs/zh-han/tensor_cache_controls.md)为准。下表保留原逐项规划，
+尚未对每个 Issue 的完整闭环条件重新审计；空框不代表当前代码缺少该功能。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |

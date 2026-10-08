@@ -247,6 +247,10 @@ exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rul
 `ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
 numbered-register index 仍只是可选便捷属性，不能单独充当身份。无 binding context 的
 standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
+Owned-module validation 会按结构遍历生成的 operand reference，包括寄存器备选值和嵌套
+operand 容器。每个已绑定寄存器缓存的 scalar type、vector width 与 register class 都会
+同 owned declaration 比对。public IR 的绑定被修改后，不能靠旧的寄存器元数据通过校验；
+诊断优先使用 operand 自有位置。
 instruction 的可选 execution predicate 作为 opcode 外层公共字段
 `std::optional<WithLocs<ResolvedPredicate>>` 保存；module resolution 要求其绑定到 `.pred`
 register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarget` 同样区分两种

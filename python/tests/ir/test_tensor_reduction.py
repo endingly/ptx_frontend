@@ -42,7 +42,9 @@ class TensorReductionMetadataTests(unittest.TestCase):
 
     def test_all_rank_operation_identities_and_other_cp_forms(self) -> None:
         resolved = from_instruction_spec(self.cp)
-        selected = [v for v in resolved.variants if v.tensor_reduction_op is not None]
+        selected = [v for v in resolved.variants
+                    if v.tensor_reduction_op is not None
+                    and not v.variant_id.endswith("_cache_hint")]
         self.assertEqual(len(selected), 64)
         self.assertEqual(
             {v.variant_id for v in selected},
@@ -61,7 +63,7 @@ class TensorReductionMetadataTests(unittest.TestCase):
                 self.assertIs(
                     variant.tensor_access_mode,
                     TensorAccessMode.IM2COL_NO_OFFS
-                    if source.name.endswith("_im2col_no_offs")
+                    if "_im2col_no_offs" in source.name
                     else TensorAccessMode.TILED,
                 )
             else:

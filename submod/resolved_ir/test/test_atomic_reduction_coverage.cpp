@@ -510,16 +510,19 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   const auto invalid_add =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_add.has_value());
-  EXPECT_EQ(invalid_add.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_add.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   add_source.declared_type = ScalarType::B32;
   auto& compare = std::get<ResolvedRegisterRef>(cas.compare.value);
   compare.declared_type = ScalarType::U64;
   const auto invalid_compare =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_compare.has_value());
-  EXPECT_EQ(invalid_compare.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(
+      std::ranges::any_of(invalid_compare.error(), [](const auto& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+      }));
   compare.declared_type = ScalarType::B32;
   auto& xor_src = std::get<ResolvedRegisterRef>(
       dynamic_cast<AtomGlobalXorB32&>(*body[2]).src.value);
@@ -527,8 +530,9 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   const auto invalid_xor =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_xor.has_value());
-  EXPECT_EQ(invalid_xor.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_xor.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   xor_src.declared_type = ScalarType::B32;
   auto& red_src = std::get<ResolvedRegisterRef>(
       dynamic_cast<RedGlobalDecU32&>(*body[3]).src.value);
@@ -536,8 +540,9 @@ TEST(AtomicReductionCoverage, RechecksMutatedOwnedValueSources) {
   const auto invalid_red =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_red.has_value());
-  EXPECT_EQ(invalid_red.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_red.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   red_src.declared_type = ScalarType::B32;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
@@ -807,24 +812,28 @@ TEST(AtomicReductionCoverage, RechecksOwned64BitValueSources) {
   const auto invalid_add =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_add.has_value());
-  EXPECT_EQ(invalid_add.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_add.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   add_src.declared_type = ScalarType::U64;
   auto& compare = std::get<ResolvedRegisterRef>(cas.compare.value);
   compare.declared_type = ScalarType::B32;
   const auto invalid_compare =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_compare.has_value());
-  EXPECT_EQ(invalid_compare.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(
+      std::ranges::any_of(invalid_compare.error(), [](const auto& issue) {
+        return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+      }));
   compare.declared_type = ScalarType::B64;
   auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
   red_src.declared_type = ScalarType::B32;
   const auto invalid_red =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_red.has_value());
-  EXPECT_EQ(invalid_red.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_red.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   red_src.declared_type = ScalarType::B64;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
@@ -1021,16 +1030,18 @@ TEST(AtomicReductionCoverage, RechecksOwnedFloatAddOperands) {
   const auto invalid_atom =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_atom.has_value());
-  EXPECT_EQ(invalid_atom.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_atom.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   atom_src.declared_type = ScalarType::B32;
   auto& red_src = std::get<ResolvedRegisterRef>(red.src.value);
   red_src.declared_type = ScalarType::U64;
   const auto invalid_red =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid_red.has_value());
-  EXPECT_EQ(invalid_red.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid_red.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
   red_src.declared_type = ScalarType::B64;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)

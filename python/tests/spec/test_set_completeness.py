@@ -2,13 +2,12 @@
 
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import (
     ModifierPresence,
     OperandKind,
     OperandRegisterWidthPolicy,
 )
-from ptx_frontend.spec.resources import packaged_spec_dir
 
 
 class SetCompletenessTests(unittest.TestCase):
@@ -18,7 +17,7 @@ class SetCompletenessTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load ordinary and half/bfloat variants from the canonical spec."""
 
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         instruction = next(item for item in database.instructions if item.opcode == "set")
         cls.variants = {variant.name: variant for variant in instruction.variants}
 

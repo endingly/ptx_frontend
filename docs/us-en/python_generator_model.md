@@ -34,6 +34,17 @@ The model carries only fields currently consumed by the frontend generator.
 YAML documentation, examples, and constraints that have no generator consumer
 must not silently leak into the C++ representation.
 
+`get_packaged_spec_database()` validates and merges the packaged specification
+on its first successful call in each process, then returns that same snapshot
+for the process lifetime. Concurrent first calls initialize it once; a failed
+load can be retried. Treat the returned model as read-only by convention:
+its frozen dataclasses still contain mutable nested dictionaries and lists,
+so changing one can affect every caller. Use `copy.deepcopy()` before local
+mutation. The compatibility `ptx_frontend.code_gen.database` module exports
+the same API. The `load_*` functions always read their requested instruction
+YAML afresh, including the packaged specifications; use them when edits after
+the first snapshot must be visible. No other spec directory is cached.
+
 After merging an opcode, the database validates the selector language. Active
 modifier slots may share spellings only when required/fixed positions make
 ordered binding unambiguous. Canonical modifier sequences and explicit

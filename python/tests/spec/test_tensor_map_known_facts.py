@@ -12,7 +12,7 @@ from ptx_frontend.ir.resolved_ir import (
     _build_tensor_destination, from_instruction_spec,
 )
 from ptx_frontend.ir.tensor_reduction import TensorReductionOp
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import AsyncCompletionKind, ModifierPresence
 from ptx_frontend.spec.tensor_map_known_facts import (
     RULE_CATALOG,
@@ -86,9 +86,7 @@ class TensorDestinationNormalizationTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the repository's accepted Cp identities once per class."""
 
-        database = load_codegen_database(
-            spec_dir=Path(__file__).resolve().parents[3] / "instructions/ptx_spec"
-        )
+        database = get_packaged_spec_database()
         cls.database = database
         cls.cp = next(item for item in database.instructions if item.opcode == "cp")
         cls.lowered = from_instruction_spec(cls.cp)

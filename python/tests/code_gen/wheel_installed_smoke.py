@@ -5,10 +5,13 @@ from importlib.util import find_spec
 import os
 
 from ptx_frontend.code_gen.cpp_backend import CppDomain, load_cpp_backend
+from ptx_frontend.code_gen.database import (
+    get_packaged_spec_database as compatibility_get_packaged_spec_database,
+)
 from ptx_frontend.code_gen.model import (
     InstructionSpec as CompatibilityInstructionSpec,
 )
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 from ptx_frontend.spec.model import OperandKind
 from ptx_frontend.spec.resources import (
@@ -112,8 +115,10 @@ def check_packaged_spec_model() -> None:
     """Exercise the normalized specification model from the installed wheel."""
 
     assert InstructionSpec is CompatibilityInstructionSpec
+    assert get_packaged_spec_database is compatibility_get_packaged_spec_database
 
-    database = load_packaged_spec_database()
+    database = get_packaged_spec_database()
+    assert get_packaged_spec_database() is database
 
     assert database.instructions
     assert all(isinstance(item, InstructionSpec) for item in database.instructions)

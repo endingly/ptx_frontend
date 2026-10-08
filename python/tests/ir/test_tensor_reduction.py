@@ -16,7 +16,7 @@ from ptx_frontend.ir.resolved_ir import TensorAccessMode, from_instruction_spec
 from ptx_frontend.ir.tensor_reduction import (
     TENSOR_REDUCTION_ELEMENT_TYPES, TensorReductionOp,
 )
-from ptx_frontend.spec.database import CodegenDatabase, load_packaged_spec_database
+from ptx_frontend.spec.database import CodegenDatabase, get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierPresence, SemanticRule
 from ptx_frontend.spec.resources import packaged_backend_spec
 
@@ -37,7 +37,7 @@ class TensorReductionMetadataTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        database = load_packaged_spec_database()
+        database = get_packaged_spec_database()
         cls.cp = next(spec for spec in database.instructions if spec.opcode == "cp")
 
     def test_all_rank_operation_identities_and_other_cp_forms(self) -> None:

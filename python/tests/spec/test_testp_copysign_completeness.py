@@ -2,14 +2,13 @@
 
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import (
     ModifierKind,
     OperandKind,
     OperandRole,
     OperandRegisterWidthPolicy,
 )
-from ptx_frontend.spec.resources import packaged_spec_dir
 
 
 class TestpCopysignCompletenessTests(unittest.TestCase):
@@ -19,7 +18,7 @@ class TestpCopysignCompletenessTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the packaged catalogue once and select this slice's opcodes."""
 
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         instructions = {item.opcode: item for item in database.instructions}
         cls.testp = instructions["testp"]
         cls.copysign = instructions["copysign"]

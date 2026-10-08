@@ -3,7 +3,7 @@
 from copy import deepcopy
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import MatrixFamily, ModifierPresence, OperandKind
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -30,7 +30,7 @@ class WmmaCoverageTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the same normalized database consumed by code generation."""
 
-        database = load_codegen_database(spec_dir=SPEC_DIR)
+        database = get_packaged_spec_database()
         instruction = next(item for item in database.instructions if item.opcode == "wmma")
         cls.variants = {variant.name: variant for variant in instruction.variants}
 

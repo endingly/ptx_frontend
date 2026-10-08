@@ -6,7 +6,7 @@ import unittest
 from ptx_frontend.ir.resolved_ir import (
     TensorAccessMode, from_instruction_spec, tensor_im2col_info_contract,
 )
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierPresence, OperandKind
 
 
@@ -16,7 +16,7 @@ class TensorIm2colInfoTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.cp = next(
-            entry for entry in load_packaged_spec_database().instructions
+            entry for entry in get_packaged_spec_database().instructions
             if entry.opcode == "cp"
         )
 

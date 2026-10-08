@@ -16,11 +16,10 @@ from ptx_frontend.code_gen.context import GenerationContext, build_generation_co
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_model import FORM_SHARD_SIZE, form_shards
 from ptx_frontend.code_gen.plan import build_generation_plan
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SPEC_DIR = ROOT / "instructions/ptx_spec"
 BACKEND_SPEC = ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
 
 
@@ -31,7 +30,7 @@ class FormShardTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Lower the real corpus once so tests use its exact form identities."""
 
-        database = load_codegen_database(spec_dir=SPEC_DIR)
+        database = get_packaged_spec_database()
         backend = load_cpp_backend(BACKEND_SPEC)
         context = build_generation_context(database, backend)
         cls.cp = next(

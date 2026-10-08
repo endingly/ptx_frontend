@@ -4,7 +4,7 @@ from dataclasses import replace
 import unittest
 
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierPresence, OperandKind
 
 
@@ -13,7 +13,7 @@ class TensorMulticastTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.cp = next(spec for spec in load_packaged_spec_database().instructions
+        cls.cp = next(spec for spec in get_packaged_spec_database().instructions
                       if spec.opcode == "cp")
 
     def test_fifteen_identities_and_twenty_four_layouts(self) -> None:

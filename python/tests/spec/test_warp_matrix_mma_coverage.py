@@ -4,7 +4,7 @@ from collections import Counter
 from copy import deepcopy
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import MatrixBitOperation, MatrixFamily, MatrixKind
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -21,7 +21,7 @@ class WarpMatrixMmaCoverageTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the same normalized inventory used by the C++ generator."""
 
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         mma = next(item for item in database.instructions if item.opcode == "mma")
         cls.variants = {item.name: item for item in mma.variants}
 

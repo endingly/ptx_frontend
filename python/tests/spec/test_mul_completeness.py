@@ -1,9 +1,8 @@
 """Regression coverage for the complete PTX 9.3 MUL specification."""
 
-from pathlib import Path
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import (
     ModifierPresence,
@@ -22,7 +21,7 @@ class MulCompletenessTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the canonical database and retain MUL variants by stable YAML name."""
 
-        database = load_codegen_database(spec_dir=SPEC_DIR)
+        database = get_packaged_spec_database()
         instruction = next(
             item for item in database.instructions if item.opcode == "mul"
         )

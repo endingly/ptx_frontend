@@ -4,7 +4,7 @@ from dataclasses import replace
 import unittest
 
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierKind, ModifierPresence
 
 
@@ -13,7 +13,7 @@ class TensorCtaGroupTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.cp = next(item for item in load_packaged_spec_database().instructions
+        cls.cp = next(item for item in get_packaged_spec_database().instructions
                       if item.opcode == "cp")
 
     def test_census_and_parent_preservation(self) -> None:

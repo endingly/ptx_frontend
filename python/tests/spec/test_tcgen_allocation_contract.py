@@ -3,7 +3,7 @@
 from copy import deepcopy
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import ModifierKind, OperandKind, SemanticRule
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -28,7 +28,7 @@ class TcgenAllocationContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the same packaged instruction database used by generation."""
 
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         cls.instruction = next(
             instruction for instruction in database.instructions
             if instruction.opcode == "tcgen05"

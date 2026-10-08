@@ -3,6 +3,7 @@
 from ptx_frontend.spec.database import (
     CodegenDatabase,
     discover_spec_files,
+    get_packaged_spec_database,
     load_codegen_database,
     load_packaged_spec_database,
     load_spec_database,
@@ -11,6 +12,7 @@ from ptx_frontend.spec.database import (
 __all__ = [
     "CodegenDatabase",
     "discover_spec_files",
+    "get_packaged_spec_database",
     "load_codegen_database",
     "load_packaged_spec_database",
     "load_spec_database",

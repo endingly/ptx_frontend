@@ -2,8 +2,7 @@
 
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
-from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.database import get_packaged_spec_database
 
 
 class CreatepolicyCompletenessTest(unittest.TestCase):
@@ -12,7 +11,7 @@ class CreatepolicyCompletenessTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """Load the canonical packaged database once."""
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         cls.instruction = next(
             instruction
             for instruction in database.instructions

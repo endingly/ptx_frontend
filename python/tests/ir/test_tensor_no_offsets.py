@@ -4,7 +4,7 @@ from dataclasses import replace
 import unittest
 
 from ptx_frontend.ir.resolved_ir import TensorAccessMode, from_instruction_spec
-from ptx_frontend.spec.database import load_packaged_spec_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierPresence
 
 
@@ -13,7 +13,7 @@ class TensorNoOffsetsTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        database = load_packaged_spec_database()
+        database = get_packaged_spec_database()
         cls.cp = next(spec for spec in database.instructions if spec.opcode == "cp")
 
     def test_complete_identity_and_binding_inventory(self) -> None:

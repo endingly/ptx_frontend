@@ -3,7 +3,7 @@
 from copy import deepcopy
 import unittest
 
-from ptx_frontend.spec.database import load_codegen_database
+from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.model import AsyncCompletionKind, OperandKind, SemanticRule
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -19,7 +19,7 @@ class TcgenSyncContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """Read the same packaged source used by production generation."""
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         cls.variants = {variant.name: variant for instruction in database.instructions
                         if instruction.opcode == "tcgen05"
                         for variant in instruction.variants}

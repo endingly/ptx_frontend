@@ -32,6 +32,14 @@ OperandSpec(name, kind, role, access, type_expression)
 该模型只保存生成当前 frontend 所需的字段。YAML 中的文档、example、constraint 等
 尚未被 generator 使用的元数据，不应悄悄混入 C++ 表示。
 
+`get_packaged_spec_database()` 在每个进程首次成功调用时验证并合并打包的规格，
+此后在进程生命周期内返回同一个快照。并发首次调用只初始化一次；加载失败后可以重试。
+调用方应按约定将整个模型视为只读：冻结的 dataclass 仍包含可变的嵌套字典和列表，
+修改它们会影响其他调用方。需要局部修改时先使用 `copy.deepcopy()`。
+兼容模块 `ptx_frontend.code_gen.database` 也导出同一接口。`load_*` 函数始终重新
+读取指定的指令 YAML，包括打包规格；若需要看到快照建立后的文件修改，应使用这些函数。
+其他规格目录不会进入缓存。
+
 database 在合并 opcode 后验证 selector 语言：只有 required/fixed slot 的有序位置
 能够消除绑定歧义时，活动 modifier slot 才可以共享 spelling。同一 variant 的规范
 序列与显式 `modifier_order_aliases` 若有交集，必须产生相同绑定；不同 variant 接受

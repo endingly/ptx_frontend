@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
+from threading import Lock
 from typing import Any, TypeVar
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
@@ -460,13 +461,37 @@ def load_spec_database(*, spec_dir: Traversable) -> CodegenDatabase:
 
 
 def load_packaged_spec_database() -> CodegenDatabase:
-    """Load the PTX instruction specs shipped with the installed wheel."""
+    """Freshly load the PTX instruction specs shipped with the installed wheel."""
 
     return load_spec_database(spec_dir=packaged_spec_dir())
 
 
+# One validated snapshot is shared by callers for the process lifetime.
+_packaged_spec_lock = Lock()
+_packaged_spec_snapshot: CodegenDatabase | None = None
+
+
+def get_packaged_spec_database() -> CodegenDatabase:
+    """Return the shared, validated packaged-spec snapshot for read-only use.
+
+    The first successful call loads the packaged files once per process. The
+    returned object is shared for that process lifetime. Its frozen dataclasses
+    contain mutable nested fields, so callers must treat the whole snapshot as
+    read-only. Use ``copy.deepcopy`` before mutation or a ``load_*`` API when
+    current instruction YAML is required. A failed first load is retried.
+    """
+
+    global _packaged_spec_snapshot
+    with _packaged_spec_lock:
+        if _packaged_spec_snapshot is None:
+            _packaged_spec_snapshot = load_packaged_spec_database()
+        snapshot = _packaged_spec_snapshot
+    return snapshot
+
+
 __all__ = [
     "discover_spec_files",
+    "get_packaged_spec_database",
     "load_packaged_spec_database",
     "load_spec_database",
     "CodegenDatabase",

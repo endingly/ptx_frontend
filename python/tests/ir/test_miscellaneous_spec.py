@@ -9,8 +9,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedImmediateConversionPolicy,
     from_instruction_spec,
 )
-from ptx_frontend.spec.database import load_codegen_database
-from ptx_frontend.spec.resources import packaged_spec_dir
+from ptx_frontend.spec.database import get_packaged_spec_database
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -26,7 +25,7 @@ class MiscellaneousSpecTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the repository's complete canonical specification once."""
 
-        database = load_codegen_database(spec_dir=packaged_spec_dir())
+        database = get_packaged_spec_database()
         cls.instructions = {
             item.opcode: from_instruction_spec(item)
             for item in database.instructions

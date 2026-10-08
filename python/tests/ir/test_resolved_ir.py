@@ -19,7 +19,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.database import get_packaged_spec_database
 from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_descriptors import (
@@ -132,9 +132,7 @@ def build_test_generation_context(database):
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = get_packaged_spec_database()
         # Repository specs remain unchanged.
         # Tests needing mutation load their own fixture.
         cls.database = database

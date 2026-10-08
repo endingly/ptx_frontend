@@ -1,4 +1,5 @@
 from importlib import import_module
+import hashlib
 from importlib.metadata import distribution, version
 from importlib.resources import files
 from importlib.util import find_spec
@@ -43,6 +44,12 @@ def check_packaged_resources() -> None:
     assert packaged_backend_spec_schema().is_file()
     assert packaged_backend_spec().is_file()
     assert packaged_spec_dir().joinpath("arithmetic.yaml").is_file()
+    installed_cp_spec = packaged_spec_dir().joinpath(
+        "data_movement_and_conversion.yaml"
+    ).read_bytes()
+    assert hashlib.sha256(installed_cp_spec).hexdigest() == os.environ[
+        "PTX_FRONTEND_EXPECTED_CP_SPEC_SHA256"
+    ]
 
 
 def check_module_layout() -> None:
@@ -77,6 +84,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
         "ptx_frontend.code_gen.emit.tcgen_mma_operations",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
+        "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",
         "ptx_frontend.spec.tcgen_descriptor_domains",
         "ptx_frontend.spec.tcgen_mma_operations",
@@ -124,6 +132,13 @@ def check_packaged_spec_model() -> None:
     assert all(isinstance(item, InstructionSpec) for item in database.instructions)
 
     assert any(item.opcode == "add" for item in database.instructions)
+
+    cp = next(item for item in database.instructions if item.opcode == "cp")
+    assert len(cp.variants) == 473
+    assert sum(
+        "tensor_" in variant.name and variant.name.endswith("_cache_hint")
+        for variant in cp.variants
+    ) == 178
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

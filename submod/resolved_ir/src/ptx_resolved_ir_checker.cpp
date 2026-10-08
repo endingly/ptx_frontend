@@ -3793,6 +3793,46 @@ CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>& mask,
                  "register or a U16-converted integer literal.",
   }});
 }
+/** Reject an invented or unlocated tensor cache suffix. */
+CheckResult check_tensor_cache_hint(const WithLocs<bool>& hint,
+                                    const Context& context) {
+  if (hint.value && !hint.locs.empty())
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::RuleViolation,
+      .range = diagnostic_range(hint.locs, context),
+      .message = "Tensor cache hint requires a written .L2::cache_hint suffix.",
+  }});
+}
+
+/** Keep the original source alternative before operand views erase detail. */
+CheckResult check_tensor_cache_policy(const WithLocs<RegOrImm>& policy,
+                                      const Context& context) {
+  bool valid = !policy.locs.empty();
+  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&policy.value)) {
+    valid = valid && reg->register_class == ResolvedRegisterClass::General &&
+            !reg->vector_width && (!reg->symbol_id || reg->declared_type) &&
+            (!reg->declared_type || *reg->declared_type == ScalarType::B64 ||
+             *reg->declared_type == ScalarType::U64 ||
+             *reg->declared_type == ScalarType::S64);
+  } else if (const auto* immediate =
+                 std::get_if<ResolvedImmediate>(&policy.value)) {
+    valid = valid && immediate->type == ScalarType::B64 &&
+            immediate->integer_source_bits &&
+            immediate->bits == *immediate->integer_source_bits;
+  } else {
+    valid = false;
+  }
+  if (valid)
+    return {};
+  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = diagnostic_range(policy.locs, context),
+      .message = "Tensor cache policy requires a located scalar B64/U64/S64 "
+                 "register or a B64-converted integer literal with original "
+                 "64-bit source bits.",
+  }});
+}
 }  // namespace checker
 
 std::optional<TensorIm2colInfoRole> tensor_im2col_info_role(

@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +20,16 @@ def check_wheel_contents(wheel: Path) -> None:
 
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
+        packaged_cp_spec = archive.read(
+            "ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml"
+        )
+
+    source_cp_spec = (
+        ROOT / "python/src/ptx_frontend/spec/resources/ptx_spec/"
+        "data_movement_and_conversion.yaml"
+    ).read_bytes()
+    if packaged_cp_spec != source_cp_spec:
+        raise AssertionError("wheel Cp specification differs from this source tree")
 
     required_files = (
         # Shared/public Python implementation.
@@ -55,6 +66,7 @@ def check_wheel_contents(wheel: Path) -> None:
         "ptx_frontend/code_gen/emit/tcgen_descriptor_domains.py",
         "ptx_frontend/code_gen/emit/tcgen_mma_operations.py",
         "ptx_frontend/code_gen/emit/tensor_map_known_facts.py",
+        "ptx_frontend/code_gen/emit/tensor_cache_controls.py",
         "ptx_frontend/ir/tensor_reduction.py",
         "ptx_frontend/spec/tcgen_descriptor_domains.py",
         "ptx_frontend/spec/tcgen_mma_operations.py",
@@ -114,6 +126,12 @@ def run_installed_smoke(wheel: Path) -> None:
         wheel_environment = os.environ.copy()
         wheel_environment.pop("PYTHONPATH", None)
         wheel_environment["PTX_FRONTEND_EXPECTED_VERSION"] = EXPECTED_VERSION
+        wheel_environment["PTX_FRONTEND_EXPECTED_CP_SPEC_SHA256"] = hashlib.sha256(
+            (
+                ROOT / "python/src/ptx_frontend/spec/resources/ptx_spec/"
+                "data_movement_and_conversion.yaml"
+            ).read_bytes()
+        ).hexdigest()
 
         subprocess.run(
             [

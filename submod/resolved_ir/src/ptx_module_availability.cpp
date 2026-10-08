@@ -5,7 +5,6 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
-#include "ptx_cp_control.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -376,6 +375,8 @@ struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<binding::SymbolKind> expected_kind;
+  /** Owned snapshot of a register carrier's cached declaration metadata. */
+  std::optional<ResolvedRegisterRef> register_ref;
   /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
   std::optional<ResolvedSymbolRef> address_symbol;
   /** Copied enclosing function context for an offset address. */
@@ -489,6 +490,7 @@ void collect_operand_references(
                      register_ref.parameterized_index,
                      binding::SymbolKind::Variable, true, locations, fallback,
                      true, requires_predicate_register);
+    uses.back().register_ref = register_ref;
   };
   if constexpr (std::same_as<Value, ResolvedRegisterRef>) {
     collect_register(value);
@@ -957,6 +959,21 @@ void check_module_references(const ResolvedModule& module,
           "Resolved module operand has an incompatible declaration identity.");
       continue;
     }
+    if (use.register_ref) {
+      const auto declared =
+          symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
+                       : std::nullopt;
+      const auto& cached = *use.register_ref;
+      if (!declared || cached.declared_type != declared ||
+          cached.vector_width != symbol->vector_width ||
+          cached.register_class != (*declared == ScalarType::Pred
+                                        ? ResolvedRegisterClass::Predicate
+                                        : ResolvedRegisterClass::General)) {
+        append_model_mismatch(
+            diagnostics, use.range,
+            "Resolved register metadata disagrees with its owned declaration.");
+      }
+    }
     if (use.parameterized_index &&
         (!symbol->parameterized_count ||
          *use.parameterized_index >= *symbol->parameterized_count)) {
@@ -1041,196 +1058,6 @@ void check_tcgen_cta_groups(const ResolvedFunction& function,
           .message = "Tensor Memory CTA group conflicts with another "
                      "instruction in this function body.",
       });
-    }
-  }
-}
-
-/** Compare a borrowed register's cached scalar type with its owned declaration. */
-void check_cached_register_binding(const ResolvedModule& module,
-                                   const ResolvedRegisterRef& register_ref,
-                                   std::span<const SourceRange> locations,
-                                   SourceRange fallback,
-                                   std::string_view operand_name,
-                                   checker::CheckDiagnostics& diagnostics) {
-  if (!register_ref.symbol_id)
-    return;  // The general reference validator reports missing identities.
-  const auto* symbol = owned_symbol(module, *register_ref.symbol_id);
-  if (!symbol)
-    return;  // The general reference validator reports invalid identities.
-  const auto declared = symbol->type
-                            ? detail::scalar_type_from_ptx_name(*symbol->type)
-                            : std::nullopt;
-  if (!declared || register_ref.declared_type != declared) {
-    append_model_mismatch(
-        diagnostics, reference_range(locations, fallback),
-        fmt::format("{} register type disagrees with its owned declaration.",
-                    operand_name));
-  }
-}
-
-/** Revalidate copy-control cached types without source AST. */
-void check_cp_async_control_bindings(const ResolvedModule& module,
-                                     const ResolvedFunction& function,
-                                     checker::CheckDiagnostics& diagnostics) {
-  /** Check only designated Cp control registers supplied by the private walker. */
-  struct TypeObserver final : detail::IReferenceObserver {
-    /** Borrow module and diagnostics for one synchronous instruction visit. */
-    TypeObserver(const ResolvedModule& owner, SourceRange range,
-                 checker::CheckDiagnostics& output)
-        : module(owner), fallback(range), diagnostics(output) {}
-    /** Compare a borrowed control register's cached type and declaration. */
-    void reg(const ResolvedRegisterRef& value,
-             std::span<const SourceRange> locations,
-             checker::AddressSymbolResolutionPolicy) override {
-      check_cached_register_binding(module, value, locations, fallback,
-                                    "cp.async control", diagnostics);
-    }
-    /** Borrowed module whose symbol table owns every identity. */
-    const ResolvedModule& module;
-    /** Owned instruction range used for missing operand provenance. */
-    SourceRange fallback;
-    /** Borrowed ordered diagnostic destination. */
-    checker::CheckDiagnostics& diagnostics;
-  };
-  for (size_t index = 0; index < function.body.size(); ++index) {
-    if (!function.body[index])
-      continue;
-    TypeObserver observer(module, function.instruction_ranges[index],
-                          diagnostics);
-    detail::visit_cp_control_registers(*function.body[index], observer);
-  }
-}
-
-/** Revalidate a register alternative against its owned declaration. */
-void check_register_alternative_binding(
-    const RegOrImm& value, const ResolvedModule& module,
-    std::span<const SourceRange> locations, SourceRange fallback,
-    std::string_view operand_name, checker::CheckDiagnostics& diagnostics) {
-  if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
-    check_cached_register_binding(module, *register_ref, locations, fallback,
-                                  operand_name, diagnostics);
-}
-
-/** Revalidate modern composite payload cached types after syntax release. */
-void check_tensor_coordinate_bindings(const ResolvedModule& module,
-                                      const ResolvedFunction& function,
-                                      checker::CheckDiagnostics& diagnostics) {
-  /** Borrow tensor payloads only during each synchronous reference visit. */
-  struct TypeObserver final : detail::IReferenceObserver {
-    /** Borrow the owned symbol table and diagnostic sink for one instruction. */
-    TypeObserver(const ResolvedModule& owner, SourceRange range,
-                 checker::CheckDiagnostics& output)
-        : module(owner), fallback(range), diagnostics(output) {}
-
-    /** Check a standalone coordinate tuple at its operand source location. */
-    void tensor_coordinate(const ResolvedTensorCoordinate& value,
-                           std::span<const SourceRange> locations,
-                           checker::AddressSymbolResolutionPolicy) override {
-      for (const auto& element : value.elements)
-        check_register_alternative_binding(element, module, locations, fallback,
-                                           "Tensor coordinate", diagnostics);
-    }
-
-    /** Check cached types of im2col information register elements. */
-    void tensor_im2col_info(const ResolvedTensorIm2colInfo& value,
-                            std::span<const SourceRange> locations,
-                            checker::AddressSymbolResolutionPolicy) override {
-      for (const auto& element : value.elements)
-        check_register_alternative_binding(element, module, locations, fallback,
-                                           "Tensor im2col info", diagnostics);
-    }
-
-    /** Check the cached type of a Tensor Memory address register. */
-    void tensor_memory_address(
-        const TensorMemoryAddress& value,
-        std::span<const SourceRange> locations,
-        checker::AddressSymbolResolutionPolicy) override {
-      check_register_alternative_binding(value.value, module, locations,
-                                         fallback, "Tensor Memory address",
-                                         diagnostics);
-    }
-
-    /** Check both cached matrix scale selector register types. */
-    void matrix_scale_selector(
-        const ResolvedMatrixScaleSelector& value,
-        std::span<const SourceRange> locations,
-        checker::AddressSymbolResolutionPolicy) override {
-      check_register_alternative_binding(value.byte_id, module, locations,
-                                         fallback, "Matrix scale selector",
-                                         diagnostics);
-      check_register_alternative_binding(value.thread_id, module, locations,
-                                         fallback, "Matrix scale selector",
-                                         diagnostics);
-    }
-
-    /** Check the cached type of a shared matrix descriptor register. */
-    void shared_matrix_descriptor(
-        const ResolvedSharedMatrixDescriptor& value,
-        std::span<const SourceRange> locations,
-        checker::AddressSymbolResolutionPolicy) override {
-      check_cached_register_binding(module, value.register_ref, locations,
-                                    fallback, "Shared matrix descriptor",
-                                    diagnostics);
-    }
-
-    /** Check each nested coordinate at its own preserved source range. */
-    void tensor_operand(const ResolvedTensorOperand& value,
-                        std::span<const SourceRange>,
-                        checker::AddressSymbolResolutionPolicy) override {
-      for (size_t index = 0; index < value.coordinates.elements.size();
-           ++index) {
-        const auto* coordinate = std::get_if<ResolvedRegisterRef>(
-            &value.coordinates.elements[index]);
-        if (!coordinate)
-          continue;
-        const std::array<SourceRange, 1> range{
-            index < value.coordinate_ranges.size()
-                ? value.coordinate_ranges[index]
-                : fallback};
-        check_cached_register_binding(module, *coordinate, range, fallback,
-                                      "Tensor coordinate", diagnostics);
-      }
-    }
-
-    /** Borrowed module whose symbol table owns all observed identities. */
-    const ResolvedModule& module;
-    /** Owned instruction range for coordinates without element provenance. */
-    SourceRange fallback;
-    /** Borrowed destination for declaration mismatch diagnostics. */
-    checker::CheckDiagnostics& diagnostics;
-  };
-
-  for (size_t index = 0; index < function.body.size(); ++index) {
-    if (!function.body[index])
-      continue;
-    TypeObserver observer(module, function.instruction_ranges[index],
-                          diagnostics);
-    function.body[index]->visit_references(observer);
-  }
-}
-
-/** Match an owned bulk-store size register's cached type to its declaration. */
-void check_st_bulk_size_bindings(const ResolvedModule& module,
-                                 const ResolvedFunction& function,
-                                 checker::CheckDiagnostics& diagnostics) {
-  for (size_t index = 0; index < function.body.size(); ++index) {
-    const auto* bulk = instruction_if<StBulkZero>(function.body[index]);
-    if (!bulk)
-      continue;
-    const auto* size = std::get_if<ResolvedRegisterRef>(&bulk->size.value);
-    if (!size)
-      continue;
-    const auto* symbol =
-        size->symbol_id ? owned_symbol(module, *size->symbol_id) : nullptr;
-    const auto declared = symbol && symbol->type
-                              ? detail::scalar_type_from_ptx_name(*symbol->type)
-                              : std::nullopt;
-    if (!declared || !size->declared_type ||
-        *size->declared_type != *declared) {
-      append_model_mismatch(
-          diagnostics,
-          reference_range(bulk->size.locs, function.instruction_ranges[index]),
-          "st.bulk size register type disagrees with its owned declaration.");
     }
   }
 }
@@ -2122,9 +1949,6 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
       check_tcgen_cta_groups(function, diagnostics);
-      check_cp_async_control_bindings(module, function, diagnostics);
-      check_tensor_coordinate_bindings(module, function, diagnostics);
-      check_st_bulk_size_bindings(module, function, diagnostics);
       check_typed_call_literals(module, function, signatures,
                                 parameter_properties, diagnostics);
     }

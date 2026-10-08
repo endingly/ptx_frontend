@@ -249,6 +249,11 @@ def _emit_tensor_layout_checks(variant, layout, slots, backend) -> str:
             "tensor_multicast_mask_check",
             f"check_tensor_multicast_mask({member('cta_mask')}, context)",
         )
+    if any(field.name == "cache_policy" for field in layout.fields):
+        checks += _emit_named_rule_check(
+            "tensor_cache_policy_check",
+            f"check_tensor_cache_policy({member('cache_policy')}, context)",
+        )
     return checks
 
 
@@ -285,6 +290,15 @@ def _emit_check(entry, variant, variant_index: int, backend) -> str:
         and any(field.source_name == "cta_group" for field in modifier_fields)
         else ""
     )
+    hint_check = (
+        _emit_named_rule_check(
+            "tensor_cache_hint_check",
+            "check_tensor_cache_hint(selected.cache_hint, context)",
+        )
+        if variant.tensor_access_mode is not None
+        and any(field.name == "cache_hint" for field in modifier_fields)
+        else ""
+    )
     return f"""/** Check the {name} final form in existing diagnostic order. */
 checker::CheckResult {name}::check(const checker::Context& context) const {{
   const auto& selected = *this;
@@ -310,6 +324,7 @@ checker::CheckResult {name}::check(const checker::Context& context) const {{
       modifier_values, context);
 {_append_result('modifier_availability_check')}
 {group_check}
+{hint_check}
   const auto layout_check = checker::check_operand_layout_tag(
       "{variant.cpp_name}", operand_layout.value,
       {len(variant.operand_layouts)}, context);
@@ -443,78 +458,6 @@ std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{entry.cpp
 }}"""
 
 
-def _emit_cp_control_helper(entry, backend) -> str:
-    """Emit a private, non-template exact Cp control-register traversal."""
-
-    if entry.resolved.opcode != "cp":
-        return ""
-    cases = []
-    for variant in entry.resolved.variants:
-        name = form_name(entry, variant)
-        slots = operand_slots(variant, backend)
-        layouts = []
-        for index, layout in enumerate(variant.operand_layouts):
-            validity = [
-                f"selected.{slot.member_name}.has_value() == "
-                f"{'true' if index in slot.layout_indices else 'false'}"
-                for slot in slots if slot.optional
-            ]
-            guard = (
-                "        if (!(" + " &&\n              ".join(validity) + ")) return;\n"
-                if validity else ""
-            )
-            callbacks = []
-            for field in layout.fields:
-                if field.name not in {"source_control", "cache_policy"}:
-                    continue
-                slot = operand_slot_for_field(slots, field, backend)
-                member = (
-                    f"(*selected.{slot.member_name})" if slot.optional
-                    else f"selected.{slot.member_name}"
-                )
-                if field.value_kind is ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL:
-                    callbacks.append(f"""        std::visit([&](const auto& control) {{
-          using T = std::remove_cvref_t<decltype(control)>;
-          if constexpr (std::same_as<T, ResolvedRegisterRef>) {{
-            observer.reg(control, {member}.locs,
-                checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
-          }} else if constexpr (std::same_as<T, ResolvedPredicate> ||
-                               std::same_as<T, ResolvedCpAsyncCachePolicy>) {{
-            observer.reg(control.register_ref, {member}.locs,
-                checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
-          }}
-        }}, {member}.value);""")
-                else:
-                    callbacks.append(f"""        observer.reg({member}.value, {member}.locs,
-            checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);""")
-            body = "\n".join(callbacks)
-            layouts.append(f"""      case {index}: {{
-{guard}{body}
-        return;
-      }}""")
-        layout_cases = "\n".join(layouts)
-        cases.append(f"""    case InstructionKind::{name}: {{
-      const auto& selected = dynamic_cast<const {name}&>(instruction);
-      switch (selected.operand_layout.value) {{
-{layout_cases}
-        default:
-          return;
-      }}
-    }}""")
-    branch = "\n".join(cases)
-    return f"""namespace detail {{
-/** Borrow designated Cp control registers only after direct-layout validation. */
-void visit_cp_control_registers(const Instruction& instruction,
-                                IReferenceObserver& observer) {{
-  switch (instruction.instruction_kind()) {{
-{branch}
-    default:
-      return;
-  }}
-}}
-}}  // namespace detail"""
-
-
 def generate_resolved_opcode_source(
     context: GenerationContext, *, category: str, opcode: str, output_path: Path
 ) -> None:
@@ -541,8 +484,6 @@ def generate_resolved_opcode_source(
         entry, enumerate(instruction.variants), backend
     )
     resolver = _emit_resolve(entry, backend)
-    cp_helper = _emit_cp_control_helper(entry, backend)
-    cp_include = '#include "ptx_cp_control.hpp"\n' if opcode == "cp" else ""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor_getters = (
         _emit_sharded_descriptor_getters(entry, len(shards)) if shards else f"""
@@ -568,7 +509,6 @@ const checker::InstructionDescriptor& {prefix}_checker_descriptor() noexcept {{
 #include <utility>
 #include <{INCLUDE_ROOT}/model/{category}/{opcode}.gen.hpp>
 #include <{INCLUDE_ROOT}/ptx_resolved_ir_resolution_detail.hpp>
-{cp_include}
 
 namespace ptx_frontend::resolved_ir {{
 
@@ -589,7 +529,6 @@ namespace generated_detail {{
 
 {resolver}
 
-{cp_helper}
 
 }}  // namespace ptx_frontend::resolved_ir
 """, encoding="utf-8")

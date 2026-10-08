@@ -20,6 +20,7 @@ class TensorMulticastTests(unittest.TestCase):
         resolved = from_instruction_spec(self.cp)
         selected = {variant.variant_id: variant for variant in resolved.variants
                     if variant.tensor_multicast
+                    and not variant.variant_id.endswith("_cache_hint")
                     and not variant.variant_id.endswith("_cta_group")}
         expected = {
             f"cp_async_bulk_tensor_{rank}d_shared_cluster_multicast"
@@ -35,10 +36,13 @@ class TensorMulticastTests(unittest.TestCase):
         self.assertEqual(sum(len(v.operand_layouts) for v in selected.values()), 24)
         old = [v for v in resolved.variants if v.tensor_access_mode is not None
                and not v.tensor_multicast
+               and not v.variant_id.endswith("_cache_hint")
                and not v.variant_id.endswith("_cta_group")]
         self.assertEqual(len(old), 118)
         self.assertEqual(sum(len(v.operand_layouts) for v in old), 145)
         self.assertEqual(sum(not v.variant_id.endswith("_cta_group")
+                             and not (v.tensor_access_mode is not None
+                                      and v.variant_id.endswith("_cache_hint"))
                              for v in resolved.variants), 250)
         for variant in selected.values():
             for layout in variant.operand_layouts:

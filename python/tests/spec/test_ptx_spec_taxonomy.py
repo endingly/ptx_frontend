@@ -177,6 +177,7 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             if variant["name"].startswith(
                 ("cp_async_bulk_tensor_", "cp_async_bulk_prefetch_tensor_")
             )
+            and not variant["name"].endswith("_cache_hint")
             for layout in (
                 variant.get("operand_layouts")
                 or ({"operands": variant.get("operands", [])},)

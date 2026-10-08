@@ -95,7 +95,10 @@ class FormShardTests(unittest.TestCase):
                         item.category == category
                         for item in plan.artifacts[start:start + 3]
                     ))
-            self.assertEqual(len(plan.paths), 10 + 2 + 3 * len(form_shards(self.cp)))
+            self.assertEqual(
+                len(plan.paths),
+                len(plan.global_artifacts) + 2 + 3 * len(form_shards(self.cp)),
+            )
 
     def test_emitted_shards_own_only_their_canonical_forms(self) -> None:
         """Bound emitters preserve class identity and global method indexes."""
@@ -104,10 +107,11 @@ class FormShardTests(unittest.TestCase):
             root = Path(directory)
             first = build_generation_plan(self.context, root / "first")
             second = build_generation_plan(self.context, root / "second")
+            shard_start = len(first.global_artifacts)
             selected = (0, 1)
             for index in selected:
                 for offset in range(3):
-                    artifact_index = 10 + 3 * index + offset
+                    artifact_index = shard_start + 3 * index + offset
                     left = first.artifacts[artifact_index]
                     right = second.artifacts[artifact_index]
                     left.emit(self.context, output_path=left.path)
@@ -115,7 +119,7 @@ class FormShardTests(unittest.TestCase):
                     self.assertEqual(left.path.read_bytes(), right.path.read_bytes())
 
                 descriptor, header, methods = (
-                    first.artifacts[10 + 3 * index + offset].path.read_text(
+                    first.artifacts[shard_start + 3 * index + offset].path.read_text(
                         encoding="utf-8")
                     for offset in range(3)
                 )

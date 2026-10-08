@@ -156,6 +156,11 @@ CheckResult check_tensor_gather_scatter_coordinates(
 /** Recheck a multicast mask's owned scalar carrier and U16 source conversion. */
 CheckResult check_tensor_multicast_mask(const WithLocs<RegOrImm>&,
                                         const Context&);
+/** Require a written cache hint with preserved source provenance. */
+CheckResult check_tensor_cache_hint(const WithLocs<bool>&, const Context&);
+/** Recheck the owned scalar B64 policy carrier after syntax ownership ends. */
+CheckResult check_tensor_cache_policy(const WithLocs<RegOrImm>&,
+                                      const Context&);
 /** Check typed non-bulk copy source control and statically known zero-fill size. */
 CheckResult check_cp_async_rule(std::span<const FieldView>,
                                 std::span<const OperandView>, const Context&);

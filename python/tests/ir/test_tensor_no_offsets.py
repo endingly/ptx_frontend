@@ -20,7 +20,10 @@ class TensorNoOffsetsTests(unittest.TestCase):
         resolved = from_instruction_spec(self.cp)
         modes = {variant.variant_id: variant.tensor_access_mode
                  for variant in resolved.variants
-                 if not variant.variant_id.endswith("_cta_group")}
+                 if not (variant.tensor_access_mode is not None
+                         and variant.variant_id.endswith("_cache_hint"))
+                 and not variant.variant_id.endswith("_cta_group")}
+        self.assertEqual(len(modes), 250)
         no_offsets = {name for name, mode in modes.items()
                       if mode is TensorAccessMode.IM2COL_NO_OFFS}
         expected = {

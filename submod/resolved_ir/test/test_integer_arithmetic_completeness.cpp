@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string_view>
@@ -362,8 +363,9 @@ TEST(IntegerArithmeticCompleteness, RetainsOwnedOperandsAndRejectsMutation) {
   const auto invalid = validateModule(
       *owned_module, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());
-  EXPECT_EQ(invalid.error().front().kind,
-            checker::CheckDiagnosticKind::OperandTypeMismatch);
+  EXPECT_TRUE(std::ranges::any_of(invalid.error(), [](const auto& issue) {
+    return issue.kind == checker::CheckDiagnosticKind::OperandTypeMismatch;
+  }));
 }
 
 }  // namespace

@@ -35,6 +35,7 @@ class TensorIm2colInfoTests(unittest.TestCase):
         selected = {variant.variant_id: variant for variant in resolved.variants
                     if variant.tensor_im2col_info_elements
                     and not variant.tensor_multicast
+                    and not variant.variant_id.endswith("_cache_hint")
                     and not variant.variant_id.endswith("_cta_group")}
         self.assertEqual(set(selected), expected)
         self.assertEqual(sum(len(v.operand_layouts) for v in selected.values()), 54)
@@ -61,6 +62,7 @@ class TensorIm2colInfoTests(unittest.TestCase):
                if v.tensor_access_mode in {
                    TensorAccessMode.TILED, TensorAccessMode.IM2COL_NO_OFFS}
                and not v.tensor_multicast
+               and not v.variant_id.endswith("_cache_hint")
                and not v.variant_id.endswith("_cta_group")]
         self.assertEqual(len(old), 87)
         self.assertTrue(all(not any("im2col_info" == field.name

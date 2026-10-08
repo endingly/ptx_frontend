@@ -5,7 +5,7 @@ describes the semantic fields that must appear in the generated C++ resolved
 instruction structs; it does not describe C++ storage or emitter layout.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 from typing import overload
@@ -33,6 +33,7 @@ from ptx_frontend.spec.model import (
     OperandParameterConstraint,
     OperandAccess,
     OperandKind,
+    OperandLayoutSpec,
     OperandImmediateConversionPolicy,
     OperandRegisterWidthPolicy,
     OperandRole,
@@ -703,17 +704,123 @@ def _build_atomic_address_qualifier_domain(
     return tuple(domain)
 
 
+def _tensor_variant_without_cache_controls(
+    opcode: str, variant: VariantSpec,
+) -> VariantSpec:
+    """Validate a cache sibling, then reuse every accepted parent tensor rule.
+
+    The returned value is only a validation view. Generated fields and layouts
+    still come from the original variant, including its written hint and both
+    final-policy states. This prevents a second mode, rank, or target map.
+    """
+
+    has_tensor = any(
+        operand.kind is OperandKind.TENSOR_OPERAND
+        for layout in variant.operand_layouts for operand in layout.operands
+    )
+    if not has_tensor:
+        return variant
+    hints = [modifier for modifier in variant.modifiers
+             if modifier.name == "cache_hint"]
+    policy_layouts = [layout for layout in variant.operand_layouts
+                      if any(operand.name == "cache_policy"
+                             for operand in layout.operands)]
+    if not hints and not policy_layouts:
+        return variant
+    if not hints or opcode != "cp":
+        raise ValueError(f"variant {variant.name!r}: policy requires tensor hint")
+    if len(hints) != 1 or variant.modifiers[-1] is not hints[0]:
+        raise ValueError(f"variant {variant.name!r}: invalid cache hint position")
+    hint = hints[0]
+    if (hint.kind is not ModifierKind.FLAG
+            or hint.presence is not ModifierPresence.REQUIRED
+            or tuple(value.value for value in hint.values) != (True,)
+            or hint.value is not None or hint.default is not None
+            or modifier_spellings(hint) != (".L2::cache_hint",)):
+        raise ValueError(f"variant {variant.name!r}: invalid written cache hint")
+
+    expected_policy = OperandSpec(
+        name="cache_policy",
+        kind=OperandKind.REGISTER_OR_IMMEDIATE,
+        role=OperandRole.SOURCE,
+        access=OperandAccess.READ,
+        type_expression=OperandTypeExpression(
+            kind=OperandTypeExpressionKind.FIXED_SCALAR,
+            scalar_type="b64",
+        ),
+        immediate_conversion_policy=OperandImmediateConversionPolicy.NARROW,
+    )
+    bases: list[OperandLayoutSpec] = []
+    with_policy: dict[str, OperandLayoutSpec] = {}
+    for layout in variant.operand_layouts:
+        mentions_policy = [operand for operand in layout.operands
+                           if operand.name == "cache_policy"]
+        if not mentions_policy:
+            bases.append(layout)
+            continue
+        if (len(mentions_policy) != 1
+                or layout.operands[-1] != expected_policy
+                or not layout.name.endswith("_policy")):
+            raise ValueError(f"variant {variant.name!r}: invalid final cache policy")
+        base_name = (
+            "without_policy" if layout.name == "with_policy"
+            else layout.name.removesuffix("_policy")
+        )
+        if base_name in with_policy:
+            raise ValueError(f"variant {variant.name!r}: duplicate policy layout")
+        with_policy[base_name] = layout
+    if not bases or len(bases) != len(with_policy):
+        raise ValueError(f"variant {variant.name!r}: incomplete cache layouts")
+    single = len(bases) == 1 and bases[0].name == "without_policy"
+    if single:
+        base_names = ("without_policy",)
+    else:
+        base_names = ("without_info", "with_info")
+    if tuple(layout.name for layout in bases) != base_names:
+        raise ValueError(f"variant {variant.name!r}: invalid cache layout names")
+    for base in bases:
+        paired = with_policy.get(base.name)
+        if (paired is None
+                or paired.operands != base.operands + (expected_policy,)
+                or paired.kind is not base.kind
+                or paired.availability != base.availability
+                or paired.forbidden_modifiers != base.forbidden_modifiers):
+            raise ValueError(f"variant {variant.name!r}: cache layout changed parent")
+    expected_names = (
+        ("without_policy", "with_policy") if single else
+        ("without_info", "without_info_policy", "with_info", "with_info_policy")
+    )
+    if tuple(layout.name for layout in variant.operand_layouts) != expected_names:
+        raise ValueError(f"variant {variant.name!r}: cache layout order")
+    aliases = []
+    for alias in variant.modifier_order_aliases:
+        if not alias or alias[-1] != "cache_hint":
+            raise ValueError(f"variant {variant.name!r}: misplaced cache alias")
+        aliases.append(alias[:-1])
+    original_layouts = tuple(
+        replace(layout, name="default" if single else layout.name)
+        for layout in bases
+    )
+    return replace(
+        variant,
+        modifiers=variant.modifiers[:-1],
+        operand_layouts=original_layouts,
+        modifier_order_aliases=tuple(aliases),
+    )
+
+
 def _build_variant(
     opcode: str, variant: VariantSpec,
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
-    tensor_access_mode = _build_tensor_access_mode(opcode, variant)
-    tensor_destination = _build_tensor_destination(variant, tensor_access_mode)
-    tensor_multicast = _build_tensor_multicast(variant, tensor_access_mode)
+    semantic_variant = _tensor_variant_without_cache_controls(opcode, variant)
+    tensor_access_mode = _build_tensor_access_mode(opcode, semantic_variant)
+    tensor_destination = _build_tensor_destination(semantic_variant, tensor_access_mode)
+    tensor_multicast = _build_tensor_multicast(semantic_variant, tensor_access_mode)
     tensor_cta_group_applicable = _build_tensor_cta_group(
-        variant, tensor_access_mode, tensor_multicast
+        semantic_variant, tensor_access_mode, tensor_multicast
     )
-    expected_tensor_rank = _build_expected_tensor_rank(variant, tensor_access_mode)
+    expected_tensor_rank = _build_expected_tensor_rank(semantic_variant, tensor_access_mode)
     active_modifiers = tuple(
         modifier
         for modifier in variant.modifiers
@@ -824,7 +931,7 @@ def _build_variant(
         tcgen_commit_multicast="multicast_cluster" in sync_names,
         tcgen_fence_direction=fence_direction,
         tensor_reduction_op=_build_tensor_reduction_op(
-            opcode, variant, tensor_access_mode
+            opcode, semantic_variant, tensor_access_mode
         ),
         tensor_access_mode=tensor_access_mode,
         tensor_destination=tensor_destination,

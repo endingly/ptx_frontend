@@ -63,9 +63,10 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
-`ResolvedFunction::body` is a vector of `unique_ptr<Instruction>`. Each of the
-965 semantic forms is a distinct final class. There is no opcode owner wrapper,
-instruction union, or layout-payload variant in the active API. Exact-class
+`ResolvedFunction::body` is a vector of `unique_ptr<Instruction>`. Each modeled
+semantic form is a distinct final class with an immutable kind. There is no
+opcode owner wrapper or instruction union in the active API; selected small
+operand-layout payloads may still use typed variants. Exact-class
 queries use `dynamic_cast` to a final class, not opcode identity alone; the
 module implementation has a constrained private helper for these casts. Copying a
 `ResolvedFunction` clones every non-null instruction and all metadata, while
@@ -75,6 +76,19 @@ Internal `IReferenceObserver` callbacks borrow typed foundation values and
 location spans synchronously; validation forbids reentrant payload mutation.
 Source ranges, symbol identity, Call literal normalization, and the distinct
 resolution-only versus final-validation guarantees remain in force.
+
+Matrix data forms expose immutable class topology through
+`matrix_descriptor()`; mutable operand fields retain source-selected values and
+locations. Neither a mutable logical-form tag nor a `matrix_logical_index`
+lookup is part of this contract. Shared matrix descriptors retain a bound
+register identity while their runtime bits remain opaque. The separate
+[`TensorMapKnownFacts` query](tensor_map_known_facts.md) accepts caller-supplied
+descriptor facts. Its
+`project_tensor_known_access_context(const Instruction&, const checker::Context&)`
+adapter copies selected typed TMA access facts without retaining the AST:
+non-tensor forms yield no access or diagnostics, malformed tensor metadata
+yields diagnostics without access, and target unavailability preserves the
+copied access with availability false. It does not decode raw descriptor bytes.
 
 The module entry points have distinct success contracts:
 
@@ -605,12 +619,19 @@ uses `ResolveException`, distinct from `ResolveDiagnostic`.
 `select_variant_name` is the non-template descriptor matcher. At the resolver
 boundary its selected name maps once to a typed form index; subsequent
 construction uses typed dispatch. Generated final class definitions and
-resolver declarations share one full per-opcode header under the YAML
+resolver declarations use a stable per-opcode aggregate header under the YAML
 `codegen_category`; callers with only model needs can use the generated base
 header. The aggregate `ptx_resolved_ir.gen.hpp` includes all opcode
-headers. Non-inline resolver, checker, clone, and observer definitions are
-emitted into one `.gen.cpp` per opcode and compiled into the library. The
-internal fixed-domain observer is not a public all-family visitor template.
+aggregates. An opcode with more than 64 forms has deterministic public
+`*_forms_NNN.gen.hpp` declaration shards and private `*_methods_NNN.gen.cpp`
+and `*_descriptors_NNN.gen.cpp` shards, each covering at most 64 forms. The
+per-opcode header remains the public include entry point. Its descriptor
+getters have a `const&`/`noexcept` contract: a bounded, one-time function-local
+`static const std::array` concatenates canonical shard rows into stable
+contiguous storage without a heap allocation. Non-inline method definitions
+are compiled into the library. The internal fixed-domain observer is not a
+public all-family visitor template; adding a form to an existing shard does
+not promise zero recompilation elsewhere.
 
 ## Three descriptors
 

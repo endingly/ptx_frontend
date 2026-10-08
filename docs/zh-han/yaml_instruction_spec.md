@@ -439,7 +439,8 @@ layout。对全部三类 constraint，省略该 operand 表示 constraint 不适
 `reg` occurrence 会导致 normalization error，并指明 variant、constraint kind、operand 与
 layout。这样既允许 optional operand，又在值 contract 要求时保留 immediate-only rule。
 
-当前冻结的 `setmaxnreg.inc.sync.aligned.u32` form 展示了 range 与 divisibility rule 的组合：
+`setmaxnreg.inc.sync.aligned.u32` 与 `setmaxnreg.dec.sync.aligned.u32`
+使用相同的 range 和 divisibility rule：
 
 ```yaml
 operands:
@@ -449,7 +450,7 @@ constraints:
   - {kind: immediate_multiple_of, operand: count, divisor: 8}
 ```
 
-因此 `192` 合法，`23`、`257` 和 `25` 会被拒绝。`bfe.u32` 与 `bfi.b32` 都使用两个
+因此两种 action 下 `192` 都合法，`23`、`257` 和 `25` 都会被拒绝。`bfe.u32` 与 `bfi.b32` 都使用两个
 独立的 inclusive range：`offset` 和 `width` 均为 `0..255`；两个 operand 在各自唯一的
 layout 中都是 immediate operand。
 
@@ -521,7 +522,8 @@ checker 公共逻辑解释最低 PTX、SM 与 `family` 要求。`family` 是最�
 family-specific 源特性 target：checker 只在 source target profile 的
 `enabled_family_features` 中查找。显式 catalog 为：`sm_100` → 无；
 `sm_100f`/`sm_100a` → `sm_100f`；`sm_103` → 无；`sm_103f`/`sm_103a` →
-`sm_100f`、`sm_103f`；`sm_120` → 无；`sm_120f`/`sm_120a` 为 `sm_120f`；
+`sm_100f`、`sm_103f`；`sm_110` → 无；`sm_110f`/`sm_110a` → `sm_110f`；
+`sm_120` → 无；`sm_120f`/`sm_120a` 为 `sm_120f`；
 `sm_121` → 无；`sm_121f`/`sm_121a` 为 `sm_120f`、`sm_121f`。不得由 SM 数字或
 target 后缀推断此集合。它不同于 PTX 到物理 GPU 的 translation compatibility；后者当前不建模。
 `a` target 是 exact identity，不能作 family spelling；需要精确 target 时使用
@@ -533,7 +535,11 @@ dispatch，而 checker descriptor 仅将该 spelling 保留为 inert metadata。
 Python 测试。
 
 `any_of` 的一个 clause 也可以包含 `family`；它是该 clause 内的 AND-term，沿用同一
-`enabled_family_features` 查找，不要求该 exact target spelling。
+`enabled_family_features` 查找，不要求该 exact target spelling。schema、normalizer
+与生成的 descriptor 允许一至六个 clause。`setmaxnreg` 使用全部六个：exact
+`sm_90a`（PTX 8.0）、exact `sm_100a`（8.6）、exact `sm_120a`（8.7）、
+已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
+family（9.0）。指令契约见[杂项指令覆盖范围](miscellaneous_coverage.md)。
 
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
 只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from ptx_frontend.code_gen.context import GenerationContext, GenerationInstruction
@@ -19,7 +20,9 @@ from ptx_frontend.code_gen.emit.resolved_descriptors import (
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
     _emit_instruction_descriptor_storage as emit_syntax_storage,
 )
-from ptx_frontend.code_gen.emit.resolved_model import INCLUDE_ROOT, form_name, method_name
+from ptx_frontend.code_gen.emit.resolved_model import (
+    INCLUDE_ROOT, form_name, form_shards, method_name,
+)
 from ptx_frontend.code_gen.resolved_layout import operand_slot_for_field, operand_slots
 from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
@@ -31,6 +34,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandLayout,
     ResolvedValueKind,
     ResolvedVariant,
+    TensorAccessMode,
 )
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.spec.model import AsyncCompletionKind, SemanticRule
@@ -124,6 +128,9 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
     checker_variant = f"{checker_descriptor}.variants[{variant_index}]"
     cross_checks = _emit_cross_rule_checks(entry.resolved, variant, checker_variant)
     cross_checks = cross_checks.replace("instruction.address_qualifier", "selected.address_qualifier")
+    mma_check = _emit_tcgen_mma_source_check(variant, layout, slots, backend)
+    tensor_checks = _emit_tensor_layout_checks(variant, layout, slots, backend)
+    matrix = f"&{name}::matrix_topology" if variant.matrix is not None else "nullptr"
     return f"""    case {layout_index}: {{
       const auto availability_check = checker::check_operand_layout_availability(
           {checker_variant}, {layout_index}, context);
@@ -138,11 +145,111 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
       const auto operand_check = checker::check_operands(
           {descriptor}.variants[{variant_index}].operand_layouts[{layout_index}].bindings,
           fields, operands, {checker_variant}.operand_type_compatibilities,
-          context);
+          context, {matrix});
 {_append_result('operand_check')}
+{mma_check}
+{tensor_checks}
 {cross_checks}
       break;
     }}"""
+
+
+def _emit_named_rule_check(label: str, expression: str) -> str:
+    """Emit one ordered checker call and append its diagnostics."""
+
+    return f"      const auto {label} = {expression};\n{_append_result(label)}\n"
+
+
+def _emit_tcgen_mma_source_check(variant, layout, slots, backend) -> str:
+    """Select MMA A's typed carrier from the field, not its layout label."""
+
+    if variant.rule is not SemanticRule.TENSOR_MEMORY_MMA:
+        return ""
+    fields = {field.name: field for field in layout.fields}
+    def reference(name: str) -> str:
+        """Borrow the selected direct member after the emitted presence guard."""
+
+        field = fields[name]
+        slot = operand_slot_for_field(slots, field, backend)
+        return "&" + _member_expr(field, slot)
+    a = fields["a"]
+    if a.value_kind is ResolvedValueKind.TCGEN_BRACKETED_ADDRESS:
+        address, shared = reference("a"), "nullptr"
+    elif a.value_kind is ResolvedValueKind.REGISTER:
+        address, shared = "nullptr", reference("a")
+    else:
+        raise ValueError("TCGEN MMA A has unsupported typed carrier")
+    mask = reference("disable_output_lane") if "disable_output_lane" in fields else "nullptr"
+    scale = reference("scale_input_d") if "scale_input_d" in fields else "nullptr"
+    return f"""      const auto mma_source_check = check_tcgen_mma_sources(
+          selected.cta_group, {reference('d')[1:]}, {address}, {shared},
+          {reference('b')[1:]}, {reference('idesc')[1:]}, {mask},
+          {reference('enable_input_d')[1:]}, {scale}, context);
+{_append_result('mma_source_check')}"""
+
+
+def _emit_tensor_layout_checks(variant, layout, slots, backend) -> str:
+    """Recheck tensor-owned roles whose operands depend on selected layout."""
+
+    if variant.tensor_access_mode is None:
+        return ""
+    fields = {field.name: field for field in layout.fields}
+    def member(name: str) -> str:
+        """Name one selected owned member after its presence guard."""
+
+        field = fields[name]
+        return _member_expr(field, operand_slot_for_field(slots, field, backend))
+    checks = ""
+    if variant.tensor_im2col_info_elements:
+        args = (
+            f"{member('tensor')}, {member('dst')}, {member('mbar')}, context"
+            if "dst" in fields else f"{member('tensor')}, context"
+        )
+        checks += _emit_named_rule_check(
+            "tensor_read_address_check", f"check_tensor_read_addresses({args})"
+        )
+        if "im2col_info" in fields:
+            bounds = ", ".join(str(bound) for _, bound in variant.tensor_im2col_info_elements)
+            checks += (
+                f"      const std::array<uint16_t, {len(variant.tensor_im2col_info_elements)}> "
+                f"info_maximum_values = {{{bounds}}};\n"
+            )
+            checks += _emit_named_rule_check(
+                "tensor_info_check",
+                f"check_tensor_im2col_info({member('tensor')}, "
+                f"{member('im2col_info')}, info_maximum_values, context)",
+            )
+    elif variant.tensor_access_mode in {
+        TensorAccessMode.TILE_GATHER4, TensorAccessMode.TILE_SCATTER4,
+    }:
+        checks += _emit_named_rule_check(
+            "gather_scatter_coordinate_check",
+            f"check_tensor_gather_scatter_coordinates({member('tensor')}, context)",
+        )
+        if variant.tensor_access_mode is TensorAccessMode.TILE_GATHER4:
+            args = (
+                f"{member('tensor')}, {member('dst')}, {member('mbar')}, context"
+                if "dst" in fields else f"{member('tensor')}, context"
+            )
+            checks += _emit_named_rule_check(
+                "gather_address_check", f"check_tensor_read_addresses({args})"
+            )
+    elif (variant.tensor_access_mode is TensorAccessMode.TILED and
+          (variant.tensor_cta_group_applicable or variant.tensor_multicast) and
+          {"dst", "mbar"} <= fields.keys()):
+        checks += _emit_named_rule_check(
+            "tensor_read_address_check",
+            f"check_tensor_read_addresses({member('tensor')}, "
+            f"{member('dst')}, {member('mbar')}, context)",
+        )
+    if variant.tensor_multicast:
+        if "cta_mask" not in fields:
+            raise ValueError("multicast tensor form lacks mask")
+        checks += _emit_named_rule_check(
+            "tensor_multicast_mask_check",
+            f"check_tensor_multicast_mask({member('cta_mask')}, context)",
+        )
+    return checks
 
 
 def _emit_check(entry, variant, variant_index: int, backend) -> str:
@@ -170,6 +277,14 @@ def _emit_check(entry, variant, variant_index: int, backend) -> str:
         _emit_check_layout(entry, variant, variant_index, index, backend)
         for index, _ in enumerate(variant.operand_layouts)
     )
+    group_check = (
+        _emit_named_rule_check(
+            "tensor_group_check", "check_tensor_cta_group(selected.cta_group, context)"
+        )
+        if variant.tensor_access_mode is not None
+        and any(field.source_name == "cta_group" for field in modifier_fields)
+        else ""
+    )
     return f"""/** Check the {name} final form in existing diagnostic order. */
 checker::CheckResult {name}::check(const checker::Context& context) const {{
   const auto& selected = *this;
@@ -194,6 +309,7 @@ checker::CheckResult {name}::check(const checker::Context& context) const {{
       {descriptor}.variants[{variant_index}].modifier_value_availabilities,
       modifier_values, context);
 {_append_result('modifier_availability_check')}
+{group_check}
   const auto layout_check = checker::check_operand_layout_tag(
       "{variant.cpp_name}", operand_layout.value,
       {len(variant.operand_layouts)}, context);
@@ -415,29 +531,36 @@ def generate_resolved_opcode_source(
     instruction = entry.resolved
     backend = context.backend
     prefix = opcode.replace(".", "_")
-    syntax_storage = emit_syntax_storage(
+    shards = form_shards(entry)
+    syntax_storage = ("" if shards else emit_syntax_storage(
         from_InstructionSpec(entry.specification), backend, cpp_name=entry.cpp_name
-    )
-    resolved_storage = emit_resolved_storage(instruction, backend)
-    checker_storage = emit_checker_storage(instruction, backend)
-    methods = "\n\n".join(
-        f"""/** Return {form_name(entry, variant)}'s exact semantic identity. */
-InstructionKind {form_name(entry, variant)}::instruction_kind() const noexcept {{
-  return kind;
-}}
-/** Deep-copy the owned {form_name(entry, variant)} record. */
-std::unique_ptr<Instruction> {form_name(entry, variant)}::clone() const {{
-  return std::make_unique<{form_name(entry, variant)}>(*this);
-}}
-{_emit_check(entry, variant, index, backend)}
-{_emit_visit(entry, variant, backend)}"""
-        for index, variant in enumerate(instruction.variants)
+    ))
+    resolved_storage = "" if shards else emit_resolved_storage(instruction, backend)
+    checker_storage = "" if shards else emit_checker_storage(instruction, backend)
+    methods = "" if form_shards(entry) else _emit_form_methods(
+        entry, enumerate(instruction.variants), backend
     )
     resolver = _emit_resolve(entry, backend)
     cp_helper = _emit_cp_control_helper(entry, backend)
     cp_include = '#include "ptx_cp_control.hpp"\n' if opcode == "cp" else ""
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor_getters = (
+        _emit_sharded_descriptor_getters(entry, len(shards)) if shards else f"""
+/** Return static-lifetime syntax selection metadata for {opcode}. */
+const check_end::SyntaxInstructionDescriptor& {prefix}_syntax_descriptor() noexcept {{
+  return {entry.cpp_name}DescriptorStorage::descriptor;
+}}
+/** Return static-lifetime resolved field metadata for {opcode}. */
+const check_end::ResolvedInstructionDescriptor& {prefix}_resolved_descriptor() noexcept {{
+  return generated_detail::{entry.cpp_name}ResolvedDescriptorStorage::descriptor;
+}}
+/** Return static-lifetime checker metadata for {opcode}. */
+const checker::InstructionDescriptor& {prefix}_checker_descriptor() noexcept {{
+  return generated_detail::{entry.cpp_name}CheckerDescriptorStorage::descriptor;
+}}"""
+    )
     output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
+#include <cassert>
 #include <array>
 #include <concepts>
 #include <type_traits>
@@ -455,30 +578,188 @@ namespace {{
 {syntax_storage}
 }}  // namespace
 
-/** Return static-lifetime syntax selection metadata for {opcode}. */
-const check_end::SyntaxInstructionDescriptor& {prefix}_syntax_descriptor() noexcept {{
-  return {entry.cpp_name}DescriptorStorage::descriptor;
-}}
-
 namespace generated_detail {{
 {resolved_storage}
 {checker_storage}
 }}  // namespace generated_detail
 
-/** Return static-lifetime resolved field metadata for {opcode}. */
-const check_end::ResolvedInstructionDescriptor& {prefix}_resolved_descriptor() noexcept {{
-  return generated_detail::{entry.cpp_name}ResolvedDescriptorStorage::descriptor;
-}}
-/** Return static-lifetime checker metadata for {opcode}. */
-const checker::InstructionDescriptor& {prefix}_checker_descriptor() noexcept {{
-  return generated_detail::{entry.cpp_name}CheckerDescriptorStorage::descriptor;
-}}
+{descriptor_getters}
 
 {methods}
 
 {resolver}
 
 {cp_helper}
+
+}}  // namespace ptx_frontend::resolved_ir
+""", encoding="utf-8")
+
+
+def _emit_sharded_descriptor_getters(entry, shard_count: int) -> str:
+    """Assemble immutable contiguous public catalogs from private static shards."""
+
+    prefix = entry.specification.opcode.replace(".", "_")
+    count = len(entry.resolved.variants)
+    function_names = {
+        "syntax": "check_end::SyntaxVariantDescriptor",
+        "resolved": "check_end::ResolvedVariantDescriptor",
+        "checker": "checker::VariantDescriptor",
+    }
+    declarations = "\n".join(
+        f"std::span<const {type_name}> {prefix}_{domain}_variants_{index:03d}() noexcept;"
+        for domain, type_name in function_names.items()
+        for index in range(shard_count)
+    )
+    getters = []
+    for domain, type_name in function_names.items():
+        root_type = (
+            f"check_end::{domain.title()}InstructionDescriptor"
+            if domain != "checker" else "checker::InstructionDescriptor"
+        )
+        if domain == "syntax":
+            root_type = "check_end::SyntaxInstructionDescriptor"
+            opcode_member = "Opcode_name"
+        else:
+            opcode_member = "opcode_name"
+        spans = ",\n".join(
+            f"        generated_detail::{prefix}_{domain}_variants_{index:03d}()"
+            for index in range(shard_count)
+        )
+        getters.append(f"""/** Return one stable contiguous {domain} catalog in canonical form order. */
+const {root_type}& {prefix}_{domain}_descriptor() noexcept {{
+  static_assert(std::is_trivially_copyable_v<{type_name}>);
+  static const std::array<{type_name}, {count}> variants = []() noexcept {{
+    std::array<{type_name}, {count}> ordered{{}};
+    size_t next = 0;
+    for (auto shard : std::array<std::span<const {type_name}>, {shard_count}>{{{{
+{spans}
+    }}}}) {{
+      for (const auto& row : shard) {{
+        assert(next < ordered.size());
+        ordered[next++] = row;
+      }}
+    }}
+    assert(next == ordered.size());
+    return ordered;
+  }}();
+  static const {root_type} descriptor{{
+      .{opcode_member} = "{entry.specification.opcode}", .variants = variants}};
+  return descriptor;
+}}""")
+    return "namespace generated_detail {\n" + declarations + "\n}\n\n" + "\n\n".join(getters)
+
+
+def generate_resolved_descriptor_shard_source(
+    context: GenerationContext, *, category: str, opcode: str,
+    shard_index: int, output_path: Path,
+) -> None:
+    """Emit private immutable descriptor rows for one bounded form slice."""
+
+    entry = next(item for item in context.entries
+                 if item.specification.codegen_category == category
+                 and item.specification.opcode == opcode)
+    indices = form_shards(entry)[shard_index]
+    resolved = replace(entry.resolved,
+                       variants=tuple(entry.resolved.variants[index] for index in indices))
+    full_syntax = from_InstructionSpec(entry.specification)
+    syntax = replace(full_syntax,
+                     variants=tuple(full_syntax.variants[index] for index in indices))
+    syntax_storage = emit_syntax_storage(syntax, context.backend, cpp_name=entry.cpp_name)
+    resolved_storage = emit_resolved_storage(resolved, context.backend)
+    checker_storage = emit_checker_storage(resolved, context.backend)
+    prefix = opcode.replace(".", "_")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
+#include <array>
+#include <span>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_descriptors.hpp>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_checker_support.hpp>
+
+namespace ptx_frontend::resolved_ir {{
+namespace {{
+{syntax_storage}
+{resolved_storage}
+{checker_storage}
+}}  // namespace
+namespace generated_detail {{
+/** Borrow static syntax rows in canonical shard order. */
+std::span<const check_end::SyntaxVariantDescriptor>
+{prefix}_syntax_variants_{shard_index:03d}() noexcept {{
+  return {entry.cpp_name}DescriptorStorage::variants;
+}}
+/** Borrow static resolved-field rows in canonical shard order. */
+std::span<const check_end::ResolvedVariantDescriptor>
+{prefix}_resolved_variants_{shard_index:03d}() noexcept {{
+  return {entry.cpp_name}ResolvedDescriptorStorage::variants;
+}}
+/** Borrow static legality rows in canonical shard order. */
+std::span<const checker::VariantDescriptor>
+{prefix}_checker_variants_{shard_index:03d}() noexcept {{
+  return {entry.cpp_name}CheckerDescriptorStorage::variants;
+}}
+}}  // namespace generated_detail
+}}  // namespace ptx_frontend::resolved_ir
+""", encoding="utf-8")
+
+
+def _emit_form_methods(entry, indexed_variants, backend) -> str:
+    """Render each exact class's methods once, retaining global descriptor indexes."""
+
+    return "\n\n".join(
+        f"""/** Return {form_name(entry, variant)}'s exact semantic identity. */
+InstructionKind {form_name(entry, variant)}::instruction_kind() const noexcept {{
+  return kind;
+}}
+/** Deep-copy the owned {form_name(entry, variant)} record. */
+std::unique_ptr<Instruction> {form_name(entry, variant)}::clone() const {{
+  return std::make_unique<{form_name(entry, variant)}>(*this);
+}}
+{_emit_check(entry, variant, index, backend)}
+{_emit_visit(entry, variant, backend)}"""
+        for index, variant in indexed_variants
+    )
+
+
+def generate_resolved_form_shard_source(
+    context: GenerationContext, *, category: str, opcode: str,
+    shard_index: int, output_path: Path,
+) -> None:
+    """Emit bounded methods for one canonical form slice without descriptors."""
+
+    entry = next(
+        item for item in context.entries
+        if item.specification.codegen_category == category
+        and item.specification.opcode == opcode
+    )
+    indices = form_shards(entry)[shard_index]
+    prefix = opcode.replace(".", "_").replace("-", "_")
+    methods = _emit_form_methods(
+        entry,
+        ((index, entry.resolved.variants[index]) for index in indices),
+        context.backend,
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
+#include <array>
+#include <concepts>
+#include <type_traits>
+#include <variant>
+#include <utility>
+#include <{INCLUDE_ROOT}/model/{category}/{opcode}_forms_{shard_index:03d}.gen.hpp>
+#include <{INCLUDE_ROOT}/ptx_resolved_ir_resolution_detail.hpp>
+
+namespace ptx_frontend::resolved_ir {{
+
+using namespace checker;
+
+/** Borrow the opcode's contiguous resolved descriptor catalog. */
+const check_end::ResolvedInstructionDescriptor&
+{prefix}_resolved_descriptor() noexcept;
+/** Borrow the opcode's contiguous checker descriptor catalog. */
+const checker::InstructionDescriptor&
+{prefix}_checker_descriptor() noexcept;
+
+{methods}
 
 }}  // namespace ptx_frontend::resolved_ir
 """, encoding="utf-8")
@@ -620,4 +901,92 @@ def _emit_cross_rule_checks(
                                  async_release_check.error().end());
             }
 """
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_REPLACE:
+        checks += _emit_named_rule_check(
+            "tensor_map_rule_check", "check_tensor_map_replace_rule(fields, operands, context)"
+        )
+        checks += _emit_named_rule_check(
+            "tensor_map_address_check",
+            "check_tensor_map_address_register_width(selected.tensor_map, context)",
+        )
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSORMAP_CP_FENCEPROXY:
+        checks += _emit_named_rule_check(
+            "tensor_map_fence_check",
+            "check_tensor_map_cp_fenceproxy_rule(operands, context)",
+        )
+        for name in ("dst", "src"):
+            checks += _emit_named_rule_check(
+                f"tensor_map_{name}_check",
+                f"check_tensor_map_address_register_width(selected.{name}, context)",
+            )
+    if (variant.completion_kind is AsyncCompletionKind.BULK_GROUP and
+        any(field.value_kind is ResolvedValueKind.TENSOR_OPERAND
+            for layout in variant.operand_layouts for field in layout.fields)):
+        checks += _emit_named_rule_check(
+            "tensor_write_address_check",
+            "check_tensor_reduction_addresses(selected.tensor, selected.src, context)",
+        )
+    allocation_rules = {
+        SemanticRule.TENSOR_MEMORY_ALLOC,
+        SemanticRule.TENSOR_MEMORY_DEALLOC,
+        SemanticRule.TENSOR_MEMORY_RELINQUISH_ALLOC_PERMIT,
+    }
+    if variant.rule in allocation_rules:
+        checks += _emit_named_rule_check(
+            "tcgen_allocation_check",
+            "check_tcgen_allocation_rule(selected.allocation_action, operands, context)",
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_ALLOC:
+        checks += _emit_named_rule_check(
+            "tcgen_result_slot_check",
+            "check_tcgen_allocation_result_slot(selected.dst, context)",
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        checks += _emit_named_rule_check(
+            "tcgen_barrier_check", "check_tcgen_commit_address(selected.mbar, context)"
+        )
+        if variant.tcgen_commit_multicast:
+            checks += _emit_named_rule_check(
+                "tcgen_mask_check", "check_tcgen_commit_mask(selected.cta_mask, context)"
+            )
+    if variant.rule in {
+        SemanticRule.TENSOR_MEMORY_LOAD,
+        SemanticRule.TENSOR_MEMORY_STORE,
+        SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION,
+    }:
+        reduction = "true" if variant.rule is SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION else "false"
+        checks += _emit_named_rule_check(
+            "tcgen_transfer_check",
+            f"check_tcgen_transfer_rule(fields, operands, {reduction}, context)",
+        )
+        checks += _emit_named_rule_check(
+            "tcgen_address_check", "check_tcgen_transfer_address(selected.taddr, context)"
+        )
+        checks += _emit_named_rule_check(
+            "tcgen_fragment_check", "check_tcgen_transfer_fragment(selected.r, context)"
+        )
+        if variant.rule is SemanticRule.TENSOR_MEMORY_LOAD_REDUCTION:
+            checks += _emit_named_rule_check(
+                "tcgen_result_check", "check_tcgen_reduction_result(selected.redval, context)"
+            )
+        if any(field.name == "splitoff" for layout in variant.operand_layouts
+               for field in layout.fields):
+            checks += _emit_named_rule_check(
+                "tcgen_split_check", "check_tcgen_half_split_offset(selected.splitoff, context)"
+            )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COPY:
+        checks += _emit_named_rule_check(
+            "tcgen_copy_check",
+            "check_tcgen_copy_rule(fields, selected.copy_pairs, selected.copy_format_masks, context)",
+        )
+        checks += _emit_named_rule_check(
+            "tcgen_address_check", "check_tcgen_transfer_address(selected.taddr, context)"
+        )
+        checks += _emit_named_rule_check(
+            "tcgen_descriptor_check", "check_tcgen_copy_descriptor(selected.s_desc, context)"
+        )
+    if variant.rule is SemanticRule.TENSOR_MEMORY_SHIFT:
+        checks += _emit_named_rule_check(
+            "tcgen_shift_check", "check_tcgen_shift_address(selected.taddr, context)"
+        )
     return checks

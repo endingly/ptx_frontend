@@ -23,6 +23,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedOperandTypeExpressionKind,
     ResolvedVariant,
     ResolvedValueKind,
+    TensorAccessMode,
 )
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value,
@@ -31,6 +32,16 @@ from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_default_cpp_expr,
     resolved_modifier_value_traits,
 )
+
+_TENSOR_ACCESS_MODE_CPP = {
+    TensorAccessMode.TILED: "Tiled",
+    TensorAccessMode.IM2COL_NO_OFFS: "Im2colNoOffs",
+    TensorAccessMode.IM2COL: "Im2col",
+    TensorAccessMode.IM2COL_W: "Im2colW",
+    TensorAccessMode.IM2COL_W128: "Im2colW128",
+    TensorAccessMode.TILE_GATHER4: "TileGather4",
+    TensorAccessMode.TILE_SCATTER4: "TileScatter4",
+}
 
 
 def generate_resolved_descriptor_source(
@@ -388,6 +399,21 @@ def _emit_operand_binding_descriptor(
                   .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction, backend=backend)},
                   .function_availability = {emit_availability(availability)},
               }},"""
+    expected_tensor_mode = (
+        "\n              .expected_tensor_mode = TensorAccessMode::"
+        f"{_TENSOR_ACCESS_MODE_CPP[binding.tensor_access_mode]},"
+        if binding.tensor_access_mode is not None else ""
+    )
+    expected_tensor_rank = (
+        "\n              .expected_tensor_rank = "
+        f"TensorRank::{('One', 'Two', 'Three', 'Four', 'Five')[binding.expected_tensor_rank - 1]},"
+        if binding.expected_tensor_rank is not None else ""
+    )
+    tensor_cta_mask_role = (
+        "\n              .tensor_cta_mask_role = "
+        "TensorCtaMaskRole::MulticastCluster,"
+        if binding.tensor_cta_mask else ""
+    )
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
         binding.register_width_policy.value, backend=backend,
@@ -403,7 +429,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{tensor_cta_mask_role}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 
@@ -431,12 +457,17 @@ def _emit_type_expression_descriptor(
 
 def _emit_resolved_variant_descriptor(variant: ResolvedVariant, backend: CodegenUnit) -> str:
     name = to_file_stem(variant.variant_id)
+    matrix = ""
+    if variant.matrix is not None:
+        from ptx_frontend.code_gen.emit.matrix import emit_matrix_descriptor
+        matrix = f".matrix = {emit_matrix_descriptor(variant.matrix, backend)},"
     return f"""          check_end::ResolvedVariantDescriptor{{
               .variant_name = "{variant.cpp_name}",
               .condition_code_effect = {condition_code_cpp_value(variant.condition_code_effect)},
               .fields = {name}_fields,
               .modifier_bindings = {name}_modifier_bindings,
               .operand_layouts = {name}_operand_layouts,
+              {matrix}
           }}"""
 
 

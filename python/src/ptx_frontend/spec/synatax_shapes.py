@@ -67,8 +67,19 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.TENSOR_COORDINATE: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
+    OperandKind.TENSOR_MEMORY_ADDRESS: (
+        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
+    ),
+    OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: OperandSyntaxShape.ADDRESS,
+    OperandKind.TCGEN_HALF_SPLIT_OFFSET: OperandSyntaxShape.IMMEDIATE,
     OperandKind.MATRIX_FRAGMENT: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.MATRIX_SCALE_SELECTOR: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.WGMMA_SCALE_D: (
+        OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
+    ),
     OperandKind.DIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,
     OperandKind.INDIRECT_CALL_TARGET: OperandSyntaxShape.CALL_TARGET,
     OperandKind.INDIRECT_CALL_METADATA: OperandSyntaxShape.CALL_TARGET_SET,

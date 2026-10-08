@@ -3,6 +3,7 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "ptx_cp_control.hpp"
 #include "ptx_module_source_context.hpp"
@@ -465,7 +466,11 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
+    std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFunctionRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedIndirectCallee> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCallParameterRef> ||
@@ -553,6 +558,20 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
         collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorIm2colInfo>) {
+    for (const auto& element : value.elements)
+      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
+        collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, TensorMemoryAddress>) {
+    collect_operand_references(value.value, locations, fallback, uses,
+                               address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
+    collect_operand_references(value.byte_id, locations, fallback, uses,
+                               address_resolution_policy);
+    collect_operand_references(value.thread_id, locations, fallback, uses,
+                               address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedSharedMatrixDescriptor>) {
+    collect_register(value.register_ref);
   } else if constexpr (std::same_as<Value, ResolvedTensorOperand>) {
     const std::array<SourceRange, 1> map_range{value.tensor_map.range};
     collect_operand_references(value.tensor_map.address, map_range, fallback,
@@ -755,10 +774,37 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
+  /** Collect register elements in a borrowed im2col information pack. */
+  void tensor_im2col_info(
+      const ResolvedTensorIm2colInfo& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
   /** Collect descriptor and coordinate references with their owned source ranges. */
   void tensor_operand(const ResolvedTensorOperand& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect a borrowed Tensor Memory address register, when present. */
+  void tensor_memory_address(
+      const TensorMemoryAddress& value, std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect both borrowed matrix scale selector registers, when present. */
+  void matrix_scale_selector(
+      const ResolvedMatrixScaleSelector& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect the bound register carrying a shared matrix descriptor. */
+  void shared_matrix_descriptor(
+      const ResolvedSharedMatrixDescriptor& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedVectorRegisterRef. */
@@ -922,6 +968,83 @@ void check_module_references(const ResolvedModule& module,
   }
 }
 
+/** Return a written TCGEN CTA group from the exact owned form, if any. */
+template <typename T>
+  requires std::derived_from<T, Instruction> && std::is_final_v<T>
+std::optional<TcgenCtaGroup> tcgen_group_if(const Instruction& instruction) {
+  const auto* form = dynamic_cast<const T*>(&instruction);
+  return form ? std::optional{form->cta_group.value} : std::nullopt;
+}
+
+/** Select the group only from a matching final TCGEN instruction class. */
+std::optional<TcgenCtaGroup> tcgen_cta_group(const Instruction& instruction) {
+  switch (instruction.instruction_kind()) {
+    case InstructionKind::Tcgen05AllocGeneric:
+      return tcgen_group_if<Tcgen05AllocGeneric>(instruction);
+    case InstructionKind::Tcgen05AllocSharedCta:
+      return tcgen_group_if<Tcgen05AllocSharedCta>(instruction);
+    case InstructionKind::Tcgen05Dealloc:
+      return tcgen_group_if<Tcgen05Dealloc>(instruction);
+    case InstructionKind::Tcgen05RelinquishAllocPermit:
+      return tcgen_group_if<Tcgen05RelinquishAllocPermit>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1GenericSingle:
+      return tcgen_group_if<Tcgen05CommitGroup1GenericSingle>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1GenericMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup1GenericMulticast>(instruction);
+    case InstructionKind::Tcgen05CommitGroup1SharedClusterSingle:
+      return tcgen_group_if<Tcgen05CommitGroup1SharedClusterSingle>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup1SharedClusterMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup1SharedClusterMulticast>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup2GenericSingle:
+      return tcgen_group_if<Tcgen05CommitGroup2GenericSingle>(instruction);
+    case InstructionKind::Tcgen05CommitGroup2GenericMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup2GenericMulticast>(instruction);
+    case InstructionKind::Tcgen05CommitGroup2SharedClusterSingle:
+      return tcgen_group_if<Tcgen05CommitGroup2SharedClusterSingle>(
+          instruction);
+    case InstructionKind::Tcgen05CommitGroup2SharedClusterMulticast:
+      return tcgen_group_if<Tcgen05CommitGroup2SharedClusterMulticast>(
+          instruction);
+    case InstructionKind::Tcgen05Cp:
+      return tcgen_group_if<Tcgen05Cp>(instruction);
+    case InstructionKind::Tcgen05MmaF16:
+      return tcgen_group_if<Tcgen05MmaF16>(instruction);
+    case InstructionKind::Tcgen05MmaTf32:
+      return tcgen_group_if<Tcgen05MmaTf32>(instruction);
+    case InstructionKind::Tcgen05MmaI8:
+      return tcgen_group_if<Tcgen05MmaI8>(instruction);
+    case InstructionKind::Tcgen05Shift:
+      return tcgen_group_if<Tcgen05Shift>(instruction);
+    default:
+      return std::nullopt;
+  }
+}
+
+/** Compare only written TCGEN groups within one owned function body. */
+void check_tcgen_cta_groups(const ResolvedFunction& function,
+                            checker::CheckDiagnostics& diagnostics) {
+  std::optional<TcgenCtaGroup> group;
+  for (size_t index = 0; index < function.body.size(); ++index) {
+    if (!function.body[index])
+      continue;
+    const auto current = tcgen_cta_group(*function.body[index]);
+    if (!current)
+      continue;
+    if (!group) {
+      group = current;
+    } else if (*group != *current) {
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = function.instruction_ranges[index],
+          .message = "Tensor Memory CTA group conflicts with another "
+                     "instruction in this function body.",
+      });
+    }
+  }
+}
+
 /** Compare a borrowed register's cached scalar type with its owned declaration. */
 void check_cached_register_binding(const ResolvedModule& module,
                                    const ResolvedRegisterRef& register_ref,
@@ -978,7 +1101,17 @@ void check_cp_async_control_bindings(const ResolvedModule& module,
   }
 }
 
-/** Revalidate tensor coordinate cached types against owned register declarations. */
+/** Revalidate a register alternative against its owned declaration. */
+void check_register_alternative_binding(
+    const RegOrImm& value, const ResolvedModule& module,
+    std::span<const SourceRange> locations, SourceRange fallback,
+    std::string_view operand_name, checker::CheckDiagnostics& diagnostics) {
+  if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
+    check_cached_register_binding(module, *register_ref, locations, fallback,
+                                  operand_name, diagnostics);
+}
+
+/** Revalidate modern composite payload cached types after syntax release. */
 void check_tensor_coordinate_bindings(const ResolvedModule& module,
                                       const ResolvedFunction& function,
                                       checker::CheckDiagnostics& diagnostics) {
@@ -993,12 +1126,51 @@ void check_tensor_coordinate_bindings(const ResolvedModule& module,
     void tensor_coordinate(const ResolvedTensorCoordinate& value,
                            std::span<const SourceRange> locations,
                            checker::AddressSymbolResolutionPolicy) override {
-      for (const auto& element : value.elements) {
-        if (const auto* coordinate = std::get_if<ResolvedRegisterRef>(&element))
-          check_cached_register_binding(module, *coordinate, locations,
-                                        fallback, "Tensor coordinate",
-                                        diagnostics);
-      }
+      for (const auto& element : value.elements)
+        check_register_alternative_binding(element, module, locations, fallback,
+                                           "Tensor coordinate", diagnostics);
+    }
+
+    /** Check cached types of im2col information register elements. */
+    void tensor_im2col_info(const ResolvedTensorIm2colInfo& value,
+                            std::span<const SourceRange> locations,
+                            checker::AddressSymbolResolutionPolicy) override {
+      for (const auto& element : value.elements)
+        check_register_alternative_binding(element, module, locations, fallback,
+                                           "Tensor im2col info", diagnostics);
+    }
+
+    /** Check the cached type of a Tensor Memory address register. */
+    void tensor_memory_address(
+        const TensorMemoryAddress& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_register_alternative_binding(value.value, module, locations,
+                                         fallback, "Tensor Memory address",
+                                         diagnostics);
+    }
+
+    /** Check both cached matrix scale selector register types. */
+    void matrix_scale_selector(
+        const ResolvedMatrixScaleSelector& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_register_alternative_binding(value.byte_id, module, locations,
+                                         fallback, "Matrix scale selector",
+                                         diagnostics);
+      check_register_alternative_binding(value.thread_id, module, locations,
+                                         fallback, "Matrix scale selector",
+                                         diagnostics);
+    }
+
+    /** Check the cached type of a shared matrix descriptor register. */
+    void shared_matrix_descriptor(
+        const ResolvedSharedMatrixDescriptor& value,
+        std::span<const SourceRange> locations,
+        checker::AddressSymbolResolutionPolicy) override {
+      check_cached_register_binding(module, value.register_ref, locations,
+                                    fallback, "Shared matrix descriptor",
+                                    diagnostics);
     }
 
     /** Check each nested coordinate at its own preserved source range. */
@@ -1949,6 +2121,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     check_control_contracts(module, function, diagnostics);
     if (complete_instruction_provenance) {
       check_module_references(module, function, diagnostics);
+      check_tcgen_cta_groups(function, diagnostics);
       check_cp_async_control_bindings(module, function, diagnostics);
       check_tensor_coordinate_bindings(module, function, diagnostics);
       check_st_bulk_size_bindings(module, function, diagnostics);

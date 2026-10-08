@@ -19,7 +19,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 
-from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.code_gen.database import get_packaged_spec_database
 from ptx_frontend.code_gen.database import CodegenDatabase
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_descriptors import (
@@ -36,12 +36,14 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 )
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.emit.resolved_model import (
+    form_shards,
     generate_resolved_base_header,
     generate_resolved_opcode_header,
     generate_resolved_umbrella_header,
 )
 from ptx_frontend.code_gen.emit.resolved_source import (
     _address_symbol_resolution_policy,
+    generate_resolved_form_shard_source,
     generate_resolved_opcode_source,
 )
 from ptx_frontend.code_gen.normalize import normalize_instruction_spec
@@ -130,9 +132,7 @@ def build_test_generation_context(database):
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        database = load_codegen_database(
-            spec_dir=REPO_ROOT / "instructions/ptx_spec",
-        )
+        database = get_packaged_spec_database()
         # Repository specs remain unchanged.
         # Tests needing mutation load their own fixture.
         cls.database = database
@@ -3938,7 +3938,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
             ],
         )
 
-    def test_setmaxnreg_inc_sync_aligned_model_and_generator(self) -> None:
+    def test_setmaxnreg_actions_model_and_generator(self) -> None:
         database = self.database
         setmaxnreg = next(
             instruction
@@ -3949,35 +3949,35 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Setmaxnreg")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["IncSyncAlignedU32"],
+            ["IncSyncAlignedU32", "DecSyncAlignedU32"],
         )
-        variant = resolved.variants[0]
-        self.assertEqual(
-            dict(variant.availability),
-            {"any_of": [
-                {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
-                {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
-                {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-                {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
-            ]},
-        )
-        self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in variant.fields],
-            [
-                ("inc", "bool"),
-                ("sync", "bool"),
-                ("aligned", "bool"),
-                ("type", "ScalarType"),
-                ("count", "WithLocs<ResolvedImmediate>"),
-            ],
-        )
-        self.assertEqual(
-            [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
-             for constraint in variant.immediate_ranges],
-            [("count", 24, 256)],
-        )
-        self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count") # pyright: ignore[reportOptionalMemberAccess]
-        self.assertEqual(variant.immediate_multiple_of.divisor, 8) # pyright: ignore[reportOptionalMemberAccess]
+        expected_availability = {"any_of": [
+            {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+            {"ptx": "8.8", "sm": 120, "family": "sm_120f"},
+        ]}
+        for variant, action in zip(resolved.variants, ("inc", "dec"), strict=True):
+            self.assertEqual(dict(variant.availability), expected_availability)
+            self.assertEqual(
+                [(field.name, field_cpp_type(field)) for field in variant.fields],
+                [
+                    (action, "bool"),
+                    ("sync", "bool"),
+                    ("aligned", "bool"),
+                    ("type", "ScalarType"),
+                    ("count", "WithLocs<ResolvedImmediate>"),
+                ],
+            )
+            self.assertEqual(
+                [(constraint.operand_field_id, constraint.minimum, constraint.maximum)
+                 for constraint in variant.immediate_ranges],
+                [("count", 24, 256)],
+            )
+            self.assertEqual(variant.immediate_multiple_of.operand_field_id, "count") # pyright: ignore[reportOptionalMemberAccess]
+            self.assertEqual(variant.immediate_multiple_of.divisor, 8) # pyright: ignore[reportOptionalMemberAccess]
 
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_control_flow.gen.cpp"
@@ -3989,13 +3989,15 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
             descriptor = descriptor_path.read_text(encoding="utf-8")
         self.assertIn("check_immediate_multiple_of(", source)
-        start = source.index("SetmaxnregIncSyncAlignedU32::check(")
-        setmaxnreg_check = source[start:source.index("::visit_references(", start)]
-        self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
-        self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
+        for action in ("Inc", "Dec"):
+            start = source.index(f"Setmaxnreg{action}SyncAlignedU32::check(")
+            setmaxnreg_check = source[start:source.index("::visit_references(", start)]
+            self.assertEqual(setmaxnreg_check.count("check_immediate_multiple_of("), 1)
+            self.assertEqual(setmaxnreg_check.count("check_immediate_range("), 1)
         self.assertIn("std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolveSetmaxnreg(", source)
-        self.assertIn(".any_of_count = 4", descriptor)
+        self.assertIn(".any_of_count = 6", descriptor)
         self.assertIn('.required_family = "sm_100f",', descriptor)
+        self.assertIn('.required_family = "sm_110f",', descriptor)
         self.assertIn('.required_family = "sm_120f",', descriptor)
         self.assertIn('.operand_field_id = "count",', descriptor)
         self.assertIn(".divisor = uint64_t{8ULL},", descriptor)
@@ -4393,12 +4395,19 @@ class ResolvedIrBuildTest(unittest.TestCase):
         database = self.database
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "resolved_ir_data_movement.gen.cpp"
+            methods_path = Path(directory) / "resolved_ir_cp_methods_000.gen.cpp"
             descriptor_path = Path(directory) / "resolved_ir_checker_descriptor.gen.cpp"
-            generate_resolved_opcode_source(build_test_generation_context(database), category="data_movement", opcode="cp", output_path=output_path
+            context = build_test_generation_context(database)
+            generate_resolved_opcode_source(context, category="data_movement", opcode="cp", output_path=output_path
             )
-            generate_resolved_checker_descriptor_source(build_test_generation_context(database), category="data_movement", output_path=descriptor_path
+            generate_resolved_form_shard_source(
+                context, category="data_movement", opcode="cp",
+                shard_index=0, output_path=methods_path,
             )
-            source = output_path.read_text(encoding="utf-8")
+            generate_resolved_checker_descriptor_source(context, category="data_movement", output_path=descriptor_path
+            )
+            source = (methods_path.read_text(encoding="utf-8") + "\n"
+                      + output_path.read_text(encoding="utf-8"))
             descriptor = descriptor_path.read_text(encoding="utf-8")
 
         self.assertIn("check_immediate_value(", source)
@@ -5324,7 +5333,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
         self.assertIn("class Instruction", base_source)
         self.assertIn("std::unique_ptr<Instruction> clone() const", source)
         self.assertIn("void visit_references(detail::IReferenceObserver&)", source)
-        self.assertEqual(source.count(" final : public Instruction"), 985)
+        unsharded_forms = sum(
+            len(entry.resolved.variants)
+            for entry in context.entries if not form_shards(entry)
+        )
+        self.assertEqual(source.count(" final : public Instruction"), unsharded_forms)
+        self.assertEqual(
+            unsharded_forms + sum(
+                len(indices) for entry in context.entries
+                for indices in form_shards(entry)
+            ),
+            4333,
+        )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",
                      "MovScalar", "SetBit", "SetpUnsigned", "CallDirect"):
@@ -5397,7 +5417,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         )
         self.assertIn("resolveInstruction(", source)
         self.assertIn("const syntax_ast::AstInstruction& ast", source)
-        self.assertEqual(source.count("case InstructionKind::"), 985)
+        self.assertEqual(
+            source.count("case InstructionKind::"),
+            sum(len(entry.resolved.variants) for entry in context.entries),
+        )
         self.assertEqual(source.count('if (ast.opcode.syntax.text == "'), len(context.entries))
         for entry in context.entries:
             opcode = entry.specification.opcode

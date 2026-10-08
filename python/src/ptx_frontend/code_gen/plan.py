@@ -11,12 +11,28 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
+    form_shards,
     generate_resolved_base_header,
+    generate_resolved_form_shard_header,
     generate_resolved_opcode_header,
     generate_resolved_umbrella_header,
 )
 from ptx_frontend.code_gen.emit.resolved_source import (
+    generate_resolved_descriptor_shard_source,
+    generate_resolved_form_shard_source,
     generate_resolved_opcode_source,
+)
+from ptx_frontend.code_gen.emit.tcgen_descriptor_domains import (
+    generate_tcgen_descriptor_header,
+    generate_tcgen_descriptor_source,
+)
+from ptx_frontend.code_gen.emit.tcgen_mma_operations import (
+    generate_tcgen_mma_header,
+    generate_tcgen_mma_source,
+)
+from ptx_frontend.code_gen.emit.tensor_map_known_facts import (
+    generate_tensor_map_known_fact_query,
+    generate_tensor_map_known_fact_rules,
 )
 from ptx_frontend.code_gen.emit.value_domains import generate_resolved_value_domain_header
 
@@ -58,6 +74,16 @@ class OpcodeArtifactEmitter(Protocol):
         output_path: Path,
     ) -> None:
         """Write one opcode-local artifact."""
+
+
+class FormShardArtifactEmitter(Protocol):
+    """Emit one canonical subset of final classes or their methods."""
+
+    def __call__(
+        self, context: GenerationContext, *, category: str, opcode: str,
+        shard_index: int, output_path: Path,
+    ) -> None:
+        """Write one bounded form shard."""
 
 
 @dataclass(frozen=True)
@@ -154,9 +180,69 @@ def build_generation_plan(
             path=output_dir / "private/resolved_ir_dispatch.gen.cpp",
             emit=generate_resolved_dispatch_source,
         ),
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tcgen_descriptor_domains.gen.hpp",
+            emit=generate_tcgen_descriptor_header,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tcgen_descriptor_domains.gen.cpp",
+            emit=generate_tcgen_descriptor_source,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tcgen_mma_operations.gen.hpp",
+            emit=generate_tcgen_mma_header,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tcgen_mma_operations.gen.cpp",
+            emit=generate_tcgen_mma_source,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/tensor_map_known_facts.gen.hpp",
+            emit=generate_tensor_map_known_fact_rules,
+        ),
+        GeneratedArtifact(
+            path=output_dir / "private/resolved_ir_tensor_map_known_facts.gen.cpp",
+            emit=generate_tensor_map_known_fact_query,
+        ),
     ]
     for category in instruction_categories(context):
         for opcode in _category_opcodes(context, category):
+            entry = next(
+                item for item in context.entries
+                if item.specification.codegen_category == category
+                and item.specification.opcode == opcode
+            )
+            for index, _ in enumerate(form_shards(entry)):
+                artifacts.append(
+                    _form_shard_artifact(
+                        path=output_dir / (
+                            f"private/resolved_ir_{category}_{opcode}_"
+                            f"descriptors_{index:03d}.gen.cpp"
+                        ),
+                        category=category, opcode=opcode, shard_index=index,
+                        emitter=generate_resolved_descriptor_shard_source,
+                    )
+                )
+                artifacts.append(
+                    _form_shard_artifact(
+                        path=output_dir / (
+                            f"public/ptx_frontend/resolved_ir/model/{category}/"
+                            f"{opcode}_forms_{index:03d}.gen.hpp"
+                        ),
+                        category=category, opcode=opcode, shard_index=index,
+                        emitter=generate_resolved_form_shard_header,
+                    )
+                )
+                artifacts.append(
+                    _form_shard_artifact(
+                        path=output_dir / (
+                            f"private/resolved_ir_{category}_{opcode}_"
+                            f"methods_{index:03d}.gen.cpp"
+                        ),
+                        category=category, opcode=opcode, shard_index=index,
+                        emitter=generate_resolved_form_shard_source,
+                    )
+                )
             artifacts.append(
                 _opcode_artifact(
                     path=output_dir / (
@@ -243,6 +329,23 @@ def _opcode_artifact(
 
         emitter(
             context, category=category, opcode=opcode, output_path=output_path
+        )
+
+    return GeneratedArtifact(path=path, emit=bound, category=category)
+
+
+def _form_shard_artifact(
+    *, path: Path, category: str, opcode: str, shard_index: int,
+    emitter: FormShardArtifactEmitter,
+) -> GeneratedArtifact:
+    """Bind one stable category/opcode/form-slice output to its emitter."""
+
+    def bound(context: GenerationContext, *, output_path: Path) -> None:
+        """Emit the form shard selected by this immutable plan entry."""
+
+        emitter(
+            context, category=category, opcode=opcode,
+            shard_index=shard_index, output_path=output_path,
         )
 
     return GeneratedArtifact(path=path, emit=bound, category=category)

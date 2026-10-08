@@ -22,6 +22,7 @@ from ptx_frontend.spec.model import (
     InstructionSpec,
     MemoryConsistencyConstraint,
     MemoryVectorConstraint,
+    MatrixSpec,
     MbarrierStateTokenForm,
     OperandAddressBasePolicy,
     OperandAddressOffsetDomain,
@@ -46,7 +47,10 @@ from ptx_frontend.spec.model import (
     OperandVectorTypePolicy,
     SemanticRule,
     VariantSpec,
+    WgmmaProtocolAction,
+    modifier_spellings,
 )
+from ptx_frontend.ir.tensor_reduction import TensorReductionOp
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.ir.resolved_value_policy import (
     modifier_value_kind,
@@ -75,6 +79,56 @@ class AtomicAddressQualifierValue(Enum):
     SHARED = "shared"
     SHARED_CTA = "shared::cta"
     SHARED_CLUSTER = "shared::cluster"
+
+
+class TcgenCommitAddressSpelling(Enum):
+    """Written TCGEN commit barrier-address qualifier, independent of proxy."""
+
+    GENERIC = "generic"
+    SHARED_CLUSTER = "shared::cluster"
+
+
+class TcgenFenceDirection(Enum):
+    """Closed ordering direction of one specialized TCGEN fence."""
+
+    BEFORE_THREAD_SYNC = "before_thread_sync"
+    AFTER_THREAD_SYNC = "after_thread_sync"
+
+
+class TensorAccessMode(Enum):
+    """Closed instruction-local interpretation of an owned tensor operand."""
+
+    TILED = "tile"
+    IM2COL_NO_OFFS = "im2col_no_offs"
+    IM2COL = "im2col"
+    IM2COL_W = "im2col_w"
+    IM2COL_W128 = "im2col_w128"
+    TILE_GATHER4 = "tile_gather4"
+    TILE_SCATTER4 = "tile_scatter4"
+
+
+class TensorDestination(Enum):
+    """Fixed shared-memory destination topology of a selected tensor load."""
+
+    CTA = "cta"
+    CLUSTER = "cluster"
+
+
+def tensor_im2col_info_contract(
+    mode: TensorAccessMode, rank: int,
+) -> tuple[tuple[str, int], ...]:
+    """Return semantic element roles and inclusive U16-use bounds for a read."""
+
+    if rank not in (3, 4, 5):
+        raise ValueError("im2col information requires rank 3, 4, or 5")
+    if mode is TensorAccessMode.IM2COL:
+        bound = {3: 65535, 4: 255, 5: 31}[rank]
+        return tuple((role, bound) for role in ("OffsetW", "OffsetH", "OffsetD")[:rank - 2])
+    if mode is TensorAccessMode.IM2COL_W:
+        return (("Halo", 511), ("Offset", 31))
+    if mode is TensorAccessMode.IM2COL_W128:
+        return (("Halo", 31), ("Offset", 31))
+    raise ValueError("tensor mode does not carry im2col information")
 
 
 @dataclass(frozen=True)
@@ -112,7 +166,14 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
+    OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
+    OperandKind.TENSOR_MEMORY_ADDRESS: ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
+    OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: ResolvedValueKind.TCGEN_BRACKETED_ADDRESS,
+    OperandKind.TCGEN_HALF_SPLIT_OFFSET: ResolvedValueKind.TCGEN_HALF_SPLIT_OFFSET,
+    OperandKind.MATRIX_SCALE_SELECTOR: ResolvedValueKind.MATRIX_SCALE_SELECTOR,
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: ResolvedValueKind.SHARED_MATRIX_DESCRIPTOR,
+    OperandKind.WGMMA_SCALE_D: ResolvedValueKind.WGMMA_SCALE_D,
     OperandKind.MATRIX_FRAGMENT: ResolvedValueKind.REGISTER_VECTOR,
     OperandKind.DIRECT_CALL_TARGET: ResolvedValueKind.DIRECT_CALL_TARGET,
     OperandKind.INDIRECT_CALL_TARGET: ResolvedValueKind.INDIRECT_CALLEE,
@@ -308,13 +369,14 @@ class ResolvedField:
 
 @dataclass(frozen=True)
 class ResolvedVariant:
-    """One alternative of an opcode's generated C++ ``Variant`` type."""
+    """One source identity emitted as a direct C++ instruction class."""
 
     variant_id: str
     cpp_name: str
     modifier_fields: tuple[ResolvedField, ...]
     modifier_bindings: tuple["ResolvedModifierBinding", ...]
     operand_layouts: tuple["ResolvedOperandLayout", ...]
+    matrix: MatrixSpec | None
     modifier_value_domains: tuple["ResolvedModifierValueDomain", ...]
     modifier_value_availabilities: tuple["ResolvedModifierValueAvailability", ...]
     operand_type_compatibilities: tuple["ResolvedOperandTypeCompatibility", ...]
@@ -331,7 +393,19 @@ class ResolvedVariant:
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
+    tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
+    tcgen_commit_multicast: bool = False
+    tcgen_fence_direction: TcgenFenceDirection | None = None
+    tcgen_copy_pairs: tuple[tuple[str, str], ...] = ()
+    tcgen_copy_formats: tuple[tuple[bool, bool, bool], ...] = ()
+    tensor_reduction_op: TensorReductionOp | None = None
+    tensor_access_mode: TensorAccessMode | None = None
+    tensor_destination: TensorDestination | None = None
+    tensor_im2col_info_elements: tuple[tuple[str, int], ...] = ()
+    tensor_multicast: bool = False
+    tensor_cta_group_applicable: bool = False
 
     @property
     def fields(self) -> tuple[ResolvedField, ...]:
@@ -434,6 +508,9 @@ class ResolvedOperandBinding:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     allowed_element_shapes: tuple[ResolvedOperandShape, ...] = ()
+    tensor_access_mode: TensorAccessMode | None = None
+    expected_tensor_rank: int | None = None
+    tensor_cta_mask: bool = False
 
 
 @dataclass(frozen=True)
@@ -514,7 +591,20 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
+    OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
+    OperandKind.TENSOR_MEMORY_ADDRESS: (
+        ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE,
+    ),
+    OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: (
+        ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE,
+    ),
+    OperandKind.TCGEN_HALF_SPLIT_OFFSET: (ResolvedOperandShape.IMMEDIATE,),
+    OperandKind.MATRIX_SCALE_SELECTOR: (ResolvedOperandShape.VECTOR,),
+    OperandKind.SHARED_MATRIX_DESCRIPTOR: (ResolvedOperandShape.REGISTER,),
+    OperandKind.WGMMA_SCALE_D: (
+        ResolvedOperandShape.PREDICATE, ResolvedOperandShape.IMMEDIATE,
+    ),
     OperandKind.MATRIX_FRAGMENT: (ResolvedOperandShape.VECTOR,),
     OperandKind.DIRECT_CALL_TARGET: (ResolvedOperandShape.DIRECT_CALL_TARGET,),
     OperandKind.INDIRECT_CALL_TARGET: (ResolvedOperandShape.INDIRECT_CALLEE,),
@@ -530,6 +620,10 @@ _OPERAND_ROLES = {
     OperandRole.SOURCE_1: ResolvedOperandRole.SOURCE,
     OperandRole.SOURCE_2: ResolvedOperandRole.SOURCE,
     OperandRole.SOURCE_3: ResolvedOperandRole.SOURCE,
+    OperandRole.SOURCE_4: ResolvedOperandRole.SOURCE,
+    OperandRole.METADATA: ResolvedOperandRole.SOURCE,
+    OperandRole.MASK: ResolvedOperandRole.SOURCE,
+    OperandRole.IMMEDIATE: ResolvedOperandRole.SOURCE,
     OperandRole.ADDRESS: ResolvedOperandRole.ADDRESS,
     OperandRole.PREDICATE: ResolvedOperandRole.PREDICATE,
     OperandRole.LABEL: ResolvedOperandRole.BRANCH_TARGET,
@@ -613,11 +707,31 @@ def _build_variant(
     opcode: str, variant: VariantSpec,
     atomic_policy: AtomicAddressQualifierPolicy | None,
 ) -> ResolvedVariant:
+    tensor_access_mode = _build_tensor_access_mode(opcode, variant)
+    tensor_destination = _build_tensor_destination(variant, tensor_access_mode)
+    tensor_multicast = _build_tensor_multicast(variant, tensor_access_mode)
+    tensor_cta_group_applicable = _build_tensor_cta_group(
+        variant, tensor_access_mode, tensor_multicast
+    )
+    expected_tensor_rank = _build_expected_tensor_rank(variant, tensor_access_mode)
     active_modifiers = tuple(
         modifier
         for modifier in variant.modifiers
         if modifier.presence != ModifierPresence.ABSENT
     )
+    sync_names = {modifier.name for modifier in active_modifiers}
+    fence_direction = None
+    if variant.rule is SemanticRule.TENSOR_MEMORY_FENCE:
+        token = next(modifier.values[0].token for modifier in active_modifiers
+                     if modifier.name == "fence_direction")
+        assert token is not None
+        fence_direction = TcgenFenceDirection(token.removeprefix(".fence::"))
+    commit_address_spelling = None
+    if variant.rule is SemanticRule.TENSOR_MEMORY_COMMIT:
+        commit_address_spelling = (
+            TcgenCommitAddressSpelling.SHARED_CLUSTER
+            if "shared_cluster" in sync_names else TcgenCommitAddressSpelling.GENERIC
+        )
     modifier_fields = tuple(
         _build_modifier_field(modifier) for modifier in active_modifiers
     )
@@ -633,6 +747,9 @@ def _build_variant(
                 layout.forbidden_modifiers,
                 {field.source_name: index for index, field in enumerate(modifier_fields)},
             ),
+            tensor_access_mode,
+            expected_tensor_rank,
+            tensor_multicast,
         )
         for layout in variant.operand_layouts
     )
@@ -641,6 +758,7 @@ def _build_variant(
         variant_id=variant.name,
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
+        wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
         modifier_bindings=tuple(
@@ -652,6 +770,9 @@ def _build_variant(
             for modifier, field in zip(active_modifiers, modifier_fields, strict=True)
         ),
         operand_layouts=operand_layouts,
+        matrix=variant.matrix,
+        tcgen_copy_pairs=variant.tcgen_copy_pairs,
+        tcgen_copy_formats=variant.tcgen_copy_formats,
         atomic_address_qualifier_domain=(
             _build_atomic_address_qualifier_domain(atomic_policy, variant)
         ),
@@ -699,7 +820,600 @@ def _build_variant(
         ),
         availability=tuple(variant.availability.items()),
         rule=variant.rule,
+        tcgen_commit_address_spelling=commit_address_spelling,
+        tcgen_commit_multicast="multicast_cluster" in sync_names,
+        tcgen_fence_direction=fence_direction,
+        tensor_reduction_op=_build_tensor_reduction_op(
+            opcode, variant, tensor_access_mode
+        ),
+        tensor_access_mode=tensor_access_mode,
+        tensor_destination=tensor_destination,
+        tensor_multicast=tensor_multicast,
+        tensor_cta_group_applicable=tensor_cta_group_applicable,
+        tensor_im2col_info_elements=(
+            tensor_im2col_info_contract(
+                tensor_access_mode,
+                expected_tensor_rank,
+            )
+            if tensor_access_mode in {
+                TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                TensorAccessMode.IM2COL_W128,
+            } else ()
+        ),
     )
+
+
+def _build_tensor_destination(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> TensorDestination | None:
+    """Lower one exact fixed shared destination after canonical mode checks."""
+
+    if mode is None:
+        return None
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    source = modifiers.get("src_space")
+    destination = modifiers.get("dst_space")
+    if variant.completion_kind is not AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES:
+        if destination is not None and any(
+            spelling in (".shared::cta", ".shared::cluster")
+            for spelling in modifier_spellings(destination)
+        ):
+            raise ValueError(f"variant {variant.name!r}: tensor load completion is inconsistent")
+        return None
+    if source is None or modifier_spellings(source) != (".global",):
+        raise ValueError(f"variant {variant.name!r}: tensor load lacks global source")
+    if (destination is None or destination.kind is not ModifierKind.FLAG
+            or destination.presence is not ModifierPresence.FIXED
+            or destination.value is not True):
+        raise ValueError(f"variant {variant.name!r}: tensor load lacks fixed shared destination")
+    spelling = modifier_spellings(destination)
+    if spelling == (".shared::cta",):
+        return TensorDestination.CTA
+    if spelling == (".shared::cluster",):
+        return TensorDestination.CLUSTER
+    raise ValueError(f"variant {variant.name!r}: unsupported tensor load destination")
+
+
+def _build_tensor_access_mode(
+    opcode: str, variant: VariantSpec,
+) -> TensorAccessMode | None:
+    """Lower a checked canonical mode for each tensor operand binding."""
+
+    has_tensor = any(
+        operand.kind is OperandKind.TENSOR_OPERAND
+        for layout in variant.operand_layouts for operand in layout.operands
+    )
+    has_no_offsets = any(
+        modifier.name == "im2col_no_offs" for modifier in variant.modifiers
+    )
+    has_read_im2col = any(
+        modifier.name in {"im2col", "im2col_w", "im2col_w128"}
+        for modifier in variant.modifiers
+    )
+    has_gather_scatter = any(
+        modifier.name in {"tile_gather4", "tile_scatter4"}
+        for modifier in variant.modifiers
+    )
+    if not has_tensor:
+        if has_no_offsets or has_read_im2col or has_gather_scatter:
+            raise ValueError(f"variant {variant.name!r}: tensor mode lacks tensor operand")
+        return None
+    if opcode != "cp":
+        raise ValueError(f"variant {variant.name!r}: unsupported tensor opcode")
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    if len(modifiers) != len(variant.modifiers):
+        raise ValueError(f"variant {variant.name!r}: duplicate tensor mode/flag")
+    tile = modifiers.get("tile")
+    no_offsets = modifiers.get("im2col_no_offs")
+    read_modes = {
+        "im2col": TensorAccessMode.IM2COL,
+        "im2col_w": TensorAccessMode.IM2COL_W,
+        "im2col_w128": TensorAccessMode.IM2COL_W128,
+    }
+    gather_modes = {
+        "tile_gather4": TensorAccessMode.TILE_GATHER4,
+        "tile_scatter4": TensorAccessMode.TILE_SCATTER4,
+    }
+    selected_modes = [name for name in ("tile", "im2col_no_offs", *read_modes,
+                                      *gather_modes)
+                      if name in modifiers]
+    if len(selected_modes) != 1:
+        raise ValueError(f"variant {variant.name!r}: expected one tensor mode")
+    if tile is not None:
+        if (tile.kind is not ModifierKind.FLAG
+                or tile.presence is not ModifierPresence.OPTIONAL
+                or tile.default is not False
+                or modifier_spellings(tile) != (".tile",)):
+            raise ValueError(f"variant {variant.name!r}: invalid tile mode")
+        return TensorAccessMode.TILED
+
+    if has_gather_scatter:
+        mode_name = selected_modes[0]
+        mode = gather_modes[mode_name]
+        mode_modifier = modifiers[mode_name]
+        token = (".tile::gather4" if mode is TensorAccessMode.TILE_GATHER4
+                 else ".tile::scatter4")
+        if (mode_modifier.kind is not ModifierKind.FLAG
+                or mode_modifier.presence is not ModifierPresence.FIXED
+                or mode_modifier.value is not True
+                or modifier_spellings(mode_modifier) != (token,)):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter mode")
+        gather = mode is TensorAccessMode.TILE_GATHER4
+        prefetch = "prefetch" in modifiers
+        topology = {
+            "async": ".async", "bulk": ".bulk",
+            "tensor_qualifier": ".tensor", "rank": ".2d",
+        }
+        if gather and prefetch:
+            topology.update({"prefetch": ".prefetch", "level": ".L2",
+                             "src_space": ".global"})
+            completion = AsyncCompletionKind.NONE
+            expected = (("tensor", OperandKind.TENSOR_OPERAND),)
+        elif gather:
+            destination = modifiers.get("dst_space")
+            if destination is None or modifier_spellings(destination) not in (
+                    (".shared::cta",), (".shared::cluster",)):
+                raise ValueError(f"variant {variant.name!r}: invalid gather destination")
+            topology.update({"dst_space": modifier_spellings(destination)[0],
+                             "src_space": ".global",
+                             "completion": ".mbarrier::complete_tx::bytes"})
+            completion = AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+            expected = (("dst", OperandKind.ADDRESS),
+                        ("tensor", OperandKind.TENSOR_OPERAND),
+                        ("mbar", OperandKind.ADDRESS))
+            if "multicast" in modifiers:
+                expected += (("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),)
+        else:
+            topology.update({"dst_space": ".global",
+                             "src_space": ".shared::cta",
+                             "completion": ".bulk_group"})
+            completion = AsyncCompletionKind.BULK_GROUP
+            expected = (("tensor", OperandKind.TENSOR_OPERAND),
+                        ("src", OperandKind.ADDRESS))
+        if (set(modifiers) != set(topology) | {mode_name} | (
+                {"multicast"} if "multicast" in modifiers else set()) | (
+                {"cta_group"} if "cta_group" in modifiers else set())
+                or variant.completion_kind is not completion
+                or variant.rule is not None
+                or len(variant.operand_layouts) != 1):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter topology")
+        for name, spelling in topology.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        operands = variant.operand_layouts[0].operands
+        if tuple((operand.name, operand.kind) for operand in operands) != expected:
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter operands")
+        tensor = operands[0 if prefetch or not gather else 1]
+        if (tensor.access is not OperandAccess.READ
+                or tensor.minimum_elements != 5
+                or tensor.maximum_elements != 5
+                or tensor.immediate_conversion_policy is not
+                OperandImmediateConversionPolicy.NARROW
+                or tensor.type_expression is None
+                or tensor.type_expression.kind is not
+                OperandTypeExpressionKind.FIXED_SCALAR
+                or tensor.type_expression.scalar_type != "s32"
+                or {space.value for space in tensor.state_space_values}
+                != {"param", "const", "global"}
+                or set(tensor.element_kinds) !=
+                {OperandKind.REGISTER, OperandKind.IMMEDIATE}):
+            raise ValueError(f"variant {variant.name!r}: invalid gather/scatter coordinates")
+        if not prefetch:
+            address = operands[-1] if not gather else operands[0]
+            if {space.value for space in address.state_space_values} != {"shared"}:
+                raise ValueError(f"variant {variant.name!r}: invalid shared address")
+        return mode
+
+    if has_read_im2col:
+        mode_name = selected_modes[0]
+        mode = read_modes[mode_name]
+        mode_modifier = modifiers[mode_name]
+        token = {
+            TensorAccessMode.IM2COL: ".im2col",
+            TensorAccessMode.IM2COL_W: ".im2col::w",
+            TensorAccessMode.IM2COL_W128: ".im2col::w::128",
+        }[mode]
+        if (mode_modifier.kind is not ModifierKind.FLAG
+                or mode_modifier.presence is not ModifierPresence.FIXED
+                or mode_modifier.value is not True
+                or modifier_spellings(mode_modifier) != (token,)):
+            raise ValueError(f"variant {variant.name!r}: invalid im2col mode flag")
+        rank_modifier = modifiers.get("rank")
+        ranks = {f".{count}d": count for count in (3, 4, 5)}
+        if (rank_modifier is None or rank_modifier.kind is not ModifierKind.FLAG
+                or rank_modifier.presence is not ModifierPresence.FIXED
+                or rank_modifier.value is not True
+                or modifier_spellings(rank_modifier) not in
+                tuple((spelling,) for spelling in ranks)):
+            raise ValueError(f"variant {variant.name!r}: invalid im2col rank")
+        rank = ranks[modifier_spellings(rank_modifier)[0]]
+        prefetch = "prefetch" in modifiers
+        topology = (
+            {"async": ".async", "bulk": ".bulk", "prefetch": ".prefetch",
+             "tensor_qualifier": ".tensor", "level": ".L2",
+             "src_space": ".global"}
+            if prefetch else
+            {"async": ".async", "bulk": ".bulk",
+             "tensor_qualifier": ".tensor", "src_space": ".global",
+             "completion": ".mbarrier::complete_tx::bytes"}
+        )
+        if not prefetch:
+            destination = modifiers.get("dst_space")
+            if destination is None or modifier_spellings(destination) not in (
+                    (".shared::cta",), (".shared::cluster",)):
+                raise ValueError(f"variant {variant.name!r}: invalid im2col destination")
+            topology["dst_space"] = modifier_spellings(destination)[0]
+        if set(modifiers) != set(topology) | {"rank", mode_name} | (
+                {"multicast"} if "multicast" in modifiers else set()) | (
+                {"cta_group"} if "cta_group" in modifiers else set()):
+            raise ValueError(f"variant {variant.name!r}: invalid im2col topology")
+        for name, spelling in topology.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        if prefetch:
+            if variant.completion_kind is not AsyncCompletionKind.NONE:
+                raise ValueError(f"variant {variant.name!r}: prefetch has completion")
+        elif variant.completion_kind is not AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES:
+            raise ValueError(f"variant {variant.name!r}: invalid im2col completion")
+        if variant.rule is not None or len(variant.operand_layouts) != 2:
+            raise ValueError(f"variant {variant.name!r}: invalid im2col rule/layout count")
+        required_layouts = {"without_info", "with_info"}
+        if {layout.name for layout in variant.operand_layouts} != required_layouts:
+            raise ValueError(f"variant {variant.name!r}: invalid info layout names")
+        expected_prefix = (
+            (("tensor", OperandKind.TENSOR_OPERAND),) if prefetch else
+            (("dst", OperandKind.ADDRESS),
+             ("tensor", OperandKind.TENSOR_OPERAND),
+             ("mbar", OperandKind.ADDRESS))
+        )
+        expected_arity = len(tensor_im2col_info_contract(mode, rank))
+        for layout in variant.operand_layouts:
+            operands = layout.operands
+            expected = expected_prefix + (
+                (("im2col_info", OperandKind.TENSOR_IM2COL_INFO),)
+                if layout.name == "with_info" else ()
+            )
+            if "multicast" in modifiers:
+                expected += (("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),)
+            if tuple((operand.name, operand.kind) for operand in operands) != expected:
+                raise ValueError(f"variant {variant.name!r}: invalid im2col operands")
+            tensor = operands[0 if prefetch else 1]
+            if (tensor.access is not OperandAccess.READ
+                    or tensor.minimum_elements != rank
+                    or tensor.maximum_elements != rank
+                    or tensor.immediate_conversion_policy is not
+                    OperandImmediateConversionPolicy.NARROW
+                    or tensor.type_expression is None
+                    or tensor.type_expression.kind is not
+                    OperandTypeExpressionKind.FIXED_SCALAR
+                    or tensor.type_expression.scalar_type != "s32"
+                    or {space.value for space in tensor.state_space_values}
+                    != {"param", "const", "global"}):
+                raise ValueError(f"variant {variant.name!r}: invalid tensor read")
+            if layout.name == "with_info":
+                info = operands[-2] if "multicast" in modifiers else operands[-1]
+                if (info.access is not OperandAccess.READ
+                        or info.minimum_elements != expected_arity
+                        or info.maximum_elements != expected_arity
+                        or info.immediate_conversion_policy is not
+                        OperandImmediateConversionPolicy.NARROW
+                        or info.type_expression is None
+                        or info.type_expression.kind is not
+                        OperandTypeExpressionKind.FIXED_SCALAR
+                        or info.type_expression.scalar_type != "u16"
+                        or set(info.element_kinds) !=
+                        {OperandKind.REGISTER, OperandKind.IMMEDIATE}):
+                    raise ValueError(f"variant {variant.name!r}: invalid info binding")
+        return mode
+
+    assert no_offsets is not None
+    if (no_offsets.kind is not ModifierKind.FLAG
+            or no_offsets.presence is not ModifierPresence.FIXED
+            or no_offsets.value is not True
+            or modifier_spellings(no_offsets) != (".im2col_no_offs",)
+            or variant.completion_kind is not AsyncCompletionKind.BULK_GROUP):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset mode")
+    required = {
+        "async": ".async", "bulk": ".bulk", "tensor_qualifier": ".tensor",
+        "dst_space": ".global", "src_space": ".shared::cta",
+        "completion": ".bulk_group",
+    }
+    for name, spelling in required.items():
+        modifier = modifiers.get(name)
+        if (modifier is None or modifier.kind is not ModifierKind.FLAG
+                or modifier.presence is not ModifierPresence.FIXED
+                or modifier.value is not True
+                or modifier_spellings(modifier) != (spelling,)):
+            raise ValueError(f"variant {variant.name!r}: invalid {name} topology")
+    rank = modifiers.get("rank")
+    ranks = {f".{value}d": value for value in range(3, 6)}
+    if (rank is None or rank.kind is not ModifierKind.FLAG
+            or rank.presence is not ModifierPresence.FIXED
+            or rank.value is not True
+            or modifier_spellings(rank) not in tuple((name,) for name in ranks)):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset rank")
+    count = ranks[modifier_spellings(rank)[0]]
+    if len(variant.operand_layouts) != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset layout")
+    operands = variant.operand_layouts[0].operands
+    if (len(operands) != 2
+            or (operands[0].name, operands[0].kind) !=
+            ("tensor", OperandKind.TENSOR_OPERAND)
+            or (operands[1].name, operands[1].kind) !=
+            ("src", OperandKind.ADDRESS)
+            or operands[0].access is not OperandAccess.READ
+            or operands[1].access is not OperandAccess.READ
+            or operands[0].minimum_elements != count
+            or operands[0].maximum_elements != count
+            or operands[0].immediate_conversion_policy is not
+            OperandImmediateConversionPolicy.NARROW
+            or operands[0].type_expression is None
+            or operands[0].type_expression.kind is not
+            OperandTypeExpressionKind.FIXED_SCALAR
+            or operands[0].type_expression.scalar_type != "s32"
+            or {space.value for space in operands[0].state_space_values}
+            != {"param", "const", "global"}
+            or {space.value for space in operands[1].state_space_values}
+            != {"shared"}):
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset operands")
+    core = set(required) | {"rank", "im2col_no_offs"}
+    if variant.rule is SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
+        reduction_flags = {name for name in modifiers if name.startswith("reduction_")}
+        if (len(reduction_flags) != 1 or "reduce" not in modifiers
+                or set(modifiers) != core | {"reduce"} | reduction_flags):
+            raise ValueError(f"variant {variant.name!r}: invalid reduction mode flags")
+    elif variant.rule is None:
+        if set(modifiers) != core:
+            raise ValueError(f"variant {variant.name!r}: invalid store mode flags")
+    else:
+        raise ValueError(f"variant {variant.name!r}: invalid no-offset rule")
+    return TensorAccessMode.IM2COL_NO_OFFS
+
+
+def _build_tensor_multicast(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> bool:
+    """Lower a paired cluster-load multicast qualifier and mask role."""
+
+    if mode is None:
+        return False
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    multicast = modifiers.get("multicast")
+    has_mask = any(operand.name == "cta_mask"
+                   for layout in variant.operand_layouts
+                   for operand in layout.operands)
+    if multicast is None:
+        if has_mask:
+            raise ValueError(f"variant {variant.name!r}: mask without multicast")
+        return False
+    destination = modifiers.get("dst_space")
+    if (mode not in {TensorAccessMode.TILED, TensorAccessMode.TILE_GATHER4,
+                     TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                     TensorAccessMode.IM2COL_W128}
+            or variant.completion_kind is not
+            AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+            or multicast.kind is not ModifierKind.FLAG
+            or multicast.presence is not ModifierPresence.FIXED
+            or multicast.value is not True
+            or modifier_spellings(multicast) != (".multicast::cluster",)
+            or destination is None
+            or modifier_spellings(destination) != (".shared::cluster",)):
+        raise ValueError(f"variant {variant.name!r}: invalid multicast topology")
+    for layout in variant.operand_layouts:
+        if not layout.operands or layout.operands[-1].name != "cta_mask":
+            raise ValueError(f"variant {variant.name!r}: multicast mask ordering")
+        mask = layout.operands[-1]
+        if (mask.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+                or mask.access is not OperandAccess.READ
+                or mask.immediate_conversion_policy is not
+                OperandImmediateConversionPolicy.NARROW
+                or mask.type_expression is None
+                or mask.type_expression.kind is not
+                OperandTypeExpressionKind.FIXED_SCALAR
+                or mask.type_expression.scalar_type != "u16"):
+            raise ValueError(f"variant {variant.name!r}: invalid multicast mask")
+    if mode is TensorAccessMode.TILED:
+        required = {"async": ".async", "bulk": ".bulk",
+                    "tensor_qualifier": ".tensor",
+                    "dst_space": ".shared::cluster", "src_space": ".global",
+                    "completion": ".mbarrier::complete_tx::bytes"}
+        if set(modifiers) != set(required) | {"rank", "tile", "multicast"} | (
+                {"cta_group"} if "cta_group" in modifiers else set()):
+            raise ValueError(f"variant {variant.name!r}: extra multicast control")
+        for name, spelling in required.items():
+            modifier = modifiers[name]
+            if (modifier.kind is not ModifierKind.FLAG
+                    or modifier.presence is not ModifierPresence.FIXED
+                    or modifier.value is not True
+                    or modifier_spellings(modifier) != (spelling,)):
+                raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+        if len(variant.operand_layouts) != 1 or tuple(
+                (operand.name, operand.kind)
+                for operand in variant.operand_layouts[0].operands) != (
+                    ("dst", OperandKind.ADDRESS),
+                    ("tensor", OperandKind.TENSOR_OPERAND),
+                    ("mbar", OperandKind.ADDRESS),
+                    ("cta_mask", OperandKind.REGISTER_OR_IMMEDIATE),
+                ):
+            raise ValueError(f"variant {variant.name!r}: tiled multicast operands")
+    return True
+
+
+def _build_tensor_cta_group(
+    variant: VariantSpec, mode: TensorAccessMode | None, multicast: bool,
+) -> bool:
+    """Validate a written tensor-load CTA group and preserve omitted applicability."""
+
+    if mode is None:
+        return False
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    group = modifiers.get("cta_group")
+    destination = modifiers.get("dst_space")
+    eligible = (
+        mode in {TensorAccessMode.TILED, TensorAccessMode.TILE_GATHER4,
+                 TensorAccessMode.IM2COL, TensorAccessMode.IM2COL_W,
+                 TensorAccessMode.IM2COL_W128}
+        and variant.completion_kind is
+        AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+        and destination is not None
+        and modifier_spellings(destination) in
+        ((".shared::cta",), (".shared::cluster",))
+        and "src_space" in modifiers
+        and modifier_spellings(modifiers["src_space"]) == (".global",)
+    )
+    if group is None:
+        return eligible
+    if not eligible or (multicast and
+                        modifier_spellings(destination) != (".shared::cluster",)):
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group topology")
+    if (group.kind is not ModifierKind.CTA_GROUP
+            or group.presence is not ModifierPresence.REQUIRED
+            or group.domain != "tcgen_cta_groups"
+            or tuple(value.value for value in group.values)
+            != ("cta_group::1", "cta_group::2")
+            or modifier_spellings(group)
+            != (".cta_group::1", ".cta_group::2")):
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group domain")
+    names = tuple(modifier.name for modifier in variant.modifiers)
+    if names[-1] != "cta_group" or names.count("cta_group") != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group order")
+    if multicast and names[-2] != "multicast":
+        raise ValueError(f"variant {variant.name!r}: misplaced multicast")
+    if not multicast and names[-2] != "completion":
+        raise ValueError(f"variant {variant.name!r}: misplaced completion")
+    expected_aliases = (
+        (names[:-2] + ("cta_group", "multicast"),) if multicast else ()
+    )
+    if variant.modifier_order_aliases != expected_aliases:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group alias")
+    qualified = {"any_of": [
+        {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+    ]}
+    if variant.availability != qualified:
+        raise ValueError(f"variant {variant.name!r}: invalid CTA-group target gate")
+    return True
+
+
+def _build_expected_tensor_rank(
+    variant: VariantSpec, mode: TensorAccessMode | None,
+) -> int | None:
+    """Lower the fixed dimension token independently of coordinate arity."""
+
+    if mode is None:
+        return None
+    ranks = {f".{rank}d": rank for rank in range(1, 6)}
+    rank_flags = [modifier for modifier in variant.modifiers
+                  if modifier.name == "rank"]
+    if len(rank_flags) != 1:
+        raise ValueError(f"variant {variant.name!r}: expected one tensor rank")
+    rank_flag = rank_flags[0]
+    spelling = modifier_spellings(rank_flag)
+    if (rank_flag.kind is not ModifierKind.FLAG
+            or rank_flag.presence is not ModifierPresence.FIXED
+            or rank_flag.value is not True
+            or len(spelling) != 1 or spelling[0] not in ranks):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor rank flag")
+    rank = ranks[spelling[0]]
+    if mode in {TensorAccessMode.TILE_GATHER4, TensorAccessMode.TILE_SCATTER4}:
+        if rank != 2:
+            raise ValueError(f"variant {variant.name!r}: gather/scatter rank must be two")
+    else:
+        for layout in variant.operand_layouts:
+            tensors = [operand for operand in layout.operands
+                       if operand.kind is OperandKind.TENSOR_OPERAND]
+            if (len(tensors) != 1 or tensors[0].minimum_elements != rank
+                    or tensors[0].maximum_elements != rank):
+                raise ValueError(f"variant {variant.name!r}: tensor rank/arity mismatch")
+    return rank
+
+
+def _build_tensor_reduction_op(
+    opcode: str, variant: VariantSpec,
+    tensor_access_mode: TensorAccessMode | None,
+) -> TensorReductionOp | None:
+    """Lower one checked fixed tiled-reduction operation from canonical flags."""
+
+    if variant.rule is not SemanticRule.DATA_MOVEMENT_TENSOR_REDUCTION:
+        return None
+    if opcode != "cp" or variant.completion_kind is not AsyncCompletionKind.BULK_GROUP:
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction topology")
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    required = {
+        "reduce": ".reduce", "async": ".async", "bulk": ".bulk",
+        "tensor_qualifier": ".tensor", "dst_space": ".global",
+        "src_space": ".shared::cta", "completion": ".bulk_group",
+    }
+    operation_flags = [modifier for modifier in variant.modifiers
+                       if modifier.name.startswith("reduction_")]
+    if len(operation_flags) != 1:
+        raise ValueError(f"variant {variant.name!r}: expected one reduction operation")
+    operation = operation_flags[0]
+    mode_name = (
+        "tile" if tensor_access_mode is TensorAccessMode.TILED
+        else "im2col_no_offs" if tensor_access_mode is TensorAccessMode.IM2COL_NO_OFFS
+        else ""
+    )
+    if (not mode_name or len(modifiers) != len(variant.modifiers)
+            or set(modifiers) != set(required) | {"rank", mode_name, operation.name}):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction flags")
+    for name, spelling in required.items():
+        modifier = modifiers[name]
+        if (modifier.kind is not ModifierKind.FLAG
+                or modifier.presence is not ModifierPresence.FIXED
+                or modifier.value is not True
+                or modifier_spellings(modifier) != (spelling,)):
+            raise ValueError(f"variant {variant.name!r}: invalid {name} flag")
+    rank = modifiers["rank"]
+    if (rank.kind is not ModifierKind.FLAG
+            or rank.presence is not ModifierPresence.FIXED
+            or rank.value is not True
+            or modifier_spellings(rank) not in tuple((f".{n}d",) for n in range(1, 6))):
+        raise ValueError(f"variant {variant.name!r}: invalid tensor reduction rank")
+    if tensor_access_mode is TensorAccessMode.TILED:
+        tile = modifiers["tile"]
+        if (tile.kind is not ModifierKind.FLAG
+                or tile.presence is not ModifierPresence.OPTIONAL
+                or tile.default is not False
+                or modifier_spellings(tile) != (".tile",)):
+            raise ValueError(f"variant {variant.name!r}: invalid tile flag")
+    if (operation.kind is not ModifierKind.FLAG
+            or operation.presence is not ModifierPresence.FIXED
+            or operation.value is not True):
+        raise ValueError(f"variant {variant.name!r}: reduction operation must be fixed true")
+    matches = [op for op in TensorReductionOp
+               if operation.name == f"reduction_{op.value}"
+               and modifier_spellings(operation) == (f".{op.value}",)]
+    if len(matches) != 1:
+        raise ValueError(f"variant {variant.name!r}: unknown reduction operation")
+    if len(variant.operand_layouts) != 1:
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operand layouts")
+    operands = variant.operand_layouts[0].operands
+    if (len(operands) != 2
+            or (operands[0].name, operands[0].kind) != ("tensor", OperandKind.TENSOR_OPERAND)
+            or (operands[1].name, operands[1].kind) != ("src", OperandKind.ADDRESS)):
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operands")
+    tensor, src = operands
+    if (tensor.access is not OperandAccess.READ
+            or src.access is not OperandAccess.READ
+            or tensor.immediate_conversion_policy is not OperandImmediateConversionPolicy.NARROW
+            or tensor.type_expression is None
+            or tensor.type_expression.kind is not OperandTypeExpressionKind.FIXED_SCALAR
+            or tensor.type_expression.scalar_type != "s32"
+            or {space.value for space in tensor.state_space_values}
+            != {"param", "const", "global"}
+            or {space.value for space in src.state_space_values} != {"shared"}):
+        raise ValueError(f"variant {variant.name!r}: invalid reduction operand roles")
+    return matches[0]
 
 
 def _build_memory_consistency_constraint(
@@ -1025,6 +1739,9 @@ def _build_operand_layout(
     modifier_field_ids: dict[str, str],
     forbidden_modifiers: tuple[str, ...] = (),
     forbidden_modifier_slots: tuple[int, ...] = (),
+    tensor_access_mode: TensorAccessMode | None = None,
+    expected_tensor_rank: int | None = None,
+    tensor_multicast: bool = False,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -1099,6 +1816,15 @@ def _build_operand_layout(
                     )
                     for kind in operand.element_kinds
                 ),
+                tensor_access_mode=(
+                    tensor_access_mode
+                    if operand.kind is OperandKind.TENSOR_OPERAND else None
+                ),
+                expected_tensor_rank=(
+                    expected_tensor_rank
+                    if operand.kind is OperandKind.TENSOR_OPERAND else None
+                ),
+                tensor_cta_mask=(tensor_multicast and operand.name == "cta_mask"),
             )
             for operand, field in zip(operands, fields, strict=True)
         ),

@@ -751,11 +751,13 @@ TEST(ConversionCompleteness, EnforcesFamilyAndExactTargetBoundaries) {
 
 /** Require the scale qualifier and extra operand to agree after resolution. */
 TEST(ConversionCompleteness, ChecksScaleQualifierAgainstOwnedLayout) {
-  expectModuleRuleViolation(R"ptx(.version 9.3 .target sm_100a .entry kernel() {
+  expectModuleRuleViolation(
+      R"ptx(.version 9.3 .target sm_100a .entry kernel() {
     .reg .b16 %b0; .reg .b32 %d0;
     cvt.rn.scaled::n2::ue8m0.bf16x2.e4m3x2 %d0, %b0;
   })ptx");
-  expectModuleRuleViolation(R"ptx(.version 9.3 .target sm_100a .entry kernel() {
+  expectModuleRuleViolation(
+      R"ptx(.version 9.3 .target sm_100a .entry kernel() {
     .reg .b16 %b0, %b1; .reg .b32 %d0;
     cvt.rn.bf16x2.e4m3x2 %d0, %b0, %b1;
   })ptx");
@@ -812,7 +814,8 @@ TEST(ConversionCompleteness, DistinguishesFp4AndFp6SourceContainers) {
     cvt.rn.bf16x2.e2m1x2 %r, %small;
     cvt.rn.scaled::n2::ue8m0.bf16x2.e2m1x2 %r, %small, %scale;
   })ptx");
-  expectModuleValidationRejected(R"ptx(.version 9.3 .target sm_121a .entry k() {
+  expectModuleValidationRejected(
+      R"ptx(.version 9.3 .target sm_121a .entry k() {
     .reg .b8 %small; .reg .b32 %r;
     cvt.rn.f16x2.e2m3x2 %r, %small;
   })ptx");

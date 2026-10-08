@@ -1,12 +1,19 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier, Event
 import tempfile
 from typing import Any, cast
 import unittest
+from unittest.mock import patch
 
 import yaml
 from jsonschema import Draft202012Validator
 
-from ptx_frontend.code_gen.database import load_codegen_database
+import ptx_frontend.spec.database as spec_database
+from ptx_frontend.code_gen.database import (
+    get_packaged_spec_database,
+    load_codegen_database,
+)
 from ptx_frontend.code_gen.load_yaml import load_yaml
 from ptx_frontend.code_gen.emit.availability import emit_availability
 from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
@@ -677,7 +684,7 @@ class AvailabilityNormalizationTests(unittest.TestCase):
             {"any_of": [{"target": "sm_90b"}]},
             {"any_of": [{"family": "sm_90a"}]},
             {"any_of": [{"capabilities": []}]},
-            {"any_of": [{"sm": 90}] * 6},
+            {"any_of": [{"sm": 90}] * 7},
         ):
             with self.assertRaises((TypeError, ValueError)):
                 normalize_availability(availability)
@@ -721,12 +728,12 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         })
         self.assertEqual(list(validator.iter_errors({"any_of": [{"sm": 100}]})), [])
         self.assertEqual(
-            list(validator.iter_errors({"any_of": [{"sm": 100}] * 5})), []
+            list(validator.iter_errors({"any_of": [{"sm": 100}] * 6})), []
         )
         self.assertEqual(list(validator.iter_errors({"any_of": [{"family": "sm_100f"}]})), [])
         self.assertEqual(list(validator.iter_errors({"sm": 4294967295})), [])
         for availability in ({"any_of": []}, {"any_of": [{}]},
-                             {"any_of": [{"sm": 100}] * 6},
+                             {"any_of": [{"sm": 100}] * 7},
                              {"sm": 4294967296}, {"sm": True},
                              {"family": "sm_90a"},
                              {"any_of": [{"family": "sm_90a"}]},
@@ -743,6 +750,27 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         self.assertIn("TargetFlavor::ArchitectureSpecific", source)
         self.assertIn('.required_family = "sm_120f",', source)
         self.assertIn('.capabilities = {{"tensor", "cluster"}}', source)
+
+    def test_six_clause_availability_retains_all_terms(self) -> None:
+        """Normalize and emit each bounded OR path without dropping AND terms."""
+
+        availability = {"any_of": [
+            {"ptx": "8.0", "sm": 90, "target": "sm_90a"},
+            {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+            {"ptx": "8.7", "sm": 120, "target": "sm_120a"},
+            {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+            {"ptx": "8.8", "sm": 120, "family": "sm_120f",
+             "capabilities": ["cluster"]},
+        ]}
+        self.assertEqual(normalize_availability(availability), availability)
+        source = emit_availability(availability)
+        self.assertIn(".any_of_count = 6", source)
+        for target in (90, 100, 120):
+            self.assertIn(f".exact_target_architecture = {{{target}}}", source)
+        for family in ("sm_100f", "sm_110f", "sm_120f"):
+            self.assertIn(f'.required_family = "{family}"', source)
+        self.assertIn('.capabilities = {{"cluster"}}', source)
 
     def test_dnf_emitter_handles_all_exact_target_flavors(self) -> None:
         source = emit_availability(normalize_availability({"any_of": [
@@ -766,6 +794,150 @@ class AvailabilityNormalizationTests(unittest.TestCase):
                 emit_availability(availability)
         with self.assertRaisesRegex(ValueError, "availability target"):
             emit_availability({"any_of": [{"target": "sm_4294967296"}]})
+
+
+class PackagedDatabaseSnapshotTests(unittest.TestCase):
+    """Keep process-level reuse separate from fresh specification loading."""
+
+    @staticmethod
+    def _sample_database() -> spec_database.CodegenDatabase:
+        """Normalize one small real specification with nested availability."""
+
+        source = _spec(
+            category="integer_arithmetic",
+            codegen_category="arithmetic",
+            variant_name="add_integer",
+            type_value="u32",
+        )
+        instruction = cast(dict[str, Any], source["instructions"][0])
+        variant = cast(dict[str, Any], instruction["variants"][0])
+        variant["availability"] = {"any_of": [{"ptx": "1.0", "sm": 0}]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "arithmetic.yaml").write_text(
+                yaml.safe_dump(source, sort_keys=False), encoding="utf-8"
+            )
+            return load_codegen_database(spec_dir=path)
+
+    def test_one_initialization_returns_one_shared_model(self) -> None:
+        """All callers receive the same normalized model and nested mappings."""
+
+        database = self._sample_database()
+        with (
+            patch.object(spec_database, "_packaged_spec_snapshot", None),
+            patch.object(
+                spec_database, "load_packaged_spec_database", return_value=database
+            ) as load,
+        ):
+            first = get_packaged_spec_database()
+            second = get_packaged_spec_database()
+            load.assert_called_once_with()
+
+        self.assertIs(first, second)
+        self.assertIs(first, database)
+        first_availability = first.instructions[0].variants[0].availability
+        second_availability = second.instructions[0].variants[0].availability
+        self.assertIs(first_availability, second_availability)
+        self.assertEqual(second_availability["any_of"][0]["ptx"], "1.0")
+
+    def test_concurrent_cold_calls_initialize_once(self) -> None:
+        """A lock admits one loader even when callers start together."""
+
+        database = self._sample_database()
+        simultaneous_start = Barrier(8)
+        loader_entered = Event()
+        release_loader = Event()
+
+        def blocked_load() -> spec_database.CodegenDatabase:
+            """Hold the first load open while every thread enters the getter."""
+
+            loader_entered.set()
+            if not release_loader.wait(timeout=5):
+                raise TimeoutError("concurrent loader was not released")
+            return database
+
+        def obtain() -> spec_database.CodegenDatabase:
+            """Enter the public getter with all worker threads at once."""
+
+            simultaneous_start.wait(timeout=30)
+            return get_packaged_spec_database()
+
+        with (
+            patch.object(spec_database, "_packaged_spec_snapshot", None),
+            patch.object(
+                spec_database, "load_packaged_spec_database", side_effect=blocked_load
+            ) as load,
+            ThreadPoolExecutor(max_workers=8) as executor,
+        ):
+            futures = tuple(executor.submit(obtain) for _ in range(8))
+            try:
+                self.assertTrue(loader_entered.wait(timeout=5))
+                # The first loader releases the GIL while other callers reach it.
+                self.assertFalse(release_loader.wait(timeout=0.25))
+            finally:
+                release_loader.set()
+            results = tuple(future.result(timeout=5) for future in futures)
+            load.assert_called_once_with()
+        self.assertTrue(all(result is database for result in results))
+
+    def test_failed_initialization_retries(self) -> None:
+        """A failed cold load must not poison the process snapshot."""
+
+        database = self._sample_database()
+        with (
+            patch.object(spec_database, "_packaged_spec_snapshot", None),
+            patch.object(
+                spec_database,
+                "load_packaged_spec_database",
+                side_effect=(ValueError("bad packaged spec"), database),
+            ) as load,
+        ):
+            with self.assertRaisesRegex(ValueError, "bad packaged spec"):
+                get_packaged_spec_database()
+            first = get_packaged_spec_database()
+            second = get_packaged_spec_database()
+            self.assertEqual(load.call_count, 2)
+        self.assertIs(first, second)
+        self.assertIs(first, database)
+
+    def test_fresh_loaders_observe_edits_while_snapshot_does_not(self) -> None:
+        """Explicit loaders reread changed files without resetting the getter."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            spec_dir = Path(directory)
+            spec_path = spec_dir / "arithmetic.yaml"
+            source = _spec(
+                category="integer_arithmetic",
+                codegen_category="arithmetic",
+                variant_name="add_integer",
+                type_value="u32",
+            )
+            spec_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+            with (
+                patch.object(spec_database, "_packaged_spec_snapshot", None),
+                patch.object(
+                    spec_database, "packaged_spec_dir", return_value=spec_dir
+                ),
+            ):
+                snapshot = get_packaged_spec_database()
+                source = _spec(
+                    category="integer_arithmetic",
+                    codegen_category="arithmetic",
+                    variant_name="add_float",
+                    type_value="f32",
+                )
+                spec_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+                fresh = spec_database.load_packaged_spec_database()
+                fresh_from_directory = load_codegen_database(spec_dir=spec_dir)
+                cached_again = get_packaged_spec_database()
+
+        self.assertEqual(snapshot.instructions[0].variants[0].name, "add_integer")
+        self.assertIs(snapshot, cached_again)
+        self.assertEqual(cached_again.instructions[0].variants[0].name, "add_integer")
+        self.assertEqual(fresh.instructions[0].variants[0].name, "add_float")
+        self.assertEqual(
+            fresh_from_directory.instructions[0].variants[0].name, "add_float"
+        )
 
 
 if __name__ == "__main__":

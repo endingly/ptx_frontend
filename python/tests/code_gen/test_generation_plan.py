@@ -9,6 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
 import re
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -25,6 +26,7 @@ from ptx_frontend.code_gen.context import (
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
     REFERENCE_TYPES,
+    form_shards,
     generate_resolved_opcode_header,
     method_name,
 )
@@ -40,6 +42,7 @@ from ptx_frontend.code_gen.emit.syntax_descriptors import (
     generate_syntax_descriptor_source,
 )
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
+from ptx_frontend.code_gen.model import ConditionCodeEffect
 from ptx_frontend.code_gen.plan import (
     GeneratedArtifact,
     GenerationPlan,
@@ -49,14 +52,15 @@ from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind
 from ptx_frontend.spec.database import (
-    discover_codegen_category_inputs,
     load_codegen_database,
     load_codegen_database_from_files,
+    load_codegen_database_with_category_inputs,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_DIR = ROOT / "instructions/ptx_spec"
 BACKEND_SPEC = ROOT / "instructions/ptx_cpp_backend_spec/ptx_frontend.yaml"
+CONTROL_FLOW_SPEC = SPEC_DIR / "control_flow.yaml"
 
 
 class GeneratorJobsTests(unittest.TestCase):
@@ -85,6 +89,60 @@ class GeneratorJobsTests(unittest.TestCase):
             self.assertEqual(cli.parse_arguments().jobs, 6)
         with patch.object(sys, "argv", base + ["--jobs", "1"]):
             self.assertEqual(cli.parse_arguments().jobs, 1)
+
+    def test_describe_build_discovers_real_spec_without_writing(self) -> None:
+        """Exercise CLI discovery with one unpatched canonical spec file."""
+
+        from ptx_frontend.code_gen import cli
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec_dir = root / "spec"
+            spec_dir.mkdir()
+            spec_file = spec_dir / CONTROL_FLOW_SPEC.name
+            shutil.copy2(CONTROL_FLOW_SPEC, spec_file)
+            output = root / "not-created"
+            arguments = [
+                "codegen",
+                "--spec-dir", str(spec_dir),
+                "--backend-spec", str(BACKEND_SPEC),
+                "--output", str(output),
+                "--describe-build",
+            ]
+            stdout = StringIO()
+            with patch.object(sys, "argv", arguments), redirect_stdout(stdout):
+                cli.main()
+
+            description = json.loads(stdout.getvalue())
+            self.assertFalse(output.exists())
+            self.assertEqual(
+                [group["name"] for group in description["categories"]],
+                ["control_flow"],
+            )
+            self.assertEqual(
+                description["categories"][0]["spec_files"],
+                [str(spec_file.resolve())],
+            )
+            database = load_codegen_database(spec_dir=spec_dir)
+            backend = load_cpp_backend(BACKEND_SPEC)
+            expected_plan = build_generation_plan(
+                build_generation_context(database, backend), output.resolve()
+            )
+            self.assertEqual(
+                description["all_outputs"],
+                [str(path) for path in expected_plan.paths],
+            )
+            self.assertEqual(
+                description["global_outputs"],
+                [str(artifact.path) for artifact in expected_plan.global_artifacts],
+            )
+            self.assertEqual(
+                description["categories"][0]["outputs"],
+                [
+                    str(artifact.path)
+                    for artifact in expected_plan.artifacts_for_category("control_flow")
+                ],
+            )
 
     def test_parallel_artifacts_match_serial_bytes_and_stable_manifest(self) -> None:
         from ptx_frontend.code_gen import cli
@@ -189,6 +247,7 @@ class GeneratorJobsTests(unittest.TestCase):
                 global_artifacts=False,
                 list_outputs=False,
                 describe_build=False,
+                defer_finalization=False,
                 jobs=2,
             )
             with (
@@ -221,21 +280,56 @@ class GeneratorJobsTests(unittest.TestCase):
 
 
 class GenerationPlanTests(unittest.TestCase):
+    """Exercise one real corpus snapshot and independent mutation probes."""
     @classmethod
     def setUpClass(cls) -> None:
-        cls.database = load_codegen_database(spec_dir=SPEC_DIR)
+        """Lower the immutable canonical corpus once for read-only assertions."""
+
+        cls.database, cls.category_inputs = load_codegen_database_with_category_inputs(
+            spec_dir=SPEC_DIR
+        )
         cls.backend = load_cpp_backend(BACKEND_SPEC)
+        cls.context = build_generation_context(cls.database, cls.backend)
+        cls._full_tree: tempfile.TemporaryDirectory[str] | None = None
+        cls._full_plan: GenerationPlan | None = None
+        cls._full_output: Path | None = None
+        cls.addClassCleanup(cls._release_full_generation)
+
+    @classmethod
+    def _release_full_generation(cls) -> None:
+        """Release the class-owned output tree after all consumers finish."""
+
+        if cls._full_tree is not None:
+            cls._full_tree.cleanup()
+        cls._full_tree = None
+        cls._full_plan = None
+        cls._full_output = None
+
+    @classmethod
+    def full_generation(cls) -> tuple[GenerationPlan, Path]:
+        """Emit the unmodified full corpus once and lend its bytes read-only."""
+
+        if cls._full_plan is None:
+            cls._full_tree = tempfile.TemporaryDirectory()
+            output = Path(cls._full_tree.name) / "generated"
+            plan = build_generation_plan(cls.context, output)
+            for artifact in plan.artifacts:
+                artifact.emit(cls.context, output_path=artifact.path)
+            cls._full_plan = plan
+            cls._full_output = output
+        assert cls._full_output is not None
+        return cls._full_plan, cls._full_output
 
     def test_full_direct_class_corpus_and_layout_slots(self) -> None:
         """Plan every form once and keep overloaded fields typed by layout."""
 
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (92, 985))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 1225)
-        self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 194)
+        self.assertEqual((len(context.entries), len(forms)), (101, 4333))
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 5109)
+        self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 716)
         for form in forms:
             slots = operand_slots(form, self.backend)
             self.assertEqual(len({slot.member_name for slot in slots}), len(slots))
@@ -249,13 +343,74 @@ class GenerationPlanTests(unittest.TestCase):
                     )
         with tempfile.TemporaryDirectory() as directory:
             plan = build_generation_plan(context, Path(directory))
-            self.assertEqual(len(plan.paths), 4 + 2 * len(context.entries))
+            shard_count = sum(len(form_shards(entry)) for entry in context.entries)
+            self.assertEqual(shard_count, 56)
+            self.assertEqual(len(plan.paths), 10 + 2 * len(context.entries)
+                             + 3 * shard_count)
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
                                 for path in plan.paths))
 
+    def test_condition_code_effects_are_typed_and_variant_local(self) -> None:
+        """Check all source variants, projected variants, and CC availability."""
+
+        expected = {
+            "add": {"cc": ConditionCodeEffect.CARRY_OUT},
+            "addc": {"plain": ConditionCodeEffect.CARRY_IN,
+                     "cc": ConditionCodeEffect.CARRY_IN_OUT},
+            "sub": {"cc": ConditionCodeEffect.BORROW_OUT},
+            "subc": {"plain": ConditionCodeEffect.BORROW_IN,
+                     "cc": ConditionCodeEffect.BORROW_IN_OUT},
+            "mad": {"hi_cc": ConditionCodeEffect.CARRY_OUT,
+                    "lo_cc": ConditionCodeEffect.CARRY_OUT},
+            "madc": {"hi_plain": ConditionCodeEffect.CARRY_IN,
+                     "lo_plain": ConditionCodeEffect.CARRY_IN,
+                     "hi_cc": ConditionCodeEffect.CARRY_IN_OUT,
+                     "lo_cc": ConditionCodeEffect.CARRY_IN_OUT},
+        }
+        self.assertEqual(len(self.database.instructions), len(self.context.entries))
+        for source, entry in zip(self.database.instructions, self.context.entries):
+            self.assertIs(source, entry.specification)
+            self.assertEqual(len(source.variants), len(entry.resolved.variants))
+            expected_variant_effects = {
+                f"{source.opcode}_{form}_{width}": effect
+                for form, effect in expected.get(source.opcode, {}).items()
+                for width in (32, 64)
+            }
+            for variant, generated in zip(source.variants, entry.resolved.variants):
+                self.assertEqual(generated.variant_id, variant.name)
+                self.assertIsInstance(variant.condition_code_effect, ConditionCodeEffect)
+                self.assertIs(
+                    generated.condition_code_effect,
+                    variant.condition_code_effect,
+                )
+                self.assertIs(
+                    variant.condition_code_effect,
+                    expected_variant_effects.get(
+                        variant.name, ConditionCodeEffect.NONE
+                    ),
+                )
+            if source.opcode not in expected:
+                continue
+            variants = {variant.name: variant for variant in source.variants}
+            for form, effect in expected[source.opcode].items():
+                for width in (32, 64):
+                    variant = variants[f"{source.opcode}_{form}_{width}"]
+                    self.assertIs(variant.condition_code_effect, effect)
+                    if source.opcode in {"mad", "madc"}:
+                        availability = (
+                            {"ptx": "3.0", "sm": 20} if width == 32
+                            else {"ptx": "4.3", "sm": 20}
+                        )
+                    else:
+                        availability = (
+                            {"ptx": "1.2", "sm": 0} if width == 32
+                            else {"ptx": "4.3", "sm": 20}
+                        )
+                    self.assertEqual(variant.availability, availability)
+
     def test_cp_direct_dispatch_names_every_generated_form(self) -> None:
         """Descriptor selection reaches all Cp forms beyond reflection limits."""
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         cp = next(
             entry for entry in context.entries
             if entry.specification.opcode == "cp"
@@ -270,6 +425,15 @@ class GenerationPlanTests(unittest.TestCase):
             )
 
     def test_context_lowers_and_projects_each_instruction_once(self) -> None:
+        """Fresh lowering stays one-to-one while every artifact kind emits."""
+
+        selected = tuple(
+            instruction for instruction in self.database.instructions
+            if instruction.opcode in {"add", "cp", "tcgen05"}
+        )
+        self.assertEqual({item.opcode for item in selected},
+                         {"add", "cp", "tcgen05"})
+        database = replace(self.database, instructions=selected)
         with (
             patch(
                 "ptx_frontend.code_gen.context.from_instruction_spec",
@@ -285,19 +449,24 @@ class GenerationPlanTests(unittest.TestCase):
                 ).with_cpp_backend_field_names,
             ) as project,
         ):
-            context = build_generation_context(self.database, self.backend)
+            context = build_generation_context(database, self.backend)
             with tempfile.TemporaryDirectory() as directory:
-                for artifact in build_generation_plan(
-                    context, Path(directory)
-                ).artifacts:
+                plan = build_generation_plan(context, Path(directory))
+                self.assertTrue(plan.global_artifacts)
+                self.assertTrue(any(form_shards(entry) for entry in context.entries))
+                self.assertTrue(any(not form_shards(entry) for entry in context.entries))
+                self.assertTrue(any("_forms_" in path.name for path in plan.paths))
+                self.assertTrue(any("_methods_" in path.name for path in plan.paths))
+                self.assertTrue(any("_descriptors_" in path.name for path in plan.paths))
+                for artifact in plan.artifacts:
                     artifact.emit(context, output_path=artifact.path)
-        self.assertEqual(len(context.instructions), len(self.database.instructions))
-        self.assertEqual(lower.call_count, len(self.database.instructions))
-        self.assertEqual(project.call_count, len(self.database.instructions))
+        self.assertEqual(len(context.instructions), len(selected))
+        self.assertEqual(lower.call_count, len(selected))
+        self.assertEqual(project.call_count, len(selected))
 
     def test_typed_observer_covers_current_reference_payloads(self) -> None:
         """Every reference kind has a fixed typed callback and module collector."""
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         collector = (
             ROOT / "submod/resolved_ir/src/ptx_module_availability.cpp"
         ).read_text()
@@ -321,22 +490,20 @@ class GenerationPlanTests(unittest.TestCase):
                 f"Missing typed callback for {payload_type}",
             )
         self.assertGreater(len(payload_types), 10)
-        with tempfile.TemporaryDirectory() as directory:
-            for entry in context.entries:
-                output = Path(directory) / f"{entry.specification.opcode}.gen.cpp"
-                generate_resolved_opcode_source(
-                    context,
-                    category=entry.specification.codegen_category,
-                    opcode=entry.specification.opcode,
-                    output_path=output,
-                )
-                source = output.read_text()
-                self.assertIn(f"resolve{entry.cpp_name}(", source)
-                self.assertNotIn("OwnedInstruction", source)
-                self.assertNotIn("box_instruction", source)
+        plan, output = self.full_generation()
+        for entry in context.entries:
+            source_path = output / (
+                f"private/resolved_ir_{entry.specification.codegen_category}_"
+                f"{entry.specification.opcode}.gen.cpp"
+            )
+            self.assertIn(source_path, plan.paths)
+            source = source_path.read_text(encoding="utf-8")
+            self.assertIn(f"resolve{entry.cpp_name}(", source)
+            self.assertNotIn("OwnedInstruction", source)
+            self.assertNotIn("box_instruction", source)
 
     def test_entries_bind_source_category_and_resolved_model(self) -> None:
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         arithmetic = next(
             entry
             for entry in context.entries
@@ -374,7 +541,7 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertNotIn(f"resolve{control_flow.resolved.cpp_name}(", category)
 
     def test_entry_rejects_resolved_model_from_another_opcode(self) -> None:
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         first, second = context.entries[:2]
         with self.assertRaisesRegex(ValueError, "mismatched opcodes"):
             GenerationInstruction(
@@ -383,7 +550,7 @@ class GenerationPlanTests(unittest.TestCase):
             )
 
     def test_entry_rejects_same_opcode_with_different_cpp_type_identity(self) -> None:
-        entry = build_generation_context(self.database, self.backend).entries[0]
+        entry = self.context.entries[0]
         mismatched_resolved = replace(entry.resolved, cpp_name="Mismatched")
 
         with self.assertRaisesRegex(ValueError, "mismatched C\\+\\+ type identities"):
@@ -395,7 +562,7 @@ class GenerationPlanTests(unittest.TestCase):
     def test_entry_replace_rejects_same_opcode_with_different_cpp_type_identity(
         self,
     ) -> None:
-        entry = build_generation_context(self.database, self.backend).entries[0]
+        entry = self.context.entries[0]
 
         with self.assertRaisesRegex(ValueError, "mismatched C\\+\\+ type identities"):
             replace(entry, resolved=replace(entry.resolved, cpp_name="Mismatched"))
@@ -422,117 +589,131 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertFalse(any(name.endswith("category_source") for name in dispatch_imports))
 
     def test_plan_is_the_only_artifact_inventory(self) -> None:
-        context = build_generation_context(self.database, self.backend)
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "generated"
-            plan = build_generation_plan(context, output)
-            self.assertEqual(len(plan.paths), len(set(plan.paths)))
-            self.assertTrue(
-                all(
-                    path.relative_to(output).parts[:3]
-                    == ("public", "ptx_frontend", "resolved_ir")
-                    for path in plan.paths
-                    if path.relative_to(output).parts[0] == "public"
-                )
+        plan, output = self.full_generation()
+        self.assertEqual(len(plan.paths), len(set(plan.paths)))
+        self.assertTrue(
+            all(
+                path.relative_to(output).parts[:3]
+                == ("public", "ptx_frontend", "resolved_ir")
+                for path in plan.paths
+                if path.relative_to(output).parts[0] == "public"
             )
-            self.assertEqual(
-                plan.paths,
-                build_generation_plan(context, output).paths,
-            )
-            for artifact in plan.artifacts:
-                artifact.emit(context, output_path=artifact.path)
-            self.assertEqual(
-                {path.relative_to(output) for path in plan.paths},
-                {
-                    path.relative_to(output)
-                    for path in output.rglob("*")
-                    if path.is_file()
-                },
-            )
+        )
+        self.assertEqual(
+            plan.paths,
+            build_generation_plan(self.context, output).paths,
+        )
+        self.assertEqual(
+            {path.relative_to(output) for path in plan.paths},
+            {
+                path.relative_to(output)
+                for path in output.rglob("*")
+                if path.is_file()
+            },
+        )
 
     def test_op_sources_own_exactly_one_binding_and_all_descriptors(self) -> None:
-        context = build_generation_context(self.database, self.backend)
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory)
-            plan = build_generation_plan(context, output)
-            sources = {
-                artifact.path: artifact for artifact in plan.artifacts
-                if artifact.path.suffix == ".cpp"
-                and artifact.path.name.startswith("resolved_ir_")
-                and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
-            }
-            self.assertEqual(len(sources), len(context.entries))
-            for entry in context.entries:
-                category = entry.specification.codegen_category
-                opcode = entry.specification.opcode
-                path = output / f"private/resolved_ir_{category}_{opcode}.gen.cpp"
-                artifact = sources[path]
-                self.assertEqual(artifact.category, category)
-                artifact.emit(context, output_path=path)
-                source = path.read_text(encoding="utf-8")
-                self.assertIn(f"model/{category}/{opcode}.gen.hpp", source)
-                self.assertIn(f"resolve{entry.cpp_name}(", source)
-                self.assertIn(f"{opcode}_syntax_descriptor()", source)
-                self.assertIn(f"{opcode}_resolved_descriptor()", source)
-                self.assertIn(f"{opcode}_checker_descriptor()", source)
+        context = self.context
+        plan, output = self.full_generation()
+        sources = {
+            artifact.path: artifact for artifact in plan.artifacts
+            if artifact.path.suffix == ".cpp"
+            and artifact.path.name.startswith("resolved_ir_")
+            and artifact.path.name != "resolved_ir_dispatch.gen.cpp"
+        }
+        opcode_paths = {
+            output / f"private/resolved_ir_{entry.specification.codegen_category}_"
+            f"{entry.specification.opcode}.gen.cpp"
+            for entry in context.entries
+        }
+        self.assertTrue(opcode_paths <= sources.keys())
+        for entry in context.entries:
+            category = entry.specification.codegen_category
+            opcode = entry.specification.opcode
+            path = output / f"private/resolved_ir_{category}_{opcode}.gen.cpp"
+            artifact = sources[path]
+            self.assertEqual(artifact.category, category)
+            source = path.read_text(encoding="utf-8")
+            self.assertIn(f"model/{category}/{opcode}.gen.hpp", source)
+            self.assertIn(f"resolve{entry.cpp_name}(", source)
+            self.assertIn(f"{opcode}_syntax_descriptor()", source)
+            self.assertIn(f"{opcode}_resolved_descriptor()", source)
+            self.assertIn(f"{opcode}_checker_descriptor()", source)
+            if form_shards(entry):
+                for index, shard in enumerate(form_shards(entry)):
+                    method_path = output / (
+                        f"private/resolved_ir_{category}_{opcode}_"
+                        f"methods_{index:03d}.gen.cpp"
+                    )
+                    self.assertIn(method_path, sources)
+                    methods = method_path.read_text(encoding="utf-8")
+                    for variant_index in shard:
+                        variant = entry.resolved.variants[variant_index]
+                        self.assertIn(
+                            f"{entry.cpp_name}{variant.cpp_name}::check(", methods
+                        )
+            else:
                 for variant in entry.resolved.variants:
                     self.assertIn(
                         f"{entry.cpp_name}{variant.cpp_name}::check(", source
                     )
-                for other in context.entries:
-                    if other is not entry:
-                        self.assertNotIn(f"resolve{other.cpp_name}(", source)
+            for other in context.entries:
+                if other is not entry:
+                    self.assertNotIn(f"resolve{other.cpp_name}(", source)
+
     def test_opcode_headers_have_stable_direct_class_ownership(self) -> None:
-        context = build_generation_context(self.database, self.backend)
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory)
-            plan = build_generation_plan(context, output)
-            public = output / "public/ptx_frontend/resolved_ir"
-            leaves = tuple(
-                (entry, public / (
-                    f"model/{entry.specification.codegen_category}/"
-                    f"{entry.specification.opcode}.gen.hpp"
-                ))
-                for entry in context.entries
+        context = self.context
+        plan, output = self.full_generation()
+        public = output / "public/ptx_frontend/resolved_ir"
+        leaves = tuple(
+            (entry, public / (
+                f"model/{entry.specification.codegen_category}/"
+                f"{entry.specification.opcode}.gen.hpp"
+            ))
+            for entry in context.entries
+        )
+        shard_headers = {
+            public / "model" / entry.specification.codegen_category /
+            f"{entry.specification.opcode}_forms_{index:03d}.gen.hpp"
+            for entry in context.entries
+            for index, _ in enumerate(form_shards(entry))
+        }
+        self.assertEqual(
+            {path for path in plan.paths if path.is_relative_to(public / "model")},
+            {path for _, path in leaves} | shard_headers,
+        )
+        self.assertIn(public / "ptx_instruction_base.gen.hpp", plan.paths)
+        aggregate = public / "ptx_resolved_ir.gen.hpp"
+        self.assertIn(aggregate, plan.paths)
+        self.assertFalse(any("union" in path.name or "owner" in path.name
+                             for path in plan.paths))
+        artifacts = {artifact.path: artifact for artifact in plan.artifacts}
+        aggregate_source = aggregate.read_text(encoding="utf-8")
+        for entry, path in leaves:
+            self.assertEqual(artifacts[path].category,
+                             entry.specification.codegen_category)
+            self.assertIn(
+                f"model/{entry.specification.codegen_category}/"
+                f"{entry.specification.opcode}.gen.hpp",
+                aggregate_source,
             )
-            self.assertEqual(
-                {path for path in plan.paths if path.is_relative_to(public / "model")},
-                {path for _, path in leaves},
-            )
-            self.assertIn(public / "ptx_instruction_base.gen.hpp", plan.paths)
-            aggregate = public / "ptx_resolved_ir.gen.hpp"
-            self.assertIn(aggregate, plan.paths)
-            self.assertFalse(any("union" in path.name or "owner" in path.name
-                                 for path in plan.paths))
-            artifacts = {artifact.path: artifact for artifact in plan.artifacts}
-            artifacts[aggregate].emit(context, output_path=aggregate)
-            aggregate_source = aggregate.read_text(encoding="utf-8")
-            for entry, path in leaves:
-                self.assertEqual(artifacts[path].category,
-                                 entry.specification.codegen_category)
-                self.assertIn(
-                    f"model/{entry.specification.codegen_category}/"
-                    f"{entry.specification.opcode}.gen.hpp",
-                    aggregate_source,
-                )
-            for category, opcode, class_name in (
-                ("arithmetic", "add", "AddIntegerNoSat"),
-                ("data_movement", "cvt", "Cvt"),
-                ("control_flow", "call", "CallDirect"),
-                ("comparison_and_selection", "setp", "Setp"),
-            ):
-                leaf = public / f"model/{category}/{opcode}.gen.hpp"
-                artifacts[leaf].emit(context, output_path=leaf)
-                source = leaf.read_text(encoding="utf-8")
-                self.assertIn(" final : public Instruction", source)
-                if class_name != "Cvt" and class_name != "Setp":
-                    self.assertIn(f"class {class_name} final", source)
-                self.assertNotIn("using Variant =", source)
-                self.assertNotIn("struct Operands", source)
-                self.assertNotIn("box_instruction", source)
+        for category, opcode, class_name in (
+            ("arithmetic", "add", "AddIntegerNoSat"),
+            ("data_movement", "cvt", "Cvt"),
+            ("control_flow", "call", "CallDirect"),
+            ("comparison_and_selection", "setp", "Setp"),
+        ):
+            leaf = public / f"model/{category}/{opcode}.gen.hpp"
+            source = leaf.read_text(encoding="utf-8")
+            self.assertIn(" final : public Instruction", source)
+            if class_name != "Cvt" and class_name != "Setp":
+                self.assertIn(f"class {class_name} final", source)
+            self.assertNotIn("using Variant =", source)
+            self.assertNotIn("struct Operands", source)
+            self.assertNotIn("box_instruction", source)
 
     def test_new_opcode_changes_only_owned_leaves_and_aggregates(self) -> None:
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         category = context.entries[0].specification.codegen_category
         selected = tuple(
             entry for entry in context.entries
@@ -577,66 +758,68 @@ class GenerationPlanTests(unittest.TestCase):
             )
 
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
+        """Cover absent and legacy output roots through the real category loader."""
+
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "not-created"
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--list-outputs",
-                ]
-                listed = StringIO()
-                with redirect_stdout(listed):
-                    cli.main()
-            finally:
-                sys.argv = previous
-            self.assertFalse(output.exists())
-            context = build_generation_context(self.database, self.backend)
-            self.assertEqual(
-                listed.getvalue().splitlines(),
-                [
-                    str(path.resolve())
-                    for path in build_generation_plan(context, output.resolve()).paths
-                ],
+            root = Path(directory)
+            spec_dir = root / "spec"
+            spec_dir.mkdir()
+            shutil.copy2(CONTROL_FLOW_SPEC, spec_dir / CONTROL_FLOW_SPEC.name)
+            context = build_generation_context(
+                load_codegen_database(spec_dir=spec_dir), self.backend
             )
-
-    def test_list_outputs_preserves_legacy_files_and_skips_formatting(self) -> None:
-        from ptx_frontend.code_gen import cli
-
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "generated"
-            legacy = output / "private/resolved_ir_legacy.gen.cpp"
-            legacy.parent.mkdir(parents=True)
-            legacy.write_text("retain", encoding="utf-8")
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--list-outputs",
-                ]
-                with patch(
-                    "ptx_frontend.code_gen.cli.format_file_inplace"
-                ) as format_file:
-                    with redirect_stdout(StringIO()):
+            for existing in (False, True):
+                with self.subTest(existing=existing):
+                    output = root / ("generated" if existing else "not-created")
+                    legacy = output / "private/resolved_ir_legacy.gen.cpp"
+                    if existing:
+                        legacy.parent.mkdir(parents=True)
+                        legacy.write_text("retain", encoding="utf-8")
+                    arguments = [
+                        "codegen",
+                        "--spec-dir",
+                        str(spec_dir),
+                        "--backend-spec",
+                        str(BACKEND_SPEC),
+                        "--output",
+                        str(output),
+                        "--list-outputs",
+                    ]
+                    listed = StringIO()
+                    with (
+                        patch.object(sys, "argv", arguments),
+                        patch(
+                            "ptx_frontend.code_gen.cli.format_file_inplace"
+                        ) as format_file,
+                        patch(
+                            "ptx_frontend.code_gen.cli.remove_obsolete_generated_files"
+                        ) as cleanup,
+                        patch(
+                            "ptx_frontend.code_gen.cli.write_output_manifest"
+                        ) as manifest,
+                        redirect_stdout(listed),
+                    ):
                         cli.main()
-            finally:
-                sys.argv = previous
-            self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
-            format_file.assert_not_called()
+                    self.assertEqual(
+                        listed.getvalue().splitlines(),
+                        [
+                            str(path)
+                            for path in build_generation_plan(context, output.resolve()).paths
+                        ],
+                    )
+                    if existing:
+                        self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
+                        self.assertEqual(
+                            [path for path in output.rglob("*") if path.is_file()],
+                            [legacy],
+                        )
+                    else:
+                        self.assertFalse(output.exists())
+                    format_file.assert_not_called()
+                    cleanup.assert_not_called()
+                    manifest.assert_not_called()
 
     def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(
         self,
@@ -786,6 +969,7 @@ class GenerationPlanTests(unittest.TestCase):
                 global_artifacts=False,
                 list_outputs=False,
                 describe_build=False,
+                defer_finalization=False,
                 jobs=6,
             )
             with (
@@ -845,7 +1029,7 @@ class GenerationPlanTests(unittest.TestCase):
     def test_context_rejects_unclassified_reference_payload_before_emission(
         self,
     ) -> None:
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         entry = context.entries[0]
         variant = entry.resolved.variants[0]
         layout = variant.operand_layouts[0]
@@ -925,7 +1109,7 @@ class GenerationPlanTests(unittest.TestCase):
     ) -> tuple[GenerationInstruction, GenerationInstruction]:
         """Return valid bindings whose source C++ projections collide."""
 
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         first, second = context.entries[:2]
         return (
             GenerationInstruction(
@@ -1008,7 +1192,7 @@ class GenerationPlanTests(unittest.TestCase):
             self.assertEqual(first_path.read_bytes(), third_path.read_bytes())
 
     def test_generation_plan_partitions_global_and_category_artifacts(self) -> None:
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
 
         with tempfile.TemporaryDirectory() as directory:
             plan = build_generation_plan(context, Path(directory))
@@ -1037,22 +1221,12 @@ class GenerationPlanTests(unittest.TestCase):
             )
 
     def test_category_only_context_emits_same_artifacts_as_full_context(self) -> None:
-        full_context = build_generation_context(
-            self.database,
-            self.backend,
-        )
+        full_plan, full_output = self.full_generation()
 
-        category_inputs = {
-            group.category: group
-            for group in discover_codegen_category_inputs(spec_dir=SPEC_DIR)
-        }
+        category_inputs = {group.category: group for group in self.category_inputs}
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            full_plan = build_generation_plan(
-                full_context,
-                root / "full",
-            )
             for category in sorted(category_inputs):
                 group = category_inputs[category]
                 category_database = load_codegen_database_from_files(
@@ -1068,7 +1242,7 @@ class GenerationPlanTests(unittest.TestCase):
                     root / "category",
                 )
                 full_by_name = {
-                    artifact.path.relative_to(root / "full"): artifact
+                    artifact.path.relative_to(full_output): artifact
                     for artifact in full_plan.artifacts_for_category(category)
                 }
                 category_by_name = {
@@ -1079,10 +1253,6 @@ class GenerationPlanTests(unittest.TestCase):
 
                 for relative_path, full_artifact in full_by_name.items():
                     category_artifact = category_by_name[relative_path]
-                    full_artifact.emit(
-                        full_context,
-                        output_path=full_artifact.path,
-                    )
                     category_artifact.emit(
                         category_context,
                         output_path=category_artifact.path,
@@ -1093,38 +1263,41 @@ class GenerationPlanTests(unittest.TestCase):
                     )
 
     def test_describe_build_is_read_only(self) -> None:
+        """Match canonical category inputs and every planned output path."""
 
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "not-created"
-
-            previous = sys.argv
-            try:
-                sys.argv = [
-                    "codegen",
-                    "--spec-dir",
-                    str(SPEC_DIR),
-                    "--backend-spec",
-                    str(BACKEND_SPEC),
-                    "--output",
-                    str(output),
-                    "--describe-build",
-                ]
-
-                stdout = StringIO()
-
-                with redirect_stdout(stdout):
-                    cli.main()
-            finally:
-                sys.argv = previous
-
-            description = json.loads(stdout.getvalue())
-
+            plan = build_generation_plan(self.context, output)
+            description = cli.describe_build(
+                plan, category_inputs=self.category_inputs
+            )
             self.assertFalse(output.exists())
-            self.assertTrue(description["categories"])
-            self.assertTrue(description["global_outputs"])
-            self.assertTrue(description["all_outputs"])
+            self.assertEqual(
+                description["all_outputs"],
+                [str(path) for path in plan.paths],
+            )
+            self.assertEqual(
+                description["global_outputs"],
+                [str(artifact.path) for artifact in plan.global_artifacts],
+            )
+            groups = {group.category: group for group in self.category_inputs}
+            categories = description["categories"]
+            self.assertEqual([item["name"] for item in categories], sorted(groups))
+            for item in categories:
+                group = groups[item["name"]]
+                self.assertEqual(
+                    item["spec_files"],
+                    [str(Path(str(path)).resolve()) for path in group.spec_files],
+                )
+                self.assertEqual(
+                    item["outputs"],
+                    [
+                        str(artifact.path)
+                        for artifact in plan.artifacts_for_category(group.category)
+                    ],
+                )
 
 
 if __name__ == "__main__":

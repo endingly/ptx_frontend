@@ -52,14 +52,24 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics>
 resolveModule(const syntax_ast::AstModule& ast);
 ```
 
-`ResolvedFunction::body` 是 `unique_ptr<Instruction>` 的 vector。965 个语义
-形式各有独立 final 类；活跃 API 没有 opcode owner 包装、instruction union 或
-layout payload variant。精确类查询对 final 类使用 `dynamic_cast`，不能仅凭 opcode
+`ResolvedFunction::body` 是 `unique_ptr<Instruction>` 的 vector。每个已建模
+语义形式各有独立 final 类及不可变 kind；活跃 API 没有 opcode owner 包装或
+instruction union，选定的小型 operand-layout payload 仍可使用强类型 variant。精确类查询对 final 类使用 `dynamic_cast`，不能仅凭 opcode
 身份；module 实现为此提供受约束的私有辅助函数。复制 `ResolvedFunction` 时克隆所有非空指令及全部元数据，保留空槽供校验
 拒绝。借用的指针在 vector 扩容与函数移动后仍有效，在指令销毁或替换后失效。
 内部 `IReferenceObserver` 回调同步借用强类型 foundation 值及位置 span；校验
 期间禁止重入修改载荷。源码位置、symbol identity、Call literal 归一化以及
 resolution-only 与最终校验的不同保证继续适用。
+
+Matrix 数据形式通过 `matrix_descriptor()` 暴露不可变的类级 topology；可变 operand
+字段保留源码选定的值与位置。可变 logical-form tag 与 `matrix_logical_index` 查找均不属于
+此契约。Shared matrix descriptor 保留已绑定寄存器身份，而运行时 bits 仍不透明。
+另行提供的 [`TensorMapKnownFacts` 查询](tensor_map_known_facts.md)接收调用方提供的
+descriptor 事实。其
+`project_tensor_known_access_context(const Instruction&, const checker::Context&)`
+适配器复制选定的强类型 TMA access 事实，不保留 AST：非 tensor 形式不返回 access 或
+诊断；tensor metadata 损坏时仅返回诊断；target 不可用时保留复制的 access，并把
+availability 标为 false。它不解码原始 descriptor 字节。
 
 各模块入口的成功契约明确区分如下：
 
@@ -466,11 +476,16 @@ resolved IR，诊断种类为
 
 `select_variant_name` 是非模板 descriptor matcher；resolver 边界只将所选名字映射
 一次到强类型形式索引，后续构造使用强类型 dispatch。按 YAML
-`codegen_category` 生成的逐 opcode 完整头包含 final 类定义及 resolver 声明；
-只需 model 的调用者可使用生成的 base 头。聚合
-`ptx_resolved_ir.gen.hpp` 包含全部 opcode 头。非 inline 的
-resolver、checker、clone 与 observer 定义按 opcode 生成到 `.gen.cpp` 并编入库。
-内部固定引用域 observer 不是公开的全家族 visitor 模板。
+`codegen_category` 生成的稳定逐 opcode 聚合头包含 final 类定义及 resolver 声明；
+只需 model 的调用者可使用生成的 base 头。
+`ptx_resolved_ir.gen.hpp` 包含全部逐 opcode 聚合头。形式数量超过 64 的 opcode
+按规范顺序生成 public `*_forms_NNN.gen.hpp` 声明分片及 private
+`*_methods_NNN.gen.cpp`、`*_descriptors_NNN.gen.cpp` 分片，每片最多 64 个形式。
+逐 opcode 头仍是公共 include 入口。descriptor getter 保持 `const&`/`noexcept`
+契约：有界且只执行一次的 function-local `static const std::array` 按规范顺序拼接
+分片行，提供无 heap allocation、生命周期稳定的连续存储。非 inline 方法定义编入库。
+内部固定引用域 observer 不是公开的全家族 visitor 模板；在既有分片中增加形式也不
+承诺其他代码完全无需重新编译。
 
 ## 三份 descriptor
 

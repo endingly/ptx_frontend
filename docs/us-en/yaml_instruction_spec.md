@@ -511,8 +511,8 @@ that identifies the variant, constraint kind, operand, and layout. This permits
 optional operands while preserving immediate-only rules where their value
 contract requires one.
 
-The current frozen `setmaxnreg.inc.sync.aligned.u32` form illustrates a range
-plus divisibility rule:
+Both `setmaxnreg.inc.sync.aligned.u32` and
+`setmaxnreg.dec.sync.aligned.u32` use the same range and divisibility rules:
 
 ```yaml
 operands:
@@ -522,7 +522,7 @@ constraints:
   - {kind: immediate_multiple_of, operand: count, divisor: 8}
 ```
 
-Thus `192` is valid while `23`, `257`, and `25` are rejected. `bfe.u32` and
+Thus `192` is valid while `23`, `257`, and `25` are rejected for either action. `bfe.u32` and
 `bfi.b32` each use two independent inclusive ranges, `offset` and `width`,
 both `0..255`; both operands are immediate operands in their only layout.
 
@@ -601,7 +601,8 @@ Common checker logic interprets minimum PTX, SM, and `family` requirements.
 looks only in the source target profile's `enabled_family_features`. The
 explicit catalog is: `sm_100` → none; `sm_100f`/`sm_100a` → `sm_100f`;
 `sm_103` → none; `sm_103f`/`sm_103a` → `sm_100f`, `sm_103f`; `sm_120` →
-none; `sm_120f`/`sm_120a` → `sm_120f`; `sm_121` → none; and
+none; `sm_110` → none; `sm_110f`/`sm_110a` → `sm_110f`;
+`sm_120f`/`sm_120a` → `sm_120f`; `sm_121` → none; and
 `sm_121f`/`sm_121a` → `sm_120f`, `sm_121f`. Do not infer this set from the
 SM number or target suffix. It is distinct from PTX-to-physical-GPU translation
 compatibility, which is not
@@ -616,7 +617,11 @@ inert metadata. `examples`, `doc`, and
 
 An `any_of` clause may also contain `family`; it is an AND-term within that
 clause and uses the same `enabled_family_features` lookup, rather than requiring
-that exact target spelling.
+that exact target spelling. The schema, normalizer, and generated descriptor
+permit one through six clauses. `setmaxnreg` uses all six: exact `sm_90a`
+(PTX 8.0), exact `sm_100a` (8.6), exact `sm_120a` (8.7), enabled `sm_100f`
+and `sm_120f` families (8.8), and enabled `sm_110f` family (9.0). See
+[miscellaneous coverage](miscellaneous_coverage.md) for the instruction contract.
 
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.

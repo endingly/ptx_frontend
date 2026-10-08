@@ -656,3 +656,51 @@ with the ordinary `ptx-instr/v1` header and one bare variant, run
 `cmake --build <build-dir> --target resolved_ir_codegen` after each add,
 variant-name edit, and removal, and inspect the generated model leaf and
 `submod/resolved_ir/resolved_spec_inputs.txt` in the build tree.
+
+## Category generator graph verification (2026-10-08)
+
+This verification used working-tree generator changes based on `af187f6`, with
+Ninja, six generator writers, and the existing Debug output tree. The first
+completed category-graph run took 239.387 s, including a 28.7 s CMake
+reconfiguration. Its outputs were partly warm after an interrupted earlier
+run, so this is a functional check, not a cold-build speed comparison. The
+candidate formatter remained active on every emitted artifact; no formatting
+cache was used.
+
+The manifest owned 380 generated files before and after that run. All 380
+SHA-256 hashes and all existing output modification times matched. An immediate
+second build did no generation in 0.056 s. Deleting the generated
+`control_flow/brkpt.gen.hpp` triggered only the `control_flow` category and
+shared finalizer (27.365 s); the restored header had identical bytes, every
+other output kept its modification time, and the next build was a no-op.
+
+A detached source copy with a deliberately small, valid three-instruction
+spec exercised the actual project CMake graph. A comment-only category edit
+reran only that category and the shared finalizer; a schema comment edit reran
+both categories and the finalizer. Both kept output bytes and modification
+times stable, followed by no-op builds. Adding a spec file with a second
+`trap` definition and a synthetic `nop` expanded the manifest from 16 to 18
+outputs. Removing the file restored the original 16 hashes, removed the `nop`
+outputs, and again produced a no-op on the next build. These synthetic entries
+are build-topology probes, not supported PTX coverage.
+
+Failure injection on that isolated project also checked completion markers.
+With Ninja, a missing category header was restored before a later formatter
+failure; the category stamp disappeared, the previous manifest stayed intact,
+and the next build retried successfully before a no-op. With Unix Makefiles, a
+missing header was restored by deferred full emission, then an injected shared
+finalizer failure left the previous manifest and its timestamp intact and the
+global stamp absent. The immediate retry finalized successfully; the following
+build did no generation. Logs are under `/tmp/ptx-codegen-topology.log`,
+`/tmp/ptx-codegen-actual-ninja-failure.log`, and
+`/tmp/ptx-codegen-actual-make.log` on the verification host.
+
+In the full Debug output tree, rebuilding `ptx_frontend_resolved_ir` after the
+header repair compiled two C++ objects and linked successfully in 22.854 s.
+Building `resolved_ir_smoke` and `test_resolved_ir` then compiled 31 test
+objects and linked in 99.461 s. The smoke executable passed, as did all 1,081
+GoogleTest cases in 159 suites (4.100 s). A subsequent native target build did
+no work in 0.052 s. The native build and test logs are
+`/tmp/ptx-codegen-native-build.log`,
+`/tmp/ptx-codegen-native-tests-build.log`, `/tmp/ptx-codegen-smoke.log`, and
+`/tmp/ptx-codegen-gtest.log` on the verification host.

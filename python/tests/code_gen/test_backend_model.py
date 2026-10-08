@@ -412,8 +412,8 @@ class BackendModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "has no value 'missing'"):
             cpp_value(CppDomain.SCALAR_TYPES, "missing", backend=self.backend)
 
-    def test_valid_frontend_value_can_fail_only_at_codegen_capability(self) -> None:
-        """PTX legality is broader than the configured C++ value map."""
+    def test_new_frontend_scalar_has_codegen_capability(self) -> None:
+        """A newly covered PTX scalar retains its configured C++ mapping."""
 
         instruction = normalize_instruction_spec(
             {
@@ -443,8 +443,10 @@ class BackendModelTests(unittest.TestCase):
         )[0]
         field = from_instruction_spec(instruction).variants[0].modifier_fields[0]
 
-        with self.assertRaisesRegex(ValueError, "has no value 'b1'"):
-            field_cpp_constant_expr(field, backend=self.backend)
+        self.assertEqual(
+            field_cpp_constant_expr(field, backend=self.backend),
+            "ScalarType::B1",
+        )
 
     def test_cpp_lookup_rejects_string_domain_identifiers(self) -> None:
         with self.assertRaisesRegex(TypeError, "CppDomain member"):

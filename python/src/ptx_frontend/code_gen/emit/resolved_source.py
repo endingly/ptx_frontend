@@ -192,11 +192,16 @@ def _emit_tcgen_mma_source_check(variant, layout, slots, backend) -> str:
     collector = "&selected.collector" if any(
         modifier.name == "collector" for modifier in variant.modifier_fields
     ) else "nullptr"
+    zero_column = (reference("zero_column_desc")
+                   if "zero_column_desc" in fields else "nullptr")
+    ws = "true" if any(modifier.name == "ws"
+                       for modifier in variant.modifier_fields) else "false"
     return f"""      const auto mma_source_check = check_tcgen_mma_sources(
           selected.cta_group, {reference('d')[1:]}, {address}, {shared},
           {reference('b')[1:]}, {reference('idesc')[1:]}, {mask},
           {reference('enable_input_d')[1:]}, {scale}, {selector},
-          {scale_a}, {scale_b}, {ashift}, {collector}, context);
+          {scale_a}, {scale_b}, {ashift}, {collector}, {zero_column}, {ws},
+          context);
 {_append_result('mma_source_check')}"""
 
 

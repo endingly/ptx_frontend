@@ -486,6 +486,19 @@ def validate_catalogue() -> None:
                      ("MxF4NvF4", 128, "block16", 4, 4, (0,)))} or
             len(SPARSE_MX_SCALE_LAYOUTS) != 16):
         raise ValueError("sparse MX rows drifted from Tables 42/47/59/60")
+    if ({(row.kind, row.d_type, row.m_values, row.n_values, row.k)
+         for row in WS_SHAPES} != {
+             (kind, row.d_type, (32, 64, 128), (64, 128, 256), k)
+             for kind, rows, k in (
+                 ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
+                 ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
+             for row in rows if row.group == 1} or
+            len(WS_SHAPES) != 6 or
+            {(row.group, row.m, row.layout, row.allowed_lane_halves)
+             for row in WS_PATHS} != {
+                 (1, 32, "G", (0,)), (1, 64, "E", (0,)),
+                 (1, 128, "D", (0,))}):
+        raise ValueError("WS MMA rows drifted from Tables 42 and 10.5")
 
 
 def _check_shared(role: str, transpose: bool | None,
@@ -1863,3 +1876,207 @@ def check_mx_a_collector_known_facts(
 
     return check_a_collector_known_facts(ACollectorKnownFacts(
         collector=facts.collector, collector_a_valid=facts.collector_a_valid))
+
+
+@dataclass(frozen=True)
+class WsShapeRow:
+    """One weight-stationary Table 42 kind/output row, with K in elements."""
+
+    kind: str
+    d_type: str
+    m_values: tuple[int, ...]
+    n_values: tuple[int, ...]
+    k: int
+    a_types: tuple[str, ...]
+    b_types: tuple[str, ...]
+
+    def contains(self, m: int, n: int, k: int) -> bool:
+        """Check the complete WS grid without borrowing non-WS M/N paths."""
+
+        return m in self.m_values and n in self.n_values and k == self.k
+
+
+WS_SHAPES = tuple(
+    WsShapeRow(kind, row.d_type, (32, 64, 128), (64, 128, 256), k,
+               row.a_types, row.b_types)
+    for kind, rows, k in (
+        ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
+        ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
+    for row in rows if row.group == 1)
+# Reuse the shared path-row allowed-lane domain; WS has no F/C half paths.
+WS_PATHS = tuple(SparsePathRow(1, m, layout, False, (0,))
+                 for m, layout in ((32, "G"), (64, "E"), (128, "D")))
+
+
+@dataclass(frozen=True)
+class WsKnownFacts(F16KnownFacts):
+    """Independent dense WS source, descriptor and B-buffer history claims."""
+
+    kind: str = "F16"
+    word_kind: str | None = None
+    collector: CollectorControl = CollectorControl()
+    collector_b_valid: tuple[bool | None, ...] = (None, None, None, None)
+    zero_column_operand_present: bool = False
+    zero_column_word: int | None = None
+
+
+@dataclass(frozen=True)
+class WsOperationalReport:
+    """Checkable supplied facts and obligations without live-word decoding."""
+
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+    shape: WsShapeRow | None
+    path: SparsePathRow | None
+    effective_collector: CollectorControl
+    zero_unclassified_bits: int | None
+
+    @property
+    def known_facts_ok(self) -> bool:
+        """Treat missing facts as obligations rather than contradictory data."""
+
+        return not self.violations
+
+
+def _check_ws_zero_word(word: int, m: int | None,
+                        n: int | None) -> tuple[tuple[str, ...], int | None]:
+    """Apply the sole Table 48 field partition to a caller-supplied word."""
+
+    if type(word) is not int or not 0 <= word < (1 << 64):
+        return ("zero_word_range",), None
+    table = descriptor.ZERO_COLUMN
+    findings: list[str] = []
+    for field in table.fields:
+        if field.fixed is not None and (word & field.mask) >> field.first != field.fixed:
+            findings.append("zero_defined_fields")
+    shift = (word & table.field("shift").mask) >> table.field("shift").first
+    if shift > 32 or (m == 32 and shift > 16):
+        findings.append("zero_shift")
+    if m is not None and m not in (32, 64, 128):
+        findings.append("zero_partition")
+    if n is not None and (n <= 0 or (m in (32, 64, 128) and
+                                      n % {32: 4, 64: 2, 128: 1}[m])):
+        findings.append("zero_partition")
+    return tuple(findings), word & table.unclassified
+
+
+def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
+    """Check WS rows, B-buffer identity and optional known zero-column bits."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["source_stability_until_completion", "target"]
+    if facts.kind not in ("F16", "Tf32", "F8F6F4", "I8"):
+        violations.append("kind")
+    if facts.word_kind is None:
+        obligations.append("instruction_word_kind")
+    elif facts.word_kind != facts.kind:
+        violations.append("instruction_word_kind")
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group != 1:
+        violations.append("cta_group")
+    if facts.sparse is None:
+        obligations.append("dense_sparsity_bit")
+    elif facts.sparse:
+        violations.append("dense_sparsity_bit")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    shape = next((row for row in WS_SHAPES
+                  if row.kind == facts.kind and row.d_type == facts.d_type and
+                  facts.m is not None and facts.n is not None and
+                  facts.k is not None and row.contains(facts.m, facts.n,
+                                                       facts.k)), None)
+    if all(getattr(facts, name) is not None for name in
+           ("m", "n", "k", "d_type")) and shape is None:
+        violations.append("ws_shape")
+    if shape:
+        if facts.a_type is not None and facts.a_type not in shape.a_types:
+            violations.append("a_type")
+        if facts.b_type is not None and facts.b_type not in shape.b_types:
+            violations.append("b_type")
+        if (facts.kind == "F16" and facts.d_type == "F32" and
+                facts.a_type in shape.a_types and
+                facts.b_type in shape.b_types and
+                facts.a_type != facts.b_type):
+            obligations.append("mixed_f16_bf16_pair_rule")
+    if facts.kind == "F8F6F4":
+        for role in ("a", "b"):
+            if getattr(facts, f"{role}_type") in _F8F6F4_LOW_TYPES:
+                obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        if facts.kind == "F8F6F4":
+            _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                                 facts.a_shared_facts, violations, obligations)
+        else:
+            _check_shared("a", facts.transpose_a, facts.a_shared_facts,
+                          violations, obligations, tf32=facts.kind == "Tf32")
+    if facts.kind == "F8F6F4":
+        _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                             facts.b_shared_facts, violations, obligations)
+    else:
+        _check_shared("b", facts.transpose_b, facts.b_shared_facts,
+                      violations, obligations, tf32=facts.kind == "Tf32")
+    path = next((row for row in WS_PATHS if shape is not None and
+                 row.m == facts.m), None)
+    if path is not None:
+        for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+                "d_lane_half",):
+            value = getattr(facts, name)
+            if value is None:
+                obligations.append(name)
+            elif value not in path.allowed_lane_halves:
+                violations.append(f"{name}_alignment")
+    if (facts.kind == "F8F6F4" and facts.transpose_b and
+            facts.b_type in ("E4M3", "E5M2") and facts.n is not None and
+            (facts.n % 16 or not 16 <= facts.n <= 256)):
+        violations.append("b_transpose_n")
+    zero_bits = None
+    if type(facts.zero_column_operand_present) is not bool:
+        violations.append("zero_operand_presence")
+    elif facts.zero_column_operand_present:
+        if facts.zero_column_word is None:
+            obligations.append("zero_column_word")
+        else:
+            findings, zero_bits = _check_ws_zero_word(
+                facts.zero_column_word, facts.m, facts.n)
+            violations.extend(findings)
+            if facts.m is None:
+                obligations.append("zero_m")
+            if facts.n is None:
+                obligations.append("zero_n")
+            obligations.append("live_zero_column_word")
+    elif facts.zero_column_word is not None:
+        violations.append("zero_word_without_operand")
+    control = facts.collector
+    valid = (isinstance(control, CollectorControl) and
+             isinstance(control.buffer, CollectorBuffer) and
+             isinstance(control.operation, CollectorOp) and
+             ((control.buffer is CollectorBuffer.UNSPECIFIED) ==
+              (control.operation is CollectorOp.UNSPECIFIED)) and
+             (not control.present or control.buffer in (
+                 CollectorBuffer.B0, CollectorBuffer.B1,
+                 CollectorBuffer.B2, CollectorBuffer.B3)))
+    effective = (control if valid and control.present else
+                 CollectorControl(CollectorBuffer.B0, CollectorOp.DISCARD))
+    if not valid:
+        violations.append("collector_domain")
+    if (not isinstance(facts.collector_b_valid, tuple) or
+            len(facts.collector_b_valid) != 4 or
+            any(value is not None and type(value) is not bool
+                for value in facts.collector_b_valid)):
+        violations.append("collector_history_context")
+    elif valid and control.operation in (CollectorOp.USE,
+                                         CollectorOp.LAST_USE):
+        index = (CollectorBuffer.B0, CollectorBuffer.B1,
+                 CollectorBuffer.B2, CollectorBuffer.B3).index(control.buffer)
+        prior = facts.collector_b_valid[index]
+        if prior is None:
+            obligations.append("collector_b_valid")
+        elif not prior:
+            violations.append("collector_b_valid")
+        obligations.append("collector_sequence")
+    return WsOperationalReport(tuple(violations), tuple(obligations),
+                               shape, path, effective, zero_bits)

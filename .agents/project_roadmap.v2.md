@@ -1148,6 +1148,13 @@ A collector 与 ashift，保留省略来源及条件性的 M/collector 历史义
 [中文](../docs/zh-han/tcgen_mma_mx_a_collector_coverage.md)）；MX 仍不支持 ashift，
 已有缩放、形状和目标约束保持独立，故 M18 整行状态不变。
 
+稠密 WS f16/tf32/f8f6f4/i8 的四个精确来源身份现包含 CTA group 1、
+shared／Tensor Memory A、可选末尾零列寄存器以及带来源的 B0–B3 collector。
+已知值规则区分 M32/G、M64/E、M128/D、零 lane 对齐、Table 48 零列字与
+逐 B buffer 的条件性历史断言（[英文](../docs/us-en/tcgen_mma_ws_dense_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_ws_dense_coverage.md)）。稀疏 WS 元数据与
+运行时内容仍未由该来源切片证明，M18 整行状态不变。
+
 ### 出口
 
 1.0 frontend 对 TCGEN05 family 的主要 topology 有稳定 typed representation；完整 type/shape

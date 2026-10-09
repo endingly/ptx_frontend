@@ -2518,10 +2518,19 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<TcgenScaleVectorSize>* scale_selector,
     const WithLocs<TensorMemoryAddress>* scale_a,
     const WithLocs<TensorMemoryAddress>* scale_b, const WithLocs<bool>* ashift,
-    const WithLocs<TcgenCollectorControl>* collector, const Context& context) {
+    const WithLocs<TcgenCollectorControl>* collector,
+    const WithLocs<ResolvedRegisterRef>* zero_column, bool ws,
+    const Context& context) {
   const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
     return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
+  if (ws && (group != TcgenCtaGroup::One || mask || scale || scale_selector ||
+             scale_a || scale_b || ashift || !collector))
+    return cvt_rule_violation(
+        context, "WS MMA requires CTA one and excludes non-WS operands.");
+  if (!ws && zero_column)
+    return cvt_rule_violation(context,
+                              "Non-WS MMA cannot use a zero-column operand.");
   if ((a_address == nullptr) == (a_shared == nullptr))
     return cvt_rule_violation(context,
                               "TCGEN MMA requires exactly one A placement.");
@@ -2534,10 +2543,16 @@ CheckResult check_tcgen_mma_sources(
                               "valid source provenance.");
   if (collector) {
     const auto control = collector->value;
+    const bool selected_buffer =
+        ws ? (control.buffer == TcgenCollectorBuffer::B0 ||
+              control.buffer == TcgenCollectorBuffer::B1 ||
+              control.buffer == TcgenCollectorBuffer::B2 ||
+              control.buffer == TcgenCollectorBuffer::B3)
+           : control.buffer == TcgenCollectorBuffer::A;
     if (!tcgen_collector_pair_valid(control) ||
         (control.is_present() &&
          (!tcgen_mma_valid_source_ranges(collector->locs, 1) ||
-          control.buffer != TcgenCollectorBuffer::A)) ||
+          !selected_buffer)) ||
         (!control.is_present() && !collector->locs.empty()))
       return cvt_rule_violation(
           context,
@@ -2555,6 +2570,7 @@ CheckResult check_tcgen_mma_sources(
       !tcgen_mma_valid_source_ranges(b.locs, 1) ||
       !tcgen_mma_valid_source_ranges(idesc.locs, 1) ||
       !tcgen_mma_valid_source_ranges(enable_d.locs, 1) ||
+      (zero_column && !tcgen_mma_valid_source_ranges(zero_column->locs, 1)) ||
       (mask && !tcgen_mma_valid_source_ranges(
                    mask->locs, group == TcgenCtaGroup::One ? 4 : 8)) ||
       (scale && !tcgen_mma_valid_source_ranges(scale->locs, 1)))
@@ -2583,6 +2599,12 @@ CheckResult check_tcgen_mma_sources(
         context,
         "TCGEN MMA instruction descriptor requires scalar General "
         "b32/u32/s32.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (zero_column && !tcgen_mma_carrier(zero_column->value, 8))
+    return cvt_rule_violation(
+        context,
+        "TCGEN WS zero-column descriptor requires scalar General "
+        "b64/u64/s64.",
         CheckDiagnosticKind::OperandTypeMismatch);
   if (mask) {
     const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
@@ -2657,9 +2679,9 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedRegisterVector>* mask,
     const WithLocs<ResolvedPredicateSource>& enable_d,
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
-  return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
-                                 mask, enable_d, scale, nullptr, nullptr,
-                                 nullptr, nullptr, nullptr, context);
+  return check_tcgen_mma_sources(
+      group_source, d, a_address, a_shared, b, idesc, mask, enable_d, scale,
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, context);
 }
 
 /** Match copy qualifiers against the selected closed shape and format sets. */

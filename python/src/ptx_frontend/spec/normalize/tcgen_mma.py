@@ -248,17 +248,84 @@ _MX_A_COLLECTOR_FORMS = frozenset(
 )
 
 
-def _validate_a_collector_modifier(collector: ModifierSpec) -> None:
-    """Keep the written A-buffer actions a single closed typed source domain."""
+def _validate_ws_dense_variant(variant: VariantSpec, kind: str) -> None:
+    """Keep one WS kind on CTA one and its four exact A/zero layouts."""
+
+    modifiers = variant.modifiers
+    if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
+            or tuple(item.name for item in modifiers) !=
+            ("mma", "ws", "cta_group", "kind", "collector")
+            or variant.modifier_order_aliases != ()
+            or variant.availability !=
+            (_I8_TARGETS if kind == "i8" else _UNSCALED_TARGETS)):
+        raise ValueError("WS MMA action, source order or target changed")
+    mma, ws, group, fixed_kind, collector = modifiers
+    if (mma.kind is not ModifierKind.FLAG or
+            mma.presence is not ModifierPresence.FIXED or
+            mma.token != ".mma" or mma.value is not True or
+            ws.kind is not ModifierKind.FLAG or
+            ws.presence is not ModifierPresence.FIXED or
+            ws.token != ".ws" or ws.value is not True or
+            group.kind is not ModifierKind.CTA_GROUP or
+            group.presence is not ModifierPresence.REQUIRED or
+            tuple(v.value for v in group.values) != ("cta_group::1",) or
+            fixed_kind.kind is not ModifierKind.FLAG or
+            fixed_kind.presence is not ModifierPresence.FIXED or
+            fixed_kind.token != f".kind::{kind}" or
+            fixed_kind.value is not True):
+        raise ValueError("WS MMA typed qualifiers changed")
+    _validate_collector_modifier(collector, ("b0", "b1", "b2", "b3"))
+    if {layout.name for layout in variant.operand_layouts} != {
+            "shared", "shared_zero", "tensor", "tensor_zero"}:
+        raise ValueError("WS MMA requires both A and zero-column choices")
+    for layout in variant.operand_layouts:
+        placement = "shared" if layout.name.startswith("shared") else "tensor"
+        zero = layout.name.endswith("_zero")
+        names = tuple(item.name for item in layout.operands)
+        required = ("d", "a", "b", "idesc", "enable_input_d") + (
+            ("zero_column_desc",) if zero else ())
+        if names != required or layout.availability != {}:
+            raise ValueError("WS MMA operand order or layout target changed")
+        expected = {"d": (OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET, "u32",
+                          OperandRole.DESTINATION, OperandAccess.READ_WRITE),
+                    "a": (OperandKind.REGISTER if placement == "shared" else
+                          OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET,
+                          "b64" if placement == "shared" else "u32",
+                          OperandRole.SOURCE, OperandAccess.READ),
+                    "b": (OperandKind.REGISTER, "b64", OperandRole.SOURCE,
+                          OperandAccess.READ),
+                    "idesc": (OperandKind.REGISTER, "b32", OperandRole.SOURCE,
+                              OperandAccess.READ),
+                    "enable_input_d": (OperandKind.PREDICATE_SOURCE, None,
+                                       OperandRole.PREDICATE, OperandAccess.READ),
+                    "zero_column_desc": (OperandKind.REGISTER, "b64",
+                                         OperandRole.SOURCE, OperandAccess.READ)}
+        for operand in layout.operands:
+            want_kind, want_type, want_role, want_access = expected[operand.name]
+            expr = operand.type_expression
+            if (operand.kind is not want_kind or operand.role is not want_role
+                    or operand.access is not want_access or
+                    (want_type is None and expr is not None) or
+                    (want_type is not None and (expr is None or
+                     expr.kind is not OperandTypeExpressionKind.FIXED_SCALAR or
+                     expr.scalar_type != want_type))):
+                raise ValueError("WS MMA operand carrier or scalar type changed")
+
+
+def _validate_collector_modifier(collector: ModifierSpec,
+                                 buffers: tuple[str, ...]) -> None:
+    """Keep each written buffer/action pair in its selected closed domain."""
 
     if (collector.kind is not ModifierKind.TCGEN_COLLECTOR or
             collector.presence is not ModifierPresence.OPTIONAL or
             collector.default != "absent" or
             tuple((value.value, value.token, value.availability)
                   for value in collector.values) != tuple(
-                      (f"collector::a::{op}", f".collector::a::{op}", {})
+                      (f"collector::{buffer}::{op}",
+                       f".collector::{buffer}::{op}", {})
+                      for buffer in buffers
                       for op in ("fill", "use", "lastuse", "discard"))):
-        raise ValueError("MMA A-collector source domain changed")
+        raise ValueError("MMA collector source domain changed")
 
 
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
@@ -269,7 +336,7 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
                 variant.modifiers[-1].name != "collector" or
                 variant.modifier_order_aliases != ()):
             raise ValueError("MX MMA collector must follow the scale selector")
-        _validate_a_collector_modifier(variant.modifiers[-1])
+        _validate_collector_modifier(variant.modifiers[-1], ("a",))
         _validate_tcgen_mma_variant_base(replace(
             variant, modifiers=variant.modifiers[:-1]))
         return
@@ -286,7 +353,7 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             any(tuple(alias[-2:]) != ("ashift", "collector")
                 for alias in variant.modifier_order_aliases)):
         raise ValueError("plain MMA control domain or order changed")
-    _validate_a_collector_modifier(collector)
+    _validate_collector_modifier(collector, ("a",))
     _validate_tcgen_mma_variant_base(replace(
         variant, modifiers=variant.modifiers[:-2],
         modifier_order_aliases=tuple(alias[:-2]
@@ -321,6 +388,15 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
     if variant.rule is not SemanticRule.TENSOR_MEMORY_MMA:
         if "mma" in mods or ("kind" in mods and "cta_group" in mods):
             raise ValueError("Tensor Memory MMA modifiers require its semantic rule")
+        return
+    ws_kind = {
+        "tcgen05_mma_ws_f16": "f16",
+        "tcgen05_mma_ws_tf32": "tf32",
+        "tcgen05_mma_ws_f8f6f4": "f8f6f4",
+        "tcgen05_mma_ws_i8": "i8",
+    }.get(variant.name)
+    if ws_kind is not None:
+        _validate_ws_dense_variant(variant, ws_kind)
         return
     kind = {"tcgen05_mma_f16": "f16",
             "tcgen05_mma_tf32": "tf32",

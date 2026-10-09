@@ -77,6 +77,9 @@ supported surface and its exclusions.
 - [TCGEN MX A collector coverage](docs/us-en/tcgen_mma_mx_a_collector_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_mx_a_collector_coverage.md) describe
   A collector controls on six dense/sparse block-scaled identities.
+- [TCGEN dense WS MMA coverage](docs/us-en/tcgen_mma_ws_dense_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_dense_coverage.md) describe
+  B collector controls, optional zero-column source, and conditional WS facts.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

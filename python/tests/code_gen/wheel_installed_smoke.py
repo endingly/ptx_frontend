@@ -87,6 +87,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.tcgen_mma_sparse",
         "ptx_frontend.code_gen.emit.tcgen_mma_sparse_mx",
         "ptx_frontend.code_gen.emit.tcgen_mma_collector",
+        "ptx_frontend.code_gen.emit.tcgen_mma_ws",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
         "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",

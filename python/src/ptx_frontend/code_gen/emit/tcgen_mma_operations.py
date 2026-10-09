@@ -18,6 +18,9 @@ from ptx_frontend.code_gen.emit.tcgen_mma_sparse_mx import (
 from ptx_frontend.code_gen.emit.tcgen_mma_collector import (
     render_collector_header, render_collector_source,
 )
+from ptx_frontend.code_gen.emit.tcgen_mma_ws import (
+    render_ws_header, render_ws_source,
+)
 
 
 HEADER_NAME = "tcgen_mma_operations.gen.hpp"
@@ -75,7 +78,7 @@ struct TcgenF16PathRow {
                                           uint16_t m, uint16_t n,
                                           uint16_t k) noexcept;
 }  // namespace ptx_frontend::resolved_ir
-''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header() + _MX4_ROW_HEADER + _mx4_query_header() + _MXNV_ROW_HEADER + _mxnv_query_header() + render_sparse_header() + render_sparse_mx_header() + render_collector_header()
+''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header() + _MX4_ROW_HEADER + _mx4_query_header() + _MXNV_ROW_HEADER + _mxnv_query_header() + render_sparse_header() + render_sparse_mx_header() + render_collector_header() + render_ws_header()
 
 
 def render_tcgen_mma_source() -> str:
@@ -408,7 +411,8 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
                              str(len(operations.MXNV_TARGET_GATES))))
     return (f16_source + tf32_source + i8_source + f8_source + mx8_source +
             mx4_source + mxnv_source + render_sparse_source() +
-            render_sparse_mx_source() + render_collector_source())
+            render_sparse_mx_source() + render_collector_source() +
+            render_ws_source())
 
 
 def generate_tcgen_mma_header(_context: object, *, output_path: Path) -> None:

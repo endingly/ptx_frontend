@@ -29,8 +29,10 @@ the pair-domain rule. Group 1 permits M64/128 and N8..256 in steps of 8;
 group 2 permits M128/256 and N16..256 in steps of 16. Four closed rows cover
 the two groups and two output types. K is implicit, never an extra source
 argument. F/D/B/A datapath paths follow group/M =
-(1,64)/(1,128)/(2,128)/(2,256). On the F half path, only caller-supplied
-A/D 0/16 lane-half facts can establish their alignment.
+(1,64)/(1,128)/(2,128)/(2,256). The F half path permits caller-supplied A/D
+lane halves 0 or 16 and compares valid known values when A is in Tensor Memory.
+Full D/B/A paths require zero; a known D half is checked even with shared A,
+and applicable unknown halves remain obligations.
 
 Table 45 defines D codes 0 F16 and 1 F32, independent A/B codes 0 E4M3,
 1 E5M2, 3 E2M3, 4 E3M2 and 5 E2M1. Saturation bit 3 must be zero;

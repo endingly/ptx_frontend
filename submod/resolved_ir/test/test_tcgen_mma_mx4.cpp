@@ -183,6 +183,17 @@ TEST(TcgenMmaMx4, KnownKAndScaleRows) {
             TcgenMxInputPacking::TmemPairedFourBit);
   EXPECT_TRUE(
       contains(ordinary.missing, TcgenMx4Obligation::ALivePackingContents));
+  facts.a_lane_half = 0;
+  facts.d_lane_half = 0;
+  EXPECT_EQ(check_tcgen_mx4_known_operation(facts).path_layout, 'D');
+  facts.a_lane_half = 16;
+  EXPECT_TRUE(contains(check_tcgen_mx4_known_operation(facts).violations,
+                       TcgenMx4Violation::ALaneHalf));
+  facts.a_lane_half = 0;
+  facts.d_lane_half = 16;
+  EXPECT_TRUE(contains(check_tcgen_mx4_known_operation(facts).violations,
+                       TcgenMx4Violation::DLaneHalf));
+  facts.d_lane_half = 0;
   const auto sm100a = base::find_target_profile("sm_100a");
   const auto sm103a = base::find_target_profile("sm_103a");
   ASSERT_TRUE(sm100a);

@@ -484,7 +484,7 @@ family scope，绝不表示整部 PTX ISA。
 | M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
 | M16 | ⬜ | Hopper WGMMA |
 | M17 | ⬜ | Blackwell Tensor Memory 与 TCGEN05 data movement |
-| M18 | ⬜ | Blackwell TCGEN05 MMA 与同步 |
+| M18 | ✅（前端） | Blackwell TCGEN05 MMA 与同步；运行时义务见全族覆盖页 |
 | M19 | ⬜ | 稳定 API、adapter、conformance 与 1.0 gate |
 
 ---
@@ -1087,81 +1087,62 @@ data-movement shape，而不再创建第二套表示。
 
 ## 目标
 
-覆盖 TCGEN05 dense/sparse/WS MMA 的主要 operand topology，并接入 specialized fence 与
-mbarrier-based commit completion。
+在固定 PTX 9.3、当前目标目录及前端边界内，覆盖 TCGEN05 dense/sparse/WS MMA 的
+22 个源码身份，并接入 specialized fence 与 mbarrier-based commit completion。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M18-I01 | ⬜ | 独立 | 建立 TCGEN MMA kind domain | f16/tf32/f8f6f4/mxf8f6f4/i8/mxf4/mxf4nvf4 |
-| M18-I02 | ⬜ | 独立 | 建立 TCGEN MMA shape/descriptor constraint | M/N/K、CTA group、A/B/D placement |
-| M18-I03 | ⬜ | 独立 | 建立 major/stride/swizzle valid-combination table | 规范表 machine-readable |
-| M18-I04 | ⬜ | 独立 | 建立 TCGEN data-path layout A～G | layout identity 与 shape/CTA/WS 条件 |
-| M18-I05 | ⬜ | 独立 | 建立 block-scaling domain | scale vector size、A/B ID、block size、K |
-| M18-I06 | ⬜ | 独立 | 建立 TCGEN sparsity metadata domain | selector、metadata layout、alignment |
-| M18-I07 | ⬜ | 独立 | 支持 `tcgen05.mma` f16 dense slice | descriptor/tmem/accumulate topology |
-| M18-I08 | ⬜ | 独立 | 支持 `tcgen05.mma` tf32 dense slice | kind/shape/layout |
-| M18-I09 | ⬜ | 独立 | 支持 `tcgen05.mma` f8f6f4/mxf8f6f4 dense slice | packing/kind/descriptor |
-| M18-I10 | ⬜ | 独立 | 支持 `tcgen05.mma` i8 dense slice | signedness/accumulator |
-| M18-I11 | ⬜ | 独立 | 支持 `tcgen05.mma` mxf4/mxf4nvf4 dense slice | packing/scale/target |
-| M18-I12 | ⬜ | 独立 | 支持 `tcgen05.mma` block-scaling slice | scale-factor descriptors |
-| M18-I13 | ⬜ | 独立 | 支持 `tcgen05.mma.sp` first slice | sparse metadata/selector |
-| M18-I14 | ⬜ | 独立 | 扩展 `tcgen05.mma.sp` modern low-bit slice | kind/packing/alignment |
-| M18-I15 | ⬜ | 独立 | 支持 `tcgen05.mma.ws` first slice | WS mode、data-path layout、collector |
-| M18-I16 | ⬜ | 独立 | 支持 `tcgen05.mma.ws.sp` first slice | WS+sparse topology |
-| M18-I17 | ⬜ | 独立 | 支持 `tcgen05.fence` | specialized synchronization target/operand |
-| M18-I18 | ⬜ | 独立 | 支持 `tcgen05.commit` | mbarrier completion、group/target |
-| M18-I19 | ⬜ | 独立 | 统一 TCGEN completion metadata | implicit pipeline、mbarrier、`tcgen05.wait` identity |
-| M18-C01 | ⬜ | 耦合 | 统一 TCGEN descriptor/shape/kind constraints | dense/sparse/WS 共用单一生成数据 |
-| M18-C02 | ⬜ | 耦合 | 暴露 TCGEN synchronization obligation | thread/CTA/proxy obligation 可供 analyzer/simulator 消费 |
-| M18-C03 | ⬜ | 耦合 | 建立 Blackwell MMA corpus | sm100a/sm100f profile 的 dense/sparse/WS 正反例 |
+| M18-I01 | ✅（前端） | 独立 | 建立 TCGEN MMA kind domain | f16/tf32/f8f6f4/mxf8f6f4/i8/mxf4/mxf4nvf4 |
+| M18-I02 | ✅（前端） | 独立 | 建立 TCGEN MMA shape/descriptor constraint | M/N/K、CTA group、A/B/D placement |
+| M18-I03 | ✅（前端） | 独立 | 建立 major/stride/swizzle valid-combination table | 规范表 machine-readable |
+| M18-I04 | ✅（前端） | 独立 | 建立 TCGEN data-path layout A～G | layout identity 与 shape/CTA/WS 条件 |
+| M18-I05 | ✅（前端） | 独立 | 建立 block-scaling domain | scale vector size、A/B ID、block size、K |
+| M18-I06 | ✅（前端） | 独立 | 建立 TCGEN sparsity metadata domain | selector、metadata layout、alignment |
+| M18-I07 | ✅（前端） | 独立 | 支持 `tcgen05.mma` f16 dense slice | descriptor/tmem/accumulate topology |
+| M18-I08 | ✅（前端） | 独立 | 支持 `tcgen05.mma` tf32 dense slice | kind/shape/layout |
+| M18-I09 | ✅（前端） | 独立 | 支持 `tcgen05.mma` f8f6f4/mxf8f6f4 dense slice | packing/kind/descriptor |
+| M18-I10 | ✅（前端） | 独立 | 支持 `tcgen05.mma` i8 dense slice | signedness/accumulator |
+| M18-I11 | ✅（前端） | 独立 | 支持 `tcgen05.mma` mxf4/mxf4nvf4 dense slice | packing/scale/target |
+| M18-I12 | ✅（前端） | 独立 | 支持 `tcgen05.mma` block-scaling slice | scale-factor descriptors |
+| M18-I13 | ✅（前端） | 独立 | 支持 `tcgen05.mma.sp` first slice | sparse metadata/selector |
+| M18-I14 | ✅（前端） | 独立 | 扩展 `tcgen05.mma.sp` modern low-bit slice | kind/packing/alignment |
+| M18-I15 | ✅（前端） | 独立 | 支持 `tcgen05.mma.ws` first slice | WS mode、data-path layout、collector |
+| M18-I16 | ✅（前端） | 独立 | 支持 `tcgen05.mma.ws.sp` first slice | WS+sparse topology |
+| M18-I17 | ✅（前端） | 独立 | 支持 `tcgen05.fence` | specialized synchronization target/operand |
+| M18-I18 | ✅（前端） | 独立 | 支持 `tcgen05.commit` | mbarrier completion、group/target |
+| M18-I19 | ✅（前端） | 独立 | 统一 TCGEN completion metadata | implicit pipeline、mbarrier、`tcgen05.wait` identity |
+| M18-C01 | ✅（前端） | 耦合 | 统一 TCGEN descriptor/shape/kind constraints | dense/sparse/WS 共用单一生成数据 |
+| M18-C02 | ✅（前端） | 耦合 | 暴露 TCGEN synchronization obligation | thread/CTA/proxy obligation 可供 analyzer/simulator 消费 |
+| M18-C03 | ✅（有界语料） | 耦合 | 建立 Blackwell MMA corpus | sm100a/sm100f profile 的 dense/sparse/WS 正反例 |
 
-当前分支的稠密 `tcgen05.mma` 已覆盖 f16、tf32、i8，以及规范顺序的无缩放
-f8f6f4 来源和调用方已知值规则（见
-[英文](../docs/us-en/tcgen_mma_f8f6f4_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_f8f6f4_coverage.md)），并已加入稠密非 WS 的
-MX8 块缩放来源、强类型 selector 和调用方已知缩放布局检查（见
-[英文](../docs/us-en/tcgen_mma_mx8_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_mx8_coverage.md)），并补入稠密 MX4 的 K64/K96
-形状与条件性缩放布局规则（见
-[英文](../docs/us-en/tcgen_mma_mx4_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_mx4_coverage.md)），并补入稠密 MX NV 的显式 selector、
-UE8M0/UE4M3 条件和 K96 block16 六因子规则（见
-[英文](../docs/us-en/tcgen_mma_mxnv_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_mxnv_coverage.md)）。M18-I05/I09/I12 仍涵盖其余 MX
-kind、缩放块长和低位物理 packing；运行时数据也未由前端证明，因此暂不标整行完成。
-当前分支另已加入普通非 WS 稀疏 f16/tf32/f8f6f4/i8 四种来源、独立元数据
-Tensor Memory 地址、Table 45 sparse 位与 selector 条件检查、压缩 A 的 K 和
-F/C 半 lane 已知值规则（[英文](../docs/us-en/tcgen_mma_sparse_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_sparse_coverage.md)）。稀疏 MX8/MX4/MX NV 来源及
-独立的 K、scale 与元数据条件规则也已加入（[英文](../docs/us-en/tcgen_mma_sparse_mx_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_sparse_mx_coverage.md)）。M18-I06/I13/I14 仍包含
-物理元数据内容及后续 collector/WS 组合；调用方事实不能证明运行时内容，
-故不据此将整行标为完成。
+上述状态表示**固定 PTX 9.3 与当前目标目录的前端闭环**，不表示 GPU 数值执行或
+不透明描述符的运行时内容已获证明。按实际规范来源统计，四个源码家族共有
+22/22 个 `(family, kind)` 身份、92 个结构化操作数布局、152 个已记录拓扑元组；
+相对保存的 40 个元组基线新增 112 个、移除零个。固定目标、类型化来源、
+持有式引用和绑定、形状／缩放／稀疏／lane 条件及适用的已知值报告见
+[英文全族覆盖与义务表](../docs/us-en/tcgen_mma_family_coverage.md)／
+[中文全族覆盖与义务表](../docs/zh-han/tcgen_mma_family_coverage.md)。
+M18-I17～I19 与 C02 的实际完成身份、借用视图和条件义务接口另见
+[英文同步覆盖](../docs/us-en/tcgen_sync_coverage.md)／
+[中文同步覆盖](../docs/zh-han/tcgen_sync_coverage.md)及
+[A collector 条件历史报告](../docs/us-en/tcgen_mma_a_collector_coverage.md)。
 
-普通非 WS 稠密及稀疏 f16/tf32/f8f6f4/i8 的现有来源身份已扩展可选强类型
-A collector 与 ashift，保留省略来源及条件性的 M/collector 历史义务（
-[英文](../docs/us-en/tcgen_mma_a_collector_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_a_collector_coverage.md)）。这不证明跨指令 fill/use
-顺序或运行时内容，也不覆盖 WS B collector。六种稠密／稀疏 MX 来源身份同样
-扩展了可选 A collector，复用强类型来源及条件性历史规则（
-[英文](../docs/us-en/tcgen_mma_mx_a_collector_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_mx_a_collector_coverage.md)）；MX 仍不支持 ashift，
-已有缩放、形状和目标约束保持独立，故 M18 整行状态不变。
-
-稠密 WS f16/tf32/f8f6f4/i8 的四个精确来源身份现包含 CTA group 1、
-shared／Tensor Memory A、可选末尾零列寄存器以及带来源的 B0–B3 collector。
-已知值规则区分 M32/G、M64/E、M128/D、零 lane 对齐、Table 48 零列字与
-逐 B buffer 的条件性历史断言（[英文](../docs/us-en/tcgen_mma_ws_dense_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_ws_dense_coverage.md)）。四个稀疏 WS 来源身份也
-已加入强制元数据位置、压缩 A 的 K、G/E/D 零 lane 与条件性稀疏 nibble 规则（
-[英文](../docs/us-en/tcgen_mma_ws_sparse_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_ws_sparse_coverage.md)）。M32 元数据子列映射及
-运行时内容仍未获证明，M18 整行状态不变。
+C03 的可重跑前端正反例包括
+[C++ 稀疏 MX 测试](../submod/resolved_ir/test/test_tcgen_mma_sparse_mx.cpp)、
+[C++ WS 稀疏测试](../submod/resolved_ir/test/test_tcgen_mma_ws_sparse.cpp)和
+[Python 稀疏 MX 规则测试](../python/tests/spec/test_tcgen_mma_sparse_mx_contract.py)；
+固定 CUDA 13.3 `ptxas` 13.3.73 的有界检查点与 31/31 项预期结果记录在全族覆盖页，
+并非每个目标、来源拼写或运行时值的穷尽式证明。完整 CTest 1357/1357、
+Python 518/518、13/13 安装消费和 wheel 资源检查已通过。
+M32 稀疏 WS 元数据映射、Table 47 与 K96 图的 scale-ID 冲突、部分无缩放低位
+物理 packing、collector 历史及运行时内容仍保留为明确义务；调用方已知事实不能
+证明活体字节值。M19 的 ABI／发布门不因本里程碑状态而改变。
 
 ### 出口
 
-1.0 frontend 对 TCGEN05 family 的主要 topology 有稳定 typed representation；完整 type/shape
-cross-product 可以继续作为 data-only expansion，不要求破坏 public contract。
+固定 PTX 9.3 的四个 TCGEN05 MMA 源码家族、当前目标目录及完成形式已有稳定的
+类型化前端表示。可核查的边界是来源、持有式模块、静态约束和条件性已知值报告；
+实时描述符／内存值、跨指令历史、数值执行与 M19 发布门仍须分别验证。
 
 ---
 

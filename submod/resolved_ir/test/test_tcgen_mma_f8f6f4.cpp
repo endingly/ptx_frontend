@@ -325,7 +325,7 @@ TEST(TcgenMmaF8F6F4, IndependentTransposePackingAndContexts) {
   ASSERT_TRUE(sm110a);
   facts.target = sm100a->identity;
   facts.ptx_version = checker::PtxVersion{9, 3};
-  facts.a_context.target = sm110a->identity;
+  facts.b_context.target = sm110a->identity;
   EXPECT_TRUE(contains(check_tcgen_f8f6f4_known_operation(facts).violations,
                        TcgenF8F6F4Violation::InvalidContext));
 }

@@ -41,6 +41,7 @@ class F16PathRow:
     m: int
     layout: str
     half_path: bool
+    allowed_lane_halves: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -183,10 +184,10 @@ F16_SHAPES = (
 )
 
 F16_PATHS = (
-    F16PathRow(1, 64, "F", True),
-    F16PathRow(1, 128, "D", False),
-    F16PathRow(2, 128, "B", False),
-    F16PathRow(2, 256, "A", False),
+    F16PathRow(1, 64, "F", True, (0, 16)),
+    F16PathRow(1, 128, "D", False, (0,)),
+    F16PathRow(2, 128, "B", False, (0,)),
+    F16PathRow(2, 256, "A", False, (0,)),
 )
 
 # Family membership is resolved by the accepted target catalogue at query
@@ -262,10 +263,13 @@ def validate_catalogue() -> None:
                 or not set(row.b_types) <= accepted_b
                 or row.d_type not in accepted_d for row in F16_SHAPES)):
         raise ValueError("dense f16 shape/type rows drifted from Table 42")
-    if {(row.group, row.m, row.layout, row.half_path)
+    if {(row.group, row.m, row.layout, row.half_path,
+         row.allowed_lane_halves)
         for row in F16_PATHS} != {
-            (1, 64, "F", True), (1, 128, "D", False),
-            (2, 128, "B", False), (2, 256, "A", False)}:
+            (1, 64, "F", True, (0, 16)),
+            (1, 128, "D", False, (0,)),
+            (2, 128, "B", False, (0,)),
+            (2, 256, "A", False, (0,))}:
         raise ValueError("dense f16 datapath mapping changed")
     if _TRANSPOSE_EXCLUDED not in {name for _, name in descriptor.SWIZZLES}:
         raise ValueError("Table 57 exclusion lacks accepted swizzle identity")
@@ -457,9 +461,9 @@ def validate_catalogue() -> None:
             len(SPARSE_TARGET_GATES) != 5 + 5 + 4 + 2):
         raise ValueError("sparse MMA rows drifted from Tables 42/45 and 10.8")
 
-    if ({(row.kind, row.group, row.m_values, row.k)
+    if ({(row.kind, row.group, row.d_type, row.m_values, row.k)
          for row in SPARSE_MX_SHAPES} != {
-             (kind, group, (m, m), k)
+             (kind, group, "F32", (m, m), k)
              for kind, k in (("MxF8F6F4", 64), ("MxF4", 128),
                              ("MxF4NvF4", 128))
              for group, m in ((1, 128), (2, 256))} or
@@ -531,6 +535,28 @@ def _check_shared(role: str, transpose: bool | None,
         violations.append(f"{role}_transpose_swizzle")
 
 
+def _check_dense_lane_facts(path: F16PathRow | None, facts: F16KnownFacts,
+                            violations: list[str],
+                            obligations: list[str]) -> None:
+    """Check each applicable known lane before half-path pair equality."""
+
+    if path is None:
+        return
+    roles = (("a_lane_half",) if facts.a_shared is False else ()) + (
+        "d_lane_half",)
+    for name in roles:
+        value = getattr(facts, name)
+        if value is None:
+            obligations.append(name)
+        elif value not in path.allowed_lane_halves:
+            violations.append(f"{name}_invalid")
+    if (path.half_path and facts.a_shared is False and
+            facts.a_lane_half in path.allowed_lane_halves and
+            facts.d_lane_half in path.allowed_lane_halves and
+            facts.a_lane_half != facts.d_lane_half):
+        violations.append("half_path_alignment")
+
+
 def check_f16_known_facts(facts: F16KnownFacts) -> F16OperationalReport:
     """Check only supplied Table 42/57 and datapath facts for dense non-WS f16.
 
@@ -584,16 +610,7 @@ def check_f16_known_facts(facts: F16KnownFacts) -> F16OperationalReport:
                   violations, obligations)
     path = next((row for row in F16_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return F16OperationalReport(tuple(violations), tuple(obligations),
                                 path.layout if path else None)
 
@@ -635,16 +652,7 @@ def check_tf32_known_facts(facts: Tf32KnownFacts) -> Tf32OperationalReport:
                   violations, obligations, tf32=True)
     path = next((row for row in TF32_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return Tf32OperationalReport(tuple(violations), tuple(obligations),
                                  path.layout if path else None)
 
@@ -698,16 +706,7 @@ def check_i8_known_facts(facts: I8KnownFacts) -> I8OperationalReport:
         violations.append("b_transpose_n")
     path = next((row for row in I8_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return I8OperationalReport(tuple(violations), tuple(obligations),
                                path.layout if path else None)
 
@@ -784,16 +783,7 @@ def check_f8f6f4_known_facts(
         violations.append("b_transpose_n")
     path = next((row for row in F8F6F4_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return F8F6F4OperationalReport(tuple(violations), tuple(obligations),
                                    path.layout if path else None)
 
@@ -1055,10 +1045,12 @@ def check_mx4_known_facts(facts: Mx4KnownFacts) -> Mx4OperationalReport:
 
     common = check_f8f6f4_known_facts(facts)
     violations = [name for name in common.violations
-                  if name != "shape_or_output_type"]
+                  if name not in ("shape_or_output_type", "a_lane_half_invalid",
+                                  "d_lane_half_invalid", "half_path_alignment")]
     obligations = [name for name in common.obligations
                    if name not in ("a_low_bit_packing_rule",
-                                   "b_low_bit_packing_rule")]
+                                   "b_low_bit_packing_rule", "a_lane_half",
+                                   "d_lane_half")]
     if facts.d_type is not None and facts.d_type != "F32":
         violations.append("mx4_output_type")
     for role in ("a", "b"):
@@ -1067,12 +1059,17 @@ def check_mx4_known_facts(facts: Mx4KnownFacts) -> Mx4OperationalReport:
             violations.append(f"mx4_{role}_type")
         if getattr(facts, f"transpose_{role}") is True:
             violations.append(f"mx4_{role}_transpose")
-    if all(getattr(facts, name) is not None
-           for name in ("group", "m", "n", "k")) and not any(
-               row.group == facts.group and
-               row.contains(facts.m, facts.n, facts.k)
-               for row in MX4_SHAPES):
+    shape_known = all(getattr(facts, name) is not None
+                      for name in ("group", "m", "n", "k", "d_type"))
+    shape_valid = (shape_known and any(
+        row.group == facts.group and row.d_type == facts.d_type and
+        row.contains(facts.m, facts.n, facts.k) for row in MX4_SHAPES))
+    if shape_known and not shape_valid:
         violations.append("mx4_shape")
+    path = (next((row for row in MX4_PATHS
+                  if row.group == facts.group and row.m == facts.m), None)
+            if shape_valid else None)
+    _check_dense_lane_facts(path, facts, violations, obligations)
     if facts.k == 96:
         obligations.append("k96_exact_target")
     if facts.scale_type is None:
@@ -1132,7 +1129,8 @@ def check_mx4_known_facts(facts: Mx4KnownFacts) -> Mx4OperationalReport:
     factor = (2 if facts.scale_selector == "scale_vec::2X" else
               3 if facts.k == 96 else 2 if facts.k == 64 else None)
     return Mx4OperationalReport(tuple(violations), tuple(obligations),
-                                common.layout, selected["a"], selected["b"],
+                                path.layout if path else None,
+                                selected["a"], selected["b"],
                                 required_a if facts.a_type == "E2M1" else None,
                                 required_b if facts.b_type == "E2M1" else None,
                                 factor, factor)

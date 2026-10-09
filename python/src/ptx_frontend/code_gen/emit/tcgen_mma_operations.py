@@ -27,6 +27,17 @@ HEADER_NAME = "tcgen_mma_operations.gen.hpp"
 SOURCE_NAME = "resolved_ir_tcgen_mma_operations.gen.cpp"
 
 
+def _render_dense_path_row(cpp_type: str, row: operations.F16PathRow) -> str:
+    """Emit one typed path with its per-lane allowed values from the data row."""
+
+    group = "One" if row.group == 1 else "Two"
+    half = "true" if row.half_path else "false"
+    allowed = ", ".join(map(str, row.allowed_lane_halves))
+    return (f"  {cpp_type}{{TcgenCtaGroup::{group}, {row.m}, "
+            f"'{row.layout}', {half}, {{{allowed}}}, "
+            f"{len(row.allowed_lane_halves)}}}")
+
+
 def render_tcgen_mma_header() -> str:
     """Render public declarations backed by immutable generated static rows."""
 
@@ -68,6 +79,10 @@ struct TcgenF16PathRow {
   char layout;
   /** Whether known A/D Tensor Memory lane-half alignment must agree. */
   bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
 };
 /** Borrow the immutable generated Table 42 f16 rows for caller-known facts. */
 [[nodiscard]] std::span<const TcgenF16ShapeRow> tcgen_f16_shape_rows() noexcept;
@@ -95,11 +110,7 @@ def render_tcgen_mma_source() -> str:
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     path_rows = []
     for row in operations.F16_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        half = "true" if row.half_path else "false"
-        path_rows.append(
-            f"  TcgenF16PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {half}}}")
+        path_rows.append(_render_dense_path_row("TcgenF16PathRow", row))
     shape_text = ",\n".join(shape_rows)
     path_text = ",\n".join(path_rows)
     target_rows = ",\n".join(
@@ -146,11 +157,7 @@ bool tcgen_f16_row_contains(const TcgenF16ShapeRow& row,
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     tf32_paths = []
     for row in operations.TF32_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        half = "true" if row.half_path else "false"
-        tf32_paths.append(
-            f"  TcgenTf32PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {half}}}")
+        tf32_paths.append(_render_dense_path_row("TcgenTf32PathRow", row))
     tf32_targets = ",\n".join(
         '  TcgenTf32TargetGate{"%s", %s, {%d, %d}, %s}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -200,11 +207,7 @@ bool tcgen_tf32_row_contains(const TcgenTf32ShapeRow& row,
             f'{row.n_last}, {row.k}}}')
     i8_paths = []
     for row in operations.I8_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        half = "true" if row.half_path else "false"
-        i8_paths.append(
-            f"  TcgenI8PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {half}}}")
+        i8_paths.append(_render_dense_path_row("TcgenI8PathRow", row))
     i8_targets = ",\n".join(
         '  TcgenI8TargetGate{"%s", %s, {%d, %d}}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -252,11 +255,7 @@ bool tcgen_i8_row_contains(const TcgenI8ShapeRow& row,
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     f8_paths = []
     for row in operations.F8F6F4_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        half = "true" if row.half_path else "false"
-        f8_paths.append(
-            f"  TcgenF8F6F4PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {half}}}")
+        f8_paths.append(_render_dense_path_row("TcgenF8F6F4PathRow", row))
     f8_targets = ",\n".join(
         '  TcgenF8F6F4TargetGate{"%s", %s, {%d, %d}}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -302,11 +301,7 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     mx8_paths = []
     for row in operations.MX8_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        half = "true" if row.half_path else "false"
-        mx8_paths.append(
-            f"  TcgenMx8PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {half}}}")
+        mx8_paths.append(_render_dense_path_row("TcgenMx8PathRow", row))
     mx_scale_rows = []
     for row in (*operations.MX8_SCALE_LAYOUTS, *operations.MX4_SCALE_LAYOUTS,
                 *operations.MXNV_SCALE_LAYOUTS,
@@ -328,7 +323,7 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
         ids = ", ".join(str(value) for value in row.valid_ids)
         mx_scale_rows.append(
             f'  TcgenMxScaleLayoutRow{{MatrixFragmentRole::{role}, '
-            f'TcgenMmaKind::{kind}, false, {row.k}, '
+            f'TcgenMmaKind::{kind}, {str(row.sparse).lower()}, {row.k}, '
             f'TcgenScaleVectorSize::{selector}, {row.factor_count}, '
             f'{row.subcolumn_alignment_bytes}, {{{{{ids}}}}}, '
             f'{len(row.valid_ids)}, TcgenMxScaleLayoutId::{layout}, '
@@ -361,10 +356,7 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     mx4_paths = []
     for row in operations.MX4_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        mx4_paths.append(
-            f"  TcgenMx4PathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {'true' if row.half_path else 'false'}}}")
+        mx4_paths.append(_render_dense_path_row("TcgenMx4PathRow", row))
     mx4_targets = ",\n".join(
         '  TcgenMx4TargetGate{"%s", %s, {%d, %d}}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -391,10 +383,7 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
             f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
     mxnv_paths = []
     for row in operations.MXNV_PATHS:
-        group = "One" if row.group == 1 else "Two"
-        mxnv_paths.append(
-            f"  TcgenMxNvPathRow{{TcgenCtaGroup::{group}, {row.m}, "
-            f"'{row.layout}', {'true' if row.half_path else 'false'}}}")
+        mxnv_paths.append(_render_dense_path_row("TcgenMxNvPathRow", row))
     mxnv_targets = ",\n".join(
         '  TcgenMxNvTargetGate{"%s", %s, {%d, %d}}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -656,22 +645,28 @@ TcgenF16OperationalReport check_tcgen_f16_known_operation(
     if (row.group != facts.group || row.m != decoded.m) continue;
     report.path_layout = row.layout;
     report.checked.push_back(TcgenF16Checked::Datapath);
-    if (row.half_path && facts.a_in_tmem) {
+    const auto allowed = [&row](uint8_t lane) {
+      return std::find(row.allowed_lane_halves.begin(),
+                       row.allowed_lane_halves.begin() + row.allowed_lane_count,
+                       lane) != row.allowed_lane_halves.begin() +
+                                   row.allowed_lane_count;
+    };
+    if (facts.a_in_tmem) {
       if (!facts.a_lane_half)
         report.missing.push_back(TcgenF16Obligation::ALaneHalf);
-      else if (*facts.a_lane_half != 0 && *facts.a_lane_half != 16)
+      else if (!allowed(*facts.a_lane_half))
         report.violations.push_back(TcgenF16Violation::ALaneHalf);
-      if (!facts.d_lane_half)
-        report.missing.push_back(TcgenF16Obligation::DLaneHalf);
-      else if (*facts.d_lane_half != 0 && *facts.d_lane_half != 16)
-        report.violations.push_back(TcgenF16Violation::DLaneHalf);
-      if (facts.a_lane_half && facts.d_lane_half &&
-          (*facts.a_lane_half == 0 || *facts.a_lane_half == 16) &&
-          (*facts.d_lane_half == 0 || *facts.d_lane_half == 16)) {
-        if (*facts.a_lane_half != *facts.d_lane_half)
-          report.violations.push_back(TcgenF16Violation::HalfAlignment);
-        report.checked.push_back(TcgenF16Checked::HalfAlignment);
-      }
+    }
+    if (!facts.d_lane_half)
+      report.missing.push_back(TcgenF16Obligation::DLaneHalf);
+    else if (!allowed(*facts.d_lane_half))
+      report.violations.push_back(TcgenF16Violation::DLaneHalf);
+    if (row.half_path && facts.a_in_tmem && facts.a_lane_half &&
+        facts.d_lane_half && allowed(*facts.a_lane_half) &&
+        allowed(*facts.d_lane_half)) {
+      if (*facts.a_lane_half != *facts.d_lane_half)
+        report.violations.push_back(TcgenF16Violation::HalfAlignment);
+      report.checked.push_back(TcgenF16Checked::HalfAlignment);
     }
     break;
   }
@@ -717,6 +712,10 @@ struct TcgenTf32PathRow {
   char layout;
   /** Whether known A/D lane halves must agree. */
   bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
 };
 /** Borrow immutable generated tf32 Table 42 shape rows. */
 [[nodiscard]] std::span<const TcgenTf32ShapeRow> tcgen_tf32_shape_rows() noexcept;
@@ -815,6 +814,10 @@ struct TcgenI8PathRow {
   char layout;
   /** Whether known A/D lane halves must agree. */
   bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
 };
 /** Borrow immutable dense i8 Table 42 shape rows. */
 [[nodiscard]] std::span<const TcgenI8ShapeRow> tcgen_i8_shape_rows() noexcept;
@@ -947,6 +950,10 @@ struct TcgenF8F6F4PathRow {
   char layout;
   /** Whether known A/D lane halves must agree. */
   bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
 };
 /** Borrow immutable Table 42 dense low-bit rows. */
 [[nodiscard]] std::span<const TcgenF8F6F4ShapeRow>
@@ -1295,7 +1302,7 @@ def _mx8_query_source() -> str:
     if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
         facts.scale_selector != TcgenScaleVectorSize::Vec1X &&
         facts.scale_selector != TcgenScaleVectorSize::Block32) continue;''')
-    marker = "  if (facts.a_in_tmem) {\n"
+    marker = "  if (facts.a_in_tmem) {\n    if (facts.a_shared_word)"
     assert source.count(marker) == 1
     source = source.replace(marker, '''  if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
       facts.scale_selector != TcgenScaleVectorSize::Vec1X &&

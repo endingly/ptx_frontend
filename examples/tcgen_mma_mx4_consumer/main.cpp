@@ -27,8 +27,14 @@ int main() {
   if (!require(ir::tcgen_mx4_shape_rows().size() == 3 &&
                    std::count_if(rows.begin(), rows.end(),
                                  [](const auto& row) {
-                                   return row.kind == ir::TcgenMmaKind::MxF4;
-                                 }) == 6,
+                                   return !row.sparse &&
+                                          row.kind == ir::TcgenMmaKind::MxF4;
+                                 }) == 6 &&
+                   std::count_if(rows.begin(), rows.end(),
+                                 [](const auto& row) {
+                                   return row.sparse &&
+                                          row.kind == ir::TcgenMmaKind::MxF4;
+                                 }) == 4,
                "generated Table 42 and Tables 59/60 rows"))
     return 1;
   constexpr uint32_t word = (1U << 27) | (2U << 17) | (1U << 23) | (1U << 7) |

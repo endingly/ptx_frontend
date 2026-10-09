@@ -212,6 +212,17 @@ TEST(TcgenMmaMxNv, KnownScaleRowsAndTargetIntersections) {
   EXPECT_TRUE(exceptional.supplied_facts_ok());
   EXPECT_EQ(exceptional.scale_a_factor_count, 6);
   EXPECT_FALSE(contains(exceptional.violations, TcgenMxNvViolation::Target));
+  facts.a_lane_half = 0;
+  facts.d_lane_half = 0;
+  EXPECT_EQ(check_tcgen_mxnv_known_operation(facts).path_layout, 'A');
+  facts.a_lane_half = 16;
+  EXPECT_TRUE(contains(check_tcgen_mxnv_known_operation(facts).violations,
+                       TcgenMxNvViolation::ALaneHalf));
+  facts.a_lane_half = 0;
+  facts.d_lane_half = 16;
+  EXPECT_TRUE(contains(check_tcgen_mxnv_known_operation(facts).violations,
+                       TcgenMxNvViolation::DLaneHalf));
+  facts.d_lane_half = 0;
   bad = facts;
   bad.scale_a_facts = TcgenMxScaleRoleFacts{TcgenMxScaleLayoutId::Mx6, 2};
   EXPECT_TRUE(contains(check_tcgen_mxnv_known_operation(bad).violations,

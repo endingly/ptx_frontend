@@ -324,7 +324,6 @@ TcgenSparseMxOperationalReport check_tcgen_sparse_mx_known_operation(
     report.violations.push_back(TcgenSparseMxViolation::KChoice);
   for (const auto& row : kSparseMxShapes) {
     if (row.kind != facts.source_kind || row.group != facts.group ||
-        !decoded.d_type || *decoded.d_type != row.d_type ||
         (decoded.m != row.m_values[0] && decoded.m != row.m_values[1]) ||
         decoded.n < row.n_first || decoded.n > row.n_last ||
         (decoded.n - row.n_first) % row.n_step)

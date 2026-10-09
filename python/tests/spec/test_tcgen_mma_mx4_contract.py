@@ -110,6 +110,22 @@ class TcgenMmaMx4ContractTests(unittest.TestCase):
         self.assertIsNone(unknown.required_a_packing)
         self.assertNotIn("a_packing_fact", unknown.violations)
 
+    def test_k64_full_path_lane_facts_use_mx4_shape(self) -> None:
+        """K64 keeps its selected datapath despite the K32 base query."""
+
+        facts = rules.Mx4KnownFacts(
+            group=1, m=128, n=32, k=64, d_type="F32", a_type="E2M1",
+            b_type="E2M1", sparse=False, a_shared=False,
+            a_lane_half=0, d_lane_half=0)
+        valid = rules.check_mx4_known_facts(facts)
+        self.assertEqual(valid.layout, "D")
+        self.assertNotIn("a_lane_half_invalid", valid.violations)
+        for field in ("a_lane_half", "d_lane_half"):
+            bad = rules.check_mx4_known_facts(replace(facts, **{field: 16}))
+            self.assertIn(f"{field}_invalid", bad.violations)
+            missing = rules.check_mx4_known_facts(replace(facts, **{field: None}))
+            self.assertIn(field, missing.obligations)
+
 
 if __name__ == "__main__":
     unittest.main()

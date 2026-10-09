@@ -20,6 +20,6 @@ Commit 描述同一线程先前发出的、CTA group 匹配的适用异步 TCGEN
 
 `before_thread_sync` 将先前异步 TCGEN 操作排序在后续 TCGEN 和执行顺序操作之前；`after_thread_sync` 将后续操作排序在先前 TCGEN 和执行顺序操作之后。它们不完成操作，也不替代 `fence.proxy.async`。Commit 的 mbarrier-arrive-one 完成身份与 Tensor Memory load/store wait、bulk group、普通 async group 和 complete-tx-bytes 不同。
 
-这些形式从 PTX 8.6 的精确 `sm_100a`、8.8 的 `sm_100f` 家族，或 9.0 的精确 `sm_110a` / `sm_110f` 家族开始可用。普通或无关目标不能替代。官方 13.3.73 汇编证据支持八种书写形式、两种 fence、兼容的 16 位寄存器掩码和有效目标端点。配对寄存器对照通过，而直接立即数掩码失败；汇编器不能证明运行时掩码值或同步行为。编码描述符/布局基础及已支持的 TCGEN MMA 切片有单独的部分覆盖契约。
+这些形式从 PTX 8.6 的精确 `sm_100a`、8.8 的 `sm_100f` 家族，或 9.0 的精确 `sm_110a` / `sm_110f` 家族开始可用。普通或无关目标不能替代。官方 13.3.73 汇编证据支持八种书写形式、两种 fence、兼容的 16 位寄存器掩码和有效目标端点。配对寄存器对照通过，而直接立即数掩码失败；汇编器不能证明运行时掩码值或同步行为。[TCGEN MMA 前端全族覆盖](tcgen_mma_family_coverage.md)说明这些完成形式与稠密／稀疏／WS 来源家族的关系，同时保留运行时协议历史义务。
 
 来源：[CUDA 13.3 / PTX 9.3 commit 与 fence 条款](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-commit)。[复制与位移](tensor_memory_copy_shift_coverage.md)可作为同一 group 的先前 TCGEN 工作；它们的源代码形式本身不触发 barrier 信号。

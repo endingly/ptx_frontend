@@ -6,6 +6,7 @@
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_tcgen_descriptors.hpp>
+#include <ptx_frontend/resolved_ir/tcgen_mma_operations.gen.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 namespace {

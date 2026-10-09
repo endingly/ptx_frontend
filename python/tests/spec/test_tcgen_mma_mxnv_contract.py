@@ -119,6 +119,21 @@ class TcgenMmaMxNvContractTests(unittest.TestCase):
         self.assertIsNone(unknown.required_a_packing)
         self.assertNotIn("a_packing_fact", unknown.violations)
 
+    def test_k96_full_path_lane_facts_use_mxnv_shape(self) -> None:
+        """Known K96 selects its D/A datapath before validating lane halves."""
+
+        facts = rules.MxNvKnownFacts(
+            group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+            b_type="E2M1", sparse=False, a_shared=False,
+            scale_selector="block16", scale_type="UE4M3",
+            a_lane_half=0, d_lane_half=0)
+        valid = rules.check_mxnv_known_facts(facts)
+        self.assertEqual(valid.layout, "A")
+        self.assertNotIn("d_lane_half_invalid", valid.violations)
+        for field in ("a_lane_half", "d_lane_half"):
+            invalid = rules.check_mxnv_known_facts(replace(facts, **{field: 16}))
+            self.assertIn(f"{field}_invalid", invalid.violations)
+
 
 if __name__ == "__main__":
     unittest.main()

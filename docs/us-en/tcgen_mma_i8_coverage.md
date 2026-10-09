@@ -59,9 +59,10 @@ group 2 N32..256 in steps of 32. Thus group-1 dense N8 and N24 are valid
 shapes yet invalid with transposed B; N16, N32 and N48 are allowed when other
 facts pass. Tensor Memory A has no A-shared-word obligation. The non-WS
 F/D/B/A paths are selected by (group,M) = (1,64), (1,128), (2,128), (2,256).
-On the F half path, only independently supplied A/D lane-half identities
-0/16 can be compared when A is in Tensor Memory; source addresses alone do
-not prove them or allocation history.
+On the F half path, independently supplied A/D lane halves 0 or 16 can be
+compared when A is in Tensor Memory. Full D/B/A paths require zero; a known D
+half is checked even with shared A. Source addresses do not prove the claimed
+halves or allocation history.
 
 The current explicit target catalogue projects the i8 source gate to exact
 `sm_100a` from PTX 8.6 or exact `sm_110a` from PTX 9.0. Family-f targets,
@@ -71,10 +72,10 @@ from the current catalogue and is **not** silently mapped to `sm_110a` for
 pre-9.0 PTX. Table 43's exact-103a byte-stride descriptor capability does
 not grant an i8 operation on 103a.
 
-This slice leaves other dense kinds, sparse and weight-stationary forms,
-convolution, block scaling and runtime descriptor,
-allocation, completion and GPU behavior for later work. The real TMA
-omitted/group-1/group-2 mixed-body integration case remains deferred and
-unrun until an authorized combined revision contains both families.
+The other fixed dense, sparse and WS source forms appear in the
+[family matrix](tcgen_mma_family_coverage.md). Runtime descriptor contents,
+allocation, completion and GPU behavior remain obligations. TMA's
+omitted/group-1/group-2 group choices do not inherit the TCGEN-only uniform
+group rule.
 
 The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.

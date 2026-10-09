@@ -24,13 +24,19 @@ bool require(bool value, std::string_view message) {
 int main() {
   namespace ir = ptx_frontend::resolved_ir;
   const auto rows = ir::tcgen_mx_scale_layout_rows();
-  if (!require(ir::tcgen_mx8_shape_rows().size() == 2 &&
-                   std::count_if(rows.begin(), rows.end(),
-                                 [](const auto& row) {
-                                   return row.kind ==
-                                          ir::TcgenMmaKind::MxF8F6F4;
-                                 }) == 4,
-               "generated Table 42 and Tables 59/60 rows"))
+  if (!require(
+          ir::tcgen_mx8_shape_rows().size() == 2 &&
+              std::count_if(rows.begin(), rows.end(),
+                            [](const auto& row) {
+                              return !row.sparse &&
+                                     row.kind == ir::TcgenMmaKind::MxF8F6F4;
+                            }) == 4 &&
+              std::count_if(rows.begin(), rows.end(),
+                            [](const auto& row) {
+                              return row.sparse &&
+                                     row.kind == ir::TcgenMmaKind::MxF8F6F4;
+                            }) == 4,
+          "generated Table 42 and Tables 59/60 rows"))
     return 1;
   constexpr uint32_t word = (1U << 27) | (2U << 17) | (1U << 23) | (1U << 10) |
                             (1U << 29) | (3U << 4);

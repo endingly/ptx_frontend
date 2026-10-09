@@ -562,6 +562,38 @@ TEST(TcgenMmaOperations, KnownHalfPathFacts) {
   EXPECT_FALSE(contains(invalid.checked, TcgenF16Checked::HalfAlignment));
 }
 
+/** Full-path lane rules apply to D even when A is sourced from shared memory. */
+TEST(TcgenMmaOperations, FullPathLaneFacts) {
+  TcgenF16KnownFacts facts{
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(8U << 24) | (2U << 17), TcgenMmaKind::F16},
+      .a_lane_half = 0,
+      .d_lane_half = 0,
+  };
+  const auto contains = [](const auto& values, const auto value) {
+    return std::find(values.begin(), values.end(), value) != values.end();
+  };
+  const auto aligned = check_tcgen_f16_known_operation(facts);
+  EXPECT_EQ(aligned.path_layout, 'D');
+  EXPECT_FALSE(contains(aligned.violations, TcgenF16Violation::ALaneHalf));
+  facts.a_lane_half = 16;
+  EXPECT_TRUE(contains(check_tcgen_f16_known_operation(facts).violations,
+                       TcgenF16Violation::ALaneHalf));
+  facts.a_lane_half.reset();
+  EXPECT_TRUE(contains(check_tcgen_f16_known_operation(facts).missing,
+                       TcgenF16Obligation::ALaneHalf));
+  facts.a_in_tmem = false;
+  facts.d_lane_half = 16;
+  const auto shared = check_tcgen_f16_known_operation(facts);
+  EXPECT_TRUE(contains(shared.violations, TcgenF16Violation::DLaneHalf));
+  EXPECT_FALSE(contains(shared.missing, TcgenF16Obligation::ALaneHalf));
+  facts.d_lane_half.reset();
+  EXPECT_TRUE(contains(check_tcgen_f16_known_operation(facts).missing,
+                       TcgenF16Obligation::DLaneHalf));
+}
+
 /** Match known-word target checks to exact, inherited and scaled gates. */
 TEST(TcgenMmaOperations, KnownTargetIntersections) {
   TcgenF16KnownFacts facts{

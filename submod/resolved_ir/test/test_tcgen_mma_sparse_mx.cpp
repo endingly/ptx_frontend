@@ -136,6 +136,10 @@ TEST(TcgenMmaSparseMx, OwnedViewAndTamper) {
 
 /** Word values and source spelling independently constrain sparse MX rows. */
 TEST(TcgenMmaSparseMx, KnownRowsMetadataScaleAndTarget) {
+  const auto scale_rows = tcgen_mx_scale_layout_rows();
+  EXPECT_EQ(std::count_if(scale_rows.begin(), scale_rows.end(),
+                          [](const auto& row) { return row.sparse; }),
+            16);
   const auto sm100a = base::find_target_profile("sm_100a");
   const auto sm103a = base::find_target_profile("sm_103a");
   const auto sm100f = base::find_target_profile("sm_100f");
@@ -158,6 +162,7 @@ TEST(TcgenMmaSparseMx, KnownRowsMetadataScaleAndTarget) {
       .ptx_version = checker::PtxVersion{8, 6},
   };
   auto report = check_tcgen_sparse_mx_known_operation(facts);
+  EXPECT_FALSE(decode_tcgen_instruction(facts.instruction).d_type.has_value());
   EXPECT_TRUE(report.supplied_facts_ok());
   ASSERT_TRUE(report.shape.has_value());
   EXPECT_EQ(report.shape->k, 64);
@@ -166,6 +171,18 @@ TEST(TcgenMmaSparseMx, KnownRowsMetadataScaleAndTarget) {
   EXPECT_TRUE(
       contains(report.missing, TcgenSparseMxObligation::LiveMetadataContents));
   auto bad = facts;
+  bad.instruction.bits &= ~(3U << 27);
+  EXPECT_TRUE(contains(check_tcgen_sparse_mx_known_operation(bad).violations,
+                       TcgenSparseMxViolation::Shape));
+  bad = facts;
+  bad.instruction.bits &= ~(63U << 17);
+  EXPECT_TRUE(contains(check_tcgen_sparse_mx_known_operation(bad).violations,
+                       TcgenSparseMxViolation::Shape));
+  bad = facts;
+  bad.group = TcgenCtaGroup::Two;
+  EXPECT_TRUE(contains(check_tcgen_sparse_mx_known_operation(bad).violations,
+                       TcgenSparseMxViolation::Shape));
+  bad = facts;
   bad.instruction.bits &= ~(1U << 2);
   EXPECT_TRUE(contains(check_tcgen_sparse_mx_known_operation(bad).violations,
                        TcgenSparseMxViolation::SparseBit));
@@ -186,6 +203,7 @@ TEST(TcgenMmaSparseMx, KnownRowsMetadataScaleAndTarget) {
   facts.target = sm103a->identity;
   facts.ptx_version = checker::PtxVersion{8, 8};
   report = check_tcgen_sparse_mx_known_operation(facts);
+  EXPECT_FALSE(decode_tcgen_instruction(facts.instruction).d_type.has_value());
   EXPECT_TRUE(report.supplied_facts_ok());
   ASSERT_TRUE(report.shape.has_value());
   EXPECT_EQ(report.shape->k, 128);
@@ -215,6 +233,7 @@ TEST(TcgenMmaSparseMx, KnownRowsMetadataScaleAndTarget) {
   facts.scale_selector = TcgenScaleVectorSize::Block16;
   facts.instruction = {nv, TcgenMmaKind::MxF4NvF4};
   report = check_tcgen_sparse_mx_known_operation(facts);
+  EXPECT_FALSE(decode_tcgen_instruction(facts.instruction).d_type.has_value());
   EXPECT_TRUE(report.supplied_facts_ok());
   EXPECT_EQ(report.scale_a_factor_count, 4);
   bad = facts;

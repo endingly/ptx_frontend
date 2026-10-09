@@ -2,7 +2,9 @@
 
 from dataclasses import replace
 import unittest
+from unittest.mock import patch
 
+from ptx_frontend.code_gen.emit.tcgen_mma_operations import render_tcgen_mma_source
 from ptx_frontend.spec import tcgen_mma_operations as rules
 from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize import normalize_instruction_spec
@@ -12,6 +14,27 @@ from ptx_frontend.spec.resources import packaged_spec_dir
 
 class TcgenMmaSparseMxContractTests(unittest.TestCase):
     """Preserve three exact sparse MX identities and independent scale rows."""
+
+    def test_generated_scale_rows_preserve_dense_sparse_identity(self) -> None:
+        """Every emitted scale row retains its owner's role, selector and K."""
+
+        source = render_tcgen_mma_source()
+        rows = (*rules.MX8_SCALE_LAYOUTS, *rules.MX4_SCALE_LAYOUTS,
+                *rules.MXNV_SCALE_LAYOUTS, *rules.SPARSE_MX_SCALE_LAYOUTS)
+        selectors = {"scale_vec::1X": "Vec1X", "scale_vec::2X": "Vec2X",
+                     "scale_vec::4X": "Vec4X", "block16": "Block16",
+                     "block32": "Block32"}
+        self.assertEqual(source.count("TcgenMxScaleLayoutRow{"), len(rows))
+        for row in rows:
+            prefix = (
+                "TcgenMxScaleLayoutRow{MatrixFragmentRole::"
+                f"{'A' if row.role == 'a' else 'B'}, "
+                f"TcgenMmaKind::{row.kind}, {str(row.sparse).lower()}, "
+                f"{row.k}, TcgenScaleVectorSize::{selectors[row.selector]}, "
+                f"{row.factor_count}, "
+            )
+            with self.subTest(row=row):
+                self.assertEqual(source.count(prefix), 1)
 
     def test_source_metadata_and_selector_topology(self) -> None:
         """All placements use metadata after B and scales after idesc."""
@@ -44,6 +67,13 @@ class TcgenMmaSparseMxContractTests(unittest.TestCase):
 
         rules.validate_catalogue()
         self.assertEqual(len(rules.SPARSE_MX_SHAPES), 6)
+        self.assertEqual({row.d_type for row in rules.SPARSE_MX_SHAPES},
+                         {"F32"})
+        with patch.object(rules, "SPARSE_MX_SHAPES", (
+                replace(rules.SPARSE_MX_SHAPES[0], d_type="F16"),
+                *rules.SPARSE_MX_SHAPES[1:])):
+            with self.assertRaises(ValueError):
+                rules.validate_catalogue()
         self.assertEqual(len(rules.SPARSE_MX_SCALE_LAYOUTS), 16)
         for kind, k, selector, scale_type, factors, ids, granularity in (
                 ("MxF8F6F4", 64, "absent", "UE8M0", 1, (0, 1, 2, 3),

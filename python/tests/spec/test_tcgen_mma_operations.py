@@ -111,6 +111,40 @@ class TcgenF16OperationTests(unittest.TestCase):
         self.assertIn("a_lane_half", unknown.obligations)
         self.assertIn("d_lane_half", unknown.obligations)
 
+    def test_full_path_lanes_and_shared_a_destination(self) -> None:
+        """Full paths require lane zero; a shared A does not waive D checks."""
+
+        base = rules.F16KnownFacts(
+            group=1, m=128, n=32, k=16, d_type="F32", a_type="F16",
+            b_type="F16", sparse=False, a_shared=False,
+            a_lane_half=0, d_lane_half=0)
+        self.assertEqual(rules.check_f16_known_facts(base).layout, "D")
+        for field in ("a_lane_half", "d_lane_half"):
+            invalid = rules.check_f16_known_facts(replace(base, **{field: 16}))
+            self.assertIn(f"{field}_invalid", invalid.violations)
+            missing = rules.check_f16_known_facts(replace(base, **{field: None}))
+            self.assertIn(field, missing.obligations)
+        shared = rules.check_f16_known_facts(replace(
+            base, a_shared=True, a_lane_half=None, d_lane_half=42))
+        self.assertIn("d_lane_half_invalid", shared.violations)
+        self.assertNotIn("a_lane_half", shared.obligations)
+
+    def test_low_bit_dense_paths_share_lane_contract(self) -> None:
+        """Ordinary and block-scaled low-bit paths use the same allowed lanes."""
+
+        plain = rules.F8F6F4KnownFacts(
+            group=1, m=128, n=32, k=32, d_type="F32", a_type="E4M3",
+            b_type="E4M3", sparse=False, a_shared=True, d_lane_half=16)
+        report = rules.check_f8f6f4_known_facts(plain)
+        self.assertEqual(report.layout, "D")
+        self.assertIn("d_lane_half_invalid", report.violations)
+        mx = rules.Mx8KnownFacts(**{
+            name: getattr(plain, name)
+            for name in rules.F8F6F4KnownFacts.__dataclass_fields__})
+        report = rules.check_mx8_known_facts(mx)
+        self.assertEqual(report.layout, "D")
+        self.assertIn("d_lane_half_invalid", report.violations)
+
     def test_missing_and_malformed_facts(self) -> None:
         """Unknown context is an obligation; known invalid bits diagnose."""
 

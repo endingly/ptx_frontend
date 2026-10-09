@@ -57,7 +57,9 @@ struct TcgenSparsePathRow {
   uint8_t allowed_lane_count;
 };
 /** Element grouping represented by one metadata nibble. */
-enum class TcgenSparseGranularity : uint8_t { OneOfTwo, TwoOfFour };
+enum class TcgenSparseGranularity : uint8_t {
+  OneOfTwo, TwoOfFour, PairwiseFourOfEight
+};
 /** One kind-specific normative metadata index domain. */
 struct TcgenSparseMetadataRule {
   /** Kind whose metadata this row describes. */

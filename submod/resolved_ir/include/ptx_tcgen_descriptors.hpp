@@ -484,4 +484,84 @@ inline std::optional<TcgenMmaSparseView> tcgen_mma_sparse_view(
   return std::nullopt;
 }
 
+/** Borrowed sparse block-scale roles; all pointers live with the owning form. */
+struct TcgenMmaSparseMxView {
+  /** Exact encoded kind selected by the source class. */
+  TcgenMmaKind kind;
+  /** Typed CTA group from the written qualifier. */
+  TcgenCtaGroup group;
+  /** Written selector, including its omitted-source provenance. */
+  const WithLocs<TcgenScaleVectorSize>* scale_selector;
+  /** Destination Tensor Memory address. */
+  const TensorMemoryAddress* d;
+  /** Shared A descriptor, present only for layout zero. */
+  std::optional<TcgenMmaSharedDescriptorView> a_shared;
+  /** Tensor Memory A address, present only for layout one. */
+  const TensorMemoryAddress* a_tmem;
+  /** Shared B descriptor. */
+  TcgenMmaSharedDescriptorView b;
+  /** Mandatory sparse metadata Tensor Memory address. */
+  const TensorMemoryAddress* metadata;
+  /** Opaque instruction descriptor register. */
+  TcgenInstructionDescriptorView instruction;
+  /** Scale A Tensor Memory address. */
+  const TensorMemoryAddress* scale_a;
+  /** Scale B Tensor Memory address. */
+  const TensorMemoryAddress* scale_b;
+  /** Input-D predicate source. */
+  const ResolvedPredicateSource* enable_d;
+};
+
+namespace tcgen_sparse_mx_detail {
+/** The three supported sparse block-scale final classes. */
+template <typename Form>
+concept SparseMxForm = std::same_as<Form, Tcgen05MmaSpMxf8f6f4> ||
+                       std::same_as<Form, Tcgen05MmaSpMxf4> ||
+                       std::same_as<Form, Tcgen05MmaSpMxf4nvf4>;
+
+/** Select common roles only when the exact layout and optional A agree. */
+template <SparseMxForm Form>
+std::optional<TcgenMmaSparseMxView> borrow(const Form& mma,
+                                           TcgenMmaKind kind) noexcept {
+  if (mma.operand_layout.value >= 2)
+    return std::nullopt;
+  const bool shared_a = mma.operand_layout.value == 0;
+  if (mma.a_register.has_value() != shared_a ||
+      mma.a_tcgen_bracketed_address.has_value() == shared_a)
+    return std::nullopt;
+  TcgenMmaSparseMxView view{.kind = kind,
+                            .group = mma.cta_group.value,
+                            .scale_selector = &mma.scale_vector_size,
+                            .d = &mma.d.value,
+                            .a_shared = std::nullopt,
+                            .a_tmem = nullptr,
+                            .b = {&mma.b.value, MatrixFragmentRole::B},
+                            .metadata = &mma.sp_meta.value,
+                            .instruction = {&mma.idesc.value},
+                            .scale_a = &mma.scale_a.value,
+                            .scale_b = &mma.scale_b.value,
+                            .enable_d = &mma.enable_input_d.value};
+  if (shared_a)
+    view.a_shared = TcgenMmaSharedDescriptorView{&mma.a_register->value,
+                                                 MatrixFragmentRole::A};
+  else
+    view.a_tmem = &mma.a_tcgen_bracketed_address->value;
+  return view;
+}
+}  // namespace tcgen_sparse_mx_detail
+
+/** Borrow only one exact sparse MX class and its selected placement layout. */
+inline std::optional<TcgenMmaSparseMxView> tcgen_mma_sparse_mx_view(
+    const Instruction& instruction) noexcept {
+  if (const auto* form =
+          dynamic_cast<const Tcgen05MmaSpMxf8f6f4*>(&instruction))
+    return tcgen_sparse_mx_detail::borrow(*form, TcgenMmaKind::MxF8F6F4);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpMxf4*>(&instruction))
+    return tcgen_sparse_mx_detail::borrow(*form, TcgenMmaKind::MxF4);
+  if (const auto* form =
+          dynamic_cast<const Tcgen05MmaSpMxf4nvf4*>(&instruction))
+    return tcgen_sparse_mx_detail::borrow(*form, TcgenMmaKind::MxF4NvF4);
+  return std::nullopt;
+}
+
 }  // namespace ptx_frontend::resolved_ir

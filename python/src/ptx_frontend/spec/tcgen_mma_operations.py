@@ -457,6 +457,36 @@ def validate_catalogue() -> None:
             len(SPARSE_TARGET_GATES) != 5 + 5 + 4 + 2):
         raise ValueError("sparse MMA rows drifted from Tables 42/45 and 10.8")
 
+    if ({(row.kind, row.group, row.m_values, row.k)
+         for row in SPARSE_MX_SHAPES} != {
+             (kind, group, (m, m), k)
+             for kind, k in (("MxF8F6F4", 64), ("MxF4", 128),
+                             ("MxF4NvF4", 128))
+             for group, m in ((1, 128), (2, 256))} or
+            {(row.kind, row.granularity, row.valid_nibbles)
+             for row in SPARSE_MX_METADATA_RULES} != {
+                 ("MxF8F6F4", SparseMxMetadataGranularity.TWO_OF_FOUR,
+                  (4, 8, 12, 9, 13, 6, 14)),
+                 *((kind, SparseMxMetadataGranularity.PAIRWISE_FOUR_OF_EIGHT,
+                    (4, 8, 12, 9, 13, 6, 14))
+                   for kind in ("MxF4", "MxF4NvF4"))} or
+            {(row.kind, row.selector, row.k, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids)
+             for row in SPARSE_MX_SCALE_LAYOUTS} != {
+                 (kind, selector, k, factors, alignment, ids)
+                 for kind, k, selector, factors, alignment, ids in (
+                     ("MxF8F6F4", 64, "scale_vec::1X", 1, 1,
+                      (0, 1, 2, 3)),
+                     ("MxF8F6F4", 64, "block32", 1, 1, (0, 1, 2, 3)),
+                     ("MxF4", 128, "scale_vec::2X", 2, 2, (0, 2)),
+                     ("MxF4", 128, "block32", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "scale_vec::2X", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "block32", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "scale_vec::4X", 4, 4, (0,)),
+                     ("MxF4NvF4", 128, "block16", 4, 4, (0,)))} or
+            len(SPARSE_MX_SCALE_LAYOUTS) != 16):
+        raise ValueError("sparse MX rows drifted from Tables 42/47/59/60")
+
 
 def _check_shared(role: str, transpose: bool | None,
                   facts: SharedOperandFacts | None,
@@ -1427,3 +1457,285 @@ def check_sparse_known_facts(facts: SparseKnownFacts) -> SparseOperationalReport
         tuple(violations), tuple(obligations), path.layout if path else None,
         shape, rule, shape.k // 2 if shape else None,
         shape.k if shape else None)
+
+
+class SparseMxMetadataGranularity(Enum):
+    """Metadata grouping is distinct for sparse MX4 pairwise chunks."""
+
+    TWO_OF_FOUR = "2:4"
+    PAIRWISE_FOUR_OF_EIGHT = "pairwise 4:8"
+
+
+@dataclass(frozen=True)
+class SparseMxMetadataRule:
+    """One kind-specific sparse MX metadata domain."""
+
+    kind: str
+    granularity: SparseMxMetadataGranularity
+    valid_nibbles: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseMxKnownFacts(Mx8KnownFacts):
+    """Independent sparse MX source/word/scale facts, never live contents."""
+
+    kind: str = "MxF8F6F4"
+    word_kind: str | None = None
+    k_choice: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
+
+
+@dataclass(frozen=True)
+class SparseMxOperationalReport:
+    """Conditionally checked sparse MX rows and unproved runtime duties."""
+
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+    shape: SparseShapeRow | None
+    metadata_rule: SparseMxMetadataRule | None
+    scale_a_layout: MxScaleLayoutRow | None
+    scale_b_layout: MxScaleLayoutRow | None
+    required_a_packing: MxInputPacking | None
+    required_b_packing: MxInputPacking | None
+
+    @property
+    def known_facts_ok(self) -> bool:
+        """Report success only for facts actually supplied and checked."""
+
+        return not self.violations
+
+
+SPARSE_MX_SHAPES = tuple(
+    SparseShapeRow(kind, group, "F32", (m, m), (), first, step, 256,
+                   k, types, types)
+    for kind, k, types in (
+        ("MxF8F6F4", 64, _F8F6F4_TYPES),
+        ("MxF4", 128, ("E2M1",)),
+        ("MxF4NvF4", 128, ("E2M1",)))
+    for group, m, first, step in ((1, 128, 8, 8), (2, 256, 16, 16)))
+
+SPARSE_MX_METADATA_RULES = tuple(
+    SparseMxMetadataRule(
+        kind, (SparseMxMetadataGranularity.TWO_OF_FOUR
+               if kind == "MxF8F6F4" else
+               SparseMxMetadataGranularity.PAIRWISE_FOUR_OF_EIGHT),
+        (4, 8, 12, 9, 13, 6, 14))
+    for kind in ("MxF8F6F4", "MxF4", "MxF4NvF4"))
+
+SPARSE_MX_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, kind, True, k, selector, factors, alignment,
+                     ids, layout_a if role == "a" else layout_b,
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
+    for kind, k, selector, factors, alignment, ids, layout_a, layout_b in (
+        ("MxF8F6F4", 64, "scale_vec::1X", 1, 1, (0, 1, 2, 3),
+         MxScaleLayoutId.MX1, MxScaleLayoutId.ONE_X_N),
+        ("MxF8F6F4", 64, "block32", 1, 1, (0, 1, 2, 3),
+         MxScaleLayoutId.MX1, MxScaleLayoutId.ONE_X_N),
+        ("MxF4", 128, "scale_vec::2X", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4", 128, "block32", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "scale_vec::2X", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "block32", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "scale_vec::4X", 4, 4, (0,),
+         MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N),
+        ("MxF4NvF4", 128, "block16", 4, 4, (0,),
+         MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N))
+    for role in ("a", "b"))
+
+SPARSE_MX_BASE_GATES = tuple(
+    (kind, gate) for kind, gates in (
+        ("MxF8F6F4", F8F6F4_TARGET_GATES),
+        ("MxF4", (
+            F16TargetGate("sm_100a", True, 8, 6, False),
+            F16TargetGate("sm_103a", True, 8, 8, False),
+            F16TargetGate("sm_110a", True, 9, 0, False))),
+        ("MxF4NvF4", (
+            F16TargetGate("sm_100a", True, 8, 7, False),
+            F16TargetGate("sm_103a", True, 8, 8, False),
+            F16TargetGate("sm_110a", True, 9, 0, False))))
+    for gate in gates)
+
+SPARSE_MX_VEC_GATES = (
+    ("MxF8F6F4", F16TargetGate("sm_100a", True, 8, 6, False)),
+    ("MxF4", F16TargetGate("sm_100a", True, 8, 6, False)),
+    ("MxF4NvF4", F16TargetGate("sm_100a", True, 8, 7, False)),
+)
+SPARSE_MX_BLOCK_GATES = tuple(
+    (kind, gate)
+    for kind in ("MxF8F6F4", "MxF4", "MxF4NvF4")
+    for gate in (F16TargetGate("sm_100f", False, 8, 8, False),
+                 F16TargetGate("sm_110f", False, 9, 0, False)))
+
+
+def check_sparse_mx_known_facts(facts: SparseMxKnownFacts
+                                ) -> SparseMxOperationalReport:
+    """Check one sparse MX kind using row-owned K, metadata and scale rules."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["live_metadata_contents", "sparse_a_contents",
+                              "target"]
+    kind = facts.kind
+    if kind not in ("MxF8F6F4", "MxF4", "MxF4NvF4"):
+        violations.append("kind")
+    if facts.group is None:
+        obligations.append("group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    if facts.word_kind is None:
+        obligations.append("word_kind")
+    elif facts.word_kind != kind:
+        violations.append("word_kind")
+    if facts.sparse is None:
+        obligations.append("sparse_bit")
+    elif not facts.sparse:
+        violations.append("sparse_bit")
+    if kind != "MxF8F6F4":
+        if facts.k_choice is None:
+            obligations.append("sparse_k_choice")
+        elif facts.k_choice != 0:
+            violations.append("sparse_k_choice")
+    shape = next((row for row in SPARSE_MX_SHAPES
+                  if row.kind == kind and row.group == facts.group and
+                  row.d_type == facts.d_type and
+                  facts.m is not None and facts.n is not None and
+                  facts.k is not None and row.contains(facts.m, facts.n,
+                                                       facts.k)), None)
+    if all(getattr(facts, name) is not None for name in
+           ("group", "m", "n", "k", "d_type")) and shape is None:
+        violations.append("sparse_mx_shape")
+    if shape is not None:
+        for role in ("a", "b"):
+            value = getattr(facts, f"{role}_type")
+            if value is not None and value not in getattr(shape, f"{role}_types"):
+                violations.append(f"{role}_type")
+    if kind in ("MxF4", "MxF4NvF4"):
+        for role in ("a", "b"):
+            if getattr(facts, f"transpose_{role}") is True:
+                violations.append(f"{role}_transpose")
+    metadata_rule = next((row for row in SPARSE_MX_METADATA_RULES
+                          if row.kind == kind), None)
+    if facts.metadata_nibbles is None:
+        obligations.append("metadata_indices")
+    elif metadata_rule is not None and any(
+            value not in metadata_rule.valid_nibbles
+            for value in facts.metadata_nibbles):
+        violations.append("metadata_indices")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        if kind == "MxF8F6F4":
+            _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                                 facts.a_shared_facts, violations, obligations)
+        else:
+            _check_shared("a", facts.transpose_a, facts.a_shared_facts,
+                          violations, obligations)
+    if kind == "MxF8F6F4":
+        _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                             facts.b_shared_facts, violations, obligations)
+        if (facts.transpose_b and facts.b_type in ("E4M3", "E5M2") and
+                facts.group in (1, 2) and facts.n is not None and not (
+                    (facts.group == 1 and 16 <= facts.n <= 256 and
+                     facts.n % 16 == 0) or
+                    (facts.group == 2 and 32 <= facts.n <= 256 and
+                     facts.n % 32 == 0))):
+            violations.append("b_transpose_n")
+    else:
+        _check_shared("b", facts.transpose_b, facts.b_shared_facts,
+                      violations, obligations)
+    path = next((row for row in SPARSE_PATHS if shape is not None and
+                 row.group == facts.group and row.m == facts.m), None)
+    for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+            "d_lane_half", "metadata_lane_half"):
+        value = getattr(facts, name)
+        if value is None:
+            obligations.append(name)
+        elif value not in (0, 16):
+            violations.append(f"{name}_invalid")
+        elif path is not None and value not in path.allowed_lane_halves:
+            violations.append(f"{name}_alignment")
+    selectors = {
+        "MxF8F6F4": ("absent", "scale_vec::1X", "block32"),
+        "MxF4": ("absent", "scale_vec::2X", "block32"),
+        "MxF4NvF4": ("scale_vec::2X", "scale_vec::4X", "block32",
+                       "block16"),
+    }
+    if kind in selectors and facts.scale_selector not in selectors[kind]:
+        violations.append("scale_selector")
+    effective = ({"MxF8F6F4": "scale_vec::1X", "MxF4": "block32"}
+                 .get(kind) if facts.scale_selector == "absent" else
+                 facts.scale_selector)
+    allowed_scale_types = (
+        ("UE8M0", "UE4M3") if kind == "MxF4NvF4" and
+        effective in ("scale_vec::4X", "block16") else ("UE8M0",))
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type not in allowed_scale_types:
+        violations.append("scale_type")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = next((row for row in SPARSE_MX_SCALE_LAYOUTS
+                    if row.kind == kind and row.role == role and
+                    row.selector == effective and row.k == facts.k), None)
+        selected[role] = row
+        role_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if role_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif (role_id not in ((0, 1, 2, 3) if kind == "MxF8F6F4"
+                              else (0, 2)) or
+              (row is not None and role_id not in row.valid_ids)):
+            violations.append(f"scale_{role}_id")
+        if row is None or role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        else:
+            if role_facts.layout_id is not None and role_facts.layout_id != row.layout_id:
+                violations.append(f"scale_{role}_layout")
+            alignment = role_facts.subcolumn_alignment_bytes
+            if alignment is not None and (
+                    alignment < row.subcolumn_alignment_bytes or
+                    alignment & (alignment - 1) or
+                    alignment % row.subcolumn_alignment_bytes or
+                    (role_id is not None and
+                     role_id % alignment)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None or alignment is None:
+                obligations.append(f"scale_{role}_layout")
+    if kind == "MxF8F6F4":
+        required_a = (mx8_required_packing(facts.a_type, facts.a_shared)
+                      if facts.a_shared is not None else None)
+        required_b = mx8_required_packing(facts.b_type, True)
+        if facts.a_shared is None and facts.a_type in _F8F6F4_LOW_TYPES:
+            obligations.append("a_packing_placement")
+    else:
+        required_a = (MxInputPacking.TMEM_PAIRED_FOUR_BIT
+                      if facts.a_shared is False else
+                      MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                      if facts.a_shared is True else None)
+        if facts.a_type != "E2M1":
+            required_a = None
+        required_b = (MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                      if facts.b_type == "E2M1" else None)
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+        elif required is not None:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+        elif (supplied is not None and
+              getattr(facts, f"{role}_type") is not None and
+              (role != "a" or facts.a_shared is not None)):
+            violations.append(f"{role}_packing_fact")
+    return SparseMxOperationalReport(
+        tuple(violations), tuple(obligations), shape, metadata_rule,
+        selected["a"], selected["b"], required_a, required_b)

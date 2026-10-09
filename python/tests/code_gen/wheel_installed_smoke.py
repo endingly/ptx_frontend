@@ -85,6 +85,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
         "ptx_frontend.code_gen.emit.tcgen_mma_operations",
         "ptx_frontend.code_gen.emit.tcgen_mma_sparse",
+        "ptx_frontend.code_gen.emit.tcgen_mma_sparse_mx",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
         "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",
@@ -118,16 +119,20 @@ def check_module_layout() -> None:
         MXNV_SHAPES,
         SPARSE_METADATA_RULES,
         SPARSE_SHAPES,
+        SPARSE_MX_SHAPES,
+        SPARSE_MX_SCALE_LAYOUTS,
         Mx8KnownFacts,
         Mx4KnownFacts,
         MxNvKnownFacts,
         SparseKnownFacts,
+        SparseMxKnownFacts,
         MxScaleLayoutId,
         check_f8f6f4_known_facts,
         check_mx8_known_facts,
         check_mx4_known_facts,
         check_mxnv_known_facts,
         check_sparse_known_facts,
+        check_sparse_mx_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -178,6 +183,17 @@ def check_module_layout() -> None:
         d_lane_half=0, metadata_lane_half=0))
     assert sparse.known_facts_ok and sparse.compressed_a_k == 8
     assert "live_metadata_contents" in sparse.obligations
+    assert len(SPARSE_MX_SHAPES) == 6
+    assert len(SPARSE_MX_SCALE_LAYOUTS) == 16
+    sparse_mx = check_sparse_mx_known_facts(SparseMxKnownFacts(
+        kind="MxF4", word_kind="MxF4", group=2, m=256, n=32, k=128,
+        d_type="F32", a_type="E2M1", b_type="E2M1", sparse=True,
+        a_shared=False, scale_selector="block32", scale_type="UE8M0",
+        scale_a_id=0, scale_b_id=0, k_choice=0,
+        metadata_nibbles=(14,), a_lane_half=0, d_lane_half=0,
+        metadata_lane_half=0))
+    assert sparse_mx.known_facts_ok
+    assert sparse_mx.scale_a_layout.factor_count == 2
 
 
 def check_packaged_spec_model() -> None:

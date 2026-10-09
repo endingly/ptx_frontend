@@ -55,6 +55,15 @@ _MXNV_TARGETS = {"any_of": [
 _MXNV_VEC_TARGETS = {"any_of": [
     {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
 ]}
+_SPARSE_MX4_TARGETS = {"any_of": [
+    {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
+    {"ptx": "8.8", "sm": 103, "target": "sm_103a"},
+    {"ptx": "9.0", "sm": 110, "target": "sm_110a"},
+]}
+_SPARSE_MXNV_TARGETS = {"any_of": [
+    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    *_SPARSE_MX4_TARGETS["any_of"][1:],
+]}
 
 
 def _validate_mx_variant(variant: VariantSpec, kind: str,
@@ -180,6 +189,53 @@ def _validate_sparse_variant(variant: VariantSpec, kind: str) -> None:
     validate_tcgen_mma_variant(dense)
 
 
+def _validate_sparse_mx_variant(variant: VariantSpec, kind: str,
+                                vector_selector: str) -> None:
+    """Validate sparse block-scaled roles through the exact dense MX schema."""
+
+    expected_target = (_UNSCALED_TARGETS if kind == "mxf8f6f4" else
+                       _SPARSE_MX4_TARGETS if kind == "mxf4" else
+                       _SPARSE_MXNV_TARGETS)
+    if (variant.availability != expected_target or
+            variant.modifier_order_aliases != () or
+            tuple(item.name for item in variant.modifiers) !=
+            ("mma", "sp", "cta_group", "kind", "block_scale",
+             "scale_vector_size")):
+        raise ValueError("sparse MX qualifier order or target changed")
+    sp = variant.modifiers[1]
+    if (sp.kind is not ModifierKind.FLAG or
+            sp.presence is not ModifierPresence.FIXED or
+            sp.value is not True or sp.token != ".sp"):
+        raise ValueError("sparse MX qualifier changed")
+    layouts = []
+    for layout in variant.operand_layouts:
+        operands = layout.operands
+        names = tuple(item.name for item in operands)
+        if (names.count("sp_meta") != 1 or
+                names.index("sp_meta") != names.index("b") + 1 or
+                names.index("sp_meta") + 1 != names.index("idesc")):
+            raise ValueError("sparse MX metadata must follow B before idesc")
+        metadata = operands[names.index("sp_meta")]
+        expr = metadata.type_expression
+        if (metadata.kind is not OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET or
+                metadata.role is not OperandRole.SOURCE or
+                metadata.access is not OperandAccess.READ or
+                expr is None or
+                expr.kind is not OperandTypeExpressionKind.FIXED_SCALAR or
+                expr.scalar_type != "u32"):
+            raise ValueError("sparse MX metadata carrier changed")
+        layouts.append(replace(layout, operands=tuple(
+            item for item in operands if item.name != "sp_meta")))
+    dense = replace(
+        variant, name=f"tcgen05_mma_{kind}",
+        availability=(_MXNV_TARGETS if kind == "mxf4nvf4" else
+                      _UNSCALED_TARGETS),
+        modifiers=tuple(item for item in variant.modifiers
+                        if item.name != "sp"),
+        operand_layouts=tuple(layouts))
+    _validate_mx_variant(dense, kind, vector_selector)
+
+
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     """Keep each closed dense source kind tied to the typed MMA rule.
 
@@ -196,6 +252,14 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     }.get(variant.name)
     if sparse_kind is not None:
         _validate_sparse_variant(variant, sparse_kind)
+        return
+    sparse_mx = {
+        "tcgen05_mma_sp_mxf8f6f4": ("mxf8f6f4", "scale_vec::1X"),
+        "tcgen05_mma_sp_mxf4": ("mxf4", "scale_vec::2X"),
+        "tcgen05_mma_sp_mxf4nvf4": ("mxf4nvf4", "scale_vec::2X"),
+    }.get(variant.name)
+    if sparse_mx is not None:
+        _validate_sparse_mx_variant(variant, *sparse_mx)
         return
     if variant.rule is not SemanticRule.TENSOR_MEMORY_MMA:
         if "mma" in mods or ("kind" in mods and "cta_group" in mods):

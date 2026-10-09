@@ -8,4 +8,4 @@
 
 [Tables 59/60](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html)规定 K64 Vec2X/block32 有两个因子、选中子列需 2 字节对齐；K64 Vec4X/block16 有四个因子、需 4 字节对齐。K96 block32 有三个因子，K96 block16 有六个；两者均需 4 字节对齐且采用独立的布局定义放置策略。调用方提供更强的正数 2 的幂对齐保证时，查询按相应 row 接受。K96 block 仍强制 Table 47 的 ID 域 0/2；后续 K96 布局图也画出 ID 1/3，这是手册内部冲突，前端不扩大 defined-word 域。Table 59 给出 K96 Vec2X/Vec4X 的因子数，但给定图示未建立其物理布局规则；即使提供调用方布局事实，查询仍保留布局规则义务以及目标违例。
 
-手册规定 Tensor Memory A 和共享内存 A/B 把两个四位元素装入一个八位容器，共享内存形式没有填充。查询检查强类型 packing 规则与调用方断言，仍不证明实时内容、选中的缩放放置、全部 32 个 lane partition 上的复制、分配历史或 GPU 结果。[已安装消费者](../../examples/tcgen_mma_mxnv_consumer/)覆盖公开来源与已知值契约。稀疏 MX NV、collector、ashift 和 WS 属于后续范围。
+手册规定 Tensor Memory A 和共享内存 A/B 把两个四位元素装入一个八位容器，共享内存形式没有填充。查询检查强类型 packing 规则与调用方断言，仍不证明实时内容、选中的缩放放置、全部 32 个 lane partition 上的复制、分配历史或 GPU 结果。[已安装消费者](../../examples/tcgen_mma_mxnv_consumer/)覆盖公开来源与已知值契约。[稀疏 MX NV](tcgen_mma_sparse_mx_coverage.md)、collector、ashift 和 WS 各有独立契约。

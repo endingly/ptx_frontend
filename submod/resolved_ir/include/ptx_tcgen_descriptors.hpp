@@ -353,4 +353,35 @@ inline std::optional<TcgenMmaMx4View> tcgen_mma_mx4_view(
   return view;
 }
 
+/** Reuse the borrowed block-scale role shape for dense MX NV four-bit. */
+using TcgenMmaMxNvView = TcgenMmaMx8View;
+
+/** Borrow MX NV roles only from its exact source class and placement layout. */
+inline std::optional<TcgenMmaMxNvView> tcgen_mma_mxnv_view(
+    const Instruction& instruction) noexcept {
+  const auto* mma = dynamic_cast<const Tcgen05MmaMxf4nvf4*>(&instruction);
+  if (!mma || mma->operand_layout.value >= 2)
+    return std::nullopt;
+  const bool shared_a = mma->operand_layout.value == 0;
+  if (mma->a_register.has_value() != shared_a ||
+      mma->a_tcgen_bracketed_address.has_value() == shared_a)
+    return std::nullopt;
+  TcgenMmaMxNvView view{.group = mma->cta_group.value,
+                        .scale_selector = &mma->scale_vector_size,
+                        .d = &mma->d.value,
+                        .a_shared = std::nullopt,
+                        .a_tmem = nullptr,
+                        .b = {&mma->b.value, MatrixFragmentRole::B},
+                        .instruction = {&mma->idesc.value},
+                        .scale_a = &mma->scale_a.value,
+                        .scale_b = &mma->scale_b.value,
+                        .enable_d = &mma->enable_input_d.value};
+  if (shared_a)
+    view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
+                                                 MatrixFragmentRole::A};
+  else
+    view.a_tmem = &mma->a_tcgen_bracketed_address->value;
+  return view;
+}
+
 }  // namespace ptx_frontend::resolved_ir

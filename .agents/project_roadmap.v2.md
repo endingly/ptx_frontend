@@ -1124,7 +1124,10 @@ MX8 块缩放来源、强类型 selector 和调用方已知缩放布局检查（
 [中文](../docs/zh-han/tcgen_mma_mx8_coverage.md)），并补入稠密 MX4 的 K64/K96
 形状与条件性缩放布局规则（见
 [英文](../docs/us-en/tcgen_mma_mx4_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_mx4_coverage.md)）。M18-I05/I09/I12 仍涵盖其余 MX
+[中文](../docs/zh-han/tcgen_mma_mx4_coverage.md)），并补入稠密 MX NV 的显式 selector、
+UE8M0/UE4M3 条件和 K96 block16 六因子规则（见
+[英文](../docs/us-en/tcgen_mma_mxnv_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_mxnv_coverage.md)）。M18-I05/I09/I12 仍涵盖其余 MX
 kind、缩放块长和低位物理 packing；运行时数据也未由前端证明，因此暂不标整行完成。
 
 ### 出口

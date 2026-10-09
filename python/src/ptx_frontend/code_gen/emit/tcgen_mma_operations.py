@@ -66,7 +66,7 @@ struct TcgenF16PathRow {
                                           uint16_t m, uint16_t n,
                                           uint16_t k) noexcept;
 }  // namespace ptx_frontend::resolved_ir
-''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header() + _MX4_ROW_HEADER + _mx4_query_header()
+''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header() + _MX4_ROW_HEADER + _mx4_query_header() + _MXNV_ROW_HEADER + _mxnv_query_header()
 
 
 def render_tcgen_mma_source() -> str:
@@ -296,14 +296,19 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
             f"  TcgenMx8PathRow{{TcgenCtaGroup::{group}, {row.m}, "
             f"'{row.layout}', {half}}}")
     mx_scale_rows = []
-    for row in (*operations.MX8_SCALE_LAYOUTS, *operations.MX4_SCALE_LAYOUTS):
+    for row in (*operations.MX8_SCALE_LAYOUTS, *operations.MX4_SCALE_LAYOUTS,
+                *operations.MXNV_SCALE_LAYOUTS):
         role = "A" if row.role == "a" else "B"
         selector = {"scale_vec::1X": "Vec1X", "scale_vec::2X": "Vec2X",
-                    "block32": "Block32"}[row.selector]
-        kind = {"MxF8F6F4": "MxF8F6F4", "MxF4": "MxF4"}[row.kind]
+                    "scale_vec::4X": "Vec4X", "block32": "Block32",
+                    "block16": "Block16"}[row.selector]
+        kind = {"MxF8F6F4": "MxF8F6F4", "MxF4": "MxF4",
+                "MxF4NvF4": "MxF4NvF4"}[row.kind]
         layout = {"MX1": "Mx1", "ONE_X_N": "OneXN", "MX2": "Mx2",
                   "TWO_X_N": "TwoXN", "MX3": "Mx3",
-                  "THREE_X_N": "ThreeXN"}[row.layout_id.name]
+                  "THREE_X_N": "ThreeXN", "MX4": "Mx4",
+                  "FOUR_X_N": "FourXN", "MX6": "Mx6",
+                  "SIX_X_N": "SixXN"}[row.layout_id.name]
         policy = {"BYTE_SLOT_OFFSET": "ByteSlotOffset",
                   "LAYOUT_DEFINED_PLACEMENT": "LayoutDefinedPlacement"}[
                       row.id_alignment_policy.name]
@@ -362,7 +367,37 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
                    .replace("__TARGET_ROWS__", mx4_targets)
                    .replace("__TARGET_COUNT__",
                             str(len(operations.MX8_TARGET_GATES))))
-    return f16_source + tf32_source + i8_source + f8_source + mx8_source + mx4_source
+    mxnv_source = _MXNV_STORAGE
+    mxnv_rows = []
+    for row in operations.MXNV_SHAPES:
+        group = "One" if row.group == 1 else "Two"
+        mxnv_rows.append(
+            f'  TcgenMxNvShapeRow{{TcgenCtaGroup::{group}, '
+            f'MatrixElementType::{row.d_type}, '
+            f'{{{{{row.m_values[0]}, {row.m_values[1]}}}}}, '
+            f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
+    mxnv_paths = []
+    for row in operations.MXNV_PATHS:
+        group = "One" if row.group == 1 else "Two"
+        mxnv_paths.append(
+            f"  TcgenMxNvPathRow{{TcgenCtaGroup::{group}, {row.m}, "
+            f"'{row.layout}', {'true' if row.half_path else 'false'}}}")
+    mxnv_targets = ",\n".join(
+        '  TcgenMxNvTargetGate{"%s", %s, {%d, %d}}' % (
+            gate.feature, "true" if gate.exact else "false",
+            gate.ptx_major, gate.ptx_minor)
+        for gate in operations.MXNV_TARGET_GATES)
+    for old, value in (("__SHAPE_COUNT__", str(len(mxnv_rows))),
+                       ("__SHAPE_ROWS__", ",\n".join(mxnv_rows)),
+                       ("__PATH_COUNT__", str(len(mxnv_paths))),
+                       ("__PATH_ROWS__", ",\n".join(mxnv_paths))):
+        mxnv_source = mxnv_source.replace(old, value)
+    mxnv_source += (_mxnv_query_source()
+                    .replace("__TARGET_ROWS__", mxnv_targets)
+                    .replace("__TARGET_COUNT__",
+                             str(len(operations.MXNV_TARGET_GATES))))
+    return (f16_source + tf32_source + i8_source + f8_source + mx8_source +
+            mx4_source + mxnv_source)
 
 
 def generate_tcgen_mma_header(_context: object, *, output_path: Path) -> None:
@@ -1092,7 +1127,7 @@ _MX8_ROW_HEADER = _F8F6F4_ROW_HEADER.replace("F8F6F4", "Mx8").replace(
 namespace ptx_frontend::resolved_ir {
 /** Logical Table 59/60 arrangement; labels are not semantic keys. */
 enum class TcgenMxScaleLayoutId : uint8_t {
-  Mx1, OneXN, Mx2, TwoXN, Mx3, ThreeXN
+  Mx1, OneXN, Mx2, TwoXN, Mx3, ThreeXN, Mx4, FourXN, Mx6, SixXN
 };
 /** Whether an ID is a direct byte slot or a layout-defined selection. */
 enum class TcgenScaleIdAlignmentPolicy : uint8_t {
@@ -1353,6 +1388,10 @@ __SCALE_ROWS__
 }
 ''', ''))
 
+_MXNV_ROW_HEADER = _MX4_ROW_HEADER.replace("Mx4", "MxNv").replace(
+    "mx4", "mxnv")
+_MXNV_STORAGE = _MX4_STORAGE.replace("Mx4", "MxNv").replace("mx4", "mxnv")
+
 
 def _mx4_query_header() -> str:
     """Expose dense MX4 K selection and conditional factor/layout facts."""
@@ -1448,4 +1487,76 @@ def _mx4_query_source() -> str:
         "        (expected_k == 96 &&\n"
         "         (facts.target->source_spelling != \"sm_103a\" ||\n"
         "          *facts.ptx_version < checker::PtxVersion{8, 8})))")
+    return source
+
+
+def _mxnv_query_header() -> str:
+    """Expose an independently known MX NV word and required selector."""
+
+    return (_mx4_query_header().replace("TcgenMx4", "TcgenMxNv")
+            .replace("tcgen_mx4", "tcgen_mxnv")
+            .replace("dense mxf4", "dense mxf4nvf4"))
+
+
+def _mxnv_query_source() -> str:
+    """Reuse MX4 field/packing checks with MX NV selector and scale rows."""
+
+    source = (_mx4_query_source().replace("TcgenMx4", "TcgenMxNv")
+              .replace("tcgen_mx4", "tcgen_mxnv")
+              .replace("MxF4", "MxF4NvF4")
+              .replace("kMx4Shapes", "kMxNvShapes")
+              .replace("kMx4Paths", "kMxNvPaths")
+              .replace("kMx4TargetGates", "kMxNvTargetGates")
+              .replace("accepts_mx4_target", "accepts_mxnv_target")
+              .replace("check_mx4_shared_operand", "check_mxnv_shared_operand"))
+    source = source.replace(
+        '''    if (facts.scale_selector == TcgenScaleVectorSize::Vec2X &&
+        gate.feature != "sm_100a") continue;
+    if (facts.scale_selector == TcgenScaleVectorSize::Block32 && gate.exact)
+      continue;
+    if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
+        facts.scale_selector != TcgenScaleVectorSize::Vec2X &&
+        facts.scale_selector != TcgenScaleVectorSize::Block32) continue;''',
+        '''    const bool vector = facts.scale_selector == TcgenScaleVectorSize::Vec2X ||
+                        facts.scale_selector == TcgenScaleVectorSize::Vec4X;
+    const bool block = facts.scale_selector == TcgenScaleVectorSize::Block32 ||
+                       facts.scale_selector == TcgenScaleVectorSize::Block16;
+    if (vector && gate.feature != "sm_100a") continue;
+    if (block && gate.exact) continue;
+    if (!vector && !block) continue;''')
+    source = source.replace(
+        '''  if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
+      facts.scale_selector != TcgenScaleVectorSize::Vec2X &&
+      facts.scale_selector != TcgenScaleVectorSize::Block32)
+    report.violations.push_back(TcgenMxNvViolation::ScaleSelector);
+  if (decoded.scale_type != MatrixScaleType::UE8M0)
+    report.violations.push_back(TcgenMxNvViolation::ScaleType);
+  report.checked.push_back(TcgenMxNvChecked::ScaleType);
+  const auto effective = facts.scale_selector == TcgenScaleVectorSize::Absent
+      ? TcgenScaleVectorSize::Block32 : facts.scale_selector;''',
+        '''  const auto effective = facts.scale_selector;
+  if (effective != TcgenScaleVectorSize::Vec2X &&
+      effective != TcgenScaleVectorSize::Vec4X &&
+      effective != TcgenScaleVectorSize::Block32 &&
+      effective != TcgenScaleVectorSize::Block16)
+    report.violations.push_back(TcgenMxNvViolation::ScaleSelector);
+  const bool four_factor = effective == TcgenScaleVectorSize::Vec4X ||
+                           effective == TcgenScaleVectorSize::Block16;
+  if (!decoded.scale_type ||
+      (four_factor
+           ? (*decoded.scale_type != MatrixScaleType::UE8M0 &&
+              *decoded.scale_type != MatrixScaleType::UE4M3)
+           : *decoded.scale_type != MatrixScaleType::UE8M0))
+    report.violations.push_back(TcgenMxNvViolation::ScaleType);
+  report.checked.push_back(TcgenMxNvChecked::ScaleType);''')
+    source = source.replace(
+        '''  if (effective == TcgenScaleVectorSize::Vec2X && expected_k == 96) {
+    report.scale_a_factor_count = 2;
+    report.scale_b_factor_count = 2;''',
+        '''  if (expected_k == 96 &&
+      (effective == TcgenScaleVectorSize::Vec2X ||
+       effective == TcgenScaleVectorSize::Vec4X)) {
+    const uint8_t factors = effective == TcgenScaleVectorSize::Vec2X ? 2 : 4;
+    report.scale_a_factor_count = factors;
+    report.scale_b_factor_count = factors;''')
     return source

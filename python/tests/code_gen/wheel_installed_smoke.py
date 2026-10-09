@@ -114,12 +114,15 @@ def check_module_layout() -> None:
         F8F6F4_SHAPES,
         MX8_SHAPES,
         MX4_SHAPES,
+        MXNV_SHAPES,
         Mx8KnownFacts,
         Mx4KnownFacts,
+        MxNvKnownFacts,
         MxScaleLayoutId,
         check_f8f6f4_known_facts,
         check_mx8_known_facts,
         check_mx4_known_facts,
+        check_mxnv_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -152,6 +155,15 @@ def check_module_layout() -> None:
     assert mx4.known_facts_ok and mx4.scale_a_factor_count == 3
     assert mx4.scale_a_layout.layout_id is MxScaleLayoutId.MX3
     assert "k96_exact_target" in mx4.obligations
+    assert len(MXNV_SHAPES) == 3
+    mxnv = check_mxnv_known_facts(MxNvKnownFacts(
+        group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+        b_type="E2M1", sparse=False, a_shared=False,
+        scale_selector="block16", scale_type="UE4M3",
+        scale_a_id=2, scale_b_id=0))
+    assert mxnv.known_facts_ok and mxnv.scale_a_factor_count == 6
+    assert mxnv.scale_a_layout.layout_id is MxScaleLayoutId.MX6
+    assert "k96_exact_target" in mxnv.obligations
 
 
 def check_packaged_spec_model() -> None:

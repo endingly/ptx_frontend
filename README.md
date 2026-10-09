@@ -62,6 +62,9 @@ supported surface and its exclusions.
 - [TCGEN dense MX4 block-scale MMA coverage](docs/us-en/tcgen_mma_mx4_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_mx4_coverage.md) describe
   K64/K96 rows, selector gates, and conditional scale-layout facts.
+- [TCGEN dense MX NV block-scale MMA coverage](docs/us-en/tcgen_mma_mxnv_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_mxnv_coverage.md) describe
+  mandatory selectors, scale types, and K64/K96 layout obligations.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

@@ -48,6 +48,13 @@ _MX8_BLOCK_TARGETS = {
         {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
     ],
 }
+_MXNV_TARGETS = {"any_of": [
+    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+    *_UNSCALED_TARGETS["any_of"][1:],
+]}
+_MXNV_VEC_TARGETS = {"any_of": [
+    {"ptx": "8.7", "sm": 100, "target": "sm_100a"},
+]}
 
 
 def _validate_mx_variant(variant: VariantSpec, kind: str,
@@ -59,7 +66,8 @@ def _validate_mx_variant(variant: VariantSpec, kind: str,
             or tuple(item.name for item in variant.modifiers) !=
             ("mma", "cta_group", "kind", "block_scale", "scale_vector_size")
             or variant.modifier_order_aliases != ()
-            or variant.availability != _UNSCALED_TARGETS):
+            or variant.availability != (_MXNV_TARGETS if kind == "mxf4nvf4"
+                                        else _UNSCALED_TARGETS)):
         raise ValueError("dense MX8 MMA action, qualifier order or target changed")
     if (mods["mma"].kind is not ModifierKind.FLAG or
             mods["mma"].presence is not ModifierPresence.FIXED or
@@ -78,13 +86,20 @@ def _validate_mx_variant(variant: VariantSpec, kind: str,
             ("cta_group::1", "cta_group::2")):
         raise ValueError("dense MX8 MMA typed qualifier changed")
     scale = mods["scale_vector_size"]
+    expected_values = (
+        (("scale_vec::2X", ".scale_vec::2X", _MXNV_VEC_TARGETS),
+         ("scale_vec::4X", ".scale_vec::4X", _MXNV_VEC_TARGETS),
+         ("block32", ".block32", _MX8_BLOCK_TARGETS),
+         ("block16", ".block16", _MX8_BLOCK_TARGETS))
+        if kind == "mxf4nvf4" else
+        ((vector_selector, f".{vector_selector}", _MX8_VEC_TARGETS),
+         ("block32", ".block32", _MX8_BLOCK_TARGETS)))
     if (scale.kind is not ModifierKind.TCGEN_SCALE_VECTOR_SIZE or
-            scale.presence is not ModifierPresence.OPTIONAL or
-            scale.default != "absent" or
+            scale.presence is not (ModifierPresence.REQUIRED if kind == "mxf4nvf4"
+                                   else ModifierPresence.OPTIONAL) or
+            scale.default != (None if kind == "mxf4nvf4" else "absent") or
             tuple((value.value, value.token, value.availability)
-                  for value in scale.values) != (
-                      (vector_selector, f".{vector_selector}", _MX8_VEC_TARGETS),
-                      ("block32", ".block32", _MX8_BLOCK_TARGETS))):
+                  for value in scale.values) != expected_values):
         raise ValueError("dense MX8 scale selector or target changed")
     if {layout.name for layout in variant.operand_layouts} != {"shared", "tensor"}:
         raise ValueError("dense MX8 requires exact shared/Tensor Memory A forms")
@@ -140,10 +155,13 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             "tcgen05_mma_tf32": "tf32",
             "tcgen05_mma_i8": "i8",
             "tcgen05_mma_f8f6f4": "f8f6f4"}.get(variant.name)
-    if variant.name in ("tcgen05_mma_mxf8f6f4", "tcgen05_mma_mxf4"):
-        kind_name, selector = (("mxf8f6f4", "scale_vec::1X")
-                               if variant.name == "tcgen05_mma_mxf8f6f4"
-                               else ("mxf4", "scale_vec::2X"))
+    if variant.name in ("tcgen05_mma_mxf8f6f4", "tcgen05_mma_mxf4",
+                        "tcgen05_mma_mxf4nvf4"):
+        kind_name, selector = {
+            "tcgen05_mma_mxf8f6f4": ("mxf8f6f4", "scale_vec::1X"),
+            "tcgen05_mma_mxf4": ("mxf4", "scale_vec::2X"),
+            "tcgen05_mma_mxf4nvf4": ("mxf4nvf4", "scale_vec::2X"),
+        }[variant.name]
         _validate_mx_variant(variant, kind_name, selector)
         return
     if kind is None:

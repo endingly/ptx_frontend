@@ -12,4 +12,4 @@ selector 是携带源码位置的强类型值，分别保留 `Absent`、`Vec1X`�
 
 基础源码形式在当前目标目录中采用 PTX 8.6 起的精确 `sm_100a`、8.8 起启用 `sm_100f` family、9.0 起精确 `sm_110a` 及启用 `sm_110f` family 分支。显式 `.scale_vec::1X` 要求精确 `sm_100a`，`.block32` 要求 PTX 8.8 起的 family feature 分支；省略 selector 使用基础门槛。CUDA 13.3 `ptxas` 还接受 `sm_110a` 上显式 1X，但固定 MMA 目标说明及 Table 63 给出更窄的显式 selector 要求，前端遵循该要求。源码解析和调用方已知目标查询使用同一门槛。
 
-生成的精确类 `Tcgen05MmaMxf8f6f4` 持有 selector、缩放地址及源码范围；`tcgen_mma_mx8_view` 仅借用匹配的选中布局。AST 销毁后，模块检查仍重验操作数类型、绑定及 selector/缩放源码位置。[已安装消费者](../../examples/tcgen_mma_mx8_consumer/)检验这些源码与已知值 API。稀疏、其他 MX kind、collector、ashift、WS、物理低位打包证明及执行属于后续范围。
+生成的精确类 `Tcgen05MmaMxf8f6f4` 持有 selector、缩放地址及源码范围；`tcgen_mma_mx8_view` 仅借用匹配的选中布局。AST 销毁后，模块检查仍重验操作数类型、绑定及 selector/缩放源码位置。[已安装消费者](../../examples/tcgen_mma_mx8_consumer/)检验这些源码与已知值 API。稀疏及其他 MX kind 有独立覆盖；[MX A collector](tcgen_mma_mx_a_collector_coverage.md)现已支持。ashift、WS、物理低位打包证明及执行不在此来源契约内。

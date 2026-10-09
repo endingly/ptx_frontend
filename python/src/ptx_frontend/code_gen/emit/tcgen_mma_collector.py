@@ -43,6 +43,16 @@ struct TcgenACollectorReport {
 /** Check a non-WS A collector without asserting runtime history. */
 [[nodiscard]] TcgenACollectorReport check_tcgen_a_collector_known_facts(
     const TcgenACollectorKnownFacts& facts);
+/** MX collector facts exclude the unrelated ashift and M controls. */
+struct TcgenMxACollectorKnownFacts {
+  /** Written or omitted A collector source qualifier. */
+  TcgenCollectorControl collector;
+  /** Optional caller assertion of prior A-buffer validity. */
+  std::optional<bool> collector_a_valid;
+};
+/** Apply the shared A-buffer history rule to an MX source qualifier. */
+[[nodiscard]] TcgenACollectorReport check_tcgen_mx_a_collector_known_facts(
+    const TcgenMxACollectorKnownFacts& facts);
 }  // namespace ptx_frontend::resolved_ir
 '''
 
@@ -102,6 +112,13 @@ TcgenACollectorReport check_tcgen_a_collector_known_facts(
     report.missing.push_back(TcgenACollectorObligation::CollectorSequence);
   }
   return report;
+}
+
+TcgenACollectorReport check_tcgen_mx_a_collector_known_facts(
+    const TcgenMxACollectorKnownFacts& facts) {
+  return check_tcgen_a_collector_known_facts(
+      TcgenACollectorKnownFacts{.collector = facts.collector,
+                                .collector_a_valid = facts.collector_a_valid});
 }
 }  // namespace ptx_frontend::resolved_ir
 '''

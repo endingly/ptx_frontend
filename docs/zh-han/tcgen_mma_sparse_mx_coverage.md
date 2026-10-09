@@ -1,6 +1,6 @@
 # TCGEN 稀疏块缩放 MMA 覆盖范围
 
-固定 [CUDA 13.3 PTX 9.3 手册](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)给出三种非 WS 稀疏块缩放来源 kind：`mxf8f6f4`、`mxf4` 和 `mxf4nvf4`。每个 `tcgen05.mma.sp` 形式均有两种 A 放置方式；方括号内的 Tensor Memory 元数据地址位于 B 之后、`idesc` 之前，Tensor Memory scale-A/B 地址位于 `idesc` 之后。这些形式没有 lane mask、D-scale、collector、ashift 或 WS 后缀。具体 final 类拥有强类型操作数及书写的 selector 来源位置。`tcgen_mma_sparse_mx_view` 仅在具体类和 layout 匹配时借用元数据与缩放角色；语法树销毁后，完整模块检查仍验证来源和绑定。
+固定 [CUDA 13.3 PTX 9.3 手册](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)给出三种非 WS 稀疏块缩放来源 kind：`mxf8f6f4`、`mxf4` 和 `mxf4nvf4`。每个 `tcgen05.mma.sp` 形式均有两种 A 放置方式；方括号内的 Tensor Memory 元数据地址位于 B 之后、`idesc` 之前，Tensor Memory scale-A/B 地址位于 `idesc` 之后。这些形式允许可选的 [A collector](tcgen_mma_mx_a_collector_coverage.md)，但没有 lane mask、D-scale、ashift、B collector 或 WS 后缀。具体 final 类拥有强类型操作数及书写的 selector 来源位置。`tcgen_mma_sparse_mx_view` 仅在具体类和 layout 匹配时借用元数据与缩放角色；语法树销毁后，完整模块检查仍验证来源和绑定。
 
 [Table 42](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#tensorcore-5th-generation-instructions-tcgen05-mma)规定稀疏 MX8 的逻辑 K64、稀疏 MX4/MX NV 的逻辑 K128。group 1 使用 M128、N8–256 且步长为八；group 2 **只使用 M256**、N16–256 且步长为十六。稠密 group-2 M128 和稠密 K96 都不是稀疏行。调用方已知 MX4/MX NV 字的 Table 47 K-choice 位必须选稀疏兼容的 K128 状态。唯一的描述符目录负责包括 sparse 位在内的编码字段；独立查询比较已知 kind 和 sparse 位与来源身份。两者均不读取实时 `idesc` 内容。
 

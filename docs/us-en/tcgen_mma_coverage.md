@@ -16,8 +16,7 @@ assembler corpus and an independent Authority checkpoint. The distinct
 and [sparse MX forms](tcgen_mma_sparse_mx_coverage.md)
 are also covered. Their ordinary non-WS f16/tf32/f8f6f4/i8 forms include
 [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md).
-Weight-stationary, MX collectors, remaining block scaling
-and convolution remain open.
+The six dense/sparse MX forms also include [typed A collector controls](tcgen_mma_mx_a_collector_coverage.md). Weight-stationary, remaining block scaling and convolution remain open.
 
 Shared A/B descriptors use scalar General B64/U64/S64 **registers**; the
 instruction descriptor uses General B32/U32/S32 registers. The assembler also

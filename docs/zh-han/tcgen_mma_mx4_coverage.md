@@ -8,4 +8,4 @@ selector 分别保留 `Absent`、`Vec2X`、`Block32`。此 kind 省略时默认 
 
 [Tables 59/60](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html)给 Vec2X 及 K64 block32 分配两个缩放因子。K96 block32 有独立的三因子 `Mx3`/`3xN` 行，要求 4 字节对齐；K64 行为 `Mx2`/`2xN`，要求 2 字节对齐。调用方布局与对齐断言只是条件性事实；实时缩放放置、内容及向 Tensor Memory 全部 32 个 lane partition 复制仍未证明。查询在行策略允许时接受更强的二次幂对齐保证。K96 block32 继续执行 Table 47 的编码 ID 0/2。后续 K96 布局图也画出 ID 1/3；这里记录手册内部冲突，不扩宽已定义指令字的域。Table 59 将 Vec2X 列为适用于所有支持的 K，但实体布局图只覆盖 K64/K128；假设性的已知 K96 Vec2X 查询即使收到调用方事实，也保留明确的布局规则义务。
 
-手册规定 Tensor Memory A 与共享 A/B 的两个 4 位元素装入一个 8 位容器，共享内存形式无填充。查询暴露强类型的必需打包格式并核对调用方断言，同时保留实时内容义务。[已安装消费者](../../examples/tcgen_mma_mx4_consumer/)检验公开源码及已知值契约。独立的[稠密 MX NV 形式](tcgen_mma_mxnv_coverage.md)也已覆盖；稀疏 MX4、collector、ashift、WS、运行时分配历史及 GPU 结果属于后续范围。
+手册规定 Tensor Memory A 与共享 A/B 的两个 4 位元素装入一个 8 位容器，共享内存形式无填充。查询暴露强类型的必需打包格式并核对调用方断言，同时保留实时内容义务。[已安装消费者](../../examples/tcgen_mma_mx4_consumer/)检验公开源码及已知值契约。独立的[稠密 MX NV 形式](tcgen_mma_mxnv_coverage.md)也已覆盖；稀疏 MX4 有独立覆盖，[MX A collector](tcgen_mma_mx_a_collector_coverage.md)现已支持。ashift、WS、运行时分配历史及 GPU 结果不在此来源契约内。

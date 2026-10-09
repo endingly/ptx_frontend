@@ -23,7 +23,7 @@ class TcgenMmaMx8ContractTests(unittest.TestCase):
                          {"shared", "tensor"})
         self.assertEqual({item.name for item in mma.modifiers},
                          {"mma", "cta_group", "kind", "block_scale",
-                          "scale_vector_size"})
+                          "scale_vector_size", "collector"})
         for layout in mma.operand_layouts:
             self.assertEqual(tuple(item.name for item in layout.operands),
                              ("d", "a", "b", "idesc", "scale_a", "scale_b",

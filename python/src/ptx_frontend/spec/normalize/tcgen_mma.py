@@ -15,7 +15,7 @@ from ptx_frontend.spec.tcgen_mma_operations import (
     SharedOperandFacts,
 )
 from ptx_frontend.spec.model import (
-    AsyncCompletionKind, ModifierKind, ModifierPresence, OperandAccess,
+    AsyncCompletionKind, ModifierKind, ModifierPresence, ModifierSpec, OperandAccess,
     OperandKind, OperandRole, OperandTypeExpressionKind, SemanticRule,
     VariantSpec,
 )
@@ -241,11 +241,38 @@ _A_COLLECTOR_FORMS = frozenset(
     for prefix in ("", "sp_")
     for kind in ("f16", "tf32", "i8", "f8f6f4")
 )
+_MX_A_COLLECTOR_FORMS = frozenset(
+    f"tcgen05_mma_{prefix}{kind}"
+    for prefix in ("", "sp_")
+    for kind in ("mxf8f6f4", "mxf4", "mxf4nvf4")
+)
+
+
+def _validate_a_collector_modifier(collector: ModifierSpec) -> None:
+    """Keep the written A-buffer actions a single closed typed source domain."""
+
+    if (collector.kind is not ModifierKind.TCGEN_COLLECTOR or
+            collector.presence is not ModifierPresence.OPTIONAL or
+            collector.default != "absent" or
+            tuple((value.value, value.token, value.availability)
+                  for value in collector.values) != tuple(
+                      (f"collector::a::{op}", f".collector::a::{op}", {})
+                      for op in ("fill", "use", "lastuse", "discard"))):
+        raise ValueError("MMA A-collector source domain changed")
 
 
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
-    """Validate collector/ashift source slots before the existing MMA forms."""
+    """Validate optional control slots before each existing MMA form."""
 
+    if variant.name in _MX_A_COLLECTOR_FORMS:
+        if (not variant.modifiers or
+                variant.modifiers[-1].name != "collector" or
+                variant.modifier_order_aliases != ()):
+            raise ValueError("MX MMA collector must follow the scale selector")
+        _validate_a_collector_modifier(variant.modifiers[-1])
+        _validate_tcgen_mma_variant_base(replace(
+            variant, modifiers=variant.modifiers[:-1]))
+        return
     if variant.name not in _A_COLLECTOR_FORMS:
         _validate_tcgen_mma_variant_base(variant)
         return
@@ -256,16 +283,10 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     if (ashift.kind is not ModifierKind.FLAG or
             ashift.presence is not ModifierPresence.OPTIONAL or
             ashift.default is not False or ashift.token != ".ashift" or
-            collector.kind is not ModifierKind.TCGEN_COLLECTOR or
-            collector.presence is not ModifierPresence.OPTIONAL or
-            collector.default != "absent" or
-            tuple((value.value, value.token, value.availability)
-                  for value in collector.values) != tuple(
-                      (f"collector::a::{op}", f".collector::a::{op}", {})
-                      for op in ("fill", "use", "lastuse", "discard")) or
             any(tuple(alias[-2:]) != ("ashift", "collector")
                 for alias in variant.modifier_order_aliases)):
         raise ValueError("plain MMA control domain or order changed")
+    _validate_a_collector_modifier(collector)
     _validate_tcgen_mma_variant_base(replace(
         variant, modifiers=variant.modifiers[:-2],
         modifier_order_aliases=tuple(alias[:-2]

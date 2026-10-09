@@ -23,9 +23,9 @@ class TcgenMmaSparseMxContractTests(unittest.TestCase):
             form = variants[f"tcgen05_mma_sp_{name}"]
             self.assertEqual(tuple(m.name for m in form.modifiers),
                              ("mma", "sp", "cta_group", "kind",
-                              "block_scale", "scale_vector_size"))
+                              "block_scale", "scale_vector_size", "collector"))
             self.assertEqual(len(form.operand_layouts), 2)
-            scale = form.modifiers[-1]
+            scale = form.modifiers[-2]
             self.assertEqual(scale.default, "absent" if optional else None)
             for layout in form.operand_layouts:
                 self.assertEqual(tuple(x.name for x in layout.operands),

@@ -30,14 +30,14 @@ instructions:
       tcgen05.mma.cta_group::{1|2}.kind::{f16|tf32}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
       tcgen05.mma.cta_group::{1|2}.kind::i8{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d |
       tcgen05.mma.cta_group::{1|2}.kind::f8f6f4{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d |
-      tcgen05.mma.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
-      tcgen05.mma.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
-      tcgen05.mma.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d |
+      tcgen05.mma.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
+      tcgen05.mma.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
+      tcgen05.mma.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d |
       tcgen05.mma.sp.cta_group::{1|2}.kind::{f16|tf32}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
       tcgen05.mma.sp.cta_group::{1|2}.kind::{f8f6f4|i8}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d
-      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
-      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
-      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d
+      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
+      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
+      tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d
     variants:
       - name: tcgen05_alloc_generic
         rule: tensor_memory.alloc
@@ -750,6 +750,16 @@ instructions:
             values:
               - {value: "scale_vec::1X", token: ".scale_vec::1X", availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:
@@ -787,6 +797,16 @@ instructions:
             values:
               - {value: "scale_vec::2X", token: ".scale_vec::2X", availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:
@@ -830,6 +850,16 @@ instructions:
               - {value: "scale_vec::4X", token: ".scale_vec::4X", availability: {any_of: [{ptx: "8.7", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
               - {value: block16, token: .block16, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:
@@ -868,6 +898,16 @@ instructions:
             values:
               - {value: "scale_vec::1X", token: ".scale_vec::1X", availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:
@@ -912,6 +952,16 @@ instructions:
             values:
               - {value: "scale_vec::2X", token: ".scale_vec::2X", availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:
@@ -957,6 +1007,16 @@ instructions:
               - {value: "scale_vec::4X", token: ".scale_vec::4X", availability: {any_of: [{ptx: "8.7", sm: 100, target: sm_100a}]}}
               - {value: block32, token: .block32, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
               - {value: block16, token: .block16, availability: {any_of: [{ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared
             operands:

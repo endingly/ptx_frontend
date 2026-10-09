@@ -128,6 +128,7 @@ def check_module_layout() -> None:
         SparseKnownFacts,
         SparseMxKnownFacts,
         ACollectorKnownFacts,
+        MxACollectorKnownFacts,
         CollectorBuffer,
         CollectorControl,
         CollectorOp,
@@ -139,6 +140,7 @@ def check_module_layout() -> None:
         check_sparse_known_facts,
         check_sparse_mx_known_facts,
         check_a_collector_known_facts,
+        check_mx_a_collector_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -205,6 +207,10 @@ def check_module_layout() -> None:
         True, True, 128))
     assert collector.supplied_facts_ok
     assert "collector_a_valid" in collector.obligations
+    mx_collector = check_mx_a_collector_known_facts(MxACollectorKnownFacts(
+        CollectorControl(CollectorBuffer.A, CollectorOp.USE)))
+    assert mx_collector.supplied_facts_ok
+    assert "collector_sequence" in mx_collector.obligations
 
 
 def check_packaged_spec_model() -> None:

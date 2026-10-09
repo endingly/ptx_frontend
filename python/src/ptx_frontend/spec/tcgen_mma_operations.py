@@ -1847,3 +1847,19 @@ def check_a_collector_known_facts(facts: ACollectorKnownFacts) -> ACollectorRepo
             obligations.append("collector_a_valid")
         obligations.append("collector_sequence")
     return ACollectorReport(effective, tuple(violations), tuple(obligations))
+
+
+@dataclass(frozen=True)
+class MxACollectorKnownFacts:
+    """MX collector source and optional prior-buffer assertion, without ashift."""
+
+    collector: CollectorControl = CollectorControl()
+    collector_a_valid: bool | None = None
+
+
+def check_mx_a_collector_known_facts(
+        facts: MxACollectorKnownFacts) -> ACollectorReport:
+    """Reuse the A history rule without opening ashift or M for MX forms."""
+
+    return check_a_collector_known_facts(ACollectorKnownFacts(
+        collector=facts.collector, collector_a_valid=facts.collector_a_valid))

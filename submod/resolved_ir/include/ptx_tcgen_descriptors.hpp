@@ -631,4 +631,78 @@ inline std::optional<TcgenMmaACollectorView> tcgen_mma_a_collector_view(
   return std::nullopt;
 }
 
+/** Borrowed MX A-collector source, independent of ashift-only plain forms. */
+struct TcgenMmaMxACollectorView {
+  /** Exact source kind, including sparse identity. */
+  TcgenMmaKind kind;
+  /** Whether the selected source class has mandatory sparse metadata. */
+  bool sparse;
+  /** Written selector or its retained omitted-source value. */
+  const WithLocs<TcgenScaleVectorSize>* scale_selector;
+  /** Written qualifier or the omitted all-Unspecified pair. */
+  const WithLocs<TcgenCollectorControl>* collector;
+  /** True only for a valid Tensor Memory A layout. */
+  bool a_in_tmem;
+  /** Written CTA group. */
+  TcgenCtaGroup group;
+};
+
+namespace tcgen_mx_a_collector_detail {
+/** The six exact dense and sparse block-scaled source classes. */
+template <typename Form>
+concept MxForm = std::same_as<Form, Tcgen05MmaMxf8f6f4> ||
+                 std::same_as<Form, Tcgen05MmaMxf4> ||
+                 std::same_as<Form, Tcgen05MmaMxf4nvf4> ||
+                 tcgen_sparse_mx_detail::SparseMxForm<Form>;
+
+/** Reuse the selected MX role view before borrowing its qualifier. */
+template <MxForm Form>
+std::optional<TcgenMmaMxACollectorView> borrow(const Form& mma,
+                                               TcgenMmaKind kind,
+                                               bool sparse) noexcept {
+  bool layout_valid = false;
+  if constexpr (std::same_as<Form, Tcgen05MmaMxf8f6f4>)
+    layout_valid = tcgen_mma_mx8_view(mma).has_value();
+  else if constexpr (std::same_as<Form, Tcgen05MmaMxf4>)
+    layout_valid = tcgen_mma_mx4_view(mma).has_value();
+  else if constexpr (std::same_as<Form, Tcgen05MmaMxf4nvf4>)
+    layout_valid = tcgen_mma_mxnv_view(mma).has_value();
+  else
+    layout_valid = tcgen_mma_sparse_mx_view(mma).has_value();
+  if (!layout_valid)
+    return std::nullopt;
+  return TcgenMmaMxACollectorView{kind,
+                                  sparse,
+                                  &mma.scale_vector_size,
+                                  &mma.collector,
+                                  mma.a_tcgen_bracketed_address.has_value(),
+                                  mma.cta_group.value};
+}
+}  // namespace tcgen_mx_a_collector_detail
+
+/** Borrow controls from one exact dense or sparse MX final class. */
+inline std::optional<TcgenMmaMxACollectorView> tcgen_mma_mx_a_collector_view(
+    const Instruction& instruction) noexcept {
+  if (const auto* form = dynamic_cast<const Tcgen05MmaMxf8f6f4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF8F6F4,
+                                               false);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaMxf4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF4,
+                                               false);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaMxf4nvf4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF4NvF4,
+                                               false);
+  if (const auto* form =
+          dynamic_cast<const Tcgen05MmaSpMxf8f6f4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF8F6F4,
+                                               true);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpMxf4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF4, true);
+  if (const auto* form =
+          dynamic_cast<const Tcgen05MmaSpMxf4nvf4*>(&instruction))
+    return tcgen_mx_a_collector_detail::borrow(*form, TcgenMmaKind::MxF4NvF4,
+                                               true);
+  return std::nullopt;
+}
+
 }  // namespace ptx_frontend::resolved_ir

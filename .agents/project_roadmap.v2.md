@@ -1309,7 +1309,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 
 | Family | Post-1.0 方向 |
 | --- | --- |
-| Multimem | `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` |
+| Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；[覆盖与边界](../docs/zh-han/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
 | Fabric | CFT handle、try_get/put/red/pullred、submit、wait、fabric proxy fence |
 | Texture | `tex/tld4/txq/istypep` |
 | Surface | `suld/sust/sured/suq` |

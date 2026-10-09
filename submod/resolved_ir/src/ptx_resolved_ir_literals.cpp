@@ -1,3 +1,4 @@
+#include "ptx_resolved_ir_packed_literal.hpp"
 #include "ptx_resolved_ir_private.hpp"
 
 #include <bit>
@@ -41,7 +42,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
-      kind != ScalarKind::Bit) {
+      kind != ScalarKind::Bit && !is_raw32_fp8x4_type(type)) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format(
@@ -180,7 +181,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
         fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
                     immediate.syntax.text)));
   }
-  if (type != ScalarType::F32 && type != ScalarType::F64) {
+  const bool packed_raw32 = is_raw32_fp8x4_type(type) && bit_width == 32;
+  if (type != ScalarType::F32 && type != ScalarType::F64 && !packed_raw32) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format(
@@ -193,6 +195,13 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
   const auto bits = parse_unsigned_literal(immediate, text, 16);
   if (!bits)
     return std::unexpected(bits.error());
+  if (packed_raw32) {
+    if (*bits > std::numeric_limits<uint32_t>::max()) {
+      return std::unexpected(invalid_immediate(
+          immediate, "Packed FP8 literal exceeds its 32-bit raw width."));
+    }
+    return ResolvedImmediate{.bits = *bits, .type = type};
+  }
   if (bit_width == 32 && type == ScalarType::F64) {
     return ResolvedImmediate{
         .bits = widen_float_literal_bits(static_cast<uint32_t>(*bits)),

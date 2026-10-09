@@ -97,7 +97,7 @@ class FormShardTests(unittest.TestCase):
                     ))
             self.assertEqual(
                 len(plan.paths),
-                len(plan.global_artifacts) + 2 + 3 * len(form_shards(self.cp)),
+                len(plan.global_artifacts) + 3 + 3 * len(form_shards(self.cp)),
             )
 
     def test_emitted_shards_own_only_their_canonical_forms(self) -> None:
@@ -107,20 +107,37 @@ class FormShardTests(unittest.TestCase):
             root = Path(directory)
             first = build_generation_plan(self.context, root / "first")
             second = build_generation_plan(self.context, root / "second")
-            shard_start = len(first.global_artifacts)
+            category = self.cp.specification.codegen_category
+            opcode = self.cp.specification.opcode
+            first_shard_start = first.paths.index(
+                root / "first" / (
+                    f"private/resolved_ir_{category}_{opcode}_"
+                    "descriptors_000.gen.cpp"
+                )
+            )
+            second_shard_start = second.paths.index(
+                root / "second" / (
+                    f"private/resolved_ir_{category}_{opcode}_"
+                    "descriptors_000.gen.cpp"
+                )
+            )
             selected = (0, 1)
             for index in selected:
                 for offset in range(3):
-                    artifact_index = shard_start + 3 * index + offset
-                    left = first.artifacts[artifact_index]
-                    right = second.artifacts[artifact_index]
+                    left = first.artifacts[
+                        first_shard_start + 3 * index + offset
+                    ]
+                    right = second.artifacts[
+                        second_shard_start + 3 * index + offset
+                    ]
                     left.emit(self.context, output_path=left.path)
                     right.emit(self.context, output_path=right.path)
                     self.assertEqual(left.path.read_bytes(), right.path.read_bytes())
 
                 descriptor, header, methods = (
-                    first.artifacts[shard_start + 3 * index + offset].path.read_text(
-                        encoding="utf-8")
+                    first.artifacts[
+                        first_shard_start + 3 * index + offset
+                    ].path.read_text(encoding="utf-8")
                     for offset in range(3)
                 )
                 own_indices = form_shards(self.cp)[index]

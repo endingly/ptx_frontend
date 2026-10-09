@@ -14,6 +14,7 @@
 #include <ptx_frontend/resolved_ir/model/control_flow/pmevent.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/setmaxnreg.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/trap.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 

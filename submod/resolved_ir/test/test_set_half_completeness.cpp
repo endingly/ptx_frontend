@@ -7,6 +7,7 @@
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/model/comparison_and_selection/set.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_module_snapshot.hpp"

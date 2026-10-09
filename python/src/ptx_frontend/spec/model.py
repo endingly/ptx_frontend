@@ -782,9 +782,17 @@ class DomainBackend:
 
 
 @dataclass(frozen=True)
+class InstructionIdentityBackend:
+    """Stable 8-bit category allocations; opcode ordinals are derived."""
+
+    categories: dict[str, int]
+
+
+@dataclass(frozen=True)
 class CodegenUnit:
     """Normalized C++ mappings bound to one PTX ISA schema version."""
 
     spec_schema: str
     backend_schema: str
     domains: dict[str, DomainBackend]
+    instruction_identity: InstructionIdentityBackend | None = None

@@ -21,7 +21,7 @@ def render_tensor_cache_controls_query(context: GenerationContext) -> str:
         name = cp.cpp_name + variant.cpp_name
         if not any(field.name == "cache_hint"
                    for field in variant.modifier_fields):
-            plain.append(f"    case InstructionKind::{name}:")
+            plain.append(f"    case {name}::kind:")
             continue
         policy_layouts = [index for index, layout in enumerate(variant.operand_layouts)
                           if any(field.name == "cache_policy" for field in layout.fields)]
@@ -32,7 +32,7 @@ def render_tensor_cache_controls_query(context: GenerationContext) -> str:
         others = "\n".join(f"        case {index}: break;"
                            for index in range(len(variant.operand_layouts))
                            if index not in policy_layouts)
-        hinted.append(f"""    case InstructionKind::{name}: {{
+        hinted.append(f"""    case {name}::kind: {{
       result.applicable = true;
       const auto* selected = dynamic_cast<const {name}*>(&instruction);
       if (!selected) {{

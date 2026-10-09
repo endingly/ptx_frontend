@@ -12,6 +12,7 @@ from .load_yaml import load_yaml
 from .model import (
     CodegenUnit,
     DomainBackend,
+    InstructionIdentityBackend,
     RuntimeLookupKind,
 )
 from ptx_frontend.spec.resources import packaged_backend_spec_schema
@@ -122,7 +123,34 @@ def load_cpp_backend(path: Traversable) -> CodegenUnit:
         spec_schema=str(raw.get("spec_schema", "ptx-instr/v1")),
         backend_schema=schema,
         domains=domains,
+        instruction_identity=_normalize_instruction_identity(
+            path, raw["instruction_identity"]
+        ),
     )
+
+
+def _normalize_instruction_identity(
+    path: Traversable, raw: object
+) -> InstructionIdentityBackend:
+    """Validate stable backend prefixes independently of active ISA entries."""
+
+    if not isinstance(raw, dict):
+        raise TypeError(f"{path}: instruction_identity must be a mapping")
+    raw_categories = raw.get("categories")
+    if not isinstance(raw_categories, dict) or not raw_categories:
+        raise ValueError(f"{path}: instruction_identity categories are required")
+
+    categories: dict[str, int] = {}
+    used_categories: set[int] = set()
+    for name, code in raw_categories.items():
+        if type(name) is not str or type(code) is not int or not 1 <= code <= 255:
+            raise ValueError(f"{path}: invalid category identity {name!r}: {code!r}")
+        if code in used_categories:
+            raise ValueError(f"{path}: duplicate category identity {code}")
+        categories[name] = code
+        used_categories.add(code)
+
+    return InstructionIdentityBackend(categories=categories)
 
 
 def cpp_domain(name: CppDomain, *, backend: CodegenUnit) -> DomainBackend:

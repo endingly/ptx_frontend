@@ -146,7 +146,9 @@ rendering 或 filesystem 失败。
 
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、准确形式 identity 与 observer 契约 |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、opaque identity 枚举声明与 observer 契约 |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp` | `emit.resolved_model` | 供宽入口使用的完整具名 `Opcode`、`InstructionKind` 枚举项 |
+| `public/ptx_frontend/resolved_ir/identity/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 具名且带类型的 opcode/form 常量，不包含指令类定义 |
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | 稳定的逐 opcode 聚合头：小 opcode 直接定义类，大 opcode 引入有界形式分片；声明 descriptor getter 与 resolver |
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>_forms_NNN.gen.hpp` | `emit.resolved_model` | 大 opcode 中一个最多 64 形式的规范分片的 final 类声明 |
 | `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | 全部 opcode 头的聚合 |
@@ -154,6 +156,24 @@ rendering 或 filesystem 失败。
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 跨 opcode 的解析分发 |
 | `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 稳定的逐 opcode resolver、selector 与 descriptor getter 入口；小 opcode 还包含未分片的方法及 descriptor 行 |
 | `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | 大 opcode 规范形式分片的有界方法定义与静态 descriptor 行 |
+
+C++ backend YAML 为每个 `codegen_category` 显式分配唯一的 8 位 ID。在完整的
+normalized snapshot 内，各 category 的 opcode 按顺序取得从 1 开始的编号，
+各 opcode 的 canonical resolved form 也按顺序取得从 1 开始的编号。
+`GenerationContext` 在选择 category 或形式分片产物之前构造唯一的 8/8/16 位
+identity map。缺失的 category ID、重复或越界的 category ID，以及超出位宽的
+opcode/form 编号都会使生成失败。Category 前缀固定；插入 opcode 可能重编号
+同 category 中后续 opcode，插入形式可能重编号同 opcode 中后续形式。
+这些整数是生成身份，不承诺二进制 ABI，也不是永久的逐 opcode/form 注册表。
+
+基础头只前向声明作用域 identity 枚举。每个 opcode 的
+`identity/<category>/<opcode>.gen.hpp` 从完整 context 的 map 定义具名且带类型的常量。
+窄 model 头和形式分片头引用这些常量来定义 `Form::opcode` 和 `Form::kind`，
+无需引入全部具名枚举项。完整 catalogue 也引用这些局部常量，生成的数值分配
+只出现在 identity 头中。
+直接使用 `Opcode::` 或 `InstructionKind::` 成员时需包含
+`ptx_instruction_catalogue.gen.hpp`；宽聚合头包含该目录头，保留宽入口用法。
+全局 resolver dispatch 使用目录头，但不包含所有 final form 类。
 
 生成的公开头位于 `submod/resolved_ir` 构建树的
 `generated/public/ptx_frontend/resolved_ir`，安装后相对于 `include` 保持相同布局。

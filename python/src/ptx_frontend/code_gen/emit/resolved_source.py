@@ -415,7 +415,7 @@ def _emit_resolve(entry, backend) -> str:
     prefix = entry.specification.opcode.replace(".", "_")
     identity_map = "\n".join(
         f'    if (*selected == "{variant.cpp_name}") '
-        f'return InstructionKind::{form_name(entry, variant)};'
+        f'return {form_name(entry, variant)}::kind;'
         for variant in entry.resolved.variants
     )
     clauses = []
@@ -446,7 +446,7 @@ def _emit_resolve(entry, backend) -> str:
             "      value->address_qualifier = atomic_address_qualifier_from_ast(ast);\n"
             if entry.resolved.atomic_address_qualifier is not None else ""
         )
-        clauses.append(f"""    case InstructionKind::{name}: {{
+        clauses.append(f"""    case {name}::kind: {{
     auto value = std::make_unique<{name}>();
     value->execution_predicate = std::move(fields->execution_predicate);
     value->operand_layout = fields->operand_layout;

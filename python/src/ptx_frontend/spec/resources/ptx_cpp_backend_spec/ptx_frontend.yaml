@@ -4,6 +4,17 @@ schema: ptx-cpp-backend/v2
 backend: cpp
 spec_schema: ptx-instr/v1
 
+instruction_identity:
+  # Stable category IDs; opcode and form ordinals follow normalized order.
+  categories:
+    arithmetic: 1
+    comparison_and_selection: 2
+    control_flow: 3
+    data_movement: 4
+    matrix: 5
+    parallel_synchronization_and_communication: 6
+    tensor_memory: 7
+
 # This file maps normalized semantic values to C++ expressions and declares
 # runtime lookup tables. PTX legality, variants, layouts, and availability stay
 # in the packaged PTX ISA specification.

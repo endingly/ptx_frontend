@@ -53,6 +53,18 @@ exposed through `ptx_resolved_ir_resolution.hpp`, and checking through virtual
 `Instruction::check` plus the handwritten support header
 `ptx_resolved_ir_checker_support.hpp`.
 
+`Opcode` and `InstructionKind` have opaque declarations in the common base
+header. Each final form still exposes typed `Form::opcode` and `Form::kind`
+constants. The broad generated aggregate includes the complete named
+enumerators, with numeric assignments centralized in opcode-local
+`identity/<category>/<opcode>.gen.hpp` headers. Model and form-shard headers
+reference their named typed constants. A narrow consumer that spells
+`Opcode::Name` or
+`InstructionKind::Name` includes `ptx_instruction_catalogue.gen.hpp`.
+Their 8/8/16-bit values use a fixed category prefix and normalized opcode/form
+ordinals. Insertion may renumber later members within the affected category
+or opcode; integer values and generated C++ layout are not a stable binary ABI.
+
 The public layer also provides an opcode-independent boundary:
 
 ```cpp

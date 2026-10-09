@@ -14,6 +14,8 @@ from ptx_frontend.code_gen.emit.resolved_model import (
     form_shards,
     generate_resolved_base_header,
     generate_resolved_form_shard_header,
+    generate_resolved_identity_catalogue_header,
+    generate_resolved_opcode_identity_header,
     generate_resolved_opcode_header,
     generate_resolved_umbrella_header,
 )
@@ -176,6 +178,10 @@ def build_generation_plan(
             emit=generate_resolved_base_header,
         ),
         GeneratedArtifact(
+            path=output_dir / "public/ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp",
+            emit=generate_resolved_identity_catalogue_header,
+        ),
+        GeneratedArtifact(
             path=output_dir / "public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp",
             emit=generate_resolved_umbrella_header,
         ),
@@ -218,6 +224,17 @@ def build_generation_plan(
                 item for item in context.entries
                 if item.specification.codegen_category == category
                 and item.specification.opcode == opcode
+            )
+            artifacts.append(
+                _opcode_artifact(
+                    path=output_dir / (
+                        f"public/ptx_frontend/resolved_ir/identity/"
+                        f"{category}/{opcode}.gen.hpp"
+                    ),
+                    category=category,
+                    opcode=opcode,
+                    emitter=generate_resolved_opcode_identity_header,
+                )
             )
             for index, _ in enumerate(form_shards(entry)):
                 artifacts.append(

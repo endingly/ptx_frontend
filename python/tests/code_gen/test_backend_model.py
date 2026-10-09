@@ -123,6 +123,25 @@ class BackendModelTests(unittest.TestCase):
             "ScalarType::U32",
         )
 
+    def test_instruction_identity_rejects_duplicate_and_invalid_category_ids(self) -> None:
+        """The backend owns nonzero, unique category prefixes independently of ISA data."""
+
+        raw = yaml.safe_load(REPOSITORY_CPP_BACKEND_SPEC.read_text(encoding="utf-8"))
+        original = raw["instruction_identity"]["categories"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backend.yaml"
+            for categories, diagnostic in (
+                ({**original, "another": next(iter(original.values()))},
+                 "duplicate category identity"),
+                ({**original, "another": 0}, "minimum of 1"),
+                ({**original, "another": 256}, "maximum of 255"),
+            ):
+                with self.subTest(categories=categories, diagnostic=diagnostic):
+                    raw["instruction_identity"]["categories"] = categories
+                    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, diagnostic):
+                        load_cpp_backend(path)
+
     def test_backend_model_is_frozen(self) -> None:
         domain = DomainBackend(cpp_type="ScalarType", values={"u32": "ScalarType::U32"})
 

@@ -349,14 +349,49 @@ def validate_catalogue() -> None:
             {name.upper() for _, name in mx8.scale_types} != {"UE8M0"} or
             set(mx8.scale_ids) != {0, 1, 2, 3} or
             {(row.role, row.selector, row.factor_count,
-              row.subcolumn_alignment_bytes, row.valid_ids, row.layout_id)
+              row.subcolumn_alignment_bytes, row.valid_ids, row.layout_id,
+              row.id_alignment_policy)
              for row in MX8_SCALE_LAYOUTS} != {
                  (role, selector, 1, 1, (0, 1, 2, 3),
                   MxScaleLayoutId.MX1 if role == "a"
-                  else MxScaleLayoutId.ONE_X_N)
+                  else MxScaleLayoutId.ONE_X_N,
+                  ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
                  for role in ("a", "b")
                  for selector in ("scale_vec::1X", "block32")}):
         raise ValueError("dense MX8 rows drifted from Tables 42/46/59/60")
+
+    mx4 = next((kind for kind in descriptor.KINDS
+                if kind.name == "MxF4"), None)
+    if (mx4 is None or mx4.table != "instruction_47" or
+            mx4.d_types or mx4.saturation or not mx4.negate or
+            mx4.transpose or mx4.a_types != ((1, "E2M1"),) or
+            mx4.b_types != ((1, "E2M1"),) or
+            mx4.scale_types != ((1, "UE8M0"),) or
+            mx4.scale_ids != (0, 2) or
+            {(row.group, row.m_values, row.n_first, row.n_step, row.k)
+             for row in MX4_SHAPES} != {
+                 (1, (128, 128), 8, 8, 64),
+                 (2, (128, 256), 16, 16, 64),
+                 (2, (256, 256), 16, 16, 96)} or
+            MX4_PATHS != MX8_PATHS or
+            {(row.role, row.selector, row.k, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids,
+              row.layout_id, row.id_alignment_policy)
+             for row in MX4_SCALE_LAYOUTS} != {
+                 (role, selector, k, count, align, (0, 2),
+                  layout_a if role == "a" else layout_b, policy)
+                 for selector, k, count, align, layout_a, layout_b, policy in (
+                     ("scale_vec::2X", 64, 2, 2,
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 64, 2, 2,
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 96, 3, 4,
+                      MxScaleLayoutId.MX3, MxScaleLayoutId.THREE_X_N,
+                      ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+                 for role in ("a", "b")}):
+        raise ValueError("dense MX4 rows drifted from Tables 42/47/59/60")
 
 
 def _check_shared(role: str, transpose: bool | None,
@@ -658,6 +693,17 @@ class MxScaleLayoutId(Enum):
 
     MX1 = "Mx1"
     ONE_X_N = "1xN"
+    MX2 = "Mx2"
+    TWO_X_N = "2xN"
+    MX3 = "Mx3"
+    THREE_X_N = "3xN"
+
+
+class ScaleIdAlignmentPolicy(Enum):
+    """How selected ID interacts with an independently guaranteed alignment."""
+
+    BYTE_SLOT_OFFSET = "byte_slot_offset"
+    LAYOUT_DEFINED_PLACEMENT = "layout_defined_placement"
 
 
 class MxInputPacking(Enum):
@@ -666,15 +712,19 @@ class MxInputPacking(Enum):
     TMEM_EIGHT_BIT_CONTAINER = "tmem_eight_bit_container"
     SHARED_PADDED_FOUR_BIT = "shared_padded_four_bit"
     SHARED_PADDED_SIX_BIT = "shared_padded_six_bit"
+    TMEM_PAIRED_FOUR_BIT = "tmem_paired_four_bit"
+    SHARED_PAIRED_FOUR_BIT = "shared_paired_four_bit"
 
 
 @dataclass(frozen=True)
 class MxScaleLayoutRow:
     """One Table 59/60 scale role and selected sub-column data contract.
 
-    ``valid_ids`` select sub-columns inside a Tensor Memory word. They are not
-    byte offsets from a source base address. The row stays explicit across K
-    and selector forms so later block formats cannot collapse provenance.
+    ``valid_ids`` select sub-columns inside a Tensor Memory word, not byte
+    offsets from a source base address. ``subcolumn_alignment_bytes`` is a
+    required guarantee; ``id_alignment_policy`` states whether the encoded ID
+    is a direct byte slot for checking a stronger caller guarantee or a
+    layout-defined placement. Rows remain distinct across K and selectors.
     """
 
     role: str
@@ -686,11 +736,12 @@ class MxScaleLayoutRow:
     subcolumn_alignment_bytes: int
     valid_ids: tuple[int, ...]
     layout_id: MxScaleLayoutId
+    id_alignment_policy: ScaleIdAlignmentPolicy
 
 
 @dataclass(frozen=True)
 class MxScaleRoleFacts:
-    """Optional independently known scale placement, never read from source."""
+    """Optional caller placement identity and guaranteed byte alignment."""
 
     layout_id: MxScaleLayoutId | None = None
     subcolumn_alignment_bytes: int | None = None
@@ -730,7 +781,8 @@ MX8_PATHS = tuple(row for row in F16_PATHS if row.m != 64)
 MX8_SCALE_LAYOUTS = tuple(
     MxScaleLayoutRow(role, "MxF8F6F4", False, 32, selector, 1, 1,
                      (0, 1, 2, 3), MxScaleLayoutId.MX1 if role == "a"
-                     else MxScaleLayoutId.ONE_X_N)
+                     else MxScaleLayoutId.ONE_X_N,
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
     for selector in ("scale_vec::1X", "block32")
     for role in ("a", "b"))
 MX8_TARGET_GATES = F8F6F4_TARGET_GATES
@@ -823,7 +875,9 @@ def check_mx8_known_facts(facts: Mx8KnownFacts) -> Mx8OperationalReport:
                     alignment < row.subcolumn_alignment_bytes or
                     alignment & (alignment - 1) or
                     alignment % row.subcolumn_alignment_bytes or
-                    (scale_id is not None and scale_id % alignment)):
+                    (row.id_alignment_policy is
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET and
+                     scale_id is not None and scale_id % alignment)):
                 violations.append(f"scale_{role}_alignment")
             if role_facts.layout_id is None:
                 obligations.append(f"scale_{role}_layout_id")
@@ -832,3 +886,139 @@ def check_mx8_known_facts(facts: Mx8KnownFacts) -> Mx8OperationalReport:
     return Mx8OperationalReport(tuple(violations), tuple(obligations),
                                 common.layout, selected["a"], selected["b"],
                                 required_a, required_b)
+
+
+@dataclass(frozen=True)
+class Mx4KnownFacts(Mx8KnownFacts):
+    """Caller-known dense MX4 fields, preserving written selector identity."""
+
+
+@dataclass(frozen=True)
+class Mx4OperationalReport(Mx8OperationalReport):
+    """MX4 result with factor counts even when physical placement is open."""
+
+    scale_a_factor_count: int | None = None
+    scale_b_factor_count: int | None = None
+
+
+MX4_SHAPES = (
+    F8F6F4ShapeRow(1, "F32", (128, 128), 8, 8, 256, 64,
+                   ("E2M1",), ("E2M1",)),
+    F8F6F4ShapeRow(2, "F32", (128, 256), 16, 16, 256, 64,
+                   ("E2M1",), ("E2M1",)),
+    F8F6F4ShapeRow(2, "F32", (256, 256), 16, 16, 256, 96,
+                   ("E2M1",), ("E2M1",)),
+)
+MX4_PATHS = MX8_PATHS
+MX4_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, "MxF4", False, k, selector, factor_count,
+                     alignment, valid_ids,
+                     layout_a if role == "a" else layout_b, policy)
+    for selector, k, factor_count, alignment, valid_ids, layout_a, layout_b, policy
+    in (("scale_vec::2X", 64, 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+         ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 64, 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+         ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 96, 3, 4, (0, 2),
+         MxScaleLayoutId.MX3, MxScaleLayoutId.THREE_X_N,
+         ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+    for role in ("a", "b"))
+
+
+def mx4_scale_layout(role: str, selector: str,
+                     k: int) -> MxScaleLayoutRow | None:
+    """Select a normative physical scale row, retaining an unresolved K96 2X."""
+
+    effective = "block32" if selector == "absent" else selector
+    return next((row for row in MX4_SCALE_LAYOUTS if row.role == role and
+                 row.selector == effective and row.k == k), None)
+
+
+def check_mx4_known_facts(facts: Mx4KnownFacts) -> Mx4OperationalReport:
+    """Check known MX4 shapes, factor counts, placement and packing claims."""
+
+    common = check_f8f6f4_known_facts(facts)
+    violations = [name for name in common.violations
+                  if name != "shape_or_output_type"]
+    obligations = [name for name in common.obligations
+                   if name not in ("a_low_bit_packing_rule",
+                                   "b_low_bit_packing_rule")]
+    if facts.d_type is not None and facts.d_type != "F32":
+        violations.append("mx4_output_type")
+    for role in ("a", "b"):
+        value = getattr(facts, f"{role}_type")
+        if value is not None and value != "E2M1":
+            violations.append(f"mx4_{role}_type")
+        if getattr(facts, f"transpose_{role}") is True:
+            violations.append(f"mx4_{role}_transpose")
+    if all(getattr(facts, name) is not None
+           for name in ("group", "m", "n", "k")) and not any(
+               row.group == facts.group and
+               row.contains(facts.m, facts.n, facts.k)
+               for row in MX4_SHAPES):
+        violations.append("mx4_shape")
+    if facts.k == 96:
+        obligations.append("k96_exact_target")
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type != "UE8M0":
+        violations.append("scale_type")
+    if facts.scale_selector not in ("absent", "scale_vec::2X", "block32"):
+        violations.append("scale_selector")
+    required_a = (MxInputPacking.TMEM_PAIRED_FOUR_BIT
+                  if facts.a_shared is False else
+                  MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                  if facts.a_shared is True else None)
+    required_b = MxInputPacking.SHARED_PAIRED_FOUR_BIT
+    if facts.a_shared is None and facts.a_type == "E2M1":
+        obligations.append("a_packing_placement")
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+        elif getattr(facts, f"{role}_type") == "E2M1" and required:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = (mx4_scale_layout(role, facts.scale_selector, facts.k)
+               if facts.k is not None else None)
+        selected[role] = row
+        scale_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if scale_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif scale_id not in (0, 2):
+            violations.append(f"scale_{role}_id")
+        if facts.k == 96 and facts.scale_selector == "scale_vec::2X":
+            obligations.append(f"scale_{role}_layout_rule")
+        elif row is None:
+            obligations.append(f"scale_{role}_layout")
+        elif role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        else:
+            if role_facts.layout_id is not None and role_facts.layout_id != row.layout_id:
+                violations.append(f"scale_{role}_layout")
+            align = role_facts.subcolumn_alignment_bytes
+            if align is not None and (
+                    align < row.subcolumn_alignment_bytes or
+                    align & (align - 1) or
+                    align % row.subcolumn_alignment_bytes or
+                    (row.id_alignment_policy is
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET and
+                     scale_id is not None and scale_id % align)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None or align is None:
+                obligations.append(f"scale_{role}_layout")
+    factor = (2 if facts.scale_selector == "scale_vec::2X" else
+              3 if facts.k == 96 else 2 if facts.k == 64 else None)
+    return Mx4OperationalReport(tuple(violations), tuple(obligations),
+                                common.layout, selected["a"], selected["b"],
+                                required_a if facts.a_type == "E2M1" else None,
+                                required_b if facts.b_type == "E2M1" else None,
+                                factor, factor)

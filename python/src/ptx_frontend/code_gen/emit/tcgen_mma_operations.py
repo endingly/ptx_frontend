@@ -66,7 +66,7 @@ struct TcgenF16PathRow {
                                           uint16_t m, uint16_t n,
                                           uint16_t k) noexcept;
 }  // namespace ptx_frontend::resolved_ir
-''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header()
+''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header() + _MX8_ROW_HEADER + _mx8_query_header() + _MX4_ROW_HEADER + _mx4_query_header()
 
 
 def render_tcgen_mma_source() -> str:
@@ -295,18 +295,26 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
         mx8_paths.append(
             f"  TcgenMx8PathRow{{TcgenCtaGroup::{group}, {row.m}, "
             f"'{row.layout}', {half}}}")
-    mx8_scale_rows = []
-    for row in operations.MX8_SCALE_LAYOUTS:
+    mx_scale_rows = []
+    for row in (*operations.MX8_SCALE_LAYOUTS, *operations.MX4_SCALE_LAYOUTS):
         role = "A" if row.role == "a" else "B"
-        selector = "Vec1X" if row.selector == "scale_vec::1X" else "Block32"
+        selector = {"scale_vec::1X": "Vec1X", "scale_vec::2X": "Vec2X",
+                    "block32": "Block32"}[row.selector]
+        kind = {"MxF8F6F4": "MxF8F6F4", "MxF4": "MxF4"}[row.kind]
+        layout = {"MX1": "Mx1", "ONE_X_N": "OneXN", "MX2": "Mx2",
+                  "TWO_X_N": "TwoXN", "MX3": "Mx3",
+                  "THREE_X_N": "ThreeXN"}[row.layout_id.name]
+        policy = {"BYTE_SLOT_OFFSET": "ByteSlotOffset",
+                  "LAYOUT_DEFINED_PLACEMENT": "LayoutDefinedPlacement"}[
+                      row.id_alignment_policy.name]
         ids = ", ".join(str(value) for value in row.valid_ids)
-        mx8_scale_rows.append(
+        mx_scale_rows.append(
             f'  TcgenMxScaleLayoutRow{{MatrixFragmentRole::{role}, '
-            f'TcgenMmaKind::MxF8F6F4, false, {row.k}, '
+            f'TcgenMmaKind::{kind}, false, {row.k}, '
             f'TcgenScaleVectorSize::{selector}, {row.factor_count}, '
             f'{row.subcolumn_alignment_bytes}, {{{{{ids}}}}}, '
-            f'{len(row.valid_ids)}, TcgenMxScaleLayoutId::'
-            f'{"Mx1" if role == "A" else "OneXN"}}}')
+            f'{len(row.valid_ids)}, TcgenMxScaleLayoutId::{layout}, '
+            f'TcgenScaleIdAlignmentPolicy::{policy}}}')
     mx8_targets = ",\n".join(
         '  TcgenMx8TargetGate{"%s", %s, {%d, %d}}' % (
             gate.feature, "true" if gate.exact else "false",
@@ -318,14 +326,43 @@ bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
         ("__SHAPE_ROWS__", ",\n".join(mx8_rows)),
         ("__PATH_COUNT__", str(len(mx8_paths))),
         ("__PATH_ROWS__", ",\n".join(mx8_paths)),
-        ("__SCALE_COUNT__", str(len(mx8_scale_rows))),
-        ("__SCALE_ROWS__", ",\n".join(mx8_scale_rows)),
+        ("__SCALE_COUNT__", str(len(mx_scale_rows))),
+        ("__SCALE_ROWS__", ",\n".join(mx_scale_rows)),
     ):
         mx8_source = mx8_source.replace(old, value)
     mx8_source += (_mx8_query_source()
                    .replace("__TARGET_ROWS__", mx8_targets)
                    .replace("__TARGET_COUNT__", str(len(operations.MX8_TARGET_GATES))))
-    return f16_source + tf32_source + i8_source + f8_source + mx8_source
+    mx4_rows = []
+    for row in operations.MX4_SHAPES:
+        group = "One" if row.group == 1 else "Two"
+        mx4_rows.append(
+            f'  TcgenMx4ShapeRow{{TcgenCtaGroup::{group}, '
+            f'MatrixElementType::{row.d_type}, '
+            f'{{{{{row.m_values[0]}, {row.m_values[1]}}}}}, '
+            f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
+    mx4_paths = []
+    for row in operations.MX4_PATHS:
+        group = "One" if row.group == 1 else "Two"
+        mx4_paths.append(
+            f"  TcgenMx4PathRow{{TcgenCtaGroup::{group}, {row.m}, "
+            f"'{row.layout}', {'true' if row.half_path else 'false'}}}")
+    mx4_targets = ",\n".join(
+        '  TcgenMx4TargetGate{"%s", %s, {%d, %d}}' % (
+            gate.feature, "true" if gate.exact else "false",
+            gate.ptx_major, gate.ptx_minor)
+        for gate in operations.MX8_TARGET_GATES)
+    mx4_source = _MX4_STORAGE
+    for old, value in (("__SHAPE_COUNT__", str(len(mx4_rows))),
+                       ("__SHAPE_ROWS__", ",\n".join(mx4_rows)),
+                       ("__PATH_COUNT__", str(len(mx4_paths))),
+                       ("__PATH_ROWS__", ",\n".join(mx4_paths))):
+        mx4_source = mx4_source.replace(old, value)
+    mx4_source += (_mx4_query_source()
+                   .replace("__TARGET_ROWS__", mx4_targets)
+                   .replace("__TARGET_COUNT__",
+                            str(len(operations.MX8_TARGET_GATES))))
+    return f16_source + tf32_source + i8_source + f8_source + mx8_source + mx4_source
 
 
 def generate_tcgen_mma_header(_context: object, *, output_path: Path) -> None:
@@ -1054,7 +1091,13 @@ _MX8_ROW_HEADER = _F8F6F4_ROW_HEADER.replace("F8F6F4", "Mx8").replace(
     "f8f6f4", "mx8") + r'''
 namespace ptx_frontend::resolved_ir {
 /** Logical Table 59/60 arrangement; labels are not semantic keys. */
-enum class TcgenMxScaleLayoutId : uint8_t { Mx1, OneXN };
+enum class TcgenMxScaleLayoutId : uint8_t {
+  Mx1, OneXN, Mx2, TwoXN, Mx3, ThreeXN
+};
+/** Whether an ID is a direct byte slot or a layout-defined selection. */
+enum class TcgenScaleIdAlignmentPolicy : uint8_t {
+  ByteSlotOffset, LayoutDefinedPlacement
+};
 /** One role-specific scale layout from Tables 59/60. IDs select sub-columns
  *  within a Tensor Memory word; they are not byte offsets from a base address.
  */
@@ -1079,6 +1122,8 @@ struct TcgenMxScaleLayoutRow {
   uint8_t valid_id_count;
   /** Logical layout identity, independent of physical address encoding. */
   TcgenMxScaleLayoutId layout_id;
+  /** Interpretation of an ID relative to a supplied alignment guarantee. */
+  TcgenScaleIdAlignmentPolicy id_alignment_policy;
 };
 /** Borrow immutable role-specific generated MX scale rows. */
 [[nodiscard]] std::span<const TcgenMxScaleLayoutRow>
@@ -1141,7 +1186,8 @@ def _mx8_query_header() -> str:
     marker = "/** Caller-supplied known words and context, independent of MMA source registers. */"
     header = header.replace(marker, '''/** Required 4/6-bit container layout from the fixed MX8 packing rules. */
 enum class TcgenMxInputPacking : uint8_t {
-  TmemEightBitContainer, SharedPaddedFourBit, SharedPaddedSixBit
+  TmemEightBitContainer, SharedPaddedFourBit, SharedPaddedSixBit,
+  TmemPairedFourBit, SharedPairedFourBit
 };
 /** Independently supplied role layout facts; missing members remain unknown. */
 struct TcgenMxScaleRoleFacts {
@@ -1279,7 +1325,9 @@ def _mx8_query_source() -> str:
            (*known->subcolumn_alignment_bytes &
             (*known->subcolumn_alignment_bytes - 1)) != 0 ||
            *known->subcolumn_alignment_bytes % row.subcolumn_alignment_bytes != 0 ||
-           id % *known->subcolumn_alignment_bytes != 0))
+           (row.id_alignment_policy ==
+                TcgenScaleIdAlignmentPolicy::ByteSlotOffset &&
+            id % *known->subcolumn_alignment_bytes != 0)))
         report.violations.push_back(is_a ? TcgenMx8Violation::ScaleAAlignment
                                          : TcgenMx8Violation::ScaleBAlignment);
       if (!known->layout_id || !known->subcolumn_alignment_bytes)
@@ -1290,4 +1338,114 @@ def _mx8_query_source() -> str:
                                   : TcgenMx8Checked::ScaleB);
   }
 ''' + marker)
+    return source
+
+
+_MX4_ROW_HEADER = _F8F6F4_ROW_HEADER.replace("F8F6F4", "Mx4").replace(
+    "f8f6f4", "mx4")
+_MX4_STORAGE = (_MX8_STORAGE.replace("Mx8", "Mx4").replace("mx8", "mx4")
+                .replace('''constexpr std::array<TcgenMxScaleLayoutRow, __SCALE_COUNT__> kMxScaleLayouts = {{
+__SCALE_ROWS__
+}};
+''', '')
+                .replace('''std::span<const TcgenMxScaleLayoutRow> tcgen_mx_scale_layout_rows() noexcept {
+  return kMxScaleLayouts;
+}
+''', ''))
+
+
+def _mx4_query_header() -> str:
+    """Expose dense MX4 K selection and conditional factor/layout facts."""
+
+    header = (_mx8_query_header().replace("TcgenMx8", "TcgenMx4")
+              .replace("tcgen_mx8", "tcgen_mx4")
+              .replace("dense mxf8f6f4", "dense mxf4"))
+    start = header.index("/** Required 4/6-bit container layout")
+    end = header.index("/** Caller-supplied known words", start)
+    header = header[:start] + header[end:]
+    header = header.replace(
+        "ScaleALayout, ScaleBLayout, APackingFact, BPackingFact, ALivePackingContents",
+        "ScaleALayout, ScaleBLayout, ScaleALayoutRule, ScaleBLayoutRule, "
+        "APackingFact, BPackingFact, ALivePackingContents")
+    header = header.replace(
+        "  std::optional<TcgenMxInputPacking> required_b_packing;\n",
+        "  std::optional<TcgenMxInputPacking> required_b_packing;\n"
+        "  /** Table 59 A factor count even if physical placement remains open. */\n"
+        "  std::optional<uint8_t> scale_a_factor_count;\n"
+        "  /** Table 59 B factor count even if physical placement remains open. */\n"
+        "  std::optional<uint8_t> scale_b_factor_count;\n")
+    return header
+
+
+def _mx4_query_source() -> str:
+    """Derive MX4 query from common MX checks with K-specific table rules."""
+
+    source = (_mx8_query_source().replace("TcgenMx8", "TcgenMx4")
+              .replace("tcgen_mx8", "tcgen_mx4")
+              .replace("MxF8F6F4", "MxF4")
+              .replace("kMx8Shapes", "kMx4Shapes")
+              .replace("kMx8Paths", "kMx4Paths")
+              .replace("kMx8TargetGates", "kMx4TargetGates")
+              .replace("accepts_mx8_target", "accepts_mx4_target")
+              .replace("check_mx8_shared_operand", "check_mx4_shared_operand"))
+    source = source.replace("TcgenScaleVectorSize::Vec1X",
+                            "TcgenScaleVectorSize::Vec2X")
+    source = source.replace(
+        "? TcgenScaleVectorSize::Vec2X : facts.scale_selector;",
+        "? TcgenScaleVectorSize::Block32 : facts.scale_selector;")
+    source = source.replace(
+        "  const TcgenMx4ShapeRow* shape = nullptr;",
+        "  const uint16_t expected_k = decoded.k_choice_code ? 96 : 64;\n"
+        "  const TcgenMx4ShapeRow* shape = nullptr;")
+    source = source.replace(
+        "tcgen_mx4_row_contains(row, decoded.m, decoded.n, 32)",
+        "tcgen_mx4_row_contains(row, decoded.m, decoded.n, expected_k)")
+    source = source.replace(
+        "row.k != 32 ||", "row.k != expected_k ||")
+    old_types = '''return type == MatrixElementType::E4M3 ||
+             type == MatrixElementType::E5M2 ||
+             type == MatrixElementType::E2M3 ||
+             type == MatrixElementType::E3M2 ||
+             type == MatrixElementType::E2M1;'''
+    assert source.count(old_types) == 1
+    source = source.replace(old_types,
+                            "return type == MatrixElementType::E2M1;")
+    old_packing = '''    if (!type || (*type != MatrixElementType::E2M1 &&
+                  *type != MatrixElementType::E2M3 &&
+                  *type != MatrixElementType::E3M2)) return std::nullopt;
+    if (!shared) return TcgenMxInputPacking::TmemEightBitContainer;
+    return *type == MatrixElementType::E2M1
+        ? TcgenMxInputPacking::SharedPaddedFourBit
+        : TcgenMxInputPacking::SharedPaddedSixBit;'''
+    assert source.count(old_packing) == 1
+    source = source.replace(old_packing, '''    if (!type || *type != MatrixElementType::E2M1) return std::nullopt;
+    return shared ? TcgenMxInputPacking::SharedPairedFourBit
+                  : TcgenMxInputPacking::TmemPairedFourBit;''')
+    source = source.replace(
+        "*supplied != TcgenMxInputPacking::SharedPaddedSixBit)",
+        "*supplied != TcgenMxInputPacking::SharedPaddedSixBit &&\n"
+        "        *supplied != TcgenMxInputPacking::TmemPairedFourBit &&\n"
+        "        *supplied != TcgenMxInputPacking::SharedPairedFourBit)")
+    source = source.replace(
+        "    if (is_a) report.scale_a_layout = row;\n"
+        "    else report.scale_b_layout = row;",
+        "    if (is_a) { report.scale_a_layout = row;\n"
+        "      report.scale_a_factor_count = row.factor_count; }\n"
+        "    else { report.scale_b_layout = row;\n"
+        "      report.scale_b_factor_count = row.factor_count; }")
+    source = source.replace(
+        "  for (const auto& row : kMxScaleLayouts) {",
+        '''  if (effective == TcgenScaleVectorSize::Vec2X && expected_k == 96) {
+    report.scale_a_factor_count = 2;
+    report.scale_b_factor_count = 2;
+    report.missing.push_back(TcgenMx4Obligation::ScaleALayoutRule);
+    report.missing.push_back(TcgenMx4Obligation::ScaleBLayoutRule);
+  }
+  for (const auto& row : kMxScaleLayouts) {''')
+    source = source.replace(
+        "    if (!accepts_mx4_target(facts))",
+        "    if (!accepts_mx4_target(facts) ||\n"
+        "        (expected_k == 96 &&\n"
+        "         (facts.target->source_spelling != \"sm_103a\" ||\n"
+        "          *facts.ptx_version < checker::PtxVersion{8, 8})))")
     return source

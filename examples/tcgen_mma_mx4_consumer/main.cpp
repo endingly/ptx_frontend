@@ -14,7 +14,7 @@ namespace {
 /** Report one installed-contract failure with a nonzero process result. */
 bool require(bool value, std::string_view message) {
   if (!value)
-    std::cerr << "TCGEN MX8 consumer: " << message << '\n';
+    std::cerr << "TCGEN MX4 consumer: " << message << '\n';
   return value;
 }
 
@@ -24,32 +24,32 @@ bool require(bool value, std::string_view message) {
 int main() {
   namespace ir = ptx_frontend::resolved_ir;
   const auto rows = ir::tcgen_mx_scale_layout_rows();
-  if (!require(ir::tcgen_mx8_shape_rows().size() == 2 &&
+  if (!require(ir::tcgen_mx4_shape_rows().size() == 3 &&
                    std::count_if(rows.begin(), rows.end(),
                                  [](const auto& row) {
-                                   return row.kind ==
-                                          ir::TcgenMmaKind::MxF8F6F4;
-                                 }) == 4,
+                                   return row.kind == ir::TcgenMmaKind::MxF4;
+                                 }) == 6,
                "generated Table 42 and Tables 59/60 rows"))
     return 1;
-  constexpr uint32_t word = (1U << 27) | (2U << 17) | (1U << 23) | (1U << 10) |
-                            (1U << 29) | (3U << 4);
-  const ir::TcgenMx8KnownFacts facts{
+  constexpr uint32_t word = (1U << 27) | (2U << 17) | (1U << 23) | (1U << 7) |
+                            (1U << 10) | (2U << 29);
+  const ir::TcgenMx4KnownFacts facts{
       .group = ir::TcgenCtaGroup::One,
       .a_in_tmem = false,
       .scale_selector = ir::TcgenScaleVectorSize::Block32,
-      .instruction = {word, ir::TcgenMmaKind::MxF8F6F4},
+      .instruction = {word, ir::TcgenMmaKind::MxF4},
       .scale_a_facts =
-          ir::TcgenMxScaleRoleFacts{ir::TcgenMxScaleLayoutId::Mx1, 1},
+          ir::TcgenMxScaleRoleFacts{ir::TcgenMxScaleLayoutId::Mx2, 2},
       .scale_b_facts =
-          ir::TcgenMxScaleRoleFacts{ir::TcgenMxScaleLayoutId::OneXN, 1},
+          ir::TcgenMxScaleRoleFacts{ir::TcgenMxScaleLayoutId::TwoXN, 2},
   };
-  const auto report = ir::check_tcgen_mx8_known_operation(facts);
+  const auto report = ir::check_tcgen_mx4_known_operation(facts);
   if (!require(report.supplied_facts_ok() && report.scale_a_layout &&
                    report.scale_b_layout &&
                    report.scale_a_layout->selector ==
-                       ir::TcgenScaleVectorSize::Block32,
-               "known Table 46 and scale-row query"))
+                       ir::TcgenScaleVectorSize::Block32 &&
+                   report.scale_a_factor_count == 2,
+               "known Table 47 and scale-row query"))
     return 1;
   constexpr std::string_view source = R"ptx(
 .version 9.3
@@ -59,7 +59,7 @@ int main() {
   .reg .b32 %d, %i, %sa, %sb;
   .reg .b64 %ad, %bd;
   .reg .pred %p;
-  tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.block32
+  tcgen05.mma.cta_group::1.kind::mxf4.block_scale.block32
       [%d], %ad, %bd, %i, [%sa], [%sb], !%p;
   ret;
 }
@@ -75,11 +75,11 @@ int main() {
       return 1;
     owned.emplace(std::move(*result));
   }
-  const auto* form = dynamic_cast<const ir::Tcgen05MmaMxf8f6f4*>(
+  const auto* form = dynamic_cast<const ir::Tcgen05MmaMxf4*>(
       owned->functions.front().body.front().get());
-  if (!require(form != nullptr, "exact owned MX8 form"))
+  if (!require(form != nullptr, "exact owned MX4 form"))
     return 1;
-  const auto view = ir::tcgen_mma_mx8_view(*form);
+  const auto view = ir::tcgen_mma_mx4_view(*form);
   if (!require(view && view->a_shared && view->scale_a && view->scale_b &&
                    view->scale_selector->value ==
                        ir::TcgenScaleVectorSize::Block32 &&

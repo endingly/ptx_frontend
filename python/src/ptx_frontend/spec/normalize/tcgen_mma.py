@@ -50,8 +50,9 @@ _MX8_BLOCK_TARGETS = {
 }
 
 
-def _validate_mx8_variant(variant: VariantSpec) -> None:
-    """Keep source-legal block scaling and both A carriers in one typed form."""
+def _validate_mx_variant(variant: VariantSpec, kind: str,
+                         vector_selector: str) -> None:
+    """Keep a closed dense block-scaled kind and both A carriers typed."""
 
     mods = {item.name: item for item in variant.modifiers}
     if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
@@ -65,7 +66,7 @@ def _validate_mx8_variant(variant: VariantSpec) -> None:
             mods["mma"].token != ".mma" or mods["mma"].value is not True or
             mods["kind"].kind is not ModifierKind.FLAG or
             mods["kind"].presence is not ModifierPresence.FIXED or
-            mods["kind"].token != ".kind::mxf8f6f4" or
+            mods["kind"].token != f".kind::{kind}" or
             mods["kind"].value is not True or
             mods["block_scale"].kind is not ModifierKind.FLAG or
             mods["block_scale"].presence is not ModifierPresence.FIXED or
@@ -82,7 +83,7 @@ def _validate_mx8_variant(variant: VariantSpec) -> None:
             scale.default != "absent" or
             tuple((value.value, value.token, value.availability)
                   for value in scale.values) != (
-                      ("scale_vec::1X", ".scale_vec::1X", _MX8_VEC_TARGETS),
+                      (vector_selector, f".{vector_selector}", _MX8_VEC_TARGETS),
                       ("block32", ".block32", _MX8_BLOCK_TARGETS))):
         raise ValueError("dense MX8 scale selector or target changed")
     if {layout.name for layout in variant.operand_layouts} != {"shared", "tensor"}:
@@ -139,8 +140,11 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             "tcgen05_mma_tf32": "tf32",
             "tcgen05_mma_i8": "i8",
             "tcgen05_mma_f8f6f4": "f8f6f4"}.get(variant.name)
-    if variant.name == "tcgen05_mma_mxf8f6f4":
-        _validate_mx8_variant(variant)
+    if variant.name in ("tcgen05_mma_mxf8f6f4", "tcgen05_mma_mxf4"):
+        kind_name, selector = (("mxf8f6f4", "scale_vec::1X")
+                               if variant.name == "tcgen05_mma_mxf8f6f4"
+                               else ("mxf4", "scale_vec::2X"))
+        _validate_mx_variant(variant, kind_name, selector)
         return
     if kind is None:
         raise ValueError("unsupported dense MMA source kind")

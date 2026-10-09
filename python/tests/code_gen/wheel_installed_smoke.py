@@ -113,9 +113,13 @@ def check_module_layout() -> None:
         F8F6F4KnownFacts,
         F8F6F4_SHAPES,
         MX8_SHAPES,
+        MX4_SHAPES,
         Mx8KnownFacts,
+        Mx4KnownFacts,
+        MxScaleLayoutId,
         check_f8f6f4_known_facts,
         check_mx8_known_facts,
+        check_mx4_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -137,9 +141,17 @@ def check_module_layout() -> None:
         scale_selector="absent", scale_type="UE8M0",
         scale_a_id=0, scale_b_id=3))
     assert mx8.known_facts_ok and mx8.scale_a_layout is not None
-    from ptx_frontend.spec.tcgen_mma_operations import MxScaleLayoutId
     assert mx8.scale_a_layout.layout_id is MxScaleLayoutId.MX1
     assert "scale_b_layout" in mx8.obligations
+    assert len(MX4_SHAPES) == 3
+    mx4 = check_mx4_known_facts(Mx4KnownFacts(
+        group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+        b_type="E2M1", sparse=False, a_shared=False,
+        scale_selector="absent", scale_type="UE8M0",
+        scale_a_id=2, scale_b_id=0))
+    assert mx4.known_facts_ok and mx4.scale_a_factor_count == 3
+    assert mx4.scale_a_layout.layout_id is MxScaleLayoutId.MX3
+    assert "k96_exact_target" in mx4.obligations
 
 
 def check_packaged_spec_model() -> None:

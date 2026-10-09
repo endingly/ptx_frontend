@@ -9,7 +9,8 @@ assembler corpus and an independent Authority checkpoint. The distinct
 [dense tf32 form](tcgen_mma_tf32_coverage.md) and distinct
 [dense i8 form](tcgen_mma_i8_coverage.md) and the canonical
 [dense unscaled f8f6f4 form](tcgen_mma_f8f6f4_coverage.md) and
-[dense MX8 block-scaled form](tcgen_mma_mx8_coverage.md) are also covered.
+[dense MX8 block-scaled form](tcgen_mma_mx8_coverage.md) and
+[dense MX4 block-scaled form](tcgen_mma_mx4_coverage.md) are also covered.
 Sparse, weight-stationary, remaining dense kinds, collectors, remaining block scaling
 and convolution remain open.
 

@@ -53,6 +53,9 @@ supported surface and its exclusions.
 - [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
   and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
   `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
+- [TCGEN dense unscaled f8f6f4 MMA coverage](docs/us-en/tcgen_mma_f8f6f4_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_f8f6f4_coverage.md) describe
+  canonical source roles, K32 shape/type rules, and caller-known obligations.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

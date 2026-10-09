@@ -1115,6 +1115,12 @@ mbarrier-based commit completion。
 | M18-C02 | ⬜ | 耦合 | 暴露 TCGEN synchronization obligation | thread/CTA/proxy obligation 可供 analyzer/simulator 消费 |
 | M18-C03 | ⬜ | 耦合 | 建立 Blackwell MMA corpus | sm100a/sm100f profile 的 dense/sparse/WS 正反例 |
 
+当前分支的稠密 `tcgen05.mma` 已覆盖 f16、tf32、i8，以及规范顺序的无缩放
+f8f6f4 来源和调用方已知值规则（见
+[英文](../docs/us-en/tcgen_mma_f8f6f4_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_f8f6f4_coverage.md)）。M18-I09 同时要求 mxf8f6f4；
+低位物理 packing 与运行时数据仍未由前端证明，因此该行暂不标完成。
+
 ### 出口
 
 1.0 frontend 对 TCGEN05 family 的主要 topology 有稳定 typed representation；完整 type/shape

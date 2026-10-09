@@ -1,4 +1,4 @@
-"""Known-value dense f16/tf32/i8 TCGEN MMA rules beyond descriptor fields.
+"""Known-value dense f16/tf32/i8/f8f6f4 TCGEN MMA rules beyond fields.
 
 These facts apply to caller-supplied values, never to opaque live source
 registers. Table 43 and Tables 45–48 remain owned by tcgen_descriptor_domains.
@@ -156,6 +156,21 @@ class I8OperationalReport(F16OperationalReport):
     """Proven i8 violations and facts or pair rules still owed."""
 
 
+@dataclass(frozen=True)
+class F8F6F4ShapeRow(F16ShapeRow):
+    """One closed Table 42 dense low-bit group/output-type grid."""
+
+
+@dataclass(frozen=True)
+class F8F6F4KnownFacts(F16KnownFacts):
+    """Caller-known unscaled low-bit facts, never inferred from live words."""
+
+
+@dataclass(frozen=True)
+class F8F6F4OperationalReport(F16OperationalReport):
+    """Separate proven violations from unverified layout/packing facts."""
+
+
 F16_SHAPES = (
     F16ShapeRow(1, "F16", (64, 128), 8, 8, 256, 16, ("F16",), ("F16",)),
     F16ShapeRow(1, "F32", (64, 128), 8, 8, 256, 16,
@@ -204,6 +219,23 @@ I8_PATHS = F16_PATHS
 I8_TARGET_GATES = (
     F16TargetGate("sm_100a", True, 8, 6, False),
     F16TargetGate("sm_110a", True, 9, 0, False),
+)
+
+_F8F6F4_TYPES = ("E4M3", "E5M2", "E2M3", "E3M2", "E2M1")
+_F8F6F4_LOW_TYPES = frozenset(("E2M3", "E3M2", "E2M1"))
+F8F6F4_SHAPES = tuple(
+    F8F6F4ShapeRow(group, d_type, m_values, first, step, 256, 32,
+                    _F8F6F4_TYPES, _F8F6F4_TYPES)
+    for d_type in ("F16", "F32")
+    for group, m_values, first, step in (
+        (1, (64, 128), 8, 8),
+        (2, (128, 256), 16, 16)))
+F8F6F4_PATHS = F16_PATHS
+F8F6F4_TARGET_GATES = (
+    F16TargetGate("sm_100a", True, 8, 6, False),
+    F16TargetGate("sm_100f", False, 8, 8, False),
+    F16TargetGate("sm_110a", True, 9, 0, False),
+    F16TargetGate("sm_110f", False, 9, 0, False),
 )
 
 # Table 57 applies to each 16-bit shared operand independently. The accepted
@@ -277,6 +309,29 @@ def validate_catalogue() -> None:
             {name.upper() for _, name in i8.d_types} != {"S32"} or
             not i8.saturation or i8.negate):
         raise ValueError("dense i8 rows drifted from Tables 42/45 or fields")
+    f8 = next((kind for kind in descriptor.KINDS if kind.name == "F8F6F4"),
+              None)
+    if (f8 is None or len(F8F6F4_SHAPES) != 4 or
+            {(row.group, row.d_type, row.m_values, row.n_first,
+              row.n_step, row.n_last, row.k) for row in F8F6F4_SHAPES} != {
+                (group, dtype, ms, first, step, 256, 32)
+                for dtype in ("F16", "F32")
+                for group, ms, first, step in (
+                    (1, (64, 128), 8, 8),
+                    (2, (128, 256), 16, 16))} or
+            any(row.a_types != _F8F6F4_TYPES or
+                row.b_types != _F8F6F4_TYPES for row in F8F6F4_SHAPES) or
+            {name.upper() for _, name in f8.a_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in f8.b_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in f8.d_types} != {"F16", "F32"} or
+            f8.saturation or not f8.negate or F8F6F4_PATHS != F16_PATHS or
+            {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor,
+              gate.scaled_d) for gate in F8F6F4_TARGET_GATES} != {
+                  ("sm_100a", True, 8, 6, False),
+                  ("sm_100f", False, 8, 8, False),
+                  ("sm_110a", True, 9, 0, False),
+                  ("sm_110f", False, 9, 0, False)}):
+        raise ValueError("dense f8f6f4 rows drifted from Tables 42/45")
 
 
 def _check_shared(role: str, transpose: bool | None,
@@ -485,3 +540,89 @@ def check_i8_known_facts(facts: I8KnownFacts) -> I8OperationalReport:
             violations.append("half_path_alignment")
     return I8OperationalReport(tuple(violations), tuple(obligations),
                                path.layout if path else None)
+
+
+def _check_f8f6f4_shared(
+        role: str, element_type: str | None, transpose: bool | None,
+        facts: SharedOperandFacts | None, violations: list[str],
+        obligations: list[str]) -> None:
+    """Keep low-bit transpose unresolved while checking defined supplied facts."""
+
+    if element_type not in _F8F6F4_LOW_TYPES or not transpose:
+        _check_shared(role, transpose, facts, violations, obligations)
+        return
+    if facts is None:
+        obligations.append(f"{role}_shared_word")
+    else:
+        if facts.major is None:
+            obligations.append(f"{role}_major")
+        elif facts.major not in ("K", "MN"):
+            violations.append(f"{role}_major_invalid")
+        if facts.swizzle is None:
+            obligations.append(f"{role}_swizzle")
+        elif facts.swizzle not in {name for _, name in descriptor.SWIZZLES}:
+            violations.append(f"{role}_swizzle_invalid")
+        elif facts.swizzle == _TRANSPOSE_EXCLUDED:
+            violations.append(f"{role}_transpose_swizzle")
+    obligations.append(f"{role}_transpose_layout_rule")
+
+
+def check_f8f6f4_known_facts(
+        facts: F8F6F4KnownFacts) -> F8F6F4OperationalReport:
+    """Check caller-known ordinary low-bit facts without claiming unknown rules."""
+
+    violations: list[str] = []
+    obligations: list[str] = []
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group_invalid")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    if all(getattr(facts, name) is not None for name in
+           ("group", "m", "n", "k", "d_type")):
+        if not any(row.group == facts.group and row.d_type == facts.d_type
+                   and row.contains(facts.m, facts.n, facts.k)
+                   for row in F8F6F4_SHAPES):
+            violations.append("shape_or_output_type")
+    if facts.d_type is not None and facts.d_type not in ("F16", "F32"):
+        violations.append("output_type")
+    for role in ("a", "b"):
+        value = getattr(facts, f"{role}_type")
+        if value is not None and value not in _F8F6F4_TYPES:
+            violations.append(f"{role}_type")
+        if value in _F8F6F4_LOW_TYPES:
+            obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.sparse is None:
+        obligations.append("dense_sparsity_bit")
+    elif facts.sparse:
+        violations.append("dense_sparse_bit")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                             facts.a_shared_facts, violations, obligations)
+    _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                         facts.b_shared_facts, violations, obligations)
+    if (facts.transpose_b and facts.b_type in ("E4M3", "E5M2") and
+            facts.group in (1, 2) and facts.n is not None and not (
+                (facts.group == 1 and 16 <= facts.n <= 256 and
+                 facts.n % 16 == 0) or
+                (facts.group == 2 and 32 <= facts.n <= 256 and
+                 facts.n % 32 == 0))):
+        violations.append("b_transpose_n")
+    path = next((row for row in F8F6F4_PATHS
+                 if row.group == facts.group and row.m == facts.m), None)
+    if path and path.half_path and facts.a_shared is False:
+        for name in ("a_lane_half", "d_lane_half"):
+            value = getattr(facts, name)
+            if value is None:
+                obligations.append(name)
+            elif value not in (0, 16):
+                violations.append(f"{name}_invalid")
+        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
+                and facts.a_lane_half != facts.d_lane_half):
+            violations.append("half_path_alignment")
+    return F8F6F4OperationalReport(tuple(violations), tuple(obligations),
+                                   path.layout if path else None)

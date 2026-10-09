@@ -1,4 +1,4 @@
-"""Generate immutable dense f16/tf32/i8 MMA operational rows.
+"""Generate immutable dense f16/tf32/i8/f8f6f4 MMA operational rows.
 
 The global artifact plan registers these outputs. This emitter contains no
 descriptor bit-field map and no source grammar.
@@ -66,7 +66,7 @@ struct TcgenF16PathRow {
                                           uint16_t m, uint16_t n,
                                           uint16_t k) noexcept;
 }  // namespace ptx_frontend::resolved_ir
-''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header()
+''' + _QUERY_HEADER + _TF32_ROW_HEADER + _tf32_query_header() + _I8_ROW_HEADER + _i8_query_header() + _F8F6F4_ROW_HEADER + _f8f6f4_query_header()
 
 
 def render_tcgen_mma_source() -> str:
@@ -230,7 +230,57 @@ bool tcgen_i8_row_contains(const TcgenI8ShapeRow& row,
                   .replace("__TARGET_ROWS__", i8_targets)
                   .replace("__TARGET_COUNT__",
                            str(len(operations.I8_TARGET_GATES))))
-    return f16_source + tf32_source + i8_source
+    f8_rows = []
+    for row in operations.F8F6F4_SHAPES:
+        group = "One" if row.group == 1 else "Two"
+        f8_rows.append(
+            f'  TcgenF8F6F4ShapeRow{{TcgenCtaGroup::{group}, '
+            f'MatrixElementType::{row.d_type}, '
+            f'{{{{{row.m_values[0]}, {row.m_values[1]}}}}}, '
+            f'{row.n_first}, {row.n_step}, {row.n_last}, {row.k}}}')
+    f8_paths = []
+    for row in operations.F8F6F4_PATHS:
+        group = "One" if row.group == 1 else "Two"
+        half = "true" if row.half_path else "false"
+        f8_paths.append(
+            f"  TcgenF8F6F4PathRow{{TcgenCtaGroup::{group}, {row.m}, "
+            f"'{row.layout}', {half}}}")
+    f8_targets = ",\n".join(
+        '  TcgenF8F6F4TargetGate{"%s", %s, {%d, %d}}' % (
+            gate.feature, "true" if gate.exact else "false",
+            gate.ptx_major, gate.ptx_minor)
+        for gate in operations.F8F6F4_TARGET_GATES)
+    f8_shape_text = ",\n".join(f8_rows)
+    f8_path_text = ",\n".join(f8_paths)
+    f8_source = f'''
+namespace ptx_frontend::resolved_ir {{
+namespace {{
+constexpr std::array<TcgenF8F6F4ShapeRow, {len(f8_rows)}> kF8F6F4Shapes = {{{{
+{f8_shape_text}
+}}}};
+constexpr std::array<TcgenF8F6F4PathRow, {len(f8_paths)}> kF8F6F4Paths = {{{{
+{f8_path_text}
+}}}};
+}}  // namespace
+std::span<const TcgenF8F6F4ShapeRow> tcgen_f8f6f4_shape_rows() noexcept {{
+  return kF8F6F4Shapes;
+}}
+std::span<const TcgenF8F6F4PathRow> tcgen_f8f6f4_path_rows() noexcept {{
+  return kF8F6F4Paths;
+}}
+bool tcgen_f8f6f4_row_contains(const TcgenF8F6F4ShapeRow& row,
+                               uint16_t m, uint16_t n, uint16_t k) noexcept {{
+  return (m == row.m_values[0] || m == row.m_values[1]) &&
+         n >= row.n_first && n <= row.n_last &&
+         (n - row.n_first) % row.n_step == 0 && k == row.k;
+}}
+}}  // namespace ptx_frontend::resolved_ir
+'''
+    f8_source += (_f8f6f4_query_source()
+                  .replace("__TARGET_ROWS__", f8_targets)
+                  .replace("__TARGET_COUNT__",
+                           str(len(operations.F8F6F4_TARGET_GATES))))
+    return f16_source + tf32_source + i8_source + f8_source
 
 
 def generate_tcgen_mma_header(_context: object, *, output_path: Path) -> None:
@@ -733,4 +783,223 @@ def _i8_query_source() -> str:
                      ("check_shared_operand", "check_i8_shared_operand")):
         source = source.replace(old, new)
     source = source.replace("per-operand 16-bit Table 57", "per-operand 8-bit Table 57")
+    return source
+
+
+_F8F6F4_ROW_HEADER = r'''
+namespace ptx_frontend::resolved_ir {
+/** One closed Table 42 dense low-bit shape row. */
+struct TcgenF8F6F4ShapeRow {
+  /** Source-selected group identity. */
+  TcgenCtaGroup group;
+  /** Output type from caller-known instruction bits. */
+  MatrixElementType d_type;
+  /** Closed M values in rows. */
+  std::array<uint16_t, 2> m_values;
+  /** First valid N value in columns. */
+  uint16_t n_first;
+  /** Valid N cadence in columns. */
+  uint16_t n_step;
+  /** Last valid N value in columns. */
+  uint16_t n_last;
+  /** Implicit K dimension in elements. */
+  uint16_t k;
+};
+/** One non-WS low-bit path selected by group and M. */
+struct TcgenF8F6F4PathRow {
+  /** Source-selected group. */
+  TcgenCtaGroup group;
+  /** M dimension in rows. */
+  uint16_t m;
+  /** Selected A, B, D, or F datapath. */
+  char layout;
+  /** Whether known A/D lane halves must agree. */
+  bool half_path;
+};
+/** Borrow immutable Table 42 dense low-bit rows. */
+[[nodiscard]] std::span<const TcgenF8F6F4ShapeRow>
+tcgen_f8f6f4_shape_rows() noexcept;
+/** Borrow immutable non-WS datapath rows. */
+[[nodiscard]] std::span<const TcgenF8F6F4PathRow>
+tcgen_f8f6f4_path_rows() noexcept;
+/** Test Table 42 row membership without asserting live descriptor contents. */
+[[nodiscard]] bool tcgen_f8f6f4_row_contains(
+    const TcgenF8F6F4ShapeRow& row, uint16_t m, uint16_t n,
+    uint16_t k) noexcept;
+}  // namespace ptx_frontend::resolved_ir
+'''
+
+
+def _f8f6f4_query_header() -> str:
+    """Expose a narrow no-scale known-value report with explicit open rules."""
+
+    header = (_QUERY_HEADER.replace("TcgenF16", "TcgenF8F6F4")
+              .replace("tcgen_f16", "tcgen_f8f6f4")
+              .replace("dense f16", "dense f8f6f4")
+              .replace("  AMajor, BMajor, ASwizzle, BSwizzle, Datapath,",
+                       "  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, Datapath,")
+              .replace("  AMajor, BMajor, ASwizzle, BSwizzle, ALaneHalf,",
+                       "  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, ALaneHalf,")
+              .replace("  ASharedWord, BSharedWord, AMajor, BMajor, MixedInputPair,",
+                       "  ASharedWord, BSharedWord, AMajor, BMajor, "
+                       "  ATransposeLayoutRule, BTransposeLayoutRule, "
+                       "ALowBitPackingRule, BLowBitPackingRule,"))
+    scale = '''  /** Whether the optional D scaling immediate is present. */
+  bool scaled_d;
+'''
+    if header.count(scale) != 1:
+        raise ValueError("f16 known-facts scale field changed")
+    return header.replace(scale, "")
+
+
+_F8F6F4_SHARED_HELPER = r'''/** Check Table 43 fields while leaving 4/6-bit transpose unresolved. */
+void check_shared_operand(bool is_a, bool transpose,
+                          std::optional<MatrixElementType> type,
+                          TcgenSharedWord word, TcgenSharedContext context,
+                          const TcgenF16KnownFacts& facts,
+                          TcgenF16OperationalReport& report) {
+  if (context.target && facts.target && *context.target != *facts.target)
+    report.violations.push_back(TcgenF16Violation::InvalidContext);
+  if (context.ptx_version && facts.ptx_version &&
+      *context.ptx_version != *facts.ptx_version)
+    report.violations.push_back(TcgenF16Violation::InvalidContext);
+  if (!context.target) context.target = facts.target;
+  if (!context.ptx_version) context.ptx_version = facts.ptx_version;
+  if (is_a) context.transpose_a = transpose;
+  else context.transpose_b = transpose;
+  auto fields = validate_tcgen_shared_defined_fields(word, context);
+  if (is_a) {
+    report.a_shared_fields = std::move(fields);
+    report.checked.push_back(TcgenF16Checked::ASharedFields);
+  } else {
+    report.b_shared_fields = std::move(fields);
+    report.checked.push_back(TcgenF16Checked::BSharedFields);
+  }
+  const bool low = type && (*type == MatrixElementType::E2M3 ||
+                            *type == MatrixElementType::E3M2 ||
+                            *type == MatrixElementType::E2M1);
+  if (!context.major) {
+    report.missing.push_back(is_a ? TcgenF16Obligation::AMajor
+                                  : TcgenF16Obligation::BMajor);
+  } else if (!low || !transpose) {
+    if (*context.major != (transpose ? TcgenMajor::MN : TcgenMajor::K))
+      report.violations.push_back(is_a ? TcgenF16Violation::AMajor
+                                        : TcgenF16Violation::BMajor);
+    report.checked.push_back(is_a ? TcgenF16Checked::AMajor
+                                  : TcgenF16Checked::BMajor);
+  }
+  const auto decoded = decode_tcgen_shared(word);
+  if (!decoded.swizzle ||
+      (transpose && *decoded.swizzle == TcgenSwizzle::B128Atom32)) {
+    report.violations.push_back(is_a ? TcgenF16Violation::ASwizzle
+                                      : TcgenF16Violation::BSwizzle);
+    report.checked.push_back(is_a ? TcgenF16Checked::ASwizzle
+                                  : TcgenF16Checked::BSwizzle);
+  } else if (!low || !transpose) {
+    report.checked.push_back(is_a ? TcgenF16Checked::ASwizzle
+                                  : TcgenF16Checked::BSwizzle);
+  }
+}
+'''
+
+
+def _f8f6f4_query_source() -> str:
+    """Derive one low-bit query from existing Table 43/45 mechanics."""
+
+    source = _QUERY_SOURCE
+    old_types = '''    const bool output_f16 = *decoded.d_type == MatrixElementType::F16;
+    const bool output_f32 = *decoded.d_type == MatrixElementType::F32;
+    const auto input_allowed = [output_f16, output_f32](MatrixElementType type) {
+      return (output_f16 && type == MatrixElementType::F16) ||
+             (output_f32 && (type == MatrixElementType::F16 ||
+                             type == MatrixElementType::BF16));
+    };
+    if (!input_allowed(*decoded.a_type))
+      report.violations.push_back(TcgenF16Violation::AType);
+    if (!input_allowed(*decoded.b_type))
+      report.violations.push_back(TcgenF16Violation::BType);
+    if (output_f32 && input_allowed(*decoded.a_type) &&
+        input_allowed(*decoded.b_type) &&
+        *decoded.a_type != *decoded.b_type)
+      report.missing.push_back(TcgenF16Obligation::MixedInputPair);'''
+    new_types = '''    const auto input_allowed = [](MatrixElementType type) {
+      return type == MatrixElementType::E4M3 ||
+             type == MatrixElementType::E5M2 ||
+             type == MatrixElementType::E2M3 ||
+             type == MatrixElementType::E3M2 ||
+             type == MatrixElementType::E2M1;
+    };
+    if (!input_allowed(*decoded.a_type))
+      report.violations.push_back(TcgenF16Violation::AType);
+    if (!input_allowed(*decoded.b_type))
+      report.violations.push_back(TcgenF16Violation::BType);'''
+    old_target_field = '''  /** Whether this row applies only when D scaling is present. */
+  bool scaled_d;
+'''
+    old_target_check = '''    if (gate.scaled_d != facts.scaled_d ||
+        *facts.ptx_version < gate.minimum_ptx) continue;'''
+    old_shape = "tcgen_f16_row_contains(row, decoded.m, decoded.n, 16)"
+    old_placement = '''  if (facts.a_in_tmem) {
+    if (facts.a_shared_word)'''
+    type_end = '''    report.checked.push_back(TcgenF16Checked::Types);
+  }
+'''
+    for old in (old_types, old_target_field, old_target_check, old_shape,
+                old_placement, type_end):
+        if source.count(old) != 1:
+            raise ValueError("f16 query changed; review f8f6f4 derivation")
+    source = source.replace(old_types, new_types)
+    source = source.replace(old_target_field, "")
+    source = source.replace(old_target_check,
+                            "    if (*facts.ptx_version < gate.minimum_ptx) continue;")
+    source = source.replace(old_shape,
+                            "tcgen_f8f6f4_row_contains(row, decoded.m, decoded.n, 32)")
+    source = source.replace(type_end, '''    report.checked.push_back(TcgenF16Checked::Types);
+  }
+  const auto low = [](std::optional<MatrixElementType> type) {
+    return type && (*type == MatrixElementType::E2M3 ||
+                    *type == MatrixElementType::E3M2 ||
+                    *type == MatrixElementType::E2M1);
+  };
+  if (low(decoded.a_type))
+    report.missing.push_back(TcgenF16Obligation::ALowBitPackingRule);
+  if (low(decoded.b_type))
+    report.missing.push_back(TcgenF16Obligation::BLowBitPackingRule);
+  if (!facts.a_in_tmem && decoded.transpose_a && low(decoded.a_type))
+    report.missing.push_back(TcgenF16Obligation::ATransposeLayoutRule);
+  if (decoded.transpose_b && low(decoded.b_type))
+    report.missing.push_back(TcgenF16Obligation::BTransposeLayoutRule);
+  if (decoded.transpose_b && decoded.b_type &&
+      (*decoded.b_type == MatrixElementType::E4M3 ||
+       *decoded.b_type == MatrixElementType::E5M2)) {
+    const bool allowed_n = facts.group == TcgenCtaGroup::One
+        ? decoded.n >= 16 && decoded.n <= 256 && decoded.n % 16 == 0
+        : decoded.n >= 32 && decoded.n <= 256 && decoded.n % 32 == 0;
+    if (!allowed_n)
+      report.violations.push_back(TcgenF16Violation::BTransposeN);
+    report.checked.push_back(TcgenF16Checked::BTransposeN);
+  }
+''')
+    source = source.replace('''    check_shared_operand(true, decoded.transpose_a, *facts.a_shared_word,
+                         facts.a_context, facts, report);''',
+                            '''    check_shared_operand(true, decoded.transpose_a, decoded.a_type,
+                         *facts.a_shared_word, facts.a_context, facts, report);''')
+    source = source.replace('''    check_shared_operand(false, decoded.transpose_b, *facts.b_shared_word,
+                         facts.b_context, facts, report);''',
+                            '''    check_shared_operand(false, decoded.transpose_b, decoded.b_type,
+                         *facts.b_shared_word, facts.b_context, facts, report);''')
+    helper_start = source.index('/** Apply the per-operand 16-bit Table 57 rule')
+    helper_end = source.index('}  // namespace\n\nTcgenF16OperationalReport',
+                              helper_start)
+    source = (source[:helper_start] + _F8F6F4_SHARED_HELPER +
+              source[helper_end:])
+    source = source.replace("TcgenF16", "TcgenF8F6F4")
+    source = source.replace("tcgen_f16", "tcgen_f8f6f4")
+    source = source.replace("TcgenMmaKind::F16", "TcgenMmaKind::F8F6F4")
+    for old, new in (("kShapes", "kF8F6F4Shapes"),
+                     ("kPaths", "kF8F6F4Paths"),
+                     ("kTargetGates", "kF8F6F4TargetGates"),
+                     ("accepts_target", "accepts_f8f6f4_target"),
+                     ("check_shared_operand", "check_f8f6f4_shared_operand")):
+        source = source.replace(old, new)
     return source

@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from ptx_frontend.spec.tcgen_mma_operations import (
-    F16KnownFacts, Tf32KnownFacts, I8KnownFacts, SharedOperandFacts,
+    F16KnownFacts, Tf32KnownFacts, I8KnownFacts, F8F6F4KnownFacts,
+    SharedOperandFacts,
 )
 from ptx_frontend.spec.model import (
     AsyncCompletionKind, ModifierKind, ModifierPresence, OperandKind,
@@ -21,6 +22,7 @@ from ptx_frontend.spec.model import (
 _FIELDS = frozenset(F16KnownFacts.__dataclass_fields__)
 assert _FIELDS == frozenset(Tf32KnownFacts.__dataclass_fields__)
 assert _FIELDS == frozenset(I8KnownFacts.__dataclass_fields__)
+assert _FIELDS == frozenset(F8F6F4KnownFacts.__dataclass_fields__)
 _SHARED_FIELDS = frozenset(SharedOperandFacts.__dataclass_fields__)
 _BOOL_FIELDS = frozenset(("sparse", "transpose_a", "transpose_b", "a_shared"))
 _INT_FIELDS = frozenset(("group", "m", "n", "k", "a_lane_half", "d_lane_half"))
@@ -41,7 +43,7 @@ _I8_TARGETS = {"any_of": [_UNSCALED_TARGETS["any_of"][0],
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     """Keep each closed dense source kind tied to the typed MMA rule.
 
-    Four i8 or eight floating structural layouts encode A placement and
+    Four unscaled-no-D-scale or eight scaled-capable structural layouts encode A placement and
     optional operands; the written group remains one typed modifier value.
     """
 
@@ -52,12 +54,14 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
         return
     kind = {"tcgen05_mma_f16": "f16",
             "tcgen05_mma_tf32": "tf32",
-            "tcgen05_mma_i8": "i8"}.get(variant.name)
+            "tcgen05_mma_i8": "i8",
+            "tcgen05_mma_f8f6f4": "f8f6f4"}.get(variant.name)
     if kind is None:
         raise ValueError("unsupported dense MMA source kind")
     if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
             or set(mods) != {"mma", "cta_group", "kind"}
-            or variant.modifier_order_aliases != (("mma", "kind", "cta_group"),)
+            or variant.modifier_order_aliases !=
+            (() if kind == "f8f6f4" else (("mma", "kind", "cta_group"),))
             or variant.availability !=
             (_I8_TARGETS if kind == "i8" else _UNSCALED_TARGETS)):
         raise ValueError("dense MMA action, group, kind, order or target changed")
@@ -76,7 +80,7 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     for placement in ("shared", "tensor"):
         for mask in (False, True):
             prefix = f"{placement}_{'mask' if mask else 'no_mask'}"
-            if kind == "i8":
+            if kind in ("i8", "f8f6f4"):
                 expected.add(prefix)
             else:
                 expected.update((f"{prefix}_no_scale", f"{prefix}_scale"))
@@ -94,10 +98,10 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             raise ValueError("dense MMA A operand has unsupported kind")
         mask = "disable_output_lane" in names
         scale = "scale_input_d" in names
-        if kind == "i8" and scale:
-            raise ValueError("dense i8 has no D-scale source operand")
+        if kind in ("i8", "f8f6f4") and scale:
+            raise ValueError("dense kind has no D-scale source operand")
         expected_name = (f"{placement}_{'mask' if mask else 'no_mask'}"
-                         + ("" if kind == "i8" else
+                         + ("" if kind in ("i8", "f8f6f4") else
                             f"_{'scale' if scale else 'no_scale'}"))
         if layout.name != expected_name:
             raise ValueError("dense MMA layout identity disagrees with typed roles")
@@ -272,3 +276,31 @@ def normalize_i8_known_facts(raw: dict[str, Any]) -> I8KnownFacts:
 
     facts = normalize_f16_known_facts(raw)
     return I8KnownFacts(**vars(facts))
+
+
+@dataclass(frozen=True)
+class F8F6F4SourceTopology:
+    """Canonical unscaled low-bit source placement and optional mask count."""
+
+    group: int
+    a_placement: str
+    mask_count: int | None
+
+
+def normalize_f8f6f4_source_topology(
+        raw: dict[str, Any]) -> F8F6F4SourceTopology:
+    """Use shared group/mask checks while forbidding scale and extra roles."""
+
+    if not isinstance(raw, dict) or set(raw) != {
+            "group", "a_placement", "mask_count"}:
+        raise ValueError("dense f8f6f4 topology needs only group, A and mask")
+    source = normalize_f16_source_topology({**raw, "scale_source_value": None})
+    return F8F6F4SourceTopology(source.group, source.a_placement,
+                                source.mask_count)
+
+
+def normalize_f8f6f4_known_facts(raw: dict[str, Any]) -> F8F6F4KnownFacts:
+    """Type-check independent known low-bit facts without decoding source."""
+
+    facts = normalize_f16_known_facts(raw)
+    return F8F6F4KnownFacts(**vars(facts))

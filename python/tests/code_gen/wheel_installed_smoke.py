@@ -50,6 +50,7 @@ def check_packaged_resources() -> None:
     assert hashlib.sha256(installed_cp_spec).hexdigest() == os.environ[
         "PTX_FRONTEND_EXPECTED_CP_SPEC_SHA256"
     ]
+    assert packaged_spec_dir().joinpath("tensor_memory_data_movement.yaml").is_file()
 
 
 def check_module_layout() -> None:
@@ -109,6 +110,9 @@ def check_module_layout() -> None:
         validate_catalogue as validate_descriptor_catalogue,
     )
     from ptx_frontend.spec.tcgen_mma_operations import (
+        F8F6F4KnownFacts,
+        F8F6F4_SHAPES,
+        check_f8f6f4_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -117,6 +121,12 @@ def check_module_layout() -> None:
     assert len(TensorFactRule) == 22
     validate_descriptor_catalogue()
     validate_mma_catalogue()
+    assert len(F8F6F4_SHAPES) == 4
+    low = check_f8f6f4_known_facts(F8F6F4KnownFacts(
+        group=1, m=64, n=8, k=32, d_type="F32", a_type="E2M1",
+        b_type="E4M3", sparse=False, a_shared=False))
+    assert "shape_or_output_type" not in low.violations
+    assert "a_low_bit_packing_rule" in low.obligations
 
 
 def check_packaged_spec_model() -> None:
@@ -139,6 +149,15 @@ def check_packaged_spec_model() -> None:
         "tensor_" in variant.name and variant.name.endswith("_cache_hint")
         for variant in cp.variants
     ) == 178
+
+    tcgen = next(item for item in database.instructions
+                 if item.opcode == "tcgen05")
+    f8 = next(item for item in tcgen.variants
+              if item.name == "tcgen05_mma_f8f6f4")
+    assert len(f8.operand_layouts) == 4
+    assert f8.modifier_order_aliases == ()
+    assert all("scale_input_d" not in {operand.name for operand in layout.operands}
+               for layout in f8.operand_layouts)
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

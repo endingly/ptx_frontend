@@ -42,7 +42,7 @@ struct TcgenWsShapeRow {
 /** Known WS contradictions from supplied words and independent facts. */
 enum class TcgenWsViolation : uint8_t {
   Kind, Group, SparseBit, SparseSelector, MetadataIndex, DenseMetadataFacts,
-  Shape, AType, BType, ASharedFields, BSharedFields,
+  Shape, AType, BType, APlacementFacts, ASharedFields, BSharedFields,
   AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, ALaneHalf, DLaneHalf,
   MetadataLaneHalf,
   ZeroPresence, ZeroWord, CollectorDomain, CollectorHistory, Target,
@@ -356,7 +356,10 @@ TcgenWsOperationalReport check_tcgen_ws_known_operation(
   } else if (facts.sparse_selector || facts.metadata_nibbles ||
              facts.metadata_lane_half)
     report.violations.push_back(TcgenWsViolation::DenseMetadataFacts);
-  if (!facts.a_in_tmem) {
+  if (facts.a_in_tmem) {
+    if (facts.a_shared_word)
+      report.violations.push_back(TcgenWsViolation::APlacementFacts);
+  } else {
     if (!facts.a_shared_word)
       report.missing.push_back(TcgenWsObligation::ASharedWord);
     else check_ws_shared(true, *facts.a_shared_word, facts.a_context,

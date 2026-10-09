@@ -211,5 +211,38 @@ TEST(TcgenMmaWsDense, KnownFactsAndTable48) {
                   TcgenWsViolation::Target));
 }
 
+/** A known shared A word is meaningful only for the shared-A source layout. */
+TEST(TcgenMmaWsDense, APlacementFacts) {
+  TcgenWsKnownFacts facts{
+      .source_kind = TcgenMmaKind::F16,
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(2U << 24) | (8U << 17), TcgenMmaKind::F16},
+      .a_lane_half = 0,
+      .d_lane_half = 0,
+  };
+  EXPECT_TRUE(check_tcgen_ws_known_operation(facts).supplied_facts_ok());
+  facts.a_shared_word = TcgenSharedWord{1ULL << 46};
+  auto report = check_tcgen_ws_known_operation(facts);
+  EXPECT_FALSE(report.supplied_facts_ok());
+  EXPECT_TRUE(has(report.violations, TcgenWsViolation::APlacementFacts));
+  EXPECT_FALSE(report.a_shared_fields.has_value());
+
+  facts.a_in_tmem = false;
+  facts.a_context.major = TcgenMajor::K;
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(report.supplied_facts_ok());
+  ASSERT_TRUE(report.a_shared_fields);
+  EXPECT_TRUE(report.a_shared_fields->defined_fields_ok());
+  facts.a_shared_word = TcgenSharedWord{~uint64_t{0}};
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(has(report.violations, TcgenWsViolation::ASharedFields));
+  facts.a_in_tmem = true;
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(has(report.violations, TcgenWsViolation::APlacementFacts));
+  EXPECT_FALSE(report.a_shared_fields.has_value());
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

@@ -183,5 +183,44 @@ TEST(TcgenMmaWsSparse, KnownMetadataAndZeroColumn) {
                          TcgenWsViolation::SparseBit));
 }
 
+/** Sparse WS rejects shared-A facts when A is sourced from Tensor Memory. */
+TEST(TcgenMmaWsSparse, APlacementFacts) {
+  TcgenWsKnownFacts facts{
+      .source_kind = TcgenMmaKind::F16,
+      .source_sparse = true,
+      .group = TcgenCtaGroup::One,
+      .a_in_tmem = true,
+      .instruction =
+          TcgenInstructionWord{(2U << 24) | (8U << 17) | 4U, TcgenMmaKind::F16},
+      .a_lane_half = 0,
+      .d_lane_half = 0,
+      .metadata_lane_half = 0,
+      .metadata_nibbles = std::vector<uint8_t>{14},
+  };
+  EXPECT_TRUE(check_tcgen_ws_known_operation(facts).supplied_facts_ok());
+  facts.a_shared_word = TcgenSharedWord{1ULL << 46};
+  auto report = check_tcgen_ws_known_operation(facts);
+  EXPECT_FALSE(report.supplied_facts_ok());
+  EXPECT_TRUE(
+      contains_ws_sparse(report.violations, TcgenWsViolation::APlacementFacts));
+  EXPECT_FALSE(report.a_shared_fields.has_value());
+
+  facts.a_in_tmem = false;
+  facts.a_context.major = TcgenMajor::K;
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(report.supplied_facts_ok());
+  ASSERT_TRUE(report.a_shared_fields);
+  EXPECT_TRUE(report.a_shared_fields->defined_fields_ok());
+  facts.a_shared_word = TcgenSharedWord{~uint64_t{0}};
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(
+      contains_ws_sparse(report.violations, TcgenWsViolation::ASharedFields));
+  facts.a_in_tmem = true;
+  report = check_tcgen_ws_known_operation(facts);
+  EXPECT_TRUE(
+      contains_ws_sparse(report.violations, TcgenWsViolation::APlacementFacts));
+  EXPECT_FALSE(report.a_shared_fields.has_value());
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

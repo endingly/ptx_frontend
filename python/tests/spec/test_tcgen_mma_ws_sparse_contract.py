@@ -89,6 +89,28 @@ class TcgenMmaWsSparseContractTests(unittest.TestCase):
             self.assertNotIn("metadata_layout_rule", rules.check_ws_known_facts(
                 replace(facts, m=64)).obligations)
 
+    def test_a_placement_facts(self) -> None:
+        """Sparse WS preserves shared A validity and rejects TMEM conflicts."""
+
+        facts = rules.WsKnownFacts(
+            kind="F16", source_sparse=True, word_kind="F16", group=1,
+            m=64, n=64, k=32, d_type="F16", a_type="F16", b_type="F16",
+            sparse=True, sparse_selector=0, metadata_nibbles=(14,),
+            a_shared=False, transpose_a=False, transpose_b=False,
+            a_lane_half=0, d_lane_half=0, metadata_lane_half=0)
+        self.assertTrue(rules.check_ws_known_facts(facts).known_facts_ok)
+        known_a = rules.SharedOperandFacts("K", "B32")
+        self.assertIn("a_placement_facts", rules.check_ws_known_facts(
+            replace(facts, a_shared_facts=known_a)).violations)
+        shared = replace(facts, a_shared=True, a_shared_facts=known_a)
+        self.assertTrue(rules.check_ws_known_facts(shared).known_facts_ok)
+        self.assertIn("a_major_transpose", rules.check_ws_known_facts(
+            replace(shared, a_shared_facts=rules.SharedOperandFacts(
+                "MN", "B32"))).violations)
+        self.assertIn("a_placement_facts", rules.check_ws_known_facts(
+            replace(facts, a_shared_facts=rules.SharedOperandFacts(
+                "MN", "bogus"))).violations)
+
 
 if __name__ == "__main__":
     unittest.main()

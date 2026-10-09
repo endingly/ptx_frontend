@@ -2026,6 +2026,8 @@ def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
         else:
             _check_shared("a", facts.transpose_a, facts.a_shared_facts,
                           violations, obligations, tf32=facts.kind == "Tf32")
+    elif facts.a_shared_facts is not None:
+        violations.append("a_placement_facts")
     if facts.kind == "F8F6F4":
         _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
                              facts.b_shared_facts, violations, obligations)

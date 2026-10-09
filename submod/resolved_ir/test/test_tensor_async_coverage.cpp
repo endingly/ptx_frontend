@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string>
@@ -307,6 +308,54 @@ TEST(TensorAsync, RevalidatesOwnedTensorMetadata) {
   coordinate.symbol_id = original_coordinate_id;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** A tensor map cannot gain alignment by changing copied symbol metadata. */
+TEST(TensorAsync, RejectsForgedOwnedTensorMapAlignmentAfterAstDestruction) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 32 .b8 tensor_map[128];
+.entry kernel() {
+  cp.async.bulk.prefetch.tensor.1d.L2.global [tensor_map, {0}];
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  auto& copy = owned->functions.front().body.front();
+  auto* prefetch = dynamic_cast<CpAsyncBulkPrefetchTensor1d*>(copy.get());
+  ASSERT_NE(prefetch, nullptr);
+  auto& ref = std::get<ResolvedSymbolRef>(
+      prefetch->tensor.value.tensor_map.address.base);
+  ASSERT_EQ(ref.address_alignment, 32u);
+  EXPECT_FALSE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  ref.address_alignment = 64;
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 90}};
+  EXPECT_TRUE(copy->check(context));
+  const auto forged =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(forged.has_value());
+  EXPECT_TRUE(std::ranges::any_of(forged.error(), [](const auto& diagnostic) {
+    return diagnostic.kind ==
+           checker::CheckDiagnosticKind::ModuleSourceMismatch;
+  }));
+  ref.address_alignment.reset();
+  const auto erased =
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(erased.has_value());
+  EXPECT_TRUE(std::ranges::any_of(erased.error(), [](const auto& diagnostic) {
+    return diagnostic.kind ==
+           checker::CheckDiagnosticKind::ModuleSourceMismatch;
+  }));
 }
 
 /** A valid same-scope register ID cannot contradict a cached coordinate type. */

@@ -889,10 +889,15 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
   const auto expected_address_space = materialized_device_parameter
                                           ? syntax_ast::AstStateSpace::Local
                                           : bound_symbol.state_space;
+  const auto expected_declared_type =
+      bound_symbol.type ? detail::scalar_type_from_ptx_name(*bound_symbol.type)
+                        : std::nullopt;
   const bool matching_declaration =
       cached.declaration_kind == bound_symbol.kind &&
       cached.declaration_state_space == bound_symbol.state_space &&
       cached.address_state_space == expected_address_space &&
+      cached.declared_type == expected_declared_type &&
+      cached.address_alignment == bound_symbol.address_alignment &&
       cached.enclosing_function_kind == expected_function_kind;
   const bool matching_address_context =
       !use.enclosing_address_function_kind ||

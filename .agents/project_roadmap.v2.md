@@ -918,7 +918,10 @@ TMA kernel 提供 parse/resolve/check。
 当前分支已支持已列出的 tensor load、store、reduction 与 prefetch 形式及其
 `.L2::cache_hint` 和可选末尾 64-bit `cache_policy`，保留 rank、mode、multicast、
 CTA group 和完成方式约束。模块校验从自有绑定检查寄存器元数据；tensor-map descriptor
-的运行时原始字节仍不解码。[前端收口矩阵](../docs/zh-han/tensor_async_closeout.md)
+的运行时原始字节仍不解码。固定 PTX 9.3 的规范 tensor 源码模板在当前 target catalog
+中对应 356 个选定身份（load 180、store 18、reduction 128、prefetch 30），
+形成 178 对 base/cache-hint 形式；模块校验还会将地址符号的缓存类型和保证对齐
+与自有声明逐一比对。[前端收口矩阵](../docs/zh-han/tensor_async_closeout.md)
 逐项链接固定 PTX 9.3 条款、源码和测试；准确的已支持形式另见
 [tensor async 覆盖](../docs/zh-han/tensor_async_coverage.md)与
 [缓存控制](../docs/zh-han/tensor_cache_controls.md)。下表的 ✅ 指已列形式达到

@@ -4,8 +4,12 @@
 M14-C01～C03，并对应当前源码。“覆盖”指已支持的源码形式可无损保留拼写和位置，
 降为自有强类型 IR，按指令操作数和选中 PTX/target profile 做局部检查。
 Tensor map 仍是**不透明的 128 字节对象**；选中指令和调用方提供的
-[`TensorMapKnownFacts`][facts-doc] 都不认证其原始字节。矩阵不宣称 GPU 执行、
-运行时同步，也不宣称覆盖 PTX 指令家族的一切形式。
+[`TensorMapKnownFacts`][facts-doc] 都不认证其原始字节。固定 PTX 9.3 的规范
+tensor load、store、reduction 与 prefetch 源码模板，在当前 target catalog 中
+对应 356 个不同的选定身份：load 180、store 18、reduction 128、prefetch 30。
+其中有 178 对 base/cache-hint 形式，非缓存操作数与可选 policy layout 一致。
+此清单只涉及文档化的源码模板与 catalog target，不证明 GPU 执行、运行时同步、
+原始 descriptor 内容或未文档化别名。
 
 #152 的主要切片是 tensor-map 和 tensor-copy 形式。非 tensor bulk 形式及其完成
 指令是 #151 已交付的共享依赖；`red.async` 属于原子/归约家族。路线图将它们列在
@@ -48,6 +52,12 @@ M14，故一并列证，但不改变归属。准确支持的形式及相邻拒�
 [自有查询][cache]和[正反例/篡改测试][cache-test]中覆盖。
 这些行的精确 PTX 条款分别为[§9.7.9.26.5.2][tensor-copy]、
 [§9.7.9.26.5.3][tensor-reduce]和[§9.7.9.26.5.4][tensor-prefetch]。
+
+独立的 [generic `prefetch.tensormap` 形式](prefetch_coverage.md)允许已知 shared 地址，
+其效果按规范为无操作；显式 `.shared.tensormap` 拼写仍不在选定形式中。脱离 AST 的
+module validation 会将每个已绑定地址符号缓存的类型和保证对齐与 owned declaration
+比对，包括嵌在 tensor operand 中的 tensor-map 引用。[prefetch 绑定回归][prefetch-test]
+和[嵌套 tensor 回归][tensor-test]在 AST 销毁后验证这两项边界。
 
 上述源码回归覆盖选定形式与相邻负例，并不证明每一种可能的指令组合都能汇编。
 [PTXAS 13.3.73 的 26 个留存探针][ptxas]是有界的 cache-control 实验，
@@ -94,6 +104,7 @@ peer/mask 成员资格、barrier locality/completion、bounds、由 swizzle 决�
 [ast-test]: ../../submod/syntax/test/test_ptx_syntax_ast_parser.cpp
 [replace-test]: ../../submod/resolved_ir/test/test_tensormap_replacement.cpp
 [tensor-test]: ../../submod/resolved_ir/test/test_tensor_async_coverage.cpp
+[prefetch-test]: ../../submod/resolved_ir/test/test_prefetch_completeness.cpp
 [reduction-test]: ../../submod/resolved_ir/test/test_tensor_reduction.cpp
 [im2col-test]: ../../submod/resolved_ir/test/test_tensor_im2col_info.cpp
 [nooffset-test]: ../../submod/resolved_ir/test/test_tensor_no_offsets.cpp

@@ -6,9 +6,14 @@ supported source form can be parsed without losing its spelling or locations,
 resolved to owned typed IR, and checked against its instruction-local operands
 and selected PTX/target profile. The tensor map remains an **opaque 128-byte
 object**. Neither the selected instruction nor caller-supplied
-[`TensorMapKnownFacts`][facts-doc] authenticates its bytes. The matrix does not
-claim GPU execution, runtime synchronization, or complete coverage of every
-form in the PTX instruction family.
+[`TensorMapKnownFacts`][facts-doc] authenticates its bytes. The fixed PTX 9.3
+canonical tensor load, store, reduction, and prefetch templates map to 356
+distinct selected identities in the current target catalog: 180 loads, 18
+stores, 128 reductions, and 30 prefetches. These form 178 base/cache-hint
+pairs with identical non-cache operands and optional policy layouts. This
+inventory concerns the documented source templates and catalog targets; it
+does not establish GPU execution, runtime synchronization, raw descriptor
+contents, or undocumented aliases.
 
 The primary #152 slice is tensor-map and tensor-copy forms. The non-tensor bulk
 forms and their completion operations are shared dependencies delivered under
@@ -56,6 +61,14 @@ routing is covered by its [typed role][ir] and
 [positive/negative/tamper cases][cache-test]. Their precise clauses are
 [§9.7.9.26.5.2][tensor-copy], [§9.7.9.26.5.3][tensor-reduce], and
 [§9.7.9.26.5.4][tensor-prefetch].
+
+The separate [generic `prefetch.tensormap` form](prefetch_coverage.md) accepts a
+known shared address as a documented no-op; an explicit `.shared.tensormap`
+spelling remains outside the selected forms. AST-free module validation checks
+each bound address symbol's cached type and guaranteed alignment against its
+owned declaration, including tensor-map references nested in tensor operands.
+The [prefetch binding regressions][prefetch-test] and [nested tensor
+regression][tensor-test] exercise these two boundaries after AST destruction.
 
 The source-level regression tests above cover selected forms and adjacent
 negative boundaries; they are not a proof that every possible instruction
@@ -106,6 +119,7 @@ separately specified byte layout and is not part of this closeout.
 [ast-test]: ../../submod/syntax/test/test_ptx_syntax_ast_parser.cpp
 [replace-test]: ../../submod/resolved_ir/test/test_tensormap_replacement.cpp
 [tensor-test]: ../../submod/resolved_ir/test/test_tensor_async_coverage.cpp
+[prefetch-test]: ../../submod/resolved_ir/test/test_prefetch_completeness.cpp
 [reduction-test]: ../../submod/resolved_ir/test/test_tensor_reduction.cpp
 [im2col-test]: ../../submod/resolved_ir/test/test_tensor_im2col_info.cpp
 [nooffset-test]: ../../submod/resolved_ir/test/test_tensor_no_offsets.cpp

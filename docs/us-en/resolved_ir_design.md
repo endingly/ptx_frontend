@@ -326,6 +326,10 @@ register it compares cached scalar type, vector width, and register class with
 the owned declaration. A mutated public IR cannot validate by retaining stale
 register metadata after its binding changes; operand locations remain the
 diagnostic source when available.
+For every bound address symbol, the same structural traversal compares the
+cached declaration type and guaranteed address alignment exactly with its owned
+declaration, including an absent alignment. An operand cannot claim stronger
+alignment or retain metadata from a different symbol binding.
 An instruction's optional execution predicate is stored as the opcode-level
 common field `std::optional<WithLocs<ResolvedPredicate>>`. Module resolution
 requires it to bind to a `.pred` register, while standalone resolution accepts

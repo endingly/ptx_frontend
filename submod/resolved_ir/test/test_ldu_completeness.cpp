@@ -213,11 +213,16 @@ TEST(LduCompleteness, RevalidatesOwnedBoundAddressWithoutAst) {
   auto& symbol = std::get<ResolvedSymbolRef>(load.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 16u);
   symbol.address_alignment = 4;
+  const auto instruction_invalid = load.check(
+      checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
+  ASSERT_FALSE(instruction_invalid.has_value());
+  EXPECT_EQ(instruction_invalid.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
   const auto invalid =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind,
-            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+            checker::CheckDiagnosticKind::ModuleSourceMismatch);
 }
 
 }  // namespace

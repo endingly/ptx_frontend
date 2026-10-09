@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string>
@@ -133,6 +134,7 @@ TEST(PrefetchCompleteness, ChecksBoundAddressTopology) {
   prefetch.const.tensormap [const_map];
   prefetch.param.tensormap [param_map];
   prefetch.tensormap [global_value];
+  prefetch.tensormap [shared_value];
   prefetch.tensormap [%rd0];
 }
 )ptx");
@@ -198,7 +200,7 @@ TEST(PrefetchCompleteness, ChecksBoundAddressTopology) {
 .address_size 64
 .entry kernel() {
   .shared .u32 shared_value;
-  prefetch.tensormap [shared_value];
+  prefetch.shared.tensormap [shared_value];
 })ptx",
        }) {
     SCOPED_TRACE(source);
@@ -273,7 +275,7 @@ TEST(PrefetchCompleteness, RevalidatesGenericTensormapWithoutAst) {
   auto& symbol = std::get<ResolvedSymbolRef>(prefetch.address.value.base);
   ASSERT_TRUE(symbol.address_state_space.has_value());
   const auto original_space = symbol.address_state_space;
-  symbol.address_state_space = base::DeclarationStateSpace::Shared;
+  symbol.address_state_space = base::DeclarationStateSpace::Local;
   const auto invalid = owned->functions.front().body.front()->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 90}});
   ASSERT_FALSE(invalid.has_value());
@@ -282,6 +284,92 @@ TEST(PrefetchCompleteness, RevalidatesGenericTensormapWithoutAst) {
   symbol.address_state_space = original_space;
   EXPECT_TRUE(
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** A bound shared tensor-map address remains valid after syntax destruction. */
+TEST(PrefetchCompleteness, GenericSharedTensormapNoopAfterAstDestruction) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.shared .align 64 .b8 shared_map[128];
+.entry kernel() { prefetch.tensormap [shared_map]; }
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto resolved = resolveModuleOnly(*ast);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  EXPECT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** All direct-address carriers must retain their bound declaration metadata. */
+TEST(PrefetchCompleteness,
+     RevalidatesGenericAddressMetadataAfterAstDestruction) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.global .align 32 .b8 low[128];
+.global .align 64 .b8 high[128];
+.entry kernel() {
+  prefetch.L1 [low+4];
+  prefetch.L1 [high];
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto resolved = resolveModuleOnly(*ast);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  auto& body = owned->functions.front().body;
+  auto& low = dynamic_cast<PrefetchGenericL1&>(*body[0]).address.value;
+  auto& high = dynamic_cast<PrefetchGenericL1&>(*body[1]).address.value;
+  ASSERT_TRUE(low.offset.has_value());
+  auto& ref = std::get<ResolvedSymbolRef>(low.base);
+  const auto& high_ref = std::get<ResolvedSymbolRef>(high.base);
+  ASSERT_EQ(ref.address_alignment, 32u);
+  ASSERT_EQ(high_ref.address_alignment, 64u);
+  const auto valid = [&] {
+    return validateModule(*owned,
+                          ModuleValidationPolicy::RequireCompleteContext)
+        .has_value();
+  };
+  const auto mismatch = [&] {
+    const auto result =
+        validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& diagnostic) {
+      return diagnostic.kind ==
+             checker::CheckDiagnosticKind::ModuleSourceMismatch;
+    }));
+  };
+  ref.address_alignment = 64;
+  mismatch();
+  ref.address_alignment.reset();
+  mismatch();
+  ref.address_alignment = 0;
+  mismatch();
+  ref.address_alignment = 16;
+  mismatch();
+  ref.address_alignment = 32;
+  ref.declared_type = base::ScalarType::U64;
+  mismatch();
+  ref.declared_type = base::ScalarType::B8;
+  const auto original_id = ref.symbol_id;
+  ref.symbol_id = high_ref.symbol_id;
+  mismatch();
+  ref.symbol_id = original_id;
+  EXPECT_TRUE(valid());
 }
 
 }  // namespace

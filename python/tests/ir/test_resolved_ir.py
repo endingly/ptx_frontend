@@ -3778,7 +3778,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
         generic_address = generic_tensormap.operand_layouts[0].bindings[0]
         self.assertEqual(
             [space.value for space in generic_address.allowed_address_state_spaces],
-            ["global"],
+            ["global", "shared"],
         )
         self.assertIsNone(generic_address.parameter_constraint)
         param = variants["ParamTensormap"].operand_layouts[0].bindings[0]

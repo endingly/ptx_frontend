@@ -74,6 +74,9 @@ supported surface and its exclusions.
 - [Tensor async cache controls](docs/us-en/tensor_cache_controls.md) and their
   [简体中文版本](docs/zh-han/tensor_cache_controls.md) document the supported TMA
   hint and final policy operands, owned query, and static check boundary.
+- [Tensor-map/TMA frontend closeout](docs/us-en/tensor_async_closeout.md) and its
+  [简体中文版本](docs/zh-han/tensor_async_closeout.md) map the fixed PTX 9.3
+  requirements to source, tests, and the opaque-descriptor boundary.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
 
 ## Build and install

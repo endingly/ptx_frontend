@@ -59,6 +59,26 @@ class PrefetchCompletenessTest(unittest.TestCase):
             ["prefetchu_l1"],
         )
 
+    def test_generic_tensormap_keeps_shared_noop_provenance(self) -> None:
+        """Allow known shared data only on the suffix-free tensor-map form."""
+        variants = {
+            variant.name: variant
+            for variant in self.instructions["prefetch"].variants
+        }
+        generic = variants["prefetch_generic_tensormap"]
+        self.assertEqual(len(generic.operand_layouts), 1)
+        address = generic.operand_layouts[0].operands[0]
+        self.assertEqual(
+            tuple(value.value for value in address.state_space_values),
+            ("global", "shared"),
+        )
+        for name in ("prefetch_const_tensormap", "prefetch_param_tensormap"):
+            address = variants[name].operand_layouts[0].operands[0]
+            self.assertNotIn(
+                "shared",
+                tuple(value.value for value in address.state_space_values),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -251,6 +251,9 @@ Owned-module validation 会按结构遍历生成的 operand reference，包括�
 operand 容器。每个已绑定寄存器缓存的 scalar type、vector width 与 register class 都会
 同 owned declaration 比对。public IR 的绑定被修改后，不能靠旧的寄存器元数据通过校验；
 诊断优先使用 operand 自有位置。
+同一结构遍历也会将每个已绑定地址符号缓存的声明类型与保证的地址对齐，同其 owned
+declaration 精确比对，包括无对齐值的情况。operand 不能虚报更强的对齐，也不能在
+改绑其他符号后沿用旧元数据。
 instruction 的可选 execution predicate 作为 opcode 外层公共字段
 `std::optional<WithLocs<ResolvedPredicate>>` 保存；module resolution 要求其绑定到 `.pred`
 register，standalone resolution 则接受 numbered `%pN`。`ResolvedBranchTarget` 同样区分两种

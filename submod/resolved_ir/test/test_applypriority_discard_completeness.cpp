@@ -163,11 +163,16 @@ TEST(ApplypriorityDiscardCompleteness, RevalidatesOwnedAddressWithoutAst) {
   auto& symbol = std::get<ResolvedSymbolRef>(discard.address.value.base);
   ASSERT_EQ(symbol.address_alignment, 128u);
   symbol.address_alignment = 64;
+  const auto instruction_invalid = discard.check(
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}});
+  ASSERT_FALSE(instruction_invalid.has_value());
+  EXPECT_EQ(instruction_invalid.error().front().kind,
+            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
   const auto invalid =
       validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext);
   ASSERT_FALSE(invalid.has_value());
   EXPECT_EQ(invalid.error().front().kind,
-            checker::CheckDiagnosticKind::AddressAlignmentMismatch);
+            checker::CheckDiagnosticKind::ModuleSourceMismatch);
 }
 
 }  // namespace

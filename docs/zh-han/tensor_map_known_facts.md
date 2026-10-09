@@ -54,7 +54,9 @@ descriptor 解释可与 U32/S32/U64/S64/F16/BF16/F32 的精确同名值比较；
 TF32 与 B32/B64 没有已获批准的通用转换或 descriptor-code 桥梁。未知 active
 atomicity、运行时 peer/mask 成员资格、barrier 完成和 descriptor 内容仍是义务。
 
-固定 PTX 9.3 手册没有给出完整的原始 128 字节 tensor-map 字段布局。完整原始对象
-解码仍是独立、未解决的范围项，**不能**由调用者已知事实查询代替。Cache-hint/
-policy 规范操作数仍属后续工作。已交付的指令形式与工具差异
-参见当前的 [tensor async 覆盖](tensor_async_coverage.md)。
+固定 PTX 9.3 手册没有给出完整的原始 128 字节 tensor-map 字段布局。原始对象解码
+不属于 #152 前端收口；若要实现，须另行明确字节布局范围，调用者已知事实查询
+**不能**代替它。选定 tensor
+形式已支持规范 [cache-hint/policy 操作数](tensor_cache_controls.md)，它与 descriptor
+事实独立。准确形式、证据与剩余义务见 [tensor async 覆盖](tensor_async_coverage.md)
+和 [frontend 收口矩阵](tensor_async_closeout.md)。

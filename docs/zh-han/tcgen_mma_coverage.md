@@ -6,8 +6,15 @@
 可选输出通道掩码及可选 D 缩放是源码拓扑选择；其来源契约已由固定手册、完整模块
 汇编证据和独立 Authority 检查点确定。独立的
 [稠密 tf32 形式](tcgen_mma_tf32_coverage.md)及独立的
-[稠密 i8 形式](tcgen_mma_i8_coverage.md)也已覆盖。稀疏、权重驻留、
-其他稠密 kind、collector、块缩放和卷积形式仍未完成。
+[稠密 i8 形式](tcgen_mma_i8_coverage.md)和规范顺序的
+[无缩放 f8f6f4 形式](tcgen_mma_f8f6f4_coverage.md)及
+[稠密 MX8 块缩放形式](tcgen_mma_mx8_coverage.md)及
+[稠密 MX4 块缩放形式](tcgen_mma_mx4_coverage.md)及
+[稠密 MX NV 四位形式](tcgen_mma_mxnv_coverage.md)及
+[普通稀疏 f16/tf32/f8f6f4/i8 形式](tcgen_mma_sparse_coverage.md)及
+[稀疏 MX 形式](tcgen_mma_sparse_mx_coverage.md)也已覆盖。普通非 WS
+f16/tf32/f8f6f4/i8 形式还包含[强类型 A collector 与 ashift 控制](tcgen_mma_a_collector_coverage.md)。
+六种稠密／稀疏 MX 形式也包含[强类型 A collector 控制](tcgen_mma_mx_a_collector_coverage.md)。独立的[稠密权重驻留形式](tcgen_mma_ws_dense_coverage.md)及[稀疏权重驻留形式](tcgen_mma_ws_sparse_coverage.md)已覆盖。[全族矩阵](tcgen_mma_family_coverage.md)列明当前固定 PTX 来源范围与仍未证明的运行时义务。
 
 A/B 共享描述符只能使用 General 标量 B64/U64/S64 **寄存器**；指令描述符只能使用
 General B32/U32/S32 寄存器。汇编器也接受了这些位置的字面量零，但前端仍遵循文档的
@@ -38,9 +45,10 @@ Tables 45–48 的编码字段；操作查询须先调用其已定义字段检�
 不能证明寄存器内容或共享内存布局。
 
 F/D/B/A 路径来自 **§9.7.17.10.5**，与 Table 58 的共享 swizzle atom 不同。
-A 位于 Tensor Memory 时，F 半路径可比较调用方分别提供的 A/D 通道半区事实。
-缺失的地址或布局事实保留为义务；源码和汇编都不能证明分配历史、完成事件或
-实际通道一致性。已接受的 TCGEN group 一致性仅针对单个函数中的 TCGEN 指令；
+F 半路径允许调用方分别提供的 A/D Tensor Memory 通道半区为 0 或 16，并在 A 位于
+Tensor Memory 时比较有效的已知值；完整 D/B/A 路径只允许零。即使 A 来自 shared，
+仍检查已知 D 半区；适用的未知半区保留为义务。源码和汇编都不能证明分配历史、
+完成事件或实际通道一致性。已接受的 TCGEN group 一致性仅针对单个函数中的 TCGEN 指令；
 TMA 的省略/1/2 混用属于另一种信号路由契约，不参加这一检查。
 
 生成的精确 `Tcgen05MmaF16` 类直接持有类型化操作数，用八种结构化布局表示十六种

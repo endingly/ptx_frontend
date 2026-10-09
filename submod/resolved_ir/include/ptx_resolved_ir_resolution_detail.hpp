@@ -30,6 +30,7 @@ using ResolvedFieldValue = std::variant<
     WithLocs<VectorArity>, WithLocs<MemoryStateSpace>,
     WithLocs<MbarrierPhaseType>, WithLocs<MbarrierLayout>,
     WithLocs<AsyncProxyKind>, WithLocs<ProxyKindPair>, WithLocs<TcgenCtaGroup>,
+    WithLocs<TcgenScaleVectorSize>, WithLocs<TcgenCollectorControl>,
     WithLocs<TcgenDataMovementShape>, WithLocs<TcgenRepeat>,
     WithLocs<TcgenReductionOp>, WithLocs<TcgenWaitClass>,
     WithLocs<ResolvedRegisterRef>, WithLocs<ResolvedMbarrierStateToken>,

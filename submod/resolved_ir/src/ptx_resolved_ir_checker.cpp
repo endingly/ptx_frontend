@@ -281,6 +281,11 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
     case ModifierValueKind::TcgenCtaGroup:
       return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
+    case ModifierValueKind::TcgenScaleVectorSize:
+      return descriptor.tcgen_scale_vector_size ==
+             actual.tcgen_scale_vector_size;
+    case ModifierValueKind::TcgenCollectorControl:
+      return descriptor.tcgen_collector == actual.tcgen_collector;
     case ModifierValueKind::TcgenDataMovementShape:
       return descriptor.tcgen_shape == actual.tcgen_shape;
     case ModifierValueKind::TcgenRepeat:
@@ -2481,6 +2486,24 @@ static bool tcgen_mma_valid_source_ranges(std::span<const SourceRange> ranges,
   });
 }
 
+/** Reject mixed omission sentinels and values outside the typed collector domain. */
+static bool tcgen_collector_pair_valid(TcgenCollectorControl value) noexcept {
+  if (value.buffer == TcgenCollectorBuffer::Unspecified ||
+      value.operation == TcgenCollectorOp::Unspecified)
+    return value.buffer == TcgenCollectorBuffer::Unspecified &&
+           value.operation == TcgenCollectorOp::Unspecified;
+  const bool buffer = value.buffer == TcgenCollectorBuffer::A ||
+                      value.buffer == TcgenCollectorBuffer::B0 ||
+                      value.buffer == TcgenCollectorBuffer::B1 ||
+                      value.buffer == TcgenCollectorBuffer::B2 ||
+                      value.buffer == TcgenCollectorBuffer::B3;
+  const bool operation = value.operation == TcgenCollectorOp::Fill ||
+                         value.operation == TcgenCollectorOp::Use ||
+                         value.operation == TcgenCollectorOp::LastUse ||
+                         value.operation == TcgenCollectorOp::Discard;
+  return buffer && operation;
+}
+
 /** Check the selected dense MMA's owned carriers and source provenance. */
 CheckResult check_tcgen_mma_sources(
     const WithLocs<TcgenCtaGroup>& group_source,
@@ -2491,20 +2514,68 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<ResolvedRegisterRef>& idesc,
     const WithLocs<ResolvedRegisterVector>* mask,
     const WithLocs<ResolvedPredicateSource>& enable_d,
-    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+    const WithLocs<ResolvedImmediate>* scale,
+    const WithLocs<TcgenScaleVectorSize>* scale_selector,
+    const WithLocs<TensorMemoryAddress>* scale_a,
+    const WithLocs<TensorMemoryAddress>* scale_b, const WithLocs<bool>* ashift,
+    const WithLocs<TcgenCollectorControl>* collector,
+    const WithLocs<TensorMemoryAddress>* metadata,
+    const WithLocs<ResolvedRegisterRef>* zero_column, bool ws, bool sparse,
+    const Context& context) {
   const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
     return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
+  if (ws && (group != TcgenCtaGroup::One || mask || scale || scale_selector ||
+             scale_a || scale_b || ashift || !collector))
+    return cvt_rule_violation(
+        context, "WS MMA requires CTA one and excludes non-WS operands.");
+  if (!ws && zero_column)
+    return cvt_rule_violation(context,
+                              "Non-WS MMA cannot use a zero-column operand.");
+  if (sparse != (metadata != nullptr))
+    return cvt_rule_violation(
+        context, "Sparse MMA requires exactly one metadata address.");
   if ((a_address == nullptr) == (a_shared == nullptr))
     return cvt_rule_violation(context,
                               "TCGEN MMA requires exactly one A placement.");
+  if (ashift &&
+      ((ashift->value && !tcgen_mma_valid_source_ranges(ashift->locs, 1)) ||
+       (!ashift->value && !ashift->locs.empty()) ||
+       (ashift->value && a_shared)))
+    return cvt_rule_violation(context,
+                              "TCGEN MMA ashift requires Tensor Memory A and "
+                              "valid source provenance.");
+  if (collector) {
+    const auto control = collector->value;
+    const bool selected_buffer =
+        ws ? (control.buffer == TcgenCollectorBuffer::B0 ||
+              control.buffer == TcgenCollectorBuffer::B1 ||
+              control.buffer == TcgenCollectorBuffer::B2 ||
+              control.buffer == TcgenCollectorBuffer::B3)
+           : control.buffer == TcgenCollectorBuffer::A;
+    if (!tcgen_collector_pair_valid(control) ||
+        (control.is_present() &&
+         (!tcgen_mma_valid_source_ranges(collector->locs, 1) ||
+          !selected_buffer)) ||
+        (!control.is_present() && !collector->locs.empty()))
+      return cvt_rule_violation(
+          context,
+          "TCGEN MMA collector value or source provenance is invalid.");
+    if (ashift && ashift->value &&
+        (control.operation == TcgenCollectorOp::Fill ||
+         control.operation == TcgenCollectorOp::Use))
+      return cvt_rule_violation(
+          context, "TCGEN MMA ashift cannot pair with collector fill or use.");
+  }
   if (!tcgen_mma_valid_source_ranges(group_source.locs, 1) ||
       !tcgen_mma_valid_source_ranges(d.locs, 1) ||
       !tcgen_mma_valid_source_ranges(
           a_address ? a_address->locs : a_shared->locs, 1) ||
       !tcgen_mma_valid_source_ranges(b.locs, 1) ||
+      (metadata && !tcgen_mma_valid_source_ranges(metadata->locs, 1)) ||
       !tcgen_mma_valid_source_ranges(idesc.locs, 1) ||
       !tcgen_mma_valid_source_ranges(enable_d.locs, 1) ||
+      (zero_column && !tcgen_mma_valid_source_ranges(zero_column->locs, 1)) ||
       (mask && !tcgen_mma_valid_source_ranges(
                    mask->locs, group == TcgenCtaGroup::One ? 4 : 8)) ||
       (scale && !tcgen_mma_valid_source_ranges(scale->locs, 1)))
@@ -2515,6 +2586,10 @@ CheckResult check_tcgen_mma_sources(
         CheckDiagnosticKind::RuleViolation);
   if (auto result = check_tcgen_transfer_address(d, context); !result)
     return result;
+  if (metadata) {
+    if (auto result = check_tcgen_transfer_address(*metadata, context); !result)
+      return result;
+  }
   if (a_address) {
     if (auto result = check_tcgen_transfer_address(*a_address, context);
         !result)
@@ -2533,6 +2608,12 @@ CheckResult check_tcgen_mma_sources(
         context,
         "TCGEN MMA instruction descriptor requires scalar General "
         "b32/u32/s32.",
+        CheckDiagnosticKind::OperandTypeMismatch);
+  if (zero_column && !tcgen_mma_carrier(zero_column->value, 8))
+    return cvt_rule_violation(
+        context,
+        "TCGEN WS zero-column descriptor requires scalar General "
+        "b64/u64/s64.",
         CheckDiagnosticKind::OperandTypeMismatch);
   if (mask) {
     const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
@@ -2565,6 +2646,25 @@ CheckResult check_tcgen_mma_sources(
         "TCGEN MMA enable-D requires a predicate or integer truth constant.",
         CheckDiagnosticKind::OperandTypeMismatch);
   }
+  if ((scale_selector != nullptr) != (scale_a != nullptr && scale_b != nullptr))
+    return cvt_rule_violation(
+        context, "TCGEN MMA block scaling requires both scale operands.");
+  if (scale_selector) {
+    if ((scale_selector->value == TcgenScaleVectorSize::Absent &&
+         !scale_selector->locs.empty()) ||
+        (scale_selector->value != TcgenScaleVectorSize::Absent &&
+         !tcgen_mma_valid_source_ranges(scale_selector->locs, 1)))
+      return cvt_rule_violation(
+          context, "TCGEN MMA scale selector provenance is invalid.");
+    if (auto result = check_tcgen_transfer_address(*scale_a, context); !result)
+      return result;
+    if (auto result = check_tcgen_transfer_address(*scale_b, context); !result)
+      return result;
+    if (!tcgen_mma_valid_source_ranges(scale_a->locs, 1) ||
+        !tcgen_mma_valid_source_ranges(scale_b->locs, 1))
+      return cvt_rule_violation(
+          context, "TCGEN MMA scale address source ranges are invalid.");
+  }
   if (scale) {
     const auto& value = scale->value;
     if (value.type != ScalarType::U32 || value.is_negative ||
@@ -2589,7 +2689,9 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedPredicateSource>& enable_d,
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
   return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
-                                 mask, enable_d, scale, context);
+                                 mask, enable_d, scale, nullptr, nullptr,
+                                 nullptr, nullptr, nullptr, nullptr, nullptr,
+                                 false, false, context);
 }
 
 /** Match copy qualifiers against the selected closed shape and format sets. */

@@ -181,10 +181,31 @@ def _emit_tcgen_mma_source_check(variant, layout, slots, backend) -> str:
         raise ValueError("TCGEN MMA A has unsupported typed carrier")
     mask = reference("disable_output_lane") if "disable_output_lane" in fields else "nullptr"
     scale = reference("scale_input_d") if "scale_input_d" in fields else "nullptr"
+    selector = "&selected.scale_vector_size" if any(
+        modifier.name == "scale_vector_size" for modifier in variant.modifier_fields
+    ) else "nullptr"
+    scale_a = reference("scale_a") if "scale_a" in fields else "nullptr"
+    scale_b = reference("scale_b") if "scale_b" in fields else "nullptr"
+    ashift = "&selected.ashift" if any(
+        modifier.name == "ashift" for modifier in variant.modifier_fields
+    ) else "nullptr"
+    collector = "&selected.collector" if any(
+        modifier.name == "collector" for modifier in variant.modifier_fields
+    ) else "nullptr"
+    zero_column = (reference("zero_column_desc")
+                   if "zero_column_desc" in fields else "nullptr")
+    metadata = reference("sp_meta") if "sp_meta" in fields else "nullptr"
+    ws = "true" if any(modifier.name == "ws"
+                       for modifier in variant.modifier_fields) else "false"
+    sparse = "true" if any(modifier.name == "sp"
+                           for modifier in variant.modifier_fields) else "false"
     return f"""      const auto mma_source_check = check_tcgen_mma_sources(
           selected.cta_group, {reference('d')[1:]}, {address}, {shared},
           {reference('b')[1:]}, {reference('idesc')[1:]}, {mask},
-          {reference('enable_input_d')[1:]}, {scale}, context);
+          {reference('enable_input_d')[1:]}, {scale}, {selector},
+          {scale_a}, {scale_b}, {ashift}, {collector}, {metadata},
+          {zero_column}, {ws}, {sparse},
+          context);
 {_append_result('mma_source_check')}"""
 
 

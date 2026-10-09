@@ -7,9 +7,16 @@ CTA groups and both A placements. The optional lane mask and optional D scale
 are source topology choices settled by the fixed manual, a matched complete-module
 assembler corpus and an independent Authority checkpoint. The distinct
 [dense tf32 form](tcgen_mma_tf32_coverage.md) and distinct
-[dense i8 form](tcgen_mma_i8_coverage.md) are also covered. Sparse,
-weight-stationary, other dense kinds, collectors, block scaling and
-convolution remain open.
+[dense i8 form](tcgen_mma_i8_coverage.md) and the canonical
+[dense unscaled f8f6f4 form](tcgen_mma_f8f6f4_coverage.md) and
+[dense MX8 block-scaled form](tcgen_mma_mx8_coverage.md) and
+[dense MX4 block-scaled form](tcgen_mma_mx4_coverage.md) and
+[dense MX NV four-bit form](tcgen_mma_mxnv_coverage.md), and
+[ordinary sparse f16/tf32/f8f6f4/i8 forms](tcgen_mma_sparse_coverage.md),
+and [sparse MX forms](tcgen_mma_sparse_mx_coverage.md)
+are also covered. Their ordinary non-WS f16/tf32/f8f6f4/i8 forms include
+[typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md).
+The six dense/sparse MX forms also include [typed A collector controls](tcgen_mma_mx_a_collector_coverage.md). The separate [dense weight-stationary forms](tcgen_mma_ws_dense_coverage.md) and [sparse weight-stationary forms](tcgen_mma_ws_sparse_coverage.md) are covered. The [family matrix](tcgen_mma_family_coverage.md) gives the current fixed-PTX source scope and its remaining runtime obligations.
 
 Shared A/B descriptors use scalar General B64/U64/S64 **registers**; the
 instruction descriptor uses General B32/U32/S32 registers. The assembler also
@@ -52,10 +59,12 @@ safety. A live descriptor register is opaque; caller-known
 word values do not authenticate it or prove shared-memory contents.
 
 The F/D/B/A path selection comes from **§9.7.17.10.5**, separate from Table 58
-shared-swizzle atoms. The F half path can compare independently supplied A/D
-Tensor Memory lane-half facts when A is in Tensor Memory. Missing address or
-layout facts remain obligations; source syntax and assembly cannot prove
-allocation history, completion or actual lane agreement. The accepted typed
+shared-swizzle atoms. The F half path permits independently supplied A/D
+Tensor Memory lane halves 0 or 16 and compares valid known values when A is in
+Tensor Memory; full D/B/A paths permit only zero. A known D half is checked
+even when A is shared, and applicable unknown halves remain obligations.
+Source syntax and assembly cannot prove allocation history, completion or
+actual lane agreement. The accepted typed
 TCGEN group rule is uniform only within each function's TCGEN body. TMA's
 omitted/1/2 group mixtures have a different signal-routing contract and do
 not join this check.

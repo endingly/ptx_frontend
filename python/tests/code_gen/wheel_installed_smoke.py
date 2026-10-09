@@ -50,6 +50,7 @@ def check_packaged_resources() -> None:
     assert hashlib.sha256(installed_cp_spec).hexdigest() == os.environ[
         "PTX_FRONTEND_EXPECTED_CP_SPEC_SHA256"
     ]
+    assert packaged_spec_dir().joinpath("tensor_memory_data_movement.yaml").is_file()
 
 
 def check_module_layout() -> None:
@@ -83,6 +84,10 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.matrix",
         "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
         "ptx_frontend.code_gen.emit.tcgen_mma_operations",
+        "ptx_frontend.code_gen.emit.tcgen_mma_sparse",
+        "ptx_frontend.code_gen.emit.tcgen_mma_sparse_mx",
+        "ptx_frontend.code_gen.emit.tcgen_mma_collector",
+        "ptx_frontend.code_gen.emit.tcgen_mma_ws",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
         "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",
@@ -109,6 +114,34 @@ def check_module_layout() -> None:
         validate_catalogue as validate_descriptor_catalogue,
     )
     from ptx_frontend.spec.tcgen_mma_operations import (
+        F8F6F4KnownFacts,
+        F8F6F4_SHAPES,
+        MX8_SHAPES,
+        MX4_SHAPES,
+        MXNV_SHAPES,
+        SPARSE_METADATA_RULES,
+        SPARSE_SHAPES,
+        SPARSE_MX_SHAPES,
+        SPARSE_MX_SCALE_LAYOUTS,
+        Mx8KnownFacts,
+        Mx4KnownFacts,
+        MxNvKnownFacts,
+        SparseKnownFacts,
+        SparseMxKnownFacts,
+        ACollectorKnownFacts,
+        MxACollectorKnownFacts,
+        CollectorBuffer,
+        CollectorControl,
+        CollectorOp,
+        MxScaleLayoutId,
+        check_f8f6f4_known_facts,
+        check_mx8_known_facts,
+        check_mx4_known_facts,
+        check_mxnv_known_facts,
+        check_sparse_known_facts,
+        check_sparse_mx_known_facts,
+        check_a_collector_known_facts,
+        check_mx_a_collector_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -117,6 +150,68 @@ def check_module_layout() -> None:
     assert len(TensorFactRule) == 22
     validate_descriptor_catalogue()
     validate_mma_catalogue()
+    assert len(F8F6F4_SHAPES) == 4
+    low = check_f8f6f4_known_facts(F8F6F4KnownFacts(
+        group=1, m=64, n=8, k=32, d_type="F32", a_type="E2M1",
+        b_type="E4M3", sparse=False, a_shared=False))
+    assert "shape_or_output_type" not in low.violations
+    assert "a_low_bit_packing_rule" in low.obligations
+    assert len(MX8_SHAPES) == 2
+    mx8 = check_mx8_known_facts(Mx8KnownFacts(
+        group=1, m=128, n=16, k=32, d_type="F32", a_type="E4M3",
+        b_type="E5M2", sparse=False, a_shared=False,
+        scale_selector="absent", scale_type="UE8M0",
+        scale_a_id=0, scale_b_id=3))
+    assert mx8.known_facts_ok and mx8.scale_a_layout is not None
+    assert mx8.scale_a_layout.layout_id is MxScaleLayoutId.MX1
+    assert "scale_b_layout" in mx8.obligations
+    assert len(MX4_SHAPES) == 3
+    mx4 = check_mx4_known_facts(Mx4KnownFacts(
+        group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+        b_type="E2M1", sparse=False, a_shared=False,
+        scale_selector="absent", scale_type="UE8M0",
+        scale_a_id=2, scale_b_id=0))
+    assert mx4.known_facts_ok and mx4.scale_a_factor_count == 3
+    assert mx4.scale_a_layout.layout_id is MxScaleLayoutId.MX3
+    assert "k96_exact_target" in mx4.obligations
+    assert len(MXNV_SHAPES) == 3
+    mxnv = check_mxnv_known_facts(MxNvKnownFacts(
+        group=2, m=256, n=32, k=96, d_type="F32", a_type="E2M1",
+        b_type="E2M1", sparse=False, a_shared=False,
+        scale_selector="block16", scale_type="UE4M3",
+        scale_a_id=2, scale_b_id=0))
+    assert mxnv.known_facts_ok and mxnv.scale_a_factor_count == 6
+    assert mxnv.scale_a_layout.layout_id is MxScaleLayoutId.MX6
+    assert "k96_exact_target" in mxnv.obligations
+    assert len(SPARSE_METADATA_RULES) == 4
+    assert len(SPARSE_SHAPES) == 12
+    sparse = check_sparse_known_facts(SparseKnownFacts(
+        kind="Tf32", group=1, m=64, n=32, k=16, d_type="F32",
+        a_type="TF32", b_type="TF32", sparse=True, a_shared=False,
+        sparse_selector=0, metadata_nibbles=(14,), a_lane_half=0,
+        d_lane_half=0, metadata_lane_half=0))
+    assert sparse.known_facts_ok and sparse.compressed_a_k == 8
+    assert "live_metadata_contents" in sparse.obligations
+    assert len(SPARSE_MX_SHAPES) == 6
+    assert len(SPARSE_MX_SCALE_LAYOUTS) == 16
+    sparse_mx = check_sparse_mx_known_facts(SparseMxKnownFacts(
+        kind="MxF4", word_kind="MxF4", group=2, m=256, n=32, k=128,
+        d_type="F32", a_type="E2M1", b_type="E2M1", sparse=True,
+        a_shared=False, scale_selector="block32", scale_type="UE8M0",
+        scale_a_id=0, scale_b_id=0, k_choice=0,
+        metadata_nibbles=(14,), a_lane_half=0, d_lane_half=0,
+        metadata_lane_half=0))
+    assert sparse_mx.known_facts_ok
+    assert sparse_mx.scale_a_layout.factor_count == 2
+    collector = check_a_collector_known_facts(ACollectorKnownFacts(
+        CollectorControl(CollectorBuffer.A, CollectorOp.LAST_USE),
+        True, True, 128))
+    assert collector.supplied_facts_ok
+    assert "collector_a_valid" in collector.obligations
+    mx_collector = check_mx_a_collector_known_facts(MxACollectorKnownFacts(
+        CollectorControl(CollectorBuffer.A, CollectorOp.USE)))
+    assert mx_collector.supplied_facts_ok
+    assert "collector_sequence" in mx_collector.obligations
 
 
 def check_packaged_spec_model() -> None:
@@ -139,6 +234,22 @@ def check_packaged_spec_model() -> None:
         "tensor_" in variant.name and variant.name.endswith("_cache_hint")
         for variant in cp.variants
     ) == 178
+
+    tcgen = next(item for item in database.instructions
+                 if item.opcode == "tcgen05")
+    f8 = next(item for item in tcgen.variants
+              if item.name == "tcgen05_mma_f8f6f4")
+    assert len(f8.operand_layouts) == 4
+    assert f8.modifier_order_aliases == ()
+    assert all("scale_input_d" not in {operand.name for operand in layout.operands}
+               for layout in f8.operand_layouts)
+    mx8 = next(item for item in tcgen.variants
+               if item.name == "tcgen05_mma_mxf8f6f4")
+    assert len(mx8.operand_layouts) == 2
+    assert {layout.name for layout in mx8.operand_layouts} == {"shared", "tensor"}
+    assert all(tuple(operand.name for operand in layout.operands)[-3:] ==
+               ("scale_a", "scale_b", "enable_input_d")
+               for layout in mx8.operand_layouts)
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

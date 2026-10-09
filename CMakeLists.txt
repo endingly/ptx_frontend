@@ -10,6 +10,14 @@ endif()
 
 project(ptx_frontend VERSION 0.7.0 LANGUAGES C CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   CMAKE_C_COMPILER_ID STREQUAL "Clang" AND
+   CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    find_program(PTX_FRONTEND_LLD_LINKER NAMES ld.lld-21 ld.lld REQUIRED)
+    # Select the linker through the compiler driver without exporting the option.
+    add_link_options("-fuse-ld=${PTX_FRONTEND_LLD_LINKER}")
+endif()
+
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 23)

@@ -66,6 +66,41 @@ enum class AtomicAddressQualifier : uint8_t {
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 /** Closed written CTA-group size shared by tensor-copy and Tensor Memory syntax. */
 enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Written block-scale selector. Absent retains omission provenance; later
+ *  operational rules may derive an effective layout without rewriting source. */
+enum class TcgenScaleVectorSize : uint8_t {
+  Absent,
+  Vec1X,
+  Vec2X,
+  Vec4X,
+  Block16,
+  Block32
+};
+/** Collector-buffer identity shared by activation and weight-stationary MMA. */
+enum class TcgenCollectorBuffer : uint8_t { Unspecified, A, B0, B1, B2, B3 };
+/** Written collector action, independent of its buffer. */
+enum class TcgenCollectorOp : uint8_t {
+  Unspecified,
+  Fill,
+  Use,
+  LastUse,
+  Discard
+};
+/** One source qualifier; the all-Unspecified pair preserves omission. */
+struct TcgenCollectorControl {
+  /** Written buffer, or Unspecified only when the qualifier is absent. */
+  TcgenCollectorBuffer buffer = TcgenCollectorBuffer::Unspecified;
+  /** Written action, or Unspecified only when the qualifier is absent. */
+  TcgenCollectorOp operation = TcgenCollectorOp::Unspecified;
+
+  /** Source presence derived from the canonical absent pair. */
+  [[nodiscard]] constexpr bool is_present() const noexcept {
+    return buffer != TcgenCollectorBuffer::Unspecified &&
+           operation != TcgenCollectorOp::Unspecified;
+  }
+  /** Compare both typed components, including their omission sentinels. */
+  constexpr bool operator==(const TcgenCollectorControl&) const = default;
+};
 /** Closed register-transfer shape, distinct from an MMA matrix shape. */
 enum class TcgenDataMovementShape : uint8_t {
   S32x32b,
@@ -521,6 +556,8 @@ struct FieldView {
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
   std::optional<TcgenCtaGroup> tcgen_cta_group;
+  std::optional<TcgenScaleVectorSize> tcgen_scale_vector_size;
+  std::optional<TcgenCollectorControl> tcgen_collector;
   std::optional<TcgenDataMovementShape> tcgen_shape;
   std::optional<TcgenRepeat> tcgen_repeat;
   std::optional<TcgenReductionOp> tcgen_reduction_op;
@@ -645,6 +682,8 @@ enum class ModifierValueKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenScaleVectorSize,
+  TcgenCollectorControl,
   TcgenDataMovementShape,
   TcgenRepeat,
   TcgenReductionOp,
@@ -671,6 +710,8 @@ struct ModifierValueAvailabilityDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
+  TcgenCollectorControl tcgen_collector;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
@@ -701,6 +742,8 @@ struct ModifierValueDomainDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
+  TcgenCollectorControl tcgen_collector;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
@@ -727,6 +770,8 @@ struct ModifierValueView {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
+  TcgenCollectorControl tcgen_collector;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;

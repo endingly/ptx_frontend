@@ -53,6 +53,40 @@ supported surface and its exclusions.
 - [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
   and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
   `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
+- [TCGEN MMA frontend family coverage](docs/us-en/tcgen_mma_family_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_family_coverage.md) map all four
+  fixed PTX 9.3 source families, owned and conditional checks, validation,
+  and remaining runtime obligations.
+- [TCGEN dense unscaled f8f6f4 MMA coverage](docs/us-en/tcgen_mma_f8f6f4_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_f8f6f4_coverage.md) describe
+  canonical source roles, K32 shape/type rules, and caller-known obligations.
+- [TCGEN dense MX8 block-scale MMA coverage](docs/us-en/tcgen_mma_mx8_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_mx8_coverage.md) describe
+  typed selector provenance, two scale roles, and caller-known layout checks.
+- [TCGEN dense MX4 block-scale MMA coverage](docs/us-en/tcgen_mma_mx4_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_mx4_coverage.md) describe
+  K64/K96 rows, selector gates, and conditional scale-layout facts.
+- [TCGEN dense MX NV block-scale MMA coverage](docs/us-en/tcgen_mma_mxnv_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_mxnv_coverage.md) describe
+  mandatory selectors, scale types, and K64/K96 layout obligations.
+- [TCGEN ordinary sparse MMA coverage](docs/us-en/tcgen_mma_sparse_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_sparse_coverage.md) describe
+  four sparse kinds, metadata placement, and caller-known sparsity obligations.
+- [TCGEN sparse MX MMA coverage](docs/us-en/tcgen_mma_sparse_mx_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_sparse_mx_coverage.md) describe
+  three block-scaled sparse kinds, factor rows, and pairwise metadata rules.
+- [TCGEN non-WS A collector coverage](docs/us-en/tcgen_mma_a_collector_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_a_collector_coverage.md) describe
+  typed collector and ashift source controls with conditional history facts.
+- [TCGEN MX A collector coverage](docs/us-en/tcgen_mma_mx_a_collector_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_mx_a_collector_coverage.md) describe
+  A collector controls on six dense/sparse block-scaled identities.
+- [TCGEN dense WS MMA coverage](docs/us-en/tcgen_mma_ws_dense_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_dense_coverage.md) describe
+  B collector controls, optional zero-column source, and conditional WS facts.
+- [TCGEN sparse WS MMA coverage](docs/us-en/tcgen_mma_ws_sparse_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_sparse_coverage.md) describe
+  mandatory metadata, compressed K, and conditional WS sparse facts.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

@@ -1,4 +1,4 @@
-"""Known-value dense f16/tf32/i8 TCGEN MMA rules beyond descriptor fields.
+"""Known-value dense f16/tf32/i8/f8f6f4 TCGEN MMA rules beyond fields.
 
 These facts apply to caller-supplied values, never to opaque live source
 registers. Table 43 and Tables 45–48 remain owned by tcgen_descriptor_domains.
@@ -7,6 +7,7 @@ registers. Table 43 and Tables 45–48 remain owned by tcgen_descriptor_domains.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from ptx_frontend.spec import tcgen_descriptor_domains as descriptor
 
@@ -40,6 +41,7 @@ class F16PathRow:
     m: int
     layout: str
     half_path: bool
+    allowed_lane_halves: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -156,6 +158,21 @@ class I8OperationalReport(F16OperationalReport):
     """Proven i8 violations and facts or pair rules still owed."""
 
 
+@dataclass(frozen=True)
+class F8F6F4ShapeRow(F16ShapeRow):
+    """One closed Table 42 dense low-bit group/output-type grid."""
+
+
+@dataclass(frozen=True)
+class F8F6F4KnownFacts(F16KnownFacts):
+    """Caller-known unscaled low-bit facts, never inferred from live words."""
+
+
+@dataclass(frozen=True)
+class F8F6F4OperationalReport(F16OperationalReport):
+    """Separate proven violations from unverified layout/packing facts."""
+
+
 F16_SHAPES = (
     F16ShapeRow(1, "F16", (64, 128), 8, 8, 256, 16, ("F16",), ("F16",)),
     F16ShapeRow(1, "F32", (64, 128), 8, 8, 256, 16,
@@ -167,10 +184,10 @@ F16_SHAPES = (
 )
 
 F16_PATHS = (
-    F16PathRow(1, 64, "F", True),
-    F16PathRow(1, 128, "D", False),
-    F16PathRow(2, 128, "B", False),
-    F16PathRow(2, 256, "A", False),
+    F16PathRow(1, 64, "F", True, (0, 16)),
+    F16PathRow(1, 128, "D", False, (0,)),
+    F16PathRow(2, 128, "B", False, (0,)),
+    F16PathRow(2, 256, "A", False, (0,)),
 )
 
 # Family membership is resolved by the accepted target catalogue at query
@@ -206,6 +223,23 @@ I8_TARGET_GATES = (
     F16TargetGate("sm_110a", True, 9, 0, False),
 )
 
+_F8F6F4_TYPES = ("E4M3", "E5M2", "E2M3", "E3M2", "E2M1")
+_F8F6F4_LOW_TYPES = frozenset(("E2M3", "E3M2", "E2M1"))
+F8F6F4_SHAPES = tuple(
+    F8F6F4ShapeRow(group, d_type, m_values, first, step, 256, 32,
+                    _F8F6F4_TYPES, _F8F6F4_TYPES)
+    for d_type in ("F16", "F32")
+    for group, m_values, first, step in (
+        (1, (64, 128), 8, 8),
+        (2, (128, 256), 16, 16)))
+F8F6F4_PATHS = F16_PATHS
+F8F6F4_TARGET_GATES = (
+    F16TargetGate("sm_100a", True, 8, 6, False),
+    F16TargetGate("sm_100f", False, 8, 8, False),
+    F16TargetGate("sm_110a", True, 9, 0, False),
+    F16TargetGate("sm_110f", False, 9, 0, False),
+)
+
 # Table 57 applies to each 16-bit shared operand independently. The accepted
 # descriptor catalogue remains the only owner of swizzle encoded values.
 _TRANSPOSE_EXCLUDED = "B128Atom32"
@@ -229,10 +263,13 @@ def validate_catalogue() -> None:
                 or not set(row.b_types) <= accepted_b
                 or row.d_type not in accepted_d for row in F16_SHAPES)):
         raise ValueError("dense f16 shape/type rows drifted from Table 42")
-    if {(row.group, row.m, row.layout, row.half_path)
+    if {(row.group, row.m, row.layout, row.half_path,
+         row.allowed_lane_halves)
         for row in F16_PATHS} != {
-            (1, 64, "F", True), (1, 128, "D", False),
-            (2, 128, "B", False), (2, 256, "A", False)}:
+            (1, 64, "F", True, (0, 16)),
+            (1, 128, "D", False, (0,)),
+            (2, 128, "B", False, (0,)),
+            (2, 256, "A", False, (0,))}:
         raise ValueError("dense f16 datapath mapping changed")
     if _TRANSPOSE_EXCLUDED not in {name for _, name in descriptor.SWIZZLES}:
         raise ValueError("Table 57 exclusion lacks accepted swizzle identity")
@@ -277,6 +314,198 @@ def validate_catalogue() -> None:
             {name.upper() for _, name in i8.d_types} != {"S32"} or
             not i8.saturation or i8.negate):
         raise ValueError("dense i8 rows drifted from Tables 42/45 or fields")
+    f8 = next((kind for kind in descriptor.KINDS if kind.name == "F8F6F4"),
+              None)
+    if (f8 is None or len(F8F6F4_SHAPES) != 4 or
+            {(row.group, row.d_type, row.m_values, row.n_first,
+              row.n_step, row.n_last, row.k) for row in F8F6F4_SHAPES} != {
+                (group, dtype, ms, first, step, 256, 32)
+                for dtype in ("F16", "F32")
+                for group, ms, first, step in (
+                    (1, (64, 128), 8, 8),
+                    (2, (128, 256), 16, 16))} or
+            any(row.a_types != _F8F6F4_TYPES or
+                row.b_types != _F8F6F4_TYPES for row in F8F6F4_SHAPES) or
+            {name.upper() for _, name in f8.a_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in f8.b_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in f8.d_types} != {"F16", "F32"} or
+            f8.saturation or not f8.negate or F8F6F4_PATHS != F16_PATHS or
+            {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor,
+              gate.scaled_d) for gate in F8F6F4_TARGET_GATES} != {
+                  ("sm_100a", True, 8, 6, False),
+                  ("sm_100f", False, 8, 8, False),
+                  ("sm_110a", True, 9, 0, False),
+                  ("sm_110f", False, 9, 0, False)}):
+        raise ValueError("dense f8f6f4 rows drifted from Tables 42/45")
+
+    mx8 = next((kind for kind in descriptor.KINDS
+                if kind.name == "MxF8F6F4"), None)
+    if (mx8 is None or mx8.table != "instruction_46" or
+            mx8.d_types or mx8.saturation or not mx8.negate or
+            not mx8.transpose or len(MX8_SHAPES) != 2 or
+            {(row.group, row.d_type, row.m_values, row.n_first,
+              row.n_step, row.n_last, row.k) for row in MX8_SHAPES} != {
+                  (1, "F32", (128, 128), 8, 8, 256, 32),
+                  (2, "F32", (128, 256), 16, 16, 256, 32)} or
+            MX8_PATHS != tuple(row for row in F16_PATHS if row.m != 64) or
+            {name.upper() for _, name in mx8.a_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in mx8.b_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in mx8.scale_types} != {"UE8M0"} or
+            set(mx8.scale_ids) != {0, 1, 2, 3} or
+            {(row.role, row.selector, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids, row.layout_id,
+              row.id_alignment_policy)
+             for row in MX8_SCALE_LAYOUTS} != {
+                 (role, selector, 1, 1, (0, 1, 2, 3),
+                  MxScaleLayoutId.MX1 if role == "a"
+                  else MxScaleLayoutId.ONE_X_N,
+                  ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
+                 for role in ("a", "b")
+                 for selector in ("scale_vec::1X", "block32")}):
+        raise ValueError("dense MX8 rows drifted from Tables 42/46/59/60")
+
+    mx4 = next((kind for kind in descriptor.KINDS
+                if kind.name == "MxF4"), None)
+    if (mx4 is None or mx4.table != "instruction_47" or
+            mx4.d_types or mx4.saturation or not mx4.negate or
+            mx4.transpose or mx4.a_types != ((1, "E2M1"),) or
+            mx4.b_types != ((1, "E2M1"),) or
+            mx4.scale_types != ((1, "UE8M0"),) or
+            mx4.scale_ids != (0, 2) or
+            {(row.group, row.m_values, row.n_first, row.n_step, row.k)
+             for row in MX4_SHAPES} != {
+                 (1, (128, 128), 8, 8, 64),
+                 (2, (128, 256), 16, 16, 64),
+                 (2, (256, 256), 16, 16, 96)} or
+            MX4_PATHS != MX8_PATHS or
+            {(row.role, row.selector, row.k, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids,
+              row.layout_id, row.id_alignment_policy)
+             for row in MX4_SCALE_LAYOUTS} != {
+                 (role, selector, k, count, align, (0, 2),
+                  layout_a if role == "a" else layout_b, policy)
+                 for selector, k, count, align, layout_a, layout_b, policy in (
+                     ("scale_vec::2X", 64, 2, 2,
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 64, 2, 2,
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 96, 3, 4,
+                      MxScaleLayoutId.MX3, MxScaleLayoutId.THREE_X_N,
+                      ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+                 for role in ("a", "b")}):
+        raise ValueError("dense MX4 rows drifted from Tables 42/47/59/60")
+
+    mxnv = next((kind for kind in descriptor.KINDS
+                 if kind.name == "MxF4NvF4"), None)
+    if (mxnv is None or mxnv.table != "instruction_47" or
+            mxnv.d_types or mxnv.saturation or not mxnv.negate or
+            mxnv.transpose or mxnv.a_types != ((1, "E2M1"),) or
+            mxnv.b_types != ((1, "E2M1"),) or
+            mxnv.scale_types != ((0, "UE4M3"), (1, "UE8M0")) or
+            mxnv.scale_ids != (0, 2) or MXNV_SHAPES != MX4_SHAPES or
+            MXNV_PATHS != MX4_PATHS or
+            {(gate.feature, gate.exact, gate.ptx_major, gate.ptx_minor)
+             for gate in MXNV_TARGET_GATES} != {
+                 ("sm_100a", True, 8, 7), ("sm_100f", False, 8, 8),
+                 ("sm_110a", True, 9, 0), ("sm_110f", False, 9, 0)} or
+            {(row.role, row.selector, row.k, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids,
+              row.layout_id, row.id_alignment_policy)
+             for row in MXNV_SCALE_LAYOUTS} != {
+                 (role, selector, k, count, align, ids,
+                  layout_a if role == "a" else layout_b, policy)
+                 for selector, k, count, align, ids, layout_a, layout_b, policy in (
+                     ("scale_vec::2X", 64, 2, 2, (0, 2),
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("scale_vec::4X", 64, 4, 4, (0,),
+                      MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 64, 2, 2, (0, 2),
+                      MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block16", 64, 4, 4, (0,),
+                      MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N,
+                      ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+                     ("block32", 96, 3, 4, (0, 2),
+                      MxScaleLayoutId.MX3, MxScaleLayoutId.THREE_X_N,
+                      ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT),
+                     ("block16", 96, 6, 4, (0, 2),
+                      MxScaleLayoutId.MX6, MxScaleLayoutId.SIX_X_N,
+                      ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+                 for role in ("a", "b")}):
+        raise ValueError("dense MX NV rows drifted from Tables 42/47/59/60")
+
+    if ({(row.kind, row.group, row.d_type, row.k)
+         for row in SPARSE_SHAPES} != {
+             (kind, row.group, row.d_type, k)
+             for kind, rows, k in (
+                 ("F16", F16_SHAPES, 32), ("Tf32", TF32_SHAPES, 16),
+                 ("F8F6F4", F8F6F4_SHAPES, 64), ("I8", I8_SHAPES, 64))
+             for row in rows} or
+            {(row.group, row.m, row.layout, row.half_path,
+              row.allowed_lane_halves)
+             for row in SPARSE_PATHS} != {
+                 (1, 64, "F", True, (0, 16)),
+                 (1, 128, "D", False, (0,)),
+                 (2, 128, "C", True, (0, 16)),
+                 (2, 256, "A", False, (0,))} or
+            {(row.kind, row.granularity, row.valid_nibbles)
+             for row in SPARSE_METADATA_RULES} != {
+                 ("Tf32", SparseMetadataGranularity.ONE_OF_TWO, (14, 4)),
+                 *((kind, SparseMetadataGranularity.TWO_OF_FOUR,
+                    (4, 8, 12, 9, 13, 6, 14))
+                   for kind in ("F16", "F8F6F4", "I8"))} or
+            len(SPARSE_TARGET_GATES) != 5 + 5 + 4 + 2):
+        raise ValueError("sparse MMA rows drifted from Tables 42/45 and 10.8")
+
+    if ({(row.kind, row.group, row.d_type, row.m_values, row.k)
+         for row in SPARSE_MX_SHAPES} != {
+             (kind, group, "F32", (m, m), k)
+             for kind, k in (("MxF8F6F4", 64), ("MxF4", 128),
+                             ("MxF4NvF4", 128))
+             for group, m in ((1, 128), (2, 256))} or
+            {(row.kind, row.granularity, row.valid_nibbles)
+             for row in SPARSE_MX_METADATA_RULES} != {
+                 ("MxF8F6F4", SparseMxMetadataGranularity.TWO_OF_FOUR,
+                  (4, 8, 12, 9, 13, 6, 14)),
+                 *((kind, SparseMxMetadataGranularity.PAIRWISE_FOUR_OF_EIGHT,
+                    (4, 8, 12, 9, 13, 6, 14))
+                   for kind in ("MxF4", "MxF4NvF4"))} or
+            {(row.kind, row.selector, row.k, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids)
+             for row in SPARSE_MX_SCALE_LAYOUTS} != {
+                 (kind, selector, k, factors, alignment, ids)
+                 for kind, k, selector, factors, alignment, ids in (
+                     ("MxF8F6F4", 64, "scale_vec::1X", 1, 1,
+                      (0, 1, 2, 3)),
+                     ("MxF8F6F4", 64, "block32", 1, 1, (0, 1, 2, 3)),
+                     ("MxF4", 128, "scale_vec::2X", 2, 2, (0, 2)),
+                     ("MxF4", 128, "block32", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "scale_vec::2X", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "block32", 2, 2, (0, 2)),
+                     ("MxF4NvF4", 128, "scale_vec::4X", 4, 4, (0,)),
+                     ("MxF4NvF4", 128, "block16", 4, 4, (0,)))} or
+            len(SPARSE_MX_SCALE_LAYOUTS) != 16):
+        raise ValueError("sparse MX rows drifted from Tables 42/47/59/60")
+    if ({(row.kind, row.sparse, row.d_type, row.m_values, row.n_values, row.k)
+         for row in WS_SHAPES} != {
+             (kind, sparse, row.d_type, (32, 64, 128),
+              (64, 128) if sparse else (64, 128, 256),
+              k * (2 if sparse else 1))
+             for sparse in (False, True)
+             for kind, rows, k in (
+                 ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
+                 ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
+             for row in rows if row.group == 1} or
+            len(WS_SHAPES) != 12 or
+            {(row.group, row.m, row.layout, row.allowed_lane_halves)
+             for row in WS_PATHS} != {
+                 (1, 32, "G", (0,)), (1, 64, "E", (0,)),
+                 (1, 128, "D", (0,))}):
+        raise ValueError("WS MMA rows drifted from Tables 42 and 10.5")
 
 
 def _check_shared(role: str, transpose: bool | None,
@@ -304,6 +533,28 @@ def _check_shared(role: str, transpose: bool | None,
     elif transpose and ((facts.swizzle != _TRANSPOSE_EXCLUDED) if tf32 else
                         (facts.swizzle == _TRANSPOSE_EXCLUDED)):
         violations.append(f"{role}_transpose_swizzle")
+
+
+def _check_dense_lane_facts(path: F16PathRow | None, facts: F16KnownFacts,
+                            violations: list[str],
+                            obligations: list[str]) -> None:
+    """Check each applicable known lane before half-path pair equality."""
+
+    if path is None:
+        return
+    roles = (("a_lane_half",) if facts.a_shared is False else ()) + (
+        "d_lane_half",)
+    for name in roles:
+        value = getattr(facts, name)
+        if value is None:
+            obligations.append(name)
+        elif value not in path.allowed_lane_halves:
+            violations.append(f"{name}_invalid")
+    if (path.half_path and facts.a_shared is False and
+            facts.a_lane_half in path.allowed_lane_halves and
+            facts.d_lane_half in path.allowed_lane_halves and
+            facts.a_lane_half != facts.d_lane_half):
+        violations.append("half_path_alignment")
 
 
 def check_f16_known_facts(facts: F16KnownFacts) -> F16OperationalReport:
@@ -359,16 +610,7 @@ def check_f16_known_facts(facts: F16KnownFacts) -> F16OperationalReport:
                   violations, obligations)
     path = next((row for row in F16_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return F16OperationalReport(tuple(violations), tuple(obligations),
                                 path.layout if path else None)
 
@@ -410,16 +652,7 @@ def check_tf32_known_facts(facts: Tf32KnownFacts) -> Tf32OperationalReport:
                   violations, obligations, tf32=True)
     path = next((row for row in TF32_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
-            value = getattr(facts, name)
-            if value is None:
-                obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
-            violations.append("half_path_alignment")
+    _check_dense_lane_facts(path, facts, violations, obligations)
     return Tf32OperationalReport(tuple(violations), tuple(obligations),
                                  path.layout if path else None)
 
@@ -473,15 +706,1419 @@ def check_i8_known_facts(facts: I8KnownFacts) -> I8OperationalReport:
         violations.append("b_transpose_n")
     path = next((row for row in I8_PATHS
                  if row.group == facts.group and row.m == facts.m), None)
-    if path and path.half_path and facts.a_shared is False:
-        for name in ("a_lane_half", "d_lane_half"):
+    _check_dense_lane_facts(path, facts, violations, obligations)
+    return I8OperationalReport(tuple(violations), tuple(obligations),
+                               path.layout if path else None)
+
+
+def _check_f8f6f4_shared(
+        role: str, element_type: str | None, transpose: bool | None,
+        facts: SharedOperandFacts | None, violations: list[str],
+        obligations: list[str]) -> None:
+    """Keep low-bit transpose unresolved while checking defined supplied facts."""
+
+    if element_type not in _F8F6F4_LOW_TYPES or not transpose:
+        _check_shared(role, transpose, facts, violations, obligations)
+        return
+    if facts is None:
+        obligations.append(f"{role}_shared_word")
+    else:
+        if facts.major is None:
+            obligations.append(f"{role}_major")
+        elif facts.major not in ("K", "MN"):
+            violations.append(f"{role}_major_invalid")
+        if facts.swizzle is None:
+            obligations.append(f"{role}_swizzle")
+        elif facts.swizzle not in {name for _, name in descriptor.SWIZZLES}:
+            violations.append(f"{role}_swizzle_invalid")
+        elif facts.swizzle == _TRANSPOSE_EXCLUDED:
+            violations.append(f"{role}_transpose_swizzle")
+    obligations.append(f"{role}_transpose_layout_rule")
+
+
+def check_f8f6f4_known_facts(
+        facts: F8F6F4KnownFacts) -> F8F6F4OperationalReport:
+    """Check caller-known ordinary low-bit facts without claiming unknown rules."""
+
+    violations: list[str] = []
+    obligations: list[str] = []
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group_invalid")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    if all(getattr(facts, name) is not None for name in
+           ("group", "m", "n", "k", "d_type")):
+        if not any(row.group == facts.group and row.d_type == facts.d_type
+                   and row.contains(facts.m, facts.n, facts.k)
+                   for row in F8F6F4_SHAPES):
+            violations.append("shape_or_output_type")
+    if facts.d_type is not None and facts.d_type not in ("F16", "F32"):
+        violations.append("output_type")
+    for role in ("a", "b"):
+        value = getattr(facts, f"{role}_type")
+        if value is not None and value not in _F8F6F4_TYPES:
+            violations.append(f"{role}_type")
+        if value in _F8F6F4_LOW_TYPES:
+            obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.sparse is None:
+        obligations.append("dense_sparsity_bit")
+    elif facts.sparse:
+        violations.append("dense_sparse_bit")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                             facts.a_shared_facts, violations, obligations)
+    _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                         facts.b_shared_facts, violations, obligations)
+    if (facts.transpose_b and facts.b_type in ("E4M3", "E5M2") and
+            facts.group in (1, 2) and facts.n is not None and not (
+                (facts.group == 1 and 16 <= facts.n <= 256 and
+                 facts.n % 16 == 0) or
+                (facts.group == 2 and 32 <= facts.n <= 256 and
+                 facts.n % 32 == 0))):
+        violations.append("b_transpose_n")
+    path = next((row for row in F8F6F4_PATHS
+                 if row.group == facts.group and row.m == facts.m), None)
+    _check_dense_lane_facts(path, facts, violations, obligations)
+    return F8F6F4OperationalReport(tuple(violations), tuple(obligations),
+                                   path.layout if path else None)
+
+
+class MxScaleLayoutId(Enum):
+    """Logical Table 59/60 scale arrangement, independent of its label."""
+
+    MX1 = "Mx1"
+    ONE_X_N = "1xN"
+    MX2 = "Mx2"
+    TWO_X_N = "2xN"
+    MX3 = "Mx3"
+    THREE_X_N = "3xN"
+    MX4 = "Mx4"
+    FOUR_X_N = "4xN"
+    MX6 = "Mx6"
+    SIX_X_N = "6xN"
+
+
+class ScaleIdAlignmentPolicy(Enum):
+    """How selected ID interacts with an independently guaranteed alignment."""
+
+    BYTE_SLOT_OFFSET = "byte_slot_offset"
+    LAYOUT_DEFINED_PLACEMENT = "layout_defined_placement"
+
+
+class MxInputPacking(Enum):
+    """Required low-bit container layout in Tensor or shared memory."""
+
+    TMEM_EIGHT_BIT_CONTAINER = "tmem_eight_bit_container"
+    SHARED_PADDED_FOUR_BIT = "shared_padded_four_bit"
+    SHARED_PADDED_SIX_BIT = "shared_padded_six_bit"
+    TMEM_PAIRED_FOUR_BIT = "tmem_paired_four_bit"
+    SHARED_PAIRED_FOUR_BIT = "shared_paired_four_bit"
+
+
+@dataclass(frozen=True)
+class MxScaleLayoutRow:
+    """One Table 59/60 scale role and selected sub-column data contract.
+
+    ``valid_ids`` select sub-columns inside a Tensor Memory word, not byte
+    offsets from a source base address. ``subcolumn_alignment_bytes`` is a
+    required guarantee; ``id_alignment_policy`` states whether the encoded ID
+    is a direct byte slot for checking a stronger caller guarantee or a
+    layout-defined placement. Rows remain distinct across K and selectors.
+    """
+
+    role: str
+    kind: str
+    sparse: bool
+    k: int
+    selector: str
+    factor_count: int
+    subcolumn_alignment_bytes: int
+    valid_ids: tuple[int, ...]
+    layout_id: MxScaleLayoutId
+    id_alignment_policy: ScaleIdAlignmentPolicy
+
+
+@dataclass(frozen=True)
+class MxScaleRoleFacts:
+    """Optional caller placement identity and guaranteed byte alignment."""
+
+    layout_id: MxScaleLayoutId | None = None
+    subcolumn_alignment_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class Mx8KnownFacts(F8F6F4KnownFacts):
+    """Caller-known MX8 operation with written selector and two scale roles."""
+
+    scale_selector: str = "absent"
+    scale_type: str | None = None
+    scale_a_id: int | None = None
+    scale_b_id: int | None = None
+    scale_a_facts: MxScaleRoleFacts | None = None
+    scale_b_facts: MxScaleRoleFacts | None = None
+    a_packing: MxInputPacking | None = None
+    b_packing: MxInputPacking | None = None
+
+
+@dataclass(frozen=True)
+class Mx8OperationalReport(F8F6F4OperationalReport):
+    """Known MX8 violations plus selected scale rows, when determinable."""
+
+    scale_a_layout: MxScaleLayoutRow | None = None
+    scale_b_layout: MxScaleLayoutRow | None = None
+    required_a_packing: MxInputPacking | None = None
+    required_b_packing: MxInputPacking | None = None
+
+
+MX8_SHAPES = tuple(
+    F8F6F4ShapeRow(group, "F32", m_values, first, step, 256, 32,
+                   _F8F6F4_TYPES, _F8F6F4_TYPES)
+    for group, m_values, first, step in (
+        (1, (128, 128), 8, 8),
+        (2, (128, 256), 16, 16)))
+MX8_PATHS = tuple(row for row in F16_PATHS if row.m != 64)
+MX8_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, "MxF8F6F4", False, 32, selector, 1, 1,
+                     (0, 1, 2, 3), MxScaleLayoutId.MX1 if role == "a"
+                     else MxScaleLayoutId.ONE_X_N,
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
+    for selector in ("scale_vec::1X", "block32")
+    for role in ("a", "b"))
+MX8_TARGET_GATES = F8F6F4_TARGET_GATES
+MX8_VEC_TARGET_GATES = (F16TargetGate("sm_100a", True, 8, 6, False),)
+MX8_BLOCK_TARGET_GATES = tuple(gate for gate in MX8_TARGET_GATES
+                              if gate.feature in ("sm_100f", "sm_110f"))
+
+
+def mx8_scale_layout(role: str, selector: str) -> MxScaleLayoutRow | None:
+    """Derive omitted MX8 selector as 1X without changing written provenance."""
+
+    effective = "scale_vec::1X" if selector == "absent" else selector
+    return next((row for row in MX8_SCALE_LAYOUTS
+                 if row.role == role and row.selector == effective), None)
+
+
+def mx8_required_packing(element_type: str | None,
+                         shared: bool) -> MxInputPacking | None:
+    """Return the fixed 4/6-bit container rule for a known operand type."""
+
+    if element_type not in _F8F6F4_LOW_TYPES:
+        return None
+    if not shared:
+        return MxInputPacking.TMEM_EIGHT_BIT_CONTAINER
+    if element_type == "E2M1":
+        return MxInputPacking.SHARED_PADDED_FOUR_BIT
+    return MxInputPacking.SHARED_PADDED_SIX_BIT
+
+
+def check_mx8_known_facts(facts: Mx8KnownFacts) -> Mx8OperationalReport:
+    """Check independently supplied MX8 fields and conditional scale layouts."""
+
+    common = check_f8f6f4_known_facts(facts)
+    violations = list(common.violations)
+    obligations = [name for name in common.obligations
+                   if name not in ("a_low_bit_packing_rule",
+                                   "b_low_bit_packing_rule")]
+    required_a = (mx8_required_packing(facts.a_type, facts.a_shared)
+                  if facts.a_shared is not None else None)
+    required_b = mx8_required_packing(facts.b_type, True)
+    if facts.a_type in _F8F6F4_LOW_TYPES and facts.a_shared is None:
+        obligations.append("a_packing_placement")
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+            continue
+        if required is not None:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+        elif (supplied is not None and
+              getattr(facts, f"{role}_type") is not None and
+              (role != "a" or facts.a_shared is not None)):
+            violations.append(f"{role}_packing_fact")
+    if facts.d_type is not None and facts.d_type != "F32":
+        violations.append("mx8_output_type")
+    if (facts.group is not None and facts.m is not None and
+            facts.n is not None and facts.k is not None and
+            not any(row.group == facts.group and
+                    row.contains(facts.m, facts.n, facts.k)
+                    for row in MX8_SHAPES)):
+        violations.append("mx8_shape")
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type != "UE8M0":
+        violations.append("scale_type")
+    if facts.scale_selector not in ("absent", "scale_vec::1X", "block32"):
+        violations.append("scale_selector")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = mx8_scale_layout(role, facts.scale_selector)
+        selected[role] = row
+        scale_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if scale_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif row is not None and scale_id not in row.valid_ids:
+            violations.append(f"scale_{role}_id")
+        if role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        elif row is not None:
+            if (role_facts.layout_id is not None and
+                    role_facts.layout_id != row.layout_id):
+                violations.append(f"scale_{role}_layout")
+            alignment = role_facts.subcolumn_alignment_bytes
+            if alignment is not None and (
+                    alignment < row.subcolumn_alignment_bytes or
+                    alignment & (alignment - 1) or
+                    alignment % row.subcolumn_alignment_bytes or
+                    (row.id_alignment_policy is
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET and
+                     scale_id is not None and scale_id % alignment)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None:
+                obligations.append(f"scale_{role}_layout_id")
+            if role_facts.subcolumn_alignment_bytes is None:
+                obligations.append(f"scale_{role}_alignment")
+    return Mx8OperationalReport(tuple(violations), tuple(obligations),
+                                common.layout, selected["a"], selected["b"],
+                                required_a, required_b)
+
+
+@dataclass(frozen=True)
+class Mx4KnownFacts(Mx8KnownFacts):
+    """Caller-known dense MX4 fields, preserving written selector identity."""
+
+
+@dataclass(frozen=True)
+class Mx4OperationalReport(Mx8OperationalReport):
+    """MX4 result with factor counts even when physical placement is open."""
+
+    scale_a_factor_count: int | None = None
+    scale_b_factor_count: int | None = None
+
+
+MX4_SHAPES = (
+    F8F6F4ShapeRow(1, "F32", (128, 128), 8, 8, 256, 64,
+                   ("E2M1",), ("E2M1",)),
+    F8F6F4ShapeRow(2, "F32", (128, 256), 16, 16, 256, 64,
+                   ("E2M1",), ("E2M1",)),
+    F8F6F4ShapeRow(2, "F32", (256, 256), 16, 16, 256, 96,
+                   ("E2M1",), ("E2M1",)),
+)
+MX4_PATHS = MX8_PATHS
+MX4_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, "MxF4", False, k, selector, factor_count,
+                     alignment, valid_ids,
+                     layout_a if role == "a" else layout_b, policy)
+    for selector, k, factor_count, alignment, valid_ids, layout_a, layout_b, policy
+    in (("scale_vec::2X", 64, 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+         ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 64, 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N,
+         ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 96, 3, 4, (0, 2),
+         MxScaleLayoutId.MX3, MxScaleLayoutId.THREE_X_N,
+         ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+    for role in ("a", "b"))
+
+
+def mx4_scale_layout(role: str, selector: str,
+                     k: int) -> MxScaleLayoutRow | None:
+    """Select a normative physical scale row, retaining an unresolved K96 2X."""
+
+    effective = "block32" if selector == "absent" else selector
+    return next((row for row in MX4_SCALE_LAYOUTS if row.role == role and
+                 row.selector == effective and row.k == k), None)
+
+
+def check_mx4_known_facts(facts: Mx4KnownFacts) -> Mx4OperationalReport:
+    """Check known MX4 shapes, factor counts, placement and packing claims."""
+
+    common = check_f8f6f4_known_facts(facts)
+    violations = [name for name in common.violations
+                  if name not in ("shape_or_output_type", "a_lane_half_invalid",
+                                  "d_lane_half_invalid", "half_path_alignment")]
+    obligations = [name for name in common.obligations
+                   if name not in ("a_low_bit_packing_rule",
+                                   "b_low_bit_packing_rule", "a_lane_half",
+                                   "d_lane_half")]
+    if facts.d_type is not None and facts.d_type != "F32":
+        violations.append("mx4_output_type")
+    for role in ("a", "b"):
+        value = getattr(facts, f"{role}_type")
+        if value is not None and value != "E2M1":
+            violations.append(f"mx4_{role}_type")
+        if getattr(facts, f"transpose_{role}") is True:
+            violations.append(f"mx4_{role}_transpose")
+    shape_known = all(getattr(facts, name) is not None
+                      for name in ("group", "m", "n", "k", "d_type"))
+    shape_valid = (shape_known and any(
+        row.group == facts.group and row.d_type == facts.d_type and
+        row.contains(facts.m, facts.n, facts.k) for row in MX4_SHAPES))
+    if shape_known and not shape_valid:
+        violations.append("mx4_shape")
+    path = (next((row for row in MX4_PATHS
+                  if row.group == facts.group and row.m == facts.m), None)
+            if shape_valid else None)
+    _check_dense_lane_facts(path, facts, violations, obligations)
+    if facts.k == 96:
+        obligations.append("k96_exact_target")
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type != "UE8M0":
+        violations.append("scale_type")
+    if facts.scale_selector not in ("absent", "scale_vec::2X", "block32"):
+        violations.append("scale_selector")
+    required_a = (MxInputPacking.TMEM_PAIRED_FOUR_BIT
+                  if facts.a_shared is False else
+                  MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                  if facts.a_shared is True else None)
+    required_b = MxInputPacking.SHARED_PAIRED_FOUR_BIT
+    if facts.a_shared is None and facts.a_type == "E2M1":
+        obligations.append("a_packing_placement")
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+        elif getattr(facts, f"{role}_type") == "E2M1" and required:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = (mx4_scale_layout(role, facts.scale_selector, facts.k)
+               if facts.k is not None else None)
+        selected[role] = row
+        scale_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if scale_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif scale_id not in (0, 2):
+            violations.append(f"scale_{role}_id")
+        if facts.k == 96 and facts.scale_selector == "scale_vec::2X":
+            obligations.append(f"scale_{role}_layout_rule")
+        elif row is None:
+            obligations.append(f"scale_{role}_layout")
+        elif role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        else:
+            if role_facts.layout_id is not None and role_facts.layout_id != row.layout_id:
+                violations.append(f"scale_{role}_layout")
+            align = role_facts.subcolumn_alignment_bytes
+            if align is not None and (
+                    align < row.subcolumn_alignment_bytes or
+                    align & (align - 1) or
+                    align % row.subcolumn_alignment_bytes or
+                    (row.id_alignment_policy is
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET and
+                     scale_id is not None and scale_id % align)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None or align is None:
+                obligations.append(f"scale_{role}_layout")
+    factor = (2 if facts.scale_selector == "scale_vec::2X" else
+              3 if facts.k == 96 else 2 if facts.k == 64 else None)
+    return Mx4OperationalReport(tuple(violations), tuple(obligations),
+                                path.layout if path else None,
+                                selected["a"], selected["b"],
+                                required_a if facts.a_type == "E2M1" else None,
+                                required_b if facts.b_type == "E2M1" else None,
+                                factor, factor)
+
+
+@dataclass(frozen=True)
+class MxNvKnownFacts(Mx8KnownFacts):
+    """Caller-known MX NV four-bit facts with a mandatory written selector."""
+
+
+@dataclass(frozen=True)
+class MxNvOperationalReport(Mx4OperationalReport):
+    """Known MX NV result, including K-dependent factor counts."""
+
+
+MXNV_SHAPES = MX4_SHAPES
+MXNV_PATHS = MX4_PATHS
+MXNV_TARGET_GATES = (
+    F16TargetGate("sm_100a", True, 8, 7, False),
+    F16TargetGate("sm_100f", False, 8, 8, False),
+    F16TargetGate("sm_110a", True, 9, 0, False),
+    F16TargetGate("sm_110f", False, 9, 0, False),
+)
+MXNV_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, "MxF4NvF4", False, k, selector, count, align,
+                     ids, layout_a if role == "a" else layout_b, policy)
+    for selector, k, count, align, ids, layout_a, layout_b, policy in (
+        ("scale_vec::2X", 64, 2, 2, (0, 2), MxScaleLayoutId.MX2,
+         MxScaleLayoutId.TWO_X_N, ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("scale_vec::4X", 64, 4, 4, (0,), MxScaleLayoutId.MX4,
+         MxScaleLayoutId.FOUR_X_N, ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 64, 2, 2, (0, 2), MxScaleLayoutId.MX2,
+         MxScaleLayoutId.TWO_X_N, ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block16", 64, 4, 4, (0,), MxScaleLayoutId.MX4,
+         MxScaleLayoutId.FOUR_X_N, ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET),
+        ("block32", 96, 3, 4, (0, 2), MxScaleLayoutId.MX3,
+         MxScaleLayoutId.THREE_X_N,
+         ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT),
+        ("block16", 96, 6, 4, (0, 2), MxScaleLayoutId.MX6,
+         MxScaleLayoutId.SIX_X_N,
+         ScaleIdAlignmentPolicy.LAYOUT_DEFINED_PLACEMENT))
+    for role in ("a", "b"))
+
+
+def mxnv_scale_layout(role: str, selector: str,
+                      k: int) -> MxScaleLayoutRow | None:
+    """Select a written MX NV layout; K96 vector layouts stay unresolved."""
+
+    return next((row for row in MXNV_SCALE_LAYOUTS if row.role == role and
+                 row.selector == selector and row.k == k), None)
+
+
+def check_mxnv_known_facts(facts: MxNvKnownFacts) -> MxNvOperationalReport:
+    """Check supplied MX NV facts without reading source register contents."""
+
+    common = check_mx4_known_facts(Mx4KnownFacts(**{
+        name: getattr(facts, name) for name in Mx8KnownFacts.__dataclass_fields__
+    }))
+    violations = [("mxnv" + name[3:]) if name.startswith("mx4_") else name
+                  for name in common.violations
+                  if not name.startswith("scale_")]
+    obligations = [name for name in common.obligations
+                   if not name.startswith("scale_") or name == "scale_type"]
+    if facts.scale_selector not in ("scale_vec::2X", "scale_vec::4X",
+                                    "block32", "block16"):
+        violations.append("scale_selector")
+    if facts.scale_type is not None and facts.scale_type not in (
+            ("UE8M0",) if facts.scale_selector in ("scale_vec::2X", "block32")
+            else ("UE8M0", "UE4M3") if facts.scale_selector in (
+                "scale_vec::4X", "block16") else ()):
+        violations.append("scale_type")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    factors: dict[str, int | None] = {}
+    for role in ("a", "b"):
+        row = (mxnv_scale_layout(role, facts.scale_selector, facts.k)
+               if facts.k is not None else None)
+        selected[role] = row
+        factors[role] = (row.factor_count if row else
+                         2 if facts.k == 96 and facts.scale_selector ==
+                         "scale_vec::2X" else
+                         4 if facts.k == 96 and facts.scale_selector ==
+                         "scale_vec::4X" else None)
+        scale_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if scale_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif scale_id not in (0, 2):
+            violations.append(f"scale_{role}_id")
+        elif row is not None and scale_id not in row.valid_ids:
+            violations.append(f"scale_{role}_id")
+        if (facts.k == 96 and isinstance(facts.scale_selector, str) and
+                facts.scale_selector.startswith("scale_vec::")):
+            obligations.append(f"scale_{role}_layout_rule")
+        elif row is None or role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        else:
+            if (role_facts.layout_id is not None and
+                    role_facts.layout_id != row.layout_id):
+                violations.append(f"scale_{role}_layout")
+            align = role_facts.subcolumn_alignment_bytes
+            if align is not None and (
+                    align < row.subcolumn_alignment_bytes or
+                    align & (align - 1) or
+                    align % row.subcolumn_alignment_bytes or
+                    (row.id_alignment_policy is
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET and
+                     scale_id is not None and scale_id % align)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None or align is None:
+                obligations.append(f"scale_{role}_layout")
+    return MxNvOperationalReport(tuple(violations), tuple(obligations),
+                                 common.layout, selected["a"], selected["b"],
+                                 common.required_a_packing,
+                                 common.required_b_packing,
+                                 factors["a"], factors["b"])
+
+
+class SparseMetadataGranularity(Enum):
+    """Normative non-block-scaled sparse element grouping."""
+
+    ONE_OF_TWO = "1:2"
+    TWO_OF_FOUR = "2:4"
+
+
+@dataclass(frozen=True)
+class SparseShapeRow:
+    """One sparse Table 42 kind/group/output row with logical K in elements."""
+
+    kind: str
+    group: int
+    d_type: str
+    m_values: tuple[int, ...]
+    n_small: tuple[int, ...]
+    n_first: int
+    n_step: int
+    n_last: int
+    k: int
+    a_types: tuple[str, ...]
+    b_types: tuple[str, ...]
+
+    def contains(self, m: int, n: int, k: int) -> bool:
+        """Check the complete regular grid and kind-specific small-N prefix."""
+
+        return (m in self.m_values and k == self.k and
+                (n in self.n_small or
+                 (self.n_first <= n <= self.n_last and
+                  (n - self.n_first) % self.n_step == 0)))
+
+
+@dataclass(frozen=True)
+class SparsePathRow:
+    """One sparse group/M datapath and its allowed lane-half identities."""
+
+    group: int
+    m: int
+    layout: str
+    half_path: bool
+    allowed_lane_halves: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseMetadataRule:
+    """Meaningful caller-known nibble indices for one sparse kind."""
+
+    kind: str
+    granularity: SparseMetadataGranularity
+    valid_nibbles: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseKnownFacts(F16KnownFacts):
+    """Independent sparse word, metadata and lane facts, never live bytes."""
+
+    kind: str = "F16"
+    scale_d: int | None = None
+    sparse_selector: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
+
+
+@dataclass(frozen=True)
+class SparseOperationalReport(F16OperationalReport):
+    """Known sparse failures and runtime obligations with selected data rows."""
+
+    shape: SparseShapeRow | None = None
+    metadata_rule: SparseMetadataRule | None = None
+    compressed_a_k: int | None = None
+    logical_b_k: int | None = None
+
+
+SPARSE_SHAPES = tuple(
+    SparseShapeRow(kind, row.group, row.d_type, row.m_values, (),
+                   row.n_first, row.n_step, row.n_last, k,
+                   row.a_types, row.b_types)
+    for kind, rows, k in (
+        ("F16", F16_SHAPES, 32),
+        ("Tf32", TF32_SHAPES, 16),
+        ("F8F6F4", F8F6F4_SHAPES, 64))
+    for row in rows) + tuple(
+        SparseShapeRow("I8", row.group, row.d_type, row.m_values,
+                       row.n_small, row.n_first, row.n_step, row.n_last,
+                       64, row.a_types, row.b_types)
+        for row in I8_SHAPES)
+
+SPARSE_PATHS = (
+    SparsePathRow(1, 64, "F", True, (0, 16)),
+    SparsePathRow(1, 128, "D", False, (0,)),
+    SparsePathRow(2, 128, "C", True, (0, 16)),
+    SparsePathRow(2, 256, "A", False, (0,)),
+)
+
+SPARSE_METADATA_RULES = (
+    SparseMetadataRule("F16", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+    SparseMetadataRule("Tf32", SparseMetadataGranularity.ONE_OF_TWO, (14, 4)),
+    SparseMetadataRule("F8F6F4", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+    SparseMetadataRule("I8", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+)
+
+SPARSE_TARGET_GATES = tuple(
+    (kind, gate) for kind, gates in (
+        ("F16", F16_TARGET_GATES),
+        ("Tf32", TF32_TARGET_GATES),
+        ("F8F6F4", F8F6F4_TARGET_GATES),
+        ("I8", I8_TARGET_GATES))
+    for gate in gates)
+
+
+def check_sparse_known_facts(facts: SparseKnownFacts) -> SparseOperationalReport:
+    """Check sparse shape, metadata and every applicable known half-lane pair."""
+
+    violations: list[str] = []
+    obligations: list[str] = []
+    rule = next((row for row in SPARSE_METADATA_RULES
+                 if row.kind == facts.kind), None)
+    if rule is None:
+        violations.append("kind")
+    if facts.sparse is None:
+        obligations.append("sparse_bit")
+    elif not facts.sparse:
+        violations.append("sparse_bit")
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    shape = next((row for row in SPARSE_SHAPES
+                  if row.kind == facts.kind and row.group == facts.group and
+                  row.d_type == facts.d_type and facts.m is not None and
+                  facts.n is not None and facts.k is not None and
+                  row.contains(facts.m, facts.n, facts.k)), None)
+    if (all(getattr(facts, name) is not None
+            for name in ("group", "m", "n", "k", "d_type")) and shape is None):
+        violations.append("sparse_shape")
+    if shape is not None:
+        if facts.a_type is not None and facts.a_type not in shape.a_types:
+            violations.append("a_type")
+        if facts.b_type is not None and facts.b_type not in shape.b_types:
+            violations.append("b_type")
+        if (facts.kind == "F16" and facts.d_type == "F32" and
+                facts.a_type in shape.a_types and
+                facts.b_type in shape.b_types and
+                facts.a_type != facts.b_type):
+            obligations.append("mixed_f16_bf16_pair_rule")
+    if facts.kind == "F8F6F4":
+        for role in ("a", "b"):
+            if getattr(facts, f"{role}_type") in _F8F6F4_LOW_TYPES:
+                obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.scale_d is not None:
+        if facts.kind not in ("F16", "Tf32") or not 0 <= facts.scale_d <= 15:
+            violations.append("scale_d")
+        obligations.append("scaled_d_target")
+    if facts.sparse_selector is None:
+        obligations.append("sparsity_selector")
+    elif (facts.sparse_selector not in range(4) or
+          (facts.kind in ("F8F6F4", "I8") and facts.sparse_selector != 0)):
+        violations.append("sparsity_selector")
+    if facts.metadata_nibbles is None:
+        obligations.append("metadata_indices")
+    elif rule is not None and any(
+            nibble not in rule.valid_nibbles
+            for nibble in facts.metadata_nibbles):
+        violations.append("metadata_indices")
+    obligations.extend(("live_metadata_contents", "sparse_a_contents",
+                        "target"))
+    def check_shared_role(role: str) -> None:
+        """Apply the matching kind's existing shared descriptor rule."""
+
+        element_type = getattr(facts, f"{role}_type")
+        transpose = getattr(facts, f"transpose_{role}")
+        shared = getattr(facts, f"{role}_shared_facts")
+        if facts.kind == "F8F6F4":
+            _check_f8f6f4_shared(role, element_type, transpose, shared,
+                                 violations, obligations)
+        else:
+            _check_shared(role, transpose, shared, violations, obligations,
+                          tf32=facts.kind == "Tf32")
+
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        check_shared_role("a")
+    check_shared_role("b")
+    if (facts.kind == "F8F6F4" and facts.transpose_b and
+            facts.b_type in ("E4M3", "E5M2") and
+            facts.group in (1, 2) and facts.n is not None and not (
+                (facts.group == 1 and 16 <= facts.n <= 256 and
+                 facts.n % 16 == 0) or
+                (facts.group == 2 and 32 <= facts.n <= 256 and
+                 facts.n % 32 == 0))):
+        violations.append("b_transpose_n")
+    path = next((row for row in SPARSE_PATHS
+                 if shape is not None and row.group == facts.group and
+                 row.m == facts.m), None)
+    for name in ("a_lane_half", "d_lane_half", "metadata_lane_half"):
+        value = getattr(facts, name)
+        if value is not None and value not in (0, 16):
+            violations.append(f"{name}_invalid")
+    if path is not None:
+        lane_values: list[int] = []
+        for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+                "d_lane_half", "metadata_lane_half"):
             value = getattr(facts, name)
             if value is None:
                 obligations.append(name)
-            elif value not in (0, 16):
-                violations.append(f"{name}_invalid")
-        if (facts.a_lane_half in (0, 16) and facts.d_lane_half in (0, 16)
-                and facts.a_lane_half != facts.d_lane_half):
+            elif value in (0, 16):
+                if value not in path.allowed_lane_halves:
+                    violations.append(f"{name}_alignment")
+                elif path.half_path:
+                    lane_values.append(value)
+        if path.half_path and len(set(lane_values)) > 1:
             violations.append("half_path_alignment")
-    return I8OperationalReport(tuple(violations), tuple(obligations),
-                               path.layout if path else None)
+    return SparseOperationalReport(
+        tuple(violations), tuple(obligations), path.layout if path else None,
+        shape, rule, shape.k // 2 if shape else None,
+        shape.k if shape else None)
+
+
+class SparseMxMetadataGranularity(Enum):
+    """Metadata grouping is distinct for sparse MX4 pairwise chunks."""
+
+    TWO_OF_FOUR = "2:4"
+    PAIRWISE_FOUR_OF_EIGHT = "pairwise 4:8"
+
+
+@dataclass(frozen=True)
+class SparseMxMetadataRule:
+    """One kind-specific sparse MX metadata domain."""
+
+    kind: str
+    granularity: SparseMxMetadataGranularity
+    valid_nibbles: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseMxKnownFacts(Mx8KnownFacts):
+    """Independent sparse MX source/word/scale facts, never live contents."""
+
+    kind: str = "MxF8F6F4"
+    word_kind: str | None = None
+    k_choice: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
+
+
+@dataclass(frozen=True)
+class SparseMxOperationalReport:
+    """Conditionally checked sparse MX rows and unproved runtime duties."""
+
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+    shape: SparseShapeRow | None
+    metadata_rule: SparseMxMetadataRule | None
+    scale_a_layout: MxScaleLayoutRow | None
+    scale_b_layout: MxScaleLayoutRow | None
+    required_a_packing: MxInputPacking | None
+    required_b_packing: MxInputPacking | None
+
+    @property
+    def known_facts_ok(self) -> bool:
+        """Report success only for facts actually supplied and checked."""
+
+        return not self.violations
+
+
+SPARSE_MX_SHAPES = tuple(
+    SparseShapeRow(kind, group, "F32", (m, m), (), first, step, 256,
+                   k, types, types)
+    for kind, k, types in (
+        ("MxF8F6F4", 64, _F8F6F4_TYPES),
+        ("MxF4", 128, ("E2M1",)),
+        ("MxF4NvF4", 128, ("E2M1",)))
+    for group, m, first, step in ((1, 128, 8, 8), (2, 256, 16, 16)))
+
+SPARSE_MX_METADATA_RULES = tuple(
+    SparseMxMetadataRule(
+        kind, (SparseMxMetadataGranularity.TWO_OF_FOUR
+               if kind == "MxF8F6F4" else
+               SparseMxMetadataGranularity.PAIRWISE_FOUR_OF_EIGHT),
+        (4, 8, 12, 9, 13, 6, 14))
+    for kind in ("MxF8F6F4", "MxF4", "MxF4NvF4"))
+
+SPARSE_MX_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, kind, True, k, selector, factors, alignment,
+                     ids, layout_a if role == "a" else layout_b,
+                     ScaleIdAlignmentPolicy.BYTE_SLOT_OFFSET)
+    for kind, k, selector, factors, alignment, ids, layout_a, layout_b in (
+        ("MxF8F6F4", 64, "scale_vec::1X", 1, 1, (0, 1, 2, 3),
+         MxScaleLayoutId.MX1, MxScaleLayoutId.ONE_X_N),
+        ("MxF8F6F4", 64, "block32", 1, 1, (0, 1, 2, 3),
+         MxScaleLayoutId.MX1, MxScaleLayoutId.ONE_X_N),
+        ("MxF4", 128, "scale_vec::2X", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4", 128, "block32", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "scale_vec::2X", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "block32", 2, 2, (0, 2),
+         MxScaleLayoutId.MX2, MxScaleLayoutId.TWO_X_N),
+        ("MxF4NvF4", 128, "scale_vec::4X", 4, 4, (0,),
+         MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N),
+        ("MxF4NvF4", 128, "block16", 4, 4, (0,),
+         MxScaleLayoutId.MX4, MxScaleLayoutId.FOUR_X_N))
+    for role in ("a", "b"))
+
+SPARSE_MX_BASE_GATES = tuple(
+    (kind, gate) for kind, gates in (
+        ("MxF8F6F4", F8F6F4_TARGET_GATES),
+        ("MxF4", (
+            F16TargetGate("sm_100a", True, 8, 6, False),
+            F16TargetGate("sm_103a", True, 8, 8, False),
+            F16TargetGate("sm_110a", True, 9, 0, False))),
+        ("MxF4NvF4", (
+            F16TargetGate("sm_100a", True, 8, 7, False),
+            F16TargetGate("sm_103a", True, 8, 8, False),
+            F16TargetGate("sm_110a", True, 9, 0, False))))
+    for gate in gates)
+
+SPARSE_MX_VEC_GATES = (
+    ("MxF8F6F4", F16TargetGate("sm_100a", True, 8, 6, False)),
+    ("MxF4", F16TargetGate("sm_100a", True, 8, 6, False)),
+    ("MxF4NvF4", F16TargetGate("sm_100a", True, 8, 7, False)),
+)
+SPARSE_MX_BLOCK_GATES = tuple(
+    (kind, gate)
+    for kind in ("MxF8F6F4", "MxF4", "MxF4NvF4")
+    for gate in (F16TargetGate("sm_100f", False, 8, 8, False),
+                 F16TargetGate("sm_110f", False, 9, 0, False)))
+
+
+def check_sparse_mx_known_facts(facts: SparseMxKnownFacts
+                                ) -> SparseMxOperationalReport:
+    """Check one sparse MX kind using row-owned K, metadata and scale rules."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["live_metadata_contents", "sparse_a_contents",
+                              "target"]
+    kind = facts.kind
+    if kind not in ("MxF8F6F4", "MxF4", "MxF4NvF4"):
+        violations.append("kind")
+    if facts.group is None:
+        obligations.append("group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    if facts.word_kind is None:
+        obligations.append("word_kind")
+    elif facts.word_kind != kind:
+        violations.append("word_kind")
+    if facts.sparse is None:
+        obligations.append("sparse_bit")
+    elif not facts.sparse:
+        violations.append("sparse_bit")
+    if kind != "MxF8F6F4":
+        if facts.k_choice is None:
+            obligations.append("sparse_k_choice")
+        elif facts.k_choice != 0:
+            violations.append("sparse_k_choice")
+    shape = next((row for row in SPARSE_MX_SHAPES
+                  if row.kind == kind and row.group == facts.group and
+                  row.d_type == facts.d_type and
+                  facts.m is not None and facts.n is not None and
+                  facts.k is not None and row.contains(facts.m, facts.n,
+                                                       facts.k)), None)
+    if all(getattr(facts, name) is not None for name in
+           ("group", "m", "n", "k", "d_type")) and shape is None:
+        violations.append("sparse_mx_shape")
+    if shape is not None:
+        for role in ("a", "b"):
+            value = getattr(facts, f"{role}_type")
+            if value is not None and value not in getattr(shape, f"{role}_types"):
+                violations.append(f"{role}_type")
+    if kind in ("MxF4", "MxF4NvF4"):
+        for role in ("a", "b"):
+            if getattr(facts, f"transpose_{role}") is True:
+                violations.append(f"{role}_transpose")
+    metadata_rule = next((row for row in SPARSE_MX_METADATA_RULES
+                          if row.kind == kind), None)
+    if facts.metadata_nibbles is None:
+        obligations.append("metadata_indices")
+    elif metadata_rule is not None and any(
+            value not in metadata_rule.valid_nibbles
+            for value in facts.metadata_nibbles):
+        violations.append("metadata_indices")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        if kind == "MxF8F6F4":
+            _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                                 facts.a_shared_facts, violations, obligations)
+        else:
+            _check_shared("a", facts.transpose_a, facts.a_shared_facts,
+                          violations, obligations)
+    if kind == "MxF8F6F4":
+        _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                             facts.b_shared_facts, violations, obligations)
+        if (facts.transpose_b and facts.b_type in ("E4M3", "E5M2") and
+                facts.group in (1, 2) and facts.n is not None and not (
+                    (facts.group == 1 and 16 <= facts.n <= 256 and
+                     facts.n % 16 == 0) or
+                    (facts.group == 2 and 32 <= facts.n <= 256 and
+                     facts.n % 32 == 0))):
+            violations.append("b_transpose_n")
+    else:
+        _check_shared("b", facts.transpose_b, facts.b_shared_facts,
+                      violations, obligations)
+    path = next((row for row in SPARSE_PATHS if shape is not None and
+                 row.group == facts.group and row.m == facts.m), None)
+    for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+            "d_lane_half", "metadata_lane_half"):
+        value = getattr(facts, name)
+        if value is None:
+            obligations.append(name)
+        elif value not in (0, 16):
+            violations.append(f"{name}_invalid")
+        elif path is not None and value not in path.allowed_lane_halves:
+            violations.append(f"{name}_alignment")
+    selectors = {
+        "MxF8F6F4": ("absent", "scale_vec::1X", "block32"),
+        "MxF4": ("absent", "scale_vec::2X", "block32"),
+        "MxF4NvF4": ("scale_vec::2X", "scale_vec::4X", "block32",
+                       "block16"),
+    }
+    if kind in selectors and facts.scale_selector not in selectors[kind]:
+        violations.append("scale_selector")
+    effective = ({"MxF8F6F4": "scale_vec::1X", "MxF4": "block32"}
+                 .get(kind) if facts.scale_selector == "absent" else
+                 facts.scale_selector)
+    allowed_scale_types = (
+        ("UE8M0", "UE4M3") if kind == "MxF4NvF4" and
+        effective in ("scale_vec::4X", "block16") else ("UE8M0",))
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type not in allowed_scale_types:
+        violations.append("scale_type")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = next((row for row in SPARSE_MX_SCALE_LAYOUTS
+                    if row.kind == kind and row.role == role and
+                    row.selector == effective and row.k == facts.k), None)
+        selected[role] = row
+        role_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if role_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif (role_id not in ((0, 1, 2, 3) if kind == "MxF8F6F4"
+                              else (0, 2)) or
+              (row is not None and role_id not in row.valid_ids)):
+            violations.append(f"scale_{role}_id")
+        if row is None or role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        else:
+            if role_facts.layout_id is not None and role_facts.layout_id != row.layout_id:
+                violations.append(f"scale_{role}_layout")
+            alignment = role_facts.subcolumn_alignment_bytes
+            if alignment is not None and (
+                    alignment < row.subcolumn_alignment_bytes or
+                    alignment & (alignment - 1) or
+                    alignment % row.subcolumn_alignment_bytes or
+                    (role_id is not None and
+                     role_id % alignment)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None or alignment is None:
+                obligations.append(f"scale_{role}_layout")
+    if kind == "MxF8F6F4":
+        required_a = (mx8_required_packing(facts.a_type, facts.a_shared)
+                      if facts.a_shared is not None else None)
+        required_b = mx8_required_packing(facts.b_type, True)
+        if facts.a_shared is None and facts.a_type in _F8F6F4_LOW_TYPES:
+            obligations.append("a_packing_placement")
+    else:
+        required_a = (MxInputPacking.TMEM_PAIRED_FOUR_BIT
+                      if facts.a_shared is False else
+                      MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                      if facts.a_shared is True else None)
+        if facts.a_type != "E2M1":
+            required_a = None
+        required_b = (MxInputPacking.SHARED_PAIRED_FOUR_BIT
+                      if facts.b_type == "E2M1" else None)
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+        elif required is not None:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+        elif (supplied is not None and
+              getattr(facts, f"{role}_type") is not None and
+              (role != "a" or facts.a_shared is not None)):
+            violations.append(f"{role}_packing_fact")
+    return SparseMxOperationalReport(
+        tuple(violations), tuple(obligations), shape, metadata_rule,
+        selected["a"], selected["b"], required_a, required_b)
+
+
+class CollectorBuffer(Enum):
+    """Typed collector buffer independent of its source action."""
+
+    UNSPECIFIED = "unspecified"
+    A = "a"
+    B0 = "b0"
+    B1 = "b1"
+    B2 = "b2"
+    B3 = "b3"
+
+
+class CollectorOp(Enum):
+    """Typed collector operation independent of its source buffer."""
+
+    UNSPECIFIED = "unspecified"
+    FILL = "fill"
+    USE = "use"
+    LAST_USE = "lastuse"
+    DISCARD = "discard"
+
+
+@dataclass(frozen=True)
+class CollectorControl:
+    """A source qualifier; both unspecified components mean omission."""
+
+    buffer: CollectorBuffer = CollectorBuffer.UNSPECIFIED
+    operation: CollectorOp = CollectorOp.UNSPECIFIED
+
+    @property
+    def present(self) -> bool:
+        """Derive presence without erasing an explicitly written discard."""
+
+        return (self.buffer is not CollectorBuffer.UNSPECIFIED and
+                self.operation is not CollectorOp.UNSPECIFIED)
+
+
+@dataclass(frozen=True)
+class ACollectorKnownFacts:
+    """Independent source controls and optional non-WS runtime assertions."""
+
+    collector: CollectorControl = CollectorControl()
+    ashift: bool = False
+    a_in_tmem: bool | None = None
+    m: int | None = None
+    collector_a_valid: bool | None = None
+
+
+@dataclass(frozen=True)
+class ACollectorReport:
+    """Conditional source/known-value contradictions and open history duties."""
+
+    effective: CollectorControl
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+
+    @property
+    def supplied_facts_ok(self) -> bool:
+        """Accept only supplied facts that do not contradict closed rules."""
+
+        return not self.violations
+
+
+def check_a_collector_known_facts(facts: ACollectorKnownFacts) -> ACollectorReport:
+    """Check A collector and ashift without inferring any instruction history."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["source_stability_until_completion"]
+    if (type(facts.ashift) is not bool or
+            (facts.a_in_tmem is not None and
+             type(facts.a_in_tmem) is not bool) or
+            (facts.collector_a_valid is not None and
+             type(facts.collector_a_valid) is not bool) or
+            (facts.m is not None and type(facts.m) is not int)):
+        violations.append("invalid_context")
+        return ACollectorReport(CollectorControl(), tuple(violations),
+                                tuple(obligations))
+    control = facts.collector
+    if (not isinstance(control, CollectorControl) or
+            not isinstance(control.buffer, CollectorBuffer) or
+            not isinstance(control.operation, CollectorOp) or
+            ((control.buffer is CollectorBuffer.UNSPECIFIED) !=
+             (control.operation is CollectorOp.UNSPECIFIED)) or
+            (control.present and control.buffer is not CollectorBuffer.A)):
+        violations.append("collector_domain")
+        return ACollectorReport(CollectorControl(), tuple(violations),
+                                tuple(obligations))
+    effective = (control if control.present else
+                 CollectorControl(CollectorBuffer.A, CollectorOp.DISCARD))
+    if facts.ashift:
+        if facts.a_in_tmem is None:
+            obligations.append("a_placement")
+        elif not facts.a_in_tmem:
+            violations.append("ashift_a_placement")
+        if facts.m is None:
+            obligations.append("ashift_m")
+        elif facts.m not in (128, 256):
+            violations.append("ashift_m")
+        if control.operation in (CollectorOp.FILL, CollectorOp.USE):
+            violations.append("ashift_collector")
+    if control.operation in (CollectorOp.USE, CollectorOp.LAST_USE):
+        if facts.collector_a_valid is False:
+            violations.append("collector_a_valid")
+        elif facts.collector_a_valid is None:
+            obligations.append("collector_a_valid")
+        obligations.append("collector_sequence")
+    return ACollectorReport(effective, tuple(violations), tuple(obligations))
+
+
+@dataclass(frozen=True)
+class MxACollectorKnownFacts:
+    """MX collector source and optional prior-buffer assertion, without ashift."""
+
+    collector: CollectorControl = CollectorControl()
+    collector_a_valid: bool | None = None
+
+
+def check_mx_a_collector_known_facts(
+        facts: MxACollectorKnownFacts) -> ACollectorReport:
+    """Reuse the A history rule without opening ashift or M for MX forms."""
+
+    return check_a_collector_known_facts(ACollectorKnownFacts(
+        collector=facts.collector, collector_a_valid=facts.collector_a_valid))
+
+
+@dataclass(frozen=True)
+class WsShapeRow:
+    """One WS Table 42 kind/output/sparsity row, with logical K in elements."""
+
+    kind: str
+    sparse: bool
+    d_type: str
+    m_values: tuple[int, ...]
+    n_values: tuple[int, ...]
+    k: int
+    a_types: tuple[str, ...]
+    b_types: tuple[str, ...]
+
+    def contains(self, m: int, n: int, k: int) -> bool:
+        """Check the complete WS grid without borrowing non-WS M/N paths."""
+
+        return m in self.m_values and n in self.n_values and k == self.k
+
+
+WS_SHAPES = tuple(
+    WsShapeRow(kind, sparse, row.d_type, (32, 64, 128),
+               (64, 128) if sparse else (64, 128, 256),
+               k * (2 if sparse else 1),
+               row.a_types, row.b_types)
+    for sparse in (False, True)
+    for kind, rows, k in (
+        ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
+        ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
+    for row in rows if row.group == 1)
+# Reuse the shared path-row allowed-lane domain; WS has no F/C half paths.
+WS_PATHS = tuple(SparsePathRow(1, m, layout, False, (0,))
+                 for m, layout in ((32, "G"), (64, "E"), (128, "D")))
+
+
+@dataclass(frozen=True)
+class WsKnownFacts(F16KnownFacts):
+    """Independent dense WS source, descriptor and B-buffer history claims."""
+
+    kind: str = "F16"
+    source_sparse: bool = False
+    word_kind: str | None = None
+    sparse_selector: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
+    collector: CollectorControl = CollectorControl()
+    collector_b_valid: tuple[bool | None, ...] = (None, None, None, None)
+    zero_column_operand_present: bool = False
+    zero_column_word: int | None = None
+
+
+@dataclass(frozen=True)
+class WsOperationalReport:
+    """Checkable supplied facts and obligations without live-word decoding."""
+
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+    shape: WsShapeRow | None
+    path: SparsePathRow | None
+    metadata_rule: SparseMetadataRule | None
+    compressed_a_k: int | None
+    logical_b_k: int | None
+    effective_collector: CollectorControl
+    zero_unclassified_bits: int | None
+
+    @property
+    def known_facts_ok(self) -> bool:
+        """Treat missing facts as obligations rather than contradictory data."""
+
+        return not self.violations
+
+
+def _check_ws_zero_word(word: int, m: int | None,
+                        n: int | None) -> tuple[tuple[str, ...], int | None]:
+    """Apply the sole Table 48 field partition to a caller-supplied word."""
+
+    if type(word) is not int or not 0 <= word < (1 << 64):
+        return ("zero_word_range",), None
+    table = descriptor.ZERO_COLUMN
+    findings: list[str] = []
+    for field in table.fields:
+        if field.fixed is not None and (word & field.mask) >> field.first != field.fixed:
+            findings.append("zero_defined_fields")
+    shift = (word & table.field("shift").mask) >> table.field("shift").first
+    if shift > 32 or (m == 32 and shift > 16):
+        findings.append("zero_shift")
+    if m is not None and m not in (32, 64, 128):
+        findings.append("zero_partition")
+    if n is not None and (n <= 0 or (m in (32, 64, 128) and
+                                      n % {32: 4, 64: 2, 128: 1}[m])):
+        findings.append("zero_partition")
+    return tuple(findings), word & table.unclassified
+
+
+def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
+    """Check WS rows, B-buffer identity and optional known zero-column bits."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["source_stability_until_completion", "target"]
+    if facts.kind not in ("F16", "Tf32", "F8F6F4", "I8"):
+        violations.append("kind")
+    if facts.word_kind is None:
+        obligations.append("instruction_word_kind")
+    elif facts.word_kind != facts.kind:
+        violations.append("instruction_word_kind")
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group != 1:
+        violations.append("cta_group")
+    if facts.sparse is None:
+        obligations.append("sparsity_bit")
+    elif facts.sparse != facts.source_sparse:
+        violations.append("sparsity_bit")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    shape = next((row for row in WS_SHAPES
+                  if row.kind == facts.kind and row.sparse == facts.source_sparse
+                  and row.d_type == facts.d_type and
+                  facts.m is not None and facts.n is not None and
+                  facts.k is not None and row.contains(facts.m, facts.n,
+                                                       facts.k)), None)
+    if all(getattr(facts, name) is not None for name in
+           ("m", "n", "k", "d_type")) and shape is None:
+        violations.append("ws_shape")
+    if shape:
+        if facts.a_type is not None and facts.a_type not in shape.a_types:
+            violations.append("a_type")
+        if facts.b_type is not None and facts.b_type not in shape.b_types:
+            violations.append("b_type")
+        if (facts.kind == "F16" and facts.d_type == "F32" and
+                facts.a_type in shape.a_types and
+                facts.b_type in shape.b_types and
+                facts.a_type != facts.b_type):
+            obligations.append("mixed_f16_bf16_pair_rule")
+    if facts.kind == "F8F6F4":
+        for role in ("a", "b"):
+            if getattr(facts, f"{role}_type") in _F8F6F4_LOW_TYPES:
+                obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        if facts.kind == "F8F6F4":
+            _check_f8f6f4_shared("a", facts.a_type, facts.transpose_a,
+                                 facts.a_shared_facts, violations, obligations)
+        else:
+            _check_shared("a", facts.transpose_a, facts.a_shared_facts,
+                          violations, obligations, tf32=facts.kind == "Tf32")
+    elif facts.a_shared_facts is not None:
+        violations.append("a_placement_facts")
+    if facts.kind == "F8F6F4":
+        _check_f8f6f4_shared("b", facts.b_type, facts.transpose_b,
+                             facts.b_shared_facts, violations, obligations)
+    else:
+        _check_shared("b", facts.transpose_b, facts.b_shared_facts,
+                      violations, obligations, tf32=facts.kind == "Tf32")
+    path = next((row for row in WS_PATHS if shape is not None and
+                 row.m == facts.m), None)
+    metadata_rule = None
+    if facts.source_sparse:
+        metadata_rule = next((row for row in SPARSE_METADATA_RULES
+                              if row.kind == facts.kind), None)
+        if facts.sparse_selector is None:
+            obligations.append("sparsity_selector")
+        elif (facts.sparse_selector not in range(4) or
+              (facts.kind in ("F8F6F4", "I8") and
+               facts.sparse_selector != 0)):
+            violations.append("sparsity_selector")
+        if facts.metadata_nibbles is None:
+            obligations.append("metadata_indices")
+        elif metadata_rule is not None and any(
+                nibble not in metadata_rule.valid_nibbles
+                for nibble in facts.metadata_nibbles):
+            violations.append("metadata_indices")
+        obligations.extend(("live_metadata_contents", "sparse_a_contents"))
+        if facts.m == 32:
+            obligations.append("metadata_layout_rule")
+    elif (facts.sparse_selector is not None or
+          facts.metadata_nibbles is not None or
+          facts.metadata_lane_half is not None):
+        violations.append("dense_metadata_facts")
+    if path is not None:
+        for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+                "d_lane_half",) + (("metadata_lane_half",)
+                                   if facts.source_sparse else ()):
+            value = getattr(facts, name)
+            if value is None:
+                obligations.append(name)
+            elif value not in path.allowed_lane_halves:
+                violations.append(f"{name}_alignment")
+    if (facts.kind == "F8F6F4" and facts.transpose_b and
+            facts.b_type in ("E4M3", "E5M2") and facts.n is not None and
+            (facts.n % 16 or not 16 <= facts.n <= 256)):
+        violations.append("b_transpose_n")
+    zero_bits = None
+    if type(facts.zero_column_operand_present) is not bool:
+        violations.append("zero_operand_presence")
+    elif facts.zero_column_operand_present:
+        if facts.zero_column_word is None:
+            obligations.append("zero_column_word")
+        else:
+            findings, zero_bits = _check_ws_zero_word(
+                facts.zero_column_word, facts.m, facts.n)
+            violations.extend(findings)
+            if facts.m is None:
+                obligations.append("zero_m")
+            if facts.n is None:
+                obligations.append("zero_n")
+            obligations.append("live_zero_column_word")
+    elif facts.zero_column_word is not None:
+        violations.append("zero_word_without_operand")
+    control = facts.collector
+    valid = (isinstance(control, CollectorControl) and
+             isinstance(control.buffer, CollectorBuffer) and
+             isinstance(control.operation, CollectorOp) and
+             ((control.buffer is CollectorBuffer.UNSPECIFIED) ==
+              (control.operation is CollectorOp.UNSPECIFIED)) and
+             (not control.present or control.buffer in (
+                 CollectorBuffer.B0, CollectorBuffer.B1,
+                 CollectorBuffer.B2, CollectorBuffer.B3)))
+    effective = (control if valid and control.present else
+                 CollectorControl(CollectorBuffer.B0, CollectorOp.DISCARD))
+    if not valid:
+        violations.append("collector_domain")
+    if (not isinstance(facts.collector_b_valid, tuple) or
+            len(facts.collector_b_valid) != 4 or
+            any(value is not None and type(value) is not bool
+                for value in facts.collector_b_valid)):
+        violations.append("collector_history_context")
+    elif valid and control.operation in (CollectorOp.USE,
+                                         CollectorOp.LAST_USE):
+        index = (CollectorBuffer.B0, CollectorBuffer.B1,
+                 CollectorBuffer.B2, CollectorBuffer.B3).index(control.buffer)
+        prior = facts.collector_b_valid[index]
+        if prior is None:
+            obligations.append("collector_b_valid")
+        elif not prior:
+            violations.append("collector_b_valid")
+        obligations.append("collector_sequence")
+    return WsOperationalReport(tuple(violations), tuple(obligations),
+                               shape, path, metadata_rule,
+                               shape.k // 2 if shape and facts.source_sparse
+                               else None, shape.k if shape else None,
+                               effective, zero_bits)

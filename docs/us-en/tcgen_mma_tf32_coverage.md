@@ -49,8 +49,9 @@ shared operands use the accepted non-transposed swizzle domain. Tensor Memory A
 has no A-shared-word obligation. The non-WS F/D/B/A paths are selected by
 group/M: (1,64), (1,128), (2,128), (2,256). On the F half path, independently
 supplied A/D Tensor Memory lane-half identities can be compared when A is in
-Tensor Memory. Address spelling alone cannot derive those identities or prove
-allocation history.
+Tensor Memory. Full D/B/A paths require lane-half zero, and a known D half is
+checked even with shared A. Address spelling cannot derive those identities
+or prove allocation history.
 
 The source/target checkpoint supports plain tf32 on exact `sm_100a` from
 PTX8.6, the `sm_100f` family including `sm_103a/f` from PTX8.8, and the
@@ -60,10 +61,12 @@ the narrower exact-100a/100f-family gate; scaled forms were rejected on
 Below-floor assembler cases whose no-MMA `.target` controls failed are
 directive-confounded and are not independent MMA-floor evidence.
 
-This slice leaves other dense kinds, sparse and weight-stationary
-spellings, block scaling, collectors, ashift, convolution and runtime
-descriptor/memory validation for later work. Its selected tf32 view
+The [family matrix](tcgen_mma_family_coverage.md) covers the other fixed dense,
+sparse and WS source forms; live descriptor and memory facts remain runtime
+obligations. This selected tf32 view
 borrows from the exact `Tcgen05MmaTf32` form and preserves the existing f16
 view and generated identity. The module's CTA-group consistency check remains
 limited to TCGEN instructions. TMA omitted/group-1/group-2 forms may coexist
 in one body and must not inherit that TCGEN-only uniform-group rule.
+
+The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.

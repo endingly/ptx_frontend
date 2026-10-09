@@ -394,6 +394,8 @@ def _emit_modifier_value_descriptor(
               .mbarrier_phase_type = {members[ResolvedValueKind.MBARRIER_PHASE_TYPE]},
               .mbarrier_layout = {members[ResolvedValueKind.MBARRIER_LAYOUT]},
               .tcgen_cta_group = {members[ResolvedValueKind.CTA_GROUP]},
+              .tcgen_scale_vector_size = {members[ResolvedValueKind.TCGEN_SCALE_VECTOR_SIZE]},
+              .tcgen_collector = {members[ResolvedValueKind.TCGEN_COLLECTOR]},
               .tcgen_shape = {members[ResolvedValueKind.TCGEN_SHAPE]},
               .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
               .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},

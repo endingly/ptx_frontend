@@ -13,7 +13,7 @@
 > - M0～M10 的功能状态为完成；
 > - M8-I14 与 M9-C03 保持暂停；
 > - M10 后续的 PTX ISA 9.3 §9.7 YAML taxonomy 规范化已经完成；
-> - M11～M13 已完成；M14～M19 的逐项计划状态尚未按当前代码重新审计，不能由下方空框推断功能缺失。M14 已实现的切片见第 12 节。
+> - M11～M14 的前端计划已按当前代码审计；M15～M19 的逐项状态尚未重新审计，不能由下方空框推断功能缺失。M14 的具体证据及不透明 descriptor 边界见第 12 节。
 >
 > ISA 规划基线：
 >
@@ -480,7 +480,7 @@ family scope，绝不表示整部 PTX ISA。
 | M11 | ✅ | PTX 9.3 规范基线和 target capability |
 | M12 | ✅ | common compiler-generated scalar/data-movement closure |
 | M13 | ✅ | cluster、proxy 与 mbarrier |
-| M14 | ⬜ | tensor map、TMA 与 bulk/tensor async copy |
+| M14 | ✅（前端） | tensor map、TMA 与 bulk/tensor async copy；仅覆盖已列形式与静态边界 |
 | M15 | ⬜ | warp-level matrix、sparse MMA 与 WMMA compatibility |
 | M16 | ⬜ | Hopper WGMMA |
 | M17 | ⬜ | Blackwell Tensor Memory 与 TCGEN05 data movement |
@@ -918,38 +918,42 @@ TMA kernel 提供 parse/resolve/check。
 当前分支已支持已列出的 tensor load、store、reduction 与 prefetch 形式及其
 `.L2::cache_hint` 和可选末尾 64-bit `cache_policy`，保留 rank、mode、multicast、
 CTA group 和完成方式约束。模块校验从自有绑定检查寄存器元数据；tensor-map descriptor
-的运行时原始字节仍不解码。具体形式和边界以
+的运行时原始字节仍不解码。[前端收口矩阵](../docs/zh-han/tensor_async_closeout.md)
+逐项链接固定 PTX 9.3 条款、源码和测试；准确的已支持形式另见
 [tensor async 覆盖](../docs/zh-han/tensor_async_coverage.md)与
-[缓存控制](../docs/zh-han/tensor_cache_controls.md)为准。下表保留原逐项规划，
-尚未对每个 Issue 的完整闭环条件重新审计；空框不代表当前代码缺少该功能。
+[缓存控制](../docs/zh-han/tensor_cache_controls.md)。下表的 ✅ 指已列形式达到
+source lossless、owned typed IR 和 instruction-local target check 的前端出口，
+不证明原始 descriptor 字节、运行时效果或未列 PTX 变体。I06～I10、I18～I21
+是 #151 非 tensor bulk 共享依赖，I22 属于原子/归约家族；它们不是本次 #152 新实现。
+C01 和 C03 为共享集成条件。
 
 | ID | 状态 | 类型 | Issue | 闭环条件 |
 | --- | --- | --- | --- | --- |
-| M14-I01 | ⬜ | 独立 | 建立 Tensor dimension/format/access-mode domain | rank、element format、tile/im2col、swizzle/interleave 可表达 |
-| M14-I02 | ⬜ | 独立 | 建立 `TensorMapRef` | descriptor identity、space、alignment、source range |
-| M14-I03 | ⬜ | 独立 | 建立 tensor coordinate tuple | rank-dependent arity、signedness、register/immediate policy |
-| M14-I04 | ⬜ | 独立 | 支持 `tensormap.replace` | replace field/value/type/target constraints |
-| M14-I05 | ⬜ | 独立 | 支持 `tensormap.cp_fenceproxy` | tensor-map proxy 与 fence semantics |
-| M14-I06 | ⬜ | 独立 | 支持 `cp.async.bulk` global→shared::cluster slice | mbarrier completion、size、space、target |
-| M14-I07 | ⬜ | 独立 | 支持 `cp.async.bulk` shared::cta→global slice | bulk-group completion、size、space |
-| M14-I08 | ⬜ | 独立 | 支持 PTX 9.3 bulk `.sem/.scope` | exact qualifier matrix 与 availability |
-| M14-I09 | ⬜ | 独立 | 支持 `cp.reduce.async.bulk` first slice | reduction op/type/direction/completion |
-| M14-I10 | ⬜ | 独立 | 支持 `cp.async.bulk.prefetch` | level/address/size/target |
-| M14-I11 | ⬜ | 独立 | 支持 `cp.async.bulk.tensor` tiled global→shared | tensor map、coords、mbarrier |
-| M14-I12 | ⬜ | 独立 | 支持 `cp.async.bulk.tensor` tiled shared→global | tensor map、coords、bulk group |
-| M14-I13 | ⬜ | 独立 | 支持 `cp.reduce.async.bulk.tensor` first slice | tensor reduction topology |
-| M14-I14 | ⬜ | 独立 | 支持 `cp.async.bulk.prefetch.tensor` tiled slice | tensor map/coords/cache |
-| M14-I15 | ⬜ | 独立 | 支持 tensor copy `im2col` mode | bbox/traversal stride/coords |
-| M14-I16 | ⬜ | 独立 | 支持 `im2col::w` mode | wHalo/wOffset/target restriction |
-| M14-I17 | ⬜ | 独立 | 支持 `.tile::scatter4/.tile::gather4` mode | coordinate topology 与 boundary |
-| M14-I18 | ⬜ | 独立 | 支持 `cp.async.bulk.commit_group` | bulk-group identity |
-| M14-I19 | ⬜ | 独立 | 支持 `cp.async.bulk.wait_group` | immediate group count |
-| M14-I20 | ⬜ | 独立 | 支持 `st.async` first slice | completion/space/type/target |
-| M14-I21 | ⬜ | 独立 | 支持 `st.bulk` first slice | size/space/target |
-| M14-I22 | ⬜ | 独立 | 支持 `red.async` first slice | reduction/completion/space |
-| M14-C01 | ⬜ | 耦合 | 统一 async completion domain | async-group、bulk-group、mbarrier 使用同一 completion model |
-| M14-C02 | ⬜ | 耦合 | 统一 tensor constraints | map rank、mode、coords、direction、space、swizzle 集中验证 |
-| M14-C03 | ⬜ | 耦合 | 建立 TMA corpus | sm90a/sm100 tiled、im2col、bulk 正例与邻接负例 |
+| M14-I01 | ✅ | 独立 | 建立 Tensor dimension/format/access-mode domain | rank/mode 为指令强类型域；element/swizzle/interleave 由 replacement/调用方事实有条件表达 |
+| M14-I02 | ✅ | 独立 | 建立 `TensorMapRef` | descriptor identity、space、alignment、source range |
+| M14-I03 | ✅ | 独立 | 建立 tensor coordinate tuple | rank-dependent arity、signedness、register/immediate policy |
+| M14-I04 | ✅ | 独立 | 支持 `tensormap.replace` | replace field/value/type/target constraints |
+| M14-I05 | ✅ | 独立 | 支持 `tensormap.cp_fenceproxy` | tensor-map proxy 与 fence semantics |
+| M14-I06 | ✅（共享） | 独立 | 支持 `cp.async.bulk` global→shared::cluster slice | mbarrier completion、size、space、target |
+| M14-I07 | ✅（共享） | 独立 | 支持 `cp.async.bulk` shared::cta→global slice | bulk-group completion、size、space |
+| M14-I08 | ✅（共享） | 独立 | 支持 PTX 9.3 bulk `.sem/.scope` | exact qualifier matrix 与 availability |
+| M14-I09 | ✅（共享） | 独立 | 支持 `cp.reduce.async.bulk` first slice | reduction op/type/direction/completion |
+| M14-I10 | ✅（共享） | 独立 | 支持 `cp.async.bulk.prefetch` | level/address/size/target |
+| M14-I11 | ✅ | 独立 | 支持 `cp.async.bulk.tensor` tiled global→shared | tensor map、coords、mbarrier |
+| M14-I12 | ✅ | 独立 | 支持 `cp.async.bulk.tensor` tiled shared→global | tensor map、coords、bulk group |
+| M14-I13 | ✅ | 独立 | 支持 `cp.reduce.async.bulk.tensor` first slice | tensor reduction topology |
+| M14-I14 | ✅ | 独立 | 支持 `cp.async.bulk.prefetch.tensor` tiled slice | tensor map/coords/cache |
+| M14-I15 | ✅ | 独立 | 支持 tensor copy `im2col` mode | bbox/traversal stride/coords；descriptor 值依赖调用方事实 |
+| M14-I16 | ✅ | 独立 | 支持 `im2col::w` mode | wHalo/wOffset/target restriction；含 W128 |
+| M14-I17 | ✅ | 独立 | 支持 `.tile::scatter4/.tile::gather4` mode | coordinate topology 与 boundary |
+| M14-I18 | ✅（共享） | 独立 | 支持 `cp.async.bulk.commit_group` | bulk-group identity |
+| M14-I19 | ✅（共享） | 独立 | 支持 `cp.async.bulk.wait_group` | immediate group count |
+| M14-I20 | ✅（共享） | 独立 | 支持 `st.async` first slice | completion/space/type/target |
+| M14-I21 | ✅（共享） | 独立 | 支持 `st.bulk` first slice | size/space/target |
+| M14-I22 | ✅（共享） | 独立 | 支持 `red.async` first slice | reduction/completion/space |
+| M14-C01 | ✅（共享） | 耦合 | 统一 async completion domain | async-group、bulk-group、mbarrier 使用同一 completion model |
+| M14-C02 | ✅ | 耦合 | 统一 tensor constraints | 指令 rank、mode、coords、direction、space 静态检查；swizzle 依赖调用方事实 |
+| M14-C03 | ✅（共享） | 耦合 | 建立 TMA corpus | sm90a/sm100 tiled、im2col、bulk 正例与邻接负例；不等于全部 PTXAS 组合 |
 
 ### 出口
 

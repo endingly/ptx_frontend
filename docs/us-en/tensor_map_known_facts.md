@@ -74,8 +74,11 @@ descriptor-code bridge. Unknown active atomicity, runtime peer/mask membership,
 barrier completion and descriptor contents remain obligations.
 
 The fixed PTX 9.3 manual supplies no complete raw 128-byte tensor-map field
-layout. A full raw-object decoder remains a separate, unresolved scope item and
-is **not** satisfied by this caller-known-facts query. Cache-hint/policy
-canonical operands remain separate work. See the current
-[tensor async coverage](tensor_async_coverage.md) for
-delivered instruction forms and tool discrepancies.
+layout. Raw-object decoding is outside the #152 frontend closeout and would
+require a separately specified byte-layout scope; this caller-known-facts
+query does **not** satisfy or replace it. Canonical
+[cache-hint/policy operands](tensor_cache_controls.md) are supported on the
+selected tensor forms and remain independent of descriptor facts. See the
+[tensor async coverage](tensor_async_coverage.md) and
+[frontend closeout matrix](tensor_async_closeout.md) for exact forms, evidence,
+and remaining obligations.

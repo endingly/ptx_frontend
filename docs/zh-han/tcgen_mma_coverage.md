@@ -7,8 +7,9 @@
 汇编证据和独立 Authority 检查点确定。独立的
 [稠密 tf32 形式](tcgen_mma_tf32_coverage.md)及独立的
 [稠密 i8 形式](tcgen_mma_i8_coverage.md)和规范顺序的
-[无缩放 f8f6f4 形式](tcgen_mma_f8f6f4_coverage.md)也已覆盖。稀疏、权重驻留、
-其余稠密 kind、collector、块缩放和卷积形式仍未完成。
+[无缩放 f8f6f4 形式](tcgen_mma_f8f6f4_coverage.md)及
+[稠密 MX8 块缩放形式](tcgen_mma_mx8_coverage.md)也已覆盖。稀疏、权重驻留、
+其余稠密 kind、collector、其余块缩放及卷积形式仍未完成。
 
 A/B 共享描述符只能使用 General 标量 B64/U64/S64 **寄存器**；指令描述符只能使用
 General B32/U32/S32 寄存器。汇编器也接受了这些位置的字面量零，但前端仍遵循文档的

@@ -93,6 +93,10 @@ _RESOLVED_MODIFIER_VALUE_TRAITS: dict[
         cpp_domain=CppDomain.TCGEN_CTA_GROUPS,
         descriptor_member="tcgen_cta_group",
     ),
+    ResolvedValueKind.TCGEN_SCALE_VECTOR_SIZE: ResolvedValueTraits(
+        cpp_domain=CppDomain.TCGEN_SCALE_VECTOR_SIZES,
+        descriptor_member="tcgen_scale_vector_size",
+    ),
     ResolvedValueKind.TCGEN_SHAPE: ResolvedValueTraits(
         cpp_domain=CppDomain.TCGEN_DATA_SHAPES,
         descriptor_member="tcgen_shape",

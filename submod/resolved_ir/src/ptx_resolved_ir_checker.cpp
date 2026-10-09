@@ -281,6 +281,9 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.mbarrier_layout == actual.mbarrier_layout;
     case ModifierValueKind::TcgenCtaGroup:
       return descriptor.tcgen_cta_group == actual.tcgen_cta_group;
+    case ModifierValueKind::TcgenScaleVectorSize:
+      return descriptor.tcgen_scale_vector_size ==
+             actual.tcgen_scale_vector_size;
     case ModifierValueKind::TcgenDataMovementShape:
       return descriptor.tcgen_shape == actual.tcgen_shape;
     case ModifierValueKind::TcgenRepeat:
@@ -2491,7 +2494,10 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<ResolvedRegisterRef>& idesc,
     const WithLocs<ResolvedRegisterVector>* mask,
     const WithLocs<ResolvedPredicateSource>& enable_d,
-    const WithLocs<ResolvedImmediate>* scale, const Context& context) {
+    const WithLocs<ResolvedImmediate>* scale,
+    const WithLocs<TcgenScaleVectorSize>* scale_selector,
+    const WithLocs<TensorMemoryAddress>* scale_a,
+    const WithLocs<TensorMemoryAddress>* scale_b, const Context& context) {
   const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
     return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
@@ -2565,6 +2571,25 @@ CheckResult check_tcgen_mma_sources(
         "TCGEN MMA enable-D requires a predicate or integer truth constant.",
         CheckDiagnosticKind::OperandTypeMismatch);
   }
+  if ((scale_selector != nullptr) != (scale_a != nullptr && scale_b != nullptr))
+    return cvt_rule_violation(
+        context, "TCGEN MMA block scaling requires both scale operands.");
+  if (scale_selector) {
+    if ((scale_selector->value == TcgenScaleVectorSize::Absent &&
+         !scale_selector->locs.empty()) ||
+        (scale_selector->value != TcgenScaleVectorSize::Absent &&
+         !tcgen_mma_valid_source_ranges(scale_selector->locs, 1)))
+      return cvt_rule_violation(
+          context, "TCGEN MMA scale selector provenance is invalid.");
+    if (auto result = check_tcgen_transfer_address(*scale_a, context); !result)
+      return result;
+    if (auto result = check_tcgen_transfer_address(*scale_b, context); !result)
+      return result;
+    if (!tcgen_mma_valid_source_ranges(scale_a->locs, 1) ||
+        !tcgen_mma_valid_source_ranges(scale_b->locs, 1))
+      return cvt_rule_violation(
+          context, "TCGEN MMA scale address source ranges are invalid.");
+  }
   if (scale) {
     const auto& value = scale->value;
     if (value.type != ScalarType::U32 || value.is_negative ||
@@ -2589,7 +2614,8 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedPredicateSource>& enable_d,
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
   return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
-                                 mask, enable_d, scale, context);
+                                 mask, enable_d, scale, nullptr, nullptr,
+                                 nullptr, context);
 }
 
 /** Match copy qualifiers against the selected closed shape and format sets. */

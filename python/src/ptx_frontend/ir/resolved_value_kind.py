@@ -22,6 +22,7 @@ class ResolvedValueKind(Enum):
     MBARRIER_PHASE_TYPE = "MbarrierPhaseType"
     MBARRIER_LAYOUT = "MbarrierLayout"
     CTA_GROUP = "TcgenCtaGroup"
+    TCGEN_SCALE_VECTOR_SIZE = "TcgenScaleVectorSize"
     TCGEN_SHAPE = "TcgenDataMovementShape"
     TCGEN_NUM = "TcgenRepeat"
     TCGEN_RED_OP = "TcgenReductionOp"

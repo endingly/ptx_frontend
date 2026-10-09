@@ -313,6 +313,7 @@ class ModifierKind(_SemanticToken):
     PHASE_TYPE = "phase_type"
     MBARRIER_LAYOUT = "mbarrier_layout"
     CTA_GROUP = "cta_group"
+    TCGEN_SCALE_VECTOR_SIZE = "tcgen_scale_vector_size"
     TCGEN_SHAPE = "tcgen_shape"
     TCGEN_NUM = "tcgen_num"
     TCGEN_RED_OP = "tcgen_red_op"

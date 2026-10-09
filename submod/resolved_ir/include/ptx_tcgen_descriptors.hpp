@@ -267,4 +267,59 @@ inline std::optional<TcgenMmaF8F6F4View> tcgen_mma_f8f6f4_view(
   return view;
 }
 
+/** Borrowed dense MX8 roles selected from one exact owned block-scale form.
+ *  Scale addresses remain opaque Tensor Memory operands. The selector records
+ *  source omission in both its typed value and its location span.
+ */
+struct TcgenMmaMx8View {
+  /** Group selected by the written qualifier. */
+  TcgenCtaGroup group;
+  /** Written selector, including an omitted-source state. */
+  const WithLocs<TcgenScaleVectorSize>* scale_selector;
+  /** Destination Tensor Memory address borrowed from the instruction. */
+  const TensorMemoryAddress* d;
+  /** Shared A descriptor, absent for Tensor Memory A. */
+  std::optional<TcgenMmaSharedDescriptorView> a_shared;
+  /** Tensor Memory A address, absent for shared A. */
+  const TensorMemoryAddress* a_tmem;
+  /** Shared B descriptor register. */
+  TcgenMmaSharedDescriptorView b;
+  /** Instruction descriptor register; its live value is opaque. */
+  TcgenInstructionDescriptorView instruction;
+  /** Scale A Tensor Memory address, not a decoded sub-column offset. */
+  const TensorMemoryAddress* scale_a;
+  /** Scale B Tensor Memory address, not a decoded sub-column offset. */
+  const TensorMemoryAddress* scale_b;
+  /** Required predicate source. */
+  const ResolvedPredicateSource* enable_d;
+};
+
+/** Borrow MX8 roles only when the exact class and placement layout agree. */
+inline std::optional<TcgenMmaMx8View> tcgen_mma_mx8_view(
+    const Instruction& instruction) noexcept {
+  const auto* mma = dynamic_cast<const Tcgen05MmaMxf8f6f4*>(&instruction);
+  if (!mma || mma->operand_layout.value >= 2)
+    return std::nullopt;
+  const bool shared_a = mma->operand_layout.value == 0;
+  if (mma->a_register.has_value() != shared_a ||
+      mma->a_tcgen_bracketed_address.has_value() == shared_a)
+    return std::nullopt;
+  TcgenMmaMx8View view{.group = mma->cta_group.value,
+                       .scale_selector = &mma->scale_vector_size,
+                       .d = &mma->d.value,
+                       .a_shared = std::nullopt,
+                       .a_tmem = nullptr,
+                       .b = {&mma->b.value, MatrixFragmentRole::B},
+                       .instruction = {&mma->idesc.value},
+                       .scale_a = &mma->scale_a.value,
+                       .scale_b = &mma->scale_b.value,
+                       .enable_d = &mma->enable_input_d.value};
+  if (shared_a)
+    view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
+                                                 MatrixFragmentRole::A};
+  else
+    view.a_tmem = &mma->a_tcgen_bracketed_address->value;
+  return view;
+}
+
 }  // namespace ptx_frontend::resolved_ir

@@ -112,7 +112,10 @@ def check_module_layout() -> None:
     from ptx_frontend.spec.tcgen_mma_operations import (
         F8F6F4KnownFacts,
         F8F6F4_SHAPES,
+        MX8_SHAPES,
+        Mx8KnownFacts,
         check_f8f6f4_known_facts,
+        check_mx8_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -127,6 +130,16 @@ def check_module_layout() -> None:
         b_type="E4M3", sparse=False, a_shared=False))
     assert "shape_or_output_type" not in low.violations
     assert "a_low_bit_packing_rule" in low.obligations
+    assert len(MX8_SHAPES) == 2
+    mx8 = check_mx8_known_facts(Mx8KnownFacts(
+        group=1, m=128, n=16, k=32, d_type="F32", a_type="E4M3",
+        b_type="E5M2", sparse=False, a_shared=False,
+        scale_selector="absent", scale_type="UE8M0",
+        scale_a_id=0, scale_b_id=3))
+    assert mx8.known_facts_ok and mx8.scale_a_layout is not None
+    from ptx_frontend.spec.tcgen_mma_operations import MxScaleLayoutId
+    assert mx8.scale_a_layout.layout_id is MxScaleLayoutId.MX1
+    assert "scale_b_layout" in mx8.obligations
 
 
 def check_packaged_spec_model() -> None:
@@ -158,6 +171,13 @@ def check_packaged_spec_model() -> None:
     assert f8.modifier_order_aliases == ()
     assert all("scale_input_d" not in {operand.name for operand in layout.operands}
                for layout in f8.operand_layouts)
+    mx8 = next(item for item in tcgen.variants
+               if item.name == "tcgen05_mma_mxf8f6f4")
+    assert len(mx8.operand_layouts) == 2
+    assert {layout.name for layout in mx8.operand_layouts} == {"shared", "tensor"}
+    assert all(tuple(operand.name for operand in layout.operands)[-3:] ==
+               ("scale_a", "scale_b", "enable_input_d")
+               for layout in mx8.operand_layouts)
 
     fma = next(item for item in database.instructions if item.opcode == "fma")
 

@@ -245,6 +245,18 @@ domains:
       cta_group::1: TcgenCtaGroup::One
       cta_group::2: TcgenCtaGroup::Two
 
+  tcgen_scale_vector_sizes:
+    cpp_type: TcgenScaleVectorSize
+    default: TcgenScaleVectorSize::Absent
+    runtime_lookup: ptx_suffix
+    values:
+      absent: TcgenScaleVectorSize::Absent
+      scale_vec::1X: TcgenScaleVectorSize::Vec1X
+      scale_vec::2X: TcgenScaleVectorSize::Vec2X
+      scale_vec::4X: TcgenScaleVectorSize::Vec4X
+      block16: TcgenScaleVectorSize::Block16
+      block32: TcgenScaleVectorSize::Block32
+
   tcgen_data_shapes:
     cpp_type: TcgenDataMovementShape
     default: TcgenDataMovementShape::S32x32b
@@ -349,6 +361,7 @@ domains:
       MbarrierPhaseType: MbarrierPhaseType
       MbarrierLayout: MbarrierLayout
       TcgenCtaGroup: TcgenCtaGroup
+      TcgenScaleVectorSize: TcgenScaleVectorSize
       TcgenDataMovementShape: TcgenDataMovementShape
       TcgenRepeat: TcgenRepeat
       TcgenReductionOp: TcgenReductionOp
@@ -453,6 +466,7 @@ domains:
       MbarrierPhaseType: check_end::ResolvedValueKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedValueKind::TcgenCtaGroup
+      TcgenScaleVectorSize: check_end::ResolvedValueKind::TcgenScaleVectorSize
       TcgenDataMovementShape: check_end::ResolvedValueKind::TcgenDataMovementShape
       TcgenRepeat: check_end::ResolvedValueKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedValueKind::TcgenReductionOp
@@ -555,6 +569,7 @@ domains:
       MbarrierPhaseType: check_end::ResolvedModifierDefaultKind::MbarrierPhaseType
       MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedModifierDefaultKind::TcgenCtaGroup
+      TcgenScaleVectorSize: check_end::ResolvedModifierDefaultKind::TcgenScaleVectorSize
       TcgenDataMovementShape: check_end::ResolvedModifierDefaultKind::TcgenDataMovementShape
       TcgenRepeat: check_end::ResolvedModifierDefaultKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedModifierDefaultKind::TcgenReductionOp
@@ -581,6 +596,7 @@ domains:
       MbarrierPhaseType: checker::ModifierValueKind::MbarrierPhaseType
       MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
       TcgenCtaGroup: checker::ModifierValueKind::TcgenCtaGroup
+      TcgenScaleVectorSize: checker::ModifierValueKind::TcgenScaleVectorSize
       TcgenDataMovementShape: checker::ModifierValueKind::TcgenDataMovementShape
       TcgenRepeat: checker::ModifierValueKind::TcgenRepeat
       TcgenReductionOp: checker::ModifierValueKind::TcgenReductionOp

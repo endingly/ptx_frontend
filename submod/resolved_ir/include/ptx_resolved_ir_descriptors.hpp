@@ -54,6 +54,7 @@ enum class ResolvedValueKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenScaleVectorSize,
   TcgenDataMovementShape,
   TcgenRepeat,
   TcgenReductionOp,
@@ -152,6 +153,7 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenScaleVectorSize,
   TcgenDataMovementShape,
   TcgenRepeat,
   TcgenReductionOp,
@@ -174,6 +176,7 @@ struct ResolvedModifierDefaultDescriptor {
       base::MbarrierPhaseType::Primary;
   base::MbarrierLayout mbarrier_layout = base::MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;

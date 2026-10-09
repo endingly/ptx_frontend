@@ -7,6 +7,7 @@ registers. Table 43 and Tables 45–48 remain owned by tcgen_descriptor_domains.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from ptx_frontend.spec import tcgen_descriptor_domains as descriptor
 
@@ -333,6 +334,30 @@ def validate_catalogue() -> None:
                   ("sm_110f", False, 9, 0, False)}):
         raise ValueError("dense f8f6f4 rows drifted from Tables 42/45")
 
+    mx8 = next((kind for kind in descriptor.KINDS
+                if kind.name == "MxF8F6F4"), None)
+    if (mx8 is None or mx8.table != "instruction_46" or
+            mx8.d_types or mx8.saturation or not mx8.negate or
+            not mx8.transpose or len(MX8_SHAPES) != 2 or
+            {(row.group, row.d_type, row.m_values, row.n_first,
+              row.n_step, row.n_last, row.k) for row in MX8_SHAPES} != {
+                  (1, "F32", (128, 128), 8, 8, 256, 32),
+                  (2, "F32", (128, 256), 16, 16, 256, 32)} or
+            MX8_PATHS != tuple(row for row in F16_PATHS if row.m != 64) or
+            {name.upper() for _, name in mx8.a_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in mx8.b_types} != set(_F8F6F4_TYPES) or
+            {name.upper() for _, name in mx8.scale_types} != {"UE8M0"} or
+            set(mx8.scale_ids) != {0, 1, 2, 3} or
+            {(row.role, row.selector, row.factor_count,
+              row.subcolumn_alignment_bytes, row.valid_ids, row.layout_id)
+             for row in MX8_SCALE_LAYOUTS} != {
+                 (role, selector, 1, 1, (0, 1, 2, 3),
+                  MxScaleLayoutId.MX1 if role == "a"
+                  else MxScaleLayoutId.ONE_X_N)
+                 for role in ("a", "b")
+                 for selector in ("scale_vec::1X", "block32")}):
+        raise ValueError("dense MX8 rows drifted from Tables 42/46/59/60")
+
 
 def _check_shared(role: str, transpose: bool | None,
                   facts: SharedOperandFacts | None,
@@ -626,3 +651,184 @@ def check_f8f6f4_known_facts(
             violations.append("half_path_alignment")
     return F8F6F4OperationalReport(tuple(violations), tuple(obligations),
                                    path.layout if path else None)
+
+
+class MxScaleLayoutId(Enum):
+    """Logical Table 59/60 scale arrangement, independent of its label."""
+
+    MX1 = "Mx1"
+    ONE_X_N = "1xN"
+
+
+class MxInputPacking(Enum):
+    """Required low-bit container layout in Tensor or shared memory."""
+
+    TMEM_EIGHT_BIT_CONTAINER = "tmem_eight_bit_container"
+    SHARED_PADDED_FOUR_BIT = "shared_padded_four_bit"
+    SHARED_PADDED_SIX_BIT = "shared_padded_six_bit"
+
+
+@dataclass(frozen=True)
+class MxScaleLayoutRow:
+    """One Table 59/60 scale role and selected sub-column data contract.
+
+    ``valid_ids`` select sub-columns inside a Tensor Memory word. They are not
+    byte offsets from a source base address. The row stays explicit across K
+    and selector forms so later block formats cannot collapse provenance.
+    """
+
+    role: str
+    kind: str
+    sparse: bool
+    k: int
+    selector: str
+    factor_count: int
+    subcolumn_alignment_bytes: int
+    valid_ids: tuple[int, ...]
+    layout_id: MxScaleLayoutId
+
+
+@dataclass(frozen=True)
+class MxScaleRoleFacts:
+    """Optional independently known scale placement, never read from source."""
+
+    layout_id: MxScaleLayoutId | None = None
+    subcolumn_alignment_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class Mx8KnownFacts(F8F6F4KnownFacts):
+    """Caller-known MX8 operation with written selector and two scale roles."""
+
+    scale_selector: str = "absent"
+    scale_type: str | None = None
+    scale_a_id: int | None = None
+    scale_b_id: int | None = None
+    scale_a_facts: MxScaleRoleFacts | None = None
+    scale_b_facts: MxScaleRoleFacts | None = None
+    a_packing: MxInputPacking | None = None
+    b_packing: MxInputPacking | None = None
+
+
+@dataclass(frozen=True)
+class Mx8OperationalReport(F8F6F4OperationalReport):
+    """Known MX8 violations plus selected scale rows, when determinable."""
+
+    scale_a_layout: MxScaleLayoutRow | None = None
+    scale_b_layout: MxScaleLayoutRow | None = None
+    required_a_packing: MxInputPacking | None = None
+    required_b_packing: MxInputPacking | None = None
+
+
+MX8_SHAPES = tuple(
+    F8F6F4ShapeRow(group, "F32", m_values, first, step, 256, 32,
+                   _F8F6F4_TYPES, _F8F6F4_TYPES)
+    for group, m_values, first, step in (
+        (1, (128, 128), 8, 8),
+        (2, (128, 256), 16, 16)))
+MX8_PATHS = tuple(row for row in F16_PATHS if row.m != 64)
+MX8_SCALE_LAYOUTS = tuple(
+    MxScaleLayoutRow(role, "MxF8F6F4", False, 32, selector, 1, 1,
+                     (0, 1, 2, 3), MxScaleLayoutId.MX1 if role == "a"
+                     else MxScaleLayoutId.ONE_X_N)
+    for selector in ("scale_vec::1X", "block32")
+    for role in ("a", "b"))
+MX8_TARGET_GATES = F8F6F4_TARGET_GATES
+MX8_VEC_TARGET_GATES = (F16TargetGate("sm_100a", True, 8, 6, False),)
+MX8_BLOCK_TARGET_GATES = tuple(gate for gate in MX8_TARGET_GATES
+                              if gate.feature in ("sm_100f", "sm_110f"))
+
+
+def mx8_scale_layout(role: str, selector: str) -> MxScaleLayoutRow | None:
+    """Derive omitted MX8 selector as 1X without changing written provenance."""
+
+    effective = "scale_vec::1X" if selector == "absent" else selector
+    return next((row for row in MX8_SCALE_LAYOUTS
+                 if row.role == role and row.selector == effective), None)
+
+
+def mx8_required_packing(element_type: str | None,
+                         shared: bool) -> MxInputPacking | None:
+    """Return the fixed 4/6-bit container rule for a known operand type."""
+
+    if element_type not in _F8F6F4_LOW_TYPES:
+        return None
+    if not shared:
+        return MxInputPacking.TMEM_EIGHT_BIT_CONTAINER
+    if element_type == "E2M1":
+        return MxInputPacking.SHARED_PADDED_FOUR_BIT
+    return MxInputPacking.SHARED_PADDED_SIX_BIT
+
+
+def check_mx8_known_facts(facts: Mx8KnownFacts) -> Mx8OperationalReport:
+    """Check independently supplied MX8 fields and conditional scale layouts."""
+
+    common = check_f8f6f4_known_facts(facts)
+    violations = list(common.violations)
+    obligations = [name for name in common.obligations
+                   if name not in ("a_low_bit_packing_rule",
+                                   "b_low_bit_packing_rule")]
+    required_a = (mx8_required_packing(facts.a_type, facts.a_shared)
+                  if facts.a_shared is not None else None)
+    required_b = mx8_required_packing(facts.b_type, True)
+    if facts.a_type in _F8F6F4_LOW_TYPES and facts.a_shared is None:
+        obligations.append("a_packing_placement")
+    for role, required in (("a", required_a), ("b", required_b)):
+        supplied = getattr(facts, f"{role}_packing")
+        if supplied is not None and not isinstance(supplied, MxInputPacking):
+            violations.append(f"{role}_packing_fact")
+            continue
+        if required is not None:
+            if supplied is None:
+                obligations.append(f"{role}_packing_fact")
+            elif supplied != required:
+                violations.append(f"{role}_packing_fact")
+            obligations.append(f"{role}_live_packing_contents")
+        elif (supplied is not None and
+              getattr(facts, f"{role}_type") is not None and
+              (role != "a" or facts.a_shared is not None)):
+            violations.append(f"{role}_packing_fact")
+    if facts.d_type is not None and facts.d_type != "F32":
+        violations.append("mx8_output_type")
+    if (facts.group is not None and facts.m is not None and
+            facts.n is not None and facts.k is not None and
+            not any(row.group == facts.group and
+                    row.contains(facts.m, facts.n, facts.k)
+                    for row in MX8_SHAPES)):
+        violations.append("mx8_shape")
+    if facts.scale_type is None:
+        obligations.append("scale_type")
+    elif facts.scale_type != "UE8M0":
+        violations.append("scale_type")
+    if facts.scale_selector not in ("absent", "scale_vec::1X", "block32"):
+        violations.append("scale_selector")
+    selected: dict[str, MxScaleLayoutRow | None] = {}
+    for role in ("a", "b"):
+        row = mx8_scale_layout(role, facts.scale_selector)
+        selected[role] = row
+        scale_id = getattr(facts, f"scale_{role}_id")
+        role_facts = getattr(facts, f"scale_{role}_facts")
+        if scale_id is None:
+            obligations.append(f"scale_{role}_id")
+        elif row is not None and scale_id not in row.valid_ids:
+            violations.append(f"scale_{role}_id")
+        if role_facts is None:
+            obligations.append(f"scale_{role}_layout")
+        elif row is not None:
+            if (role_facts.layout_id is not None and
+                    role_facts.layout_id != row.layout_id):
+                violations.append(f"scale_{role}_layout")
+            alignment = role_facts.subcolumn_alignment_bytes
+            if alignment is not None and (
+                    alignment < row.subcolumn_alignment_bytes or
+                    alignment & (alignment - 1) or
+                    alignment % row.subcolumn_alignment_bytes or
+                    (scale_id is not None and scale_id % alignment)):
+                violations.append(f"scale_{role}_alignment")
+            if role_facts.layout_id is None:
+                obligations.append(f"scale_{role}_layout_id")
+            if role_facts.subcolumn_alignment_bytes is None:
+                obligations.append(f"scale_{role}_alignment")
+    return Mx8OperationalReport(tuple(violations), tuple(obligations),
+                                common.layout, selected["a"], selected["b"],
+                                required_a, required_b)

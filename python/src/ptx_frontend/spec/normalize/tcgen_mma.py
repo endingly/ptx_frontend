@@ -15,8 +15,9 @@ from ptx_frontend.spec.tcgen_mma_operations import (
     SharedOperandFacts,
 )
 from ptx_frontend.spec.model import (
-    AsyncCompletionKind, ModifierKind, ModifierPresence, OperandKind,
-    OperandTypeExpressionKind, SemanticRule, VariantSpec,
+    AsyncCompletionKind, ModifierKind, ModifierPresence, OperandAccess,
+    OperandKind, OperandRole, OperandTypeExpressionKind, SemanticRule,
+    VariantSpec,
 )
 
 _FIELDS = frozenset(F16KnownFacts.__dataclass_fields__)
@@ -40,6 +41,88 @@ _I8_TARGETS = {"any_of": [_UNSCALED_TARGETS["any_of"][0],
                           _UNSCALED_TARGETS["any_of"][2]]}
 
 
+_MX8_VEC_TARGETS = {"any_of": [{"ptx": "8.6", "sm": 100, "target": "sm_100a"}]}
+_MX8_BLOCK_TARGETS = {
+    "any_of": [
+        {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
+        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
+    ],
+}
+
+
+def _validate_mx8_variant(variant: VariantSpec) -> None:
+    """Keep source-legal block scaling and both A carriers in one typed form."""
+
+    mods = {item.name: item for item in variant.modifiers}
+    if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
+            or tuple(item.name for item in variant.modifiers) !=
+            ("mma", "cta_group", "kind", "block_scale", "scale_vector_size")
+            or variant.modifier_order_aliases != ()
+            or variant.availability != _UNSCALED_TARGETS):
+        raise ValueError("dense MX8 MMA action, qualifier order or target changed")
+    if (mods["mma"].kind is not ModifierKind.FLAG or
+            mods["mma"].presence is not ModifierPresence.FIXED or
+            mods["mma"].token != ".mma" or mods["mma"].value is not True or
+            mods["kind"].kind is not ModifierKind.FLAG or
+            mods["kind"].presence is not ModifierPresence.FIXED or
+            mods["kind"].token != ".kind::mxf8f6f4" or
+            mods["kind"].value is not True or
+            mods["block_scale"].kind is not ModifierKind.FLAG or
+            mods["block_scale"].presence is not ModifierPresence.FIXED or
+            mods["block_scale"].token != ".block_scale" or
+            mods["block_scale"].value is not True or
+            mods["cta_group"].kind is not ModifierKind.CTA_GROUP or
+            mods["cta_group"].presence is not ModifierPresence.REQUIRED or
+            tuple(value.value for value in mods["cta_group"].values) !=
+            ("cta_group::1", "cta_group::2")):
+        raise ValueError("dense MX8 MMA typed qualifier changed")
+    scale = mods["scale_vector_size"]
+    if (scale.kind is not ModifierKind.TCGEN_SCALE_VECTOR_SIZE or
+            scale.presence is not ModifierPresence.OPTIONAL or
+            scale.default != "absent" or
+            tuple((value.value, value.token, value.availability)
+                  for value in scale.values) != (
+                      ("scale_vec::1X", ".scale_vec::1X", _MX8_VEC_TARGETS),
+                      ("block32", ".block32", _MX8_BLOCK_TARGETS))):
+        raise ValueError("dense MX8 scale selector or target changed")
+    if {layout.name for layout in variant.operand_layouts} != {"shared", "tensor"}:
+        raise ValueError("dense MX8 requires exact shared/Tensor Memory A forms")
+    for layout in variant.operand_layouts:
+        names = tuple(item.name for item in layout.operands)
+        kinds = {item.name: item.kind for item in layout.operands}
+        if (names != ("d", "a", "b", "idesc", "scale_a", "scale_b",
+                      "enable_input_d") or layout.availability != {} or
+                kinds != {"d": OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET,
+                          "a": (OperandKind.REGISTER if layout.name == "shared"
+                                else OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET),
+                          "b": OperandKind.REGISTER, "idesc": OperandKind.REGISTER,
+                          "scale_a": OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET,
+                          "scale_b": OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET,
+                          "enable_input_d": OperandKind.PREDICATE_SOURCE}):
+            raise ValueError("dense MX8 operand topology changed")
+        expected = {"d": "u32", "a": ("b64" if layout.name == "shared" else "u32"),
+                    "b": "b64", "idesc": "b32", "scale_a": "u32",
+                    "scale_b": "u32", "enable_input_d": None}
+        expected_roles = {"d": (OperandRole.DESTINATION, OperandAccess.READ_WRITE),
+                          "a": (OperandRole.SOURCE, OperandAccess.READ),
+                          "b": (OperandRole.SOURCE, OperandAccess.READ),
+                          "idesc": (OperandRole.SOURCE, OperandAccess.READ),
+                          "scale_a": (OperandRole.SOURCE, OperandAccess.READ),
+                          "scale_b": (OperandRole.SOURCE, OperandAccess.READ),
+                          "enable_input_d": (OperandRole.PREDICATE,
+                                             OperandAccess.READ)}
+        for operand in layout.operands:
+            expr = operand.type_expression
+            want = expected[operand.name]
+            if (operand.role, operand.access) != expected_roles[operand.name]:
+                raise ValueError("dense MX8 operand role or access changed")
+            if (want is None and expr is not None) or (
+                    want is not None and (expr is None or
+                    expr.kind is not OperandTypeExpressionKind.FIXED_SCALAR or
+                    expr.scalar_type != want)):
+                raise ValueError("dense MX8 operand scalar type changed")
+
+
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     """Keep each closed dense source kind tied to the typed MMA rule.
 
@@ -56,6 +139,9 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
             "tcgen05_mma_tf32": "tf32",
             "tcgen05_mma_i8": "i8",
             "tcgen05_mma_f8f6f4": "f8f6f4"}.get(variant.name)
+    if variant.name == "tcgen05_mma_mxf8f6f4":
+        _validate_mx8_variant(variant)
+        return
     if kind is None:
         raise ValueError("unsupported dense MMA source kind")
     if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE

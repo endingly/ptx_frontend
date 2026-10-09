@@ -66,6 +66,16 @@ enum class AtomicAddressQualifier : uint8_t {
 enum class VectorArity : uint8_t { Invalid, V2, V4, V8 };
 /** Closed written CTA-group size shared by tensor-copy and Tensor Memory syntax. */
 enum class TcgenCtaGroup : uint8_t { One, Two };
+/** Written block-scale selector. Absent retains omission provenance; later
+ *  operational rules may derive an effective layout without rewriting source. */
+enum class TcgenScaleVectorSize : uint8_t {
+  Absent,
+  Vec1X,
+  Vec2X,
+  Vec4X,
+  Block16,
+  Block32
+};
 /** Closed register-transfer shape, distinct from an MMA matrix shape. */
 enum class TcgenDataMovementShape : uint8_t {
   S32x32b,
@@ -521,6 +531,7 @@ struct FieldView {
   std::optional<MbarrierPhaseType> mbarrier_phase_type;
   std::optional<MbarrierLayout> mbarrier_layout;
   std::optional<TcgenCtaGroup> tcgen_cta_group;
+  std::optional<TcgenScaleVectorSize> tcgen_scale_vector_size;
   std::optional<TcgenDataMovementShape> tcgen_shape;
   std::optional<TcgenRepeat> tcgen_repeat;
   std::optional<TcgenReductionOp> tcgen_reduction_op;
@@ -645,6 +656,7 @@ enum class ModifierValueKind : uint8_t {
   MbarrierPhaseType,
   MbarrierLayout,
   TcgenCtaGroup,
+  TcgenScaleVectorSize,
   TcgenDataMovementShape,
   TcgenRepeat,
   TcgenReductionOp,
@@ -671,6 +683,7 @@ struct ModifierValueAvailabilityDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
@@ -701,6 +714,7 @@ struct ModifierValueDomainDescriptor {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
@@ -727,6 +741,7 @@ struct ModifierValueView {
   MbarrierPhaseType mbarrier_phase_type = MbarrierPhaseType::Primary;
   MbarrierLayout mbarrier_layout = MbarrierLayout::V0;
   TcgenCtaGroup tcgen_cta_group = TcgenCtaGroup::One;
+  TcgenScaleVectorSize tcgen_scale_vector_size = TcgenScaleVectorSize::Absent;
   TcgenDataMovementShape tcgen_shape = TcgenDataMovementShape::S32x32b;
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;

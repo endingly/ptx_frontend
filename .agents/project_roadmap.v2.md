@@ -1118,8 +1118,11 @@ mbarrier-based commit completion。
 当前分支的稠密 `tcgen05.mma` 已覆盖 f16、tf32、i8，以及规范顺序的无缩放
 f8f6f4 来源和调用方已知值规则（见
 [英文](../docs/us-en/tcgen_mma_f8f6f4_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_f8f6f4_coverage.md)）。M18-I09 同时要求 mxf8f6f4；
-低位物理 packing 与运行时数据仍未由前端证明，因此该行暂不标完成。
+[中文](../docs/zh-han/tcgen_mma_f8f6f4_coverage.md)），并已加入稠密非 WS 的
+MX8 块缩放来源、强类型 selector 和调用方已知缩放布局检查（见
+[英文](../docs/us-en/tcgen_mma_mx8_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_mx8_coverage.md)）。M18-I05/I09/I12 仍涵盖其余 MX
+kind、缩放块长和低位物理 packing；运行时数据也未由前端证明，因此暂不标整行完成。
 
 ### 出口
 

@@ -42,6 +42,7 @@ class CppDomain(str, Enum):
     MBARRIER_LAYOUTS = "mbarrier_layouts"
     TCGEN_CTA_GROUPS = "tcgen_cta_groups"
     TCGEN_SCALE_VECTOR_SIZES = "tcgen_scale_vector_sizes"
+    TCGEN_COLLECTORS = "tcgen_collectors"
     TCGEN_DATA_SHAPES = "tcgen_data_shapes"
     TCGEN_REPEATS = "tcgen_repeats"
     TCGEN_REDUCTION_OPS = "tcgen_reduction_ops"

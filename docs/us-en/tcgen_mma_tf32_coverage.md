@@ -61,9 +61,11 @@ Below-floor assembler cases whose no-MMA `.target` controls failed are
 directive-confounded and are not independent MMA-floor evidence.
 
 This slice leaves other dense kinds, sparse and weight-stationary
-spellings, block scaling, collectors, ashift, convolution and runtime
+spellings, block scaling, convolution and runtime
 descriptor/memory validation for later work. Its selected tf32 view
 borrows from the exact `Tcgen05MmaTf32` form and preserves the existing f16
 view and generated identity. The module's CTA-group consistency check remains
 limited to TCGEN instructions. TMA omitted/group-1/group-2 forms may coexist
 in one body and must not inherit that TCGEN-only uniform-group rule.
+
+The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.

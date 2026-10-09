@@ -257,6 +257,33 @@ domains:
       block16: TcgenScaleVectorSize::Block16
       block32: TcgenScaleVectorSize::Block32
 
+  tcgen_collectors:
+    cpp_type: TcgenCollectorControl
+    default: TcgenCollectorControl{}
+    runtime_lookup: ptx_suffix
+    values:
+      absent: "TcgenCollectorControl{}"
+      collector::a::fill: "TcgenCollectorControl{TcgenCollectorBuffer::A, TcgenCollectorOp::Fill}"
+      collector::a::use: "TcgenCollectorControl{TcgenCollectorBuffer::A, TcgenCollectorOp::Use}"
+      collector::a::lastuse: "TcgenCollectorControl{TcgenCollectorBuffer::A, TcgenCollectorOp::LastUse}"
+      collector::a::discard: "TcgenCollectorControl{TcgenCollectorBuffer::A, TcgenCollectorOp::Discard}"
+      collector::b0::fill: "TcgenCollectorControl{TcgenCollectorBuffer::B0, TcgenCollectorOp::Fill}"
+      collector::b0::use: "TcgenCollectorControl{TcgenCollectorBuffer::B0, TcgenCollectorOp::Use}"
+      collector::b0::lastuse: "TcgenCollectorControl{TcgenCollectorBuffer::B0, TcgenCollectorOp::LastUse}"
+      collector::b0::discard: "TcgenCollectorControl{TcgenCollectorBuffer::B0, TcgenCollectorOp::Discard}"
+      collector::b1::fill: "TcgenCollectorControl{TcgenCollectorBuffer::B1, TcgenCollectorOp::Fill}"
+      collector::b1::use: "TcgenCollectorControl{TcgenCollectorBuffer::B1, TcgenCollectorOp::Use}"
+      collector::b1::lastuse: "TcgenCollectorControl{TcgenCollectorBuffer::B1, TcgenCollectorOp::LastUse}"
+      collector::b1::discard: "TcgenCollectorControl{TcgenCollectorBuffer::B1, TcgenCollectorOp::Discard}"
+      collector::b2::fill: "TcgenCollectorControl{TcgenCollectorBuffer::B2, TcgenCollectorOp::Fill}"
+      collector::b2::use: "TcgenCollectorControl{TcgenCollectorBuffer::B2, TcgenCollectorOp::Use}"
+      collector::b2::lastuse: "TcgenCollectorControl{TcgenCollectorBuffer::B2, TcgenCollectorOp::LastUse}"
+      collector::b2::discard: "TcgenCollectorControl{TcgenCollectorBuffer::B2, TcgenCollectorOp::Discard}"
+      collector::b3::fill: "TcgenCollectorControl{TcgenCollectorBuffer::B3, TcgenCollectorOp::Fill}"
+      collector::b3::use: "TcgenCollectorControl{TcgenCollectorBuffer::B3, TcgenCollectorOp::Use}"
+      collector::b3::lastuse: "TcgenCollectorControl{TcgenCollectorBuffer::B3, TcgenCollectorOp::LastUse}"
+      collector::b3::discard: "TcgenCollectorControl{TcgenCollectorBuffer::B3, TcgenCollectorOp::Discard}"
+
   tcgen_data_shapes:
     cpp_type: TcgenDataMovementShape
     default: TcgenDataMovementShape::S32x32b
@@ -362,6 +389,7 @@ domains:
       MbarrierLayout: MbarrierLayout
       TcgenCtaGroup: TcgenCtaGroup
       TcgenScaleVectorSize: TcgenScaleVectorSize
+      TcgenCollectorControl: TcgenCollectorControl
       TcgenDataMovementShape: TcgenDataMovementShape
       TcgenRepeat: TcgenRepeat
       TcgenReductionOp: TcgenReductionOp
@@ -467,6 +495,7 @@ domains:
       MbarrierLayout: check_end::ResolvedValueKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedValueKind::TcgenCtaGroup
       TcgenScaleVectorSize: check_end::ResolvedValueKind::TcgenScaleVectorSize
+      TcgenCollectorControl: check_end::ResolvedValueKind::TcgenCollectorControl
       TcgenDataMovementShape: check_end::ResolvedValueKind::TcgenDataMovementShape
       TcgenRepeat: check_end::ResolvedValueKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedValueKind::TcgenReductionOp
@@ -570,6 +599,7 @@ domains:
       MbarrierLayout: check_end::ResolvedModifierDefaultKind::MbarrierLayout
       TcgenCtaGroup: check_end::ResolvedModifierDefaultKind::TcgenCtaGroup
       TcgenScaleVectorSize: check_end::ResolvedModifierDefaultKind::TcgenScaleVectorSize
+      TcgenCollectorControl: check_end::ResolvedModifierDefaultKind::TcgenCollectorControl
       TcgenDataMovementShape: check_end::ResolvedModifierDefaultKind::TcgenDataMovementShape
       TcgenRepeat: check_end::ResolvedModifierDefaultKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedModifierDefaultKind::TcgenReductionOp
@@ -597,6 +627,7 @@ domains:
       MbarrierLayout: checker::ModifierValueKind::MbarrierLayout
       TcgenCtaGroup: checker::ModifierValueKind::TcgenCtaGroup
       TcgenScaleVectorSize: checker::ModifierValueKind::TcgenScaleVectorSize
+      TcgenCollectorControl: checker::ModifierValueKind::TcgenCollectorControl
       TcgenDataMovementShape: checker::ModifierValueKind::TcgenDataMovementShape
       TcgenRepeat: checker::ModifierValueKind::TcgenRepeat
       TcgenReductionOp: checker::ModifierValueKind::TcgenReductionOp

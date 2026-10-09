@@ -186,7 +186,7 @@ def _validate_sparse_variant(variant: VariantSpec, kind: str) -> None:
         modifier_order_aliases=(
             () if kind == "f8f6f4" else (("mma", "kind", "cta_group"),)),
         operand_layouts=tuple(layouts))
-    validate_tcgen_mma_variant(dense)
+    _validate_tcgen_mma_variant_base(dense)
 
 
 def _validate_sparse_mx_variant(variant: VariantSpec, kind: str,
@@ -236,7 +236,43 @@ def _validate_sparse_mx_variant(variant: VariantSpec, kind: str,
     _validate_mx_variant(dense, kind, vector_selector)
 
 
+_A_COLLECTOR_FORMS = frozenset(
+    f"tcgen05_mma_{prefix}{kind}"
+    for prefix in ("", "sp_")
+    for kind in ("f16", "tf32", "i8", "f8f6f4")
+)
+
+
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
+    """Validate collector/ashift source slots before the existing MMA forms."""
+
+    if variant.name not in _A_COLLECTOR_FORMS:
+        _validate_tcgen_mma_variant_base(variant)
+        return
+    if tuple(item.name for item in variant.modifiers[-2:]) != (
+            "ashift", "collector"):
+        raise ValueError("plain MMA requires ordered ashift/collector slots")
+    ashift, collector = variant.modifiers[-2:]
+    if (ashift.kind is not ModifierKind.FLAG or
+            ashift.presence is not ModifierPresence.OPTIONAL or
+            ashift.default is not False or ashift.token != ".ashift" or
+            collector.kind is not ModifierKind.TCGEN_COLLECTOR or
+            collector.presence is not ModifierPresence.OPTIONAL or
+            collector.default != "absent" or
+            tuple((value.value, value.token, value.availability)
+                  for value in collector.values) != tuple(
+                      (f"collector::a::{op}", f".collector::a::{op}", {})
+                      for op in ("fill", "use", "lastuse", "discard")) or
+            any(tuple(alias[-2:]) != ("ashift", "collector")
+                for alias in variant.modifier_order_aliases)):
+        raise ValueError("plain MMA control domain or order changed")
+    _validate_tcgen_mma_variant_base(replace(
+        variant, modifiers=variant.modifiers[:-2],
+        modifier_order_aliases=tuple(alias[:-2]
+                                     for alias in variant.modifier_order_aliases)))
+
+
+def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
     """Keep each closed dense source kind tied to the typed MMA rule.
 
     Four unscaled-no-D-scale or eight scaled-capable structural layouts encode A placement and

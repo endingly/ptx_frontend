@@ -1739,3 +1739,111 @@ def check_sparse_mx_known_facts(facts: SparseMxKnownFacts
     return SparseMxOperationalReport(
         tuple(violations), tuple(obligations), shape, metadata_rule,
         selected["a"], selected["b"], required_a, required_b)
+
+
+class CollectorBuffer(Enum):
+    """Typed collector buffer independent of its source action."""
+
+    UNSPECIFIED = "unspecified"
+    A = "a"
+    B0 = "b0"
+    B1 = "b1"
+    B2 = "b2"
+    B3 = "b3"
+
+
+class CollectorOp(Enum):
+    """Typed collector operation independent of its source buffer."""
+
+    UNSPECIFIED = "unspecified"
+    FILL = "fill"
+    USE = "use"
+    LAST_USE = "lastuse"
+    DISCARD = "discard"
+
+
+@dataclass(frozen=True)
+class CollectorControl:
+    """A source qualifier; both unspecified components mean omission."""
+
+    buffer: CollectorBuffer = CollectorBuffer.UNSPECIFIED
+    operation: CollectorOp = CollectorOp.UNSPECIFIED
+
+    @property
+    def present(self) -> bool:
+        """Derive presence without erasing an explicitly written discard."""
+
+        return (self.buffer is not CollectorBuffer.UNSPECIFIED and
+                self.operation is not CollectorOp.UNSPECIFIED)
+
+
+@dataclass(frozen=True)
+class ACollectorKnownFacts:
+    """Independent source controls and optional non-WS runtime assertions."""
+
+    collector: CollectorControl = CollectorControl()
+    ashift: bool = False
+    a_in_tmem: bool | None = None
+    m: int | None = None
+    collector_a_valid: bool | None = None
+
+
+@dataclass(frozen=True)
+class ACollectorReport:
+    """Conditional source/known-value contradictions and open history duties."""
+
+    effective: CollectorControl
+    violations: tuple[str, ...]
+    obligations: tuple[str, ...]
+
+    @property
+    def supplied_facts_ok(self) -> bool:
+        """Accept only supplied facts that do not contradict closed rules."""
+
+        return not self.violations
+
+
+def check_a_collector_known_facts(facts: ACollectorKnownFacts) -> ACollectorReport:
+    """Check A collector and ashift without inferring any instruction history."""
+
+    violations: list[str] = []
+    obligations: list[str] = ["source_stability_until_completion"]
+    if (type(facts.ashift) is not bool or
+            (facts.a_in_tmem is not None and
+             type(facts.a_in_tmem) is not bool) or
+            (facts.collector_a_valid is not None and
+             type(facts.collector_a_valid) is not bool) or
+            (facts.m is not None and type(facts.m) is not int)):
+        violations.append("invalid_context")
+        return ACollectorReport(CollectorControl(), tuple(violations),
+                                tuple(obligations))
+    control = facts.collector
+    if (not isinstance(control, CollectorControl) or
+            not isinstance(control.buffer, CollectorBuffer) or
+            not isinstance(control.operation, CollectorOp) or
+            ((control.buffer is CollectorBuffer.UNSPECIFIED) !=
+             (control.operation is CollectorOp.UNSPECIFIED)) or
+            (control.present and control.buffer is not CollectorBuffer.A)):
+        violations.append("collector_domain")
+        return ACollectorReport(CollectorControl(), tuple(violations),
+                                tuple(obligations))
+    effective = (control if control.present else
+                 CollectorControl(CollectorBuffer.A, CollectorOp.DISCARD))
+    if facts.ashift:
+        if facts.a_in_tmem is None:
+            obligations.append("a_placement")
+        elif not facts.a_in_tmem:
+            violations.append("ashift_a_placement")
+        if facts.m is None:
+            obligations.append("ashift_m")
+        elif facts.m not in (128, 256):
+            violations.append("ashift_m")
+        if control.operation in (CollectorOp.FILL, CollectorOp.USE):
+            violations.append("ashift_collector")
+    if control.operation in (CollectorOp.USE, CollectorOp.LAST_USE):
+        if facts.collector_a_valid is False:
+            violations.append("collector_a_valid")
+        elif facts.collector_a_valid is None:
+            obligations.append("collector_a_valid")
+        obligations.append("collector_sequence")
+    return ACollectorReport(effective, tuple(violations), tuple(obligations))

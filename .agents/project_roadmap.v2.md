@@ -1138,6 +1138,12 @@ F/C 半 lane 已知值规则（[英文](../docs/us-en/tcgen_mma_sparse_coverage.
 物理元数据内容及后续 collector/WS 组合；调用方事实不能证明运行时内容，
 故不据此将整行标为完成。
 
+普通非 WS 稠密及稀疏 f16/tf32/f8f6f4/i8 的现有来源身份已扩展可选强类型
+A collector 与 ashift，保留省略来源及条件性的 M/collector 历史义务（
+[英文](../docs/us-en/tcgen_mma_a_collector_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_a_collector_coverage.md)）。这不证明跨指令 fill/use
+顺序或运行时内容，也不覆盖 MX collector 与 WS B collector，因此 M18 整行状态不变。
+
 ### 出口
 
 1.0 frontend 对 TCGEN05 family 的主要 topology 有稳定 typed representation；完整 type/shape

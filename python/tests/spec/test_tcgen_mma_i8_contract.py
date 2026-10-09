@@ -34,12 +34,12 @@ class TcgenI8ContractTests(unittest.TestCase):
         self.assertIs(mma.rule, SemanticRule.TENSOR_MEMORY_MMA)
         self.assertEqual(len(mma.operand_layouts), 4)
         self.assertEqual(mma.modifier_order_aliases,
-                         (("mma", "kind", "cta_group"),))
+                         (("mma", "kind", "cta_group", "ashift", "collector"),))
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
             "shared_mask", "shared_no_mask", "tensor_mask", "tensor_no_mask"
         })
         self.assertEqual({item.name for item in mma.modifiers},
-                         {"mma", "cta_group", "kind"})
+                         {"mma", "cta_group", "kind", "ashift", "collector"})
         self.assertEqual({item.token for item in mma.modifiers
                           if item.name == "kind"}, {".kind::i8"})
         for layout in mma.operand_layouts:

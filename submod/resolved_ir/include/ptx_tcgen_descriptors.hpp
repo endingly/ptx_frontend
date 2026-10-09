@@ -564,4 +564,71 @@ inline std::optional<TcgenMmaSparseMxView> tcgen_mma_sparse_mx_view(
   return std::nullopt;
 }
 
+/** Borrowed non-WS A-collector controls from one exact MMA final class. */
+struct TcgenMmaACollectorView {
+  /** Written ashift flag and its source location, or an omitted false value. */
+  const WithLocs<bool>* ashift;
+  /** Written typed qualifier and its location, or the canonical absent pair. */
+  const WithLocs<TcgenCollectorControl>* collector;
+  /** True only when the selected and validated A layout uses Tensor Memory. */
+  bool a_in_tmem;
+  /** Typed source CTA group. */
+  TcgenCtaGroup group;
+};
+
+namespace tcgen_a_collector_detail {
+/** Existing non-WS ordinary dense and sparse classes with A controls. */
+template <typename Form>
+concept PlainMmaForm =
+    std::same_as<Form, Tcgen05MmaF16> || std::same_as<Form, Tcgen05MmaTf32> ||
+    std::same_as<Form, Tcgen05MmaI8> || std::same_as<Form, Tcgen05MmaF8f6f4> ||
+    std::same_as<Form, Tcgen05MmaSpF16> ||
+    std::same_as<Form, Tcgen05MmaSpTf32> ||
+    std::same_as<Form, Tcgen05MmaSpI8> ||
+    std::same_as<Form, Tcgen05MmaSpF8f6f4>;
+
+/** Reuse the original selected-layout view before borrowing control fields. */
+template <PlainMmaForm Form>
+std::optional<TcgenMmaACollectorView> borrow(const Form& mma) noexcept {
+  bool layout_valid = false;
+  if constexpr (std::same_as<Form, Tcgen05MmaF16>)
+    layout_valid = tcgen_mma_f16_view(mma).has_value();
+  else if constexpr (std::same_as<Form, Tcgen05MmaTf32>)
+    layout_valid = tcgen_mma_tf32_view(mma).has_value();
+  else if constexpr (std::same_as<Form, Tcgen05MmaI8>)
+    layout_valid = tcgen_mma_i8_view(mma).has_value();
+  else if constexpr (std::same_as<Form, Tcgen05MmaF8f6f4>)
+    layout_valid = tcgen_mma_f8f6f4_view(mma).has_value();
+  else
+    layout_valid = tcgen_mma_sparse_view(mma).has_value();
+  if (!layout_valid)
+    return std::nullopt;
+  return TcgenMmaACollectorView{&mma.ashift, &mma.collector,
+                                mma.a_tcgen_bracketed_address.has_value(),
+                                mma.cta_group.value};
+}
+}  // namespace tcgen_a_collector_detail
+
+/** Borrow typed controls only from an exact supported non-WS MMA class. */
+inline std::optional<TcgenMmaACollectorView> tcgen_mma_a_collector_view(
+    const Instruction& instruction) noexcept {
+  if (const auto* form = dynamic_cast<const Tcgen05MmaF16*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaTf32*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaI8*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaF8f6f4*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpF16*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpTf32*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpI8*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpF8f6f4*>(&instruction))
+    return tcgen_a_collector_detail::borrow(*form);
+  return std::nullopt;
+}
+
 }  // namespace ptx_frontend::resolved_ir

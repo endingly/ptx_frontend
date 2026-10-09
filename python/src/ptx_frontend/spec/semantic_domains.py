@@ -30,6 +30,7 @@ class SemanticDomain(Enum):
     MBARRIER_LAYOUT = "mbarrier_layout"
     CTA_GROUP = "cta_group"
     TCGEN_SCALE_VECTOR_SIZE = "tcgen_scale_vector_size"
+    TCGEN_COLLECTOR = "tcgen_collector"
     TCGEN_SHAPE = "tcgen_shape"
     TCGEN_NUM = "tcgen_num"
     TCGEN_RED_OP = "tcgen_red_op"
@@ -58,6 +59,7 @@ MODIFIER_SEMANTIC_DOMAINS = MappingProxyType({
     ModifierKind.MBARRIER_LAYOUT: SemanticDomain.MBARRIER_LAYOUT,
     ModifierKind.CTA_GROUP: SemanticDomain.CTA_GROUP,
     ModifierKind.TCGEN_SCALE_VECTOR_SIZE: SemanticDomain.TCGEN_SCALE_VECTOR_SIZE,
+    ModifierKind.TCGEN_COLLECTOR: SemanticDomain.TCGEN_COLLECTOR,
     ModifierKind.TCGEN_SHAPE: SemanticDomain.TCGEN_SHAPE,
     ModifierKind.TCGEN_NUM: SemanticDomain.TCGEN_NUM,
     ModifierKind.TCGEN_RED_OP: SemanticDomain.TCGEN_RED_OP,
@@ -112,6 +114,11 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     SemanticDomain.MBARRIER_LAYOUT: frozenset({"layout::v0", "layout::v1"}),
     SemanticDomain.CTA_GROUP: frozenset({"cta_group::1", "cta_group::2"}),
     SemanticDomain.TCGEN_SCALE_VECTOR_SIZE: frozenset({"scale_vec::1X", "scale_vec::2X", "scale_vec::4X", "block16", "block32"}),
+    SemanticDomain.TCGEN_COLLECTOR: frozenset({
+        f"collector::{buffer}::{operation}"
+        for buffer in ("a", "b0", "b1", "b2", "b3")
+        for operation in ("fill", "use", "lastuse", "discard")
+    }),
     SemanticDomain.TCGEN_SHAPE: frozenset({"s32x32b", "s16x64b", "s16x128b", "s16x256b", "s16x32bx2", "s128x256b", "s4x256b", "s128x128b", "s64x128b", "s32x128b"}),
     SemanticDomain.TCGEN_NUM: frozenset({"x1", "x2", "x4", "x8", "x16", "x32", "x64", "x128"}),
     SemanticDomain.TCGEN_RED_OP: frozenset({"min", "max"}),
@@ -146,6 +153,7 @@ SEMANTIC_DOMAIN_DEFAULT_ONLY_VALUES = MappingProxyType({
     SemanticDomain.MEMORY_CONSISTENCY: frozenset({"omitted"}),
     SemanticDomain.MEMORY_SCOPE: frozenset({"none"}),
     SemanticDomain.TCGEN_SCALE_VECTOR_SIZE: frozenset({"absent"}),
+    SemanticDomain.TCGEN_COLLECTOR: frozenset({"absent"}),
 })
 
 # A flag can default to either Boolean state even where its source spelling

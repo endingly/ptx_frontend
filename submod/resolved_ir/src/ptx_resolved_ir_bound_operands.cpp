@@ -2386,6 +2386,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::MbarrierLayout:
     case ResolvedValueKind::TcgenCtaGroup:
     case ResolvedValueKind::TcgenScaleVectorSize:
+    case ResolvedValueKind::TcgenCollectorControl:
     case ResolvedValueKind::TcgenDataMovementShape:
     case ResolvedValueKind::TcgenRepeat:
     case ResolvedValueKind::TcgenReductionOp:

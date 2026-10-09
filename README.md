@@ -71,6 +71,9 @@ supported surface and its exclusions.
 - [TCGEN sparse MX MMA coverage](docs/us-en/tcgen_mma_sparse_mx_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_sparse_mx_coverage.md) describe
   three block-scaled sparse kinds, factor rows, and pairwise metadata rules.
+- [TCGEN non-WS A collector coverage](docs/us-en/tcgen_mma_a_collector_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_a_collector_coverage.md) describe
+  typed collector and ashift source controls with conditional history facts.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

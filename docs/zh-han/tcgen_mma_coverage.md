@@ -12,8 +12,9 @@
 [稠密 MX4 块缩放形式](tcgen_mma_mx4_coverage.md)及
 [稠密 MX NV 四位形式](tcgen_mma_mxnv_coverage.md)及
 [普通稀疏 f16/tf32/f8f6f4/i8 形式](tcgen_mma_sparse_coverage.md)及
-[稀疏 MX 形式](tcgen_mma_sparse_mx_coverage.md)也已覆盖。权重驻留、
-collector、其余块缩放及卷积形式仍未完成。
+[稀疏 MX 形式](tcgen_mma_sparse_mx_coverage.md)也已覆盖。普通非 WS
+f16/tf32/f8f6f4/i8 形式还包含[强类型 A collector 与 ashift 控制](tcgen_mma_a_collector_coverage.md)。
+权重驻留、MX collector、其余块缩放及卷积形式仍未完成。
 
 A/B 共享描述符只能使用 General 标量 B64/U64/S64 **寄存器**；指令描述符只能使用
 General B32/U32/S32 寄存器。汇编器也接受了这些位置的字面量零，但前端仍遵循文档的

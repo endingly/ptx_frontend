@@ -294,6 +294,20 @@ resolve_tcgen_scale_vector_size(const syntax_ast::AstModifier& modifier) {
   return WithLocs<TcgenScaleVectorSize>{*value, modifier.syntax.range};
 }
 
+/** Resolve a closed collector qualifier as independently typed buffer/action. */
+std::expected<WithLocs<TcgenCollectorControl>, ResolveDiagnostic>
+resolve_tcgen_collector(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kTcgenCollectors,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{
+        .range = modifier.syntax.range,
+        .message = fmt::format("Unknown Tensor Memory collector '{}'.",
+                               modifier.syntax.text),
+    });
+  return WithLocs<TcgenCollectorControl>{*value, modifier.syntax.range};
+}
+
 /** Resolve one closed Tensor Memory register-transfer shape suffix. */
 std::expected<WithLocs<TcgenDataMovementShape>, ResolveDiagnostic>
 resolve_tcgen_shape(const syntax_ast::AstModifier& modifier) {
@@ -464,6 +478,7 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(mbarrier_layout, resolve_mbarrier_layout)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_cta_group, resolve_tcgen_cta_group)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_scale_vector_size,
                                  resolve_tcgen_scale_vector_size)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_collector, resolve_tcgen_collector)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_shape, resolve_tcgen_shape)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_repeat, resolve_tcgen_repeat)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_reduction_op, resolve_tcgen_reduction_op)
@@ -511,6 +526,8 @@ PTX_DEFINE_MODIFIER_DEFAULT(tcgen_cta_group, TcgenCtaGroup, tcgen_cta_group,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(tcgen_scale_vector_size, TcgenScaleVectorSize,
                             tcgen_scale_vector_size, true)
+PTX_DEFINE_MODIFIER_DEFAULT(tcgen_collector, TcgenCollectorControl,
+                            tcgen_collector, true)
 PTX_DEFINE_MODIFIER_DEFAULT(tcgen_shape, TcgenDataMovementShape, tcgen_shape,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(tcgen_repeat, TcgenRepeat, tcgen_repeat, true)
@@ -591,6 +608,9 @@ struct ModifierDomainMapping {
     parse_tcgen_scale_vector_size_modifier,                                    \
     default_tcgen_scale_vector_size_modifier, "Tensor Memory scale selector",  \
     Supported)                                                                 \
+  X(TcgenCollectorControl, TcgenCollectorControl,                              \
+    parse_tcgen_collector_modifier, default_tcgen_collector_modifier,          \
+    "Tensor Memory collector", Supported)                                      \
   X(TcgenDataMovementShape, TcgenDataMovementShape,                            \
     parse_tcgen_shape_modifier, default_tcgen_shape_modifier,                  \
     "Tensor Memory shape", Supported)                                          \

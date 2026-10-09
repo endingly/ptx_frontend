@@ -12,8 +12,7 @@ idesc, {disable-output-lane}, enable-input-d`. A is a shared descriptor
 register or bracketed Tensor Memory address. The optional mask contains
 four or eight 32-bit bit-registers for group 1 or 2. Four A-placement/mask
 layouts and two located group values yield eight typed source topologies.
-There is no source `scale-input-d`, `.satfinite`, block-scale operand or
-collector in this slice. The frontend accepts the printed canonical modifier
+There is no source `scale-input-d`, `.satfinite`, or block-scale operand in this ordinary form. The frontend accepts the printed canonical modifier
 order; the adjacent `.mma.kind::f8f6f4.cta_group` spelling is excluded.
 
 A/B shared descriptors are scalar General B64/U64/S64 registers and `idesc`
@@ -72,7 +71,9 @@ entries in the current catalogue; they are not silently mapped to `sm_110`.
 The i8 exact-only exclusion and f16/tf32 D-scale gates do not apply here.
 
 This is a bounded source and known-facts representation. Scaled MX kinds,
-sparse and WS forms, collector, ashift, convolution, physical low-bit
+sparse and WS forms, convolution, physical low-bit
 packing proof, live descriptor bits, Tensor Memory lifetime and GPU execution
 remain outside it. TMA and MMA can coexist in one module, but this slice does not prove
 execution or cross-instruction completion.
+
+The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.

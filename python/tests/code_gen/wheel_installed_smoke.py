@@ -86,6 +86,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.tcgen_mma_operations",
         "ptx_frontend.code_gen.emit.tcgen_mma_sparse",
         "ptx_frontend.code_gen.emit.tcgen_mma_sparse_mx",
+        "ptx_frontend.code_gen.emit.tcgen_mma_collector",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
         "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",
@@ -126,6 +127,10 @@ def check_module_layout() -> None:
         MxNvKnownFacts,
         SparseKnownFacts,
         SparseMxKnownFacts,
+        ACollectorKnownFacts,
+        CollectorBuffer,
+        CollectorControl,
+        CollectorOp,
         MxScaleLayoutId,
         check_f8f6f4_known_facts,
         check_mx8_known_facts,
@@ -133,6 +138,7 @@ def check_module_layout() -> None:
         check_mxnv_known_facts,
         check_sparse_known_facts,
         check_sparse_mx_known_facts,
+        check_a_collector_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -194,6 +200,11 @@ def check_module_layout() -> None:
         metadata_lane_half=0))
     assert sparse_mx.known_facts_ok
     assert sparse_mx.scale_a_layout.factor_count == 2
+    collector = check_a_collector_known_facts(ACollectorKnownFacts(
+        CollectorControl(CollectorBuffer.A, CollectorOp.LAST_USE),
+        True, True, 128))
+    assert collector.supplied_facts_ok
+    assert "collector_a_valid" in collector.obligations
 
 
 def check_packaged_spec_model() -> None:

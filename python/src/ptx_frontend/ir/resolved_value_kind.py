@@ -23,6 +23,7 @@ class ResolvedValueKind(Enum):
     MBARRIER_LAYOUT = "MbarrierLayout"
     CTA_GROUP = "TcgenCtaGroup"
     TCGEN_SCALE_VECTOR_SIZE = "TcgenScaleVectorSize"
+    TCGEN_COLLECTOR = "TcgenCollectorControl"
     TCGEN_SHAPE = "TcgenDataMovementShape"
     TCGEN_NUM = "TcgenRepeat"
     TCGEN_RED_OP = "TcgenReductionOp"

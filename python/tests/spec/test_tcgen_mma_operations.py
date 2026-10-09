@@ -159,7 +159,7 @@ class TcgenF16OperationTests(unittest.TestCase):
         self.assertIs(mma.rule, SemanticRule.TENSOR_MEMORY_MMA)
         self.assertEqual(len(mma.operand_layouts), 8)
         self.assertEqual(mma.modifier_order_aliases,
-                         (("mma", "kind", "cta_group"),))
+                         (("mma", "kind", "cta_group", "ashift", "collector"),))
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
             f"{a}_{m}_{s}" for a in ("shared", "tensor")
             for m in ("mask", "no_mask") for s in ("scale", "no_scale")})

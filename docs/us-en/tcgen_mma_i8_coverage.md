@@ -72,7 +72,9 @@ pre-9.0 PTX. Table 43's exact-103a byte-stride descriptor capability does
 not grant an i8 operation on 103a.
 
 This slice leaves other dense kinds, sparse and weight-stationary forms,
-collectors, ashift, convolution, block scaling and runtime descriptor,
+convolution, block scaling and runtime descriptor,
 allocation, completion and GPU behavior for later work. The real TMA
 omitted/group-1/group-2 mixed-body integration case remains deferred and
 unrun until an authorized combined revision contains both families.
+
+The current ordinary non-WS dense and sparse forms also support [typed A collector and ashift controls](tcgen_mma_a_collector_coverage.md); their caller-known history checks remain conditional.

@@ -439,6 +439,7 @@ $defs:
       - mbarrier_layout
       - cta_group
       - tcgen_scale_vector_size
+      - tcgen_collector
       - tcgen_shape
       - tcgen_num
       - tcgen_red_op
@@ -632,6 +633,7 @@ $defs:
                 - mbarrier_layout
                 - cta_group
                 - tcgen_scale_vector_size
+                - tcgen_collector
                 - tcgen_shape
                 - tcgen_num
                 - tcgen_red_op

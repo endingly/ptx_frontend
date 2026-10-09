@@ -27,14 +27,14 @@ instructions:
       tcgen05.fence::{before_thread_sync|after_thread_sync} |
       tcgen05.cp.cta_group::{1|2}.shape{.multicast}{.b8x16.src_fmt} [taddr], s-desc |
       tcgen05.shift.cta_group::{1|2}.down [taddr] |
-      tcgen05.mma.cta_group::{1|2}.kind::{f16|tf32} [d], a, b, idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
-      tcgen05.mma.cta_group::{1|2}.kind::i8 [d], a, b, idesc{, disable-output-lane}, enable-input-d |
-      tcgen05.mma.cta_group::{1|2}.kind::f8f6f4 [d], a, b, idesc{, disable-output-lane}, enable-input-d |
+      tcgen05.mma.cta_group::{1|2}.kind::{f16|tf32}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
+      tcgen05.mma.cta_group::{1|2}.kind::i8{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d |
+      tcgen05.mma.cta_group::{1|2}.kind::f8f6f4{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, idesc{, disable-output-lane}, enable-input-d |
       tcgen05.mma.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
       tcgen05.mma.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d
       tcgen05.mma.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16} [d], a, b, idesc, [scale-A], [scale-B], enable-input-d |
-      tcgen05.mma.sp.cta_group::{1|2}.kind::{f16|tf32} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
-      tcgen05.mma.sp.cta_group::{1|2}.kind::{f8f6f4|i8} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d
+      tcgen05.mma.sp.cta_group::{1|2}.kind::{f16|tf32}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
+      tcgen05.mma.sp.cta_group::{1|2}.kind::{f8f6f4|i8}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d
       tcgen05.mma.sp.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
       tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4.block_scale{.scale_vec::2X|.block32} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
       tcgen05.mma.sp.cta_group::{1|2}.kind::mxf4nvf4.block_scale{.scale_vec::2X|.scale_vec::4X|.block32|.block16} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d
@@ -448,8 +448,19 @@ instructions:
           - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f16}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         modifier_order_aliases:
-          - [mma, kind, cta_group]
+          - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
           - name: shared_no_mask_no_scale
             operands:
@@ -529,8 +540,19 @@ instructions:
           - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::tf32}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         modifier_order_aliases:
-          - [mma, kind, cta_group]
+          - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
           - name: shared_no_mask_no_scale
             operands:
@@ -613,8 +635,19 @@ instructions:
           - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::i8}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         modifier_order_aliases:
-          - [mma, kind, cta_group]
+          - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
           - name: shared_no_mask
             operands:
@@ -656,6 +689,17 @@ instructions:
           - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f8f6f4}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared_no_mask
             operands:
@@ -944,6 +988,17 @@ instructions:
           - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f16}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared_no_mask_no_scale
             operands:
@@ -1031,6 +1086,17 @@ instructions:
           - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::tf32}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared_no_mask_no_scale
             operands:
@@ -1118,6 +1184,17 @@ instructions:
           - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f8f6f4}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared_no_mask
             operands:
@@ -1166,6 +1243,17 @@ instructions:
           - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
           - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1", "cta_group::2"]}
           - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::i8}
+          - {name: ashift, kind: flag, presence: optional, default: false, token: .ashift}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::a::fill", token: ".collector::a::fill"}
+              - {value: "collector::a::use", token: ".collector::a::use"}
+              - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
+              - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
           - name: shared_no_mask
             operands:

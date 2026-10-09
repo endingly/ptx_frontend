@@ -10,7 +10,7 @@
 idesc, {disable-output-lane}, enable-input-d`。A 可以是共享描述符寄存器或带方括号的
 Tensor Memory 地址。可选掩码按组 1/2 分别含四/八个 32 位位寄存器。
 四种 A 位置／掩码布局乘以两个带源码位置的组值，形成八种类型化源码拓扑。
-本切片没有源码 `scale-input-d`、`.satfinite`、块缩放操作数或 collector。
+普通形式没有源码 `scale-input-d`、`.satfinite` 或块缩放操作数。
 前端接受印出的规范 modifier 顺序；相邻的 `.mma.kind::f8f6f4.cta_group` 拼写被排除。
 
 A/B 共享描述符必须为标量 General B64/U64/S64 寄存器，`idesc` 必须为标量
@@ -53,6 +53,8 @@ major/swizzle 规则。E4M3/E5M2 为 8 位，E2M3/E3M2 为 6 位，E2M1 为 4 �
 `sm_101a`／`sm_101f` 不在当前目录中，不能暗中映射到 `sm_110`。
 i8 的精确目标排除规则以及 f16/tf32 的 D 缩放门槛不适用于本切片。
 
-这是有限的源码与已知事实表示。缩放 MX kind、稀疏和 WS 形式、collector、ashift、
+这是有限的源码与已知事实表示。缩放 MX kind、稀疏和 WS 形式、
 卷积、物理低位 packing 证明、活描述符位、Tensor Memory 生命周期及 GPU 执行均在
 范围之外。TMA 与 MMA 可以共存于同一个模块，但本切片不证明执行或跨指令完成。
+
+当前普通非 WS 稠密与稀疏形式还支持[强类型 A collector 与 ashift 控制](tcgen_mma_a_collector_coverage.md)；调用方已知历史检查仍是条件性的。

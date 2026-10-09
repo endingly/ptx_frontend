@@ -284,6 +284,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
     case ModifierValueKind::TcgenScaleVectorSize:
       return descriptor.tcgen_scale_vector_size ==
              actual.tcgen_scale_vector_size;
+    case ModifierValueKind::TcgenCollectorControl:
+      return descriptor.tcgen_collector == actual.tcgen_collector;
     case ModifierValueKind::TcgenDataMovementShape:
       return descriptor.tcgen_shape == actual.tcgen_shape;
     case ModifierValueKind::TcgenRepeat:
@@ -2484,6 +2486,24 @@ static bool tcgen_mma_valid_source_ranges(std::span<const SourceRange> ranges,
   });
 }
 
+/** Reject mixed omission sentinels and values outside the typed collector domain. */
+static bool tcgen_collector_pair_valid(TcgenCollectorControl value) noexcept {
+  if (value.buffer == TcgenCollectorBuffer::Unspecified ||
+      value.operation == TcgenCollectorOp::Unspecified)
+    return value.buffer == TcgenCollectorBuffer::Unspecified &&
+           value.operation == TcgenCollectorOp::Unspecified;
+  const bool buffer = value.buffer == TcgenCollectorBuffer::A ||
+                      value.buffer == TcgenCollectorBuffer::B0 ||
+                      value.buffer == TcgenCollectorBuffer::B1 ||
+                      value.buffer == TcgenCollectorBuffer::B2 ||
+                      value.buffer == TcgenCollectorBuffer::B3;
+  const bool operation = value.operation == TcgenCollectorOp::Fill ||
+                         value.operation == TcgenCollectorOp::Use ||
+                         value.operation == TcgenCollectorOp::LastUse ||
+                         value.operation == TcgenCollectorOp::Discard;
+  return buffer && operation;
+}
+
 /** Check the selected dense MMA's owned carriers and source provenance. */
 CheckResult check_tcgen_mma_sources(
     const WithLocs<TcgenCtaGroup>& group_source,
@@ -2497,13 +2517,37 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<ResolvedImmediate>* scale,
     const WithLocs<TcgenScaleVectorSize>* scale_selector,
     const WithLocs<TensorMemoryAddress>* scale_a,
-    const WithLocs<TensorMemoryAddress>* scale_b, const Context& context) {
+    const WithLocs<TensorMemoryAddress>* scale_b, const WithLocs<bool>* ashift,
+    const WithLocs<TcgenCollectorControl>* collector, const Context& context) {
   const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
     return cvt_rule_violation(context, "Invalid TCGEN MMA CTA group.");
   if ((a_address == nullptr) == (a_shared == nullptr))
     return cvt_rule_violation(context,
                               "TCGEN MMA requires exactly one A placement.");
+  if (ashift &&
+      ((ashift->value && !tcgen_mma_valid_source_ranges(ashift->locs, 1)) ||
+       (!ashift->value && !ashift->locs.empty()) ||
+       (ashift->value && a_shared)))
+    return cvt_rule_violation(context,
+                              "TCGEN MMA ashift requires Tensor Memory A and "
+                              "valid source provenance.");
+  if (collector) {
+    const auto control = collector->value;
+    if (!tcgen_collector_pair_valid(control) ||
+        (control.is_present() &&
+         (!tcgen_mma_valid_source_ranges(collector->locs, 1) ||
+          control.buffer != TcgenCollectorBuffer::A)) ||
+        (!control.is_present() && !collector->locs.empty()))
+      return cvt_rule_violation(
+          context,
+          "TCGEN MMA collector value or source provenance is invalid.");
+    if (ashift && ashift->value &&
+        (control.operation == TcgenCollectorOp::Fill ||
+         control.operation == TcgenCollectorOp::Use))
+      return cvt_rule_violation(
+          context, "TCGEN MMA ashift cannot pair with collector fill or use.");
+  }
   if (!tcgen_mma_valid_source_ranges(group_source.locs, 1) ||
       !tcgen_mma_valid_source_ranges(d.locs, 1) ||
       !tcgen_mma_valid_source_ranges(
@@ -2615,7 +2659,7 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
   return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
                                  mask, enable_d, scale, nullptr, nullptr,
-                                 nullptr, context);
+                                 nullptr, nullptr, nullptr, context);
 }
 
 /** Match copy qualifiers against the selected closed shape and format sets. */

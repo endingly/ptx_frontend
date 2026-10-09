@@ -56,6 +56,7 @@ REFERENCE_FREE_VALUE_KINDS = frozenset({
     ResolvedValueKind.MBARRIER_LAYOUT,
     ResolvedValueKind.CTA_GROUP,
     ResolvedValueKind.TCGEN_SCALE_VECTOR_SIZE,
+    ResolvedValueKind.TCGEN_COLLECTOR,
     ResolvedValueKind.TCGEN_SHAPE,
     ResolvedValueKind.TCGEN_NUM,
     ResolvedValueKind.TCGEN_RED_OP,

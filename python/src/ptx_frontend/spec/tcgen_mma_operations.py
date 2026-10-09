@@ -434,6 +434,29 @@ def validate_catalogue() -> None:
                  for role in ("a", "b")}):
         raise ValueError("dense MX NV rows drifted from Tables 42/47/59/60")
 
+    if ({(row.kind, row.group, row.d_type, row.k)
+         for row in SPARSE_SHAPES} != {
+             (kind, row.group, row.d_type, k)
+             for kind, rows, k in (
+                 ("F16", F16_SHAPES, 32), ("Tf32", TF32_SHAPES, 16),
+                 ("F8F6F4", F8F6F4_SHAPES, 64), ("I8", I8_SHAPES, 64))
+             for row in rows} or
+            {(row.group, row.m, row.layout, row.half_path,
+              row.allowed_lane_halves)
+             for row in SPARSE_PATHS} != {
+                 (1, 64, "F", True, (0, 16)),
+                 (1, 128, "D", False, (0,)),
+                 (2, 128, "C", True, (0, 16)),
+                 (2, 256, "A", False, (0,))} or
+            {(row.kind, row.granularity, row.valid_nibbles)
+             for row in SPARSE_METADATA_RULES} != {
+                 ("Tf32", SparseMetadataGranularity.ONE_OF_TWO, (14, 4)),
+                 *((kind, SparseMetadataGranularity.TWO_OF_FOUR,
+                    (4, 8, 12, 9, 13, 6, 14))
+                   for kind in ("F16", "F8F6F4", "I8"))} or
+            len(SPARSE_TARGET_GATES) != 5 + 5 + 4 + 2):
+        raise ValueError("sparse MMA rows drifted from Tables 42/45 and 10.8")
+
 
 def _check_shared(role: str, transpose: bool | None,
                   facts: SharedOperandFacts | None,
@@ -1179,3 +1202,228 @@ def check_mxnv_known_facts(facts: MxNvKnownFacts) -> MxNvOperationalReport:
                                  common.required_a_packing,
                                  common.required_b_packing,
                                  factors["a"], factors["b"])
+
+
+class SparseMetadataGranularity(Enum):
+    """Normative non-block-scaled sparse element grouping."""
+
+    ONE_OF_TWO = "1:2"
+    TWO_OF_FOUR = "2:4"
+
+
+@dataclass(frozen=True)
+class SparseShapeRow:
+    """One sparse Table 42 kind/group/output row with logical K in elements."""
+
+    kind: str
+    group: int
+    d_type: str
+    m_values: tuple[int, ...]
+    n_small: tuple[int, ...]
+    n_first: int
+    n_step: int
+    n_last: int
+    k: int
+    a_types: tuple[str, ...]
+    b_types: tuple[str, ...]
+
+    def contains(self, m: int, n: int, k: int) -> bool:
+        """Check the complete regular grid and kind-specific small-N prefix."""
+
+        return (m in self.m_values and k == self.k and
+                (n in self.n_small or
+                 (self.n_first <= n <= self.n_last and
+                  (n - self.n_first) % self.n_step == 0)))
+
+
+@dataclass(frozen=True)
+class SparsePathRow:
+    """One sparse group/M datapath and its allowed lane-half identities."""
+
+    group: int
+    m: int
+    layout: str
+    half_path: bool
+    allowed_lane_halves: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseMetadataRule:
+    """Meaningful caller-known nibble indices for one sparse kind."""
+
+    kind: str
+    granularity: SparseMetadataGranularity
+    valid_nibbles: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SparseKnownFacts(F16KnownFacts):
+    """Independent sparse word, metadata and lane facts, never live bytes."""
+
+    kind: str = "F16"
+    scale_d: int | None = None
+    sparse_selector: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
+
+
+@dataclass(frozen=True)
+class SparseOperationalReport(F16OperationalReport):
+    """Known sparse failures and runtime obligations with selected data rows."""
+
+    shape: SparseShapeRow | None = None
+    metadata_rule: SparseMetadataRule | None = None
+    compressed_a_k: int | None = None
+    logical_b_k: int | None = None
+
+
+SPARSE_SHAPES = tuple(
+    SparseShapeRow(kind, row.group, row.d_type, row.m_values, (),
+                   row.n_first, row.n_step, row.n_last, k,
+                   row.a_types, row.b_types)
+    for kind, rows, k in (
+        ("F16", F16_SHAPES, 32),
+        ("Tf32", TF32_SHAPES, 16),
+        ("F8F6F4", F8F6F4_SHAPES, 64))
+    for row in rows) + tuple(
+        SparseShapeRow("I8", row.group, row.d_type, row.m_values,
+                       row.n_small, row.n_first, row.n_step, row.n_last,
+                       64, row.a_types, row.b_types)
+        for row in I8_SHAPES)
+
+SPARSE_PATHS = (
+    SparsePathRow(1, 64, "F", True, (0, 16)),
+    SparsePathRow(1, 128, "D", False, (0,)),
+    SparsePathRow(2, 128, "C", True, (0, 16)),
+    SparsePathRow(2, 256, "A", False, (0,)),
+)
+
+SPARSE_METADATA_RULES = (
+    SparseMetadataRule("F16", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+    SparseMetadataRule("Tf32", SparseMetadataGranularity.ONE_OF_TWO, (14, 4)),
+    SparseMetadataRule("F8F6F4", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+    SparseMetadataRule("I8", SparseMetadataGranularity.TWO_OF_FOUR,
+                       (4, 8, 12, 9, 13, 6, 14)),
+)
+
+SPARSE_TARGET_GATES = tuple(
+    (kind, gate) for kind, gates in (
+        ("F16", F16_TARGET_GATES),
+        ("Tf32", TF32_TARGET_GATES),
+        ("F8F6F4", F8F6F4_TARGET_GATES),
+        ("I8", I8_TARGET_GATES))
+    for gate in gates)
+
+
+def check_sparse_known_facts(facts: SparseKnownFacts) -> SparseOperationalReport:
+    """Check sparse shape, metadata and every applicable known half-lane pair."""
+
+    violations: list[str] = []
+    obligations: list[str] = []
+    rule = next((row for row in SPARSE_METADATA_RULES
+                 if row.kind == facts.kind), None)
+    if rule is None:
+        violations.append("kind")
+    if facts.sparse is None:
+        obligations.append("sparse_bit")
+    elif not facts.sparse:
+        violations.append("sparse_bit")
+    if facts.group is None:
+        obligations.append("cta_group")
+    elif facts.group not in (1, 2):
+        violations.append("cta_group")
+    for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
+        if getattr(facts, name) is None:
+            obligations.append(name)
+    shape = next((row for row in SPARSE_SHAPES
+                  if row.kind == facts.kind and row.group == facts.group and
+                  row.d_type == facts.d_type and facts.m is not None and
+                  facts.n is not None and facts.k is not None and
+                  row.contains(facts.m, facts.n, facts.k)), None)
+    if (all(getattr(facts, name) is not None
+            for name in ("group", "m", "n", "k", "d_type")) and shape is None):
+        violations.append("sparse_shape")
+    if shape is not None:
+        if facts.a_type is not None and facts.a_type not in shape.a_types:
+            violations.append("a_type")
+        if facts.b_type is not None and facts.b_type not in shape.b_types:
+            violations.append("b_type")
+        if (facts.kind == "F16" and facts.d_type == "F32" and
+                facts.a_type in shape.a_types and
+                facts.b_type in shape.b_types and
+                facts.a_type != facts.b_type):
+            obligations.append("mixed_f16_bf16_pair_rule")
+    if facts.kind == "F8F6F4":
+        for role in ("a", "b"):
+            if getattr(facts, f"{role}_type") in _F8F6F4_LOW_TYPES:
+                obligations.append(f"{role}_low_bit_packing_rule")
+    if facts.scale_d is not None:
+        if facts.kind not in ("F16", "Tf32") or not 0 <= facts.scale_d <= 15:
+            violations.append("scale_d")
+        obligations.append("scaled_d_target")
+    if facts.sparse_selector is None:
+        obligations.append("sparsity_selector")
+    elif (facts.sparse_selector not in range(4) or
+          (facts.kind in ("F8F6F4", "I8") and facts.sparse_selector != 0)):
+        violations.append("sparsity_selector")
+    if facts.metadata_nibbles is None:
+        obligations.append("metadata_indices")
+    elif rule is not None and any(
+            nibble not in rule.valid_nibbles
+            for nibble in facts.metadata_nibbles):
+        violations.append("metadata_indices")
+    obligations.extend(("live_metadata_contents", "sparse_a_contents",
+                        "target"))
+    def check_shared_role(role: str) -> None:
+        """Apply the matching kind's existing shared descriptor rule."""
+
+        element_type = getattr(facts, f"{role}_type")
+        transpose = getattr(facts, f"transpose_{role}")
+        shared = getattr(facts, f"{role}_shared_facts")
+        if facts.kind == "F8F6F4":
+            _check_f8f6f4_shared(role, element_type, transpose, shared,
+                                 violations, obligations)
+        else:
+            _check_shared(role, transpose, shared, violations, obligations,
+                          tf32=facts.kind == "Tf32")
+
+    if facts.a_shared is None:
+        obligations.append("a_placement")
+    elif facts.a_shared:
+        check_shared_role("a")
+    check_shared_role("b")
+    if (facts.kind == "F8F6F4" and facts.transpose_b and
+            facts.b_type in ("E4M3", "E5M2") and
+            facts.group in (1, 2) and facts.n is not None and not (
+                (facts.group == 1 and 16 <= facts.n <= 256 and
+                 facts.n % 16 == 0) or
+                (facts.group == 2 and 32 <= facts.n <= 256 and
+                 facts.n % 32 == 0))):
+        violations.append("b_transpose_n")
+    path = next((row for row in SPARSE_PATHS
+                 if shape is not None and row.group == facts.group and
+                 row.m == facts.m), None)
+    for name in ("a_lane_half", "d_lane_half", "metadata_lane_half"):
+        value = getattr(facts, name)
+        if value is not None and value not in (0, 16):
+            violations.append(f"{name}_invalid")
+    if path is not None:
+        lane_values: list[int] = []
+        for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
+                "d_lane_half", "metadata_lane_half"):
+            value = getattr(facts, name)
+            if value is None:
+                obligations.append(name)
+            elif value in (0, 16):
+                if value not in path.allowed_lane_halves:
+                    violations.append(f"{name}_alignment")
+                elif path.half_path:
+                    lane_values.append(value)
+        if path.half_path and len(set(lane_values)) > 1:
+            violations.append("half_path_alignment")
+    return SparseOperationalReport(
+        tuple(violations), tuple(obligations), path.layout if path else None,
+        shape, rule, shape.k // 2 if shape else None,
+        shape.k if shape else None)

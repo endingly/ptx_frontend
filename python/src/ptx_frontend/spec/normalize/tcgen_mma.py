@@ -7,7 +7,7 @@ must not be used to infer known words from live descriptor registers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ptx_frontend.spec.tcgen_mma_operations import (
@@ -139,6 +139,47 @@ def _validate_mx_variant(variant: VariantSpec, kind: str,
                 raise ValueError("dense MX8 operand scalar type changed")
 
 
+def _validate_sparse_variant(variant: VariantSpec, kind: str) -> None:
+    """Validate an exact sparse source topology as a typed dense-role extension."""
+
+    modifiers = variant.modifiers
+    if (variant.modifier_order_aliases != () or
+            tuple(item.name for item in modifiers) !=
+            ("mma", "sp", "cta_group", "kind")):
+        raise ValueError("sparse MMA qualifier order or identity changed")
+    sp = modifiers[1]
+    if (sp.kind is not ModifierKind.FLAG or
+            sp.presence is not ModifierPresence.FIXED or
+            sp.value is not True or sp.token != ".sp"):
+        raise ValueError("sparse MMA qualifier changed")
+    layouts = []
+    for layout in variant.operand_layouts:
+        operands = layout.operands
+        names = tuple(operand.name for operand in operands)
+        if (names.count("sp_meta") != 1 or
+                names.index("sp_meta") != names.index("b") + 1):
+            raise ValueError("sparse metadata must follow B before idesc")
+        metadata = operands[names.index("sp_meta")]
+        expr = metadata.type_expression
+        if (metadata.kind is not OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET or
+                metadata.role is not OperandRole.SOURCE or
+                metadata.access is not OperandAccess.READ or
+                expr is None or
+                expr.kind is not OperandTypeExpressionKind.FIXED_SCALAR or
+                expr.scalar_type != "u32"):
+            raise ValueError("sparse metadata carrier changed")
+        layouts.append(replace(
+            layout, operands=tuple(item for item in operands
+                                   if item.name != "sp_meta")))
+    dense = replace(
+        variant, name=f"tcgen05_mma_{kind}",
+        modifiers=tuple(item for item in modifiers if item.name != "sp"),
+        modifier_order_aliases=(
+            () if kind == "f8f6f4" else (("mma", "kind", "cta_group"),)),
+        operand_layouts=tuple(layouts))
+    validate_tcgen_mma_variant(dense)
+
+
 def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     """Keep each closed dense source kind tied to the typed MMA rule.
 
@@ -147,6 +188,15 @@ def validate_tcgen_mma_variant(variant: VariantSpec) -> None:
     """
 
     mods = {item.name: item for item in variant.modifiers}
+    sparse_kind = {
+        "tcgen05_mma_sp_f16": "f16",
+        "tcgen05_mma_sp_tf32": "tf32",
+        "tcgen05_mma_sp_i8": "i8",
+        "tcgen05_mma_sp_f8f6f4": "f8f6f4",
+    }.get(variant.name)
+    if sparse_kind is not None:
+        _validate_sparse_variant(variant, sparse_kind)
+        return
     if variant.rule is not SemanticRule.TENSOR_MEMORY_MMA:
         if "mma" in mods or ("kind" in mods and "cta_group" in mods):
             raise ValueError("Tensor Memory MMA modifiers require its semantic rule")

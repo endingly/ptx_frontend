@@ -11,8 +11,9 @@ assembler corpus and an independent Authority checkpoint. The distinct
 [dense unscaled f8f6f4 form](tcgen_mma_f8f6f4_coverage.md) and
 [dense MX8 block-scaled form](tcgen_mma_mx8_coverage.md) and
 [dense MX4 block-scaled form](tcgen_mma_mx4_coverage.md) and
-[dense MX NV four-bit form](tcgen_mma_mxnv_coverage.md) are also covered.
-Sparse, weight-stationary, collectors, remaining block scaling
+[dense MX NV four-bit form](tcgen_mma_mxnv_coverage.md), and
+[ordinary sparse f16/tf32/f8f6f4/i8 forms](tcgen_mma_sparse_coverage.md)
+are also covered. Sparse MX, weight-stationary, collectors, remaining block scaling
 and convolution remain open.
 
 Shared A/B descriptors use scalar General B64/U64/S64 **registers**; the

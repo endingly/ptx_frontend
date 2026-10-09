@@ -84,6 +84,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.emit.matrix",
         "ptx_frontend.code_gen.emit.tcgen_descriptor_domains",
         "ptx_frontend.code_gen.emit.tcgen_mma_operations",
+        "ptx_frontend.code_gen.emit.tcgen_mma_sparse",
         "ptx_frontend.code_gen.emit.tensor_map_known_facts",
         "ptx_frontend.code_gen.emit.tensor_cache_controls",
         "ptx_frontend.ir.tensor_reduction",
@@ -115,14 +116,18 @@ def check_module_layout() -> None:
         MX8_SHAPES,
         MX4_SHAPES,
         MXNV_SHAPES,
+        SPARSE_METADATA_RULES,
+        SPARSE_SHAPES,
         Mx8KnownFacts,
         Mx4KnownFacts,
         MxNvKnownFacts,
+        SparseKnownFacts,
         MxScaleLayoutId,
         check_f8f6f4_known_facts,
         check_mx8_known_facts,
         check_mx4_known_facts,
         check_mxnv_known_facts,
+        check_sparse_known_facts,
         validate_catalogue as validate_mma_catalogue,
     )
     from ptx_frontend.spec.tensor_map_known_facts import TensorFactRule
@@ -164,6 +169,15 @@ def check_module_layout() -> None:
     assert mxnv.known_facts_ok and mxnv.scale_a_factor_count == 6
     assert mxnv.scale_a_layout.layout_id is MxScaleLayoutId.MX6
     assert "k96_exact_target" in mxnv.obligations
+    assert len(SPARSE_METADATA_RULES) == 4
+    assert len(SPARSE_SHAPES) == 12
+    sparse = check_sparse_known_facts(SparseKnownFacts(
+        kind="Tf32", group=1, m=64, n=32, k=16, d_type="F32",
+        a_type="TF32", b_type="TF32", sparse=True, a_shared=False,
+        sparse_selector=0, metadata_nibbles=(14,), a_lane_half=0,
+        d_lane_half=0, metadata_lane_half=0))
+    assert sparse.known_facts_ok and sparse.compressed_a_k == 8
+    assert "live_metadata_contents" in sparse.obligations
 
 
 def check_packaged_spec_model() -> None:

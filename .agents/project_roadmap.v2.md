@@ -1129,6 +1129,12 @@ UE8M0/UE4M3 条件和 K96 block16 六因子规则（见
 [英文](../docs/us-en/tcgen_mma_mxnv_coverage.md)／
 [中文](../docs/zh-han/tcgen_mma_mxnv_coverage.md)）。M18-I05/I09/I12 仍涵盖其余 MX
 kind、缩放块长和低位物理 packing；运行时数据也未由前端证明，因此暂不标整行完成。
+当前分支另已加入普通非 WS 稀疏 f16/tf32/f8f6f4/i8 四种来源、独立元数据
+Tensor Memory 地址、Table 45 sparse 位与 selector 条件检查、压缩 A 的 K 和
+F/C 半 lane 已知值规则（[英文](../docs/us-en/tcgen_mma_sparse_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_sparse_coverage.md)）。M18-I06/I13/I14 仍包含
+稀疏 MX、物理元数据内容及后续 collector/WS 组合；调用方事实不能证明运行时内容，
+故不据此将整行标为完成。
 
 ### 出口
 

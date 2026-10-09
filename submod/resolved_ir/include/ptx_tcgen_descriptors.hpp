@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/tcgen_descriptor_domains.gen.hpp>
@@ -382,6 +383,105 @@ inline std::optional<TcgenMmaMxNvView> tcgen_mma_mxnv_view(
   else
     view.a_tmem = &mma->a_tcgen_bracketed_address->value;
   return view;
+}
+
+/** Borrowed non-block-scaled sparse MMA roles from one exact owned form.
+ *
+ * The pointers remain valid only while the owning instruction lives.
+ * Descriptor and sparse metadata contents stay opaque; the metadata pointer
+ * identifies a typed source address, not authenticated live indices.
+ */
+struct TcgenMmaSparseView {
+  /** Exact source kind, independent of live instruction-descriptor bits. */
+  TcgenMmaKind kind;
+  /** CTA group copied from the written qualifier. */
+  TcgenCtaGroup group;
+  /** Destination Tensor Memory address. */
+  const TensorMemoryAddress* d;
+  /** Shared A descriptor, absent for Tensor Memory A. */
+  std::optional<TcgenMmaSharedDescriptorView> a_shared;
+  /** Tensor Memory A address, absent for shared A. */
+  const TensorMemoryAddress* a_tmem;
+  /** Shared B descriptor. */
+  TcgenMmaSharedDescriptorView b;
+  /** Required sparse metadata Tensor Memory address. */
+  const TensorMemoryAddress* metadata;
+  /** Opaque instruction descriptor register. */
+  TcgenInstructionDescriptorView instruction;
+  /** Required input-D predicate source. */
+  const ResolvedPredicateSource* enable_d;
+  /** Optional group-sized output-lane mask. */
+  const ResolvedRegisterVector* disable_output_lane;
+  /** Optional source D-scale immediate, only for f16 or tf32. */
+  const ResolvedImmediate* scale_d;
+};
+
+namespace tcgen_sparse_detail {
+/** The four supported non-block-scaled sparse final classes. */
+template <typename Form>
+concept SparseMmaForm = std::same_as<Form, Tcgen05MmaSpF16> ||
+                        std::same_as<Form, Tcgen05MmaSpTf32> ||
+                        std::same_as<Form, Tcgen05MmaSpF8f6f4> ||
+                        std::same_as<Form, Tcgen05MmaSpI8>;
+
+/** Select the common role topology without dispatching on member names. */
+template <SparseMmaForm Form>
+std::optional<TcgenMmaSparseView> borrow(const Form& mma,
+                                         TcgenMmaKind kind) noexcept {
+  constexpr bool scaled_kind = std::same_as<Form, Tcgen05MmaSpF16> ||
+                               std::same_as<Form, Tcgen05MmaSpTf32>;
+  constexpr unsigned layout_count = scaled_kind ? 8 : 4;
+  if (mma.operand_layout.value >= layout_count)
+    return std::nullopt;
+  const auto layout = mma.operand_layout.value;
+  const bool shared_a = layout < (scaled_kind ? 4U : 2U);
+  const bool masked = (layout & (scaled_kind ? 2U : 1U)) != 0;
+  const bool scaled = scaled_kind && (layout & 1U) != 0;
+  if (mma.a_register.has_value() != shared_a ||
+      mma.a_tcgen_bracketed_address.has_value() == shared_a ||
+      mma.disable_output_lane.has_value() != masked)
+    return std::nullopt;
+  if constexpr (scaled_kind) {
+    if (mma.scale_input_d.has_value() != scaled)
+      return std::nullopt;
+  }
+  TcgenMmaSparseView view{
+      .kind = kind,
+      .group = mma.cta_group.value,
+      .d = &mma.d.value,
+      .a_shared = std::nullopt,
+      .a_tmem = nullptr,
+      .b = {&mma.b.value, MatrixFragmentRole::B},
+      .metadata = &mma.sp_meta.value,
+      .instruction = {&mma.idesc.value},
+      .enable_d = &mma.enable_input_d.value,
+      .disable_output_lane = masked ? &mma.disable_output_lane->value : nullptr,
+      .scale_d = nullptr};
+  if constexpr (scaled_kind) {
+    if (scaled)
+      view.scale_d = &mma.scale_input_d->value;
+  }
+  if (shared_a)
+    view.a_shared = TcgenMmaSharedDescriptorView{&mma.a_register->value,
+                                                 MatrixFragmentRole::A};
+  else
+    view.a_tmem = &mma.a_tcgen_bracketed_address->value;
+  return view;
+}
+}  // namespace tcgen_sparse_detail
+
+/** Borrow sparse roles only when an exact supported class and layout agree. */
+inline std::optional<TcgenMmaSparseView> tcgen_mma_sparse_view(
+    const Instruction& instruction) noexcept {
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpF16*>(&instruction))
+    return tcgen_sparse_detail::borrow(*form, TcgenMmaKind::F16);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpTf32*>(&instruction))
+    return tcgen_sparse_detail::borrow(*form, TcgenMmaKind::Tf32);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpF8f6f4*>(&instruction))
+    return tcgen_sparse_detail::borrow(*form, TcgenMmaKind::F8F6F4);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaSpI8*>(&instruction))
+    return tcgen_sparse_detail::borrow(*form, TcgenMmaKind::I8);
+  return std::nullopt;
 }
 
 }  // namespace ptx_frontend::resolved_ir

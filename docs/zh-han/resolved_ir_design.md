@@ -42,6 +42,15 @@ canonical signature 复用 direct-call ABI contract，不会创建第二套 indi
 `ptx_resolved_ir_resolution.hpp`；检查通过虚函数 `Instruction::check`
 及手写支持头 `ptx_resolved_ir_checker_support.hpp` 提供。
 
+公共基础头只前向声明 `Opcode` 和 `InstructionKind`。每个 final form 仍暴露
+带类型的 `Form::opcode` 与 `Form::kind` 常量。数值分配集中在各 opcode 的
+`identity/<category>/<opcode>.gen.hpp` 中，model 和形式分片头引用其中的具名常量。
+宽生成聚合头包含完整具名枚举；
+窄 consumer 若直接写 `Opcode::Name` 或 `InstructionKind::Name`，需包含
+`ptx_instruction_catalogue.gen.hpp`。8/8/16 位值采用固定 category 前缀和
+normalized opcode/form 顺序编号。插入操作可重编号受影响 category 或 opcode
+中的后续成员；整数值和生成的 C++ layout 不承诺稳定二进制 ABI。
+
 公共层还提供了一个与具体 opcode 无关的边界：
 
 ```cpp

@@ -345,7 +345,7 @@ class GenerationPlanTests(unittest.TestCase):
             plan = build_generation_plan(context, Path(directory))
             shard_count = sum(len(form_shards(entry)) for entry in context.entries)
             self.assertEqual(shard_count, 59)
-            self.assertEqual(len(plan.paths), 11 + 2 * len(context.entries)
+            self.assertEqual(len(plan.paths), 12 + 3 * len(context.entries)
                              + 3 * shard_count)
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))
                                 for path in plan.paths))
@@ -420,9 +420,148 @@ class GenerationPlanTests(unittest.TestCase):
         for variant in cp.resolved.variants:
             self.assertIn(
                 f'if (*selected == "{variant.cpp_name}") '
-                f'return InstructionKind::{cp.cpp_name}{variant.cpp_name};',
+                f'return {cp.cpp_name}{variant.cpp_name}::kind;',
                 resolver,
             )
+
+    def test_full_context_identity_prefixes_and_shard_ordinals(self) -> None:
+        """Keep category IDs fixed while local opcode/form ordinals are typed."""
+
+        expected_category_codes = self.backend.instruction_identity.categories
+        seen: dict[str, int] = {}
+        for entry in self.context.entries:
+            category = entry.specification.codegen_category
+            seen[category] = seen.get(category, 0) + 1
+            prefix = self.context.identities.opcode_value(entry)
+            self.assertEqual(prefix >> 24, expected_category_codes[category])
+            self.assertEqual((prefix >> 16) & 0xff, seen[category])
+            self.assertEqual(prefix & 0xffff, 0)
+            for index, variant in enumerate(entry.resolved.variants, 1):
+                self.assertEqual(self.context.identities.form_value(entry, variant),
+                                 prefix | index)
+        cp = next(entry for entry in self.context.entries
+                  if entry.specification.opcode == "cp")
+        self.assertGreater(len(form_shards(cp)), 1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cp_forms_001.gen.hpp"
+            from ptx_frontend.code_gen.emit.resolved_model import (
+                generate_resolved_form_shard_header,
+                generate_resolved_opcode_identity_header,
+            )
+            generate_resolved_form_shard_header(
+                self.context, category="data_movement", opcode="cp",
+                shard_index=1, output_path=path)
+            source = path.read_text()
+            identity_path = Path(directory) / "cp_identity.gen.hpp"
+            generate_resolved_opcode_identity_header(
+                self.context, category="data_movement", opcode="cp",
+                output_path=identity_path)
+            identity_source = identity_path.read_text()
+        self.assertIn(
+            f"0x{self.context.identities.form_value(cp, cp.resolved.variants[64]):08x}u",
+            identity_source)
+        self.assertIn(
+            f"identity::DataMovement::Cp::Cp{cp.resolved.variants[64].cpp_name}",
+            source)
+        self.assertEqual(
+            self.context.identities.form_value(cp, cp.resolved.variants[64]) & 0xffff,
+            65)
+
+    def test_category_only_snapshot_keeps_full_identity_values(self) -> None:
+        """The actual category CLI path preserves full-context IDs and bytes."""
+
+        category = "data_movement"
+        category_input = next(item for item in self.category_inputs
+                              if item.category == category)
+        from ptx_frontend.code_gen import cli
+        observed: list[GenerationContext] = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = argparse.Namespace(
+                spec_dir=SPEC_DIR, backend_spec=BACKEND_SPEC, output=root,
+                spec_file=list(category_input.spec_files), category=category,
+                describe_build=False, list_outputs=True,
+                incremental_batch=False, global_artifacts=False,
+            )
+            def capture(context: GenerationContext, output: Path) -> GenerationPlan:
+                """Observe the real CLI context while retaining its plan behavior."""
+
+                observed.append(context)
+                return build_generation_plan(context, output)
+
+            with (patch.object(cli, "parse_arguments", return_value=args),
+                  patch.object(cli, "build_generation_plan", side_effect=capture),
+                  redirect_stdout(StringIO())):
+                cli.main()
+            self.assertEqual(len(observed), 1)
+            partial = observed[0]
+            left = root / "full.hpp"
+            right = root / "category.hpp"
+            generate_resolved_opcode_header(
+                self.context, category=category, opcode="ld", output_path=left)
+            generate_resolved_opcode_header(
+                partial, category=category, opcode="ld", output_path=right)
+            self.assertEqual(left.read_bytes(), right.read_bytes())
+        full_entries = tuple(entry for entry in self.context.entries
+                             if entry.specification.codegen_category == category)
+        self.assertEqual(tuple(entry.specification.opcode for entry in partial.entries),
+                         tuple(entry.specification.opcode for entry in full_entries))
+        for left, right in zip(partial.entries, full_entries, strict=True):
+            self.assertEqual(partial.identities.opcode_value(left),
+                             self.context.identities.opcode_value(right))
+            self.assertEqual(
+                tuple(partial.identities.form_value(left, variant)
+                      for variant in left.resolved.variants),
+                tuple(self.context.identities.form_value(right, variant)
+                      for variant in right.resolved.variants))
+
+    def test_opcode_insertion_changes_only_its_category_prefixes(self) -> None:
+        """Ordinal allocation permits same-category renumbering by design."""
+
+        arithmetic = [entry for entry in self.context.entries
+                      if entry.specification.codegen_category == "arithmetic"]
+        other = next(entry for entry in self.context.entries
+                     if entry.specification.codegen_category == "data_movement")
+        before = GenerationContext(
+            backend=self.backend, entries=(arithmetic[0], arithmetic[1], other))
+        after = GenerationContext(
+            backend=self.backend, entries=(arithmetic[1], arithmetic[0], other))
+        self.assertNotEqual(before.identities.opcode_value(arithmetic[0]),
+                            after.identities.opcode_value(arithmetic[0]))
+        self.assertEqual(before.identities.opcode_value(other),
+                         after.identities.opcode_value(other))
+
+    def test_identity_map_rejects_missing_category_and_width_overflow(self) -> None:
+        """No active category or opcode/form ordinal may escape 8/8/16 bits."""
+
+        identity = self.backend.instruction_identity
+        self.assertIsNotNone(identity)
+        without_arithmetic = replace(
+            self.backend,
+            instruction_identity=replace(
+                identity, categories={key: value for key, value in
+                                      identity.categories.items()
+                                      if key != "arithmetic"}))
+        with self.assertRaisesRegex(ValueError, "no identity allocation"):
+            GenerationContext(backend=without_arithmetic,
+                              entries=(self.context.entries[0],))
+        from ptx_frontend.code_gen.context import _build_instruction_identity_map
+        from types import SimpleNamespace
+        first = self.context.entries[0]
+        oversized_forms = replace(
+            first, resolved=replace(
+                first.resolved,
+                variants=(first.resolved.variants[0],) * 65536))
+        with self.assertRaisesRegex(ValueError, "16-bit form"):
+            _build_instruction_identity_map((oversized_forms,), self.backend)
+        fake_entries = tuple(SimpleNamespace(
+            specification=SimpleNamespace(codegen_category="arithmetic",
+                                          opcode=f"probe{index}"),
+            cpp_name=f"Probe{index}",
+            resolved=SimpleNamespace(variants=()))
+            for index in range(256))
+        with self.assertRaisesRegex(ValueError, "8-bit opcode"):
+            _build_instruction_identity_map(fake_entries, self.backend)
 
     def test_context_lowers_and_projects_each_instruction_once(self) -> None:
         """Fresh lowering stays one-to-one while every artifact kind emits."""
@@ -683,6 +822,7 @@ class GenerationPlanTests(unittest.TestCase):
             {path for _, path in leaves} | shard_headers,
         )
         self.assertIn(public / "ptx_instruction_base.gen.hpp", plan.paths)
+        self.assertIn(public / "ptx_instruction_catalogue.gen.hpp", plan.paths)
         aggregate = public / "ptx_resolved_ir.gen.hpp"
         self.assertIn(aggregate, plan.paths)
         self.assertFalse(any("union" in path.name or "owner" in path.name
@@ -730,6 +870,7 @@ class GenerationPlanTests(unittest.TestCase):
             local_paths = (
                 output / f"private/resolved_ir_{category}_{opcode}.gen.cpp",
                 output / f"public/ptx_frontend/resolved_ir/model/{category}/{opcode}.gen.hpp",
+                output / f"public/ptx_frontend/resolved_ir/identity/{category}/{opcode}.gen.hpp",
             )
             first_category_artifacts = {
                 artifact.path: artifact
@@ -754,7 +895,7 @@ class GenerationPlanTests(unittest.TestCase):
                 expanded_local[path].emit(expanded, output_path=path)
                 self.assertEqual(path.read_bytes(), previous)
             self.assertEqual(
-                len(expanded_plan.paths) - len(first_plan.paths), 2
+                len(expanded_plan.paths) - len(first_plan.paths), 3
             )
 
     def test_list_outputs_is_read_only_and_uses_the_plan(self) -> None:
@@ -1001,12 +1142,20 @@ class GenerationPlanTests(unittest.TestCase):
         conflicting_instruction = replace(
             self.database.instructions[0], codegen_category="dispatch"
         )
+        identity = self.backend.instruction_identity
+        self.assertIsNotNone(identity)
+        backend = replace(
+            self.backend,
+            instruction_identity=replace(
+                identity, categories={**identity.categories, "dispatch": 8}
+            ),
+        )
         context = build_generation_context(
             replace(
                 self.database,
                 instructions=(conflicting_instruction, *self.database.instructions[1:]),
             ),
-            self.backend,
+            backend,
         )
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "not-created"

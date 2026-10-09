@@ -15,6 +15,7 @@ required:
   - backend
   - spec_schema
   - domains
+  - instruction_identity
 
 properties:
   schema:
@@ -28,8 +29,25 @@ properties:
     minProperties: 1
     additionalProperties:
       $ref: "#/$defs/domain_mapping"
+  instruction_identity:
+    $ref: "#/$defs/instruction_identity"
 
 $defs:
+  instruction_identity:
+    description: >
+      Stable C++ representation prefixes. Forms use their canonical ordinal
+      within each opcode; this section contains no PTX legality or form IDs.
+    type: object
+    additionalProperties: false
+    required: [categories]
+    properties:
+      categories:
+        type: object
+        minProperties: 1
+        additionalProperties:
+          type: integer
+          minimum: 1
+          maximum: 255
   cpp_qualified_name:
     type: string
     pattern: "^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$"

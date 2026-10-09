@@ -12,6 +12,7 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/shfl.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/elect.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/mbarrier.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include "test_syntax_parse_helpers.hpp"

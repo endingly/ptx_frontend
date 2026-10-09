@@ -202,7 +202,7 @@ def _render_selected_adapter(context: GenerationContext) -> str:
         )
         name = form_name(entry, variant)
         selector_cases.append(
-            f"    case InstructionKind::{name}: return {index};"
+            f"    case {name}::kind: return {index};"
         )
         slots = operand_slots(variant, context.backend)
         layouts = []
@@ -251,7 +251,7 @@ def _render_selected_adapter(context: GenerationContext) -> str:
             "    else access.group = role->effective;"
             if variant.tensor_cta_group_applicable else ""
         )
-        projection_cases.append(f"""    case InstructionKind::{name}: {{
+        projection_cases.append(f"""    case {name}::kind: {{
       const auto* selected = dynamic_cast<const {name}*>(&instruction);
       if (!selected) {{
         result.diagnostics.emplace_back("selected tensor kind/class disagree");

@@ -16,6 +16,7 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 #include "test_syntax_parse_helpers.hpp"

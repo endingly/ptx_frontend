@@ -38,6 +38,7 @@ from ptx_frontend.code_gen.reference_policy import validate_reference_field_type
 from ptx_frontend.code_gen.emit.resolved_model import (
     form_shards,
     generate_resolved_base_header,
+    generate_resolved_identity_catalogue_header,
     generate_resolved_opcode_header,
     generate_resolved_umbrella_header,
 )
@@ -123,11 +124,20 @@ def field_value_cpp_type(field):
 
 
 def build_test_generation_context(database):
-    """Make the explicit emitter input from this test's configured backend."""
+    """Allocate isolated fixture categories without changing production IDs."""
 
     from ptx_frontend.code_gen.context import build_generation_context
 
-    return build_generation_context(database, BACKEND)
+    identity = BACKEND.instruction_identity
+    assert identity is not None
+    fixture_backend = replace(
+        BACKEND,
+        instruction_identity=replace(
+            identity,
+            categories={**identity.categories, "test": 254, "uncategorized": 255},
+        ),
+    )
+    return build_generation_context(database, fixture_backend)
 
 class ResolvedIrBuildTest(unittest.TestCase):
     @classmethod
@@ -5311,8 +5321,11 @@ class ResolvedIrBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base = root / "ptx_instruction_base.gen.hpp"
+            catalogue = root / "ptx_instruction_catalogue.gen.hpp"
             umbrella = root / "ptx_resolved_ir.gen.hpp"
             generate_resolved_base_header(context, output_path=base)
+            generate_resolved_identity_catalogue_header(
+                context, output_path=catalogue)
             generate_resolved_umbrella_header(context, output_path=umbrella)
             leaves = []
             for entry in context.entries:
@@ -5323,6 +5336,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 )
                 leaves.append(leaf.read_text(encoding="utf-8"))
             base_source = base.read_text(encoding="utf-8")
+            catalogue_source = catalogue.read_text(encoding="utf-8")
             umbrella_source = umbrella.read_text(encoding="utf-8")
             source = "\n".join(leaves)
 
@@ -5331,6 +5345,10 @@ class ResolvedIrBuildTest(unittest.TestCase):
         ))
         self.assertIn("#pragma once", umbrella_source)
         self.assertIn("class Instruction", base_source)
+        self.assertIn("enum class InstructionKind : std::uint32_t;", base_source)
+        self.assertNotIn("AddIntegerNoSat =", base_source)
+        self.assertIn("AddIntegerNoSat =", catalogue_source)
+        self.assertIn("ptx_instruction_catalogue.gen.hpp", umbrella_source)
         self.assertIn("std::unique_ptr<Instruction> clone() const", source)
         self.assertIn("void visit_references(detail::IReferenceObserver&)", source)
         unsharded_forms = sum(
@@ -5408,19 +5426,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
             source = output_path.read_text(encoding="utf-8")
 
         self.assertIn(
-            "#include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>",
+            "#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>",
             source,
         )
+        self.assertNotIn("ptx_resolved_ir.hpp", source)
         self.assertIn(
             "std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>",
             source,
         )
         self.assertIn("resolveInstruction(", source)
         self.assertIn("const syntax_ast::AstInstruction& ast", source)
-        self.assertEqual(
-            source.count("case InstructionKind::"),
-            sum(len(entry.resolved.variants) for entry in context.entries),
-        )
+        self.assertIn("& 0xffff0000u", source)
+        self.assertEqual(source.count("case Opcode::"), len(context.entries))
         self.assertEqual(source.count('if (ast.opcode.syntax.text == "'), len(context.entries))
         for entry in context.entries:
             opcode = entry.specification.opcode

@@ -14,6 +14,7 @@
 #include <ptx_frontend/resolved_ir/model/matrix/ldmatrix.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/atom.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/red.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 
 #include "test_syntax_parse_helpers.hpp"

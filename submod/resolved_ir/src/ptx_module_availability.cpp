@@ -4,6 +4,7 @@
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/st.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"

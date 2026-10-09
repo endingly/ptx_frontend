@@ -168,7 +168,9 @@ rendering or filesystem failure.
 
 | Output | Emitter | Contents |
 | --- | --- | --- |
-| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, exact form identities, and observer contract |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, opaque identity enum declarations, and observer contract |
+| `public/ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp` | `emit.resolved_model` | complete named `Opcode` and `InstructionKind` enumerators for broad consumers |
+| `public/ptx_frontend/resolved_ir/identity/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | named typed opcode and form constants, without instruction class definitions |
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>.gen.hpp` | `emit.resolved_model` | stable per-opcode aggregate: direct classes for small opcodes, or bounded form-shard includes; descriptor getters and resolver declarations |
 | `public/ptx_frontend/resolved_ir/model/<category>/<opcode>_forms_NNN.gen.hpp` | `emit.resolved_model` | final-class declarations for one canonical shard of at most 64 forms when needed |
 | `public/ptx_frontend/resolved_ir/ptx_resolved_ir.gen.hpp` | `emit.resolved_model` | aggregate of all opcode headers |
@@ -176,6 +178,28 @@ rendering or filesystem failure.
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | stable opcode resolver, selector, and descriptor-getter entry points; unsharded methods and rows for small opcodes |
 | `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | bounded method definitions and static descriptor rows for canonical form shards |
+
+The C++ backend YAML allocates an explicit, unique 8-bit ID to each
+`codegen_category`. Within a complete normalized snapshot, each category's
+opcode receives its 1-based ordinal, and each opcode's canonical resolved form
+receives its 1-based ordinal. `GenerationContext` creates this one 8/8/16-bit
+identity map before category or form-shard output is selected. Missing category
+IDs, duplicate or out-of-range category IDs, and overflowing opcode or form
+ordinals fail generation. Category prefixes stay fixed; inserting an opcode
+can renumber later opcodes in that category, and inserting a form can renumber
+later forms of that opcode. These integer values are generated identities,
+not a binary ABI or a permanent per-opcode/form registry.
+
+The base header only forward-declares the scoped identity enums. Each opcode's
+`identity/<category>/<opcode>.gen.hpp` defines named typed constants from the
+full-context map. Narrow model and form-shard headers reference those constants
+for `Form::opcode` and `Form::kind`, without including every named enumerator.
+The complete catalogue also references these local constants, so generated
+numeric assignments appear only in the identity headers. Include
+`ptx_instruction_catalogue.gen.hpp` when using named `Opcode::` or
+`InstructionKind::` members directly; the broad aggregate includes it for
+existing broad consumers. The global resolver dispatch uses the catalogue
+without including all final-form classes.
 
 The generated public headers are under
 `generated/public/ptx_frontend/resolved_ir` in the `submod/resolved_ir` build

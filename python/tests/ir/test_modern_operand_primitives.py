@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 import sys
 import tempfile
@@ -90,11 +91,19 @@ def _modern_instruction() -> dict[str, object]:
 
 
 def build_test_generation_context(database):
-    """Make the explicit emitter input from this test's configured backend."""
+    """Allocate this synthetic category without changing packaged IDs."""
 
     from ptx_frontend.code_gen.context import build_generation_context
 
-    return build_generation_context(database, BACKEND)
+    identity = BACKEND.instruction_identity
+    assert identity is not None
+    fixture_backend = replace(
+        BACKEND,
+        instruction_identity=replace(
+            identity, categories={**identity.categories, "test": 254}
+        ),
+    )
+    return build_generation_context(database, fixture_backend)
 
 class ModernOperandPrimitiveTests(unittest.TestCase):
     @classmethod

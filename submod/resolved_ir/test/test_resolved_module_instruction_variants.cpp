@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -14,6 +15,39 @@ namespace ptx_frontend::resolved_ir {
 namespace {
 
 using test_helpers::parseModule;
+
+/** Generic data immediates retain source bits independently of their opcode. */
+TEST(ResolvedModule, DataImmediateSourceBitsRemainConsistent) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed = parseModule(R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.visible .entry kernel() {
+  .reg .u32 %r<2>;
+  add.u32 %r0, %r1, 0x100000001;
+  ret;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned);
+  ASSERT_TRUE(validateModule(*owned));
+  auto* form = dynamic_cast<AddIntegerNoSat*>(
+      owned->functions.front().body.front().get());
+  ASSERT_NE(form, nullptr);
+  auto* immediate = std::get_if<ResolvedImmediate>(&form->src2.value);
+  ASSERT_NE(immediate, nullptr);
+  ASSERT_TRUE(immediate->integer_source_bits);
+  EXPECT_EQ(*immediate->integer_source_bits, 0x100000001u);
+  EXPECT_EQ(immediate->bits, 1u);
+  immediate->bits = 2;
+  EXPECT_FALSE(validateModule(*owned));
+}
 
 TEST(ResolvedModule, ResolvesAndChecksM12I05FrozenAddForms) {
   const auto parsed_module_1 = parseModule(R"ptx(

@@ -53,6 +53,9 @@ supported surface and its exclusions.
 - [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
   and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
   `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
+- [Multimem frontend coverage](docs/us-en/multimem_coverage.md) and its
+  [简体中文版本](docs/zh-han/multimem_coverage.md) define the seven PTX 9.3
+  source families, typed owned operands, target gates, and runtime boundary.
 - [TCGEN MMA frontend family coverage](docs/us-en/tcgen_mma_family_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_family_coverage.md) map all four
   fixed PTX 9.3 source families, owned and conditional checks, validation,

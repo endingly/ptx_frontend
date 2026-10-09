@@ -1,5 +1,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 
+#include "ptx_resolved_ir_packed_literal.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -149,14 +151,31 @@ std::pair<uint64_t, bool> integer_constraint_value(
 }
 
 /**
- * Recheck the use-width bits of a source-backed integer immediate.
+ * Recheck integer-source use-width bits and raw 32-bit packed FP8 literals.
  * Fixed integer constraints use the original source value for legality, while
  * consumers observe the converted bits; both representations must agree.
  */
-CheckResult check_integer_immediate_consistency(const OperandView& operand,
-                                                const Context& context) {
-  if (!operand.integer_source_bits || !operand.immediate_bits ||
-      !operand.immediate_type || !is_integer_type(*operand.immediate_type))
+CheckResult check_source_immediate_consistency(const OperandView& operand,
+                                               const Context& context) {
+  if (!operand.immediate_bits || !operand.immediate_type)
+    return {};
+  const bool packed_raw32 =
+      ::ptx_frontend::resolved_ir::detail::is_raw32_fp8x4_type(
+          *operand.immediate_type);
+  if (packed_raw32 &&
+      (*operand.immediate_bits > std::numeric_limits<uint32_t>::max() ||
+       (!operand.integer_source_bits &&
+        operand.immediate_is_negative.value_or(false)))) {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Packed FP8 immediate '{}' has invalid raw 32-bit metadata.",
+            operand.field_id),
+    }});
+  }
+  if (!operand.integer_source_bits ||
+      (!is_integer_type(*operand.immediate_type) && !packed_raw32))
     return {};
   const uint8_t byte_width = base::scalar_size_of(*operand.immediate_type);
   if (byte_width == 0 || byte_width > sizeof(uint64_t))
@@ -794,6 +813,16 @@ CheckResult check_operands(
                                  descriptor.target_field_id),
       });
       continue;
+    }
+
+    // Every source-backed data immediate retains both the evaluated source
+    // integer and its use-width bits, including operands with no fixed
+    // immediate constraint of their own.
+    if (auto consistency =
+            check_source_immediate_consistency(*operand, context);
+        !consistency) {
+      diagnostics.insert(diagnostics.end(), consistency.error().begin(),
+                         consistency.error().end());
     }
 
     if (!allows_shape(descriptor.allowed_shapes, operand->actual_shape)) {
@@ -3234,7 +3263,7 @@ CheckResult check_immediate_value(
                                descriptor.operand_field_id),
     }});
   }
-  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+  if (auto consistency = check_source_immediate_consistency(*operand, context);
       !consistency)
     return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
@@ -3284,7 +3313,7 @@ CheckResult check_immediate_multiple_of(
                         descriptor.operand_field_id),
     }});
   }
-  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+  if (auto consistency = check_source_immediate_consistency(*operand, context);
       !consistency)
     return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);
@@ -3324,7 +3353,7 @@ CheckResult check_immediate_range(
                                descriptor.operand_field_id),
     }});
   }
-  if (auto consistency = check_integer_immediate_consistency(*operand, context);
+  if (auto consistency = check_source_immediate_consistency(*operand, context);
       !consistency)
     return consistency;
   const auto [value, negative] = integer_constraint_value(*operand);

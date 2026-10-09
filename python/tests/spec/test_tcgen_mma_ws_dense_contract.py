@@ -58,7 +58,8 @@ class TcgenMmaWsDenseContractTests(unittest.TestCase):
         """M32/G, M64/E and M128/D all require lane zero."""
 
         rules.validate_catalogue()
-        self.assertEqual(len(rules.WS_SHAPES), 6)
+        self.assertEqual(len(rules.WS_SHAPES), 12)
+        self.assertEqual(sum(not row.sparse for row in rules.WS_SHAPES), 6)
         self.assertEqual({(row.m, row.layout, row.allowed_lane_halves)
                           for row in rules.WS_PATHS},
                          {(32, "G", (0,)), (64, "E", (0,)), (128, "D", (0,))})

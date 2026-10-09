@@ -248,18 +248,27 @@ _MX_A_COLLECTOR_FORMS = frozenset(
 )
 
 
-def _validate_ws_dense_variant(variant: VariantSpec, kind: str) -> None:
-    """Keep one WS kind on CTA one and its four exact A/zero layouts."""
+def _validate_ws_variant(variant: VariantSpec, kind: str,
+                         sparse: bool) -> None:
+    """Keep WS kind, sparsity and A/zero topology in one closed source rule."""
 
     modifiers = variant.modifiers
     if (variant.completion_kind is not AsyncCompletionKind.TCGEN_MBARRIER_ARRIVE_ONE
             or tuple(item.name for item in modifiers) !=
-            ("mma", "ws", "cta_group", "kind", "collector")
+            (("mma", "ws", "sp") if sparse else ("mma", "ws")) +
+            ("cta_group", "kind", "collector")
             or variant.modifier_order_aliases != ()
             or variant.availability !=
             (_I8_TARGETS if kind == "i8" else _UNSCALED_TARGETS)):
         raise ValueError("WS MMA action, source order or target changed")
-    mma, ws, group, fixed_kind, collector = modifiers
+    mma, ws = modifiers[:2]
+    group, fixed_kind, collector = modifiers[-3:]
+    if sparse:
+        sp = modifiers[2]
+        if (sp.kind is not ModifierKind.FLAG or
+                sp.presence is not ModifierPresence.FIXED or
+                sp.token != ".sp" or sp.value is not True):
+            raise ValueError("WS sparse modifier changed")
     if (mma.kind is not ModifierKind.FLAG or
             mma.presence is not ModifierPresence.FIXED or
             mma.token != ".mma" or mma.value is not True or
@@ -282,7 +291,8 @@ def _validate_ws_dense_variant(variant: VariantSpec, kind: str) -> None:
         placement = "shared" if layout.name.startswith("shared") else "tensor"
         zero = layout.name.endswith("_zero")
         names = tuple(item.name for item in layout.operands)
-        required = ("d", "a", "b", "idesc", "enable_input_d") + (
+        required = ("d", "a", "b") + (("sp_meta",) if sparse else ()) + (
+            "idesc", "enable_input_d") + (
             ("zero_column_desc",) if zero else ())
         if names != required or layout.availability != {}:
             raise ValueError("WS MMA operand order or layout target changed")
@@ -294,6 +304,8 @@ def _validate_ws_dense_variant(variant: VariantSpec, kind: str) -> None:
                           OperandRole.SOURCE, OperandAccess.READ),
                     "b": (OperandKind.REGISTER, "b64", OperandRole.SOURCE,
                           OperandAccess.READ),
+                    "sp_meta": (OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET,
+                                "u32", OperandRole.SOURCE, OperandAccess.READ),
                     "idesc": (OperandKind.REGISTER, "b32", OperandRole.SOURCE,
                               OperandAccess.READ),
                     "enable_input_d": (OperandKind.PREDICATE_SOURCE, None,
@@ -389,15 +401,14 @@ def _validate_tcgen_mma_variant_base(variant: VariantSpec) -> None:
         if "mma" in mods or ("kind" in mods and "cta_group" in mods):
             raise ValueError("Tensor Memory MMA modifiers require its semantic rule")
         return
-    ws_kind = {
-        "tcgen05_mma_ws_f16": "f16",
-        "tcgen05_mma_ws_tf32": "tf32",
-        "tcgen05_mma_ws_f8f6f4": "f8f6f4",
-        "tcgen05_mma_ws_i8": "i8",
-    }.get(variant.name)
-    if ws_kind is not None:
-        _validate_ws_dense_variant(variant, ws_kind)
-        return
+    for ws_prefix, sparse in (("tcgen05_mma_ws_sp_", True),
+                              ("tcgen05_mma_ws_", False)):
+        if variant.name.startswith(ws_prefix):
+            ws_kind = variant.name.removeprefix(ws_prefix)
+            if ws_kind not in ("f16", "tf32", "f8f6f4", "i8"):
+                raise ValueError("unsupported WS MMA source kind")
+            _validate_ws_variant(variant, ws_kind, sparse)
+            return
     kind = {"tcgen05_mma_f16": "f16",
             "tcgen05_mma_tf32": "tf32",
             "tcgen05_mma_i8": "i8",

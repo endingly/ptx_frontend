@@ -1152,8 +1152,11 @@ A collector 与 ashift，保留省略来源及条件性的 M/collector 历史义
 shared／Tensor Memory A、可选末尾零列寄存器以及带来源的 B0–B3 collector。
 已知值规则区分 M32/G、M64/E、M128/D、零 lane 对齐、Table 48 零列字与
 逐 B buffer 的条件性历史断言（[英文](../docs/us-en/tcgen_mma_ws_dense_coverage.md)／
-[中文](../docs/zh-han/tcgen_mma_ws_dense_coverage.md)）。稀疏 WS 元数据与
-运行时内容仍未由该来源切片证明，M18 整行状态不变。
+[中文](../docs/zh-han/tcgen_mma_ws_dense_coverage.md)）。四个稀疏 WS 来源身份也
+已加入强制元数据位置、压缩 A 的 K、G/E/D 零 lane 与条件性稀疏 nibble 规则（
+[英文](../docs/us-en/tcgen_mma_ws_sparse_coverage.md)／
+[中文](../docs/zh-han/tcgen_mma_ws_sparse_coverage.md)）。M32 元数据子列映射及
+运行时内容仍未获证明，M18 整行状态不变。
 
 ### 出口
 

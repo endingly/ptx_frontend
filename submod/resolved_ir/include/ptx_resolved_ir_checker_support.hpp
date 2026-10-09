@@ -216,7 +216,8 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<ResolvedImmediate>*, const WithLocs<TcgenScaleVectorSize>*,
     const WithLocs<TensorMemoryAddress>*, const WithLocs<TensorMemoryAddress>*,
     const WithLocs<bool>*, const WithLocs<TcgenCollectorControl>*,
-    const WithLocs<ResolvedRegisterRef>*, bool, const Context&);
+    const WithLocs<TensorMemoryAddress>*, const WithLocs<ResolvedRegisterRef>*,
+    bool, bool, const Context&);
 /** Retain the f16 source-check entry point. */
 CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<TcgenCtaGroup>&, const WithLocs<TensorMemoryAddress>&,

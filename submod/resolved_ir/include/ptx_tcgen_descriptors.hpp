@@ -705,12 +705,14 @@ inline std::optional<TcgenMmaMxACollectorView> tcgen_mma_mx_a_collector_view(
   return std::nullopt;
 }
 
-/** Borrowed weight-stationary dense roles selected by one final class/layout. */
+/** Borrowed weight-stationary roles selected by one final class/layout. */
 struct TcgenMmaWsView {
   /** Exact encoded instruction kind from the source class. */
   TcgenMmaKind kind;
   /** Written group, required to be one for WS source forms. */
   TcgenCtaGroup group;
+  /** Sparse source spelling, retained apart from caller-known descriptor bits. */
+  bool sparse;
   /** Written B-buffer control or the canonical omitted pair. */
   const WithLocs<TcgenCollectorControl>* collector;
   /** Destination Tensor Memory address. */
@@ -721,6 +723,8 @@ struct TcgenMmaWsView {
   const TensorMemoryAddress* a_tmem;
   /** Shared B descriptor register. */
   TcgenMmaSharedDescriptorView b;
+  /** Sparse metadata address, absent from dense WS source forms. */
+  const TensorMemoryAddress* metadata;
   /** Opaque instruction descriptor register. */
   TcgenInstructionDescriptorView instruction;
   /** Required predicate source. */
@@ -730,17 +734,25 @@ struct TcgenMmaWsView {
 };
 
 namespace tcgen_ws_detail {
-/** The four exact dense weight-stationary final classes. */
+/** The eight exact weight-stationary final classes. */
 template <typename Form>
-concept DenseWsForm = std::same_as<Form, Tcgen05MmaWsF16> ||
-                      std::same_as<Form, Tcgen05MmaWsTf32> ||
-                      std::same_as<Form, Tcgen05MmaWsF8f6f4> ||
-                      std::same_as<Form, Tcgen05MmaWsI8>;
+concept WsForm = std::same_as<Form, Tcgen05MmaWsF16> ||
+                 std::same_as<Form, Tcgen05MmaWsTf32> ||
+                 std::same_as<Form, Tcgen05MmaWsF8f6f4> ||
+                 std::same_as<Form, Tcgen05MmaWsI8> ||
+                 std::same_as<Form, Tcgen05MmaWsSpF16> ||
+                 std::same_as<Form, Tcgen05MmaWsSpTf32> ||
+                 std::same_as<Form, Tcgen05MmaWsSpF8f6f4> ||
+                 std::same_as<Form, Tcgen05MmaWsSpI8>;
 
 /** Verify both optional source carriers before borrowing WS roles. */
-template <DenseWsForm Form>
+template <WsForm Form>
 std::optional<TcgenMmaWsView> borrow(const Form& mma,
                                      TcgenMmaKind kind) noexcept {
+  constexpr bool sparse = std::same_as<Form, Tcgen05MmaWsSpF16> ||
+                          std::same_as<Form, Tcgen05MmaWsSpTf32> ||
+                          std::same_as<Form, Tcgen05MmaWsSpF8f6f4> ||
+                          std::same_as<Form, Tcgen05MmaWsSpI8>;
   if (mma.operand_layout.value >= 4 ||
       mma.cta_group.value != TcgenCtaGroup::One)
     return std::nullopt;
@@ -752,11 +764,13 @@ std::optional<TcgenMmaWsView> borrow(const Form& mma,
     return std::nullopt;
   TcgenMmaWsView view{.kind = kind,
                       .group = mma.cta_group.value,
+                      .sparse = sparse,
                       .collector = &mma.collector,
                       .d = &mma.d.value,
                       .a_shared = std::nullopt,
                       .a_tmem = nullptr,
                       .b = {&mma.b.value, MatrixFragmentRole::B},
+                      .metadata = nullptr,
                       .instruction = {&mma.idesc.value},
                       .enable_d = &mma.enable_input_d.value,
                       .zero_column = std::nullopt};
@@ -768,11 +782,13 @@ std::optional<TcgenMmaWsView> borrow(const Form& mma,
   if (zero)
     view.zero_column =
         TcgenZeroColumnDescriptorView{&mma.zero_column_desc->value};
+  if constexpr (sparse)
+    view.metadata = &mma.sp_meta.value;
   return view;
 }
 }  // namespace tcgen_ws_detail
 
-/** Borrow WS roles only from the exact dense source classes. */
+/** Borrow WS roles only from exact dense or sparse source classes. */
 inline std::optional<TcgenMmaWsView> tcgen_mma_ws_view(
     const Instruction& instruction) noexcept {
   if (const auto* form = dynamic_cast<const Tcgen05MmaWsF16*>(&instruction))
@@ -782,6 +798,15 @@ inline std::optional<TcgenMmaWsView> tcgen_mma_ws_view(
   if (const auto* form = dynamic_cast<const Tcgen05MmaWsF8f6f4*>(&instruction))
     return tcgen_ws_detail::borrow(*form, TcgenMmaKind::F8F6F4);
   if (const auto* form = dynamic_cast<const Tcgen05MmaWsI8*>(&instruction))
+    return tcgen_ws_detail::borrow(*form, TcgenMmaKind::I8);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaWsSpF16*>(&instruction))
+    return tcgen_ws_detail::borrow(*form, TcgenMmaKind::F16);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaWsSpTf32*>(&instruction))
+    return tcgen_ws_detail::borrow(*form, TcgenMmaKind::Tf32);
+  if (const auto* form =
+          dynamic_cast<const Tcgen05MmaWsSpF8f6f4*>(&instruction))
+    return tcgen_ws_detail::borrow(*form, TcgenMmaKind::F8F6F4);
+  if (const auto* form = dynamic_cast<const Tcgen05MmaWsSpI8*>(&instruction))
     return tcgen_ws_detail::borrow(*form, TcgenMmaKind::I8);
   return std::nullopt;
 }

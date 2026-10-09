@@ -2519,7 +2519,8 @@ CheckResult check_tcgen_mma_sources(
     const WithLocs<TensorMemoryAddress>* scale_a,
     const WithLocs<TensorMemoryAddress>* scale_b, const WithLocs<bool>* ashift,
     const WithLocs<TcgenCollectorControl>* collector,
-    const WithLocs<ResolvedRegisterRef>* zero_column, bool ws,
+    const WithLocs<TensorMemoryAddress>* metadata,
+    const WithLocs<ResolvedRegisterRef>* zero_column, bool ws, bool sparse,
     const Context& context) {
   const TcgenCtaGroup group = group_source.value;
   if (group != TcgenCtaGroup::One && group != TcgenCtaGroup::Two)
@@ -2531,6 +2532,9 @@ CheckResult check_tcgen_mma_sources(
   if (!ws && zero_column)
     return cvt_rule_violation(context,
                               "Non-WS MMA cannot use a zero-column operand.");
+  if (sparse != (metadata != nullptr))
+    return cvt_rule_violation(
+        context, "Sparse MMA requires exactly one metadata address.");
   if ((a_address == nullptr) == (a_shared == nullptr))
     return cvt_rule_violation(context,
                               "TCGEN MMA requires exactly one A placement.");
@@ -2568,6 +2572,7 @@ CheckResult check_tcgen_mma_sources(
       !tcgen_mma_valid_source_ranges(
           a_address ? a_address->locs : a_shared->locs, 1) ||
       !tcgen_mma_valid_source_ranges(b.locs, 1) ||
+      (metadata && !tcgen_mma_valid_source_ranges(metadata->locs, 1)) ||
       !tcgen_mma_valid_source_ranges(idesc.locs, 1) ||
       !tcgen_mma_valid_source_ranges(enable_d.locs, 1) ||
       (zero_column && !tcgen_mma_valid_source_ranges(zero_column->locs, 1)) ||
@@ -2581,6 +2586,10 @@ CheckResult check_tcgen_mma_sources(
         CheckDiagnosticKind::RuleViolation);
   if (auto result = check_tcgen_transfer_address(d, context); !result)
     return result;
+  if (metadata) {
+    if (auto result = check_tcgen_transfer_address(*metadata, context); !result)
+      return result;
+  }
   if (a_address) {
     if (auto result = check_tcgen_transfer_address(*a_address, context);
         !result)
@@ -2679,9 +2688,10 @@ CheckResult check_tcgen_mma_f16_sources(
     const WithLocs<ResolvedRegisterVector>* mask,
     const WithLocs<ResolvedPredicateSource>& enable_d,
     const WithLocs<ResolvedImmediate>* scale, const Context& context) {
-  return check_tcgen_mma_sources(
-      group_source, d, a_address, a_shared, b, idesc, mask, enable_d, scale,
-      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, context);
+  return check_tcgen_mma_sources(group_source, d, a_address, a_shared, b, idesc,
+                                 mask, enable_d, scale, nullptr, nullptr,
+                                 nullptr, nullptr, nullptr, nullptr, nullptr,
+                                 false, false, context);
 }
 
 /** Match copy qualifiers against the selected closed shape and format sets. */

@@ -80,6 +80,9 @@ supported surface and its exclusions.
 - [TCGEN dense WS MMA coverage](docs/us-en/tcgen_mma_ws_dense_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_ws_dense_coverage.md) describe
   B collector controls, optional zero-column source, and conditional WS facts.
+- [TCGEN sparse WS MMA coverage](docs/us-en/tcgen_mma_ws_sparse_coverage.md)
+  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_sparse_coverage.md) describe
+  mandatory metadata, compressed K, and conditional WS sparse facts.
 - [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
 - [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
   [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled

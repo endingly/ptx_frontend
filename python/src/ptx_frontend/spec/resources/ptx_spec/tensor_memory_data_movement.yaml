@@ -12,7 +12,7 @@ instructions:
     doc: >-
       Allocate, deallocate, and relinquish Tensor Memory permission; transfer
       registers by load, store, reduction, and matching same-thread waits;
-      copy from shared memory, shift Tensor Memory rows, and issue dense and sparse non-WS f16/tf32/i8/f8f6f4 and block-scaled mxf8f6f4/mxf4/mxf4nvf4 MMA.
+      copy from shared memory, shift Tensor Memory rows, and issue dense and sparse non-WS/WS f16/tf32/i8/f8f6f4 and block-scaled mxf8f6f4/mxf4/mxf4nvf4 MMA.
       Allocation, warp participation, and completion ordering remain runtime obligations.
       Commit tracks prior same-thread TCGEN work through a cluster mbarrier; specialized fences express ordering obligations.
     syntax: >-
@@ -37,6 +37,10 @@ instructions:
       tcgen05.mma.ws.cta_group::1.kind::tf32{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, idesc, enable-input-d{, zero-column-desc} |
       tcgen05.mma.ws.cta_group::1.kind::f8f6f4{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, idesc, enable-input-d{, zero-column-desc} |
       tcgen05.mma.ws.cta_group::1.kind::i8{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, idesc, enable-input-d{, zero-column-desc} |
+      tcgen05.mma.ws.sp.cta_group::1.kind::f16{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, enable-input-d{, zero-column-desc} |
+      tcgen05.mma.ws.sp.cta_group::1.kind::tf32{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, enable-input-d{, zero-column-desc} |
+      tcgen05.mma.ws.sp.cta_group::1.kind::f8f6f4{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, enable-input-d{, zero-column-desc} |
+      tcgen05.mma.ws.sp.cta_group::1.kind::i8{.collector::{b0|b1|b2|b3}::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, enable-input-d{, zero-column-desc} |
       tcgen05.mma.sp.cta_group::{1|2}.kind::{f16|tf32}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d{, scale-input-d} |
       tcgen05.mma.sp.cta_group::{1|2}.kind::{f8f6f4|i8}{.ashift}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc{, disable-output-lane}, enable-input-d
       tcgen05.mma.sp.cta_group::{1|2}.kind::mxf8f6f4.block_scale{.scale_vec::1X|.block32}{.collector::a::{fill|use|lastuse|discard}} [d], a, b, [sp-meta], idesc, [scale-A], [scale-B], enable-input-d |
@@ -1294,6 +1298,281 @@ instructions:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
               - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+      - name: tcgen05_mma_ws_sp_f16
+        section: "9.7.17.10.9.4"
+        rule: tensor_memory.mma
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
+          - {name: ws, kind: flag, presence: fixed, value: true, token: .ws}
+          - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f16}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::b0::fill", token: ".collector::b0::fill"}
+              - {value: "collector::b0::use", token: ".collector::b0::use"}
+              - {value: "collector::b0::lastuse", token: ".collector::b0::lastuse"}
+              - {value: "collector::b0::discard", token: ".collector::b0::discard"}
+              - {value: "collector::b1::fill", token: ".collector::b1::fill"}
+              - {value: "collector::b1::use", token: ".collector::b1::use"}
+              - {value: "collector::b1::lastuse", token: ".collector::b1::lastuse"}
+              - {value: "collector::b1::discard", token: ".collector::b1::discard"}
+              - {value: "collector::b2::fill", token: ".collector::b2::fill"}
+              - {value: "collector::b2::use", token: ".collector::b2::use"}
+              - {value: "collector::b2::lastuse", token: ".collector::b2::lastuse"}
+              - {value: "collector::b2::discard", token: ".collector::b2::discard"}
+              - {value: "collector::b3::fill", token: ".collector::b3::fill"}
+              - {value: "collector::b3::use", token: ".collector::b3::use"}
+              - {value: "collector::b3::lastuse", token: ".collector::b3::lastuse"}
+              - {value: "collector::b3::discard", token: ".collector::b3::discard"}
+        operand_layouts:
+          - name: shared
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+          - name: tensor
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+      - name: tcgen05_mma_ws_sp_tf32
+        section: "9.7.17.10.9.4"
+        rule: tensor_memory.mma
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
+          - {name: ws, kind: flag, presence: fixed, value: true, token: .ws}
+          - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::tf32}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::b0::fill", token: ".collector::b0::fill"}
+              - {value: "collector::b0::use", token: ".collector::b0::use"}
+              - {value: "collector::b0::lastuse", token: ".collector::b0::lastuse"}
+              - {value: "collector::b0::discard", token: ".collector::b0::discard"}
+              - {value: "collector::b1::fill", token: ".collector::b1::fill"}
+              - {value: "collector::b1::use", token: ".collector::b1::use"}
+              - {value: "collector::b1::lastuse", token: ".collector::b1::lastuse"}
+              - {value: "collector::b1::discard", token: ".collector::b1::discard"}
+              - {value: "collector::b2::fill", token: ".collector::b2::fill"}
+              - {value: "collector::b2::use", token: ".collector::b2::use"}
+              - {value: "collector::b2::lastuse", token: ".collector::b2::lastuse"}
+              - {value: "collector::b2::discard", token: ".collector::b2::discard"}
+              - {value: "collector::b3::fill", token: ".collector::b3::fill"}
+              - {value: "collector::b3::use", token: ".collector::b3::use"}
+              - {value: "collector::b3::lastuse", token: ".collector::b3::lastuse"}
+              - {value: "collector::b3::discard", token: ".collector::b3::discard"}
+        operand_layouts:
+          - name: shared
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+          - name: tensor
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+      - name: tcgen05_mma_ws_sp_f8f6f4
+        section: "9.7.17.10.9.4"
+        rule: tensor_memory.mma
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability: *tcgen_alloc_availability
+        modifiers:
+          - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
+          - {name: ws, kind: flag, presence: fixed, value: true, token: .ws}
+          - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::f8f6f4}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::b0::fill", token: ".collector::b0::fill"}
+              - {value: "collector::b0::use", token: ".collector::b0::use"}
+              - {value: "collector::b0::lastuse", token: ".collector::b0::lastuse"}
+              - {value: "collector::b0::discard", token: ".collector::b0::discard"}
+              - {value: "collector::b1::fill", token: ".collector::b1::fill"}
+              - {value: "collector::b1::use", token: ".collector::b1::use"}
+              - {value: "collector::b1::lastuse", token: ".collector::b1::lastuse"}
+              - {value: "collector::b1::discard", token: ".collector::b1::discard"}
+              - {value: "collector::b2::fill", token: ".collector::b2::fill"}
+              - {value: "collector::b2::use", token: ".collector::b2::use"}
+              - {value: "collector::b2::lastuse", token: ".collector::b2::lastuse"}
+              - {value: "collector::b2::discard", token: ".collector::b2::discard"}
+              - {value: "collector::b3::fill", token: ".collector::b3::fill"}
+              - {value: "collector::b3::use", token: ".collector::b3::use"}
+              - {value: "collector::b3::lastuse", token: ".collector::b3::lastuse"}
+              - {value: "collector::b3::discard", token: ".collector::b3::discard"}
+        operand_layouts:
+          - name: shared
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+          - name: tensor
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+      - name: tcgen05_mma_ws_sp_i8
+        section: "9.7.17.10.9.4"
+        rule: tensor_memory.mma
+        completion_kind: tcgen_mbarrier_arrive_one
+        availability:
+          any_of:
+            - {ptx: "8.6", sm: 100, target: sm_100a}
+            - {ptx: "9.0", sm: 110, target: sm_110a}
+        modifiers:
+          - {name: mma, kind: flag, presence: fixed, value: true, token: .mma}
+          - {name: ws, kind: flag, presence: fixed, value: true, token: .ws}
+          - {name: sp, kind: flag, presence: fixed, value: true, token: .sp}
+          - {name: cta_group, kind: cta_group, domain: tcgen_cta_groups, presence: required, values: ["cta_group::1"]}
+          - {name: kind, kind: flag, presence: fixed, value: true, token: .kind::i8}
+          - name: collector
+            kind: tcgen_collector
+            domain: tcgen_collectors
+            presence: optional
+            default: absent
+            values:
+              - {value: "collector::b0::fill", token: ".collector::b0::fill"}
+              - {value: "collector::b0::use", token: ".collector::b0::use"}
+              - {value: "collector::b0::lastuse", token: ".collector::b0::lastuse"}
+              - {value: "collector::b0::discard", token: ".collector::b0::discard"}
+              - {value: "collector::b1::fill", token: ".collector::b1::fill"}
+              - {value: "collector::b1::use", token: ".collector::b1::use"}
+              - {value: "collector::b1::lastuse", token: ".collector::b1::lastuse"}
+              - {value: "collector::b1::discard", token: ".collector::b1::discard"}
+              - {value: "collector::b2::fill", token: ".collector::b2::fill"}
+              - {value: "collector::b2::use", token: ".collector::b2::use"}
+              - {value: "collector::b2::lastuse", token: ".collector::b2::lastuse"}
+              - {value: "collector::b2::discard", token: ".collector::b2::discard"}
+              - {value: "collector::b3::fill", token: ".collector::b3::fill"}
+              - {value: "collector::b3::use", token: ".collector::b3::use"}
+              - {value: "collector::b3::lastuse", token: ".collector::b3::lastuse"}
+              - {value: "collector::b3::discard", token: ".collector::b3::discard"}
+        operand_layouts:
+          - name: shared
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: shared_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: reg, role: src, access: read, type: b64}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+              - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}
+          - name: tensor
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: idesc, kind: reg, role: src, access: read, type: b32}
+              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
+          - name: tensor_zero
+            operands:
+              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
+              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
+              - {name: b, kind: reg, role: src, access: read, type: b64}
+              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: zero_column_desc, kind: reg, role: src, access: read, type: b64}

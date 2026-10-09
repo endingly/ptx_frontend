@@ -486,14 +486,17 @@ def validate_catalogue() -> None:
                      ("MxF4NvF4", 128, "block16", 4, 4, (0,)))} or
             len(SPARSE_MX_SCALE_LAYOUTS) != 16):
         raise ValueError("sparse MX rows drifted from Tables 42/47/59/60")
-    if ({(row.kind, row.d_type, row.m_values, row.n_values, row.k)
+    if ({(row.kind, row.sparse, row.d_type, row.m_values, row.n_values, row.k)
          for row in WS_SHAPES} != {
-             (kind, row.d_type, (32, 64, 128), (64, 128, 256), k)
+             (kind, sparse, row.d_type, (32, 64, 128),
+              (64, 128) if sparse else (64, 128, 256),
+              k * (2 if sparse else 1))
+             for sparse in (False, True)
              for kind, rows, k in (
                  ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
                  ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
              for row in rows if row.group == 1} or
-            len(WS_SHAPES) != 6 or
+            len(WS_SHAPES) != 12 or
             {(row.group, row.m, row.layout, row.allowed_lane_halves)
              for row in WS_PATHS} != {
                  (1, 32, "G", (0,)), (1, 64, "E", (0,)),
@@ -1880,9 +1883,10 @@ def check_mx_a_collector_known_facts(
 
 @dataclass(frozen=True)
 class WsShapeRow:
-    """One weight-stationary Table 42 kind/output row, with K in elements."""
+    """One WS Table 42 kind/output/sparsity row, with logical K in elements."""
 
     kind: str
+    sparse: bool
     d_type: str
     m_values: tuple[int, ...]
     n_values: tuple[int, ...]
@@ -1897,8 +1901,11 @@ class WsShapeRow:
 
 
 WS_SHAPES = tuple(
-    WsShapeRow(kind, row.d_type, (32, 64, 128), (64, 128, 256), k,
+    WsShapeRow(kind, sparse, row.d_type, (32, 64, 128),
+               (64, 128) if sparse else (64, 128, 256),
+               k * (2 if sparse else 1),
                row.a_types, row.b_types)
+    for sparse in (False, True)
     for kind, rows, k in (
         ("F16", F16_SHAPES, 16), ("Tf32", TF32_SHAPES, 8),
         ("F8F6F4", F8F6F4_SHAPES, 32), ("I8", I8_SHAPES, 32))
@@ -1913,7 +1920,11 @@ class WsKnownFacts(F16KnownFacts):
     """Independent dense WS source, descriptor and B-buffer history claims."""
 
     kind: str = "F16"
+    source_sparse: bool = False
     word_kind: str | None = None
+    sparse_selector: int | None = None
+    metadata_nibbles: tuple[int, ...] | None = None
+    metadata_lane_half: int | None = None
     collector: CollectorControl = CollectorControl()
     collector_b_valid: tuple[bool | None, ...] = (None, None, None, None)
     zero_column_operand_present: bool = False
@@ -1928,6 +1939,9 @@ class WsOperationalReport:
     obligations: tuple[str, ...]
     shape: WsShapeRow | None
     path: SparsePathRow | None
+    metadata_rule: SparseMetadataRule | None
+    compressed_a_k: int | None
+    logical_b_k: int | None
     effective_collector: CollectorControl
     zero_unclassified_bits: int | None
 
@@ -1976,14 +1990,15 @@ def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
     elif facts.group != 1:
         violations.append("cta_group")
     if facts.sparse is None:
-        obligations.append("dense_sparsity_bit")
-    elif facts.sparse:
-        violations.append("dense_sparsity_bit")
+        obligations.append("sparsity_bit")
+    elif facts.sparse != facts.source_sparse:
+        violations.append("sparsity_bit")
     for name in ("m", "n", "k", "d_type", "a_type", "b_type"):
         if getattr(facts, name) is None:
             obligations.append(name)
     shape = next((row for row in WS_SHAPES
-                  if row.kind == facts.kind and row.d_type == facts.d_type and
+                  if row.kind == facts.kind and row.sparse == facts.source_sparse
+                  and row.d_type == facts.d_type and
                   facts.m is not None and facts.n is not None and
                   facts.k is not None and row.contains(facts.m, facts.n,
                                                        facts.k)), None)
@@ -2021,9 +2036,33 @@ def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
                       violations, obligations, tf32=facts.kind == "Tf32")
     path = next((row for row in WS_PATHS if shape is not None and
                  row.m == facts.m), None)
+    metadata_rule = None
+    if facts.source_sparse:
+        metadata_rule = next((row for row in SPARSE_METADATA_RULES
+                              if row.kind == facts.kind), None)
+        if facts.sparse_selector is None:
+            obligations.append("sparsity_selector")
+        elif (facts.sparse_selector not in range(4) or
+              (facts.kind in ("F8F6F4", "I8") and
+               facts.sparse_selector != 0)):
+            violations.append("sparsity_selector")
+        if facts.metadata_nibbles is None:
+            obligations.append("metadata_indices")
+        elif metadata_rule is not None and any(
+                nibble not in metadata_rule.valid_nibbles
+                for nibble in facts.metadata_nibbles):
+            violations.append("metadata_indices")
+        obligations.extend(("live_metadata_contents", "sparse_a_contents"))
+        if facts.m == 32:
+            obligations.append("metadata_layout_rule")
+    elif (facts.sparse_selector is not None or
+          facts.metadata_nibbles is not None or
+          facts.metadata_lane_half is not None):
+        violations.append("dense_metadata_facts")
     if path is not None:
         for name in (("a_lane_half",) if facts.a_shared is False else ()) + (
-                "d_lane_half",):
+                "d_lane_half",) + (("metadata_lane_half",)
+                                   if facts.source_sparse else ()):
             value = getattr(facts, name)
             if value is None:
                 obligations.append(name)
@@ -2079,4 +2118,7 @@ def check_ws_known_facts(facts: WsKnownFacts) -> WsOperationalReport:
             violations.append("collector_b_valid")
         obligations.append("collector_sequence")
     return WsOperationalReport(tuple(violations), tuple(obligations),
-                               shape, path, effective, zero_bits)
+                               shape, path, metadata_rule,
+                               shape.k // 2 if shape and facts.source_sparse
+                               else None, shape.k if shape else None,
+                               effective, zero_bits)

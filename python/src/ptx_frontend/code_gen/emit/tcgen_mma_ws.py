@@ -14,12 +14,16 @@ namespace ptx_frontend::resolved_ir {
 struct TcgenWsShapeRow {
   /** Kind from the selected source class. */
   TcgenMmaKind kind;
+  /** Whether this row compresses sparse A. */
+  bool sparse;
   /** Defined output element type. */
   MatrixElementType d_type;
   /** Allowed M values in rows. */
   std::array<uint16_t, 3> m_values;
   /** Allowed N values in columns. */
   std::array<uint16_t, 3> n_values;
+  /** Number of defined N entries. */
+  uint8_t n_count;
   /** Fixed K for this kind, in elements. */
   uint16_t k;
   /** Permitted A types, padded after a_type_count. */
@@ -35,10 +39,12 @@ struct TcgenWsShapeRow {
 [[nodiscard]] std::span<const TcgenWsShapeRow> tcgen_ws_shape_rows() noexcept;
 /** Borrow M32/G, M64/E and M128/D through the common lane-row shape. */
 [[nodiscard]] std::span<const TcgenSparsePathRow> tcgen_ws_path_rows() noexcept;
-/** Known dense WS contradictions from supplied words and independent facts. */
+/** Known WS contradictions from supplied words and independent facts. */
 enum class TcgenWsViolation : uint8_t {
-  Kind, Group, SparseBit, Shape, AType, BType, ASharedFields, BSharedFields,
+  Kind, Group, SparseBit, SparseSelector, MetadataIndex, DenseMetadataFacts,
+  Shape, AType, BType, ASharedFields, BSharedFields,
   AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, ALaneHalf, DLaneHalf,
+  MetadataLaneHalf,
   ZeroPresence, ZeroWord, CollectorDomain, CollectorHistory, Target,
   InvalidContext
 };
@@ -47,13 +53,17 @@ enum class TcgenWsObligation : uint8_t {
   ASharedWord, BSharedWord, AMajor, BMajor, MixedInputPair,
   ALowBitTransposeRule, BLowBitTransposeRule,
   ALowBitPackingRule, BLowBitPackingRule, ALaneHalf, DLaneHalf,
+  MetadataLaneHalf, MetadataIndices, LiveMetadataContents, SparseAContents,
+  MetadataLayoutRule,
   ZeroColumnWord, LiveZeroColumnWord, CollectorHistory, CollectorSequence,
   SourceStabilityUntilCompletion, Target
 };
 /** Caller-known WS words and B-buffer assertions, never read from source regs. */
 struct TcgenWsKnownFacts {
-  /** Exact dense WS kind selected by source spelling. */
+  /** Exact WS kind selected by source spelling. */
   TcgenMmaKind source_kind;
+  /** Written sparse source identity, independent of descriptor bits. */
+  bool source_sparse = false;
   /** Source qualifier, required to name CTA group one. */
   TcgenCtaGroup group;
   /** True when A is a Tensor Memory address. */
@@ -72,6 +82,12 @@ struct TcgenWsKnownFacts {
   std::optional<uint8_t> a_lane_half;
   /** Known D lane-half identity. */
   std::optional<uint8_t> d_lane_half;
+  /** Known metadata lane-half identity on sparse WS forms. */
+  std::optional<uint8_t> metadata_lane_half;
+  /** Independently supplied Table 45 sparsity selector. */
+  std::optional<uint8_t> sparse_selector;
+  /** Independently supplied logical metadata nibbles. */
+  std::optional<std::vector<uint8_t>> metadata_nibbles;
   /** Whether the source has its optional final scalar register. */
   bool zero_column_operand_present = false;
   /** Optional known word; this never authenticates that register's live bits. */
@@ -103,6 +119,12 @@ struct TcgenWsOperationalReport {
   std::optional<TcgenWsShapeRow> shape;
   /** Selected common allowed-lane row, when M is a WS path. */
   std::optional<TcgenSparsePathRow> path;
+  /** Existing kind-specific nibble rule on sparse WS forms. */
+  std::optional<TcgenSparseMetadataRule> metadata_rule;
+  /** Sparse compressed A K, when a known row was selected. */
+  std::optional<uint16_t> compressed_a_k;
+  /** Logical B K, when a known row was selected. */
+  std::optional<uint16_t> logical_b_k;
   /** Omission derives B0/discard without changing the owned source. */
   TcgenCollectorControl effective_collector;
   /** Whether no supplied checkable fact contradicted a fixed rule. */
@@ -257,15 +279,16 @@ TcgenWsOperationalReport check_tcgen_ws_known_operation(
   if (facts.group != TcgenCtaGroup::One)
     report.violations.push_back(TcgenWsViolation::Group);
   const auto decoded = decode_tcgen_instruction(facts.instruction);
-  if (decoded.sparse)
+  if (decoded.sparse != facts.source_sparse)
     report.violations.push_back(TcgenWsViolation::SparseBit);
   for (const auto& row : kWsShapes) {
-    if (row.kind != facts.source_kind || !decoded.d_type ||
+    if (row.kind != facts.source_kind || row.sparse != facts.source_sparse ||
+        !decoded.d_type ||
         *decoded.d_type != row.d_type ||
         std::find(row.m_values.begin(), row.m_values.end(), decoded.m) ==
             row.m_values.end() ||
-        std::find(row.n_values.begin(), row.n_values.end(), decoded.n) ==
-            row.n_values.end()) continue;
+        std::find(row.n_values.begin(), row.n_values.begin()+row.n_count,
+                  decoded.n) == row.n_values.begin()+row.n_count) continue;
     report.shape = row;
     break;
   }
@@ -273,6 +296,8 @@ TcgenWsOperationalReport check_tcgen_ws_known_operation(
     report.violations.push_back(TcgenWsViolation::Shape);
   else {
     const auto& row = *report.shape;
+    report.logical_b_k = row.k;
+    if (facts.source_sparse) report.compressed_a_k = row.k / 2;
     if (!decoded.a_type ||
         std::find(row.a_types.begin(), row.a_types.begin()+row.a_type_count,
                   *decoded.a_type) == row.a_types.begin()+row.a_type_count)
@@ -305,6 +330,32 @@ TcgenWsOperationalReport check_tcgen_ws_known_operation(
         (decoded.n < 16 || decoded.n > 256 || decoded.n % 16 != 0))
       report.violations.push_back(TcgenWsViolation::BTransposeN);
   }
+  if (facts.source_sparse) {
+    if ((facts.source_kind == TcgenMmaKind::I8 ||
+         facts.source_kind == TcgenMmaKind::F8F6F4) &&
+        decoded.sparse_selector != 0)
+      report.violations.push_back(TcgenWsViolation::SparseSelector);
+    if (facts.sparse_selector && *facts.sparse_selector != decoded.sparse_selector)
+      report.violations.push_back(TcgenWsViolation::SparseSelector);
+    for (const auto& rule : tcgen_sparse_metadata_rules()) {
+      if (rule.kind != facts.source_kind) continue;
+      report.metadata_rule = rule;
+      if (!facts.metadata_nibbles)
+        report.missing.push_back(TcgenWsObligation::MetadataIndices);
+      else for (uint8_t nibble : *facts.metadata_nibbles)
+        if (std::find(rule.valid_nibbles.begin(),
+                      rule.valid_nibbles.begin()+rule.valid_count, nibble) ==
+            rule.valid_nibbles.begin()+rule.valid_count)
+          report.violations.push_back(TcgenWsViolation::MetadataIndex);
+      break;
+    }
+    report.missing.push_back(TcgenWsObligation::LiveMetadataContents);
+    report.missing.push_back(TcgenWsObligation::SparseAContents);
+    if (decoded.m == 32)
+      report.missing.push_back(TcgenWsObligation::MetadataLayoutRule);
+  } else if (facts.sparse_selector || facts.metadata_nibbles ||
+             facts.metadata_lane_half)
+    report.violations.push_back(TcgenWsViolation::DenseMetadataFacts);
   if (!facts.a_in_tmem) {
     if (!facts.a_shared_word)
       report.missing.push_back(TcgenWsObligation::ASharedWord);
@@ -326,6 +377,12 @@ TcgenWsOperationalReport check_tcgen_ws_known_operation(
       report.missing.push_back(TcgenWsObligation::DLaneHalf);
     else if (*facts.d_lane_half != 0)
       report.violations.push_back(TcgenWsViolation::DLaneHalf);
+    if (facts.source_sparse) {
+      if (!facts.metadata_lane_half)
+        report.missing.push_back(TcgenWsObligation::MetadataLaneHalf);
+      else if (*facts.metadata_lane_half != 0)
+        report.violations.push_back(TcgenWsViolation::MetadataLaneHalf);
+    }
   }
   if (facts.zero_column_operand_present) {
     if (!facts.zero_column_word)
@@ -378,11 +435,15 @@ def render_ws_source() -> str:
                           row.a_types + (row.a_types[0],)*(5-len(row.a_types)))
         b_types=", ".join("MatrixElementType::"+value for value in
                           row.b_types + (row.b_types[0],)*(5-len(row.b_types)))
+        n_values=", ".join(map(str, row.n_values +
+                               (row.n_values[-1],)*(3-len(row.n_values))))
         shapes.append(
             f'  TcgenWsShapeRow{{TcgenMmaKind::{row.kind}, '
+            f'{"true" if row.sparse else "false"}, '
             f'MatrixElementType::{row.d_type}, '
             f'{{{{{", ".join(map(str,row.m_values))}}}}}, '
-            f'{{{{{", ".join(map(str,row.n_values))}}}}}, {row.k}, '
+            f'{{{{{n_values}}}}}, '
+            f'{len(row.n_values)}, {row.k}, '
             f'{{{{{a_types}}}}}, {len(row.a_types)}, '
             f'{{{{{b_types}}}}}, {len(row.b_types)}}}')
     paths=[f'  TcgenSparsePathRow{{TcgenCtaGroup::One, {row.m}, '

@@ -16,7 +16,7 @@ validation before publishing metadata.
 | Body-local scalar / sized array, including multiple dimensions | Retained | Fundamental non-predicate type, positive constant extents, checked size, alignment, PTX 2.0 / SM 20 | `parameter_declarations`, `BodyLocal`, lexical scope and full array shape |
 | Unsized body-local `.param` | Retained | Rejected | No resolved module |
 | `.callprototype` scalar / array formals | Retained | Device signature rules; prototype itself requires PTX 2.1 / SM 20 | Owned `declaration_semantics::FunctionSignature` from the semantic API; not a declaration table entry |
-| Entry-header opaque `.texref`, `.samplerref`, `.surfref` | Type spelling retained | Explicit unsupported diagnostic | None; opaque entry objects are legal, but need identity-only metadata and dedicated texture/surface use rather than an invented byte layout |
+| Entry-header opaque `.texref`, `.samplerref`, `.surfref` | Retained | Name-only entry inputs; resource kind, shape, and version checked | Ordered `opaque_entry_parameters` with bound symbol identity, resource kind, and source shape; no byte layout |
 | Device formal, return, or body-local opaque object | Type spelling retained | Rejected | None; illegal because opaque-object use is limited to module globals and entry parameter lists |
 | `.f16x2` in an entry header, device formal/return, or body-local declaration | Type spelling retained | Explicit unsupported diagnostic | None; `.f16x2` is a fundamental type, so this is a retained legal-but-unsupported boundary, not an alternate-format rejection |
 | Header `.v2` / `.v4` parameter | Explicit unsupported parse diagnostic | Not reached | None; retained legal-but-unsupported boundary pending context-specific vector shape, size, and ABI metadata |
@@ -111,7 +111,10 @@ Opaque entry parameters are legal ISA objects: the `.entry` directive permits
 them, while the opaque-type section limits their declaration to module globals
 and entry parameter lists. They are name-only texture/surface objects and
 ordinary `ld.param` cannot load them; their physical layout is intentionally
-hidden. Device and body opaque declarations consequently remain rejected.
+hidden. Each function owns its opaque entry inputs in source order in
+`opaque_entry_parameters`, retaining bound identity, kind, alignment, array
+shape, and source location after AST release. Device and body opaque
+declarations consequently remain rejected.
 
 `.f16x2` is listed as a fundamental type, unlike the alternate packed formats.
 The parameter-passing rules discuss base-type scalar and vector `.param`

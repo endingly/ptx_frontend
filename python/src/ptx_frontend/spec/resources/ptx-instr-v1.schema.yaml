@@ -694,6 +694,7 @@ $defs:
       - vector_reg
       - vector_sreg
       - reg_vector
+      - value_vector
       - direct_call_target
       - indirect_call_target
       - indirect_call_metadata
@@ -1137,6 +1138,17 @@ $defs:
         uniqueItems: true
         items:
           type: string
+
+      signed_immediate_range:
+        description: "Inclusive signed integer source range for each immediate value-vector lane."
+        type: object
+        additionalProperties: false
+        required: [minimum, maximum]
+        properties:
+          minimum:
+            type: integer
+          maximum:
+            type: integer
 
       require_uniform_register_family:
         description: >

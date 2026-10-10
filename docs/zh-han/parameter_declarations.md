@@ -14,7 +14,7 @@
 | Body-local scalar / 有界数组，含多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、大小溢出检查、alignment、PTX 2.0 / SM 20 | `parameter_declarations`，role 为 `BodyLocal`，保留词法 scope 与完整 shape |
 | Unsized body-local `.param` | 保留 | 拒绝 | 不生成 resolved module |
 | `.callprototype` scalar / array formal | 保留 | Device signature 规则；prototype 本身要求 PTX 2.1 / SM 20 | Semantic API 可生成拥有自身数据的 `declaration_semantics::FunctionSignature`；不进入声明表 |
-| Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 type spelling | 明确的 unsupported diagnostic | 无；opaque entry object 合法，但需要 identity-only metadata 和专用 texture/surface 使用方式，不能臆造 byte layout |
+| Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 | 按名称使用的 entry input；检查资源种类、shape 与版本 | 按源码顺序保存的 `opaque_entry_parameters`，含绑定 symbol identity、资源种类与源码 shape；无 byte layout |
 | Device formal、return 或 body-local opaque object | 保留 type spelling | 拒绝 | 无；illegal，因为 opaque object 仅可用于 module global 与 entry parameter list |
 | Entry header、device formal/return 或 body-local 中的 `.f16x2` | 保留 type spelling | 明确的 unsupported diagnostic | 无；`.f16x2` 是 fundamental type，因此这是保留的 legal-but-unsupported 边界，不是 alternate-format rejection |
 | Header `.v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；保留为 legal-but-unsupported，等待上下文相关的 vector shape、size 与 ABI metadata |
@@ -93,7 +93,9 @@ input；其他 role 不是 launch slot。
 Opaque entry parameter 是合法 ISA object：`.entry` directive 允许它们，而 opaque type
 一节将声明位置限制为 module global 与 entry parameter list。它们是按名称使用的
 texture/surface object，普通 `ld.param` 不能加载，物理 layout 也被刻意隐藏。因此 device
-与 body 的 opaque declaration 继续拒绝。
+与 body 的 opaque declaration 继续拒绝。每个 function 按源码顺序持有
+`opaque_entry_parameters`，在 AST 销毁后仍保留绑定 identity、种类、alignment、array
+shape 与源码位置。
 
 `.f16x2` 是 fundamental type，不同于 alternate packed format。parameter-passing rule
 讨论 base-type scalar 与 vector `.param` formal，因此 frontend 将 `.f16x2` 记录为

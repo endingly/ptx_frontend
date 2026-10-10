@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -26,6 +27,7 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+struct ResolvedImmediate;
 struct ResolvedTensorOperand;
 enum class ResolvedRegisterClass : uint8_t;
 
@@ -621,6 +623,13 @@ struct AddressAlignmentConstraint {
   uint64_t alignment = 0;
 };
 enum class VectorTypePolicy : uint8_t { Aggregate, Element };
+/** Inclusive domain for a known integer source in each value-vector lane. */
+struct SignedVectorImmediateRange {
+  /** Inclusive lower bound on the evaluated signed source value. */
+  int64_t minimum;
+  /** Inclusive upper bound on the evaluated signed source value. */
+  int64_t maximum;
+};
 /** Required base shape for one bracketed address operand. */
 enum class AddressBasePolicy : uint8_t { Any, Register };
 /** Owned address base shape projected into checker views. */
@@ -649,6 +658,10 @@ struct OperandDescriptor {
   std::span<const base::ScalarType> allowed_register_types;
   /** Enforce one integer-or-float family per vector; bit lanes are neutral. */
   bool require_uniform_register_family = false;
+  /** Read-only lanes may be registers or typed immediate values. */
+  bool source_value_vector = false;
+  /** Absent leaves known immediate values unconstrained by a source range. */
+  std::optional<SignedVectorImmediateRange> vector_signed_immediate_range;
   bool allow_destination_sink = false;
   bool allow_predicate_sink = false;
   MbarrierStateTokenForm mbarrier_state_token_form =
@@ -781,6 +794,9 @@ struct OperandView {
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
+  /** Borrowed typed values for source-vector lanes, null for registers. */
+  std::array<const ResolvedImmediate*, kMaxOperandElements>
+      vector_element_immediates{};
   /** Composite tensor coordinates with a statically negative immediate. */
   bool tensor_has_negative_immediate = false;
   /** Composite tensor rank encoded by the owned operand. */
@@ -1150,6 +1166,37 @@ struct ResolvedImmediate {
   std::optional<uint64_t> integer_source_bits;
   bool operator==(const ResolvedImmediate&) const = default;
 };
+/** Check owned value-vector immediate provenance and an optional signed domain. */
+[[nodiscard]] inline bool valid_value_vector_immediate(
+    const ResolvedImmediate& value,
+    std::optional<checker::SignedVectorImmediateRange> range = std::nullopt) {
+  const auto kind = base::scalar_kind(value.type);
+  const auto bytes = base::scalar_size_of(value.type);
+  if (bytes == 0 || bytes > 8)
+    return false;
+  const unsigned width = static_cast<unsigned>(bytes) * 8;
+  const uint64_t mask = width == 64 ? UINT64_MAX : (uint64_t{1} << width) - 1;
+  if ((value.bits & ~mask) != 0)
+    return false;
+  if (kind == base::ScalarKind::Float)
+    return !range && !value.integer_source_bits && !value.is_negative;
+  if (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
+      kind != base::ScalarKind::Unsigned)
+    return false;
+  if (!value.integer_source_bits ||
+      value.bits != (*value.integer_source_bits & mask))
+    return false;
+  const int64_t source = std::bit_cast<int64_t>(*value.integer_source_bits);
+  if (value.is_negative)
+    return source < 0 &&
+           (!range || (source >= range->minimum && source <= range->maximum));
+  if (!range)
+    return true;
+  return range->maximum >= 0 &&
+         *value.integer_source_bits <= static_cast<uint64_t>(range->maximum) &&
+         (range->minimum <= 0 ||
+          *value.integer_source_bits >= static_cast<uint64_t>(range->minimum));
+}
 struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
   bool operator==(const ResolvedRegisterVector&) const = default;
@@ -1348,6 +1395,12 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Read-only braced source lanes retaining register identities or typed values. */
+struct ResolvedValueVector {
+  /** Ordered lane payload; WithLocs owns corresponding source ranges. */
+  std::vector<RegOrImm> elements;
+  bool operator==(const ResolvedValueVector&) const = default;
+};
 /** One owned coordinate lane with role and source location retained. */
 struct ResolvedTextureLane {
   /** Register declaration type is retained even when role interpretation differs. */

@@ -66,6 +66,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.SYMBOL: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.ADDRESS: OperandSyntaxShape.ADDRESS,
     OperandKind.REGISTER_VECTOR: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.VALUE_VECTOR: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.DESCRIPTOR: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,

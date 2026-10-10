@@ -167,6 +167,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.SYMBOL: ResolvedValueKind.SYMBOL,
     OperandKind.ADDRESS: ResolvedValueKind.ADDRESS,
     OperandKind.REGISTER_VECTOR: ResolvedValueKind.REGISTER_VECTOR,
+    OperandKind.VALUE_VECTOR: ResolvedValueKind.VALUE_VECTOR,
     OperandKind.DESCRIPTOR: ResolvedValueKind.REGISTER,
     OperandKind.TYPED_TOKEN: ResolvedValueKind.REGISTER,
     OperandKind.MBARRIER_STATE_TOKEN: ResolvedValueKind.MBARRIER_STATE_TOKEN,
@@ -514,6 +515,8 @@ class ResolvedOperandBinding:
     vector_sink_payload_bits: int = 0
     allowed_vector_register_types: tuple[str, ...] = ()
     require_uniform_vector_register_family: bool = False
+    vector_signed_immediate_range: tuple[int, int] | None = None
+    source_value_vector: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
@@ -608,6 +611,7 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.SYMBOL: (ResolvedOperandShape.SYMBOL,),
     OperandKind.ADDRESS: (ResolvedOperandShape.ADDRESS,),
     OperandKind.REGISTER_VECTOR: (ResolvedOperandShape.VECTOR,),
+    OperandKind.VALUE_VECTOR: (ResolvedOperandShape.VECTOR,),
     OperandKind.DESCRIPTOR: (ResolvedOperandShape.REGISTER,),
     OperandKind.TYPED_TOKEN: (ResolvedOperandShape.REGISTER,),
     OperandKind.MBARRIER_STATE_TOKEN: (ResolvedOperandShape.REGISTER,),
@@ -1931,6 +1935,8 @@ def _build_operand_layout(
                 require_uniform_vector_register_family=(
                     operand.vector_require_uniform_register_family
                 ),
+                vector_signed_immediate_range=operand.vector_signed_immediate_range,
+                source_value_vector=operand.kind is OperandKind.VALUE_VECTOR,
                 allow_destination_sink=operand.allow_destination_sink,
                 allow_predicate_sink=operand.allow_predicate_sink,
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,

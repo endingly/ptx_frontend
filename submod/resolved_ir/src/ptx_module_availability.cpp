@@ -597,6 +597,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedSymbolRef> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterVector> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedValueVector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
@@ -708,6 +709,17 @@ void collect_operand_references(
     for (const auto& element : value.elements)
       if (element)
         collect_register(*element);
+  } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
+    for (size_t index = 0; index < value.elements.size(); ++index) {
+      const auto* register_ref =
+          std::get_if<ResolvedRegisterRef>(&value.elements[index]);
+      if (!register_ref)
+        continue;
+      const std::array<SourceRange, 1> lane_range{
+          index < locations.size() ? locations[index] : fallback};
+      collect_operand_references(*register_ref, lane_range, fallback, uses,
+                                 address_resolution_policy);
+    }
   } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate>) {
     for (const auto& element : value.elements)
       if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
@@ -946,6 +958,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void register_vector(const ResolvedRegisterVector& value,
                        std::span<const SourceRange> locations,
                        checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect bound register lanes from a borrowed source value vector. */
+  void value_vector(const ResolvedValueVector& value,
+                    std::span<const SourceRange> locations,
+                    checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedShflSyncDestination. */
@@ -1420,19 +1438,51 @@ void check_header_region(const ResolvedSourceTargetRegion& region,
         diagnostics, range,
         "Resolved source header defaulted an address size other than 32 bits.");
   }
-  TextureMode expected_mode = TextureMode::Unified;
   size_t mode_count = 0;
   for (const auto& option : region.target_options) {
     if (option == "texmode_unified" || option == "texmode_independent") {
       ++mode_count;
-      expected_mode = option == "texmode_independent" ? TextureMode::Independent
-                                                      : TextureMode::Unified;
     }
   }
-  if (mode_count > 1 || region.texture_mode != expected_mode)
+  if (mode_count > 1)
     append_model_mismatch(
         diagnostics, range,
-        "Resolved texturing mode disagrees with target options.");
+        "Resolved target region selects multiple texturing modes.");
+}
+
+/** Check the single effective texturing mode across all owned target regions. */
+void check_module_texture_mode(const ResolvedModuleHeader& header,
+                               checker::CheckDiagnostics& diagnostics) {
+  std::optional<TextureMode> explicit_mode;
+  for (const auto& region : header.regions) {
+    for (const auto& option : region.target_options) {
+      if (option != "texmode_unified" && option != "texmode_independent")
+        continue;
+      const auto mode = option == "texmode_independent"
+                            ? TextureMode::Independent
+                            : TextureMode::Unified;
+      if (explicit_mode && *explicit_mode != mode)
+        append_model_mismatch(
+            diagnostics, region.range,
+            "PTX module selects conflicting texturing modes.");
+      else
+        explicit_mode = mode;
+    }
+  }
+  const auto effective = explicit_mode.value_or(TextureMode::Unified);
+  for (const auto& region : header.regions)
+    if (region.texture_mode != effective)
+      append_model_mismatch(
+          diagnostics, region.range,
+          "Resolved texturing mode disagrees with the module selection.");
+  if (effective == TextureMode::Independent && !header.regions.empty() &&
+      header.regions.front().version &&
+      *header.regions.front().version < checker::PtxVersion{1, 5})
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = header.regions.front().range,
+        .message = "Independent texturing mode requires PTX ISA >= 1.5.",
+    });
 }
 
 /** Validate dimensional resource normalization and mutually exclusive contracts. */
@@ -1616,6 +1666,7 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
 /** Revalidate name-only entry inputs against both the ABI and bound symbols. */
 void check_opaque_entry_parameters(const ResolvedModule& module,
                                    const ResolvedFunction& function,
+                                   std::optional<checker::PtxVersion> version,
                                    checker::CheckDiagnostics& diagnostics) {
   std::vector<base::OpaqueResourceKind> expected;
   for (const auto& parameter : function.contract.signature.parameters)
@@ -1649,6 +1700,12 @@ void check_opaque_entry_parameters(const ResolvedModule& module,
   for (size_t index = 0; index < function.opaque_entry_parameters.size();
        ++index) {
     const auto& record = function.opaque_entry_parameters[index];
+    if (version && *version < checker::PtxVersion{1, 5})
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = record.range,
+          .message = "Opaque entry parameter requires PTX ISA >= 1.5.",
+      });
     const auto* symbol = owned_symbol(module, record.symbol_id);
     const auto* contract =
         [&]() -> const declaration_semantics::FunctionParameterContract* {
@@ -1725,6 +1782,9 @@ bool opaque_field_for_kind(OpaqueStaticField field, StorageOpaqueType kind) {
 /** Validate owned opaque declarations without consulting the source AST. */
 void check_opaque_storage(const ResolvedModule& module,
                           checker::CheckDiagnostics& diagnostics) {
+  const auto version = module.header.regions.empty()
+                           ? std::optional<checker::PtxVersion>{}
+                           : module.header.regions.front().version;
   for (const auto& symbol : module.symbols.symbols()) {
     if (symbol.scope != module.symbols.moduleScope() ||
         symbol.kind != binding::SymbolKind::Variable || !symbol.type ||
@@ -1752,6 +1812,14 @@ void check_opaque_storage(const ResolvedModule& module,
             "Scalar storage carries opaque resource metadata.");
       continue;
     }
+    if (!declaration.legacy_texture && version &&
+        *version < checker::PtxVersion{1, 5})
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = declaration.range,
+          .message =
+              "Modern opaque resource declarations require PTX ISA >= 1.5.",
+      });
     const auto* symbol = owned_symbol(module, declaration.symbol_id);
     const bool valid_kind = *kind == StorageOpaqueType::Texture ||
                             *kind == StorageOpaqueType::Sampler ||
@@ -2386,6 +2454,14 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       }
     }
   }
+  check_module_texture_mode(module.header, diagnostics);
+  if (!module.header.regions.empty()) {
+    const auto version = module.header.regions.front().version;
+    for (const auto& region : module.header.regions)
+      if (region.version != version)
+        invalid(region.range,
+                "Resolved target regions disagree on module PTX version.");
+  }
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
@@ -2434,7 +2510,12 @@ checker::CheckResult validateModule(const ResolvedModule& module,
               "Resolved function has an invalid declaration scope.");
     }
     check_signature(function.contract.signature, function.range, diagnostics);
-    check_opaque_entry_parameters(module, function, diagnostics);
+    const auto entry_version =
+        function.source_region &&
+                *function.source_region < module.header.regions.size()
+            ? module.header.regions[*function.source_region].version
+            : std::optional<checker::PtxVersion>{};
+    check_opaque_entry_parameters(module, function, entry_version, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     const bool complete_instruction_provenance =
         function.instruction_ranges.size() == function.body.size() &&
@@ -2539,6 +2620,41 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  /** Replacement source selects one texturing mode for every target region. */
+  std::optional<TextureMode> explicit_texture_mode;
+  for (const auto& item : ast.items) {
+    const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item);
+    if (!target)
+      continue;
+    bool seen_in_target = false;
+    for (const auto& option : target->targets) {
+      if (option.text != "texmode_unified" &&
+          option.text != "texmode_independent")
+        continue;
+      const auto mode = option.text == "texmode_independent"
+                            ? TextureMode::Independent
+                            : TextureMode::Unified;
+      if (seen_in_target ||
+          (explicit_texture_mode && *explicit_texture_mode != mode))
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::RuleViolation,
+            .range = target->range,
+            .message =
+                "PTX module selects conflicting or repeated texturing modes.",
+        });
+      seen_in_target = true;
+      explicit_texture_mode = mode;
+    }
+  }
+  const auto texture_mode =
+      explicit_texture_mode.value_or(TextureMode::Unified);
+  if (texture_mode == TextureMode::Independent && version &&
+      *version < checker::PtxVersion{1, 5})
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = ast.range,
+        .message = "Independent texturing mode requires PTX ISA >= 1.5.",
+    });
   // Retargeting must not bypass version/target-sensitive declaration rules.
   const auto rebound = binding::bindSymbols(ast);
   for (const auto& diagnostic : rebound.diagnostics) {
@@ -2637,12 +2753,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                            resource_name(resource.kind));
       check_body_directives(function->body, *active_target, diagnostics);
       const auto* owned = source_function(*function, module);
-      const auto mode =
-          owned && owned->source_region &&
-                  *owned->source_region < module.header.regions.size()
-              ? module.header.regions[*owned->source_region].texture_mode
-              : TextureMode::Unified;
-      check_instruction_body(*owned, *active_target, mode, diagnostics);
+      check_instruction_body(*owned, *active_target, texture_mode, diagnostics);
     }
   }
   if (diagnostics.empty())

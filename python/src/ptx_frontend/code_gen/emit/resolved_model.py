@@ -206,6 +206,7 @@ REFERENCE_TYPES = (
     "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
+    "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
     "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
     "ResolvedTextureResult",

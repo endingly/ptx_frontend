@@ -1404,6 +1404,53 @@ CheckResult check_operands(
         });
         continue;
       }
+      if (descriptor.source_value_vector) {
+        if (descriptor.access != OperandAccess::Read ||
+            operand->locations.size() != operand->vector_arity) {
+          diagnostics.push_back(CheckDiagnostic{
+              .kind = CheckDiagnosticKind::InvalidVectorOperand,
+              .range = range,
+              .message = "Read-only value vector has invalid lane provenance.",
+          });
+        }
+        for (size_t index = 0; index < operand->vector_arity; ++index) {
+          const SourceRange lane_range = index < operand->locations.size()
+                                             ? operand->locations[index]
+                                             : range;
+          const auto shape = operand->vector_element_shapes[index];
+          if (shape == OperandShape::Register) {
+            const auto* reg = operand->vector_element_registers[index];
+            if (!reg || reg->register_class != ResolvedRegisterClass::General ||
+                reg->vector_width || (reg->symbol_id && !reg->declared_type) ||
+                (reg->declared_type &&
+                 !scalar_types_compatible(*reg->declared_type, expected_type,
+                                          descriptor.register_width_policy)))
+              diagnostics.push_back(CheckDiagnostic{
+                  .kind = CheckDiagnosticKind::OperandTypeMismatch,
+                  .range = lane_range,
+                  .message = "Value-vector lane requires a compatible scalar "
+                             "general register.",
+              });
+          } else if (shape == OperandShape::Immediate) {
+            const auto* immediate = operand->vector_element_immediates[index];
+            if (!immediate || immediate->type != expected_type ||
+                !valid_value_vector_immediate(
+                    *immediate, descriptor.vector_signed_immediate_range))
+              diagnostics.push_back(CheckDiagnostic{
+                  .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+                  .range = lane_range,
+                  .message = "Value-vector immediate has invalid type, source "
+                             "bits, or signed range.",
+              });
+          } else {
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+                .range = lane_range,
+                .message = "Value-vector lane must be a register or immediate.",
+            });
+          }
+        }
+      }
       if ((!descriptor.allow_vector_sink && operand->vector_sink_count != 0) ||
           operand->vector_sink_count >= operand->vector_arity) {
         diagnostics.push_back(CheckDiagnostic{

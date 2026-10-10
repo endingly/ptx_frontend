@@ -2350,6 +2350,74 @@ vector_arity_for_operand(const ResolvedOperandBindingDescriptor& binding,
       binding.target_field_id, field_id));
 }
 
+/** Resolve a read-only brace pack whose lanes can be registers or immediates. */
+std::expected<WithLocs<ResolvedValueVector>, ResolveDiagnostic>
+resolve_value_vector(const syntax_ast::AstOperand& operand,
+                     const ResolvedOperandBindingDescriptor& binding,
+                     const ResolvedInstructionFields& fields,
+                     const ResolveContext* context) {
+  const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (!pack)
+    return std::unexpected(
+        ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                          .message = "Expected a vector-pack source operand."});
+  const auto type = type_for_operand(binding, fields, pack->range);
+  if (!type)
+    return std::unexpected(type.error());
+  const auto required_arity =
+      vector_arity_for_operand(binding, fields, pack->range);
+  if (!required_arity)
+    return std::unexpected(required_arity.error());
+  const size_t arity = pack->elements.size();
+  if (arity == 0 || arity > checker::kMaxOperandElements ||
+      (*required_arity && arity != **required_arity) ||
+      (!*required_arity &&
+       std::ranges::find(binding.allowed_vector_arities, arity) ==
+           binding.allowed_vector_arities.end()))
+    return std::unexpected(ResolveDiagnostic{
+        .range = pack->range,
+        .message = "Value vector has an unsupported lane count."});
+  ResolvedValueVector value;
+  value.elements.reserve(arity);
+  std::vector<SourceRange> ranges;
+  ranges.reserve(arity);
+  for (const auto& element : pack->elements) {
+    const syntax_ast::AstOperand source = std::visit(
+        [](const auto& item) -> syntax_ast::AstOperand { return item; },
+        element);
+    auto lane = resolve_reg_or_imm(
+        source, *type, context,
+        binding.immediate_conversion_policy ==
+            checker::ImmediateConversionPolicy::RequireTargetRange);
+    if (!lane)
+      return std::unexpected(lane.error());
+    const SourceRange range = syntax_ast::sourceRange(source);
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane->value)) {
+      if (reg->register_class != ResolvedRegisterClass::General ||
+          reg->vector_width ||
+          (reg->declared_type &&
+           !scalar_types_compatible(*reg->declared_type, *type,
+                                    binding.register_width_policy)))
+        return std::unexpected(ResolveDiagnostic{
+            .range = range,
+            .message =
+                "Value-vector register lane has an incompatible scalar type."});
+    } else if (!valid_value_vector_immediate(
+                   std::get<ResolvedImmediate>(lane->value),
+                   binding.vector_signed_immediate_range)) {
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = "Value-vector immediate source is outside its signed "
+                     "range or has inconsistent bits."});
+    }
+    ranges.push_back(range);
+    value.elements.push_back(std::move(lane->value));
+  }
+  WithLocs<ResolvedValueVector> resolved{std::move(value)};
+  resolved.locs = std::move(ranges);
+  return resolved;
+}
+
 std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedOperandBindingDescriptor& binding,
@@ -2728,6 +2796,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           binding.access == checker::OperandAccess::Write ||
               binding.access == checker::OperandAccess::ReadWrite,
           context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::ValueVector: {
+      auto value = resolve_value_vector(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

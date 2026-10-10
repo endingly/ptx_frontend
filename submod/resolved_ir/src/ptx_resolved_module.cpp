@@ -148,6 +148,8 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
   /** PTX specifies a 32-bit address-size default independent of the host. */
   std::optional<uint32_t> address_size{32};
   bool address_size_explicit = false;
+  /** One explicit texturing mode applies to the whole PTX module. */
+  std::optional<TextureMode> explicit_texture_mode;
   /** Region zero models declarations before the first .target directive. */
   header.regions.push_back({.range = ast.range});
   for (const auto& item : ast.items) {
@@ -185,6 +187,12 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
         mode = target == "texmode_independent" ? TextureMode::Independent
                                                : TextureMode::Unified;
       }
+      if (mode_seen) {
+        if (explicit_texture_mode && *explicit_texture_mode != mode)
+          header.invalid_directives.push_back(directive->range);
+        else
+          explicit_texture_mode = mode;
+      }
       header.regions.push_back({
           .range = directive->range,
           .target_options = targets,
@@ -202,6 +210,7 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
       address_size_explicit ? SourceConfigurationProvenance::Explicit
                             : SourceConfigurationProvenance::Defaulted;
   for (auto& region : header.regions) {
+    region.texture_mode = explicit_texture_mode.value_or(TextureMode::Unified);
     region.version = version;
     region.version_provenance = version_provenance;
     region.address_size_bits = address_size;

@@ -25,6 +25,7 @@ REFERENCE_VALUE_KINDS = frozenset({
     ResolvedValueKind.SYMBOL,
     ResolvedValueKind.ADDRESS,
     ResolvedValueKind.REGISTER_VECTOR,
+    ResolvedValueKind.VALUE_VECTOR,
     ResolvedValueKind.TENSOR_COORDINATE,
     ResolvedValueKind.TENSOR_IM2COL_INFO,
     ResolvedValueKind.TENSOR_OPERAND,

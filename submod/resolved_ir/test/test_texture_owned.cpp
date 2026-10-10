@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -562,6 +563,230 @@ TEST(TextureOwned, PublicQueryRejectsCoherentWrongResourceKind) {
       base::OpaqueResourceKind::Sampler;
   direct->kind = base::OpaqueResourceKind::Sampler;
   EXPECT_FALSE(query->check(context));
+}
+
+/** Source value vectors retain mixed lanes and reject known invalid offsets. */
+TEST(TextureOwned, ValueVectorImmediatesAndOwnedMutation) {
+  EXPECT_TRUE(valid_value_vector_immediate(
+      ResolvedImmediate{.bits = UINT64_MAX,
+                        .type = ScalarType::U64,
+                        .is_negative = false,
+                        .integer_source_bits = UINT64_MAX}));
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<9>;
+  .reg .s32 %r;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}], {-8,7};
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}], {0,%r};
+  tex.grad.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], {0f00000000,%f6}, {%f7,0f00000000};
+  tld4.r.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}], {0,1};
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  auto* form = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body.front().get());
+  ASSERT_NE(form, nullptr);
+  ASSERT_TRUE(form->offset);
+  ASSERT_EQ(form->offset->value.elements.size(), 2u);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges.front(),
+  };
+  ASSERT_TRUE(form->check(context));
+  auto& immediate =
+      std::get<ResolvedImmediate>(form->offset->value.elements[0]);
+  EXPECT_TRUE(immediate.is_negative);
+  EXPECT_EQ(immediate.integer_source_bits, UINT64_MAX - 7);
+  const auto original = immediate;
+  immediate.integer_source_bits = uint64_t{0x100000000};
+  immediate.bits = 0;
+  immediate.is_negative = false;
+  EXPECT_FALSE(form->check(context));
+  immediate = original;
+  EXPECT_TRUE(form->check(context));
+  auto* mixed = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[1].get());
+  ASSERT_NE(mixed, nullptr);
+  ASSERT_TRUE(mixed->offset);
+  ASSERT_EQ(mixed->offset->locs.size(), 2u);
+  ASSERT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      mixed->offset->value.elements[1]));
+  auto& register_lane =
+      std::get<ResolvedRegisterRef>(mixed->offset->value.elements[1]);
+  const checker::Context mixed_context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges[1],
+  };
+  ASSERT_TRUE(mixed->check(mixed_context));
+  const auto original_class = register_lane.register_class;
+  register_lane.register_class = ResolvedRegisterClass::Predicate;
+  EXPECT_FALSE(mixed->check(mixed_context));
+  register_lane.register_class = original_class;
+  const auto original_symbol = register_lane.symbol_id;
+  register_lane.symbol_id = binding::SymbolId{UINT32_MAX};
+  const auto invalid =
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext);
+  ASSERT_FALSE(invalid);
+  EXPECT_TRUE(std::ranges::any_of(invalid.error(), [&](const auto& diagnostic) {
+    return diagnostic.range == mixed->offset->locs[1];
+  }));
+  register_lane.symbol_id = original_symbol;
+  EXPECT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  auto* gradient = dynamic_cast<TexGradient2dF32U32S32F32*>(
+      module->functions.front().body[2].get());
+  ASSERT_NE(gradient, nullptr);
+  ASSERT_TRUE(std::holds_alternative<ResolvedImmediate>(
+      gradient->ddx.value.elements.front()));
+  const checker::Context gradient_context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges[2],
+  };
+  ASSERT_TRUE(gradient->check(gradient_context));
+  std::get<ResolvedImmediate>(gradient->ddx.value.elements.front()).type =
+      ScalarType::S32;
+  EXPECT_FALSE(gradient->check(gradient_context));
+  form->offset->value.elements.push_back(ResolvedImmediate{
+      .bits = 0, .type = ScalarType::S32, .integer_source_bits = 0});
+  EXPECT_FALSE(form->check(context));
+}
+
+/** Each written immediate offset is checked against the signed source domain. */
+TEST(TextureOwned, OutOfRangeTextureOffsetsRejectSource) {
+  for (const auto value : {"-9", "8", "0x100000000"}) {
+    const std::string source = std::string{R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<6>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}], {)ptx"} +
+                               value + R"ptx(,0};
+  ret;
+}
+)ptx";
+    EXPECT_FALSE(owned_texture_module(source)) << value;
+  }
+}
+
+/** A target directive's mode is shared by all source and owned regions. */
+TEST(TextureOwned, ConflictingTargetRegionModesReject) {
+  const auto conflicting = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80, texmode_unified
+.entry first() { ret; }
+.target sm_80, texmode_independent
+.entry second() { ret; }
+)ptx");
+  ASSERT_TRUE(conflicting);
+  EXPECT_FALSE(validateModule(*conflicting,
+                              ModuleValidationPolicy::RequireCompleteContext));
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80, texmode_independent
+.entry first() { ret; }
+.target sm_80
+.entry second() { ret; }
+)ptx");
+  ASSERT_TRUE(module);
+  for (const auto& region : module->header.regions)
+    EXPECT_EQ(region.texture_mode, TextureMode::Independent);
+  EXPECT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  module->header.regions.back().texture_mode = TextureMode::Unified;
+  EXPECT_FALSE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** Owned declaration availability survives AST release and coherent retargeting. */
+TEST(TextureOwned, OpaqueDeclarationsRetainVersionGate) {
+  for (const auto* kind : {"texref", "samplerref", "surfref"}) {
+    const std::string source = std::string{R"ptx(
+.version 9.3
+.target sm_80
+.global .)ptx"} + kind + R"ptx( resource;
+.entry kernel(.param .)ptx" + kind +
+                               R"ptx( input) { ret; }
+)ptx";
+    auto module = owned_texture_module(source);
+    ASSERT_TRUE(module) << kind;
+    for (auto& region : module->header.regions)
+      region.version = checker::PtxVersion{1, 4};
+    for (auto& function : module->functions)
+      function.source_version = checker::PtxVersion{1, 4};
+    EXPECT_FALSE(
+        validateModule(*module, ModuleValidationPolicy::RequireCompleteContext))
+        << kind;
+  }
+  const auto legacy = owned_texture_module(R"ptx(
+.version 1.4
+.target sm_13
+.tex .u32 tex0;
+.entry kernel() { ret; }
+)ptx");
+  ASSERT_TRUE(legacy);
+  EXPECT_TRUE(
+      validateModule(*legacy, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** A replacement source may change mode when the body is mode independent. */
+TEST(TextureOwned, ReplacementAstUsesItsOwnModuleMode) {
+  auto plain = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80, texmode_unified
+.entry kernel() { ret; }
+)ptx");
+  ASSERT_TRUE(plain);
+  auto independent = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80, texmode_independent
+.entry kernel() { ret; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(independent);
+  EXPECT_TRUE(validateModule(*independent, *plain,
+                             ModuleValidationPolicy::RequireCompleteContext));
+
+  auto texture = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80, texmode_unified
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<6>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}];
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(texture);
+  auto replacement = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80, texmode_independent
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<6>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}];
+  ret;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(replacement);
+  EXPECT_FALSE(validateModule(*replacement, *texture,
+                              ModuleValidationPolicy::RequireCompleteContext));
+
+  auto conflicting = test_helpers::parseModule(R"ptx(
+.version 9.3
+.target sm_80, texmode_unified
+.entry kernel() { ret; }
+.target sm_80, texmode_independent
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(conflicting);
+  EXPECT_FALSE(validateModule(*conflicting, *plain,
+                              ModuleValidationPolicy::RequireCompleteContext));
 }
 
 }  // namespace

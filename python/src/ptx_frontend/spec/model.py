@@ -490,6 +490,7 @@ class OperandKind(_SemanticToken):
     VECTOR_REGISTER = "vector_reg"
     VECTOR_SPECIAL_REGISTER = "vector_sreg"
     REGISTER_VECTOR = "reg_vector"
+    VALUE_VECTOR = "value_vector"
     DIRECT_CALL_TARGET = "direct_call_target"
     INDIRECT_CALL_TARGET = "indirect_call_target"
     INDIRECT_CALL_METADATA = "indirect_call_metadata"
@@ -804,6 +805,7 @@ class OperandSpec:
     vector_sink_payload_bits: int = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family: bool = False
+    vector_signed_immediate_range: tuple[int, int] | None = None
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER

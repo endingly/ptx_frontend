@@ -227,6 +227,39 @@ def emit_check_operand_view(
                 }}
                 return view;
               }}()"""
+    if field.value_kind is ResolvedValueKind.VALUE_VECTOR:
+        return f"""              [&]() -> OperandView {{
+                OperandView view{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                  .vector_arity = {object_name}.{field.name}.value.elements.size(),
+                  .locations = {object_name}.{field.name}.locs,
+                }};
+                size_t index = 0;
+                for (const auto& element :
+                     {object_name}.{field.name}.value.elements) {{
+                  if (index >= view.vector_element_shapes.size())
+                    break;
+                  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {{
+                    view.vector_element_shapes[index] =
+                        {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
+                    view.vector_element_types[index] =
+                        reg->declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
+                    view.vector_element_registers[index] = reg;
+                  }} else {{
+                    const auto& immediate = std::get<ResolvedImmediate>(element);
+                    view.vector_element_shapes[index] =
+                        {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Immediate")};
+                    view.vector_element_types[index] = immediate.type;
+                    view.vector_element_immediates[index] = &immediate;
+                    view.vector_immediate_bits[index] = immediate.bits;
+                    view.vector_immediate_source_bits[index] = immediate.integer_source_bits;
+                    view.vector_immediate_negative[index] = immediate.is_negative;
+                  }}
+                  ++index;
+                }}
+                return view;
+              }}()"""
     if field.value_kind is ResolvedValueKind.TENSOR_COORDINATE:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{

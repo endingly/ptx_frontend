@@ -47,6 +47,7 @@ class ResolvedValueKind(Enum):
     SYMBOL = "Symbol"
     ADDRESS = "Address"
     REGISTER_VECTOR = "RegisterVector"
+    VALUE_VECTOR = "ValueVector"
     TENSOR_COORDINATE = "TensorCoordinate"
     TENSOR_IM2COL_INFO = "TensorIm2colInfo"
     TENSOR_OPERAND = "TensorOperand"

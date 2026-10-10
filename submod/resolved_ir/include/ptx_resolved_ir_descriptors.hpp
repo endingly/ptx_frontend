@@ -84,6 +84,7 @@ enum class ResolvedValueKind : uint8_t {
   Symbol,
   Address,
   RegisterVector,
+  ValueVector,
   TensorCoordinate,
   TensorIm2colInfo,
   TensorOperand,

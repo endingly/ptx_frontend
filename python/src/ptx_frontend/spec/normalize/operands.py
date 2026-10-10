@@ -70,6 +70,7 @@ class _VectorOptions:
     sink_payload_bits: int
     allowed_register_types: tuple[str, ...]
     require_uniform_register_family: bool
+    signed_immediate_range: tuple[int, int] | None
 
 
 @dataclass(frozen=True)
@@ -155,6 +156,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_sink_payload_bits=vector.sink_payload_bits,
         vector_allowed_register_types=vector.allowed_register_types,
         vector_require_uniform_register_family=vector.require_uniform_register_family,
+        vector_signed_immediate_range=vector.signed_immediate_range,
         allow_destination_sink=shfl_sink.allow_destination,
         allow_predicate_sink=shfl_sink.allow_predicate,
         mbarrier_state_token_form=mbarrier.form,
@@ -344,8 +346,10 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     vector_sink_payload_bits = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family = False
+    vector_signed_immediate_range = None
     if raw["kind"] in {
         OperandKind.REGISTER_VECTOR,
+        OperandKind.VALUE_VECTOR,
         OperandKind.TEXTURE_RESULT,
         OperandKind.TEXTURE_RESULT_WITH_PREDICATE,
         OperandKind.VECTOR_REGISTER,
@@ -370,7 +374,10 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
             raise ValueError("resolved vector operands support at most eight elements")
         try:
             vector_type_policy = OperandVectorTypePolicy(
-                vector.get("type_policy", "aggregate")
+                vector.get(
+                    "type_policy",
+                    "element" if raw["kind"] is OperandKind.VALUE_VECTOR else "aggregate",
+                )
             )
         except ValueError as error:
             raise ValueError(
@@ -381,6 +388,27 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
+            )
+        if raw["kind"] is OperandKind.VALUE_VECTOR and (
+            raw["access"] is not OperandAccess.READ or vector_allow_sink
+        ):
+            raise ValueError("value_vector requires read access and disallows sinks")
+        if (raw["kind"] is OperandKind.VALUE_VECTOR and
+                vector_type_policy is not OperandVectorTypePolicy.ELEMENT):
+            raise ValueError("value_vector requires element type policy")
+        signed_range = vector.get("signed_immediate_range")
+        if signed_range is not None:
+            if raw["kind"] is not OperandKind.VALUE_VECTOR or (
+                not isinstance(signed_range, dict)
+                or type(signed_range.get("minimum")) is not int
+                or type(signed_range.get("maximum")) is not int
+                or signed_range["minimum"] > signed_range["maximum"]
+                or signed_range["minimum"] < -(1 << 63)
+                or signed_range["maximum"] > (1 << 63) - 1
+            ):
+                raise ValueError("signed_immediate_range requires value_vector and ordered signed bounds")
+            vector_signed_immediate_range = (
+                signed_range["minimum"], signed_range["maximum"]
             )
         allowed = vector.get("allowed_register_types", [])
         if (not isinstance(allowed, list) or
@@ -431,6 +459,7 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         sink_payload_bits=vector_sink_payload_bits,
         allowed_register_types=vector_allowed_register_types,
         require_uniform_register_family=vector_require_uniform_register_family,
+        signed_immediate_range=vector_signed_immediate_range,
     )
 
 
@@ -505,6 +534,7 @@ def _normalize_immediate_conversion(
             OperandKind.IMMEDIATE,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.TENSOR_COORDINATE,
+            OperandKind.VALUE_VECTOR,
             OperandKind.TENSOR_IM2COL_INFO,
             OperandKind.TENSOR_OPERAND,
             OperandKind.MATRIX_SCALE_SELECTOR,

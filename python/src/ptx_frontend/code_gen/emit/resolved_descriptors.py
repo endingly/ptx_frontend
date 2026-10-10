@@ -330,6 +330,16 @@ def _emit_operand_binding_descriptor(
         "\n              .require_uniform_register_family = true,"
         if binding.require_uniform_vector_register_family else ""
     )
+    source_value_vector = (
+        "\n              .source_value_vector = true,"
+        if binding.source_value_vector else ""
+    )
+    signed_vector_range = (
+        "\n              .vector_signed_immediate_range = "
+        f"checker::SignedVectorImmediateRange{{{binding.vector_signed_immediate_range[0]}, "
+        f"{binding.vector_signed_immediate_range[1]}}},"
+        if binding.vector_signed_immediate_range is not None else ""
+    )
     allow_destination_sink = (
         "\n              .allow_destination_sink = true,"
         if binding.allow_destination_sink
@@ -466,7 +476,7 @@ def _emit_operand_binding_descriptor(
               .register_width_policy = {register_width_policy},
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
-              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
+              .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{source_value_vector}{signed_vector_range}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
               .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{texture_geometry}{texture_legacy_v4}{texture_unbracketed}{texture_resource_kind}{texture_query_sampler_by_mode}{texture_residency_required}{tensor_cta_mask_role}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""

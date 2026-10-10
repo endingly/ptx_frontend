@@ -430,6 +430,7 @@ domains:
       Symbol: ResolvedSymbolRef
       Address: ResolvedAddress
       RegisterVector: ResolvedRegisterVector
+      ValueVector: ResolvedValueVector
       TensorCoordinate: ResolvedTensorCoordinate
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
@@ -543,6 +544,7 @@ domains:
       Symbol: check_end::ResolvedValueKind::Symbol
       Address: check_end::ResolvedValueKind::Address
       RegisterVector: check_end::ResolvedValueKind::RegisterVector
+      ValueVector: check_end::ResolvedValueKind::ValueVector
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand

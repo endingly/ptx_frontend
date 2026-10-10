@@ -344,6 +344,24 @@ class BackendModelTests(unittest.TestCase):
                 "WithLocs<CustomScalarType>",
             )
 
+    def test_mov_opaque_source_projects_identity_without_register_relaxation(self) -> None:
+        """Opaque identities retain a typed domain separate from register types."""
+        emitted = emit_check_operand_view(
+            ResolvedField(
+                name="source",
+                value_kind=ResolvedValueKind.MOV_SOURCE,
+                origin=ResolvedFieldOrigin.OPERAND,
+                source_name="source",
+            ),
+            "instruction",
+            load_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC),
+        )
+        opaque_projection = emitted.split(
+            "std::get_if<ResolvedOpaqueSymbolRef>", 1
+        )[1].split("// An offset address", 1)[0]
+        self.assertIn(".opaque_resource_kind = opaque->kind", opaque_projection)
+        self.assertNotIn(".register_type", opaque_projection)
+
     def test_operand_views_use_semantic_domain_mappings(self) -> None:
         """Semantic value and default mappings control all emitted equivalents."""
 

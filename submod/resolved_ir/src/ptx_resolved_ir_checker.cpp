@@ -1600,8 +1600,19 @@ CheckResult check_operands(
       continue;
     }
 
-    if (operand->immediate_type &&
-        !scalar_types_compatible(*operand->immediate_type, expected_type)) {
+    if (operand->opaque_resource_kind && expected_type != ScalarType::U64) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::OperandTypeMismatch,
+          .range = diagnostic_range(operand->locations, context),
+          .message = fmt::format(
+              "Opaque resource operand '{}' requires instruction type '.u64'; "
+              "type source '{}' is '{}'.",
+              descriptor.target_field_id, expected_type_source,
+              to_string(expected_type)),
+      });
+    } else if (operand->immediate_type &&
+               !scalar_types_compatible(*operand->immediate_type,
+                                        expected_type)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),

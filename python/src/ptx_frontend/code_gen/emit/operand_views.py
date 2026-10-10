@@ -870,7 +870,7 @@ def emit_check_operand_view(
                   return OperandView{{
                       .field_id = "{field.name}",
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
-                      .register_type = ScalarType::U64,
+                      .opaque_resource_kind = opaque->kind,
                       .value_name = opaque->spelling,
                       .locations = {object_name}.{field.name}.locs,
                   }};

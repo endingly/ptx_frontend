@@ -746,6 +746,8 @@ struct OperandView {
   /** Numerical negativity of the evaluated signed integer source. */
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  /** Direct opaque mov source identity; its instruction type must be .u64. */
+  std::optional<base::OpaqueResourceKind> opaque_resource_kind;
   /** Declaration identity; absent for declaration-free standalone operands. */
   std::optional<binding::SymbolId> register_symbol_id;
   /** Resolved register category, independent of an unknown declaration type. */

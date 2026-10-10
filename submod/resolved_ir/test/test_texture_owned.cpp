@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/tex.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/tld4.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/txq.gen.hpp>
@@ -72,6 +73,87 @@ TEST(TextureOwned, UnifiedFamiliesValidateWithoutAst) {
   ASSERT_EQ(module->functions.front().body.size(), 6u);
   EXPECT_TRUE(
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** Opaque identities require .u64 even after their owning AST has died. */
+TEST(TextureOwned, OpaqueMovRequiresExactU64InstructionType) {
+  for (const std::string_view resource_type :
+       {"texref", "samplerref", "surfref"}) {
+    SCOPED_TRACE(resource_type);
+    auto module = owned_texture_module(
+        ".version 9.3\n.target sm_80\n.address_size 64\n.global ." +
+        std::string(resource_type) + R"ptx( resource0;
+.entry kernel() {
+  .reg .b64 %rd;
+  mov.u64 %rd, resource0;
+  ret;
+}
+)ptx");
+    ASSERT_TRUE(module.has_value());
+    auto* mov =
+        dynamic_cast<MovScalar*>(module->functions.front().body.front().get());
+    ASSERT_NE(mov, nullptr);
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 80},
+        .instruction_range =
+            module->functions.front().instruction_ranges.front(),
+    };
+    ASSERT_TRUE(mov->check(context));
+    ASSERT_TRUE(validateModule(*module,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    for (const auto type : {ScalarType::S64, ScalarType::B64}) {
+      SCOPED_TRACE(to_string(type));
+      mov->type.value = type;
+      const auto checked = mov->check(context);
+      ASSERT_FALSE(checked);
+      EXPECT_TRUE(
+          std::ranges::any_of(checked.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::OperandTypeMismatch;
+          }));
+      EXPECT_FALSE(validateModule(
+          *module, ModuleValidationPolicy::RequireCompleteContext));
+    }
+    mov->type.value = ScalarType::U64;
+    EXPECT_TRUE(mov->check(context));
+    EXPECT_TRUE(validateModule(*module,
+                               ModuleValidationPolicy::RequireCompleteContext));
+  }
+}
+
+/** Ordinary register moves retain same-width scalar type compatibility. */
+TEST(TextureOwned, OrdinaryMovRetainsScalarTypeRelaxation) {
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .u64 value0;
+.entry kernel() {
+  .reg .u64 %rd<2>;
+  mov.u64 %rd0, %rd1;
+  mov.u64 %rd0, value0;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(module.has_value());
+  for (size_t index = 0; index < 2; ++index) {
+    auto* mov =
+        dynamic_cast<MovScalar*>(module->functions.front().body[index].get());
+    ASSERT_NE(mov, nullptr);
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 80},
+        .instruction_range =
+            module->functions.front().instruction_ranges[index],
+    };
+    for (const auto type :
+         {ScalarType::U64, ScalarType::S64, ScalarType::B64}) {
+      SCOPED_TRACE(to_string(type));
+      mov->type.value = type;
+      EXPECT_TRUE(mov->check(context));
+      EXPECT_TRUE(validateModule(
+          *module, ModuleValidationPolicy::RequireCompleteContext));
+    }
+  }
 }
 
 /** Bracket omission remains a source-visible tex topology after parsing. */

@@ -987,18 +987,31 @@ bool checkExtendedContract(ir::ResolvedModule& module) {
                "typed SLCT selector variants and owned numeric operands"))
     return false;
 
+  const auto original_binary_abs = min_binary->abs;
   min_binary->abs.value = true;
+  const bool inconsistent_binary_modifier = rejectsMutation(
+      module, ir::checker::CheckDiagnosticKind::ModuleSourceMismatch,
+      "binary MIN rejects an optional modifier without a source location");
+  min_binary->abs = original_binary_abs;
+  if (!inconsistent_binary_modifier)
+    return false;
+
+  min_binary->abs.value = true;
+  min_binary->abs.locs = min_binary->ftz.locs;
   const bool forbidden_binary_modifier = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
       "binary MIN forbids ternary abs modifier");
-  min_binary->abs.value = false;
+  min_binary->abs = original_binary_abs;
   if (!forbidden_binary_modifier)
     return false;
+
+  const auto original_ternary_xorsign_abs = max_ternary->xorsign_abs;
   max_ternary->xorsign_abs.value = true;
+  max_ternary->xorsign_abs.locs = max_ternary->abs.locs;
   const bool forbidden_ternary_modifier = rejectsMutation(
       module, ir::checker::CheckDiagnosticKind::ModifierNotAllowedForLayout,
       "ternary MAX forbids binary xorsign modifier");
-  max_ternary->xorsign_abs.value = false;
+  max_ternary->xorsign_abs = original_ternary_xorsign_abs;
   if (!forbidden_ternary_modifier)
     return false;
   const auto original_src3 = min_ternary->src3;

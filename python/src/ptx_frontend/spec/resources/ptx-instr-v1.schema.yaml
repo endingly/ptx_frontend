@@ -694,6 +694,7 @@ $defs:
       - vector_reg
       - vector_sreg
       - reg_vector
+      - value_vector
       - direct_call_target
       - indirect_call_target
       - indirect_call_metadata
@@ -710,6 +711,10 @@ $defs:
       - tensor_im2col_info
       - tensor_operand
       - fabric_handle
+      - texture_access
+      - texture_query_resource
+      - texture_result
+      - texture_result_with_predicate
       - tensor_memory_address
       - tensor_memory_address_bracket
       - tcgen_half_split_offset
@@ -879,6 +884,24 @@ $defs:
           operands. This is descriptor metadata, not a PTX spelling.
         type: string
         pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+
+      texture_geometry:
+        description: "Static coordinate topology for a texture access."
+        type: string
+        enum: [1d, 2d, 3d, a1d, a2d, cube, acube, 2dms, a2dms]
+
+      texture_legacy_v4_coordinates:
+        description: "Accept the texture compatibility four-lane coordinate spelling."
+        type: boolean
+
+      texture_unbracketed:
+        description: "Allow descriptor-driven tex compatibility resource and coordinate slots."
+        type: boolean
+
+      texture_resource_kind:
+        description: "Opaque resource kind expected by a bracketed query."
+        type: string
+        enum: [texture, sampler, sampler_by_mode]
 
       cardinality:
         $ref: "#/$defs/operand_cardinality"
@@ -1115,6 +1138,17 @@ $defs:
         uniqueItems: true
         items:
           type: string
+
+      signed_immediate_range:
+        description: "Inclusive signed integer source range for each immediate value-vector lane."
+        type: object
+        additionalProperties: false
+        required: [minimum, maximum]
+        properties:
+          minimum:
+            type: integer
+          maximum:
+            type: integer
 
       require_uniform_register_family:
         description: >
@@ -1649,6 +1683,24 @@ $defs:
           counted: {type: boolean}
           reports_fabric: {type: boolean}
           requires_mbarrier_layout_v1: {type: boolean}
+
+      texture:
+        description: "Typed static contract for a texture-family exact form."
+        type: object
+        additionalProperties: false
+        properties:
+          geometry: {enum: [1d, 2d, 3d, a1d, a2d, cube, acube, 2dms, a2dms]}
+          mipmap: {enum: [omitted, base, level, gradient]}
+          component: {enum: [r, g, b, a]}
+          query: {enum: [width, height, depth, channel_data_type, channel_order, normalized_coords, array_size, num_mipmap_levels, num_samples, force_unnormalized_coords, filter_mode, addr_mode_0, addr_mode_1, addr_mode_2]}
+          tested_kind: {enum: [texture, sampler, surface]}
+          result_arity: {type: integer, enum: [1, 2, 4]}
+          allows_offset: {type: boolean}
+          allows_compare: {type: boolean}
+          allows_residency: {type: boolean}
+          query_level: {type: boolean}
+          indirect_availability:
+            $ref: "#/$defs/availability"
 
       wgmma_protocol_action:
         description: "Instruction-local action on the warpgroup MMA queue."

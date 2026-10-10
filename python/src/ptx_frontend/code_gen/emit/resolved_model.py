@@ -7,6 +7,7 @@ from pathlib import Path
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.code_gen.context import GenerationContext, GenerationInstruction
 from ptx_frontend.code_gen.emit.matrix import emit_matrix_descriptor
+from ptx_frontend.code_gen.emit.availability import emit_availability
 from ptx_frontend.code_gen.resolved_layout import operand_slots
 from ptx_frontend.code_gen.resolved_field_names import (
     condition_code_cpp_value,
@@ -17,7 +18,13 @@ from ptx_frontend.ir.resolved_ir import ResolvedField, ResolvedFieldStorage
 from ptx_frontend.ir.tensor_reduction import (
     TENSOR_REDUCTION_ELEMENT_TYPES, TensorReductionOp,
 )
-from ptx_frontend.spec.model import SemanticRule
+from ptx_frontend.spec.model import (
+    OpaqueResourceKind,
+    SemanticRule,
+    TextureComponent,
+    TextureMipmapMode,
+    TextureQuery,
+)
 
 
 INCLUDE_ROOT = "ptx_frontend/resolved_ir"
@@ -48,6 +55,104 @@ def _fabric_descriptor(variant) -> str:
       .reports_fabric = {reports},
       .required_mbarrier_layout = {layout},
   }};
+'''
+
+
+_TEXTURE_GEOMETRY_CPP = {
+    "1d": "OneD", "2d": "TwoD", "3d": "ThreeD",
+    "a1d": "ArrayOneD", "a2d": "ArrayTwoD", "cube": "Cube",
+    "acube": "ArrayCube", "2dms": "TwoDMultisample",
+    "a2dms": "ArrayTwoDMultisample",
+}
+
+
+def _texture_descriptor(variant) -> str:
+    """Emit the closed exact-form texture semantics exposed to consumers."""
+
+    contract = variant.texture
+    if contract is None:
+        return ""
+    geometry = (
+        "TextureGeometry::" + _TEXTURE_GEOMETRY_CPP[contract.geometry.value]
+        if contract.geometry is not None else "std::nullopt"
+    )
+    mipmap = {
+        TextureMipmapMode.OMITTED: "Omitted",
+        TextureMipmapMode.BASE: "Base",
+        TextureMipmapMode.LEVEL: "Level",
+        TextureMipmapMode.GRADIENT: "Gradient",
+    }[contract.mipmap]
+    component = (
+        "TextureComponent::" + {
+            TextureComponent.RED: "Red",
+            TextureComponent.GREEN: "Green",
+            TextureComponent.BLUE: "Blue",
+            TextureComponent.ALPHA: "Alpha",
+        }[contract.component]
+        if contract.component is not None else "std::nullopt"
+    )
+    query = (
+        "TextureQuery::" + file_stem_to_pascal_case(contract.query.value).replace("AddrMode", "AddressMode")
+        if contract.query is not None else "std::nullopt"
+    )
+    tested = (
+        "base::OpaqueResourceKind::" + {
+            OpaqueResourceKind.TEXTURE: "Texture",
+            OpaqueResourceKind.SAMPLER: "Sampler",
+            OpaqueResourceKind.SURFACE: "Surface",
+        }[contract.tested_kind]
+        if contract.tested_kind is not None else "std::nullopt"
+    )
+    selected_types = (
+        """  /** Return current source-selected type modifiers for AST-free checks. */
+  TextureSelectedTypes texture_selected_types() const noexcept override {
+    return {.result_type = dtype.value, .coordinate_type = ctype.value};
+  }
+"""
+        if {field.source_name for field in variant.modifier_fields} >= {"dtype", "ctype"}
+        else ""
+    )
+    indirect_gate = (
+        "  /** Minimum source and target for a register-carried opaque resource. */\n"
+        "  inline static constexpr checker::AvailabilityDescriptor indirect_gate"
+        + emit_availability(contract.indirect_availability) + ";\n"
+        if contract.indirect_availability is not None else ""
+    )
+    residency_layout = ""
+    if contract.geometry is not None:
+        cases = "\n".join(
+            f"      case {index}: return {str(any(binding.texture_residency_required for binding in layout.bindings)).lower()};"
+            for index, layout in enumerate(variant.operand_layouts)
+        )
+        residency_layout = f"""  /** Return predicate presence required by the selected source layout. */
+  bool texture_layout_requires_residency() const noexcept override {{
+    switch (operand_layout.value) {{
+{cases}
+      default: return false;
+    }}
+  }}
+"""
+    return f'''  /** Immutable PTX texture-family semantics of this exact form. */
+{indirect_gate}
+  inline static constexpr TextureInstructionDescriptor texture_contract{{
+      .geometry = {geometry},
+      .mipmap = TextureMipmapMode::{mipmap},
+      .component = {component},
+      .query = {query},
+      .tested_kind = {tested},
+      .result_arity = {contract.result_arity},
+      .allows_residency = {str(contract.allows_residency).lower()},
+      .allows_offset = {str(contract.allows_offset).lower()},
+      .allows_compare = {str(contract.allows_compare).lower()},
+      .query_level = {str(contract.query_level).lower()},
+      .indirect_availability = {"&indirect_gate" if indirect_gate else "nullptr"},
+  }};
+  /** Borrow this form's static topology for read-only consumers. */
+  const TextureInstructionDescriptor* texture_descriptor() const noexcept override {{
+    return &texture_contract;
+  }}
+{selected_types}
+{residency_layout}
 '''
 
 
@@ -101,8 +206,10 @@ REFERENCE_TYPES = (
     "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
+    "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
-    "ResolvedFabricHandle",
+    "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
+    "ResolvedTextureResult",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
     "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
 )
@@ -193,6 +300,18 @@ class Instruction {{
   Opcode opcode_kind() const noexcept;
   /** Return its canonical opcode mnemonic. */
   std::string_view opcode_name() const noexcept;
+  /** Return immutable texture-family facts, or null for other instructions. */
+  virtual const TextureInstructionDescriptor* texture_descriptor() const noexcept {{
+    return nullptr;
+  }}
+  /** Return current type modifiers for texture access forms. */
+  virtual TextureSelectedTypes texture_selected_types() const noexcept {{
+    return {{}};
+  }}
+  /** Return predicate presence required by this mutable operand layout. */
+  virtual bool texture_layout_requires_residency() const noexcept {{
+    return false;
+  }}
   /** Check mutable fields without module-level context. */
   virtual checker::CheckResult check(const checker::Context&) const = 0;
   /** Borrow references in predicate-first descriptor operand order. */
@@ -416,6 +535,8 @@ def _form_contract(variant, backend) -> str:
             "  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept {\n"
             "    return &matrix_topology;\n  }"
         )
+    if variant.texture is not None:
+        parts.append(_texture_descriptor(variant))
     parts.extend(_tcgen_form_contract(variant))
     return "\n".join(parts)
 

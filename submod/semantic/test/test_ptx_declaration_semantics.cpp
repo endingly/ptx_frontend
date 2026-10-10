@@ -515,10 +515,6 @@ TEST(PtxDeclarationSemantics, ValidatesParameterDeclarationBoundaries) {
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
       Case{R"ptx(.version 9.3
 .target sm_80
-.entry k(.param .texref texture) {})ptx",
-           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
-      Case{R"ptx(.version 9.3
-.target sm_80
 .entry k(.param .b8 bytes[]) {})ptx",
            DeclarationDiagnosticKind::UnsizedArrayDimension},
       Case{R"ptx(.version 5.0
@@ -553,6 +549,21 @@ TEST(PtxDeclarationSemantics, AcceptsSupportedParameterDeclarationForms) {
 
   EXPECT_TRUE(result.binding.diagnostics.empty());
   EXPECT_TRUE(result.diagnostics.empty());
+
+  const CheckedModule opaque_entry = check(R"ptx(
+.version 9.3
+.target sm_80
+.entry opaque(.param .texref texture) {}
+)ptx");
+  EXPECT_TRUE(opaque_entry.binding.diagnostics.empty());
+  EXPECT_TRUE(opaque_entry.diagnostics.empty());
+  const auto& symbols = opaque_entry.binding.table.symbols();
+  const auto parameter = std::ranges::find_if(
+      symbols, [](const auto& symbol) { return symbol.name == "texture"; });
+  ASSERT_NE(parameter, symbols.end());
+  EXPECT_EQ(parameter->kind, binding::SymbolKind::InputParameter);
+  EXPECT_EQ(parameter->state_space, base::DeclarationStateSpace::Parameter);
+  EXPECT_EQ(parameter->type, ".texref");
 }
 
 /** Parameter availability and incomplete-array rules honor PTX and SM bounds. */

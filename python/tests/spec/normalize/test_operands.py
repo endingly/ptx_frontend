@@ -87,6 +87,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 "vector_sink_payload_bits": 0,
                 "vector_allowed_register_types": (),
                 "vector_require_uniform_register_family": False,
+                "vector_signed_immediate_range": None,
                 "allow_destination_sink": False,
                 "allow_predicate_sink": False,
                 "mbarrier_state_token_form": MbarrierStateTokenForm.REGISTER,
@@ -95,6 +96,10 @@ class OperandNormalizationTests(unittest.TestCase):
                 "minimum_elements": None,
                 "maximum_elements": None,
                 "element_kinds": (),
+                "texture_geometry": None,
+                "texture_legacy_v4_coordinates": False,
+                "texture_unbracketed": False,
+                "texture_resource_kind": None,
             },
         )
         self.assertIs(
@@ -436,6 +441,42 @@ class OperandNormalizationTests(unittest.TestCase):
                     )
                     self.assertFalse(operand.vector_allow_sink)
                     self.assertEqual(operand.vector_sink_payload_bits, 0)
+
+    def test_value_vector_is_read_only_with_typed_signed_range(self) -> None:
+        source = _operand(
+            "value_vector", role="src", access="read", type="s32",
+            vector={"arity": 2, "type_policy": "element",
+                    "signed_immediate_range": {"minimum": -8, "maximum": 7}},
+        )
+        normalized = normalize_operand(source)
+        self.assertEqual(normalized.vector_signed_immediate_range, (-8, 7))
+        self.assertEqual(normalized.vector_arities, (2,))
+        implicit_policy = normalize_operand(
+            {**source, "vector": {"arity": 2}}
+        )
+        self.assertIs(
+            implicit_policy.vector_type_policy, OperandVectorTypePolicy.ELEMENT
+        )
+        self.assert_rejected(
+            {**source, "vector": {"arity": 2, "type_policy": "aggregate"}},
+            ValueError, "value_vector requires element type policy",
+        )
+        for access in ("write", "read_write"):
+            with self.subTest(access=access):
+                self.assert_rejected(
+                    {**source, "access": access}, ValueError,
+                    "value_vector requires read access and disallows sinks",
+                )
+        self.assert_rejected(
+            {**source, "vector": {**source["vector"], "allow_sink": True}},
+            ValueError, "value_vector requires read access and disallows sinks",
+        )
+        self.assert_rejected(
+            {**source, "vector": {**source["vector"],
+                                  "signed_immediate_range": {"minimum": 8, "maximum": 7}}},
+            ValueError,
+            "signed_immediate_range requires value_vector and ordered signed bounds",
+        )
 
     def test_vectors_require_arity(self) -> None:
         for kind, vector in product(

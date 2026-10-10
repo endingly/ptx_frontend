@@ -125,7 +125,8 @@ bool isFunctionQualifier(TokenKind kind) {
 bool isVariableStateSpace(TokenKind kind) {
   return kind == TokenKind::DotReg || kind == TokenKind::DotParam ||
          kind == TokenKind::DotLocal || kind == TokenKind::DotShared ||
-         kind == TokenKind::DotGlobal || kind == TokenKind::DotConst;
+         kind == TokenKind::DotGlobal || kind == TokenKind::DotConst ||
+         kind == TokenKind::DotTex;
 }
 
 bool isConstantLiteral(TokenKind kind) {
@@ -178,10 +179,25 @@ PtxCstParser::PtxCstParser(std::string_view source) : lexer_(source) {}
 
 PtxCstParser::TokenId PtxCstParser::peek() {
   if (!peeked_) {
-    tokens_.push_back(lexer_.consume());
-    peeked_ = static_cast<TokenId>(tokens_.size() - 1);
+    if (buffered_next_) {
+      peeked_ = *buffered_next_;
+      buffered_next_.reset();
+    } else {
+      tokens_.push_back(lexer_.consume());
+      peeked_ = static_cast<TokenId>(tokens_.size() - 1);
+    }
   }
   return *peeked_;
+}
+
+/** Preserve a true second token for initializer-name disambiguation. */
+PtxCstParser::TokenId PtxCstParser::peekNext() {
+  peek();
+  if (!buffered_next_) {
+    tokens_.push_back(lexer_.consume());
+    buffered_next_ = static_cast<TokenId>(tokens_.size() - 1);
+  }
+  return *buffered_next_;
 }
 
 PtxCstParser::TokenId PtxCstParser::consume() {
@@ -404,6 +420,24 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
     elements.push_back(std::move(base));
     std::vector<TokenId> commas{comma};
     do {
+      if (token(peek()).kind == TokenKind::LBrace) {
+        auto coordinates = parseVectorPack(consume());
+        if (!coordinates)
+          return std::unexpected(coordinates.error());
+        auto close = expect(TokenKind::RBracket,
+                            "']' after compound bracket coordinates");
+        if (!close)
+          return std::unexpected(close.error());
+        return syntax_cst::CstOperand{syntax_cst::CstCompoundBracket{
+            .heads = std::move(elements),
+            .commas = std::move(commas),
+            .coordinates =
+                std::get<syntax_cst::CstVectorPack>(std::move(*coordinates)),
+            .left_bracket = open,
+            .right_bracket = *close,
+            .token_range = {open, *close + 1},
+        }};
+      }
       if (atImmediateStart()) {
         auto immediate = parseImmediate();
         if (!immediate)
@@ -672,8 +706,24 @@ PtxCstParser::parseOperand() {
   }
   if (token(peek()).kind == TokenKind::LBracket)
     return parseBracketedAddress(consume());
-  if (token(peek()).kind == TokenKind::LBrace)
-    return parseVectorPack(consume());
+  if (token(peek()).kind == TokenKind::LBrace) {
+    auto vector = parseVectorPack(consume());
+    if (!vector)
+      return std::unexpected(vector.error());
+    if (token(peek()).kind != TokenKind::Pipe)
+      return vector;
+    const TokenId pipe = consume();
+    auto predicate = expect(TokenKind::Ident, "predicate after '|'");
+    if (!predicate)
+      return std::unexpected(predicate.error());
+    auto pack = std::get<syntax_cst::CstVectorPack>(std::move(*vector));
+    const TokenId first = pack.token_range.first;
+    return syntax_cst::CstOperand{syntax_cst::CstVectorPredicatePair{
+        .data = std::move(pack),
+        .pipe = pipe,
+        .predicate = syntax_cst::CstIdentifier{*predicate},
+        .token_range = {first, *predicate + 1}}};
+  }
   if (atImmediateStart()) {
     auto immediate = parseImmediate();
     if (!immediate)
@@ -1012,6 +1062,22 @@ PtxCstParser::parseInitializer(std::size_t remaining_depth) {
 
   if (remaining_depth == 0) {
     return std::unexpected(depthLimitExceeded(peek(), "initializer"));
+  }
+
+  if (isIdentifierToken(token(peek()).kind) &&
+      token(peekNext()).kind == TokenKind::Eq) {
+    const TokenId member = consume();
+    const TokenId equals = consume();
+    auto expression = parseConstantExpression(0, remaining_depth - 1);
+    if (!expression)
+      return std::unexpected(expression.error());
+    const CstTokenRange range{member, expression->expression.token_range.last};
+    return ParsedInitializer{
+        CstInitializer{
+            CstNamedInitializer{member, equals,
+                                std::move(expression->expression), range},
+            range},
+        expression->depth + 1};
   }
 
   if (token(peek()).kind != TokenKind::LBrace) {

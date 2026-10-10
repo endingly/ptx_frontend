@@ -175,6 +175,11 @@ inline void initializer(std::string& output,
           number(output, node.elements.size());
           for (const auto& element : node.elements)
             initializer(output, element);
+        } else if constexpr (std::same_as<Node,
+                                          syntax_ast::AstNamedInitializer>) {
+          tag(output, "initializer-named-member");
+          atom(output, node.member.text);
+          constant_expression(output, node.value);
         } else {
           static_assert(always_false_v<Node>);
         }
@@ -204,6 +209,7 @@ inline void variable_declaration(
   for (const auto& qualifier : value.qualifiers)
     atom(output, qualifier.text);
   number(output, value.state_space);
+  number(output, value.legacy_texture);
   attributes(output, value.attributes);
   optional_syntax(output, value.alignment);
   optional_syntax(output, value.vector_type);
@@ -268,6 +274,11 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           for (const auto& element : node.elements)
             std::visit([&output](const auto& item) { operand(output, item); },
                        element);
+        } else if constexpr (std::same_as<Node,
+                                          syntax_ast::AstVectorPredicatePair>) {
+          tag(output, "operand-vector-predicate-pair");
+          operand(output, node.data);
+          identifier(output, node.predicate);
         } else if constexpr (std::same_as<Node, syntax_ast::AstTensorOperand>) {
           tag(output, "operand-tensor");
           operand(output, node.tensor_map);
@@ -278,6 +289,14 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           for (const auto& element : node.elements)
             std::visit([&output](const auto& item) { operand(output, item); },
                        element);
+        } else if constexpr (std::same_as<Node,
+                                          syntax_ast::AstCompoundBracket>) {
+          tag(output, "operand-compound-bracket");
+          number(output, node.heads.size());
+          for (const auto& head : node.heads)
+            std::visit([&output](const auto& item) { operand(output, item); },
+                       head);
+          operand(output, node.coordinates);
         } else if constexpr (std::same_as<Node,
                                           syntax_ast::AstCallParameterList>) {
           tag(output, "operand-call-parameters");

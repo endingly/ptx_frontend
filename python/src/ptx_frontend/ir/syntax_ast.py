@@ -62,6 +62,7 @@ class SyntaxOperandSlotDescriptor:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     allowed_element_shapes: OperandSyntaxShape = OperandSyntaxShape(0)
+    texture_unbracketed: bool = False
 
     def allows(self, actual_shape: OperandSyntaxShape) -> bool:
         return bool(self.allowed_syntax_shapes & actual_shape)
@@ -199,6 +200,7 @@ def _build_operand_slot_descriptor_view(
             ),
             OperandSyntaxShape(0),
         ),
+        texture_unbracketed=operand.texture_unbracketed,
     )
 
 

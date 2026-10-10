@@ -60,8 +60,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const ResolvedVariantDescriptor& resolved_variant =
       detail::find_resolved_variant_descriptor(resolved_instruction,
                                                variant_name);
-  const auto selected_layout =
-      detail::select_operand_layout(syntax_variant, ast);
+  const auto selected_layout = detail::select_operand_layout(
+      syntax_variant, ast,
+      context ? context->texture_mode : TextureMode::Unified);
   if (!selected_layout)
     return std::unexpected(selected_layout.error());
 
@@ -97,7 +98,7 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
       .variant_name = variant_name,
       .operand_layout = ResolvedOperandLayoutTag{static_cast<uint16_t>(
           selected_layout->index)},
-      .operand_count = ast.operands.size(),
+      .operand_count = resolved_layout.bindings.size(),
   };
   if (ast.predicate) {
     auto predicate = detail::resolve_predicate_identifier(
@@ -143,14 +144,32 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     fields.modifiers.emplace(field.field_id, std::move(*value));
   }
 
-  for (size_t index = 0; index < ast.operands.size(); ++index) {
+  size_t source_index = 0;
+  for (size_t index = 0; index < resolved_layout.bindings.size(); ++index) {
     const auto& binding = resolved_layout.bindings[index];
     const auto& field = detail::find_resolved_operand_field_descriptor(
         resolved_layout, binding.target_field_id);
-    auto value = detail::resolve_operand_value(
-        field, binding, ast.operands[index], fields, context);
+    if (source_index >= ast.operands.size())
+      throw ResolveException(
+          "Selected operand layout consumed too many source slots.");
+    const bool omitted_brackets =
+        binding.texture_unbracketed &&
+        std::holds_alternative<syntax_ast::AstIdentifierRef>(
+            ast.operands[source_index]);
+    const size_t source_span =
+        omitted_brackets
+            ? (context && context->texture_mode == TextureMode::Independent ? 3
+                                                                            : 2)
+            : 1;
+    auto value =
+        omitted_brackets
+            ? detail::resolve_unbracketed_texture_access(
+                  ast, source_index, source_span, binding, fields, context)
+            : detail::resolve_operand_value(
+                  field, binding, ast.operands[source_index], fields, context);
     if (!value)
       return std::unexpected(value.error());
+    source_index += source_span;
     ParameterAddressQualifier parameter_qualifier =
         ParameterAddressQualifier::Default;
     const auto state_space = actual_modifiers->find("state_space");
@@ -182,6 +201,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
                       syntax_variant.variant_name, field.field_id));
     }
   }
+  if (source_index != ast.operands.size())
+    throw ResolveException(
+        "Selected operand layout left source slots unconsumed.");
 
   return fields;
 }

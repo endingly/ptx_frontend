@@ -26,6 +26,14 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const syntax_ast::AstOperand& operand,
     const ResolvedInstructionFields& fields, const ResolveContext* context);
 
+/** Merge tex compatibility source slots under one generated resource contract. */
+std::expected<ResolvedFieldValue, ResolveDiagnostic>
+resolve_unbracketed_texture_access(
+    const syntax_ast::AstInstruction& instruction, size_t source_index,
+    size_t source_span,
+    const check_end::ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context);
+
 /** Convert a state-space spelling to its parameter-address qualifier. */
 ParameterAddressQualifier parameter_address_qualifier_from_modifier(
     std::string_view spelling) noexcept;

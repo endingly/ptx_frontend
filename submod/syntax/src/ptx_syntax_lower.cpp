@@ -182,6 +182,16 @@ syntax_ast::AstInitializer lowerInitializer(
     return AstInitializer{lowerConstantExpression(cst, *expression), range};
   }
 
+  if (const auto* named =
+          std::get_if<syntax_cst::CstNamedInitializer>(&initializer.value)) {
+    return AstInitializer{
+        AstNamedInitializer{
+            AstSyntax{std::string(cst.token(named->member).text),
+                      cst.token(named->member).range},
+            lowerConstantExpression(cst, named->value), range},
+        range};
+  }
+
   const auto& list =
       std::get<syntax_cst::CstInitializerList>(initializer.value);
   std::vector<AstInitializer> elements;
@@ -269,7 +279,11 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               value.unified_token.has_value(),
               value.unified_token ? cst.token(*value.unified_token).range
                                   : SourceRange{},
-              cst.sourceRange(value.token_range)};
+              cst.sourceRange(value.token_range),
+              value.left_bracket ? cst.token(*value.left_bracket).range
+                                 : SourceRange{},
+              value.right_bracket ? cst.token(*value.right_bracket).range
+                                  : SourceRange{}};
         } else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>) {
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
@@ -281,6 +295,15 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
             elements.push_back(lowerVectorElement(cst, element));
           return syntax_ast::AstVectorPack{std::move(elements),
                                            cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstVectorPredicatePair>) {
+          auto data = std::get<syntax_ast::AstVectorPack>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.data}));
+          return syntax_ast::AstVectorPredicatePair{
+              .data = std::move(data),
+              .predicate = lowerIdentifier(cst, value.predicate),
+              .pipe_range = cst.token(value.pipe).range,
+              .range = cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstTensorOperand>) {
           auto address = std::get<syntax_ast::AstAddress>(
@@ -318,6 +341,34 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               cst.token(value.left_bracket).range,
               cst.token(value.right_bracket).range,
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value,
+                                          syntax_cst::CstCompoundBracket>) {
+          std::vector<syntax_ast::AstVectorElement> heads;
+          heads.reserve(value.heads.size());
+          for (const auto& head : value.heads)
+            heads.push_back(std::visit(
+                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
+                  using Item = std::remove_cvref_t<decltype(item)>;
+                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
+                    return lowerIdentifier(cst, item);
+                  else
+                    return lowerImmediate(cst, item);
+                },
+                head));
+          std::vector<SourceRange> commas;
+          commas.reserve(value.commas.size());
+          for (const auto comma : value.commas)
+            commas.push_back(cst.token(comma).range);
+          auto coordinates = std::get<syntax_ast::AstVectorPack>(
+              lowerOperand(cst, syntax_cst::CstOperand{value.coordinates}));
+          return syntax_ast::AstCompoundBracket{
+              .heads = std::move(heads),
+              .coordinates = std::move(coordinates),
+              .comma_ranges = std::move(commas),
+              .left_bracket_range = cst.token(value.left_bracket).range,
+              .right_bracket_range = cst.token(value.right_bracket).range,
+              .range = cst.sourceRange(value.token_range),
+          };
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallParameterList>) {
           std::vector<syntax_ast::AstCallParameter> parameters;
@@ -394,8 +445,12 @@ syntax_ast::AstInstruction lowerInstructionNode(
   }
 
   ast.operands.reserve(root.operands.size());
-  for (const auto& operand : root.operands)
+  for (const auto& operand : root.operands) {
     ast.operands.push_back(lowerOperand(cst, operand.operand));
+    if (operand.trailing_comma)
+      ast.operand_comma_ranges.push_back(
+          cst.token(*operand.trailing_comma).range);
+  }
 
   if (root.predicate) {
     ast.predicate =
@@ -417,6 +472,7 @@ syntax_ast::AstStateSpace lowerStateSpace(TokenKind kind) {
     case TokenKind::DotShared:
       return syntax_ast::AstStateSpace::Shared;
     case TokenKind::DotGlobal:
+    case TokenKind::DotTex:
       return syntax_ast::AstStateSpace::Global;
     case TokenKind::DotConst:
       return syntax_ast::AstStateSpace::Constant;
@@ -504,6 +560,8 @@ syntax_ast::AstVariableDeclaration lowerVariableDeclaration(
       .type = leafSyntax(cst, declaration.type),
       .declarators = std::move(declarators),
       .range = cst.sourceRange(declaration.token_range),
+      .legacy_texture =
+          cst.token(declaration.state_space).kind == TokenKind::DotTex,
   };
 }
 

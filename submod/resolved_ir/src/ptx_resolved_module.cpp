@@ -148,6 +148,8 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
   /** PTX specifies a 32-bit address-size default independent of the host. */
   std::optional<uint32_t> address_size{32};
   bool address_size_explicit = false;
+  /** One explicit texturing mode applies to the whole PTX module. */
+  std::optional<TextureMode> explicit_texture_mode;
   /** Region zero models declarations before the first .target directive. */
   header.regions.push_back({.range = ast.range});
   for (const auto& item : ast.items) {
@@ -174,9 +176,27 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
         targets.emplace_back(target.text);
       if (targets.empty())
         header.invalid_directives.push_back(directive->range);
+      TextureMode mode = TextureMode::Unified;
+      bool mode_seen = false;
+      for (const auto& target : targets) {
+        if (target != "texmode_unified" && target != "texmode_independent")
+          continue;
+        if (mode_seen)
+          header.invalid_directives.push_back(directive->range);
+        mode_seen = true;
+        mode = target == "texmode_independent" ? TextureMode::Independent
+                                               : TextureMode::Unified;
+      }
+      if (mode_seen) {
+        if (explicit_texture_mode && *explicit_texture_mode != mode)
+          header.invalid_directives.push_back(directive->range);
+        else
+          explicit_texture_mode = mode;
+      }
       header.regions.push_back({
           .range = directive->range,
           .target_options = targets,
+          .texture_mode = mode,
           .target_provenance = targets.empty()
                                    ? SourceConfigurationProvenance::Missing
                                    : SourceConfigurationProvenance::Explicit,
@@ -190,6 +210,7 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
       address_size_explicit ? SourceConfigurationProvenance::Explicit
                             : SourceConfigurationProvenance::Defaulted;
   for (auto& region : header.regions) {
+    region.texture_mode = explicit_texture_mode.value_or(TextureMode::Unified);
     region.version = version;
     region.version_provenance = version_provenance;
     region.address_size_bits = address_size;
@@ -1231,6 +1252,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
         .function_scope = scope,
         .function_is_entry = function->is_entry,
         .unified_storage_symbols = unified_storage_symbols,
+        .texture_mode = header.regions[active_region].texture_mode,
     };
     ResolvedFunction resolved_function;
     resolved_function.symbol_id = symbol.id;
@@ -1287,6 +1309,28 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
               throw ResolveException("Bound parameter has no local symbol.");
             const auto& parameter_symbol =
                 binding_result.table.symbol(found->symbol);
+            if (const auto opaque =
+                    base::opaque_resource_kind(parameter.type.text)) {
+              if (role != ParameterDeclarationRole::EntryInput)
+                throw ResolveException(
+                    "Validated opaque parameter is not an entry input.");
+              resolved_function.opaque_entry_parameters.push_back({
+                  .symbol_id = parameter_symbol.id,
+                  .scope_id = parameter_symbol.scope,
+                  .kind = *opaque,
+                  .explicit_alignment = parameter.alignment
+                                            ? parameter_symbol.address_alignment
+                                            : std::nullopt,
+                  .is_array = parameter.is_array,
+                  .array_extent =
+                      parameter.array_size
+                          ? declaration_semantics::constantArrayExtent(
+                                *parameter.array_size)
+                          : std::nullopt,
+                  .range = parameter.range,
+              });
+              continue;
+            }
             resolved_function.parameter_declarations.push_back(
                 resolve_parameter_declaration(
                     parameter, role, parameter_symbol,

@@ -641,6 +641,7 @@ FunctionParameterContract parameterContract(
       .alignment =
           parameterAlignmentContract(parameter.alignment, natural_alignment),
       .scalar_type = scalar,
+      .opaque_kind = base::opaque_resource_kind(parameter.type.text),
       .type_spelling = parameter.type.text,
       .is_pointer = parameter.is_pointer,
       .pointed_state_space =
@@ -719,7 +720,7 @@ bool isUnsupportedInitializerType(std::string_view type) {
 
 /** Return whether a declaration spelling names an opaque PTX object identity. */
 bool isOpaqueObjectType(std::string_view type) {
-  return type == ".texref" || type == ".samplerref" || type == ".surfref";
+  return base::opaque_resource_kind(type).has_value();
 }
 
 bool initializerTypeAccepts(std::string_view type,
@@ -752,7 +753,7 @@ class Checker {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         checkAlignment(declaration->alignment);
-        checkVariableDeclaration(*declaration);
+        checkVariableDeclaration(*declaration, module_version);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           diagnose(
               DeclarationDiagnosticKind::ModuleScopeParameter,
@@ -1551,11 +1552,21 @@ class Checker {
       return;
     }
 
-    if (isOpaqueObjectType(parameter.type.text)) {
-      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-               parameter.type.range,
-               "Opaque .texref/.samplerref/.surfref parameters are not "
-               "modeled by this frontend.");
+    if (const auto opaque = base::opaque_resource_kind(parameter.type.text)) {
+      if (context != ParameterContext::EntryInput || !is_parameter ||
+          parameter.is_pointer || parameter.pointer_alignment) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 "Opaque resource parameters require an .entry input "
+                 "without pointer qualifiers.");
+      } else if (parameter.is_array && !parameter.array_size) {
+        diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
+                 parameter.range,
+                 "Opaque entry parameter arrays require a positive extent.");
+      } else {
+        requireParameterAvailability(module_version, module_sm, {1, 5}, 0,
+                                     parameter.range, "Opaque entry parameter");
+      }
       return;
     }
     const bool predicate = parameter.type.text == ".pred";
@@ -1850,7 +1861,7 @@ class Checker {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
         checkAlignment(declaration->alignment);
-        checkVariableDeclaration(*declaration);
+        checkVariableDeclaration(*declaration, module_version);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           checkBodyParameterDeclaration(*declaration, module_version,
                                         module_sm);
@@ -2008,8 +2019,24 @@ class Checker {
   }
 
   void checkVariableDeclaration(
-      const syntax_ast::AstVariableDeclaration& declaration) {
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> module_version) {
     checkRegisterDeclaration(declaration);
+    if (declaration.legacy_texture &&
+        (declaration.state_space != syntax_ast::AstStateSpace::Global ||
+         (declaration.type.text != ".u32" && declaration.type.text != ".u64") ||
+         declaration.vector_type)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
+               declaration.range,
+               "Legacy .tex requires a scalar .u32/.u64 texture identity.");
+    }
+    if (!declaration.legacy_texture &&
+        isOpaqueObjectType(declaration.type.text) && module_version &&
+        *module_version < PtxVersion{1, 5}) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
+               declaration.range,
+               "Modern opaque resource declarations require PTX ISA >= 1.5.");
+    }
     for (const auto& declarator : declaration.declarators) {
       std::vector<std::optional<uint64_t>> extents;
       extents.reserve(declarator.array_dimensions.size() +
@@ -2056,6 +2083,12 @@ class Checker {
 
       if (!declarator.initializer)
         continue;
+      if (declaration.legacy_texture ||
+          isOpaqueObjectType(declaration.type.text)) {
+        // Name/value and aggregate nesting are checked by the owned opaque
+        // storage resolver, which keeps each array object's member group.
+        continue;
+      }
       if (isUnsupportedInitializerType(declaration.type.text)) {
         diagnose(DeclarationDiagnosticKind::InitializerTypeMismatch,
                  declarator.initializer->range,

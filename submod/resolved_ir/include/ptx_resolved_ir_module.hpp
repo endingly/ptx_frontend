@@ -29,6 +29,8 @@ struct ResolvedSourceTargetRegion {
   std::optional<checker::PtxVersion> version;
   /** All source target option spellings in source order. */
   std::vector<std::string> target_options;
+  /** Effective source texturing mode; omission selects unified mode. */
+  TextureMode texture_mode = TextureMode::Unified;
   /** Effective PTX address width; an omitted directive owns the default 32 bits. */
   std::optional<uint32_t> address_size_bits;
   /** Provenance of the effective version, target, and address-width values. */
@@ -263,6 +265,8 @@ struct ResolvedFunction {
    * entry inputs.
    */
   std::vector<ResolvedParameterDeclaration> parameter_declarations;
+  /** Name-only opaque entry inputs in source order, independent of scalar ABI. */
+  std::vector<ResolvedOpaqueEntryParameter> opaque_entry_parameters;
   /** Function declaration scope, stable in the owning module symbol table. */
   binding::ScopeId declaration_scope;
   /** One owned source range per body instruction, parallel to ``body``. */

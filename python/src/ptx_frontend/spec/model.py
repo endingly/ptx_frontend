@@ -71,6 +71,91 @@ class FabricInstructionSpec:
     requires_mbarrier_layout_v1: bool = False
 
 
+class TextureGeometry(Enum):
+    """Texture coordinate topology independent of opcode spelling."""
+
+    ONE_D = "1d"
+    TWO_D = "2d"
+    THREE_D = "3d"
+    ARRAY_ONE_D = "a1d"
+    ARRAY_TWO_D = "a2d"
+    CUBE = "cube"
+    ARRAY_CUBE = "acube"
+    TWO_D_MULTISAMPLE = "2dms"
+    ARRAY_TWO_D_MULTISAMPLE = "a2dms"
+
+
+class TextureMipmapMode(Enum):
+    """Source-visible texture LOD selection after YAML spelling classification."""
+
+    OMITTED = "omitted"
+    BASE = "base"
+    LEVEL = "level"
+    GRADIENT = "gradient"
+
+
+class TextureComponent(Enum):
+    """One gather channel selected by a tld4 form."""
+
+    RED = "r"
+    GREEN = "g"
+    BLUE = "b"
+    ALPHA = "a"
+
+
+class TextureQuery(Enum):
+    """Closed texture or sampler property query domain."""
+
+    WIDTH = "width"
+    HEIGHT = "height"
+    DEPTH = "depth"
+    CHANNEL_DATA_TYPE = "channel_data_type"
+    CHANNEL_ORDER = "channel_order"
+    NORMALIZED_COORDS = "normalized_coords"
+    ARRAY_SIZE = "array_size"
+    NUM_MIPMAP_LEVELS = "num_mipmap_levels"
+    NUM_SAMPLES = "num_samples"
+    FORCE_UNNORMALIZED_COORDS = "force_unnormalized_coords"
+    FILTER_MODE = "filter_mode"
+    ADDRESS_MODE_0 = "addr_mode_0"
+    ADDRESS_MODE_1 = "addr_mode_1"
+    ADDRESS_MODE_2 = "addr_mode_2"
+
+
+class OpaqueResourceKind(Enum):
+    """The declared resource identity tested or consumed by texture forms."""
+
+    TEXTURE = "texture"
+    SAMPLER = "sampler"
+    SURFACE = "surface"
+
+
+class TextureResourceRole(Enum):
+    """Query resource role; mode-dependent sampler properties remain explicit."""
+
+    TEXTURE = "texture"
+    SAMPLER = "sampler"
+    SAMPLER_BY_MODE = "sampler_by_mode"
+
+
+@dataclass(frozen=True)
+class TextureInstructionSpec:
+    """Closed per-form texture semantics independent of source spellings."""
+
+    geometry: TextureGeometry | None = None
+    mipmap: TextureMipmapMode = TextureMipmapMode.OMITTED
+    component: TextureComponent | None = None
+    query: TextureQuery | None = None
+    tested_kind: OpaqueResourceKind | None = None
+    result_arity: int = 1
+    allows_offset: bool = False
+    allows_compare: bool = False
+    allows_residency: bool = False
+    query_level: bool = False
+    # Minimum source/target gate for an indirect texture or query resource.
+    indirect_availability: dict[str, Any] | None = None
+
+
 class WgmmaProtocolAction(Enum):
     """Instruction-local action in the independent warpgroup MMA protocol."""
 
@@ -405,6 +490,7 @@ class OperandKind(_SemanticToken):
     VECTOR_REGISTER = "vector_reg"
     VECTOR_SPECIAL_REGISTER = "vector_sreg"
     REGISTER_VECTOR = "reg_vector"
+    VALUE_VECTOR = "value_vector"
     DIRECT_CALL_TARGET = "direct_call_target"
     INDIRECT_CALL_TARGET = "indirect_call_target"
     INDIRECT_CALL_METADATA = "indirect_call_metadata"
@@ -421,6 +507,10 @@ class OperandKind(_SemanticToken):
     TENSOR_IM2COL_INFO = "tensor_im2col_info"
     TENSOR_OPERAND = "tensor_operand"
     FABRIC_HANDLE = "fabric_handle"
+    TEXTURE_ACCESS = "texture_access"
+    TEXTURE_QUERY_RESOURCE = "texture_query_resource"
+    TEXTURE_RESULT = "texture_result"
+    TEXTURE_RESULT_WITH_PREDICATE = "texture_result_with_predicate"
     TENSOR_MEMORY_ADDRESS = "tensor_memory_address"
     TENSOR_MEMORY_ADDRESS_BRACKET = "tensor_memory_address_bracket"
     TCGEN_HALF_SPLIT_OFFSET = "tcgen_half_split_offset"
@@ -715,6 +805,7 @@ class OperandSpec:
     vector_sink_payload_bits: int = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family: bool = False
+    vector_signed_immediate_range: tuple[int, int] | None = None
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
@@ -723,6 +814,10 @@ class OperandSpec:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     element_kinds: tuple[OperandKind, ...] = ()
+    texture_geometry: TextureGeometry | None = None
+    texture_legacy_v4_coordinates: bool = False
+    texture_unbracketed: bool = False
+    texture_resource_kind: TextureResourceRole | None = None
 
 
 @dataclass(frozen=True)
@@ -765,6 +860,7 @@ class VariantSpec:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    texture: TextureInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()

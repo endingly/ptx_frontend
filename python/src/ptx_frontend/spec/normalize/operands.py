@@ -15,6 +15,8 @@ from ptx_frontend.spec.model import (
     OperandRegisterWidthPolicy,
     OperandRole,
     OperandSpec,
+    TextureGeometry,
+    TextureResourceRole,
     OperandStateSpaceExpression,
     OperandStateSpaceValue,
     OperandTypeExpression,
@@ -68,6 +70,7 @@ class _VectorOptions:
     sink_payload_bits: int
     allowed_register_types: tuple[str, ...]
     require_uniform_register_family: bool
+    signed_immediate_range: tuple[int, int] | None
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,32 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     )
     immediate_conversion = _normalize_immediate_conversion(raw)
     address = _normalize_address_options(raw)
+    texture_geometry = None
+    if kind is OperandKind.TEXTURE_ACCESS:
+        try:
+            texture_geometry = TextureGeometry(raw["texture_geometry"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("texture_access requires a known texture_geometry") from error
+    elif "texture_geometry" in raw:
+        raise ValueError("texture_geometry requires texture_access")
+    texture_legacy_v4_coordinates = raw.get("texture_legacy_v4_coordinates", False)
+    if type(texture_legacy_v4_coordinates) is not bool:
+        raise TypeError("texture_legacy_v4_coordinates must be boolean")
+    if texture_legacy_v4_coordinates and kind is not OperandKind.TEXTURE_ACCESS:
+        raise ValueError("legacy v4 coordinates require texture_access")
+    texture_unbracketed = raw.get("texture_unbracketed", False)
+    if type(texture_unbracketed) is not bool or (
+        texture_unbracketed and kind is not OperandKind.TEXTURE_ACCESS
+    ):
+        raise ValueError("unbracketed texture compatibility requires texture_access")
+    texture_resource_kind = raw.get("texture_resource_kind")
+    if kind is OperandKind.TEXTURE_QUERY_RESOURCE:
+        try:
+            texture_resource_kind = TextureResourceRole(texture_resource_kind)
+        except (TypeError, ValueError) as error:
+            raise ValueError("texture_query_resource requires a typed resource kind") from error
+    elif texture_resource_kind is not None:
+        raise ValueError("texture_resource_kind requires texture_query_resource")
 
     return OperandSpec(
         name=raw["name"],
@@ -127,6 +156,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_sink_payload_bits=vector.sink_payload_bits,
         vector_allowed_register_types=vector.allowed_register_types,
         vector_require_uniform_register_family=vector.require_uniform_register_family,
+        vector_signed_immediate_range=vector.signed_immediate_range,
         allow_destination_sink=shfl_sink.allow_destination,
         allow_predicate_sink=shfl_sink.allow_predicate,
         mbarrier_state_token_form=mbarrier.form,
@@ -135,6 +165,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         minimum_elements=pack.minimum_elements,
         maximum_elements=pack.maximum_elements,
         element_kinds=pack.element_kinds,
+        texture_geometry=texture_geometry,
+        texture_legacy_v4_coordinates=texture_legacy_v4_coordinates,
+        texture_unbracketed=texture_unbracketed,
+        texture_resource_kind=texture_resource_kind,
     )
 
 
@@ -312,8 +346,12 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     vector_sink_payload_bits = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family = False
+    vector_signed_immediate_range = None
     if raw["kind"] in {
         OperandKind.REGISTER_VECTOR,
+        OperandKind.VALUE_VECTOR,
+        OperandKind.TEXTURE_RESULT,
+        OperandKind.TEXTURE_RESULT_WITH_PREDICATE,
         OperandKind.VECTOR_REGISTER,
         OperandKind.VECTOR_SPECIAL_REGISTER,
     }:
@@ -336,7 +374,10 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
             raise ValueError("resolved vector operands support at most eight elements")
         try:
             vector_type_policy = OperandVectorTypePolicy(
-                vector.get("type_policy", "aggregate")
+                vector.get(
+                    "type_policy",
+                    "element" if raw["kind"] is OperandKind.VALUE_VECTOR else "aggregate",
+                )
             )
         except ValueError as error:
             raise ValueError(
@@ -347,6 +388,27 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
+            )
+        if raw["kind"] is OperandKind.VALUE_VECTOR and (
+            raw["access"] is not OperandAccess.READ or vector_allow_sink
+        ):
+            raise ValueError("value_vector requires read access and disallows sinks")
+        if (raw["kind"] is OperandKind.VALUE_VECTOR and
+                vector_type_policy is not OperandVectorTypePolicy.ELEMENT):
+            raise ValueError("value_vector requires element type policy")
+        signed_range = vector.get("signed_immediate_range")
+        if signed_range is not None:
+            if raw["kind"] is not OperandKind.VALUE_VECTOR or (
+                not isinstance(signed_range, dict)
+                or type(signed_range.get("minimum")) is not int
+                or type(signed_range.get("maximum")) is not int
+                or signed_range["minimum"] > signed_range["maximum"]
+                or signed_range["minimum"] < -(1 << 63)
+                or signed_range["maximum"] > (1 << 63) - 1
+            ):
+                raise ValueError("signed_immediate_range requires value_vector and ordered signed bounds")
+            vector_signed_immediate_range = (
+                signed_range["minimum"], signed_range["maximum"]
             )
         allowed = vector.get("allowed_register_types", [])
         if (not isinstance(allowed, list) or
@@ -397,6 +459,7 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         sink_payload_bits=vector_sink_payload_bits,
         allowed_register_types=vector_allowed_register_types,
         require_uniform_register_family=vector_require_uniform_register_family,
+        signed_immediate_range=vector_signed_immediate_range,
     )
 
 
@@ -471,6 +534,7 @@ def _normalize_immediate_conversion(
             OperandKind.IMMEDIATE,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.TENSOR_COORDINATE,
+            OperandKind.VALUE_VECTOR,
             OperandKind.TENSOR_IM2COL_INFO,
             OperandKind.TENSOR_OPERAND,
             OperandKind.MATRIX_SCALE_SELECTOR,

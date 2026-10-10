@@ -130,6 +130,7 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
     cross_checks = cross_checks.replace("instruction.address_qualifier", "selected.address_qualifier")
     mma_check = _emit_tcgen_mma_source_check(variant, layout, slots, backend)
     tensor_checks = _emit_tensor_layout_checks(variant, layout, slots, backend)
+    texture_check = _emit_texture_layout_check(entry, variant, layout, slots, backend)
     matrix = f"&{name}::matrix_topology" if variant.matrix is not None else "nullptr"
     return f"""    case {layout_index}: {{
       const auto availability_check = checker::check_operand_layout_availability(
@@ -149,9 +150,44 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
 {_append_result('operand_check')}
 {mma_check}
 {tensor_checks}
+{texture_check}
 {cross_checks}
       break;
     }}"""
+
+
+def _emit_texture_layout_check(entry, variant, layout, slots, backend) -> str:
+    """Recheck nested texture payloads after selected-layout presence guards."""
+
+    if variant.texture is None:
+        return ""
+    if variant.texture.geometry is None:
+        if variant.texture.query is None:
+            return ""
+        resource = next(field for field in layout.fields
+                        if field.value_kind is ResolvedValueKind.TEXTURE_QUERY_RESOURCE)
+        resource_member = _member_expr(
+            resource, operand_slot_for_field(slots, resource, backend))
+        name = form_name(entry, variant)
+        return f"""      const auto texture_query_check = checker::check_texture_query_static_payload(
+          {name}::texture_contract, {resource_member}.value, context);
+{_append_result('texture_query_check')}"""
+    access = next(field for field in layout.fields
+                  if field.value_kind is ResolvedValueKind.TEXTURE_ACCESS)
+    result = next(field for field in layout.fields
+                  if field.value_kind is ResolvedValueKind.TEXTURE_RESULT)
+    access_member = _member_expr(
+        access, operand_slot_for_field(slots, access, backend))
+    result_member = _member_expr(
+        result, operand_slot_for_field(slots, result, backend))
+    required = any(binding.texture_residency_required
+                   for binding in layout.bindings)
+    name = form_name(entry, variant)
+    return f"""      const auto texture_payload_check = checker::check_texture_static_payload(
+          {name}::texture_contract, selected.texture_selected_types(),
+          {access_member}.value, {result_member}.value,
+          {str(required).lower()}, context);
+{_append_result('texture_payload_check')}"""
 
 
 def _emit_named_rule_check(label: str, expression: str) -> str:

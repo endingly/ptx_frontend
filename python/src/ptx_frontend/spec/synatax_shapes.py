@@ -21,6 +21,8 @@ class OperandSyntaxShape(IntFlag):
     NEGATED_IMMEDIATE = 1 << 12
     TENSOR_OPERAND = 1 << 13
     FABRIC_HANDLE = 1 << 14
+    COMPOUND_BRACKET = 1 << 15
+    VECTOR_PREDICATE_PAIR = 1 << 16
 
 
 OPERAND_SYNTAX_SHAPES = {
@@ -64,6 +66,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.SYMBOL: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.ADDRESS: OperandSyntaxShape.ADDRESS,
     OperandKind.REGISTER_VECTOR: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.VALUE_VECTOR: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.DESCRIPTOR: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.TYPED_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.MBARRIER_STATE_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
@@ -71,6 +74,14 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: OperandSyntaxShape.FABRIC_HANDLE,
+    OperandKind.TEXTURE_ACCESS: (
+        OperandSyntaxShape.TENSOR_OPERAND | OperandSyntaxShape.COMPOUND_BRACKET
+        | OperandSyntaxShape.FABRIC_HANDLE
+        | OperandSyntaxShape.IDENTIFIER_REF
+    ),
+    OperandKind.TEXTURE_QUERY_RESOURCE: OperandSyntaxShape.ADDRESS,
+    OperandKind.TEXTURE_RESULT: OperandSyntaxShape.VECTOR_PACK,
+    OperandKind.TEXTURE_RESULT_WITH_PREDICATE: OperandSyntaxShape.VECTOR_PREDICATE_PAIR,
     OperandKind.TENSOR_MEMORY_ADDRESS: (
         OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
     ),

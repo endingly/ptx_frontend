@@ -24,6 +24,8 @@ struct ResolveContext {
   bool function_is_entry{};
   /** Bound storage identities carrying a PTX `.unified` attribute. */
   std::span<const binding::SymbolId> unified_storage_symbols;
+  /** Source-associated module texturing mode for direct resource resolution. */
+  TextureMode texture_mode = TextureMode::Unified;
 };
 
 /** Preserve the written atomic address suffix after syntax selection. */

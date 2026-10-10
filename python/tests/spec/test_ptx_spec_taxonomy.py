@@ -204,7 +204,7 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             paths,
             set(EXPECTED_FILES)
             | {"asynchronous_warpgroup_matrix_multiply_accumulate.yaml",
-               "tensor_memory_data_movement.yaml"},
+               "tensor_memory_data_movement.yaml", "texture.yaml"},
         )
 
         for name, (category, codegen_category, section) in EXPECTED_FILES.items():

@@ -476,6 +476,12 @@ struct SymbolTableBuilder {
                 std::get_if<syntax_ast::AstConstantExpression>(
                     &initializer.value)) {
           indexConstantExpression(*expression);
+        } else if (const auto* named =
+                       std::get_if<syntax_ast::AstNamedInitializer>(
+                           &initializer.value)) {
+          if (!std::holds_alternative<syntax_ast::AstConstantSymbol>(
+                  named->value.node))
+            indexConstantExpression(named->value);
         } else {
           const auto& elements =
               std::get<syntax_ast::AstInitializerList>(initializer.value)
@@ -783,9 +789,11 @@ struct SymbolTableBuilder {
       addSymbol(
           scope, kind, declarator.name.syntax.text,
           declarator.name.syntax.range, declaration_linkage,
-          declaration.state_space, declaration.type.text,
-          declarationAlignment(declaration.alignment, declaration.vector_type,
-                               declaration.type.text),
+          declaration.state_space,
+          declaration.legacy_texture ? ".texref" : declaration.type.text,
+          declarationAlignment(
+              declaration.alignment, declaration.vector_type,
+              declaration.legacy_texture ? ".texref" : declaration.type.text),
           parameterizedCount(declarator), scope == result.table.moduleScope(),
           false, vectorWidth(declaration.vector_type));
     }
@@ -1051,6 +1059,15 @@ struct SymbolTableBuilder {
       bindConstantExpression(scope, ReferenceKind::Initializer, *expression);
       return;
     }
+    if (const auto* named =
+            std::get_if<syntax_ast::AstNamedInitializer>(&initializer.value)) {
+      // A bare member value is an opaque API enumerant, classified by semantic
+      // validation rather than a module symbol reference.
+      if (!std::holds_alternative<syntax_ast::AstConstantSymbol>(
+              named->value.node))
+        bindConstantExpression(scope, ReferenceKind::Initializer, named->value);
+      return;
+    }
     for (const auto& element :
          std::get<syntax_ast::AstInitializerList>(initializer.value).elements) {
       bindInitializer(scope, element);
@@ -1125,6 +1142,18 @@ struct SymbolTableBuilder {
                              *identifier);
             }
           } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstCompoundBracket>) {
+            for (const auto& head : value.heads)
+              if (const auto* identifier =
+                      std::get_if<syntax_ast::AstIdentifierRef>(&head))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             *identifier);
+            for (const auto& element : value.coordinates.elements)
+              if (const auto* identifier =
+                      std::get_if<syntax_ast::AstIdentifierRef>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             *identifier);
+          } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstVectorMember>) {
             addReference(scope, ReferenceKind::InstructionOperand, value.base);
           } else if constexpr (std::same_as<Value, syntax_ast::AstVectorPack>) {
@@ -1140,6 +1169,14 @@ struct SymbolTableBuilder {
                              *identifier);
               }
             }
+          } else if constexpr (std::same_as<
+                                   Value, syntax_ast::AstVectorPredicatePair>) {
+            for (const auto& element : value.data.elements)
+              if (const auto* identifier =
+                      std::get_if<syntax_ast::AstIdentifierRef>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             *identifier);
+            addReference(scope, ReferenceKind::Predicate, value.predicate);
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCallParameterList>) {
             const ReferenceKind kind =

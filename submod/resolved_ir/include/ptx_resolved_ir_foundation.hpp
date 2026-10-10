@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <compare>
 #include <concepts>
 #include <cstddef>
@@ -26,6 +27,7 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+struct ResolvedImmediate;
 struct ResolvedTensorOperand;
 enum class ResolvedRegisterClass : uint8_t;
 
@@ -392,6 +394,103 @@ struct FabricInstructionDescriptor {
   std::optional<base::MbarrierLayout> required_mbarrier_layout;
 };
 
+/** Source-selected texturing mode; absence in a module defaults to Unified. */
+enum class TextureMode : uint8_t { Unified, Independent };
+/** Static geometric interpretation of texture coordinate lanes. */
+enum class TextureGeometry : uint8_t {
+  OneD,
+  TwoD,
+  ThreeD,
+  ArrayOneD,
+  ArrayTwoD,
+  Cube,
+  ArrayCube,
+  TwoDMultisample,
+  ArrayTwoDMultisample
+};
+/** Written mipmap control, retaining omission independently of explicit base. */
+enum class TextureMipmapMode : uint8_t { Omitted, Base, Level, Gradient };
+/** One statically meaningful role assigned to a texture coordinate lane. */
+enum class TextureLaneRole : uint8_t { Spatial, ArrayLayer, Sample, Ignored };
+/** Classify a written coordinate lane under PTX texture geometry rules. */
+inline constexpr TextureLaneRole texture_lane_role(TextureGeometry geometry,
+                                                   size_t index,
+                                                   size_t lane_count) noexcept {
+  if (lane_count == 4 &&
+      (geometry == TextureGeometry::OneD || geometry == TextureGeometry::TwoD ||
+       geometry == TextureGeometry::ArrayOneD) &&
+      index >= (geometry == TextureGeometry::OneD ? 1u : 2u))
+    return TextureLaneRole::Ignored;
+  if ((geometry == TextureGeometry::ArrayOneD ||
+       geometry == TextureGeometry::ArrayTwoD ||
+       geometry == TextureGeometry::ArrayCube ||
+       geometry == TextureGeometry::ArrayTwoDMultisample) &&
+      index == 0)
+    return TextureLaneRole::ArrayLayer;
+  if ((geometry == TextureGeometry::TwoDMultisample && index == 0) ||
+      (geometry == TextureGeometry::ArrayTwoDMultisample && index == 1))
+    return TextureLaneRole::Sample;
+  if (index == 3 && (geometry == TextureGeometry::ThreeD ||
+                     geometry == TextureGeometry::ArrayTwoD ||
+                     geometry == TextureGeometry::Cube ||
+                     geometry == TextureGeometry::TwoDMultisample))
+    return TextureLaneRole::Ignored;
+  return TextureLaneRole::Spatial;
+}
+/** Component selected by a four-texel footprint read. */
+enum class TextureComponent : uint8_t { Red, Green, Blue, Alpha };
+/** Static query identity; the returned value remains a runtime resource fact. */
+enum class TextureQuery : uint8_t {
+  Width,
+  Height,
+  Depth,
+  ChannelDataType,
+  ChannelOrder,
+  NormalizedCoords,
+  ArraySize,
+  NumMipmapLevels,
+  NumSamples,
+  ForceUnnormalizedCoords,
+  FilterMode,
+  AddressMode0,
+  AddressMode1,
+  AddressMode2
+};
+namespace checker {
+struct AvailabilityDescriptor;
+}
+/** One generated texture-family form's immutable static contract. */
+struct TextureInstructionDescriptor {
+  /** Geometry is absent for txq and istypep. */
+  std::optional<TextureGeometry> geometry;
+  /** Omitted versus explicit base/level/gradient is source-visible. */
+  TextureMipmapMode mipmap = TextureMipmapMode::Omitted;
+  /** Present only on tld4 forms. */
+  std::optional<TextureComponent> component;
+  /** Present only on txq forms. */
+  std::optional<TextureQuery> query;
+  /** Queried resource kind for istypep, if applicable. */
+  std::optional<base::OpaqueResourceKind> tested_kind;
+  /** Expected result register count; 1 for query and predicate type tests. */
+  uint8_t result_arity = 1;
+  /** Optional controls admitted by this form; written presence lives in operands. */
+  bool allows_residency = false;
+  bool allows_offset = false;
+  bool allows_compare = false;
+  /** Whether this exact query form has a separate integer mip level. */
+  bool query_level = false;
+  /** Static-lifetime canonical availability for an indirect resource carrier. */
+  const checker::AvailabilityDescriptor* indirect_availability = nullptr;
+};
+
+/** Mutable selected type modifiers borrowed from one concrete texture form. */
+struct TextureSelectedTypes {
+  /** Data result element type when a form writes a texture vector. */
+  std::optional<base::ScalarType> result_type;
+  /** Spatial coordinate type when a form samples a texture. */
+  std::optional<base::ScalarType> coordinate_type;
+};
+
 namespace checker {
 using base::AsyncProxyKind;
 using base::BooleanOperator;
@@ -438,7 +537,10 @@ enum class OperandShape : uint32_t {
   ShflDestination = 1 << 13,
   PredicatePair = 1 << 14,
   TensorOperand = 1 << 15,
-  FabricHandle = 1 << 16
+  FabricHandle = 1 << 16,
+  TextureAccess = 1 << 17,
+  TextureQueryResource = 1 << 18,
+  TextureResult = 1 << 19
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -521,6 +623,13 @@ struct AddressAlignmentConstraint {
   uint64_t alignment = 0;
 };
 enum class VectorTypePolicy : uint8_t { Aggregate, Element };
+/** Inclusive domain for a known integer source in each value-vector lane. */
+struct SignedVectorImmediateRange {
+  /** Inclusive lower bound on the evaluated signed source value. */
+  int64_t minimum;
+  /** Inclusive upper bound on the evaluated signed source value. */
+  int64_t maximum;
+};
 /** Required base shape for one bracketed address operand. */
 enum class AddressBasePolicy : uint8_t { Any, Register };
 /** Owned address base shape projected into checker views. */
@@ -549,6 +658,10 @@ struct OperandDescriptor {
   std::span<const base::ScalarType> allowed_register_types;
   /** Enforce one integer-or-float family per vector; bit lanes are neutral. */
   bool require_uniform_register_family = false;
+  /** Read-only lanes may be registers or typed immediate values. */
+  bool source_value_vector = false;
+  /** Absent leaves known immediate values unconstrained by a source range. */
+  std::optional<SignedVectorImmediateRange> vector_signed_immediate_range;
   bool allow_destination_sink = false;
   bool allow_predicate_sink = false;
   MbarrierStateTokenForm mbarrier_state_token_form =
@@ -571,6 +684,18 @@ struct OperandDescriptor {
   std::optional<TensorAccessMode> expected_tensor_mode;
   /** Fixed instruction tensor dimension, independent of coordinate count. */
   std::optional<TensorRank> expected_tensor_rank;
+  /** Static geometry for a composite texture access operand. */
+  std::optional<TextureGeometry> texture_geometry;
+  /** Admit the tex compatibility spelling with four coordinate lanes. */
+  bool texture_legacy_v4_coordinates = false;
+  /** Merge adjacent source resource and coordinate operands for tex compatibility. */
+  bool texture_unbracketed = false;
+  /** Expected bound opaque declaration kind for a bracketed query resource. */
+  std::optional<base::OpaqueResourceKind> texture_resource_kind;
+  /** Sampler query binds texture in unified mode and sampler in independent mode. */
+  bool texture_query_sampler_by_mode = false;
+  /** Require the result's residency predicate in this operand layout. */
+  bool texture_residency_required = false;
   /** Present only for the mask coupled to tensor cluster multicast. */
   std::optional<TensorCtaMaskRole> tensor_cta_mask_role;
   /** Independent conversion contract; type provenance does not select it. */
@@ -621,6 +746,8 @@ struct OperandView {
   /** Numerical negativity of the evaluated signed integer source. */
   std::optional<bool> immediate_is_negative;
   std::optional<ScalarType> register_type;
+  /** Direct opaque mov source identity; its instruction type must be .u64. */
+  std::optional<base::OpaqueResourceKind> opaque_resource_kind;
   /** Declaration identity; absent for declaration-free standalone operands. */
   std::optional<binding::SymbolId> register_symbol_id;
   /** Resolved register category, independent of an unknown declaration type. */
@@ -669,6 +796,9 @@ struct OperandView {
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
+  /** Borrowed typed values for source-vector lanes, null for registers. */
+  std::array<const ResolvedImmediate*, kMaxOperandElements>
+      vector_element_immediates{};
   /** Composite tensor coordinates with a statically negative immediate. */
   bool tensor_has_negative_immediate = false;
   /** Composite tensor rank encoded by the owned operand. */
@@ -932,6 +1062,23 @@ struct ResolvedParameterDeclaration {
   std::optional<uint64_t> byte_extent;
   std::optional<call_argument_compatibility::PointerProperties> pointer;
 };
+/** Name-only opaque entry input with no implied allocation or byte layout. */
+struct ResolvedOpaqueEntryParameter {
+  /** Stable symbol identity in the owning module. */
+  binding::SymbolId symbol_id;
+  /** Lexical scope of the entry parameter declaration. */
+  binding::ScopeId scope_id;
+  /** Texture, sampler, or surface identity declared by this input. */
+  base::OpaqueResourceKind kind{};
+  /** Explicit source alignment in bytes; absent never implies natural alignment. */
+  std::optional<uint64_t> explicit_alignment;
+  /** Retained declaration array shape without assigning element bytes. */
+  bool is_array{};
+  /** Known array extent; absent for a source array with unspecified extent. */
+  std::optional<uint64_t> array_extent;
+  /** Complete source range of the header parameter. */
+  SourceRange range;
+};
 enum class ResolvedRegisterClass : uint8_t { General, Predicate };
 struct ResolvedRegisterRef {
   std::string spelling;
@@ -942,6 +1089,35 @@ struct ResolvedRegisterRef {
   std::optional<ScalarType> declared_type;
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
+};
+/** Bound direct resource declaration, independent of generic address layout. */
+struct ResolvedOpaqueSymbolRef {
+  /** Source spelling retained for diagnostics and consumer display. */
+  std::string spelling;
+  /** Stable declaration identity in the owning resolved module. */
+  binding::SymbolId symbol_id;
+  /** Member of a parameterized opaque declaration, if source selected one. */
+  std::optional<uint32_t> parameterized_index;
+  /** Declaration scope, which must be module or current entry input. */
+  binding::ScopeId scope_id;
+  /** Opaque identity declared by the bound symbol. */
+  base::OpaqueResourceKind kind{};
+  /** True only for the owning entry's opaque input. */
+  bool entry_input = false;
+  /** Source location of this direct resource use. */
+  SourceRange range;
+  bool operator==(const ResolvedOpaqueSymbolRef&) const = default;
+};
+
+/** Direct typed resource or an indirect 64-bit scalar register handle. */
+struct ResolvedOpaqueResourceRef {
+  /** Indirect carrier does not prove its runtime pointee kind. */
+  std::variant<ResolvedOpaqueSymbolRef, ResolvedRegisterRef> value;
+  /** Expected resource use selected by the instruction descriptor. */
+  base::OpaqueResourceKind expected_kind{};
+  /** Exact source range for a direct name or indirect carrier register. */
+  SourceRange source_range;
+  bool operator==(const ResolvedOpaqueResourceRef&) const = default;
 };
 /** Borrowed opaque Table 43 source register selected by one Tensor Memory copy.
  * The pointer is valid only while its owning instruction payload lives.
@@ -992,6 +1168,37 @@ struct ResolvedImmediate {
   std::optional<uint64_t> integer_source_bits;
   bool operator==(const ResolvedImmediate&) const = default;
 };
+/** Check owned value-vector immediate provenance and an optional signed domain. */
+[[nodiscard]] inline bool valid_value_vector_immediate(
+    const ResolvedImmediate& value,
+    std::optional<checker::SignedVectorImmediateRange> range = std::nullopt) {
+  const auto kind = base::scalar_kind(value.type);
+  const auto bytes = base::scalar_size_of(value.type);
+  if (bytes == 0 || bytes > 8)
+    return false;
+  const unsigned width = static_cast<unsigned>(bytes) * 8;
+  const uint64_t mask = width == 64 ? UINT64_MAX : (uint64_t{1} << width) - 1;
+  if ((value.bits & ~mask) != 0)
+    return false;
+  if (kind == base::ScalarKind::Float)
+    return !range && !value.integer_source_bits && !value.is_negative;
+  if (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
+      kind != base::ScalarKind::Unsigned)
+    return false;
+  if (!value.integer_source_bits ||
+      value.bits != (*value.integer_source_bits & mask))
+    return false;
+  const int64_t source = std::bit_cast<int64_t>(*value.integer_source_bits);
+  if (value.is_negative)
+    return source < 0 &&
+           (!range || (source >= range->minimum && source <= range->maximum));
+  if (!range)
+    return true;
+  return range->maximum >= 0 &&
+         *value.integer_source_bits <= static_cast<uint64_t>(range->maximum) &&
+         (range->minimum <= 0 ||
+          *value.integer_source_bits >= static_cast<uint64_t>(range->minimum));
+}
 struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
   bool operator==(const ResolvedRegisterVector&) const = default;
@@ -1013,6 +1220,22 @@ struct ResolvedPredicate {
   ResolvedRegisterRef register_ref;
   bool negated{};
   bool operator==(const ResolvedPredicate&) const = default;
+};
+/** Texture data result with a separately retained optional residency predicate. */
+struct ResolvedTextureResult {
+  /** Two packed or four scalar result registers, as selected by the form. */
+  ResolvedRegisterVector data;
+  /** Chosen result element type at resolution, retained for AST-free checks. */
+  ScalarType result_type = ScalarType::Invalid;
+  /** Per-lane locations corresponding to data, independent of brace range. */
+  std::vector<SourceRange> data_ranges;
+  /** Written predicate destination; absence remains distinct from a false value. */
+  std::optional<ResolvedPredicate> residency;
+  /** Exact predicate register use range when residency is present. */
+  SourceRange residency_range;
+  /** Source location of the separator, empty if no residency was written. */
+  SourceRange pipe_range;
+  bool operator==(const ResolvedTextureResult&) const = default;
 };
 struct ResolvedBranchTarget {
   std::string spelling;
@@ -1174,6 +1397,51 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Read-only braced source lanes retaining register identities or typed values. */
+struct ResolvedValueVector {
+  /** Ordered lane payload; WithLocs owns corresponding source ranges. */
+  std::vector<RegOrImm> elements;
+  bool operator==(const ResolvedValueVector&) const = default;
+};
+/** One owned coordinate lane with role and source location retained. */
+struct ResolvedTextureLane {
+  /** Register declaration type is retained even when role interpretation differs. */
+  RegOrImm value;
+  /** Array/sample/spatial/ignored meaning selected by geometry metadata. */
+  TextureLaneRole role{};
+  SourceRange range;
+  bool operator==(const ResolvedTextureLane&) const = default;
+};
+
+/** Texture access operand with direct or indirect resource identities. */
+struct ResolvedTextureAccess {
+  /** Texture identity, required on every tex/tld4 access. */
+  ResolvedOpaqueResourceRef texture;
+  /** Explicit independent sampler; absence is preserved. */
+  std::optional<ResolvedOpaqueResourceRef> sampler;
+  /** Ordered coordinate lanes, including written ignored padding. */
+  std::vector<ResolvedTextureLane> coordinates;
+  /** Selected spatial coordinate type; array/sample lanes remain u32 roles. */
+  ScalarType coordinate_type = ScalarType::Invalid;
+  /** Square-bracket omission is retained for compatibility source forms. */
+  bool bracketed = true;
+  /** True when a coordinate was spelled as a brace pack. */
+  bool coordinates_packed = true;
+  /** Bracket/comma provenance, empty when delimiters were omitted. */
+  SourceRange left_bracket_range;
+  std::vector<SourceRange> comma_ranges;
+  SourceRange right_bracket_range;
+  bool operator==(const ResolvedTextureAccess&) const = default;
+};
+
+/** One query resource reference with source bracket presence retained. */
+struct ResolvedTextureQueryResource {
+  ResolvedOpaqueResourceRef resource;
+  bool bracketed = true;
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  bool operator==(const ResolvedTextureQueryResource&) const = default;
+};
 /** Owned 32-bit Tensor Memory address source, without allocation provenance. */
 struct TensorMemoryAddress {
   /** Register or converted immediate; locations live in its WithLocs owner. */
@@ -1411,7 +1679,7 @@ struct ResolvedPredicatePairOrSink {
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
                  ResolvedSpecialRegisterRef, ResolvedFunctionRef,
-                 ResolvedSymbolRef, ResolvedAddress>;
+                 ResolvedSymbolRef, ResolvedAddress, ResolvedOpaqueSymbolRef>;
 /** Cache-policy register distinguished from a source-size register. */
 struct ResolvedCpAsyncCachePolicy {
   /** Bound 64-bit register that carries the L2 eviction policy. */

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <ptx_frontend/base/base.hpp>
+#include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
@@ -15,8 +16,8 @@ namespace ptx_frontend::resolved_ir {
 /** Addressable declaration spaces; parameters and registers have separate APIs. */
 enum class StorageSpace : uint8_t { Global, Constant, Shared, Local };
 
-/** Opaque object identities whose physical size and alignment are not specified. */
-enum class StorageOpaqueType : uint8_t { Texture, Sampler, Surface };
+/** Source-compatible name for the shared opaque identity domain. */
+using StorageOpaqueType = base::OpaqueResourceKind;
 
 /** A fundamental declaration type or opaque identity; instruction-only formats are rejected. */
 using StorageElementType = std::variant<base::ScalarType, StorageOpaqueType>;
@@ -34,6 +35,8 @@ enum class StorageInitializationKind : uint8_t {
   Explicit,
   /** External declaration: this module supplies no initial contents. */
   External,
+  /** Named opaque-resource fields, with no implied byte image or defaults. */
+  OpaqueStatic,
 };
 
 /** Address interpretation for a relocation; no value is a simulated address. */
@@ -74,6 +77,81 @@ struct StorageInitializerElement {
   SourceRange range;
 };
 
+/** Static opaque member names from the PTX resource declaration contract. */
+enum class OpaqueStaticField : uint8_t {
+  Width,
+  Height,
+  Depth,
+  ChannelDataType,
+  ChannelOrder,
+  NormalizedCoords,
+  FilterMode,
+  AddressMode0,
+  AddressMode1,
+  AddressMode2,
+  ArraySize,
+  NumMipmapLevels,
+  NumSamples,
+  ForceUnnormalizedCoords,
+  MemoryLayout
+};
+
+/** Named PTX and OpenCL enumerants admitted for static opaque members. */
+enum class OpaqueStaticEnum : uint16_t {
+  Nearest,
+  Linear,
+  Wrap,
+  Mirror,
+  ClampOgl,
+  ClampToEdge,
+  ClampToBorder,
+  ClSnormInt8 = 0x10d0,
+  ClSnormInt16,
+  ClUnormInt8,
+  ClUnormInt16,
+  ClUnormShort565,
+  ClUnormShort555,
+  ClUnormInt101010,
+  ClSignedInt8,
+  ClSignedInt16,
+  ClSignedInt32,
+  ClUnsignedInt8,
+  ClUnsignedInt16,
+  ClUnsignedInt32,
+  ClHalfFloat,
+  ClFloat,
+  ClR = 0x10b0,
+  ClA,
+  ClRg,
+  ClRa,
+  ClRgb,
+  ClRgba,
+  ClBgra,
+  ClArgb,
+  ClIntensity,
+  ClLuminance
+};
+
+/** One source-specified static resource member, with no byte offset. */
+struct OpaqueStaticMember {
+  /** Typed member identity independent of its source spelling. */
+  OpaqueStaticField field{};
+  /** Numeric constant or recognized named enumerant. */
+  std::variant<uint64_t, OpaqueStaticEnum> value;
+  /** Assignment range retained for source checks and diagnostics. */
+  SourceRange range;
+};
+
+/** One statically initialized opaque object within an optional array shape. */
+struct OpaqueStaticObject {
+  /** Zero-based aggregate position on each declared array axis. */
+  std::vector<uint64_t> indices;
+  /** Source-ordered named fields; omitted runtime defaults remain unspecified. */
+  std::vector<OpaqueStaticMember> members;
+  /** Range of this object's named-member initializer. */
+  SourceRange range;
+};
+
 /** Owned allocation inputs for one source declarator; contains no AST pointers. */
 struct ResolvedStorageDeclaration {
   /** Stable within the module; repeated compatible extern declarations share it. */
@@ -84,6 +162,8 @@ struct ResolvedStorageDeclaration {
   std::optional<binding::SymbolId> owner_function;
   StorageSpace space{};
   StorageElementType element_type;
+  /** Source used the deprecated `.tex .u32` spelling for a texture identity. */
+  bool legacy_texture = false;
   /** Scalar lanes per array element: 1, 2, or 4. */
   uint8_t vector_width = 1;
   /** Outer-to-inner element counts; an external unsized first dimension is null. */
@@ -107,6 +187,8 @@ struct ResolvedStorageDeclaration {
   StorageInitializationKind initialization{};
   /** Explicit scalar entries; omitted positions in Explicit mode are zero-filled. */
   std::vector<StorageInitializerElement> initializer;
+  /** Ordered per-object named resource data; never flattened to byte offsets. */
+  std::vector<OpaqueStaticObject> opaque_static_objects;
   /** Range of this declaration occurrence, including compatible redeclarations. */
   SourceRange range;
 };

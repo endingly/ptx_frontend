@@ -309,11 +309,15 @@ def _emit_operand_slot(
         if slot.allowed_element_shapes
         else ""
     )
+    texture_unbracketed = (
+        "\n              .texture_unbracketed = true,"
+        if slot.texture_unbracketed else ""
+    )
     return f"""\
           check_end::SyntaxOperandSlotDescriptor{{
               .allowed_shapes = {allowed_shapes},
               .presence = {cpp_value(CppDomain.SYNTAX_OPERAND_PRESENCE, slot.presence.value, backend=backend)},
-{type_tag}{cardinality}{element_shapes}
+{type_tag}{cardinality}{element_shapes}{texture_unbracketed}
           }}"""
 
 

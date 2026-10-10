@@ -71,6 +71,15 @@ OperandView project_tensor_operand(
 /** Recheck a bound transport handle's scalar types, arity, and owned ranges. */
 CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
                                 bool counted, const Context& context);
+/** Recheck surface coordinate topology, scalar carriers, and indirect gates. */
+CheckResult check_surface_static_payload(
+    const SurfaceInstructionDescriptor& descriptor,
+    SurfaceSelectedTypes selected_types, const ResolvedSurfaceAccess& access,
+    const Context& context);
+/** Recheck required surface query brackets and direct/indirect resource kind. */
+CheckResult check_surface_query_static_payload(
+    const SurfaceInstructionDescriptor& descriptor,
+    const ResolvedSurfaceQueryResource& resource, const Context& context);
 /** Recheck mutable texture lane, type, destination, and layout contracts. */
 CheckResult check_texture_static_payload(
     const TextureInstructionDescriptor& descriptor,

@@ -87,6 +87,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   };
   const std::array profiles{
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
                       sm80_capabilities},
       ExpectedProfile{"sm_89", 89, TargetFlavor::Generic, none,
@@ -140,6 +141,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   }
 
   EXPECT_TRUE(find_target_profile("sm_30")->capabilities.empty());
+  EXPECT_FALSE(find_target_profile("sm_50a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
   EXPECT_FALSE(find_target_profile("sm_90f").has_value());

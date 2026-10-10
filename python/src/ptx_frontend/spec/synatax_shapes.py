@@ -74,6 +74,8 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: OperandSyntaxShape.FABRIC_HANDLE,
+    OperandKind.SURFACE_ACCESS: (OperandSyntaxShape.TENSOR_OPERAND | OperandSyntaxShape.COMPOUND_BRACKET | OperandSyntaxShape.FABRIC_HANDLE),
+    OperandKind.SURFACE_QUERY_RESOURCE: OperandSyntaxShape.ADDRESS,
     OperandKind.TEXTURE_ACCESS: (
         OperandSyntaxShape.TENSOR_OPERAND | OperandSyntaxShape.COMPOUND_BRACKET
         | OperandSyntaxShape.FABRIC_HANDLE

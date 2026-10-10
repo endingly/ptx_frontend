@@ -125,6 +125,7 @@ EXPECTED_SECTIONS = {
         "exit": {"9.7.13.7"},
     },
     "parallel_synchronization_and_communication.yaml": {
+        "fabric": {"9.7.10.5"},
         "bar": {"9.7.14.1", "9.7.14.2"},
         "barrier": {"9.7.14.1", "9.7.14.3"},
         "membar": {"9.7.14.4"},

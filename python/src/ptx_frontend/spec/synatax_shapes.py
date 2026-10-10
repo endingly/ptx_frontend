@@ -20,6 +20,7 @@ class OperandSyntaxShape(IntFlag):
     REGISTER_PREDICATE_PAIR = 1 << 11
     NEGATED_IMMEDIATE = 1 << 12
     TENSOR_OPERAND = 1 << 13
+    FABRIC_HANDLE = 1 << 14
 
 
 OPERAND_SYNTAX_SHAPES = {
@@ -69,6 +70,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TENSOR_COORDINATE: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
+    OperandKind.FABRIC_HANDLE: OperandSyntaxShape.FABRIC_HANDLE,
     OperandKind.TENSOR_MEMORY_ADDRESS: (
         OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE
     ),

@@ -1585,7 +1585,7 @@ instructions:
 
   - opcode: fence
     section: "9.7.14.4"
-    doc: "Ordinary memory fences and modern async/tensormap proxy ordering."
+    doc: "Ordinary memory fences and async, tensormap, and fabric proxy ordering."
     syntax: >-
       fence{.sc|.acq_rel|.acquire|.release}.{cta|cluster|gpu|sys} |
       fence.{cta|cluster|gpu|sys}{.sc|.acq_rel|.acquire|.release} |
@@ -1594,7 +1594,8 @@ instructions:
       fence.proxy.alias |
       fence.proxy.async{.global|.shared::cta|.shared::cluster} |
       fence.proxy.tensormap::generic.{release|acquire}.scope { [addr], 128 } |
-      fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster
+      fence.proxy.async::generic.{acquire|release}.sync_restrict::shared::{cluster|cta}.cluster |
+      fence.proxy.{generic::fabric|fabric::generic|fabric::fabric}.alias.{acquire|release}.sys
 
     variants:
       - name: fence_acq_rel_cta
@@ -1835,6 +1836,61 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
           - {name: sync_restrict_shared_cta, kind: flag, presence: fixed, value: true, token: .sync_restrict::shared::cta}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
+        operands: []
+
+      - name: fence_proxy_generic_to_fabric_acquire
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: generic::fabric}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+        operands: []
+      - name: fence_proxy_generic_to_fabric_release
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: generic::fabric}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+        operands: []
+      - name: fence_proxy_fabric_to_generic_acquire
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: fabric::generic}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+        operands: []
+      - name: fence_proxy_fabric_to_generic_release
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: fabric::generic}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+        operands: []
+      - name: fence_proxy_fabric_to_fabric_acquire
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: fabric::fabric}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: acquire}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+        operands: []
+      - name: fence_proxy_fabric_to_fabric_release
+        availability: {ptx: "9.3", sm: 100}
+        modifiers:
+          - {name: proxy, kind: flag, presence: fixed, value: true, token: .proxy}
+          - {name: proxy_pair, kind: proxy_pair, domain: proxy_kind_pairs, presence: fixed, value: fabric::fabric}
+          - {name: alias, kind: flag, presence: fixed, value: true, token: .alias}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: release}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
         operands: []
 
   - opcode: atom
@@ -5531,3 +5587,1131 @@ instructions:
           - {name: result_type, kind: type, domain: scalar_types, presence: fixed, value: b32}
           - {name: response_type, kind: type, domain: scalar_types, presence: fixed, value: b128}
         operands: $clusterlaunchcontrol_query_cancel_scalar
+
+  - opcode: fabric
+    section: "9.7.10.5"
+    doc: "CUDA Fabric Transport operations and local submission/read completion."
+    syntax: "fabric.try_get|try_put|try_red|try_pullred|submit|wait ..."
+    variants:
+      - name: fabric_try_get
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_get, endpoint: unicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_get}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        modifier_order_aliases:
+          - [operation, async_shared, semantics, scope, completion, reporting, type]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_unicast_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_unicast_masked
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: bytemask, kind: reg_or_imm, role: mask, access: read, type: u16}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_unicast_counted
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      # The documented early-counted spelling splits async/shared into two
+      # lexer tokens, unlike the adjacent compound modifier above.
+      - name: fabric_try_put_unicast_counted_early
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_multicast_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_multicast_masked
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: cp_mask, kind: flag, presence: fixed, value: true, token: .cp_mask}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: bytemask, kind: reg_or_imm, role: mask, access: read, type: u16}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_put_multicast_counted
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_put, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_put}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b128}
+        modifier_order_aliases:
+          - [operation, async, multimem, counted, src_space, completion, reporting, semantics, scope, type]
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_and
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_xor
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_or
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_min
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_max
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_ordinary_add
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64, f16, bf16, f32, f64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_and
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_xor
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_or
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_min
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_max
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_unicast_counted_add
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: unicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async_shared, kind: flag, presence: fixed, value: true, token: .async.shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64, f16, bf16, f32, f64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_and
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_xor
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_or
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_min
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_max
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_ordinary_add
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64, f16, bf16, f32, f64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_and
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_xor
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_or
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_min
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_max
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_red_multicast_counted_add
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx16b
+        fabric: {operation: try_red, endpoint: multicast, shared_access: read, counted: true, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_red}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: src_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::16B}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: counted, kind: flag, presence: fixed, value: true, token: .counted::bytes}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64, f16, bf16, f32, f64]}
+        operands:
+          - {name: dst, kind: fabric_handle, role: addr, access: write}
+          - {name: src, kind: addr, role: addr, access: read, state_space: [shared]}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+        constraints:
+          - {kind: address_alignment, address_operand: src, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+
+      - name: fabric_try_pullred_and_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .and}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_xor_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .xor}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_or_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .or}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [b32, b64]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_min_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_max_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, s32, u64, s64, f16, bf16]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_min_fp8
+        availability:
+          any_of:
+            - {ptx: "9.3", sm: 100, family: sm_100f}
+            - {ptx: "9.3", sm: 110, family: sm_110f}
+            - {ptx: "9.3", sm: 120, target: sm_120a}
+            - {ptx: "9.3", sm: 121, target: sm_121a}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .min}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [e4m3, e5m2]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_max_fp8
+        availability:
+          any_of:
+            - {ptx: "9.3", sm: 100, family: sm_100f}
+            - {ptx: "9.3", sm: 110, family: sm_110f}
+            - {ptx: "9.3", sm: 120, target: sm_120a}
+            - {ptx: "9.3", sm: 121, target: sm_121a}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .max}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [e4m3, e5m2]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_add_ordinary
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [u32, u64, f16, bf16, f32]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_add_acc_f16
+        availability:
+          any_of:
+            - {ptx: "9.3", sm: 100, family: sm_100f}
+            - {ptx: "9.3", sm: 110, family: sm_110f}
+            - {ptx: "9.3", sm: 120, target: sm_120a}
+            - {ptx: "9.3", sm: 121, target: sm_121a}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: acc_precision, kind: flag, presence: fixed, value: true, token: .acc::f16}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [e4m3, e5m2]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, acc_precision, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_try_pullred_add_acc_f32
+        availability:
+          any_of:
+            - {ptx: "9.3", sm: 100, family: sm_100f}
+            - {ptx: "9.3", sm: 110, family: sm_110f}
+            - {ptx: "9.3", sm: 120, target: sm_120a}
+            - {ptx: "9.3", sm: 121, target: sm_121a}
+        completion_kind: mbarrier_complete_tx_bytes
+        fabric: {operation: try_pullred, endpoint: multicast, shared_access: write, counted: false, reports_fabric: true, requires_mbarrier_layout_v1: true}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .try_pullred}
+          - {name: async, kind: flag, presence: fixed, value: true, token: .async}
+          - {name: multimem, kind: flag, presence: fixed, value: true, token: .multimem}
+          - {name: dst_space, kind: flag, presence: fixed, value: true, token: .shared::cta}
+          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: reporting, kind: flag, presence: fixed, value: true, token: .mbarrier::report::fabric}
+          - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
+          - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: sys}
+          - {name: reduction, kind: flag, presence: fixed, value: true, token: .add}
+          - {name: acc_precision, kind: flag, presence: fixed, value: true, token: .acc::f32}
+          - {name: type, kind: type, domain: scalar_types, presence: required, values: [f16, bf16]}
+          - {name: sync, kind: flag, presence: fixed, value: true, token: .sync}
+        modifier_order_aliases:
+          - [operation, async, multimem, completion, reporting, dst_space, type, reduction, acc_precision, sync, semantics, scope]
+        operands:
+          - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}
+          - {name: src, kind: fabric_handle, role: src, access: read}
+          - {name: size, kind: reg_or_imm, role: src, access: read, type: u32, immediate_conversion: require_target_range}
+          - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
+          - {name: membermask, kind: imm, role: mask, access: read, type: u32}
+        constraints:
+          - {kind: address_alignment, address_operand: dst, alignment: 16}
+          - {kind: address_alignment, address_operand: mbar, alignment: 8}
+          - {kind: immediate_multiple_of, operand: size, divisor: 16}
+          - {kind: immediate_value, operand: membermask, values: [4294967295]}
+
+      - name: fabric_submit
+        availability: {ptx: "9.3", sm: 100}
+        fabric: {operation: submit, endpoint: none, shared_access: none, counted: false, reports_fabric: false, requires_mbarrier_layout_v1: false}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .submit}
+          - {name: fetching, kind: flag, presence: optional, token: .op_restrict::fetching, default: false}
+        operands: []
+
+      - name: fabric_wait
+        availability: {ptx: "9.3", sm: 100}
+        completion_kind: fabric_read_wait
+        fabric: {operation: wait, endpoint: none, shared_access: none, counted: false, reports_fabric: false, requires_mbarrier_layout_v1: false}
+        modifiers:
+          - {name: operation, kind: flag, presence: fixed, value: true, token: .wait}
+          - {name: reads, kind: flag, presence: fixed, value: true, token: .sync_restrict::reads}
+        operands: []

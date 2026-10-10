@@ -13,6 +13,7 @@ from typing import overload
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    FabricInstructionSpec,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     AddressAlignmentConstraint,
@@ -169,6 +170,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TENSOR_COORDINATE: ResolvedValueKind.TENSOR_COORDINATE,
     OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
+    OperandKind.FABRIC_HANDLE: ResolvedValueKind.FABRIC_HANDLE,
     OperandKind.TENSOR_MEMORY_ADDRESS: ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
     OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: ResolvedValueKind.TCGEN_BRACKETED_ADDRESS,
     OperandKind.TCGEN_HALF_SPLIT_OFFSET: ResolvedValueKind.TCGEN_HALF_SPLIT_OFFSET,
@@ -232,6 +234,7 @@ class ResolvedOperandShape(Enum):
     SHFL_DESTINATION = "ShflDestination"
     PREDICATE_PAIR = "PredicatePair"
     TENSOR_OPERAND = "TensorOperand"
+    FABRIC_HANDLE = "FabricHandle"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -394,6 +397,7 @@ class ResolvedVariant:
 
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    fabric: FabricInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
@@ -594,6 +598,7 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TENSOR_COORDINATE: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
+    OperandKind.FABRIC_HANDLE: (ResolvedOperandShape.FABRIC_HANDLE,),
     OperandKind.TENSOR_MEMORY_ADDRESS: (
         ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE,
     ),
@@ -865,6 +870,7 @@ def _build_variant(
         variant_id=variant.name,
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
+        fabric=variant.fabric,
         wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,

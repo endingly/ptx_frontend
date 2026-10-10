@@ -377,27 +377,57 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
 
   if (token(peek()).kind == TokenKind::Comma) {
     const TokenId comma = consume();
-    auto brace = expect(TokenKind::LBrace, "'{' in tensor coordinates");
-    if (!brace)
-      return std::unexpected(brace.error());
-    auto parsed = parseVectorPack(*brace);
-    if (!parsed)
-      return std::unexpected(parsed.error());
-    auto close = expect(TokenKind::RBracket, "']' after tensor coordinates");
+    if (token(peek()).kind == TokenKind::LBrace) {
+      auto parsed = parseVectorPack(consume());
+      if (!parsed)
+        return std::unexpected(parsed.error());
+      auto close = expect(TokenKind::RBracket, "']' after tensor coordinates");
+      if (!close)
+        return std::unexpected(close.error());
+      return syntax_cst::CstOperand{syntax_cst::CstTensorOperand{
+          open,
+          syntax_cst::CstAddress{std::nullopt,
+                                 std::move(base),
+                                 std::move(offset),
+                                 std::nullopt,
+                                 std::nullopt,
+                                 {open + 1, comma}},
+          comma,
+          std::get<syntax_cst::CstVectorPack>(std::move(*parsed)),
+          *close,
+          {open, *close + 1}}};
+    }
+    if (offset)
+      return std::unexpected(CstParseDiagnostic{
+          token(comma).range, "fabric handle endpoint cannot have an offset"});
+    std::vector<syntax_cst::CstAddressBase> elements;
+    elements.push_back(std::move(base));
+    std::vector<TokenId> commas{comma};
+    do {
+      if (atImmediateStart()) {
+        auto immediate = parseImmediate();
+        if (!immediate)
+          return std::unexpected(immediate.error());
+        elements.emplace_back(std::move(*immediate));
+      } else {
+        auto identifier = expect(TokenKind::Ident, "fabric handle component");
+        if (!identifier)
+          return std::unexpected(identifier.error());
+        elements.emplace_back(syntax_cst::CstIdentifier{*identifier});
+      }
+      if (token(peek()).kind != TokenKind::Comma)
+        break;
+      commas.push_back(consume());
+    } while (true);
+    auto close = expect(TokenKind::RBracket, "']' after fabric handle");
     if (!close)
       return std::unexpected(close.error());
-    return syntax_cst::CstOperand{syntax_cst::CstTensorOperand{
-        open,
-        syntax_cst::CstAddress{std::nullopt,
-                               std::move(base),
-                               std::move(offset),
-                               std::nullopt,
-                               std::nullopt,
-                               {open + 1, comma}},
-        comma,
-        std::get<syntax_cst::CstVectorPack>(std::move(*parsed)),
-        *close,
-        {open, *close + 1}}};
+    return syntax_cst::CstOperand{
+        syntax_cst::CstFabricHandle{std::move(elements),
+                                    std::move(commas),
+                                    open,
+                                    *close,
+                                    {open, *close + 1}}};
   }
 
   auto close = expect(TokenKind::RBracket, "']'");

@@ -24,6 +24,33 @@ INCLUDE_ROOT = "ptx_frontend/resolved_ir"
 FORM_SHARD_SIZE = 64
 
 
+def _fabric_descriptor(variant) -> str:
+    """Emit typed, immutable CFT obligations from the normalized source row."""
+
+    contract = variant.fabric
+    if contract is None:
+        return ""
+    operation = file_stem_to_pascal_case(contract.operation.value)
+    endpoint = file_stem_to_pascal_case(contract.endpoint.value)
+    shared_access = file_stem_to_pascal_case(contract.shared_access.value)
+    completion = ''.join(part.title() for part in variant.completion_kind.value.split('_'))
+    counted = str(contract.counted).lower()
+    reports = str(contract.reports_fabric).lower()
+    layout = ("base::MbarrierLayout::V1" if contract.requires_mbarrier_layout_v1
+              else "std::nullopt")
+    return f'''  /** Static CFT endpoint, completion, reporting and shared-access contract. */
+  inline static constexpr FabricInstructionDescriptor fabric_contract{{
+      .operation = FabricOperation::{operation},
+      .endpoint = FabricEndpointKind::{endpoint},
+      .shared_access = FabricSharedAccess::{shared_access},
+      .completion = base::AsyncCompletionKind::{completion},
+      .counted = {counted},
+      .reports_fabric = {reports},
+      .required_mbarrier_layout = {layout},
+  }};
+'''
+
+
 def form_shards(entry: GenerationInstruction) -> tuple[tuple[int, ...], ...]:
     """Partition large opcode forms in canonical order for bounded generation."""
 
@@ -75,6 +102,7 @@ REFERENCE_TYPES = (
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
+    "ResolvedFabricHandle",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
     "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
 )
@@ -525,6 +553,7 @@ def generate_resolved_opcode_header(
         variant = entry.resolved.variants[index]
         name = form_name(entry, variant)
         contract = _form_contract(variant, context.backend)
+        fabric_descriptor = _fabric_descriptor(variant)
         slots = operand_slots(variant, context.backend)
         modifiers = "\n".join(
             _field_declaration(field, context.backend, field.name)
@@ -564,6 +593,7 @@ class {name} final : public Instruction {{
   inline static constexpr base::WgmmaProtocolAction wgmma_protocol_action =
       base::WgmmaProtocolAction::{''.join(part.title() for part in variant.wgmma_protocol_action.value.split('_'))};
 {contract}
+{fabric_descriptor}
   /** Selected layout identity and resolution provenance. */
   ResolvedOperandLayoutTag operand_layout;
 {atomic}{modifiers}

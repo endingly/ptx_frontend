@@ -1655,6 +1655,67 @@ resolve_tensor_operand(
   return WithLocs<ResolvedTensorOperand>{std::move(resolved), tensor->range};
 }
 
+/** Resolve a bracketed fabric handle into owned, typed register components. */
+std::expected<WithLocs<ResolvedFabricHandle>, ResolveDiagnostic>
+resolve_fabric_handle(const syntax_ast::AstOperand& operand,
+                      const ResolveContext* context) {
+  const auto* handle = std::get_if<syntax_ast::AstFabricHandle>(&operand);
+  if (!handle ||
+      (handle->elements.size() != 2 && handle->elements.size() != 3) ||
+      handle->comma_ranges.size() + 1 != handle->elements.size())
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Expected a two- or three-register fabric handle.",
+    });
+  std::vector<WithLocs<ResolvedRegisterRef>> components;
+  components.reserve(handle->elements.size());
+  for (size_t index = 0; index < handle->elements.size(); ++index) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&handle->elements[index]);
+    if (!identifier)
+      return std::unexpected(ResolveDiagnostic{
+          .range = std::get<syntax_ast::AstImmediate>(handle->elements[index])
+                       .syntax.range,
+          .message = "Fabric handle components require registers.",
+      });
+    auto component =
+        resolve_register(syntax_ast::AstOperand{*identifier}, context);
+    if (!component)
+      return std::unexpected(component.error());
+    const uint8_t required_width = index == 0 ? 4 : 8;
+    if (component->value.declared_type &&
+        (base::scalar_size_of(*component->value.declared_type) !=
+             required_width ||
+         (base::scalar_kind(*component->value.declared_type) !=
+              base::ScalarKind::Unsigned &&
+          base::scalar_kind(*component->value.declared_type) !=
+              base::ScalarKind::Signed &&
+          base::scalar_kind(*component->value.declared_type) !=
+              base::ScalarKind::Bit)))
+      return std::unexpected(ResolveDiagnostic{
+          .range = identifier->syntax.range,
+          .message =
+              index == 0
+                  ? "Fabric endpoint requires a 32-bit integer/bit register."
+                  : "Fabric offset requires a 64-bit integer/bit register.",
+      });
+    components.push_back(std::move(*component));
+  }
+  ResolvedFabricHandle resolved{
+      .endpoint = std::move(components[0]),
+      .data_offset = std::move(components[1]),
+      .counter_offset =
+          components.size() == 3
+              ? std::optional<WithLocs<ResolvedRegisterRef>>{std::move(
+                    components[2])}
+              : std::nullopt,
+      .left_bracket_range = handle->left_bracket_range,
+      .comma_ranges = handle->comma_ranges,
+      .right_bracket_range = handle->right_bracket_range,
+  };
+  return WithLocs<ResolvedFabricHandle>{std::move(resolved), handle->range};
+}
+
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
@@ -2314,6 +2375,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::TensorOperand: {
       auto value = resolve_tensor_operand(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::FabricHandle: {
+      auto value = resolve_fabric_handle(operand, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

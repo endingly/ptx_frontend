@@ -96,6 +96,17 @@ struct AstTensorOperand {
   SourceRange range;
 };
 
+/** Unresolved scalar transport-handle components, independent of an opcode. */
+struct AstFabricHandle {
+  /** Endpoint, data offset, and optional counter offset with individual ranges. */
+  std::vector<AstVectorElement> elements;
+  /** Separator locations remain owned after CST release. */
+  std::vector<SourceRange> comma_ranges;
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  SourceRange range;
+};
+
 enum class AstCallParameterListKind : uint8_t {
   Return,
   Input,
@@ -139,9 +150,9 @@ struct AstRegisterPredicatePair {
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
                  AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
-                 AstTensorOperand, AstCallParameterList, AstCallTarget,
-                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
-                 AstRegisterPredicatePair>;
+                 AstTensorOperand, AstFabricHandle, AstCallParameterList,
+                 AstCallTarget, AstCallTargetSet, AstBranchTarget,
+                 AstBranchTargetSet, AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

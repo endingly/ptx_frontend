@@ -355,6 +355,43 @@ enum class ParameterDirection : uint8_t { None, Input, Return, CallArgument };
 /** PTX 9.3 subqualifier retained for a .param memory access. */
 enum class ParameterAddressQualifier : uint8_t { Default, Entry, Function };
 
+/** Source-visible CFT action of one exact resolved instruction form. */
+enum class FabricOperation : uint8_t {
+  TryGet,
+  TryPut,
+  TryRed,
+  TryPullred,
+  Submit,
+  Wait,
+};
+
+/** Logical endpoint topology required at runtime by one fabric operation. */
+enum class FabricEndpointKind : uint8_t { None, Unicast, Multicast };
+
+/** Direction of a fabric operation's local CTA shared-memory data access. */
+enum class FabricSharedAccess : uint8_t { None, Read, Write };
+
+/**
+ * Immutable instruction-local CFT obligations available to IR consumers.
+ * Handle offsets are register values: callers must ensure 16-byte data
+ * alignment and, for counted forms, an 8-byte counter at a 256-byte-aligned
+ * nonoverlapping offset. These numeric and endpoint conditions are runtime
+ * obligations; the descriptor does not claim they were statically proven.
+ */
+struct FabricInstructionDescriptor {
+  FabricOperation operation;
+  FabricEndpointKind endpoint;
+  FabricSharedAccess shared_access;
+  /** Full-operation barrier completion; read wait is only a partial fence. */
+  base::AsyncCompletionKind completion;
+  /** Whether destination effects also increment an external byte counter. */
+  bool counted;
+  /** Whether the associated barrier reports errors through report::fabric. */
+  bool reports_fabric;
+  /** Live barrier initialization requires layout v1 for the four try forms. */
+  std::optional<base::MbarrierLayout> required_mbarrier_layout;
+};
+
 namespace checker {
 using base::AsyncProxyKind;
 using base::BooleanOperator;
@@ -384,7 +421,7 @@ template <OverloadFunctionObject... Functions>
 Overloaded(Functions...) -> Overloaded<Functions...>;
 }  // namespace detail
 
-enum class OperandShape : uint16_t {
+enum class OperandShape : uint32_t {
   Register = 1 << 0,
   Predicate = 1 << 1,
   Immediate = 1 << 2,
@@ -400,7 +437,8 @@ enum class OperandShape : uint16_t {
   BranchTargetSet = 1 << 12,
   ShflDestination = 1 << 13,
   PredicatePair = 1 << 14,
-  TensorOperand = 1 << 15
+  TensorOperand = 1 << 15,
+  FabricHandle = 1 << 16
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -957,6 +995,19 @@ struct ResolvedImmediate {
 struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
   bool operator==(const ResolvedRegisterVector&) const = default;
+};
+/** Owned CUDA Fabric Transport handle with bound scalar register components. */
+struct ResolvedFabricHandle {
+  /** Unsigned 32-bit endpoint value in a 32-bit integer/bit register carrier. */
+  WithLocs<ResolvedRegisterRef> endpoint;
+  /** Unsigned 64-bit byte offset in a 64-bit integer/bit register carrier. */
+  WithLocs<ResolvedRegisterRef> data_offset;
+  /** Optional counted byte offset in a 64-bit integer/bit register carrier. */
+  std::optional<WithLocs<ResolvedRegisterRef>> counter_offset;
+  /** Bracket and comma locations retained for owned shape revalidation. */
+  SourceRange left_bracket_range;
+  std::vector<SourceRange> comma_ranges;
+  SourceRange right_bracket_range;
 };
 struct ResolvedPredicate {
   ResolvedRegisterRef register_ref;

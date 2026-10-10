@@ -267,6 +267,12 @@ def emit_check_operand_view(
             f'              project_tensor_operand("{field.name}", '
             f'{object_name}.{field.name})'
         )
+    if field.value_kind is ResolvedValueKind.FABRIC_HANDLE:
+        return f'''              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "FabricHandle")},
+                  .locations = {object_name}.{field.name}.locs,
+              }}'''
     if field.value_kind is ResolvedValueKind.MATRIX_SCALE_SELECTOR:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{

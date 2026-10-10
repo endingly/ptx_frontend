@@ -50,6 +50,7 @@ class ResolvedValueKind(Enum):
     TENSOR_COORDINATE = "TensorCoordinate"
     TENSOR_IM2COL_INFO = "TensorIm2colInfo"
     TENSOR_OPERAND = "TensorOperand"
+    FABRIC_HANDLE = "FabricHandle"
     TENSOR_MEMORY_ADDRESS = "TensorMemoryAddress"
     TCGEN_BRACKETED_ADDRESS = "TcgenBracketedAddress"
     TCGEN_HALF_SPLIT_OFFSET = "TcgenHalfSplitOffset"

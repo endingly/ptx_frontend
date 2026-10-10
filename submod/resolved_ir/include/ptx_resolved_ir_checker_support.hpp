@@ -68,6 +68,9 @@ struct Context {
 /** Project an owned tensor operand into descriptor and coordinate checks. */
 OperandView project_tensor_operand(
     std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand);
+/** Recheck a bound transport handle's scalar types, arity, and owned ranges. */
+CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
+                                bool counted, const Context& context);
 /** Project an owned im2col information pack for generated operand checks. */
 OperandView project_tensor_im2col_info(
     std::string_view field_id,

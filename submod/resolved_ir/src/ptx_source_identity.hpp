@@ -272,6 +272,12 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           tag(output, "operand-tensor");
           operand(output, node.tensor_map);
           operand(output, node.coordinates);
+        } else if constexpr (std::same_as<Node, syntax_ast::AstFabricHandle>) {
+          tag(output, "operand-fabric-handle");
+          number(output, node.elements.size());
+          for (const auto& element : node.elements)
+            std::visit([&output](const auto& item) { operand(output, item); },
+                       element);
         } else if constexpr (std::same_as<Node,
                                           syntax_ast::AstCallParameterList>) {
           tag(output, "operand-call-parameters");

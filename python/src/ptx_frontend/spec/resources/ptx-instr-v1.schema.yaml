@@ -376,7 +376,7 @@ $defs:
   proxy_kind_pair:
     description: "Ordered PTX fence proxy to::from qualifier without leading dot."
     type: string
-    enum: [tensormap::generic, async::generic]
+    enum: [tensormap::generic, async::generic, generic::fabric, fabric::generic, fabric::fabric]
 
   cache_operator:
     description: "PTX cache operator without leading dot."
@@ -709,6 +709,7 @@ $defs:
       - tensor_coordinate
       - tensor_im2col_info
       - tensor_operand
+      - fabric_handle
       - tensor_memory_address
       - tensor_memory_address_bracket
       - tcgen_half_split_offset
@@ -1634,7 +1635,20 @@ $defs:
       completion_kind:
         description: "Instruction-local asynchronous completion mechanism."
         type: string
-        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, wgmma_group, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
+        enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, mbarrier_complete_tx16b, fabric_read_wait, wgmma_group, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
+
+      fabric:
+        description: "Typed static CFT requirements of one exact fabric form."
+        type: object
+        additionalProperties: false
+        required: [operation, endpoint, shared_access, counted, reports_fabric, requires_mbarrier_layout_v1]
+        properties:
+          operation: {enum: [try_get, try_put, try_red, try_pullred, submit, wait]}
+          endpoint: {enum: [none, unicast, multicast]}
+          shared_access: {enum: [none, read, write]}
+          counted: {type: boolean}
+          reports_fabric: {type: boolean}
+          requires_mbarrier_layout_v1: {type: boolean}
 
       wgmma_protocol_action:
         description: "Instruction-local action on the warpgroup MMA queue."

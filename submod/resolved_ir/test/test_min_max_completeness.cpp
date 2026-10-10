@@ -228,10 +228,13 @@ TEST(MinMaxCompleteness, MatchesForbiddenSlotAfterLocationsAreCleared) {
   const auto checked = (*resolved)->check(
       checker::Context{.target = {.ptx_version = {9, 3}, .sm_version = 100}});
   ASSERT_FALSE(checked.has_value());
-  EXPECT_EQ(checked.error().front().kind,
+  ASSERT_GE(checked.error().size(), 2U);
+  EXPECT_EQ(checked.error()[0].kind,
+            checker::CheckDiagnosticKind::ModuleSourceMismatch);
+  EXPECT_EQ(checked.error()[1].kind,
             checker::CheckDiagnosticKind::ModifierNotAllowedForLayout);
-  // Without modifier provenance the diagnostic falls back to the context range.
-  EXPECT_EQ(checked.error().front().range, (SourceRange{}));
+  // Slot matching still diagnoses the forbidden layout after provenance loss.
+  EXPECT_EQ(checked.error()[1].range, (SourceRange{}));
 }
 
 /** Check each cohort's independent PTX and target floor. */

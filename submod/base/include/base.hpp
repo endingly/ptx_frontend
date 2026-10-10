@@ -234,6 +234,10 @@ enum class AsyncCompletionKind : uint8_t {
   AsyncGroup,
   BulkGroup,
   MbarrierCompleteTxBytes,
+  /** Every 16 copied bytes contributes one transaction to the barrier. */
+  MbarrierCompleteTx16B,
+  /** Only submitted local shared-memory reads have completed. */
+  FabricReadWait,
   /** Commit/wait identity of the independent warpgroup MMA queue. */
   WgmmaGroup,
   TcgenLoadWait,
@@ -274,6 +278,9 @@ enum class AsyncProxyKind : uint8_t {
 enum class ProxyKindPair : uint8_t {
   TensormapToGeneric,
   AsyncToGeneric,
+  GenericToFabric,
+  FabricToGeneric,
+  FabricToFabric,
 };
 
 template <typename Enum>

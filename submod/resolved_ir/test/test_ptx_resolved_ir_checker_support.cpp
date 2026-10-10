@@ -6,6 +6,7 @@
 #include <span>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
@@ -525,6 +526,58 @@ TEST(ResolvedIrChecker, DiagnosesMissingGeneratedVariantDescriptor) {
   EXPECT_EQ(result.error().front().kind,
             CheckDiagnosticKind::MissingVariantDescriptor);
   EXPECT_EQ(result.error().front().range, kInstructionRange);
+}
+
+/** Optional presence flags retain the relation between value and source token. */
+TEST(ResolvedIrChecker, ChecksOptionalBooleanSourcePresence) {
+  constexpr ModifierValueDomainDescriptor optional_domain[] = {
+      {.kind_id = "fetching",
+       .value_kind = ModifierValueKind::Bool,
+       .bool_value = false},
+      {.kind_id = "fetching",
+       .value_kind = ModifierValueKind::Bool,
+       .bool_value = true},
+  };
+  constexpr ModifierValueDomainDescriptor required_domain[] = {
+      {.kind_id = "operation",
+       .value_kind = ModifierValueKind::Bool,
+       .bool_value = true},
+  };
+  const Context context{.target = {}, .instruction_range = kInstructionRange};
+  const SourceRange written_range{{4, 8}, {4, 17}};
+  const auto optional_value = [&](bool value, bool written) {
+    const ModifierValueView view{
+        .kind_id = "fetching",
+        .value_kind = ModifierValueKind::Bool,
+        .bool_value = value,
+        .is_present = value || written,
+        .locations = written ? std::span<const SourceRange>{&written_range, 1}
+                             : std::span<const SourceRange>{},
+    };
+    return check_modifier_value_domain(
+        optional_domain, std::span<const ModifierValueView>{&view, 1}, context);
+  };
+  EXPECT_TRUE(optional_value(false, false).has_value());
+  EXPECT_TRUE(optional_value(true, true).has_value());
+  for (const auto [value, written] :
+       {std::pair{true, false}, std::pair{false, true}}) {
+    const auto result = optional_value(value, written);
+    ASSERT_FALSE(result.has_value());
+    ASSERT_EQ(result.error().size(), 1U);
+    EXPECT_EQ(result.error().front().kind,
+              CheckDiagnosticKind::ModuleSourceMismatch);
+  }
+  constexpr ModifierValueView required_true{
+      .kind_id = "operation",
+      .value_kind = ModifierValueKind::Bool,
+      .bool_value = true,
+      .is_present = true,
+  };
+  EXPECT_TRUE(check_modifier_value_domain(
+                  required_domain,
+                  std::span<const ModifierValueView>{&required_true, 1},
+                  context)
+                  .has_value());
 }
 
 TEST(ResolvedIrChecker, ChecksSelectedModifierValueAvailability) {

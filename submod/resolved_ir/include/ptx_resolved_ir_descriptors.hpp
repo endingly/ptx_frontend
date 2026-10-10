@@ -28,7 +28,8 @@ enum class OperandSyntaxShape : uint16_t {
   BranchTargetSet = 1 << 10,
   RegisterPredicatePair = 1 << 11,
   NegatedImmediate = 1 << 12,
-  TensorOperand = 1 << 13
+  TensorOperand = 1 << 13,
+  FabricHandle = 1 << 14
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -84,6 +85,7 @@ enum class ResolvedValueKind : uint8_t {
   TensorCoordinate,
   TensorIm2colInfo,
   TensorOperand,
+  FabricHandle,
   TensorMemoryAddress,
   TcgenBracketedAddress,
   TcgenHalfSplitOffset,

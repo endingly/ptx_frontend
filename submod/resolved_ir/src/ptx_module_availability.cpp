@@ -470,6 +470,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedFabricHandle> ||
     std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
@@ -591,6 +592,15 @@ void collect_operand_references(
       collect_operand_references(*register_ref, coordinate_range, fallback,
                                  uses, address_resolution_policy);
     }
+  } else if constexpr (std::same_as<Value, ResolvedFabricHandle>) {
+    collect_operand_references(value.endpoint.value, value.endpoint.locs,
+                               fallback, uses, address_resolution_policy);
+    collect_operand_references(value.data_offset.value, value.data_offset.locs,
+                               fallback, uses, address_resolution_policy);
+    if (value.counter_offset)
+      collect_operand_references(value.counter_offset->value,
+                                 value.counter_offset->locs, fallback, uses,
+                                 address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -788,6 +798,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void tensor_operand(const ResolvedTensorOperand& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect each bound register in a borrowed transport handle. */
+  void fabric_handle(const ResolvedFabricHandle& value,
+                     std::span<const SourceRange> locations,
+                     checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect a borrowed Tensor Memory address register, when present. */

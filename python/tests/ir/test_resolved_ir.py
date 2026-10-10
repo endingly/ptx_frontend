@@ -4541,12 +4541,18 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 "ProxyTensormapGenericAcquireCluster",
                 "ProxyAsyncGenericAcquireSyncRestrictSharedCluster",
                 "ProxyAsyncGenericReleaseSyncRestrictSharedCta",
+                "ProxyGenericToFabricAcquire",
+                "ProxyGenericToFabricRelease",
+                "ProxyFabricToGenericAcquire",
+                "ProxyFabricToGenericRelease",
+                "ProxyFabricToFabricAcquire",
+                "ProxyFabricToFabricRelease",
             ],
         )
         (variant, ordinary_cta, ordinary_gpu_sys, ordinary_cluster,
          mbarrier_init, acquire_restrict, release_restrict, proxy_alias, async_proxy,
          async_cluster, release, _, acquire, _, acquire_sync,
-         release_sync) = resolved.variants
+         release_sync) = resolved.variants[:16]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 70})
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in variant.fields],
@@ -5361,7 +5367,7 @@ class ResolvedIrBuildTest(unittest.TestCase):
                 len(indices) for entry in context.entries
                 for indices in form_shards(entry)
             ),
-            4664,
+            4714,
         )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",

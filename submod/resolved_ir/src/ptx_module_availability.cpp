@@ -524,6 +524,8 @@ struct ModuleReferenceUse {
   std::optional<ResolvedRegisterRef> register_ref;
   /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
   std::optional<ResolvedSymbolRef> address_symbol;
+  /** Owned named-index metadata rejoined to declaration shape without an AST. */
+  std::optional<ResolvedNamedArrayIndex> named_array_index;
   /** Cached direct resource identity, including its expected declared kind. */
   std::optional<ResolvedOpaqueSymbolRef> opaque_symbol;
   std::optional<base::OpaqueResourceKind> opaque_use_kind;
@@ -575,6 +577,8 @@ void append_reference(
        .expected_kind = expected_kind,
        .address_symbol =
            address_symbol ? std::optional{*address_symbol} : std::nullopt,
+       .named_array_index =
+           enclosing_address ? enclosing_address->named_index : std::nullopt,
        .enclosing_address_function_kind =
            enclosing_address
                ? std::optional{enclosing_address->enclosing_function_kind}
@@ -827,6 +831,11 @@ void collect_operand_references(
           *value.residency, std::array<SourceRange, 1>{value.residency_range},
           fallback, uses, address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
+    if (value.named_index)
+      if (const auto* index = std::get_if<WithLocs<ResolvedRegisterRef>>(
+              &value.named_index->index))
+        collect_operand_references(index->value, index->locs, fallback, uses,
+                                   address_resolution_policy);
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
       collect_register(*register_ref);
@@ -1176,11 +1185,33 @@ std::optional<ParameterDeclarationRole> expected_parameter_role(
 void check_address_symbol_binding(const binding::Symbol& bound_symbol,
                                   const ModuleReferenceUse& use,
                                   const ResolvedFunction& function,
+                                  const ResolvedModule& module,
                                   checker::CheckDiagnostics& diagnostics) {
   if (!use.address_symbol)
     return;
 
   const ResolvedSymbolRef& cached = *use.address_symbol;
+  if (use.named_array_index) {
+    std::optional<ScalarType> element_type;
+    for (const auto& declaration : module.storage_declarations)
+      if (declaration.symbol_id == bound_symbol.id &&
+          !declaration.array_extents.empty() &&
+          (!declaration.owner_function ||
+           *declaration.owner_function == function.symbol_id))
+        if (const auto* type =
+                std::get_if<ScalarType>(&declaration.element_type))
+          element_type = *type;
+    for (const auto& declaration : function.parameter_declarations)
+      if (declaration.symbol_id == bound_symbol.id &&
+          !declaration.array_extents.empty())
+        element_type = declaration.scalar_type;
+    if (!element_type || cached.declared_type != element_type ||
+        use.named_array_index->scalar_stride !=
+            base::scalar_size_of(*element_type))
+      append_model_mismatch(diagnostics, use.range,
+                            "Named-array address disagrees with its owned "
+                            "numeric array declaration.");
+  }
   const EnclosingFunctionKind expected_function_kind =
       function.is_entry ? EnclosingFunctionKind::Entry
                         : EnclosingFunctionKind::Device;
@@ -1370,7 +1401,7 @@ void check_module_references(const ResolvedModule& module,
           diagnostics, use.range,
           "Resolved module operand has an invalid parameterized member index.");
     }
-    check_address_symbol_binding(*symbol, use, function, diagnostics);
+    check_address_symbol_binding(*symbol, use, function, module, diagnostics);
   }
 }
 

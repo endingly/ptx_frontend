@@ -1149,14 +1149,207 @@ std::expected<WithLocs<ResolvedSymbolRef>, ResolveDiagnostic> resolve_symbol(
                                      identifier->syntax.range};
 }
 
+/** Evaluate integer source syntax without losing its original unsignedness. */
+template <typename... Leaves>
+  requires((std::same_as<Leaves, syntax_ast::AstImmediate> ||
+            std::same_as<Leaves, syntax_ast::AstConstantOperand> ||
+            std::same_as<Leaves, syntax_ast::AstIdentifierRef>) &&
+           ...)
+static std::expected<declaration_semantics::IntegerConstantValue,
+                     ResolveDiagnostic>
+named_index_integer(const std::variant<Leaves...>& source) {
+  return std::visit(
+      [](const auto& leaf)
+          -> std::expected<declaration_semantics::IntegerConstantValue,
+                           ResolveDiagnostic> {
+        using Leaf = std::decay_t<decltype(leaf)>;
+        if constexpr (std::same_as<Leaf, syntax_ast::AstIdentifierRef>) {
+          return std::unexpected(ResolveDiagnostic{
+              .range = leaf.syntax.range,
+              .message = "Expected an integer constant expression."});
+        } else {
+          const auto range = [&]() {
+            if constexpr (std::same_as<Leaf, syntax_ast::AstImmediate>)
+              return leaf.syntax.range;
+            else
+              return leaf.range;
+          }();
+          auto value = [&]() {
+            if constexpr (std::same_as<Leaf, syntax_ast::AstImmediate>) {
+              auto literal = leaf;
+              const bool signed_leaf = !literal.syntax.text.empty() &&
+                                       (literal.syntax.text.front() == '+' ||
+                                        literal.syntax.text.front() == '-');
+              const bool negative =
+                  signed_leaf && literal.syntax.text.front() == '-';
+              if (signed_leaf)
+                literal.syntax.text.erase(0, 1);
+              syntax_ast::AstConstantExpression expression{
+                  syntax_ast::AstConstantLiteral{std::move(literal)}, range};
+              // Compact instruction literals fold the sign into spelling;
+              // restore the evaluator's typed unary node without a value roundtrip.
+              if (signed_leaf)
+                expression = syntax_ast::AstConstantExpression{
+                    syntax_ast::AstConstantUnary{
+                        negative ? syntax_ast::AstConstantUnaryOperator::Minus
+                                 : syntax_ast::AstConstantUnaryOperator::Plus,
+                        std::make_unique<syntax_ast::AstConstantExpression>(
+                            std::move(expression))},
+                    range};
+              return declaration_semantics::numericConstantValue(expression);
+            } else {
+              return declaration_semantics::numericConstantValue(
+                  *leaf.expression);
+            }
+          }();
+          if (!value)
+            return std::unexpected(
+                ResolveDiagnostic{.range = value.error().range,
+                                  .message = value.error().message});
+          if (const auto* integer =
+                  std::get_if<declaration_semantics::IntegerConstantValue>(
+                      &*value))
+            return *integer;
+          return std::unexpected(ResolveDiagnostic{
+              .range = range,
+              .message =
+                  "A named-array index requires an integer expression."});
+        }
+      },
+      source);
+}
+
+/** Bind an array index against owned declaration shape; no borrowed shape survives. */
+static std::expected<ResolvedNamedArrayIndex, ResolveDiagnostic>
+resolve_named_array_index(const syntax_ast::AstAddress& address,
+                          const ResolvedSymbolRef& symbol,
+                          const ResolveContext* context,
+                          NamedArrayAddressPolicy policy) {
+  const auto reject = [&](std::string message) {
+    return std::unexpected(ResolveDiagnostic{.range = address.range,
+                                             .message = std::move(message)});
+  };
+  if (policy == NamedArrayAddressPolicy::Reject)
+    return reject(
+        "This instruction variant does not support named-array addresses.");
+  if (!context || !symbol.symbol_id)
+    return reject(
+        "Named-array indexing requires owned declaration/array-shape context.");
+  std::optional<ScalarType> element_type;
+  for (const auto& declaration : context->storage_declarations)
+    if (declaration.symbol_id == *symbol.symbol_id &&
+        !declaration.array_extents.empty())
+      if (const auto* type = std::get_if<ScalarType>(&declaration.element_type))
+        element_type = *type;
+  for (const auto& declaration : context->parameter_declarations)
+    if (declaration.symbol_id == *symbol.symbol_id &&
+        !declaration.array_extents.empty())
+      element_type = declaration.scalar_type;
+  if (!element_type || !scalar_size_of(*element_type))
+    return reject(
+        "Named-array indexing requires an owned numeric array declaration.");
+  const auto& source = *address.named_index;
+  ResolvedNamedArrayIndex result{
+      .scalar_stride = scalar_size_of(*element_type),
+      .base_range =
+          std::get<syntax_ast::AstIdentifierRef>(address.base).syntax.range,
+      .left_bracket_range = source.left_bracket_range,
+      .right_bracket_range = source.right_bracket_range,
+      .range = source.range};
+  result.index_range = std::visit(
+      [](const auto& leaf) {
+        if constexpr (requires { leaf.syntax.range; })
+          return leaf.syntax.range;
+        else
+          return leaf.range;
+      },
+      source.index);
+  if (const auto* identifier =
+          std::get_if<syntax_ast::AstIdentifierRef>(&source.index)) {
+    auto reg =
+        resolve_bound_register(*identifier, ResolvedRegisterClass::General,
+                               *context, identifier->syntax.range);
+    if (!reg)
+      return std::unexpected(reg.error());
+    if (auto check =
+            check_address_register_type(*reg, identifier->syntax.range);
+        !check)
+      return std::unexpected(check.error());
+    if (reg->vector_width)
+      return reject("A named-array index requires a scalar register.");
+    result.index = WithLocs<ResolvedRegisterRef>{std::move(*reg),
+                                                 identifier->syntax.range};
+  } else {
+    auto integer = named_index_integer(source.index);
+    if (!integer)
+      return std::unexpected(integer.error());
+    result.index = *integer;
+  }
+  if (source.displacement) {
+    auto integer = named_index_integer(source.displacement->magnitude);
+    if (!integer)
+      return std::unexpected(integer.error());
+    result.displacement = *integer;
+    result.operation = source.displacement->operation ==
+                               syntax_ast::AstAddressOffset::Operator::Add
+                           ? ResolvedAddressOffsetOperator::Add
+                           : ResolvedAddressOffsetOperator::Subtract;
+    result.operator_range = source.operator_range;
+    result.displacement_range = std::visit(
+        [](const auto& leaf) {
+          if constexpr (requires { leaf.syntax.range; })
+            return leaf.syntax.range;
+          else
+            return leaf.range;
+        },
+        source.displacement->magnitude);
+  }
+  const auto bytes = named_array_byte_displacement(result);
+  if (!bytes || (policy == NamedArrayAddressPolicy::Memory &&
+                 (*bytes < INT32_MIN || *bytes > INT32_MAX)))
+    return reject(
+        "Scaled named-array displacement exceeds the address byte-offset "
+        "range.");
+  result.byte_displacement = *bytes;
+  return result;
+}
+
 std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
-    const syntax_ast::AstOperand& operand, const ResolveContext* context) {
+    const syntax_ast::AstOperand& operand, const ResolveContext* context,
+    NamedArrayAddressPolicy named_array_policy =
+        NamedArrayAddressPolicy::Reject) {
   const auto* address = std::get_if<syntax_ast::AstAddress>(&operand);
-  if (address == nullptr || !address->bracketed) {
+  if (address == nullptr || (!address->bracketed && !address->named_index)) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected a bracketed address operand.",
     });
+  }
+
+  if (address->named_index) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&address->base);
+    if (address->bracketed || !identifier)
+      return std::unexpected(ResolveDiagnostic{
+          .range = address->range,
+          .message = "Expected a single named-array address."});
+    auto symbol = resolve_data_symbol(
+        *identifier, context,
+        FormalParameterAddressPolicy::PreserveParameterSpace);
+    if (!symbol)
+      return std::unexpected(symbol.error());
+    auto index = resolve_named_array_index(*address, *symbol, context,
+                                           named_array_policy);
+    if (!index)
+      return std::unexpected(index.error());
+    return WithLocs<ResolvedAddress>{
+        ResolvedAddress{
+            .base = std::move(*symbol),
+            .enclosing_function_kind = context && context->function_is_entry
+                                           ? EnclosingFunctionKind::Entry
+                                           : EnclosingFunctionKind::Device,
+            .named_index = std::move(*index)},
+        address->range};
   }
 
   std::optional<ResolvedAddressBase> base;
@@ -2369,6 +2562,17 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
     auto symbol = resolve_data_symbol(*identifier, context, parameter_policy);
     if (!symbol)
       return std::unexpected(symbol.error());
+    if (address->named_index) {
+      auto index = resolve_named_array_index(*address, *symbol, context,
+                                             NamedArrayAddressPolicy::Mov);
+      if (!index)
+        return std::unexpected(index.error());
+      ResolvedAddress value{.base = std::move(*symbol),
+                            .enclosing_function_kind = enclosing_function_kind,
+                            .named_index = std::move(*index)};
+      return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(value)},
+                                         address->range};
+    }
     auto offset = resolve_address_offset(*address);
     if (!offset)
       return std::unexpected(offset.error());
@@ -2735,7 +2939,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedOperandBindingDescriptor& binding,
     const syntax_ast::AstOperand& operand,
-    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+    const ResolvedInstructionFields& fields, const ResolveContext* context,
+    NamedArrayAddressPolicy named_array_policy) {
   switch (field.value_kind) {
     case ResolvedValueKind::VideoOperand: {
       if (!binding.video)
@@ -3091,7 +3296,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::Address: {
-      auto value = resolve_address(operand, context);
+      auto value = resolve_address(operand, context, named_array_policy);
       if (!value)
         return std::unexpected(value.error());
       if (binding.address_base_policy == checker::AddressBasePolicy::Register &&

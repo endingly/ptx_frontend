@@ -40,6 +40,21 @@ from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.spec.model import AsyncCompletionKind, FabricOperation, SemanticRule
 
 
+def _named_array_policy(entry, variant) -> str:
+    """Select the bounded address surface from canonical final-variant metadata."""
+    opcode = entry.specification.opcode
+    if opcode == "ld" and variant.rule in {
+        SemanticRule.DATA_MOVEMENT_LD_GENERIC, SemanticRule.DATA_MOVEMENT_LD_EXPLICIT
+    } and not any(field.name == "nc" and field.constant_value is True
+                  for field in variant.modifier_fields):
+        return "NamedArrayAddressPolicy::Memory"
+    if opcode == "st" and variant.rule in {
+        SemanticRule.DATA_MOVEMENT_ST_GENERIC, SemanticRule.DATA_MOVEMENT_ST_EXPLICIT
+    }:
+        return "NamedArrayAddressPolicy::Memory"
+    return "NamedArrayAddressPolicy::Reject"
+
+
 def _append_result(expression: str) -> str:
     """Append a checker result's diagnostics in source evaluation order."""
 
@@ -133,6 +148,29 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
     surface_check = _emit_surface_layout_check(entry, variant, layout, slots, backend)
     texture_check = _emit_texture_layout_check(entry, variant, layout, slots, backend)
     stack_check = _emit_stack_layout_check(entry, variant, layout, slots, backend)
+    named_checks = []
+    for field in layout.fields:
+        member = _member_expr(field, operand_slot_for_field(slots, field, backend))
+        policy = _named_array_policy(entry, variant)
+        if field.value_kind is ResolvedValueKind.ADDRESS:
+            pointer = f"&{member}.value"
+        elif field.value_kind is ResolvedValueKind.MOV_SOURCE:
+            pointer = f"std::get_if<ResolvedAddress>(&{member}.value)"
+            policy = "NamedArrayAddressPolicy::Mov"
+        elif field.value_kind is ResolvedValueKind.TENSOR_OPERAND:
+            pointer = f"&{member}.value.tensor_map.address"
+            policy = "NamedArrayAddressPolicy::Reject"
+        else:
+            continue
+        named_checks.append(f'''      if (const auto* address = {pointer};
+          address && !valid_named_array_address(*address, {policy}, context.instruction_range)) {{
+        diagnostics.push_back(checker::CheckDiagnostic{{
+            .kind = checker::CheckDiagnosticKind::RuleViolation,
+            .range = context.instruction_range,
+            .message = "Invalid or unsupported owned named-array address payload.",
+        }});
+      }}''')
+    named_check = "\n".join(named_checks)
     matrix = f"&{name}::matrix_topology" if variant.matrix is not None else "nullptr"
     return f"""    case {layout_index}: {{
       const auto availability_check = checker::check_operand_layout_availability(
@@ -142,6 +180,7 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
           {checker_variant}, {layout_index}, modifier_values, context);
 {_append_result('layout_modifier_check')}
 {guard}
+{named_check}
       const std::array<checker::OperandView, {len(layout.fields)}> operands = {{{{
 {views}
       }}}};
@@ -533,6 +572,10 @@ def _emit_resolve(entry, backend) -> str:
     }}
     }}""")
     cases = "\n".join(clauses)
+    named_policies = "\n".join(
+        f"    case {form_name(entry, variant)}::kind: return {_named_array_policy(entry, variant)};"
+        for variant in entry.resolved.variants
+    )
     return f"""/** Resolve {entry.resolved.opcode} to one exact final form. */
 std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{entry.cpp_name}(
     const syntax_ast::AstInstruction& ast, const ResolveContext* context) {{
@@ -542,8 +585,14 @@ std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{entry.cpp
 {identity_map}
     throw ResolveException("Unknown {entry.cpp_name} descriptor identity.");
   }}();
+  const auto named_array_policy = [&]() {{
+    switch (kind) {{
+{named_policies}
+      default: return NamedArrayAddressPolicy::Reject;
+    }}
+  }}();
   auto fields = resolve_fields(ast, {prefix}_syntax_descriptor(),
-      {prefix}_resolved_descriptor(), *selected, context);
+      {prefix}_resolved_descriptor(), *selected, context, named_array_policy);
   if (!fields) return std::unexpected(fields.error());
   switch (kind) {{
 {cases}

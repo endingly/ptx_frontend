@@ -29,6 +29,29 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Named indexing retains its own brackets and register displacement tokens. */
+TEST(PtxCstParser, PreservesNamedArrayIndexPunctuation) {
+  PtxCstParser parser("mov.u64 %rd, A[idx - (1+2)];");
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result) << result.diagnostics.front().message;
+  const auto& address =
+      std::get<CstAddress>(result->instruction()->operands[1].operand);
+  EXPECT_FALSE(address.left_bracket);
+  EXPECT_FALSE(address.offset);
+  ASSERT_TRUE(address.named_index);
+  const auto& named = *address.named_index;
+  EXPECT_EQ(result->token(named.left_bracket).text, "[");
+  EXPECT_EQ(result->token(named.right_bracket).text, "]");
+  EXPECT_EQ(
+      result->token(std::get<syntax_cst::CstIdentifier>(named.index).token)
+          .text,
+      "idx");
+  ASSERT_TRUE(named.displacement);
+  EXPECT_EQ(result->token(named.displacement->operator_token).text, "-");
+  EXPECT_TRUE(std::holds_alternative<syntax_cst::CstConstantOperand>(
+      named.displacement->magnitude));
+}
+
 /** The composite source preserves its inner punctuation and address tokens. */
 TEST(PtxCstParser, PreservesTensorMapCoordinateComposite) {
   PtxCstParser parser(

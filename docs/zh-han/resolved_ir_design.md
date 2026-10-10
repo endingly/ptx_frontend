@@ -1,5 +1,34 @@
 # C++ Resolved IR 设计
 
+## 具名数组地址
+
+专用 address-source MOV 与普通 LD（ISA §9.7.9.8）/ ST（§9.7.9.11）
+接纳 `A[index]`。LDNC、LDU、ST.async/bulk、atom/red、cp.async、prefetch、
+matrix、tensor、texture family 仍不在此支持子集内；这不声称它们的 PTX ISA
+语法非法。接纳策略由最终 variant 的规范元数据决定，并在 owned IR 中独立复查。
+具名形式不与 `.unified` suffix 组合。已知 unified storage 的 LD 仍需既有
+bracket-qualified 路径，ST 仍因只读约束被拒绝；MOV 可以取其地址（包括具名
+indexing）而不进行解引用。
+
+`ResolvedAddress::named_index` 拥有整数 index 的 bits/signedness 或精确绑定的
+标量 register、可选整数 displacement、源码 operator、标量字节 stride 和 range；
+它与原有 byte offset 互斥。`A[1]` 按声明的标量 base element 大小缩放：
+u32、v2.u32 和多维 u32 数组均为四字节，u64 为八字节。array shape 来自按
+SymbolId 关联的 owned storage/parameter record；缺少此上下文的 standalone
+resolve 明确失败。负数或越界常量不会仅因数组 bounds 被拒绝。
+
+动态整数/bit register 保留声明的位宽与 signedness，包括窄类型和 s64；不做
+运行时求值、cast、promotion、截断或假定 sign extension。只有常量贡献先被
+检查和缩放，再应用 MOV signed-64 或 memory signed-32 字节域。direct-minus
+与 plus-negative 的常量贡献相同，但源码运算保持不同。动态对齐为
+`gcd(base alignment, scalar stride)`，再由常量字节贡献降低。owned validation
+重新关联声明 shape/register identity，复查缓存 stride/displacement 和 range，
+不依赖 Syntax AST 生命周期。
+
+本地 ptxas CUDA 13.3 V13.3.33 探针确认按标量 element 缩放并接纳负数/越界常量。
+该编译器拒绝动态 direct-minus 拼写而接纳 plus-negative；frontend 有意同时
+接纳两者。这些是编译器观察，不是 GPU 执行结果或运行时位宽/符号规则。
+
 ## 指令常量表达式求值与转换
 
 拥有源码树的 constant-expression operand 先经共享 semantic evaluator 求值，

@@ -367,6 +367,31 @@ TEST(PtxSyntaxParser, LowersFunctionLocalBranchTargetsPayload) {
   EXPECT_EQ(targets.targets[1].count->range.start.line, 3u);
 }
 
+TEST(PtxSyntaxParser, LowersNamedArrayIndexRangesAndDeepCopiesExpressions) {
+  PtxSyntaxParser parser("mov.u64 %rd, A[idx - (1+2)];");
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result) << result.diagnostics.front().message;
+  const auto& address = std::get<AstAddress>(result->operands[1]);
+  EXPECT_FALSE(address.bracketed);
+  EXPECT_FALSE(address.offset);
+  ASSERT_TRUE(address.named_index);
+  const auto& named = *address.named_index;
+  EXPECT_EQ(std::get<syntax_ast::AstIdentifierRef>(named.index).syntax.text,
+            "idx");
+  EXPECT_EQ(named.left_bracket_range.start.column, 15u);
+  EXPECT_EQ(named.right_bracket_range.start.column, 27u);
+  EXPECT_EQ(named.operator_range.start.column, 20u);
+  ASSERT_TRUE(named.displacement);
+  EXPECT_EQ(named.displacement->operation,
+            AstAddressOffset::Operator::Subtract);
+  auto copied = address;
+  const auto& original =
+      std::get<syntax_ast::AstConstantOperand>(named.displacement->magnitude);
+  const auto& clone = std::get<syntax_ast::AstConstantOperand>(
+      copied.named_index->displacement->magnitude);
+  EXPECT_NE(original.expression.get(), clone.expression.get());
+}
+
 TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {
   PtxSyntaxParser parser("ld.u32 %r1, %rd1-4;");
 

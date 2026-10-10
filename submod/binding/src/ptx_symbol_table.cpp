@@ -1122,6 +1122,11 @@ struct SymbolTableBuilder {
               addReference(scope, ReferenceKind::InstructionOperand,
                            *identifier);
             }
+            if (value.named_index) {
+              if (const auto* index = std::get_if<syntax_ast::AstIdentifierRef>(
+                      &value.named_index->index))
+                addReference(scope, ReferenceKind::InstructionOperand, *index);
+            }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstTensorOperand>) {
             if (const auto* identifier =

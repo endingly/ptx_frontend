@@ -414,6 +414,13 @@ actual `.b128` register for a narrower selected instruction. The focused
 [LD](ld_coverage.md) and [ST](st_coverage.md) documents state the supported
 memory forms and their remaining boundaries.
 
+`vector.allow_named` is a Boolean, default false, accepted only on element-policy
+`reg_vector` operands. It propagates to the binding and `OperandDescriptor::allow_named_vector`,
+adding identifier syntax only to the opted slot. Ordinary LD/LDNC/LDU destinations
+and ordinary ST sources opt in; async/bulk stores and other consumers do not.
+The named declaration remains limited to v2/v4 and 128 bits, independently of
+modern 256-bit brace support. See [owned provenance](resolved_ir_design.md#named-memory-vector-sources).
+
 A `reg_vector` operand must declare legal element counts through
 `vector.arity`. Static forms use an integer or list:
 

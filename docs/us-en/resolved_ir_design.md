@@ -312,6 +312,31 @@ are checked separately with their own symbol scope. Actual intervening
 instructions and predicated staging accesses remain invalid. The declaration's
 placement does not change which bound parameter identity the call must use.
 
+## Named memory-vector sources
+
+Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`
+or `.reg .v4` data operand alongside braces. Declaration width must equal arity,
+with at most 128 declared bits; memory equal-or-wider element rules remain.
+Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix, texture
+and scalar pack/unpack operands remain brace-only.
+
+`ResolvedRegisterVector::elements` retains the lanes. Its owned `ResolvedVectorSource`
+distinguishes `BraceList`/`NamedVector`, saves the full written range, and only for
+named form owns the real `WithLocs<ResolvedVectorRegisterRef>` whole base. Ordered
+lanes share its SymbolId, parameterized member and declared element type; each
+has `NamedProjection` origin, canonical lane and actual declaration width, absent
+effective `vector_width` and no selector. All base/lane locations repeat the exact
+written identifier range; no `.x` text or selector range is fabricated.
+
+Only a complete valid named container plus an opted descriptor admits projections.
+Scalar/brace consumers still reject them. Reference traversal includes wholebase
+and each lane; AST-free owned validation rejoins declarations and source ownership.
+Actual braces always retain their full range. Legacy standalone manual braces may
+omit it, but malformed supplied ranges reject; owned validation requires full
+provenance and instruction/lane containment. Named provenance is always mandatory.
+This data-source opt-in does not widen array-address policy: LDNC/LDU named-array
+addresses remain excluded. No GPU execution or assembler parity is claimed.
+
 ## Locations and primitive values
 
 Every independently diagnosable resolved value uses:
@@ -385,7 +410,7 @@ scalar, so `vector_width` is absent; `declared_type` remains the declaration's
 scalar element type. `same_register_storage` compares base/member/lane, making
 `V.x` and `V.r` aliases but `V.x` and `V.y` distinct. Scalar and brace
 checking require valid `ExplicitSelector` provenance tied to actual operand
-locations. Reserved `NamedProjection` metadata is not admitted by these source
+locations. `NamedProjection` metadata is not admitted by these source
 forms and carries no fabricated written selector. Owned validation rejoins the
 base identity, declaration shape/type and source ranges. Calls, address bases
 and named-array indices do not admit new component syntax or transplanted

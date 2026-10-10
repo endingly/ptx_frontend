@@ -1158,6 +1158,11 @@ $defs:
         type: boolean
         default: false
 
+      allow_named:
+        description: "Admit a named ordinary vector register for an element-policy reg_vector."
+        type: boolean
+        default: false
+
       allowed_register_types:
         description: "Explicit declared register types accepted in each vector lane."
         type: array

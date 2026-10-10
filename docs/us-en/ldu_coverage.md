@@ -1,5 +1,7 @@
 # PTX 9.3 `ldu` coverage
 
+Ordinary named v2/v4 data registers (at most 128 declared bits) are accepted alongside braces for ordinary LD/ST, LDNC and LDU. Modern 256-bit and async store forms remain brace-only; see [owned source contract](resolved_ir_design.md#named-memory-vector-sources).
+
 The frontend models the documented supported forms in PTX ISA 9.3 §9.7.9.10. `ldu` loads
 read-only global data from an address uniform across the warp. The frontend
 checks instruction shape and address provenance; it does not prove that the

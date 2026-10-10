@@ -2205,8 +2205,13 @@ TEST(ResolvedModule, ResolvesAndChecksLdmatrixSyncAlignedM8n8X2SharedB16Slice) {
   ASSERT_TRUE(unaligned_address.has_value())
       << unaligned_address.error().front().message;
   const auto& alignment_body = unaligned_address->functions.front().body;
-  EXPECT_TRUE(alignment_body[0]->check(context).has_value());
-  const auto unaligned_check = alignment_body[1]->check(context);
+  auto alignment_context = context;
+  alignment_context.instruction_range =
+      unaligned_address->functions.front().instruction_ranges[0];
+  EXPECT_TRUE(alignment_body[0]->check(alignment_context).has_value());
+  alignment_context.instruction_range =
+      unaligned_address->functions.front().instruction_ranges[1];
+  const auto unaligned_check = alignment_body[1]->check(alignment_context);
   ASSERT_FALSE(unaligned_check.has_value());
   EXPECT_EQ(unaligned_check.error().front().kind,
             checker::CheckDiagnosticKind::AddressAlignmentMismatch);

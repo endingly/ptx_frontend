@@ -949,14 +949,12 @@ TEST(ResolvedModule, RejectsInvalidLegacyLoadStoreRegisterVectors) {
   const auto scalar_load = resolve_source("ld.v2.u32 %r0, [%rd0];");
   ASSERT_FALSE(scalar_load.has_value());
   EXPECT_EQ(scalar_load.error().front().message,
-            "Operands do not match any layout of instruction variant "
-            "'GenericVector'.");
+            "Expected a .reg .v2 register, but '%r0' is not one.");
 
   const auto scalar_store = resolve_source("st.v2.u32 [%rd0], %r0;");
   ASSERT_FALSE(scalar_store.has_value());
   EXPECT_EQ(scalar_store.error().front().message,
-            "Operands do not match any layout of instruction variant "
-            "'GenericVector'.");
+            "Expected a .reg .v2 register, but '%r0' is not one.");
 
   const auto arity_mismatch = resolve_source("ld.v4.u32 {%r0, %r1}, [%rd0];");
   ASSERT_FALSE(arity_mismatch.has_value());

@@ -72,6 +72,7 @@ class _VectorOptions:
     arity_expression: OperandVectorArityExpression | None
     type_policy: OperandVectorTypePolicy
     allow_sink: bool
+    allow_named: bool
     sink_payload_bits: int
     allowed_register_types: tuple[str, ...]
     require_uniform_register_family: bool
@@ -199,6 +200,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         vector_arity_expression=vector.arity_expression,
         vector_type_policy=vector.type_policy,
         vector_allow_sink=vector.allow_sink,
+        vector_allow_named=vector.allow_named,
         vector_sink_payload_bits=vector.sink_payload_bits,
         vector_allowed_register_types=vector.allowed_register_types,
         vector_require_uniform_register_family=vector.require_uniform_register_family,
@@ -386,10 +388,16 @@ def _normalize_brace_pack_options(raw: dict[str, Any]) -> _BracePackOptions:
 def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     """Normalize vector arity, type policy, and sink options in that order."""
 
+    if (isinstance(raw.get("vector"), dict)
+            and "allow_named" in raw["vector"]
+            and raw["kind"] is not OperandKind.REGISTER_VECTOR):
+        raise ValueError("vector.allow_named requires element-policy reg_vector")
+
     vector_arities: tuple[int, ...] = ()
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink = False
+    vector_allow_named = False
     vector_sink_payload_bits = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family = False
@@ -432,6 +440,14 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
                 f"{vector.get('type_policy')!r}"
             ) from error
         vector_allow_sink = vector.get("allow_sink", False)
+        vector_allow_named = vector.get("allow_named", False)
+        if not isinstance(vector_allow_named, bool):
+            raise TypeError("vector.allow_named must be a boolean")
+        if "allow_named" in vector and (
+            raw["kind"] is not OperandKind.REGISTER_VECTOR
+            or vector_type_policy is not OperandVectorTypePolicy.ELEMENT
+        ):
+            raise ValueError("vector.allow_named requires element-policy reg_vector")
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."
@@ -503,6 +519,7 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         arity_expression=vector_arity_expression,
         type_policy=vector_type_policy,
         allow_sink=vector_allow_sink,
+        allow_named=vector_allow_named,
         sink_payload_bits=vector_sink_payload_bits,
         allowed_register_types=vector_allowed_register_types,
         require_uniform_register_family=vector_require_uniform_register_family,

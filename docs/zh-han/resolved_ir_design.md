@@ -252,6 +252,28 @@ call/branch metadata 仍是扫描边界；嵌套 body 使用自身 symbol scope 
 实际插入的执行指令与带 predicate 的 staging 访问仍然非法。声明所在的位置不会改变
 call 必须使用的已绑定参数 identity。
 
+## Named memory-vector source
+
+普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通
+named `.reg .v2`/`.reg .v4`。声明宽度必须等于 arity，实际声明总大小不超过 128 bit；
+memory equal-or-wider element 规则不变。现代 256-bit vector、async store、
+atomic/reduction、matrix、texture 与 scalar pack/unpack operand 仍只接受 brace。
+
+`ResolvedRegisterVector::elements` 保留各 lane；owned `ResolvedVectorSource` 区分
+`BraceList`/`NamedVector`，保存完整书写范围，仅 named form 拥有真实 whole
+`WithLocs<ResolvedVectorRegisterRef>`。有序 lane 共享其 SymbolId、parameterized
+member 和声明 element type，使用 `NamedProjection` origin、canonical lane 与实际
+声明宽度；有效 `vector_width` 为空，没有 selector。base/lane 位置都复用准确的 whole
+identifier range，不伪造 `.x` 或 selector range。
+
+只有完整合法 named container 加明确 opt-in descriptor 才授权投影；scalar/brace
+consumer 仍拒绝。Reference traversal 包含 wholebase 与每个 lane；AST-free owned
+validation 重联声明和来源 owner。实际 brace 总保存 fullrange；历史手工 standalone
+brace 可省略，但提供的畸形范围必须拒绝。Owned validation 要求完整 provenance 与
+instruction/lane containment，named provenance 始终不可省略。Data-source opt-in
+不扩展 array-address policy：LDNC/LDU named-array 地址仍排除。不宣称 GPU 执行或
+assembler parity。
+
 ## 位置与基本值
 
 每个可独立诊断的 resolved 值使用：
@@ -302,7 +324,7 @@ selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空
 `declared_type` 仍是声明的 scalar element type。`same_register_storage` 比较
 base/member/lane，故 `V.x` 与 `V.r` 同址，而 `V.x` 与 `V.y` 不同。
 Scalar 与 brace 校验要求合法 `ExplicitSelector` 来源，并同实际 operand 位置关联。
-预留的 `NamedProjection` 元数据不由这些 source form 接受，也不伪造书写 selector。
+`NamedProjection` 元数据不由这些 source form 接受，也不伪造书写 selector。
 Owned validation 重新关联 base identity、声明 shape/type 与源码范围。Call、address
 base 与 named-array index 不接受新增 component 语法或移植的 component reference。
 Fabric handle 保留独立的 identifier-only 语法，拒绝两种 component origin。

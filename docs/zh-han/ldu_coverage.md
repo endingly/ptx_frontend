@@ -1,5 +1,7 @@
 # PTX 9.3 `ldu` 覆盖范围
 
+普通 LD/ST、LDNC 与 LDU 在 brace 外接受 named v2/v4 data register（实际声明最多 128 bit）。现代 256-bit 和 async store form 仍只接受 brace；详见 [owned source contract](resolved_ir_design.md#named-memory-vector-source)。
+
 前端建模 PTX ISA 9.3 §9.7.9.10 中已文档化且受支持的形式。`ldu` 从 warp 内地址一致的
 只读 global 数据加载。前端检查指令形式与地址来源；它不证明运行时地址一致，
 也不证明数据在运行时只读。

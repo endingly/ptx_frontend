@@ -954,6 +954,7 @@ class OperandSpec:
     vector_arity_expression: OperandVectorArityExpression | None = None
     vector_type_policy: OperandVectorTypePolicy = OperandVectorTypePolicy.AGGREGATE
     vector_allow_sink: bool = False
+    vector_allow_named: bool = False
     vector_sink_payload_bits: int = 0
     vector_allowed_register_types: tuple[str, ...] = ()
     vector_require_uniform_register_family: bool = False

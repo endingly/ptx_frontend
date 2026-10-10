@@ -96,6 +96,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 "minimum_elements": None,
                 "maximum_elements": None,
                 "element_kinds": (),
+                "surface_geometry": None,
                 "texture_geometry": None,
                 "texture_legacy_v4_coordinates": False,
                 "texture_unbracketed": False,
@@ -612,7 +613,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 self.assert_rejected(
                     raw | {"type": "b32", "register_width": "equal_or_wider"},
                     ValueError,
-                    "operand 'x': equal_or_wider register_width is only valid for kind 'reg', 'reg_or_imm', or 'reg_vector'",
+                    "operand 'x': equal_or_wider register_width is only valid for kind 'reg', 'reg_or_imm', 'reg_vector', or 'value_vector'",
                 )
         for raw in (_operand(), _vector()):
             with self.subTest(kind=raw["kind"]):

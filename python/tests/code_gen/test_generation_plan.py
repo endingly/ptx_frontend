@@ -327,8 +327,8 @@ class GenerationPlanTests(unittest.TestCase):
         forms = tuple(
             variant for entry in context.entries for variant in entry.resolved.variants
         )
-        self.assertEqual((len(context.entries), len(forms)), (107, 4906))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 6779)
+        self.assertEqual((len(context.entries), len(forms)), (111, 5246))
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7119)
         self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 1085)
         for form in forms:
             slots = operand_slots(form, self.backend)
@@ -344,7 +344,7 @@ class GenerationPlanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             plan = build_generation_plan(context, Path(directory))
             shard_count = sum(len(form_shards(entry)) for entry in context.entries)
-            self.assertEqual(shard_count, 65)
+            self.assertEqual(shard_count, 71)
             self.assertEqual(len(plan.paths), 12 + 3 * len(context.entries)
                              + 3 * shard_count)
             self.assertTrue(all(path.name.endswith((".gen.cpp", ".gen.hpp"))

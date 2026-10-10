@@ -619,6 +619,8 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFabricHandle> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSurfaceAccess> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSurfaceQueryResource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureAccess> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureQueryResource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureResult> ||
@@ -780,6 +782,15 @@ void collect_operand_references(
       collect_operand_references(value.counter_offset->value,
                                  value.counter_offset->locs, fallback, uses,
                                  address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedSurfaceAccess>) {
+    collect_resource(value.surface, value.surface.source_range);
+    for (const auto& lane : value.coordinates) {
+      const std::array<SourceRange, 1> range{lane.range};
+      collect_operand_references(lane.value, range, fallback, uses,
+                                 address_resolution_policy);
+    }
+  } else if constexpr (std::same_as<Value, ResolvedSurfaceQueryResource>) {
+    collect_resource(value.resource, value.resource.source_range);
   } else if constexpr (std::same_as<Value, ResolvedTextureAccess>) {
     collect_resource(value.texture, value.texture.source_range);
     if (value.sampler)
@@ -1020,6 +1031,19 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void fabric_handle(const ResolvedFabricHandle& value,
                      std::span<const SourceRange> locations,
                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect each surface identity and nested coordinate register. */
+  void surface_access(const ResolvedSurfaceAccess& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect a direct or indirect surface query identity. */
+  void surface_query_resource(
+      const ResolvedSurfaceQueryResource& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect bound resource heads and coordinate registers in an access. */

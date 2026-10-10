@@ -711,6 +711,8 @@ $defs:
       - tensor_im2col_info
       - tensor_operand
       - fabric_handle
+      - surface_access
+      - surface_query_resource
       - texture_access
       - texture_query_resource
       - texture_result
@@ -885,6 +887,8 @@ $defs:
         type: string
         pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
 
+      surface_geometry:
+        enum: [1d, 2d, 3d, a1d, a2d]
       texture_geometry:
         description: "Static coordinate topology for a texture access."
         type: string
@@ -1684,6 +1688,17 @@ $defs:
           reports_fabric: {type: boolean}
           requires_mbarrier_layout_v1: {type: boolean}
 
+      surface:
+        type: object
+        additionalProperties: false
+        properties:
+          geometry: {enum: [1d, 2d, 3d, a1d, a2d]}
+          addressing: {enum: [b, p]}
+          boundary: {enum: [trap, clamp, zero]}
+          operation: {enum: [add, min, max, and, or]}
+          query: {enum: [width, height, depth, channel_data_type, channel_order, array_size, memory_layout]}
+          vector_arity: {enum: [1, 2, 4]}
+          indirect_availability: {$ref: "#/$defs/availability"}
       texture:
         description: "Typed static contract for a texture-family exact form."
         type: object

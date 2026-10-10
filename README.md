@@ -118,6 +118,12 @@ supported surface and its exclusions.
 - [Tensor-map/TMA frontend closeout](docs/us-en/tensor_async_closeout.md) and its
   [简体中文版本](docs/zh-han/tensor_async_closeout.md) map the fixed PTX 9.3
   requirements to source, tests, and the opaque-descriptor boundary.
+- [Surface frontend coverage](docs/us-en/surface_coverage.md) and its
+  [简体中文版本](docs/zh-han/surface_coverage.md) describe all four PTX 9.3
+  surface families, 1,864 legal mnemonic combinations, independent typed
+  resources and coordinates, static feature gates, and runtime boundaries.
+  The explicit generic `sm_50` target profile supports the minimum target for
+  64-bit surface min/max; its enabled family and capability domains are empty.
 - [Texture and opaque resource coverage](docs/us-en/texture_coverage.md) and its
   [简体中文版本](docs/zh-han/texture_coverage.md) describe the typed four-family
   source contracts, declaration identity, compatibility syntax, and runtime boundary.

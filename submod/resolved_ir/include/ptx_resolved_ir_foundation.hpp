@@ -394,6 +394,86 @@ struct FabricInstructionDescriptor {
   std::optional<base::MbarrierLayout> required_mbarrier_layout;
 };
 
+/** Coordinate topology supported by surface access instructions. */
+enum class SurfaceGeometry : uint8_t {
+  OneD,
+  TwoD,
+  ThreeD,
+  ArrayOneD,
+  ArrayTwoD
+};
+/** The unit selected by the x coordinate: raw bytes or formatted samples. */
+enum class SurfaceAddressingMode : uint8_t { Byte, Sample };
+/** Source-selected behavior when a surface coordinate is out of bounds. */
+enum class SurfaceBoundaryMode : uint8_t { Trap, Clamp, Zero };
+/** The closed surface reduction operation domain. */
+enum class SurfaceReductionOperation : uint8_t { Add, Min, Max, And, Or };
+/** Query identity; surface configuration and the returned value are runtime facts. */
+enum class SurfaceQuery : uint8_t {
+  Width,
+  Height,
+  Depth,
+  ChannelDataType,
+  ChannelOrder,
+  ArraySize,
+  MemoryLayout
+};
+/** Interpretation of one preserved surface coordinate lane. */
+enum class SurfaceLaneRole : uint8_t { Spatial, ArrayLayer, Ignored };
+/** Return the exact source tuple size for a surface geometry. */
+inline constexpr size_t surface_coordinate_arity(
+    SurfaceGeometry geometry) noexcept {
+  switch (geometry) {
+    case SurfaceGeometry::OneD:
+      return 1;
+    case SurfaceGeometry::TwoD:
+    case SurfaceGeometry::ArrayOneD:
+      return 2;
+    case SurfaceGeometry::ThreeD:
+    case SurfaceGeometry::ArrayTwoD:
+      return 4;
+  }
+  return 0;
+}
+/** Classify each source lane without discarding ignored padding. */
+inline constexpr SurfaceLaneRole surface_lane_role(SurfaceGeometry geometry,
+                                                   size_t index) noexcept {
+  if ((geometry == SurfaceGeometry::ArrayOneD ||
+       geometry == SurfaceGeometry::ArrayTwoD) &&
+      index == 0)
+    return SurfaceLaneRole::ArrayLayer;
+  if ((geometry == SurfaceGeometry::ThreeD ||
+       geometry == SurfaceGeometry::ArrayTwoD) &&
+      index == 3)
+    return SurfaceLaneRole::Ignored;
+  return SurfaceLaneRole::Spatial;
+}
+namespace checker {
+struct AvailabilityDescriptor;
+}
+/** Immutable exact-form surface semantics for AST-free consumers. */
+struct SurfaceInstructionDescriptor {
+  /** Absent only for a surface property query. */
+  std::optional<SurfaceGeometry> geometry;
+  /** Absent for queries; this selects coordinate units, not access direction. */
+  std::optional<SurfaceAddressingMode> addressing;
+  /** Absent for queries; no runtime boundary proof is implied. */
+  std::optional<SurfaceBoundaryMode> boundary;
+  /** Present only on surface reduction forms. */
+  std::optional<SurfaceReductionOperation> operation;
+  /** Present only on surface query forms. */
+  std::optional<SurfaceQuery> query;
+  /** Number of source or destination data registers. */
+  uint8_t vector_arity = 1;
+  /** Static-lifetime canonical feature gate for an indirect resource carrier. */
+  const checker::AvailabilityDescriptor* indirect_availability = nullptr;
+};
+/** Mutable type selection borrowed from a concrete surface form. */
+struct SurfaceSelectedTypes {
+  /** The access/reduction data type, or query result type. */
+  std::optional<base::ScalarType> data_type;
+};
+
 /** Source-selected texturing mode; absence in a module defaults to Unified. */
 enum class TextureMode : uint8_t { Unified, Independent };
 /** Static geometric interpretation of texture coordinate lanes. */
@@ -540,7 +620,9 @@ enum class OperandShape : uint32_t {
   FabricHandle = 1 << 16,
   TextureAccess = 1 << 17,
   TextureQueryResource = 1 << 18,
-  TextureResult = 1 << 19
+  TextureResult = 1 << 19,
+  SurfaceAccess = 1 << 20,
+  SurfaceQueryResource = 1 << 21
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -684,6 +766,8 @@ struct OperandDescriptor {
   std::optional<TensorAccessMode> expected_tensor_mode;
   /** Fixed instruction tensor dimension, independent of coordinate count. */
   std::optional<TensorRank> expected_tensor_rank;
+  /** Static geometry for a composite surface access operand. */
+  std::optional<SurfaceGeometry> surface_geometry;
   /** Static geometry for a composite texture access operand. */
   std::optional<TextureGeometry> texture_geometry;
   /** Admit the tex compatibility spelling with four coordinate lanes. */
@@ -1403,6 +1487,47 @@ struct ResolvedValueVector {
   std::vector<RegOrImm> elements;
   bool operator==(const ResolvedValueVector&) const = default;
 };
+/** One preserved surface coordinate, with its interpretation and source range. */
+struct ResolvedSurfaceLane {
+  /** Scalar register identity or evaluated typed immediate. */
+  RegOrImm value;
+  /** Spatial s32, array-layer u32, or ignored padding interpretation. */
+  SurfaceLaneRole role{};
+  /** Original lane location, retained independently of syntax lifetime. */
+  SourceRange range;
+  /** Compare the exact source payload. */
+  bool operator==(const ResolvedSurfaceLane&) const = default;
+};
+/** Surface access with one direct declaration or indirect u64-compatible handle. */
+struct ResolvedSurfaceAccess {
+  /** Surface identity, never an ordinary memory address. */
+  ResolvedOpaqueResourceRef surface;
+  /** Ordered lanes including ignored padding. */
+  std::vector<ResolvedSurfaceLane> coordinates;
+  /** Whether source coordinates were enclosed in braces. */
+  bool coordinates_packed = true;
+  /** Access brackets are required and retained after syntax release. */
+  bool bracketed = true;
+  /** Delimiter provenance for source association and diagnostics. */
+  SourceRange left_bracket_range;
+  std::vector<SourceRange> comma_ranges;
+  SourceRange right_bracket_range;
+  /** Compare the exact source payload. */
+  bool operator==(const ResolvedSurfaceAccess&) const = default;
+};
+/** Surface query resource and required bracket provenance. */
+struct ResolvedSurfaceQueryResource {
+  /** One direct surface declaration or indirect scalar carrier. */
+  ResolvedOpaqueResourceRef resource;
+  /** Simple square brackets must remain present after mutation. */
+  bool bracketed = true;
+  /** Delimiter locations remain valid without the syntax tree. */
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  /** Compare the exact source payload. */
+  bool operator==(const ResolvedSurfaceQueryResource&) const = default;
+};
+
 /** One owned coordinate lane with role and source location retained. */
 struct ResolvedTextureLane {
   /** Register declaration type is retained even when role interpretation differs. */

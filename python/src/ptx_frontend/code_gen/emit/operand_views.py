@@ -306,7 +306,9 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "FabricHandle")},
                   .locations = {object_name}.{field.name}.locs,
               }}'''
-    if field.value_kind in {ResolvedValueKind.TEXTURE_ACCESS,
+    if field.value_kind in {ResolvedValueKind.SURFACE_ACCESS,
+                            ResolvedValueKind.SURFACE_QUERY_RESOURCE,
+                            ResolvedValueKind.TEXTURE_ACCESS,
                             ResolvedValueKind.TEXTURE_QUERY_RESOURCE}:
         shape = field.value_kind.value
         return f'''              OperandView{{

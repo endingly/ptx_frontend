@@ -10,7 +10,6 @@ import stat
 import tempfile
 import json
 
-from ptx_frontend.base.utils import format_file_inplace
 from ptx_frontend.code_gen.context import build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
@@ -251,13 +250,13 @@ def write_artifacts(context, artifacts, jobs: int) -> None:
 
     if jobs == 1:
         for artifact in artifacts:
-            write_formatted_artifact(context, artifact.emit, artifact.path)
+            write_artifact(context, artifact.emit, artifact.path)
         return
 
     with ThreadPoolExecutor(max_workers=jobs) as executor:
         futures = [
             executor.submit(
-                write_formatted_artifact, context, artifact.emit, artifact.path
+                write_artifact, context, artifact.emit, artifact.path
             )
             for artifact in artifacts
         ]
@@ -288,8 +287,8 @@ def validate_file(path: Path, option: str) -> None:
         raise IsADirectoryError(f"{option} is not a file: {path}")
 
 
-def write_formatted_artifact(context, emit, output_path: Path) -> None:
-    """Format a sibling candidate and replace ``output_path`` only if changed."""
+def write_artifact(context, emit, output_path: Path) -> None:
+    """Emit a sibling candidate and atomically replace only changed raw bytes."""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_mode = (
@@ -304,7 +303,6 @@ def write_formatted_artifact(context, emit, output_path: Path) -> None:
     candidate = Path(candidate_name)
     try:
         emit(context, output_path=candidate)
-        format_file_inplace(str(candidate))
         candidate_bytes = candidate.read_bytes()
         if not output_path.exists() or output_path.read_bytes() != candidate_bytes:
             candidate.chmod(output_mode)

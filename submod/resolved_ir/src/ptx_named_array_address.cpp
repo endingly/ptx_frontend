@@ -84,7 +84,7 @@ bool valid_named_array_address(const ResolvedAddress& address,
     const auto& value = reg->value;
     if (!value.symbol_id || !value.declared_type ||
         value.register_class != ResolvedRegisterClass::General ||
-        value.vector_width || reg->locs.size() != 1 ||
+        value.vector_width || value.component || reg->locs.size() != 1 ||
         reg->locs.front() != index.index_range)
       return false;
     const auto kind = base::scalar_kind(*value.declared_type);

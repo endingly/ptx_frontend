@@ -34,6 +34,15 @@ bool fabric_range_inside(SourceRange inner, SourceRange outer) noexcept {
          fabric_pos_le(inner.end, outer.end);
 }
 
+/** Tie an explicit component to its actual carrier and optional instruction owner. */
+bool component_matches_source(const ResolvedRegisterRef& ref, SourceRange range,
+                              SourceRange owner = {}) {
+  return valid_register_component(ref) &&
+         (!ref.component ||
+          (ref.component->range == range &&
+           (owner == SourceRange{} || fabric_range_inside(range, owner))));
+}
+
 std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
@@ -552,7 +561,8 @@ CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
     return part.locs.size() == 1 &&
            fabric_range_inside(part.locs.front(), outer) &&
            reg.register_class == ResolvedRegisterClass::General &&
-           !reg.vector_width && (!reg.symbol_id || reg.declared_type) &&
+           !reg.component && !reg.vector_width &&
+           (!reg.symbol_id || reg.declared_type) &&
            (!reg.declared_type ||
             (base::scalar_size_of(*reg.declared_type) == required_width &&
              (kind == base::ScalarKind::Unsigned ||
@@ -654,7 +664,7 @@ OperandView project_tensor_operand(
       .tensor_rank = tensor.rank,
       .tensor_operand = &tensor,
       .vector_arity = tensor.coordinates.elements.size(),
-      .locations = operand.locs,
+      .locations = tensor.coordinate_ranges,
   };
   for (size_t index = 0; index < tensor.coordinates.elements.size() &&
                          index < kMaxOperandElements;
@@ -664,6 +674,7 @@ OperandView project_tensor_operand(
       view.vector_element_shapes[index] = OperandShape::Register;
       view.vector_element_types[index] =
           reg->declared_type.value_or(ScalarType::Invalid);
+      view.vector_element_registers[index] = reg;
     } else {
       const auto& immediate = std::get<ResolvedImmediate>(element);
       view.vector_element_shapes[index] = OperandShape::Immediate;
@@ -855,7 +866,7 @@ CheckResult check_execution_predicate(
       *register_ref.declared_type != ScalarType::Pred) {
     invalid("has a non-.pred declared type");
   }
-  if (register_ref.vector_width)
+  if (register_ref.vector_width || register_ref.component)
     invalid("has vector register shape");
   if (diagnostics.empty())
     return {};
@@ -879,6 +890,32 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
+    const auto check_component = [&](const ResolvedRegisterRef* reg,
+                                     SourceRange range) {
+      if (reg &&
+          !component_matches_source(*reg, range, context.instruction_range))
+        diagnostics.push_back(
+            CheckDiagnostic{.kind = CheckDiagnosticKind::OperandTypeMismatch,
+                            .range = range,
+                            .message = "Register component has invalid "
+                                       "explicit-selector provenance."});
+    };
+    check_component(operand.register_ref,
+                    diagnostic_range(operand.locations, context));
+    if (operand.actual_shape == OperandShape::Address && operand.register_ref &&
+        operand.register_ref->component)
+      diagnostics.push_back(
+          {CheckDiagnosticKind::OperandTypeMismatch,
+           diagnostic_range(operand.locations, context),
+           "Address bases do not admit register components."});
+    for (const auto* reg : operand.paired_register_refs)
+      check_component(reg, diagnostic_range(operand.locations, context));
+    for (size_t index = 0;
+         index < std::min(operand.vector_arity, kMaxOperandElements); ++index)
+      check_component(operand.vector_element_registers[index],
+                      index < operand.locations.size()
+                          ? operand.locations[index]
+                          : context.instruction_range);
     if ((operand.actual_shape != OperandShape::Vector &&
          operand.actual_shape != OperandShape::TensorOperand) ||
         (operand.vector_arity != 0 &&
@@ -1023,11 +1060,8 @@ CheckResult check_operands(
               operand->vector_element_registers[previous];
           if (earlier == nullptr)
             continue;
-          const bool same_register =
-              (lane->symbol_id && earlier->symbol_id &&
-               lane->symbol_id == earlier->symbol_id &&
-               lane->parameterized_index == earlier->parameterized_index) ||
-              lane->spelling == earlier->spelling;
+          const bool same_register = same_register_storage(*lane, *earlier) ||
+                                     lane->spelling == earlier->spelling;
           if (!same_register)
             continue;
           diagnostics.push_back(CheckDiagnostic{
@@ -3783,6 +3817,7 @@ CheckResult check_tensor_map_address_register_width(
   if (!reg)
     return {};
   const bool invalid = reg->register_class != ResolvedRegisterClass::General ||
+                       reg->component.has_value() ||
                        reg->vector_width.has_value() ||
                        (reg->symbol_id && !reg->declared_type) ||
                        (reg->declared_type &&
@@ -4081,7 +4116,7 @@ void check_opaque_resource_static(const ResolvedOpaqueResourceRef& resource,
   }
   const auto& indirect = std::get<ResolvedRegisterRef>(resource.value);
   if (indirect.register_class != ResolvedRegisterClass::General ||
-      indirect.vector_width || !indirect.declared_type ||
+      indirect.vector_width || indirect.component || !indirect.declared_type ||
       base::scalar_size_of(*indirect.declared_type) != 8 ||
       (base::scalar_kind(*indirect.declared_type) != base::ScalarKind::Bit &&
        base::scalar_kind(*indirect.declared_type) != base::ScalarKind::Signed &&
@@ -4187,7 +4222,9 @@ CheckResult check_surface_static_payload(
       const auto kind = reg->declared_type
                             ? base::scalar_kind(*reg->declared_type)
                             : base::ScalarKind::Invalid;
-      if (reg->register_class != ResolvedRegisterClass::General ||
+      if (!component_matches_source(*reg, lane.range,
+                                    context.instruction_range) ||
+          reg->register_class != ResolvedRegisterClass::General ||
           reg->vector_width || !reg->declared_type ||
           base::scalar_size_of(*reg->declared_type) != 4 ||
           (kind != base::ScalarKind::Signed &&
@@ -4414,7 +4451,9 @@ CheckResult check_texture_static_payload(
                "metadata.");
       continue;
     }
-    if (reg->register_class != ResolvedRegisterClass::General ||
+    if (!component_matches_source(*reg, lane.range,
+                                  context.instruction_range) ||
+        reg->register_class != ResolvedRegisterClass::General ||
         reg->vector_width || !reg->declared_type ||
         base::scalar_size_of(*reg->declared_type) !=
             base::scalar_size_of(use_type) ||
@@ -4432,7 +4471,9 @@ CheckResult check_texture_static_payload(
     const auto lane_range =
         i < result.data_ranges.size() ? result.data_ranges[i] : range;
     if (reg &&
-        (reg->register_class != ResolvedRegisterClass::General ||
+        (!component_matches_source(*reg, lane_range,
+                                   context.instruction_range) ||
+         reg->register_class != ResolvedRegisterClass::General ||
          reg->vector_width || !reg->declared_type ||
          !base::scalar_types_compatible(*reg->declared_type, result.result_type,
                                         base::ScalarTypeSizePolicy::SameWidth)))
@@ -4442,9 +4483,7 @@ CheckResult check_texture_static_payload(
       continue;
     for (size_t earlier = 0; earlier < i; ++earlier) {
       const auto& prior = result.data.elements[earlier];
-      if (prior && ((reg->symbol_id && prior->symbol_id &&
-                     reg->symbol_id == prior->symbol_id &&
-                     reg->parameterized_index == prior->parameterized_index) ||
+      if (prior && (same_register_storage(*reg, *prior) ||
                     reg->spelling == prior->spelling)) {
         report(lane_range,
                "Texture result writes the same register more than once.");

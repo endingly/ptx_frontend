@@ -199,6 +199,47 @@ std::expected<ResolvedRegisterRef, ResolveDiagnostic> resolve_bound_register(
 std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic>
 resolve_register(const syntax_ast::AstOperand& operand,
                  const ResolveContext* context) {
+  if (const auto* member = std::get_if<syntax_ast::AstVectorMember>(&operand)) {
+    const auto lane = ordinary_register_lane(member->selector.text);
+    if (!lane)
+      return std::unexpected(ResolveDiagnostic{
+          member->selector.range,
+          "Expected an ordinary .xyzw/.rgba register selector."});
+    if (!context)
+      return std::unexpected(ResolveDiagnostic{
+          member->range,
+          "An ordinary vector component requires a module declaration."});
+    const auto lookup =
+        context->symbols.lookup(context->scope, member->base.syntax.text);
+    if (!lookup)
+      return std::unexpected(ResolveDiagnostic{
+          member->base.syntax.range, "Unresolved component base register."});
+    const auto width = context->symbols.symbol(lookup->symbol).vector_width;
+    if (!width || (*width != 2 && *width != 4))
+      return std::unexpected(ResolveDiagnostic{
+          member->base.syntax.range,
+          "An ordinary component requires a .reg .v2 or .v4 declaration."});
+    if (*lane >= *width)
+      return std::unexpected(ResolveDiagnostic{
+          member->selector.range,
+          "Register component is outside the declared vector width."});
+    auto value =
+        resolve_bound_register(member->base, ResolvedRegisterClass::General,
+                               *context, member->range, width);
+    if (!value)
+      return std::unexpected(value.error());
+    value->vector_width.reset();
+    value->spelling += member->selector.text;
+    value->component = ResolvedRegisterComponent{
+        .lane = *lane,
+        .declaration_width = *width,
+        .base_spelling = member->base.syntax.text,
+        .base_range = member->base.syntax.range,
+        .range = member->range,
+        .selector = ResolvedRegisterSelector{member->selector.text,
+                                             member->selector.range}};
+    return WithLocs<ResolvedRegisterRef>{std::move(*value), member->range};
+  }
   const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
   if (identifier == nullptr) {
     return std::unexpected(ResolveDiagnostic{
@@ -1394,8 +1435,11 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
       base = std::move(*symbol);
     }
   } else {
+    const auto numeric_base = std::visit(
+        [](const auto& leaf) -> syntax_ast::AstVectorElement { return leaf; },
+        address->base);
     auto immediate_base =
-        resolve_immediate_value(address->base, ScalarType::U32, true);
+        resolve_immediate_value(numeric_base, ScalarType::U32, true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
     if (immediate_base->is_negative) {
@@ -1444,13 +1488,13 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
 std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     const syntax_ast::AstOperand& operand, ScalarType type,
     const ResolveContext* context, bool require_target_range = false) {
-  if (const auto* identifier =
-          std::get_if<syntax_ast::AstIdentifierRef>(&operand)) {
+  if (std::holds_alternative<syntax_ast::AstIdentifierRef>(operand) ||
+      std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
     auto register_ref = resolve_register(operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
     return WithLocs<RegOrImm>{RegOrImm{register_ref->value},
-                              identifier->syntax.range};
+                              syntax_ast::sourceRange(operand)};
   }
   if (is_numeric_operand(operand)) {
     auto value =
@@ -1482,11 +1526,8 @@ std::optional<ResolveDiagnostic> duplicate_destination_lane(
       const auto& earlier = vector.elements[previous];
       if (!earlier)
         continue;
-      const bool same_register =
-          (lane->symbol_id && earlier->symbol_id &&
-           lane->symbol_id == earlier->symbol_id &&
-           lane->parameterized_index == earlier->parameterized_index) ||
-          lane->spelling == earlier->spelling;
+      const bool same_register = same_register_storage(*lane, *earlier) ||
+                                 lane->spelling == earlier->spelling;
       if (same_register) {
         return ResolveDiagnostic{
             .range = locations[index],
@@ -1580,7 +1621,8 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   for (const auto& element : vector->elements) {
     const auto* identifier =
         std::get_if<syntax_ast::AstIdentifierRef>(&element);
-    if (identifier == nullptr) {
+    if (identifier == nullptr &&
+        !std::holds_alternative<syntax_ast::AstVectorMember>(element)) {
       return std::unexpected(ResolveDiagnostic{
           .range = std::visit(
               [](const auto& leaf) {
@@ -1591,17 +1633,21 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
               "A register-vector element must be a register or '_' sink.",
       });
     }
-    locations.push_back(identifier->syntax.range);
-    if (identifier->syntax.text == "_") {
+    const syntax_ast::AstOperand register_operand = std::visit(
+        [](const auto& leaf) -> syntax_ast::AstOperand { return leaf; },
+        element);
+    const auto element_range = syntax_ast::sourceRange(register_operand);
+    locations.push_back(element_range);
+    if (identifier && identifier->syntax.text == "_") {
       if (!allow_sink) {
         return std::unexpected(ResolveDiagnostic{
-            .range = identifier->syntax.range,
+            .range = element_range,
             .message = "The '_' sink is allowed only in a destination vector.",
         });
       }
       if (sink_payload_bits != 0 && vector_payload_bits != sink_payload_bits) {
         return std::unexpected(ResolveDiagnostic{
-            .range = identifier->syntax.range,
+            .range = element_range,
             .message = fmt::format(
                 "The '_' sink requires an exact {}-bit vector payload.",
                 sink_payload_bits),
@@ -1612,7 +1658,6 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
       continue;
     }
 
-    syntax_ast::AstOperand register_operand{*identifier};
     auto register_ref = resolve_register(register_operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
@@ -1621,11 +1666,11 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                           *register_ref->value.declared_type) ==
             allowed_register_types.end()) {
       return std::unexpected(ResolveDiagnostic{
-          .range = identifier->syntax.range,
+          .range = element_range,
           .message = fmt::format(
               "Vector element '{}' has a register type outside this operand's "
               "allowed lane types.",
-              identifier->syntax.text),
+              register_ref->value.spelling),
       });
     }
     if (register_ref->value.declared_type) {
@@ -1640,7 +1685,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
               (floating_register_family &&
                *floating_register_family != floating)) {
             return std::unexpected(ResolveDiagnostic{
-                .range = identifier->syntax.range,
+                .range = element_range,
                 .message = "A vector cannot mix integer and floating "
                            "register lanes.",
             });
@@ -1656,11 +1701,11 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                                              register_width_policy);
       if (type_mismatch) {
         return std::unexpected(ResolveDiagnostic{
-            .range = identifier->syntax.range,
+            .range = element_range,
             .message = fmt::format(
                 "Vector element '{}' has type '{}' incompatible with this "
                 "instruction.",
-                identifier->syntax.text, to_string(declared_type)),
+                register_ref->value.spelling, to_string(declared_type)),
         });
       }
     }
@@ -1710,7 +1755,8 @@ resolve_modern_register_vector(
   for (const auto& element : vector->elements) {
     const auto* identifier =
         std::get_if<syntax_ast::AstIdentifierRef>(&element);
-    if (identifier == nullptr) {
+    if (identifier == nullptr &&
+        !std::holds_alternative<syntax_ast::AstVectorMember>(element)) {
       return std::unexpected(ResolveDiagnostic{
           .range = std::visit(
               [](const auto& leaf) {
@@ -1721,12 +1767,14 @@ resolve_modern_register_vector(
               "A matrix fragment element must be a register or '_' sink.",
       });
     }
-    locations.push_back(identifier->syntax.range);
-    if (identifier->syntax.text == "_") {
+    const auto register_operand = std::visit(
+        [](const auto& leaf) -> syntax_ast::AstOperand { return leaf; },
+        element);
+    locations.push_back(syntax_ast::sourceRange(register_operand));
+    if (identifier && identifier->syntax.text == "_") {
       result.elements.emplace_back(std::nullopt);
       continue;
     }
-    syntax_ast::AstOperand register_operand{*identifier};
     auto register_ref = resolve_register(register_operand, context);
     if (!register_ref)
       return std::unexpected(register_ref.error());
@@ -1770,13 +1818,15 @@ resolve_tensor_coordinate(
   locations.reserve(vector->elements.size());
   std::optional<ScalarType> immediate_type;
   for (const auto& element : vector->elements) {
-    if (const auto* identifier =
-            std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
-      syntax_ast::AstOperand register_operand{*identifier};
+    if (std::holds_alternative<syntax_ast::AstIdentifierRef>(element) ||
+        std::holds_alternative<syntax_ast::AstVectorMember>(element)) {
+      const auto register_operand = std::visit(
+          [](const auto& leaf) -> syntax_ast::AstOperand { return leaf; },
+          element);
       auto register_ref = resolve_register(register_operand, context);
       if (!register_ref)
         return std::unexpected(register_ref.error());
-      locations.push_back(identifier->syntax.range);
+      locations.push_back(syntax_ast::sourceRange(register_operand));
       result.elements.emplace_back(std::move(register_ref->value));
       continue;
     }
@@ -2524,7 +2574,17 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                                        syntax_ast::sourceRange(operand)};
   }
 
-  if (std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
+  if (const auto* member = std::get_if<syntax_ast::AstVectorMember>(&operand)) {
+    if (!binding::isSpecialRegister(member->base.syntax.text)) {
+      if (auto rejected =
+              reject_shape(checker::OperandShape::Register, member->range))
+        return std::unexpected(std::move(*rejected));
+      auto reg = resolve_register(operand, context);
+      if (!reg)
+        return std::unexpected(reg.error());
+      return WithLocs<ResolvedMovSource>{
+          ResolvedMovSource{std::move(reg->value)}, member->range};
+    }
     if (auto rejected = reject_shape(checker::OperandShape::SpecialRegister,
                                      syntax_ast::sourceRange(operand))) {
       return std::unexpected(std::move(*rejected));
@@ -2897,7 +2957,11 @@ resolve_video_operand(const syntax_ast::AstOperand& operand,
         [](const auto& value) -> syntax_ast::AstOperand { return value; },
         negated->operand);
   }
-  if (const auto* member = std::get_if<syntax_ast::AstVectorMember>(&child)) {
+  const auto* member = std::get_if<syntax_ast::AstVectorMember>(&child);
+  const bool ordinary_component =
+      member && !binding::isSpecialRegister(member->base.syntax.text) &&
+      ordinary_register_lane(member->selector.text).has_value();
+  if (member && !ordinary_component) {
     auto selector = resolve_video_selector(member->selector, contract.selector);
     if (!selector)
       return std::unexpected(selector.error());

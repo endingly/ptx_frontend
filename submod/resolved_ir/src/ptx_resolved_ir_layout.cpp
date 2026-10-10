@@ -98,6 +98,10 @@ OperandSyntaxShape vector_element_syntax_shape(
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_ast::AstIdentifierRef>)
           return OperandSyntaxShape::Identifier;
+        else if constexpr (std::same_as<Value, syntax_ast::AstVectorMember>)
+          return binding::isSpecialRegister(value.base.syntax.text)
+                     ? OperandSyntaxShape::VectorMember
+                     : OperandSyntaxShape::Identifier;
         else
           return OperandSyntaxShape::Immediate;
       },
@@ -106,8 +110,14 @@ OperandSyntaxShape vector_element_syntax_shape(
 
 bool matches_operand_slot(const SyntaxOperandSlotDescriptor& slot,
                           const syntax_ast::AstOperand& operand) {
-  if (!allows_shape(slot.allowed_shapes,
-                    check_end::get_operand_syntax_shape(operand)) &&
+  const auto* member = std::get_if<syntax_ast::AstVectorMember>(&operand);
+  const bool ordinary_member =
+      member && !binding::isSpecialRegister(member->base.syntax.text) &&
+      ordinary_register_lane(member->selector.text).has_value();
+  const auto effective_shape =
+      ordinary_member ? OperandSyntaxShape::Identifier
+                      : check_end::get_operand_syntax_shape(operand);
+  if (!allows_shape(slot.allowed_shapes, effective_shape) &&
       !(std::holds_alternative<syntax_ast::AstNegatedImmediate>(operand) &&
         allows_shape(slot.allowed_shapes, OperandSyntaxShape::Immediate))) {
     return false;

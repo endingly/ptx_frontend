@@ -377,7 +377,22 @@ must not silently take the integer path.
 declaration `SymbolId`, optional parameterized-member index, and declared
 `ScalarType`, giving named registers such as `%tmp` and `name<count>` members a
 stable identity. A numbered-register index remains an optional convenience,
-not an identity. The context-free standalone resolver preserves its previous
+not an identity. An ordinary `.xyzw/.rgba` selection retains this same base
+identity and parameterized member, with owned `ResolvedRegisterComponent`
+metadata: canonical lane, actual declaration width, base spelling/range, full
+component range and written selector spelling/range. Its effective shape is
+scalar, so `vector_width` is absent; `declared_type` remains the declaration's
+scalar element type. `same_register_storage` compares base/member/lane, making
+`V.x` and `V.r` aliases but `V.x` and `V.y` distinct. Scalar and brace
+checking require valid `ExplicitSelector` provenance tied to actual operand
+locations. Reserved `NamedProjection` metadata is not admitted by these source
+forms and carries no fabricated written selector. Owned validation rejoins the
+base identity, declaration shape/type and source ranges. Calls, address bases
+and named-array indices do not admit new component syntax or transplanted
+component references; Fabric handles retain their separate identifier-only
+grammar and reject either component origin. Hardware components remain a distinct registry-backed
+domain with only its existing selectors.
+The context-free standalone resolver preserves its previous
 boundary: it accepts numbered registers and leaves symbol/type fields empty.
 Owned-module validation traverses generated operand references structurally,
 including register alternatives and nested operand containers. For every bound

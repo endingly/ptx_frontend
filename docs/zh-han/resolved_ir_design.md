@@ -295,7 +295,19 @@ exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rul
 `ResolvedRegisterRef` 拥有完整源码拼写与 `ResolvedRegisterClass`。在 module resolution
 中，它还保存 declaration `SymbolId`、可选 parameterized member index 和声明
 `ScalarType`；因此 named register（如 `%tmp`）与 `name<count>` member 都有稳定身份。
-numbered-register index 仍只是可选便捷属性，不能单独充当身份。无 binding context 的
+numbered-register index 仍只是可选便捷属性，不能单独充当身份。普通 `.xyzw/.rgba`
+选择保留相同 base 身份与 parameterized member，并拥有 `ResolvedRegisterComponent`：
+canonical lane、实际声明宽度、base spelling/range、完整 component range，以及书写的
+selector spelling/range。有效 shape 是 scalar，因此 `vector_width` 为空；
+`declared_type` 仍是声明的 scalar element type。`same_register_storage` 比较
+base/member/lane，故 `V.x` 与 `V.r` 同址，而 `V.x` 与 `V.y` 不同。
+Scalar 与 brace 校验要求合法 `ExplicitSelector` 来源，并同实际 operand 位置关联。
+预留的 `NamedProjection` 元数据不由这些 source form 接受，也不伪造书写 selector。
+Owned validation 重新关联 base identity、声明 shape/type 与源码范围。Call、address
+base 与 named-array index 不接受新增 component 语法或移植的 component reference。
+Fabric handle 保留独立的 identifier-only 语法，拒绝两种 component origin。
+Hardware component 仍是独立注册表 domain，只保留既有 selector。
+无 binding context 的
 standalone resolver 保留旧边界：只接受 numbered register，并令 symbol/type 字段为空。
 Owned-module validation 会按结构遍历生成的 operand reference，包括寄存器备选值和嵌套
 operand 容器。每个已绑定寄存器缓存的 scalar type、vector width 与 register class 都会

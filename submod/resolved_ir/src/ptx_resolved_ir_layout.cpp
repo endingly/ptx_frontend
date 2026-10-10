@@ -238,7 +238,8 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
           return false;
       const auto& coordinate = ast.operands[source_index + heads];
       if (!std::holds_alternative<syntax_ast::AstVectorPack>(coordinate) &&
-          !std::holds_alternative<syntax_ast::AstIdentifierRef>(coordinate))
+          !std::holds_alternative<syntax_ast::AstIdentifierRef>(coordinate) &&
+          !std::holds_alternative<syntax_ast::AstImmediate>(coordinate))
         return false;
       source_index += heads + 1;
       continue;

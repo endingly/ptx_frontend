@@ -1957,6 +1957,10 @@ resolve_unbracketed_texture_access(
                  std::get_if<syntax_ast::AstIdentifierRef>(&coordinate)) {
     compound.coordinates.elements.push_back(*scalar);
     compound.coordinates.range = scalar->syntax.range;
+  } else if (const auto* immediate =
+                 std::get_if<syntax_ast::AstImmediate>(&coordinate)) {
+    compound.coordinates.elements.push_back(*immediate);
+    compound.coordinates.range = syntax_ast::sourceRange(coordinate);
   } else {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(coordinate),

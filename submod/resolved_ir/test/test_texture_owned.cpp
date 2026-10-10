@@ -175,6 +175,129 @@ TEST(TextureOwned, OmittedBracketsValidateWithoutAst) {
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
 }
 
+/** Scalar immediates retain coordinate provenance with either resource-head count. */
+TEST(TextureOwned, OmittedBracketScalarImmediatesRetainOwnedShape) {
+  for (const bool independent : {false, true}) {
+    SCOPED_TRACE(independent);
+    const std::string heads = independent ? "tex0,samp0" : "tex0";
+    const std::string source =
+        std::string(".version 9.3\n.target sm_80") +
+        (independent ? ", texmode_independent" : "") + R"ptx(
+.global .texref tex0;
+.global .samplerref samp0;
+.entry kernel() {
+  .reg .f32 %f<4>;
+  .reg .s32 %r<4>;
+  tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, )ptx" +
+        heads + ",0f3f000000;\n" + "  tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [" +
+        heads + ",0f3f000000];\n" + "  tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, " +
+        heads + ",{0f3f000000};\n" + "  tex.1d.v4.s32.s32 {%r0,%r1,%r2,%r3}, " +
+        heads + ",-1;\n" + "  tex.level.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, " +
+        heads + ",0f3f000000,0f00000000,{-1},0f3e800000;\n  ret;\n}\n";
+    auto module = owned_texture_module(source);
+    ASSERT_TRUE(module);
+    ASSERT_TRUE(validateModule(*module,
+                               ModuleValidationPolicy::RequireCompleteContext));
+    auto& body = module->functions.front().body;
+    ASSERT_EQ(body.size(), 6u);
+    for (size_t index = 0; index < 3; ++index) {
+      auto* form = dynamic_cast<TexOmitted1dF32U32S32F32*>(body[index].get());
+      ASSERT_NE(form, nullptr);
+      EXPECT_EQ(form->access.value.bracketed, index == 1);
+      EXPECT_EQ(form->access.value.coordinates_packed, index == 2);
+      EXPECT_EQ(form->access.value.sampler.has_value(), independent);
+      ASSERT_EQ(form->access.value.coordinates.size(), 1u);
+      const auto& lane = form->access.value.coordinates.front();
+      ASSERT_TRUE(std::holds_alternative<ResolvedImmediate>(lane.value));
+      const auto& immediate = std::get<ResolvedImmediate>(lane.value);
+      EXPECT_EQ(immediate.type, ScalarType::F32);
+      EXPECT_EQ(immediate.bits, 0x3f000000u);
+      EXPECT_FALSE(immediate.integer_source_bits);
+      EXPECT_FALSE(immediate.is_negative);
+      const checker::Context context{
+          .target = {.ptx_version = {9, 3}, .sm_version = 80},
+          .instruction_range =
+              module->functions.front().instruction_ranges[index],
+      };
+      EXPECT_TRUE(form->check(context));
+    }
+    auto* scalar = dynamic_cast<TexOmitted1dF32U32S32F32*>(body[0].get());
+    const size_t literal = source.find("0f3f000000");
+    const auto line = static_cast<int32_t>(
+        std::count(source.begin(), source.begin() + literal, '\n') + 1);
+    const auto column =
+        static_cast<int32_t>(literal - source.rfind('\n', literal));
+    EXPECT_EQ(scalar->access.value.coordinates.front().range,
+              (SourceRange{{line, column}, {line, column + 10}}));
+    const checker::Context scalar_context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 80},
+        .instruction_range = module->functions.front().instruction_ranges[0],
+    };
+    auto& scalar_immediate = std::get<ResolvedImmediate>(
+        scalar->access.value.coordinates.front().value);
+    scalar_immediate.integer_source_bits = 1;
+    EXPECT_FALSE(scalar->check(scalar_context));
+    EXPECT_FALSE(validateModule(
+        *module, ModuleValidationPolicy::RequireCompleteContext));
+    scalar_immediate.integer_source_bits.reset();
+    auto* signed_form = dynamic_cast<TexOmitted1dS32U32S32F32*>(body[3].get());
+    ASSERT_NE(signed_form, nullptr);
+    EXPECT_FALSE(signed_form->access.value.bracketed);
+    EXPECT_FALSE(signed_form->access.value.coordinates_packed);
+    const auto& negative = std::get<ResolvedImmediate>(
+        signed_form->access.value.coordinates.front().value);
+    EXPECT_EQ(negative.type, ScalarType::S32);
+    EXPECT_EQ(negative.bits, UINT32_MAX);
+    EXPECT_EQ(negative.integer_source_bits, UINT64_MAX);
+    EXPECT_TRUE(negative.is_negative);
+    const checker::Context signed_context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 80},
+        .instruction_range = module->functions.front().instruction_ranges[3],
+    };
+    EXPECT_TRUE(signed_form->check(signed_context));
+    auto* mip = dynamic_cast<TexLevel1dF32U32S32F32*>(body[4].get());
+    ASSERT_NE(mip, nullptr);
+    EXPECT_FALSE(mip->access.value.bracketed);
+    EXPECT_FALSE(mip->access.value.coordinates_packed);
+    EXPECT_EQ(std::get<ResolvedImmediate>(mip->lod.value).bits, 0u);
+    ASSERT_TRUE(mip->offset);
+    EXPECT_EQ(mip->offset->value.elements.size(), 1u);
+    ASSERT_TRUE(mip->compare);
+    EXPECT_EQ(std::get<ResolvedImmediate>(mip->compare->value).bits,
+              0x3e800000u);
+    EXPECT_TRUE(validateModule(*module,
+                               ModuleValidationPolicy::RequireCompleteContext));
+  }
+}
+
+/** Scalar omission does not admit malformed coordinates or gather syntax. */
+TEST(TextureOwned, OmittedBracketScalarImmediateBoundaries) {
+  for (const std::string_view instruction : {
+           "tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,0f3f000000;",
+           "tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,!1;",
+           "tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0;",
+           "tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,{0,1};",
+           "tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,0,0,0;",
+           "tld4.r.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,{0,1};",
+       }) {
+    SCOPED_TRACE(instruction);
+    EXPECT_FALSE(owned_texture_module(
+        ".version 9.3\n.target sm_80\n.global .texref tex0;\n"
+        ".entry kernel() {\n.reg .f32 %f<4>;\n" +
+        std::string(instruction) + "\nret;\n}\n"));
+  }
+  EXPECT_FALSE(owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80, texmode_independent
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<4>;
+  tex.1d.v4.f32.f32 {%f0,%f1,%f2,%f3}, tex0,0f3f000000;
+  ret;
+}
+)ptx"));
+}
+
 /** A sampler-only query cannot be selected in unified texturing mode. */
 TEST(TextureOwned, ForceUnnormalizedQueryRequiresIndependentMode) {
   EXPECT_FALSE(owned_texture_module(R"ptx(

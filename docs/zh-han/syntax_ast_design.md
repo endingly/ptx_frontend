@@ -27,6 +27,17 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 - symbol binding 建立 module/function scope，并把 identifier reference 关联到声明；
 - Resolved IR 负责选中的 variant、带类型的 modifier/operand、语义值和目标检查元数据。
 
+## 具名数组地址语法
+
+`A[index]` 是单个无外层括号的地址表达式，与 `[A+offset]` 不同。
+CST/AST 单独拥有 named-index payload，保留括号、index、operator 与
+displacement range。index 可以是整数常量表达式、绑定的标量整数/bit register，
+或该 register 后接 `+`/`-` 和整数常量表达式。register 名不必以 `%` 开头。
+`A[idx-1]`、`A[idx - 1]` 与 `A[idx+-1]` 保留各自源码运算；常量表达式树
+深复制并参与 source identity。只支持一对括号：嵌套 `[A[index]]`、连续
+`A[i][j]` 和 `A[i+j]`、`A[i*2]` 等动态算术不受支持。
+解析出该 shape 并不意味着指令 family 接纳它或已完成数组绑定。
+
 ## CST 的所有权与表示
 
 公共 CST 头文件位于 `submod/cst/include`。`syntax_cst::CstFile` 持有完整

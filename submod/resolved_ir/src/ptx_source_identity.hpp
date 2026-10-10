@@ -270,6 +270,19 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
             std::visit([&output](const auto& leaf) { operand(output, leaf); },
                        node.offset->magnitude);
           }
+          tag(output,
+              node.named_index ? "named-index-present" : "named-index-none");
+          if (node.named_index) {
+            std::visit([&output](const auto& leaf) { operand(output, leaf); },
+                       node.named_index->index);
+            tag(output,
+                node.named_index->displacement ? "term-present" : "term-none");
+            if (node.named_index->displacement) {
+              number(output, node.named_index->displacement->operation);
+              std::visit([&output](const auto& leaf) { operand(output, leaf); },
+                         node.named_index->displacement->magnitude);
+            }
+          }
         } else if constexpr (std::same_as<Node, syntax_ast::AstVectorMember>) {
           tag(output, "operand-vector-member");
           identifier(output, node.base);

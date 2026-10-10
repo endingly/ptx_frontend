@@ -838,6 +838,48 @@ PtxCstParser::parseOperand() {
     return std::unexpected(identifier.error());
   const syntax_cst::CstIdentifier base{*identifier};
 
+  if (token(peek()).kind == TokenKind::LBracket) {
+    const TokenId open = consume();
+    syntax_cst::CstAddressBase index;
+    std::optional<syntax_cst::CstAddressOffset> displacement;
+    if (token(peek()).kind == TokenKind::Ident &&
+        token(peek()).text != "WARP_SZ") {
+      index = syntax_cst::CstIdentifier{consume()};
+      if (token(peek()).kind == TokenKind::Plus ||
+          token(peek()).kind == TokenKind::Minus) {
+        const TokenId operation = consume();
+        auto term = parseNumericOperand();
+        if (!term)
+          return std::unexpected(term.error());
+        const TokenId end = std::visit(
+            [](const auto& value) { return value.token_range.last; }, *term);
+        displacement = syntax_cst::CstAddressOffset{
+            operation, std::move(*term), {operation, end}};
+      }
+    } else {
+      auto numeric = parseNumericOperand();
+      if (!numeric)
+        return std::unexpected(numeric.error());
+      index = std::visit(
+          [](auto&& value) -> syntax_cst::CstAddressBase {
+            return std::move(value);
+          },
+          std::move(*numeric));
+    }
+    auto close = expect(TokenKind::RBracket, "']' after named-array index");
+    if (!close)
+      return std::unexpected(close.error());
+    syntax_cst::CstAddress address{.base = base,
+                                   .token_range = {*identifier, *close + 1}};
+    address.named_index =
+        syntax_cst::CstNamedArrayIndex{open,
+                                       std::move(index),
+                                       std::move(displacement),
+                                       *close,
+                                       {open, *close + 1}};
+    return syntax_cst::CstOperand{std::move(address)};
+  }
+
   if (token(peek()).kind == TokenKind::Pipe) {
     const TokenId pipe = consume();
     auto predicate = expect(TokenKind::Ident, "predicate after '|'");

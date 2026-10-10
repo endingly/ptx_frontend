@@ -9,6 +9,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 
 | 范围 | 状态 | 当前实现子集 |
 | --- | --- | --- |
+| 具名数组地址 | 支持子集 | 专用 MOV address source 与普通 LD/ST 接纳单个 `A[index]`，按声明的标量 element stride 缩放并保留 direct-minus/plus-negative 源码运算。family/qualifier 排除边界及 ptxas 拼写差异见[具名地址语义](resolved_ir_design.md#具名数组地址)，语法和 range 见[具名数组地址语法](syntax_ast_design.md#具名数组地址语法)。 |
 | PTX 9.3 Video | 支持源码家族 | 全部 23 个 scalar/SIMD2/SIMD4 opcode，独立 Video 类型、selector/mask、寄存器取负、立即数来源及目标检查；见 [Video 覆盖](video_coverage.md)。算术执行不属于 frontend。 |
 | Token 与 trivia | 部分支持 | identifier、dot identifier、literal、标点、注释、空白与部分稳定 directive；未修改的 `CstFile::sourceText()` 会从 token buffer 逐字节 round-trip |
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、vector member/vector pack，以及 call/branch 专用 operand shape |

@@ -1,5 +1,40 @@
 # C++ Resolved IR Design
 
+## Named array addresses
+
+Dedicated address-source MOV and ordinary LD (ISA §9.7.9.8) / ST (§9.7.9.11)
+accept `A[index]`. LDNC, LDU, ST.async/bulk, atom/red, cp.async, prefetch,
+matrix, tensor and texture families remain outside this supported subset;
+this is not a claim that their PTX ISA syntax is invalid. Admission is selected
+from the final variant's canonical metadata and independently rechecked on owned IR.
+The named form does not compose with a `.unified` suffix. Known unified storage
+still requires the existing bracket-qualified LD path and remains read-only for
+ST; MOV may take its address, including named indexing, without dereferencing it.
+
+`ResolvedAddress::named_index` owns an integer index's bits/signedness or the
+exact bound scalar register, optional integer displacement, written operator,
+scalar byte stride and source ranges. It is mutually exclusive with the old
+byte offset. `A[1]` scales by the declaration's scalar base element size:
+u32, v2.u32 and multidimensional u32 arrays all use four bytes, while u64 uses
+eight. Array shape comes from owned storage/parameter records keyed by SymbolId;
+standalone resolution without that context fails explicitly. Negative and
+out-of-bounds constants are not rejected merely for array bounds.
+
+Dynamic integer/bit registers retain their declared width and signedness,
+including narrow types and s64, without runtime evaluation, casts, promotion,
+truncation or invented sign extension. Only the constant contribution is
+checked and scaled before MOV's signed-64 or memory's signed-32 byte domain.
+Direct minus and plus-negative normalize to the same constant contribution
+while retaining different source operations. Dynamic alignment is
+`gcd(base alignment, scalar stride)`, further reduced by the constant bytes.
+Owned validation rejoins declaration shape and register identity, rechecks
+cached stride/displacement and ranges, and needs no Syntax AST lifetime.
+
+Local ptxas CUDA 13.3 V13.3.33 probes confirm scalar-element scaling and permit
+negative/out-of-bounds constants. That compiler rejects direct-minus dynamic
+spelling while accepting plus-negative; the frontend deliberately accepts both.
+These are compiler observations, not GPU execution or runtime width/sign rules.
+
 ## Status and scope
 
 This document describes the implemented Resolved PTX IR, not a future CFG,

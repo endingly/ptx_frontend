@@ -296,7 +296,7 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                 lowerImmediate(cst, value.offset->magnitude),
                 cst.sourceRange(value.offset->token_range)};
           }
-          return syntax_ast::AstAddress{
+          syntax_ast::AstAddress address{
               std::move(base),
               std::move(offset),
               value.left_bracket.has_value(),
@@ -308,6 +308,37 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
                                  : SourceRange{},
               value.right_bracket ? cst.token(*value.right_bracket).range
                                   : SourceRange{}};
+          if (value.named_index) {
+            const auto& named = *value.named_index;
+            auto index = std::visit(
+                [&cst](const auto& item) -> decltype(address.base) {
+                  using Item = std::remove_cvref_t<decltype(item)>;
+                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
+                    return lowerIdentifier(cst, item);
+                  else
+                    return lowerImmediate(cst, item);
+                },
+                named.index);
+            std::optional<syntax_ast::AstAddressOffset> term;
+            if (named.displacement)
+              term = syntax_ast::AstAddressOffset{
+                  cst.token(named.displacement->operator_token).kind ==
+                          TokenKind::Minus
+                      ? syntax_ast::AstAddressOffset::Operator::Subtract
+                      : syntax_ast::AstAddressOffset::Operator::Add,
+                  lowerImmediate(cst, named.displacement->magnitude),
+                  cst.sourceRange(named.displacement->token_range)};
+            address.named_index = syntax_ast::AstNamedArrayIndex{
+                std::move(index),
+                std::move(term),
+                cst.token(named.left_bracket).range,
+                cst.token(named.right_bracket).range,
+                named.displacement
+                    ? cst.token(named.displacement->operator_token).range
+                    : SourceRange{},
+                cst.sourceRange(named.token_range)};
+          }
+          return address;
         } else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>) {
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),

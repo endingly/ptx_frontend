@@ -83,6 +83,18 @@ struct AstAddressOffset {
   SourceRange range;
 };
 
+/** A named-array index with independently retained source operation and ranges. */
+struct AstNamedArrayIndex {
+  /** Numeric expressions own their trees; identifiers name scalar registers. */
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> index;
+  /** Optional register displacement in element units, never bytes. */
+  std::optional<AstAddressOffset> displacement;
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  SourceRange operator_range;
+  SourceRange range;
+};
+
 /** An unresolved bracketed or unbracketed PTX address expression. */
 struct AstAddress {
   std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> base;
@@ -96,6 +108,8 @@ struct AstAddress {
   /** Exact delimiters when this address was written in brackets. */
   SourceRange left_bracket_range;
   SourceRange right_bracket_range;
+  /** Named-array syntax does not imply an outer dereference bracket. */
+  std::optional<AstNamedArrayIndex> named_index;
 };
 
 struct AstVectorMember {

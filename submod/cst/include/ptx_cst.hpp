@@ -84,6 +84,17 @@ struct CstAddressOffset {
 using CstAddressBase =
     std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
 
+/** One named-array subscript, distinct from a byte-address offset. */
+struct CstNamedArrayIndex {
+  /** Written index brackets and their owned numeric/register child. */
+  TokenId left_bracket{};
+  CstAddressBase index;
+  /** Optional register displacement in element units. */
+  std::optional<CstAddressOffset> displacement;
+  TokenId right_bracket{};
+  CstTokenRange token_range;
+};
+
 struct CstAddress {
   std::optional<TokenId> left_bracket;
   CstAddressBase base;
@@ -92,6 +103,8 @@ struct CstAddress {
   /** Optional `.unified` suffix token following a bracketed memory address. */
   std::optional<TokenId> unified_token;
   CstTokenRange token_range;
+  /** Present only for the single-bracket named-array source form. */
+  std::optional<CstNamedArrayIndex> named_index;
 };
 
 struct CstVectorMember {

@@ -93,7 +93,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
-    std::string_view variant_name, const ResolveContext* context = nullptr);
+    std::string_view variant_name, const ResolveContext* context = nullptr,
+    NamedArrayAddressPolicy named_array_policy =
+        NamedArrayAddressPolicy::Reject);
 checker::AvailabilityDescriptor special_register_availability(
     const base::Info& info);
 

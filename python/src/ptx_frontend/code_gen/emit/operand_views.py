@@ -656,23 +656,8 @@ def emit_check_operand_view(
                 const std::optional<bool> declaration_is_unified =
                     symbol == nullptr ? std::nullopt
                                       : symbol->declaration_is_unified;
-                std::optional<uint64_t> address_alignment;
-                const auto low_bit = [](uint64_t value) {{
-                  return value == 0 ? uint64_t{{0}} : value & (~value + 1);
-                }};
-                if (symbol != nullptr) {{
-                  address_alignment = symbol->address_alignment;
-                }} else if (const auto* immediate = std::get_if<ResolvedImmediate>(
-                               &{object_name}.{field.name}.value.base)) {{
-                  address_alignment = low_bit(immediate->bits);
-                }}
-                if (address_alignment && {object_name}.{field.name}.value.offset) {{
-                  const uint64_t offset_alignment = low_bit(
-                      {object_name}.{field.name}.value.offset->value.bits);
-                  if (offset_alignment != 0 &&
-                      (*address_alignment == 0 || offset_alignment < *address_alignment))
-                    address_alignment = offset_alignment;
-                }}
+                const auto address_alignment =
+                    resolved_address_alignment({object_name}.{field.name}.value);
                 // Register, immediate, and unresolved standalone address
                 // bases remain unknown; spelling is not semantic evidence.
                 return OperandView{{

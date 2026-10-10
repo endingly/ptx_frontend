@@ -10,6 +10,7 @@ import stat
 import tempfile
 import json
 
+from ptx_frontend.base.utils import format_file_inplace
 from ptx_frontend.code_gen.context import build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.plan import build_generation_plan
@@ -285,6 +286,22 @@ def validate_file(path: Path, option: str) -> None:
         raise FileNotFoundError(f"{option} does not exist: {path}")
     if not path.is_file():
         raise IsADirectoryError(f"{option} is not a file: {path}")
+
+
+def write_formatted_artifact(context, emit, output_path: Path) -> None:
+    """Format a sibling candidate and replace ``output_path`` only if changed.
+
+    Retain the formatted writer for callers that explicitly need formatting;
+    normal generation uses ``write_artifact`` directly.
+    """
+
+    def emit_formatted(context, *, output_path: Path) -> None:
+        """Format emitted candidate bytes before the atomic writer compares them."""
+
+        emit(context, output_path=output_path)
+        format_file_inplace(str(output_path))
+
+    write_artifact(context, emit_formatted, output_path)
 
 
 def write_artifact(context, emit, output_path: Path) -> None:

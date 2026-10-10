@@ -201,6 +201,7 @@ instructions:
                 patch.object(cli, "load_cpp_backend"),
                 patch.object(cli, "build_generation_context", return_value=object()),
                 patch.object(cli, "build_generation_plan", return_value=plan),
+                patch.object(cli, "format_file_inplace"),
             ):
                 cli.main()
 

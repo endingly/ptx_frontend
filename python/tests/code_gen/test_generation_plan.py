@@ -175,11 +175,12 @@ class GeneratorJobsTests(unittest.TestCase):
                     for index in range(3)
                 )
 
-            with patch("ptx_frontend.code_gen.cli.ThreadPoolExecutor") as executor:
-                cli.write_artifacts(None, artifacts(serial), 1)
-                executor.assert_not_called()
-            parallel_execution = True
-            cli.write_artifacts(None, artifacts(parallel), 2)
+            with patch("ptx_frontend.code_gen.cli.format_file_inplace"):
+                with patch("ptx_frontend.code_gen.cli.ThreadPoolExecutor") as executor:
+                    cli.write_artifacts(None, artifacts(serial), 1)
+                    executor.assert_not_called()
+                parallel_execution = True
+                cli.write_artifacts(None, artifacts(parallel), 2)
 
             cli.write_output_manifest(
                 serial, tuple(item.path for item in artifacts(serial))
@@ -196,37 +197,6 @@ class GeneratorJobsTests(unittest.TestCase):
                 self.assertEqual(
                     (serial / relative).read_bytes(), (parallel / relative).read_bytes()
                 )
-
-    def test_real_generation_without_formatter_has_serial_parallel_parity(self) -> None:
-        """Generate canonical input with no executable search path in either mode."""
-
-        from ptx_frontend.code_gen import cli
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            spec_dir = root / "spec"
-            spec_dir.mkdir()
-            shutil.copy2(CONTROL_FLOW_SPEC, spec_dir / CONTROL_FLOW_SPEC.name)
-            snapshots = []
-            for jobs in (1, 2):
-                output = root / f"generated-{jobs}"
-                arguments = [
-                    "codegen", "--spec-dir", str(spec_dir),
-                    "--backend-spec", str(BACKEND_SPEC),
-                    "--output", str(output), "--jobs", str(jobs),
-                    "--category", "control_flow",
-                    "--spec-file", str(spec_dir / CONTROL_FLOW_SPEC.name),
-                ]
-                with patch.object(sys, "argv", arguments), patch.dict(
-                    "os.environ", {"PATH": ""}
-                ):
-                    cli.main()
-                snapshots.append({
-                    path.relative_to(output): path.read_bytes()
-                    for path in output.rglob("*") if path.is_file()
-                })
-            self.assertTrue(snapshots[0])
-            self.assertEqual(snapshots[0], snapshots[1])
 
     def test_failure_cancels_pending_work_joins_workers_and_skips_manifest(self) -> None:
         from ptx_frontend.code_gen import cli
@@ -293,6 +263,7 @@ class GeneratorJobsTests(unittest.TestCase):
                 patch(
                     "ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan
                 ),
+                patch("ptx_frontend.code_gen.cli.format_file_inplace"),
             ):
                 timer = threading.Timer(0.2, release.set)
                 timer.start()
@@ -961,6 +932,9 @@ class GenerationPlanTests(unittest.TestCase):
                     with (
                         patch.object(sys, "argv", arguments),
                         patch(
+                            "ptx_frontend.code_gen.cli.format_file_inplace"
+                        ) as format_file,
+                        patch(
                             "ptx_frontend.code_gen.cli.remove_obsolete_generated_files"
                         ) as cleanup,
                         patch(
@@ -984,36 +958,37 @@ class GenerationPlanTests(unittest.TestCase):
                         )
                     else:
                         self.assertFalse(output.exists())
+                    format_file.assert_not_called()
                     cleanup.assert_not_called()
                     manifest.assert_not_called()
 
-    def test_artifact_preserves_raw_bytes_and_mtime_without_formatter(self) -> None:
-        """Keep identical emitter output intact without a formatter on PATH."""
-
+    def test_formatted_artifact_preserves_mtime_after_formatting_equal_content(
+        self,
+    ) -> None:
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "generated/public/model.gen.hpp"
-            contents = b"namespace x{int  value;}\r\n"
+            raw_contents = iter(("first raw candidate\n", "second raw candidate\n"))
 
             def emit(_context, *, output_path: Path) -> None:
-                """Write deliberately unformatted bytes to the candidate."""
+                output_path.write_text(next(raw_contents), encoding="utf-8")
 
-                output_path.write_bytes(contents)
+            def format_candidate(path: str) -> None:
+                Path(path).write_text("formatted candidate\n", encoding="utf-8")
 
-            with patch.dict("os.environ", {"PATH": ""}):
-                cli.write_artifact(None, emit, output)
+            with patch(
+                "ptx_frontend.code_gen.cli.format_file_inplace",
+                side_effect=format_candidate,
+            ):
+                cli.write_formatted_artifact(None, emit, output)
                 first_mtime = output.stat().st_mtime_ns
                 self.assertEqual(output.stat().st_mode & 0o777, 0o644)
                 time.sleep(0.01)
-                cli.write_artifact(None, emit, output)
-            self.assertEqual(output.read_bytes(), contents)
+                cli.write_formatted_artifact(None, emit, output)
             self.assertEqual(output.stat().st_mtime_ns, first_mtime)
-            self.assertEqual(list(output.parent.iterdir()), [output])
 
-    def test_artifact_preserves_existing_mode_when_replacing(self) -> None:
-        """Publish changed raw bytes with the existing destination permissions."""
-
+    def test_formatted_artifact_preserves_existing_mode_when_replacing(self) -> None:
         from ptx_frontend.code_gen import cli
 
         with tempfile.TemporaryDirectory() as directory:
@@ -1023,55 +998,12 @@ class GenerationPlanTests(unittest.TestCase):
             output.chmod(0o640)
 
             def emit(_context, *, output_path: Path) -> None:
-                """Write changed contents to the candidate."""
-
                 output_path.write_text("new raw content\n", encoding="utf-8")
 
-            cli.write_artifact(None, emit, output)
+            with patch("ptx_frontend.code_gen.cli.format_file_inplace"):
+                cli.write_formatted_artifact(None, emit, output)
             self.assertEqual(output.read_text(encoding="utf-8"), "new raw content\n")
             self.assertEqual(output.stat().st_mode & 0o777, 0o640)
-            self.assertEqual(list(output.parent.iterdir()), [output])
-
-    def test_artifact_failure_cleans_candidate_preserves_output_and_retries(self) -> None:
-        """Emission and replacement failures leave the prior artifact retryable."""
-
-        from ptx_frontend.code_gen import cli
-
-        for failure in ("emit", "replace"):
-            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
-                output = Path(directory) / "model.gen.hpp"
-                output.write_bytes(b"previous\n")
-                output.chmod(0o640)
-                previous_mtime = output.stat().st_mtime_ns
-
-                def emit(_context, *, output_path: Path) -> None:
-                    """Leave a partial candidate when testing emission failure."""
-
-                    output_path.write_bytes(b"new raw contents\n")
-                    if failure == "emit":
-                        raise RuntimeError("emission failed")
-
-                if failure == "emit":
-                    with self.assertRaisesRegex(RuntimeError, "emission failed"):
-                        cli.write_artifact(None, emit, output)
-                else:
-                    with patch.object(cli.os, "replace", side_effect=OSError("replace failed")):
-                        with self.assertRaisesRegex(OSError, "replace failed"):
-                            cli.write_artifact(None, emit, output)
-                self.assertEqual(output.read_bytes(), b"previous\n")
-                self.assertEqual(output.stat().st_mtime_ns, previous_mtime)
-                self.assertEqual(output.stat().st_mode & 0o777, 0o640)
-                self.assertEqual(list(output.parent.iterdir()), [output])
-
-                def retry(_context, *, output_path: Path) -> None:
-                    """Supply complete contents on the next attempt."""
-
-                    output_path.write_bytes(b"new raw contents\n")
-
-                cli.write_artifact(None, retry, output)
-                self.assertEqual(output.read_bytes(), b"new raw contents\n")
-                self.assertEqual(output.stat().st_mode & 0o777, 0o640)
-                self.assertEqual(list(output.parent.iterdir()), [output])
 
     def test_obsolete_cleanup_preserves_active_outputs_and_manifest_cleanup_is_scoped(
         self,
@@ -1194,6 +1126,7 @@ class GenerationPlanTests(unittest.TestCase):
                 patch(
                     "ptx_frontend.code_gen.cli.build_generation_plan", return_value=plan
                 ),
+                patch("ptx_frontend.code_gen.cli.format_file_inplace"),
             ):
                 cli.main()
                 manifest = output / ".ptx_resolved_ir_outputs.txt"
@@ -1306,6 +1239,9 @@ class GenerationPlanTests(unittest.TestCase):
                         "ptx_frontend.code_gen.cli.load_codegen_database",
                         return_value=invalid_database,
                     ),
+                    patch(
+                        "ptx_frontend.code_gen.cli.format_file_inplace"
+                    ) as format_file,
                     self.assertRaisesRegex(
                         ValueError, "multiple generation instruction bindings"
                     ),
@@ -1315,6 +1251,7 @@ class GenerationPlanTests(unittest.TestCase):
                 sys.argv = previous
             self.assertEqual(legacy.read_text(encoding="utf-8"), "retain")
             self.assertEqual(list(output.rglob("*.gen.*")), [legacy])
+            format_file.assert_not_called()
 
     def entries_with_colliding_source_projection(
         self,

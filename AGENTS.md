@@ -1,10 +1,12 @@
 # Codex agent policy
 
 The primary agent coordinates the requested outcome, task routing, integration,
-and communication. Authority Sol (`gpt-6.1-sol` / `medium`) owns architecture
+and communication. Authority Sol (`gpt-6.1-sol` / `high`) owns architecture
 control and core acceptance review, regardless of the primary model.
-Implementation Sol (`gpt-6-sol` / `high`) owns cross-file delivery without that
-authority. The primary may implement, verify, and close non-core work within
+Implementation Sol (`gpt-6.1-sol` / `medium` by default) owns cross-file delivery
+without that authority. A documented implementation effort exception does not
+confer architecture or core acceptance authority. The primary may implement,
+verify, and close non-core work within
 established contracts; it must not substitute its own approval for a required
 Authority Sol decision. Model/effort selection is defined in the
 [registry](.agents/orchestration.md#model-preferences); it does not reconfigure

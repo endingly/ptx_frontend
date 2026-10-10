@@ -15,8 +15,9 @@ or `xhigh` for Luna's `max`, omit the effort to inherit a default, or invent a
 schema field. If the required pair is not expressible or supported, treat that
 pair as unavailable and follow the [fallback rules](../orchestration.md#availability-and-fallback); do not claim it was selected.
 A host-controlled primary need not be reconfigured to keep coordinating, but
-it may satisfy the Authority Sol gate directly only at the required
-`gpt-6.1-sol` / `medium` pair.
+it may satisfy the Authority Sol gate directly only when assigned that role at
+the required `gpt-6.1-sol` / `high` pair and eligible under the distinct-review
+rule. Selecting that pair alone does not confer authority.
 
 Check the actual tool's supported model and effort values before requesting an
 override, including whether the required pair is supported together. Public
@@ -35,18 +36,23 @@ Inheritance cannot bypass the registry; a noncompliant or unknown pair cannot
 satisfy a required Authority Sol gate. Check retained settings before resuming a
 worker.
 
-Record requested model and effort, role, scope, any Astra effort-exception reason,
-and runtime-reported effective model and effort when exposed. Mark either missing
+Record requested model and effort, role, scope, any Implementation Sol or Astra
+effort-exception reason before dispatch. Add runtime-reported effective model
+and effort when exposed. Mark either missing
 effective field as unverified; a role name, self-identification, or successful
 spawn alone proves neither setting. An accepted explicit selection through a
 supported tool control, with no known override, is sufficient selection evidence;
 missing runtime telemetry alone need not block work. An unknown requested or
 inherited pair, or a known mismatch, requires compliant redispatch/reassignment,
 not a claim that the original task met policy. For an Authority Sol gate, require
-an explicit accepted `gpt-6.1-sol` / `medium` selection with no known override or
-a host-confirmed session at that pair. An accepted `gpt-6-sol` / `high` selection
-is evidence for implementation only. Otherwise leave the gate pending. Do not
-claim confirmed effective settings or independent review without evidence.
+assignment to the Authority Sol role plus either an explicit accepted
+`gpt-6.1-sol` / `high` selection with no known override or a host-confirmed
+session at that pair.
+An Implementation Sol selection, at default `medium` or a justified `high`
+exception, is evidence for implementation only. Model/effort selection alone
+does not confer authority. Otherwise leave the gate pending. Do not claim
+confirmed effective settings or independent review without evidence.
+
 ## Usage audits only
 
 When the user requests a usage/cost audit, distinguish requests, input/cached-input/

@@ -28,7 +28,8 @@ bool fabric_pos_lt(SourcePos first, SourcePos second) noexcept {
 bool fabric_range_inside(SourceRange inner, SourceRange outer) noexcept {
   return inner.start.line > 0 && inner.start.column > 0 && inner.end.line > 0 &&
          inner.end.column > 0 && fabric_pos_lt(inner.start, inner.end) &&
-         fabric_pos_lt(outer.start, outer.end) &&
+         outer.start.line > 0 && outer.start.column > 0 && outer.end.line > 0 &&
+         outer.end.column > 0 && fabric_pos_lt(outer.start, outer.end) &&
          fabric_pos_le(outer.start, inner.start) &&
          fabric_pos_le(inner.end, outer.end);
 }
@@ -523,8 +524,11 @@ CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
     }});
   };
   const auto& value = handle.value;
+  // Only the default outer range is omitted; the handle always owns valid ranges.
   if (handle.locs.size() != 1 ||
-      !fabric_range_inside(handle.locs.front(), context.instruction_range) ||
+      !fabric_range_inside(handle.locs.front(), handle.locs.front()) ||
+      (context.instruction_range != SourceRange{} &&
+       !fabric_range_inside(handle.locs.front(), context.instruction_range)) ||
       value.counter_offset.has_value() != counted ||
       value.comma_ranges.size() != (counted ? 2u : 1u))
     return fail("Fabric handle arity or source range is inconsistent.");

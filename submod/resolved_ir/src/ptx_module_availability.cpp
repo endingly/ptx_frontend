@@ -343,6 +343,15 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
   return {};
 }
 
+/** Owned instruction source maps require positive, ordered, nonempty ranges. */
+bool valid_instruction_range(SourceRange range) noexcept {
+  return range.start.line > 0 && range.start.column > 0 && range.end.line > 0 &&
+         range.end.column > 0 &&
+         (range.start.line < range.end.line ||
+          (range.start.line == range.end.line &&
+           range.start.column < range.end.column));
+}
+
 /** Check every IR instruction using its owned source location. */
 void check_instruction_body(const ResolvedFunction& function,
                             const checker::TargetInfo& target,
@@ -350,6 +359,14 @@ void check_instruction_body(const ResolvedFunction& function,
   for (size_t i = 0; i < function.body.size(); ++i) {
     if (!function.body[i])
       continue;
+    if (!valid_instruction_range(function.instruction_ranges[i])) {
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
+          .range = function.instruction_ranges[i],
+          .message = "Resolved instruction source range is invalid.",
+      });
+      continue;
+    }
     const checker::Context context{
         .target = target,
         .instruction_range = function.instruction_ranges[i],
@@ -1934,6 +1951,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     }
     if (complete_instruction_provenance) {
       for (size_t index = 0; index < function.body.size(); ++index) {
+        const auto range = function.instruction_ranges[index];
+        if (!valid_instruction_range(range))
+          invalid(range, "Resolved instruction source range is invalid.");
         if (!function.body[index])
           invalid(function.instruction_ranges[index],
                   "Resolved function contains an empty instruction owner.");

@@ -15,6 +15,8 @@ from ptx_frontend.spec.model import (
     OperandRegisterWidthPolicy,
     OperandRole,
     OperandSpec,
+    TextureGeometry,
+    TextureResourceRole,
     OperandStateSpaceExpression,
     OperandStateSpaceValue,
     OperandTypeExpression,
@@ -106,6 +108,32 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     )
     immediate_conversion = _normalize_immediate_conversion(raw)
     address = _normalize_address_options(raw)
+    texture_geometry = None
+    if kind is OperandKind.TEXTURE_ACCESS:
+        try:
+            texture_geometry = TextureGeometry(raw["texture_geometry"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("texture_access requires a known texture_geometry") from error
+    elif "texture_geometry" in raw:
+        raise ValueError("texture_geometry requires texture_access")
+    texture_legacy_v4_coordinates = raw.get("texture_legacy_v4_coordinates", False)
+    if type(texture_legacy_v4_coordinates) is not bool:
+        raise TypeError("texture_legacy_v4_coordinates must be boolean")
+    if texture_legacy_v4_coordinates and kind is not OperandKind.TEXTURE_ACCESS:
+        raise ValueError("legacy v4 coordinates require texture_access")
+    texture_unbracketed = raw.get("texture_unbracketed", False)
+    if type(texture_unbracketed) is not bool or (
+        texture_unbracketed and kind is not OperandKind.TEXTURE_ACCESS
+    ):
+        raise ValueError("unbracketed texture compatibility requires texture_access")
+    texture_resource_kind = raw.get("texture_resource_kind")
+    if kind is OperandKind.TEXTURE_QUERY_RESOURCE:
+        try:
+            texture_resource_kind = TextureResourceRole(texture_resource_kind)
+        except (TypeError, ValueError) as error:
+            raise ValueError("texture_query_resource requires a typed resource kind") from error
+    elif texture_resource_kind is not None:
+        raise ValueError("texture_resource_kind requires texture_query_resource")
 
     return OperandSpec(
         name=raw["name"],
@@ -135,6 +163,10 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         minimum_elements=pack.minimum_elements,
         maximum_elements=pack.maximum_elements,
         element_kinds=pack.element_kinds,
+        texture_geometry=texture_geometry,
+        texture_legacy_v4_coordinates=texture_legacy_v4_coordinates,
+        texture_unbracketed=texture_unbracketed,
+        texture_resource_kind=texture_resource_kind,
     )
 
 
@@ -314,6 +346,8 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     vector_require_uniform_register_family = False
     if raw["kind"] in {
         OperandKind.REGISTER_VECTOR,
+        OperandKind.TEXTURE_RESULT,
+        OperandKind.TEXTURE_RESULT_WITH_PREDICATE,
         OperandKind.VECTOR_REGISTER,
         OperandKind.VECTOR_SPECIAL_REGISTER,
     }:

@@ -3967,6 +3967,274 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
   }});
 }
 
+/** Check one opaque resource's owned kind and indirect carrier metadata. */
+void check_texture_resource_static(const ResolvedOpaqueResourceRef& resource,
+                                   CheckDiagnostics& diagnostics) {
+  const auto report = [&](std::string message) {
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = resource.source_range,
+        .message = std::move(message),
+    });
+  };
+  switch (resource.expected_kind) {
+    case base::OpaqueResourceKind::Texture:
+    case base::OpaqueResourceKind::Sampler:
+    case base::OpaqueResourceKind::Surface:
+      break;
+    default:
+      report("Opaque resource has an invalid expected kind.");
+      return;
+  }
+  if (const auto* direct =
+          std::get_if<ResolvedOpaqueSymbolRef>(&resource.value)) {
+    if (direct->kind != resource.expected_kind)
+      report("Direct opaque resource kind disagrees with its use.");
+    return;
+  }
+  const auto& indirect = std::get<ResolvedRegisterRef>(resource.value);
+  if (indirect.register_class != ResolvedRegisterClass::General ||
+      indirect.vector_width || !indirect.declared_type ||
+      base::scalar_size_of(*indirect.declared_type) != 8 ||
+      (base::scalar_kind(*indirect.declared_type) != base::ScalarKind::Bit &&
+       base::scalar_kind(*indirect.declared_type) != base::ScalarKind::Signed &&
+       base::scalar_kind(*indirect.declared_type) !=
+           base::ScalarKind::Unsigned))
+    report(
+        "Indirect opaque resource requires a scalar 64-bit integer/bit "
+        "carrier.");
+}
+
+/** Apply the form's canonical indirect-resource feature gate when selected. */
+void check_texture_indirect_gate(const TextureInstructionDescriptor& descriptor,
+                                 const ResolvedOpaqueResourceRef& resource,
+                                 const Context& context,
+                                 CheckDiagnostics& diagnostics) {
+  if (!std::holds_alternative<ResolvedRegisterRef>(resource.value))
+    return;
+  if (!descriptor.indirect_availability) {
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = resource.source_range,
+        .message = "Texture form lacks an indirect resource feature gate.",
+    });
+  } else if (!is_available(*descriptor.indirect_availability, context.target)) {
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::UnsupportedAvailability,
+        .range = resource.source_range,
+        .message = "Indirect texture resource is unavailable for this target.",
+    });
+  }
+}
+
+/** Check texture payload invariants without an owning module symbol table. */
+CheckResult check_texture_static_payload(
+    const TextureInstructionDescriptor& descriptor,
+    TextureSelectedTypes selected_types, const ResolvedTextureAccess& access,
+    const ResolvedTextureResult& result, bool residency_required,
+    const Context& context) {
+  CheckDiagnostics diagnostics;
+  const auto report = [&](SourceRange range, std::string message) {
+    diagnostics.push_back(
+        {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+         .range = range,
+         .message = std::move(message)});
+  };
+  const auto range = context.instruction_range;
+  check_texture_resource_static(access.texture, diagnostics);
+  check_texture_indirect_gate(descriptor, access.texture, context, diagnostics);
+  if (access.texture.expected_kind != base::OpaqueResourceKind::Texture)
+    report(access.texture.source_range,
+           "Texture access requires a texture resource kind.");
+  if (access.sampler) {
+    check_texture_resource_static(*access.sampler, diagnostics);
+    check_texture_indirect_gate(descriptor, *access.sampler, context,
+                                diagnostics);
+    if (access.sampler->expected_kind != base::OpaqueResourceKind::Sampler)
+      report(access.sampler->source_range,
+             "Texture access sampler has the wrong resource kind.");
+  }
+  if (!descriptor.geometry) {
+    report(range, "Texture access form lacks a geometry.");
+    return std::unexpected(std::move(diagnostics));
+  }
+  const auto geometry = *descriptor.geometry;
+  if (!selected_types.result_type || !selected_types.coordinate_type ||
+      result.result_type != *selected_types.result_type ||
+      access.coordinate_type != *selected_types.coordinate_type)
+    report(range,
+           "Texture selected type modifiers disagree with owned operands.");
+  const size_t standard = geometry == TextureGeometry::OneD ? 1
+                          : geometry == TextureGeometry::TwoD ||
+                                  geometry == TextureGeometry::ArrayOneD
+                              ? 2
+                              : 4;
+  const bool legacy_four =
+      !descriptor.component &&
+      (geometry == TextureGeometry::OneD || geometry == TextureGeometry::TwoD ||
+       geometry == TextureGeometry::ArrayOneD) &&
+      access.coordinates.size() == 4;
+  if (access.coordinates.size() != standard && !legacy_four)
+    report(range, "Texture coordinate tuple arity disagrees with geometry.");
+  if ((!access.bracketed && descriptor.component) ||
+      (!access.coordinates_packed && geometry != TextureGeometry::OneD))
+    report(range,
+           "Texture coordinate source topology is invalid for this form.");
+  if ((access.coordinate_type != ScalarType::F32 &&
+       access.coordinate_type != ScalarType::S32) ||
+      (descriptor.component && access.coordinate_type != ScalarType::F32) ||
+      ((geometry == TextureGeometry::Cube ||
+        geometry == TextureGeometry::ArrayCube) &&
+       access.coordinate_type != ScalarType::F32) ||
+      ((geometry == TextureGeometry::TwoDMultisample ||
+        geometry == TextureGeometry::ArrayTwoDMultisample) &&
+       access.coordinate_type != ScalarType::S32))
+    report(range, "Texture spatial coordinate type is invalid.");
+  const bool mixed = geometry == TextureGeometry::ArrayOneD ||
+                     geometry == TextureGeometry::ArrayTwoD ||
+                     geometry == TextureGeometry::ArrayCube ||
+                     geometry == TextureGeometry::TwoDMultisample ||
+                     geometry == TextureGeometry::ArrayTwoDMultisample;
+  for (size_t i = 0; i < access.coordinates.size(); ++i) {
+    const auto& lane = access.coordinates[i];
+    const auto role = texture_lane_role(geometry, i, access.coordinates.size());
+    if (lane.role != role) {
+      report(lane.range,
+             "Texture coordinate lane role disagrees with geometry.");
+      continue;
+    }
+    const ScalarType use_type =
+        role == TextureLaneRole::Spatial ||
+                (role == TextureLaneRole::Ignored && !mixed)
+            ? access.coordinate_type
+            : ScalarType::U32;
+    const auto* reg = std::get_if<ResolvedRegisterRef>(&lane.value);
+    if (!reg) {
+      const auto* immediate = std::get_if<ResolvedImmediate>(&lane.value);
+      if (!immediate || immediate->type != use_type)
+        report(lane.range,
+               "Texture coordinate immediate has the wrong use type.");
+      continue;
+    }
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width || !reg->declared_type ||
+        base::scalar_size_of(*reg->declared_type) !=
+            base::scalar_size_of(use_type) ||
+        (!mixed &&
+         !base::scalar_types_compatible(*reg->declared_type, use_type,
+                                        base::ScalarTypeSizePolicy::SameWidth)))
+      report(lane.range, "Texture coordinate scalar carrier is incompatible.");
+  }
+  if (result.data.elements.size() != descriptor.result_arity ||
+      result.data_ranges.size() != descriptor.result_arity)
+    report(range, "Texture result arity or lane locations disagree with form.");
+  for (size_t i = 0; i < result.data.elements.size(); ++i) {
+    const auto& lane = result.data.elements[i];
+    const auto* reg = lane ? &*lane : nullptr;
+    const auto lane_range =
+        i < result.data_ranges.size() ? result.data_ranges[i] : range;
+    if (!reg || reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width || !reg->declared_type ||
+        !base::scalar_types_compatible(*reg->declared_type, result.result_type,
+                                       base::ScalarTypeSizePolicy::SameWidth))
+      report(lane_range,
+             "Texture result lane has an incompatible scalar register.");
+    if (!reg)
+      continue;
+    for (size_t earlier = 0; earlier < i; ++earlier) {
+      const auto& prior = result.data.elements[earlier];
+      if (prior && ((reg->symbol_id && prior->symbol_id &&
+                     reg->symbol_id == prior->symbol_id &&
+                     reg->parameterized_index == prior->parameterized_index) ||
+                    reg->spelling == prior->spelling)) {
+        report(lane_range,
+               "Texture result writes the same register more than once.");
+        break;
+      }
+    }
+  }
+  if (result.residency && !descriptor.allows_residency)
+    report(range, "Texture form has a forbidden residency predicate.");
+  if (result.residency && result.residency->negated)
+    report(result.residency_range,
+           "Texture residency destination cannot be negated.");
+  if (result.residency) {
+    const auto& predicate = result.residency->register_ref;
+    if (predicate.register_class != ResolvedRegisterClass::Predicate ||
+        predicate.vector_width || !predicate.declared_type ||
+        *predicate.declared_type != ScalarType::Pred)
+      report(result.residency_range,
+             "Texture residency destination requires a scalar predicate "
+             "register.");
+  }
+  if (static_cast<bool>(result.residency) != residency_required)
+    report(range, "Texture residency presence disagrees with selected layout.");
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
+}
+
+/** Check a query resource without assuming the module's texturing mode. */
+CheckResult check_texture_query_static_payload(
+    const TextureInstructionDescriptor& descriptor,
+    const ResolvedTextureQueryResource& resource, const Context& context) {
+  CheckDiagnostics diagnostics;
+  if (!descriptor.query || descriptor.geometry || descriptor.tested_kind)
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = context.instruction_range,
+        .message = "Texture query form has an invalid operation descriptor.",
+    });
+  if (!resource.bracketed)
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = resource.resource.source_range,
+        .message = "Texture query resource must retain source brackets.",
+    });
+  check_texture_resource_static(resource.resource, diagnostics);
+  check_texture_indirect_gate(descriptor, resource.resource, context,
+                              diagnostics);
+  bool kind_allowed = false;
+  if (descriptor.query) {
+    switch (*descriptor.query) {
+      case TextureQuery::Width:
+      case TextureQuery::Height:
+      case TextureQuery::Depth:
+      case TextureQuery::ChannelDataType:
+      case TextureQuery::ChannelOrder:
+      case TextureQuery::NormalizedCoords:
+      case TextureQuery::ArraySize:
+      case TextureQuery::NumMipmapLevels:
+      case TextureQuery::NumSamples:
+        kind_allowed = resource.resource.expected_kind ==
+                       base::OpaqueResourceKind::Texture;
+        break;
+      case TextureQuery::ForceUnnormalizedCoords:
+        kind_allowed = resource.resource.expected_kind ==
+                       base::OpaqueResourceKind::Sampler;
+        break;
+      case TextureQuery::FilterMode:
+      case TextureQuery::AddressMode0:
+      case TextureQuery::AddressMode1:
+      case TextureQuery::AddressMode2:
+        kind_allowed = resource.resource.expected_kind ==
+                           base::OpaqueResourceKind::Texture ||
+                       resource.resource.expected_kind ==
+                           base::OpaqueResourceKind::Sampler;
+        break;
+    }
+  }
+  if (!kind_allowed)
+    diagnostics.push_back({
+        .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = resource.resource.source_range,
+        .message = "Texture query resource kind disagrees with its query.",
+    });
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
+}
+
 }  // namespace ptx_frontend::resolved_ir::checker
 
 namespace ptx_frontend::resolved_ir {

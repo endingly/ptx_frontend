@@ -83,6 +83,17 @@ struct CstVectorPack {
   CstTokenRange token_range;
 };
 
+/** Braced texture result followed by an optional residency predicate sink. */
+struct CstVectorPredicatePair {
+  /** Source-order data register pack. */
+  CstVectorPack data;
+  /** Separator between data and predicate destinations. */
+  TokenId pipe{};
+  /** Scalar predicate destination spelling. */
+  CstIdentifier predicate;
+  CstTokenRange token_range;
+};
+
 /** One bracketed tensor-map address and its nested coordinate tuple. */
 struct CstTensorOperand {
   TokenId left_bracket{};
@@ -99,6 +110,18 @@ struct CstFabricHandle {
   std::vector<CstAddressBase> elements;
   /** Comma tokens between elements, retained for precise diagnostics. */
   std::vector<TokenId> commas;
+  TokenId left_bracket{};
+  TokenId right_bracket{};
+  CstTokenRange token_range;
+};
+
+/** Bracketed scalar resource heads followed by one coordinate brace pack. */
+struct CstCompoundBracket {
+  /** One or two identifier/immediate heads; semantic kind is resolved later. */
+  std::vector<CstAddressBase> heads;
+  /** All separators, including the one before the coordinate pack. */
+  std::vector<TokenId> commas;
+  CstVectorPack coordinates;
   TokenId left_bracket{};
   TokenId right_bracket{};
   CstTokenRange token_range;
@@ -150,9 +173,10 @@ struct CstRegisterPredicatePair {
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
                  CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
-                 CstTensorOperand, CstFabricHandle, CstCallParameterList,
-                 CstCallTarget, CstCallTargetSet, CstBranchTarget,
-                 CstBranchTargetSet, CstRegisterPredicatePair>;
+                 CstVectorPredicatePair, CstTensorOperand, CstFabricHandle,
+                 CstCompoundBracket, CstCallParameterList, CstCallTarget,
+                 CstCallTargetSet, CstBranchTarget, CstBranchTargetSet,
+                 CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;
@@ -238,8 +262,19 @@ struct CstInitializerList {
   CstTokenRange token_range;
 };
 
+/** One named opaque-resource member assignment in a static initializer. */
+struct CstNamedInitializer {
+  /** Member identifier and assignment token in source order. */
+  TokenId member{};
+  TokenId equals{};
+  /** Unevaluated constant expression used as the member value. */
+  CstConstantExpression value;
+  CstTokenRange token_range;
+};
+
 struct CstInitializer {
-  std::variant<CstConstantExpression, CstInitializerList> value;
+  std::variant<CstConstantExpression, CstInitializerList, CstNamedInitializer>
+      value;
   CstTokenRange token_range;
 };
 

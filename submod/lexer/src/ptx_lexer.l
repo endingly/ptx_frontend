@@ -210,6 +210,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".align"                { TOK(DotAlign); }
 ".ptr"                  { TOK(DotPtr); }
 ".global"               { TOK(DotGlobal); }
+".tex"                  { TOK(DotTex); }
 ".const"                { TOK(DotConst); }
 ".shared"               { TOK(DotShared); }
 ".local"                { TOK(DotLocal); }

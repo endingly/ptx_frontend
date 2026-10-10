@@ -8,8 +8,9 @@ may be destroyed after successful resolution.
 
 This is a declaration-to-consumer contract, not a memory allocator or a claim
 of complete PTX declaration conformance. Parameters remain separate:
-`ResolvedFunction::parameter_declarations` describes `.param` declarations;
-the `EntryInput` role identifies entry inputs.
+`ResolvedFunction::parameter_declarations` describes sized `.param` declarations;
+the `EntryInput` role identifies ordinary entry inputs. Opaque entry inputs live
+in `ResolvedFunction::opaque_entry_parameters` without fabricated byte layout.
 Registers and call parameters do not enter the storage list.
 
 ## Identity and layout inputs
@@ -41,13 +42,15 @@ overflow produce diagnostics rather than wrapping a size.
 ## Initializers
 
 Initialization has four explicit states: `Uninitialized` for shared/local or
-opaque objects; `Zero` for implicit global/constant initialization; `Explicit`
+opaque objects without source initialization; `Zero` for implicit ordinary global/constant initialization; `Explicit`
 for a source initializer, including an empty brace list; and `External` when
 this module supplies no initial contents. An explicit initializer is a sparse
 list of scalar values at byte offsets within the declared object. Missing
-positions in `Explicit` mode are zero-filled; the frontend does not expand a
+positions in ordinary `Explicit` mode are zero-filled; the frontend does not expand a
 large aggregate into a byte buffer. Recursive array/vector brace positions
-determine each offset.
+determine each offset. Opaque named-member initializers use separate typed field
+groups and object-index paths; they never enter this byte-offset list or imply
+default values for omitted fields.
 
 `StorageConstant` holds the normalized element bits: `bits` is the low 64-bit
 word and `high_bits` is the high word, independent of host byte order. The high
@@ -91,9 +94,10 @@ anomalous upper words in ptxas 13.3.33 output are not reproduced by this contrac
 
 Floating initialization supports `.f32`/`.f64` literals with signs and
 parentheses; compound floating arithmetic is not normalized. Opaque object
-metadata is limited to module-level scalar `.global` declarations;
-field-assignment initializers remain outside the supported parser/normalizer
-domain. These boundaries do not turn unsupported values into zero.
+metadata includes module-global declarations with preserved array shape,
+explicit alignment, and typed named-member initialization. See the
+[texture contract](texture_coverage.md) for its identity and static-field boundary.
+These boundaries do not turn unsupported values into zero.
 
 ## Diagnostics and boundaries
 
@@ -112,7 +116,7 @@ The normative baseline is the [PTX ISA 9.3 variable
 rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variables).
 The executable contract is exercised by the [storage regression
 tests](../../submod/resolved_ir/test/test_storage_declaration_metadata.cpp) and
-the [installed consumer](../../submod/resolved_ir/test/package_consumer/main.cpp).
+the [installed consumer](../../examples/texture_consumer/main.cpp).
 
 Allocation order, padding between distinct objects, external symbol resolution,
 dynamic shared-memory size, per-CTA/per-thread instances, and runtime memory

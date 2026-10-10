@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <ptx_frontend/base/base.hpp>
+#include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 
 namespace ptx_frontend::declaration_semantics {
@@ -32,6 +33,8 @@ struct FunctionParameterContract {
   std::optional<NormalizedNumericValue> alignment;
   /** Modeled scalar identity, or Invalid for an unsupported source spelling. */
   base::ScalarType scalar_type{base::ScalarType::Invalid};
+  /** Present only for a name-only entry input; mutually exclusive with scalar_type. */
+  std::optional<base::OpaqueResourceKind> opaque_kind;
   /** Retained source spelling for Invalid scalar diagnostics. */
   std::string type_spelling;
   /** Whether this parameter carries pointer attributes. */
@@ -50,6 +53,7 @@ struct FunctionParameterContract {
   bool operator==(const FunctionParameterContract& other) const {
     return state_space == other.state_space && alignment == other.alignment &&
            scalar_type == other.scalar_type &&
+           opaque_kind == other.opaque_kind &&
            (scalar_type != base::ScalarType::Invalid ||
             type_spelling == other.type_spelling) &&
            is_pointer == other.is_pointer &&

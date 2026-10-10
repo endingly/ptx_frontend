@@ -434,6 +434,9 @@ domains:
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
       FabricHandle: ResolvedFabricHandle
+      TextureAccess: ResolvedTextureAccess
+      TextureQueryResource: ResolvedTextureQueryResource
+      TextureResult: ResolvedTextureResult
       TensorMemoryAddress: TensorMemoryAddress
       TcgenBracketedAddress: TensorMemoryAddress
       TcgenHalfSplitOffset: TcgenHalfSplitOffset
@@ -489,6 +492,8 @@ domains:
       REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
       TENSOR_OPERAND: check_end::OperandSyntaxShape::TensorOperand
       FABRIC_HANDLE: check_end::OperandSyntaxShape::FabricHandle
+      COMPOUND_BRACKET: check_end::OperandSyntaxShape::CompoundBracket
+      VECTOR_PREDICATE_PAIR: check_end::OperandSyntaxShape::VectorPredicatePair
       NEGATED_IMMEDIATE: check_end::OperandSyntaxShape::NegatedImmediate
 
   resolved_value_kinds:
@@ -542,6 +547,9 @@ domains:
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
       FabricHandle: check_end::ResolvedValueKind::FabricHandle
+      TextureAccess: check_end::ResolvedValueKind::TextureAccess
+      TextureQueryResource: check_end::ResolvedValueKind::TextureQueryResource
+      TextureResult: check_end::ResolvedValueKind::TextureResult
       TensorMemoryAddress: check_end::ResolvedValueKind::TensorMemoryAddress
       TcgenBracketedAddress: check_end::ResolvedValueKind::TcgenBracketedAddress
       TcgenHalfSplitOffset: check_end::ResolvedValueKind::TcgenHalfSplitOffset
@@ -584,6 +592,9 @@ domains:
       Vector: check_end::OperandShape::Vector
       TensorOperand: check_end::OperandShape::TensorOperand
       FabricHandle: check_end::OperandShape::FabricHandle
+      TextureAccess: check_end::OperandShape::TextureAccess
+      TextureQueryResource: check_end::OperandShape::TextureQueryResource
+      TextureResult: check_end::OperandShape::TextureResult
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
       DirectCallTarget: check_end::OperandShape::DirectCallTarget

@@ -39,6 +39,9 @@ from ptx_frontend.spec.model import (
     OperandRegisterWidthPolicy,
     OperandRole,
     OperandSpec,
+    TextureGeometry,
+    TextureInstructionSpec,
+    TextureResourceRole,
     OperandStateSpaceExpression,
     OperandStateSpaceValue,
     OperandTypeCompatibilityValueKind,
@@ -171,6 +174,10 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: ResolvedValueKind.FABRIC_HANDLE,
+    OperandKind.TEXTURE_ACCESS: ResolvedValueKind.TEXTURE_ACCESS,
+    OperandKind.TEXTURE_QUERY_RESOURCE: ResolvedValueKind.TEXTURE_QUERY_RESOURCE,
+    OperandKind.TEXTURE_RESULT: ResolvedValueKind.TEXTURE_RESULT,
+    OperandKind.TEXTURE_RESULT_WITH_PREDICATE: ResolvedValueKind.TEXTURE_RESULT,
     OperandKind.TENSOR_MEMORY_ADDRESS: ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
     OperandKind.TENSOR_MEMORY_ADDRESS_BRACKET: ResolvedValueKind.TCGEN_BRACKETED_ADDRESS,
     OperandKind.TCGEN_HALF_SPLIT_OFFSET: ResolvedValueKind.TCGEN_HALF_SPLIT_OFFSET,
@@ -235,6 +242,9 @@ class ResolvedOperandShape(Enum):
     PREDICATE_PAIR = "PredicatePair"
     TENSOR_OPERAND = "TensorOperand"
     FABRIC_HANDLE = "FabricHandle"
+    TEXTURE_ACCESS = "TextureAccess"
+    TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
+    TEXTURE_RESULT = "TextureResult"
 
 
 class ResolvedOperandTypeExpressionKind(Enum):
@@ -398,6 +408,7 @@ class ResolvedVariant:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    texture: TextureInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
@@ -516,6 +527,11 @@ class ResolvedOperandBinding:
     tensor_access_mode: TensorAccessMode | None = None
     expected_tensor_rank: int | None = None
     tensor_cta_mask: bool = False
+    texture_geometry: TextureGeometry | None = None
+    texture_legacy_v4_coordinates: bool = False
+    texture_unbracketed: bool = False
+    texture_resource_kind: TextureResourceRole | None = None
+    texture_residency_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -599,6 +615,10 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
     OperandKind.FABRIC_HANDLE: (ResolvedOperandShape.FABRIC_HANDLE,),
+    OperandKind.TEXTURE_ACCESS: (ResolvedOperandShape.TEXTURE_ACCESS,),
+    OperandKind.TEXTURE_QUERY_RESOURCE: (ResolvedOperandShape.TEXTURE_QUERY_RESOURCE,),
+    OperandKind.TEXTURE_RESULT: (ResolvedOperandShape.TEXTURE_RESULT,),
+    OperandKind.TEXTURE_RESULT_WITH_PREDICATE: (ResolvedOperandShape.TEXTURE_RESULT,),
     OperandKind.TENSOR_MEMORY_ADDRESS: (
         ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE,
     ),
@@ -871,6 +891,7 @@ def _build_variant(
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
+        texture=variant.texture,
         wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
@@ -1938,6 +1959,13 @@ def _build_operand_layout(
                     if operand.kind is OperandKind.TENSOR_OPERAND else None
                 ),
                 tensor_cta_mask=(tensor_multicast and operand.name == "cta_mask"),
+                texture_geometry=operand.texture_geometry,
+                texture_legacy_v4_coordinates=operand.texture_legacy_v4_coordinates,
+                texture_unbracketed=operand.texture_unbracketed,
+                texture_resource_kind=operand.texture_resource_kind,
+                texture_residency_required=(
+                    operand.kind is OperandKind.TEXTURE_RESULT_WITH_PREDICATE
+                ),
             )
             for operand, field in zip(operands, fields, strict=True)
         ),

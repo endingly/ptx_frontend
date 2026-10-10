@@ -19,7 +19,7 @@ struct SelectedOperandLayout {
 /** Select the unique most-specific operand layout accepted by an instruction. */
 std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
     const check_end::SyntaxVariantDescriptor& variant,
-    const syntax_ast::AstInstruction& ast);
+    const syntax_ast::AstInstruction& ast, TextureMode texture_mode);
 
 /** Locate a syntax variant by its generated semantic name. */
 const check_end::SyntaxVariantDescriptor& find_syntax_variant_descriptor(

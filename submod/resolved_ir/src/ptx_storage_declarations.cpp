@@ -1,6 +1,7 @@
 #include "ptx_storage_declarations.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <concepts>
@@ -168,13 +169,237 @@ bool is_fundamental_storage_scalar(base::ScalarType type) {
 
 /** Classify PTX opaque declaration identities without inventing a byte layout. */
 std::optional<StorageOpaqueType> opaque_type(std::string_view spelling) {
-  if (spelling == ".texref")
-    return StorageOpaqueType::Texture;
-  if (spelling == ".samplerref")
-    return StorageOpaqueType::Sampler;
-  if (spelling == ".surfref")
-    return StorageOpaqueType::Surface;
+  return base::opaque_resource_kind(spelling);
+}
+
+/** Classify one named static resource member. */
+std::optional<OpaqueStaticField> opaque_static_field(
+    std::string_view spelling) {
+  constexpr std::array fields{
+      std::pair{"width", OpaqueStaticField::Width},
+      std::pair{"height", OpaqueStaticField::Height},
+      std::pair{"depth", OpaqueStaticField::Depth},
+      std::pair{"channel_data_type", OpaqueStaticField::ChannelDataType},
+      std::pair{"channel_order", OpaqueStaticField::ChannelOrder},
+      std::pair{"normalized_coords", OpaqueStaticField::NormalizedCoords},
+      std::pair{"filter_mode", OpaqueStaticField::FilterMode},
+      std::pair{"addr_mode_0", OpaqueStaticField::AddressMode0},
+      std::pair{"addr_mode_1", OpaqueStaticField::AddressMode1},
+      std::pair{"addr_mode_2", OpaqueStaticField::AddressMode2},
+      std::pair{"array_size", OpaqueStaticField::ArraySize},
+      std::pair{"num_mipmap_levels", OpaqueStaticField::NumMipmapLevels},
+      std::pair{"num_samples", OpaqueStaticField::NumSamples},
+      std::pair{"force_unnormalized_coords",
+                OpaqueStaticField::ForceUnnormalizedCoords},
+      std::pair{"memory_layout", OpaqueStaticField::MemoryLayout},
+  };
+  for (const auto& [name, field] : fields)
+    if (name == spelling)
+      return field;
   return std::nullopt;
+}
+
+/** Classify source API and PTX enumerants admitted by opaque static members. */
+std::optional<OpaqueStaticEnum> opaque_static_enum(std::string_view spelling) {
+  constexpr std::array values{
+      std::pair{"nearest", OpaqueStaticEnum::Nearest},
+      std::pair{"linear", OpaqueStaticEnum::Linear},
+      std::pair{"wrap", OpaqueStaticEnum::Wrap},
+      std::pair{"mirror", OpaqueStaticEnum::Mirror},
+      std::pair{"clamp_ogl", OpaqueStaticEnum::ClampOgl},
+      std::pair{"clamp_to_edge", OpaqueStaticEnum::ClampToEdge},
+      std::pair{"clamp_to_border", OpaqueStaticEnum::ClampToBorder},
+      std::pair{"CL_SNORM_INT8", OpaqueStaticEnum::ClSnormInt8},
+      std::pair{"CL_SNORM_INT16", OpaqueStaticEnum::ClSnormInt16},
+      std::pair{"CL_UNORM_INT8", OpaqueStaticEnum::ClUnormInt8},
+      std::pair{"CL_UNORM_INT16", OpaqueStaticEnum::ClUnormInt16},
+      std::pair{"CL_UNORM_SHORT_565", OpaqueStaticEnum::ClUnormShort565},
+      std::pair{"CL_UNORM_SHORT_555", OpaqueStaticEnum::ClUnormShort555},
+      std::pair{"CL_UNORM_INT_101010", OpaqueStaticEnum::ClUnormInt101010},
+      std::pair{"CL_SIGNED_INT8", OpaqueStaticEnum::ClSignedInt8},
+      std::pair{"CL_SIGNED_INT16", OpaqueStaticEnum::ClSignedInt16},
+      std::pair{"CL_SIGNED_INT32", OpaqueStaticEnum::ClSignedInt32},
+      std::pair{"CL_UNSIGNED_INT8", OpaqueStaticEnum::ClUnsignedInt8},
+      std::pair{"CL_UNSIGNED_INT16", OpaqueStaticEnum::ClUnsignedInt16},
+      std::pair{"CL_UNSIGNED_INT32", OpaqueStaticEnum::ClUnsignedInt32},
+      std::pair{"CL_HALF_FLOAT", OpaqueStaticEnum::ClHalfFloat},
+      std::pair{"CL_FLOAT", OpaqueStaticEnum::ClFloat},
+      std::pair{"CL_R", OpaqueStaticEnum::ClR},
+      std::pair{"CL_A", OpaqueStaticEnum::ClA},
+      std::pair{"CL_RG", OpaqueStaticEnum::ClRg},
+      std::pair{"CL_RA", OpaqueStaticEnum::ClRa},
+      std::pair{"CL_RGB", OpaqueStaticEnum::ClRgb},
+      std::pair{"CL_RGBA", OpaqueStaticEnum::ClRgba},
+      std::pair{"CL_BGRA", OpaqueStaticEnum::ClBgra},
+      std::pair{"CL_ARGB", OpaqueStaticEnum::ClArgb},
+      std::pair{"CL_INTENSITY", OpaqueStaticEnum::ClIntensity},
+      std::pair{"CL_LUMINANCE", OpaqueStaticEnum::ClLuminance},
+  };
+  for (const auto& [name, value] : values)
+    if (name == spelling)
+      return value;
+  return std::nullopt;
+}
+
+/** Whether the static field is meaningful for this declared resource kind. */
+bool opaque_static_field_accepts(OpaqueStaticField field,
+                                 StorageOpaqueType kind) {
+  if (kind == StorageOpaqueType::Sampler)
+    return field == OpaqueStaticField::ForceUnnormalizedCoords ||
+           field == OpaqueStaticField::FilterMode ||
+           field == OpaqueStaticField::AddressMode0 ||
+           field == OpaqueStaticField::AddressMode1 ||
+           field == OpaqueStaticField::AddressMode2;
+  if (field == OpaqueStaticField::ForceUnnormalizedCoords)
+    return false;
+  if (kind == StorageOpaqueType::Surface)
+    return field == OpaqueStaticField::Width ||
+           field == OpaqueStaticField::Height ||
+           field == OpaqueStaticField::Depth ||
+           field == OpaqueStaticField::ChannelDataType ||
+           field == OpaqueStaticField::ChannelOrder ||
+           field == OpaqueStaticField::ArraySize ||
+           field == OpaqueStaticField::MemoryLayout;
+  return field != OpaqueStaticField::MemoryLayout;
+}
+
+/** Normalize a named static initializer without interpreting runtime state. */
+std::optional<std::vector<OpaqueStaticMember>> opaque_static_members(
+    const syntax_ast::AstInitializer& initializer, StorageOpaqueType kind,
+    std::vector<DeclarationDiagnostic>& diagnostics) {
+  const auto* list =
+      std::get_if<syntax_ast::AstInitializerList>(&initializer.value);
+  if (!list || list->elements.empty()) {
+    diagnose(diagnostics,
+             DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+             initializer.range, "Opaque initializer requires named members.");
+    return std::nullopt;
+  }
+  std::vector<OpaqueStaticMember> output;
+  for (const auto& element : list->elements) {
+    const auto* named =
+        std::get_if<syntax_ast::AstNamedInitializer>(&element.value);
+    if (!named) {
+      diagnose(diagnostics,
+               DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+               element.range, "Opaque initializer member must be named.");
+      return std::nullopt;
+    }
+    const auto field = opaque_static_field(named->member.text);
+    if (!field || !opaque_static_field_accepts(*field, kind) ||
+        std::ranges::any_of(
+            output, [&](const auto& prior) { return prior.field == *field; })) {
+      diagnose(diagnostics,
+               DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+               named->member.range,
+               "Unknown, inapplicable, or duplicate opaque resource member.");
+      return std::nullopt;
+    }
+    std::optional<OpaqueStaticEnum> enumeration;
+    if (const auto* symbol =
+            std::get_if<syntax_ast::AstConstantSymbol>(&named->value.node))
+      enumeration = opaque_static_enum(symbol->name.syntax.text);
+    const auto integer =
+        declaration_semantics::constantIntegerValue(named->value);
+    const bool channel = *field == OpaqueStaticField::ChannelDataType ||
+                         *field == OpaqueStaticField::ChannelOrder;
+    const bool filter = *field == OpaqueStaticField::FilterMode;
+    const bool address = *field == OpaqueStaticField::AddressMode0 ||
+                         *field == OpaqueStaticField::AddressMode1 ||
+                         *field == OpaqueStaticField::AddressMode2;
+    const bool enum_field = channel || filter || address;
+    if (!enumeration && channel && integer &&
+        integer->bits <= std::numeric_limits<uint16_t>::max()) {
+      const auto candidate = static_cast<OpaqueStaticEnum>(integer->bits);
+      const auto first = channel && *field == OpaqueStaticField::ChannelDataType
+                             ? OpaqueStaticEnum::ClSnormInt8
+                             : OpaqueStaticEnum::ClR;
+      const auto last = channel && *field == OpaqueStaticField::ChannelDataType
+                            ? OpaqueStaticEnum::ClFloat
+                            : OpaqueStaticEnum::ClLuminance;
+      if (candidate >= first && candidate <= last)
+        enumeration = candidate;
+    }
+    if (!enumeration && integer && integer->bits <= 1 && filter)
+      enumeration = integer->bits == 0 ? OpaqueStaticEnum::Nearest
+                                       : OpaqueStaticEnum::Linear;
+    if (!enumeration && integer && integer->bits <= 4 && address) {
+      constexpr std::array modes{
+          OpaqueStaticEnum::Wrap, OpaqueStaticEnum::Mirror,
+          OpaqueStaticEnum::ClampOgl, OpaqueStaticEnum::ClampToEdge,
+          OpaqueStaticEnum::ClampToBorder};
+      enumeration = modes[integer->bits];
+    }
+    const bool valid_enumeration =
+        enumeration &&
+        ((filter && (*enumeration == OpaqueStaticEnum::Nearest ||
+                     *enumeration == OpaqueStaticEnum::Linear)) ||
+         (address && *enumeration >= OpaqueStaticEnum::Wrap &&
+          *enumeration <= OpaqueStaticEnum::ClampToBorder) ||
+         (*field == OpaqueStaticField::ChannelDataType &&
+          *enumeration >= OpaqueStaticEnum::ClSnormInt8 &&
+          *enumeration <= OpaqueStaticEnum::ClFloat) ||
+         (*field == OpaqueStaticField::ChannelOrder &&
+          *enumeration >= OpaqueStaticEnum::ClR &&
+          *enumeration <= OpaqueStaticEnum::ClLuminance));
+    if ((enum_field && !valid_enumeration) ||
+        (!enum_field &&
+         (!integer || enumeration ||
+          (!integer->is_unsigned && static_cast<int64_t>(integer->bits) < 0) ||
+          ((*field == OpaqueStaticField::NormalizedCoords ||
+            *field == OpaqueStaticField::ForceUnnormalizedCoords ||
+            *field == OpaqueStaticField::MemoryLayout) &&
+           integer->bits > 1)))) {
+      diagnose(diagnostics,
+               DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+               named->value.range,
+               "Opaque resource member has an invalid static value.");
+      return std::nullopt;
+    }
+    output.push_back(
+        {.field = *field,
+         .value = enum_field
+                      ? std::variant<uint64_t, OpaqueStaticEnum>{*enumeration}
+                      : std::variant<uint64_t, OpaqueStaticEnum>{integer->bits},
+         .range = named->range});
+  }
+  return output;
+}
+
+/** Preserve opaque array initializer nesting as object-index paths. */
+bool collect_opaque_static_objects(
+    const syntax_ast::AstInitializer& initializer,
+    std::span<const std::optional<uint64_t>> extents, size_t depth,
+    StorageOpaqueType kind, std::vector<uint64_t>& indices,
+    std::vector<OpaqueStaticObject>& output,
+    std::vector<DeclarationDiagnostic>& diagnostics) {
+  if (depth == extents.size()) {
+    auto members = opaque_static_members(initializer, kind, diagnostics);
+    if (!members)
+      return false;
+    output.push_back({.indices = indices,
+                      .members = std::move(*members),
+                      .range = initializer.range});
+    return true;
+  }
+  const auto* list =
+      std::get_if<syntax_ast::AstInitializerList>(&initializer.value);
+  if (!list || !extents[depth] || list->elements.size() > *extents[depth]) {
+    diagnose(diagnostics,
+             DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+             initializer.range,
+             "Opaque array initializer nesting exceeds its declared shape.");
+    return false;
+  }
+  for (size_t index = 0; index < list->elements.size(); ++index) {
+    indices.push_back(index);
+    if (!collect_opaque_static_objects(list->elements[index], extents,
+                                       depth + 1, kind, indices, output,
+                                       diagnostics))
+      return false;
+    indices.pop_back();
+  }
+  return true;
 }
 
 /** Return whether a bound variable has an opaque PTX object declaration type. */
@@ -759,8 +984,12 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
   const bool external = source_linkage == binding::SymbolLinkage::External;
   const uint8_t lanes = vector_width(declaration.vector_type);
 
-  std::optional<base::ScalarType> scalar = scalar_type(declaration.type.text);
-  std::optional<StorageOpaqueType> opaque = opaque_type(declaration.type.text);
+  std::optional<base::ScalarType> scalar =
+      declaration.legacy_texture ? std::nullopt
+                                 : scalar_type(declaration.type.text);
+  std::optional<StorageOpaqueType> opaque =
+      declaration.legacy_texture ? std::optional{StorageOpaqueType::Texture}
+                                 : opaque_type(declaration.type.text);
   if (!scalar && !opaque) {
     diagnose(diagnostics,
              DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
@@ -784,15 +1013,13 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
                          declaration.type.text));
     return;
   }
-  if (opaque &&
-      (scope != symbols.moduleScope() || *space != StorageSpace::Global ||
-       declaration.vector_type || !declarator.array_dimensions.empty() ||
-       declarator.parameterized_count)) {
-    diagnose(
-        diagnostics, DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
-        declarator.range,
-        "Opaque storage is supported only as a module-scope, scalar .global "
-        "declaration with one named object.");
+  if (opaque && (scope != symbols.moduleScope() ||
+                 *space != StorageSpace::Global || declaration.vector_type)) {
+    diagnose(diagnostics,
+             DeclarationDiagnosticKind::UnsupportedStorageDeclaration,
+             declarator.range,
+             "Opaque storage requires a module-scope .global declaration "
+             "without vector layout.");
     return;
   }
 
@@ -890,6 +1117,7 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
       .space = *space,
       .element_type =
           scalar ? StorageElementType{*scalar} : StorageElementType{*opaque},
+      .legacy_texture = declaration.legacy_texture,
       .vector_width = lanes,
       .array_extents = extents,
       .byte_extent = byte_extent,
@@ -914,10 +1142,20 @@ void resolve_declarator(const syntax_ast::AstVariableDeclaration& declaration,
 
   if (declarator.initializer) {
     if (!scalar) {
-      diagnose(
-          diagnostics, DeclarationDiagnosticKind::UnsupportedStorageInitializer,
-          declarator.initializer->range,
-          "Opaque storage initializers have no representable scalar layout.");
+      if (external) {
+        diagnose(diagnostics,
+                 DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+                 declarator.initializer->range,
+                 "External opaque declarations cannot define static members.");
+        return;
+      }
+      std::vector<uint64_t> indices;
+      if (!collect_opaque_static_objects(
+              *declarator.initializer, extents, 0, *opaque, indices,
+              resolved.opaque_static_objects, diagnostics))
+        return;
+      resolved.initialization = StorageInitializationKind::OpaqueStatic;
+      declarations.push_back(std::move(resolved));
       return;
     }
     std::vector<uint64_t> shape;

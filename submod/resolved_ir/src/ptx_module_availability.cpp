@@ -343,9 +343,17 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
   return {};
 }
 
+/** Validate the owned texture payload after CST and AST have been discarded. */
+void check_texture_instruction_payload(const Instruction& instruction,
+                                       TextureMode mode,
+                                       const checker::TargetInfo& target,
+                                       SourceRange range,
+                                       checker::CheckDiagnostics& diagnostics);
+
 /** Check every IR instruction using its owned source location. */
 void check_instruction_body(const ResolvedFunction& function,
                             const checker::TargetInfo& target,
+                            TextureMode texture_mode,
                             checker::CheckDiagnostics& diagnostics) {
   for (size_t i = 0; i < function.body.size(); ++i) {
     if (!function.body[i])
@@ -358,6 +366,9 @@ void check_instruction_body(const ResolvedFunction& function,
     if (!result)
       diagnostics.insert(diagnostics.end(), result.error().begin(),
                          result.error().end());
+    check_texture_instruction_payload(*function.body[i], texture_mode, target,
+                                      function.instruction_ranges[i],
+                                      diagnostics);
   }
 }
 
@@ -371,6 +382,122 @@ void append_model_mismatch(checker::CheckDiagnostics& diagnostics,
   });
 }
 
+/** Borrow the texture operands of one final form for immediate validation. */
+struct TexturePayloadObserver final : detail::IReferenceObserver {
+  /** Access payload, present for tex and tld4 forms. */
+  const ResolvedTextureAccess* access = nullptr;
+  /** Data result, including a possible residency predicate. */
+  const ResolvedTextureResult* result = nullptr;
+  /** Bracketed query resource, present for txq forms. */
+  const ResolvedTextureQueryResource* query_resource = nullptr;
+  /** Capture one borrowed access without retaining it beyond this check. */
+  void texture_access(const ResolvedTextureAccess& value,
+                      std::span<const SourceRange>,
+                      checker::AddressSymbolResolutionPolicy) override {
+    access = &value;
+  }
+  /** Capture one borrowed result without retaining it beyond this check. */
+  void texture_result(const ResolvedTextureResult& value,
+                      std::span<const SourceRange>,
+                      checker::AddressSymbolResolutionPolicy) override {
+    result = &value;
+  }
+  /** Capture one borrowed query resource for kind and mode checks. */
+  void texture_query_resource(const ResolvedTextureQueryResource& value,
+                              std::span<const SourceRange>,
+                              checker::AddressSymbolResolutionPolicy) override {
+    query_resource = &value;
+  }
+};
+
+/** Check source-independent texture topology and feature-specific gates. */
+void check_texture_instruction_payload(const Instruction& instruction,
+                                       TextureMode mode,
+                                       const checker::TargetInfo& target,
+                                       SourceRange range,
+                                       checker::CheckDiagnostics& diagnostics) {
+  const auto* descriptor = instruction.texture_descriptor();
+  if (!descriptor)
+    return;
+  TexturePayloadObserver payload;
+  instruction.visit_references(payload);
+  const auto mismatch = [&](std::string message) {
+    append_model_mismatch(diagnostics, range, std::move(message));
+  };
+  const bool independent = mode == TextureMode::Independent;
+  if (descriptor->geometry) {
+    if (!payload.access || !payload.result || payload.query_resource) {
+      mismatch("Texture form has an invalid resource/result payload topology.");
+      return;
+    }
+    const auto& access = *payload.access;
+    const auto& result = *payload.result;
+    if (access.texture.expected_kind != base::OpaqueResourceKind::Texture ||
+        static_cast<bool>(access.sampler) != independent ||
+        (access.sampler &&
+         access.sampler->expected_kind != base::OpaqueResourceKind::Sampler))
+      mismatch(
+          "Texture resource kinds or sampler presence disagree with mode.");
+    if (independent) {
+      if (!std::holds_alternative<ResolvedOpaqueSymbolRef>(
+              access.texture.value) ||
+          (access.sampler && !std::holds_alternative<ResolvedOpaqueSymbolRef>(
+                                 access.sampler->value)))
+        mismatch(
+            "Independent texture access requires direct resource symbols.");
+    } else if (std::holds_alternative<ResolvedRegisterRef>(
+                   access.texture.value)) {
+      if (descriptor->indirect_availability)
+        append_requirement(diagnostics, *descriptor->indirect_availability,
+                           target, range, "indirect texture resource");
+      else
+        mismatch(
+            "Texture form lacks an indirect resource availability contract.");
+    }
+    const checker::Context context{.target = target,
+                                   .instruction_range = range};
+    const auto static_check = checker::check_texture_static_payload(
+        *descriptor, instruction.texture_selected_types(), access, result,
+        instruction.texture_layout_requires_residency(), context);
+    if (!static_check)
+      diagnostics.insert(diagnostics.end(), static_check.error().begin(),
+                         static_check.error().end());
+  } else if (descriptor->query) {
+    if (!payload.query_resource || payload.access || payload.result) {
+      mismatch("Texture query has an invalid resource payload topology.");
+      return;
+    }
+    const bool force =
+        *descriptor->query == TextureQuery::ForceUnnormalizedCoords;
+    if (force && !independent)
+      mismatch("Force-unnormalized query requires independent texturing mode.");
+    const bool sampler_query =
+        force || *descriptor->query == TextureQuery::FilterMode ||
+        *descriptor->query == TextureQuery::AddressMode0 ||
+        *descriptor->query == TextureQuery::AddressMode1 ||
+        *descriptor->query == TextureQuery::AddressMode2;
+    const auto expected_kind = sampler_query && independent
+                                   ? base::OpaqueResourceKind::Sampler
+                                   : base::OpaqueResourceKind::Texture;
+    const auto& resource = payload.query_resource->resource;
+    if (resource.expected_kind != expected_kind ||
+        !payload.query_resource->bracketed)
+      mismatch("Query resource kind or bracket topology disagrees with mode.");
+    if (independent &&
+        !std::holds_alternative<ResolvedOpaqueSymbolRef>(resource.value))
+      mismatch("Independent query requires a direct resource symbol.");
+    if (std::holds_alternative<ResolvedRegisterRef>(resource.value))
+      if (descriptor->indirect_availability)
+        append_requirement(diagnostics, *descriptor->indirect_availability,
+                           target, range, "indirect texture query");
+      else
+        mismatch(
+            "Texture query lacks an indirect resource availability contract.");
+  } else if (!descriptor->tested_kind) {
+    mismatch("Texture-family descriptor has no operation identity.");
+  }
+}
+
 /** One binding identity projected from a generated resolved operand payload. */
 struct ModuleReferenceUse {
   std::optional<binding::SymbolId> symbol_id;
@@ -380,6 +507,9 @@ struct ModuleReferenceUse {
   std::optional<ResolvedRegisterRef> register_ref;
   /** Copied address-symbol metadata; no visitor borrow escapes its callback. */
   std::optional<ResolvedSymbolRef> address_symbol;
+  /** Cached direct resource identity, including its expected declared kind. */
+  std::optional<ResolvedOpaqueSymbolRef> opaque_symbol;
+  std::optional<base::OpaqueResourceKind> opaque_use_kind;
   /** Copied enclosing function context for an offset address. */
   std::optional<EnclosingFunctionKind> enclosing_address_function_kind;
   /** Immutable generated policy for parameter-address materialization. */
@@ -471,6 +601,9 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFabricHandle> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTextureAccess> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTextureQueryResource> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedTextureResult> ||
     std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
@@ -493,6 +626,23 @@ void collect_operand_references(
                      binding::SymbolKind::Variable, true, locations, fallback,
                      true, requires_predicate_register);
     uses.back().register_ref = register_ref;
+  };
+  const auto collect_resource = [&](const ResolvedOpaqueResourceRef& resource,
+                                    SourceRange resource_range) {
+    const std::array<SourceRange, 1> range{resource_range};
+    if (const auto* direct =
+            std::get_if<ResolvedOpaqueSymbolRef>(&resource.value)) {
+      const std::array<SourceRange, 1> direct_range{direct->range};
+      append_reference(uses, direct->symbol_id, direct->parameterized_index,
+                       std::nullopt, false, direct_range, fallback);
+      uses.back().opaque_symbol = *direct;
+      uses.back().opaque_use_kind = resource.expected_kind;
+    } else if (const auto* indirect =
+                   std::get_if<ResolvedRegisterRef>(&resource.value)) {
+      collect_operand_references(*indirect, range, fallback, uses,
+                                 address_resolution_policy);
+      uses.back().opaque_use_kind = resource.expected_kind;
+    }
   };
   if constexpr (std::same_as<Value, ResolvedRegisterRef>) {
     collect_register(value);
@@ -601,6 +751,31 @@ void collect_operand_references(
       collect_operand_references(value.counter_offset->value,
                                  value.counter_offset->locs, fallback, uses,
                                  address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedTextureAccess>) {
+    collect_resource(value.texture, value.texture.source_range);
+    if (value.sampler)
+      collect_resource(*value.sampler, value.sampler->source_range);
+    for (const auto& lane : value.coordinates) {
+      const std::array<SourceRange, 1> range{lane.range};
+      collect_operand_references(lane.value, range, fallback, uses,
+                                 address_resolution_policy);
+    }
+  } else if constexpr (std::same_as<Value, ResolvedTextureQueryResource>) {
+    collect_resource(value.resource, value.resource.source_range);
+  } else if constexpr (std::same_as<Value, ResolvedTextureResult>) {
+    for (size_t index = 0; index < value.data.elements.size(); ++index) {
+      if (!value.data.elements[index])
+        continue;
+      const std::array<SourceRange, 1> range{index < value.data_ranges.size()
+                                                 ? value.data_ranges[index]
+                                                 : fallback};
+      collect_operand_references(*value.data.elements[index], range, fallback,
+                                 uses, address_resolution_policy);
+    }
+    if (value.residency)
+      collect_operand_references(
+          *value.residency, std::array<SourceRange, 1>{value.residency_range},
+          fallback, uses, address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -618,6 +793,12 @@ void collect_operand_references(
                         std::same_as<Source, ResolvedAddress>)
             collect_operand_references(source, locations, fallback, uses,
                                        address_resolution_policy);
+          else if constexpr (std::same_as<Source, ResolvedOpaqueSymbolRef>) {
+            append_reference(uses, source.symbol_id, source.parameterized_index,
+                             std::nullopt, false, locations, fallback);
+            uses.back().opaque_symbol = source;
+            uses.back().opaque_use_kind = source.kind;
+          }
         },
         value);
   } else if constexpr (std::same_as<Value, ResolvedShflSyncDestination>) {
@@ -804,6 +985,25 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void fabric_handle(const ResolvedFabricHandle& value,
                      std::span<const SourceRange> locations,
                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect bound resource heads and coordinate registers in an access. */
+  void texture_access(const ResolvedTextureAccess& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect the direct or indirect bracketed query resource. */
+  void texture_query_resource(
+      const ResolvedTextureQueryResource& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect data and optional residency destination identities. */
+  void texture_result(const ResolvedTextureResult& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect a borrowed Tensor Memory address register, when present. */
@@ -996,6 +1196,43 @@ void check_module_references(const ResolvedModule& module,
             "Resolved register metadata disagrees with its owned declaration.");
       }
     }
+    if (use.opaque_use_kind &&
+        *use.opaque_use_kind != base::OpaqueResourceKind::Texture &&
+        *use.opaque_use_kind != base::OpaqueResourceKind::Sampler &&
+        *use.opaque_use_kind != base::OpaqueResourceKind::Surface)
+      append_model_mismatch(
+          diagnostics, use.range,
+          "Resolved resource use has an invalid opaque kind.");
+    if (use.opaque_symbol) {
+      const auto& cached = *use.opaque_symbol;
+      const bool global =
+          symbol->kind == binding::SymbolKind::Variable &&
+          symbol->scope == module.symbols.moduleScope() &&
+          symbol->state_space == base::DeclarationStateSpace::Global;
+      const bool entry =
+          function.is_entry &&
+          symbol->kind == binding::SymbolKind::InputParameter &&
+          symbol->scope == function.declaration_scope &&
+          symbol->state_space == base::DeclarationStateSpace::Parameter;
+      if ((!global && !entry) || !symbol->type ||
+          base::opaque_resource_kind(*symbol->type) != cached.kind ||
+          cached.kind != use.opaque_use_kind ||
+          cached.symbol_id != symbol->id || cached.scope_id != symbol->scope ||
+          cached.entry_input != entry || cached.range != use.range)
+        append_model_mismatch(diagnostics, use.range,
+                              "Resolved direct resource metadata disagrees "
+                              "with its bound declaration.");
+    }
+    if (use.opaque_use_kind && use.register_ref) {
+      const auto type = use.register_ref->declared_type;
+      if (!type || base::scalar_size_of(*type) != 8 ||
+          (base::scalar_kind(*type) != base::ScalarKind::Bit &&
+           base::scalar_kind(*type) != base::ScalarKind::Signed &&
+           base::scalar_kind(*type) != base::ScalarKind::Unsigned))
+        append_model_mismatch(diagnostics, use.range,
+                              "Indirect resource carrier is not a scalar "
+                              "64-bit integer or bit register.");
+    }
     if (use.parameterized_index &&
         (!symbol->parameterized_count ||
          *use.parameterized_index >= *symbol->parameterized_count)) {
@@ -1183,6 +1420,19 @@ void check_header_region(const ResolvedSourceTargetRegion& region,
         diagnostics, range,
         "Resolved source header defaulted an address size other than 32 bits.");
   }
+  TextureMode expected_mode = TextureMode::Unified;
+  size_t mode_count = 0;
+  for (const auto& option : region.target_options) {
+    if (option == "texmode_unified" || option == "texmode_independent") {
+      ++mode_count;
+      expected_mode = option == "texmode_independent" ? TextureMode::Independent
+                                                      : TextureMode::Unified;
+    }
+  }
+  if (mode_count > 1 || region.texture_mode != expected_mode)
+    append_model_mismatch(
+        diagnostics, range,
+        "Resolved texturing mode disagrees with target options.");
 }
 
 /** Validate dimensional resource normalization and mutually exclusive contracts. */
@@ -1336,12 +1586,20 @@ bool valid_scalar_contract(
 void check_signature(const declaration_semantics::FunctionSignature& signature,
                      SourceRange range,
                      checker::CheckDiagnostics& diagnostics) {
-  const auto check_parameters = [&](const auto& parameters) {
+  const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
     for (const auto& parameter : parameters) {
-      if (!valid_scalar_contract(parameter)) {
+      const bool valid_opaque =
+          parameter.opaque_kind && entry_inputs &&
+          parameter.scalar_type == base::ScalarType::Invalid &&
+          parameter.state_space ==
+              call_argument_compatibility::CallArgumentStateSpace::Parameter &&
+          !parameter.is_pointer && !parameter.pointed_state_space &&
+          !parameter.pointer_alignment;
+      if (!valid_opaque &&
+          (parameter.opaque_kind || !valid_scalar_contract(parameter))) {
         append_model_mismatch(
             diagnostics, range,
-            "Resolved function signature has an invalid scalar type.");
+            "Resolved function signature has an invalid parameter type.");
       }
       if (parameter.state_space ==
           call_argument_compatibility::CallArgumentStateSpace::Invalid) {
@@ -1351,8 +1609,260 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
       }
     }
   };
-  check_parameters(signature.return_parameters);
-  check_parameters(signature.parameters);
+  check_parameters(signature.return_parameters, false);
+  check_parameters(signature.parameters, signature.is_entry);
+}
+
+/** Revalidate name-only entry inputs against both the ABI and bound symbols. */
+void check_opaque_entry_parameters(const ResolvedModule& module,
+                                   const ResolvedFunction& function,
+                                   checker::CheckDiagnostics& diagnostics) {
+  std::vector<base::OpaqueResourceKind> expected;
+  for (const auto& parameter : function.contract.signature.parameters)
+    if (parameter.opaque_kind)
+      expected.push_back(*parameter.opaque_kind);
+  if (!function.is_entry &&
+      (!expected.empty() || !function.opaque_entry_parameters.empty())) {
+    append_model_mismatch(diagnostics, function.range,
+                          "Opaque parameters belong only to entry inputs.");
+    return;
+  }
+  if (expected.size() != function.opaque_entry_parameters.size())
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Opaque entry parameter records do not match the signature.");
+
+  const auto function_scope = module.symbols.functionScope(function.range);
+  std::vector<binding::SymbolId> bound;
+  if (function_scope) {
+    for (const auto& symbol : module.symbols.symbols()) {
+      if (symbol.scope == *function_scope &&
+          symbol.kind == binding::SymbolKind::InputParameter && symbol.type &&
+          base::opaque_resource_kind(*symbol.type))
+        bound.push_back(symbol.id);
+    }
+  }
+  if (bound.size() != function.opaque_entry_parameters.size())
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Bound opaque entry inputs do not match owned records.");
+  for (size_t index = 0; index < function.opaque_entry_parameters.size();
+       ++index) {
+    const auto& record = function.opaque_entry_parameters[index];
+    const auto* symbol = owned_symbol(module, record.symbol_id);
+    const auto* contract =
+        [&]() -> const declaration_semantics::FunctionParameterContract* {
+      size_t ordinal = 0;
+      for (const auto& parameter : function.contract.signature.parameters) {
+        if (!parameter.opaque_kind)
+          continue;
+        if (ordinal++ == index)
+          return &parameter;
+      }
+      return nullptr;
+    }();
+    if (symbol == nullptr || !function_scope ||
+        symbol->scope != *function_scope ||
+        record.scope_id != *function_scope ||
+        symbol->kind != binding::SymbolKind::InputParameter ||
+        symbol->state_space != base::DeclarationStateSpace::Parameter ||
+        !symbol->type ||
+        base::opaque_resource_kind(*symbol->type) != record.kind ||
+        (index < bound.size() && bound[index] != record.symbol_id) ||
+        (index < expected.size() && expected[index] != record.kind) ||
+        (contract &&
+         (record.explicit_alignment !=
+              declaration_semantics::contract_constant(contract->alignment) ||
+          record.is_array != contract->is_array ||
+          record.array_extent != declaration_semantics::contract_constant(
+                                     contract->array_extent))) ||
+        record.explicit_alignment != symbol->address_alignment) {
+      append_model_mismatch(diagnostics, record.range,
+                            "Opaque entry input identity or kind disagrees "
+                            "with its declaration.");
+    }
+  }
+}
+
+/** Check whether a named resource field belongs to its declaration kind. */
+bool opaque_field_for_kind(OpaqueStaticField field, StorageOpaqueType kind) {
+  if (kind == StorageOpaqueType::Sampler)
+    return field == OpaqueStaticField::ForceUnnormalizedCoords ||
+           field == OpaqueStaticField::FilterMode ||
+           field == OpaqueStaticField::AddressMode0 ||
+           field == OpaqueStaticField::AddressMode1 ||
+           field == OpaqueStaticField::AddressMode2;
+  if (kind == StorageOpaqueType::Surface)
+    return field == OpaqueStaticField::Width ||
+           field == OpaqueStaticField::Height ||
+           field == OpaqueStaticField::Depth ||
+           field == OpaqueStaticField::ChannelDataType ||
+           field == OpaqueStaticField::ChannelOrder ||
+           field == OpaqueStaticField::ArraySize ||
+           field == OpaqueStaticField::MemoryLayout;
+  switch (field) {
+    case OpaqueStaticField::Width:
+    case OpaqueStaticField::Height:
+    case OpaqueStaticField::Depth:
+    case OpaqueStaticField::ChannelDataType:
+    case OpaqueStaticField::ChannelOrder:
+    case OpaqueStaticField::NormalizedCoords:
+    case OpaqueStaticField::FilterMode:
+    case OpaqueStaticField::AddressMode0:
+    case OpaqueStaticField::AddressMode1:
+    case OpaqueStaticField::AddressMode2:
+    case OpaqueStaticField::ArraySize:
+    case OpaqueStaticField::NumMipmapLevels:
+    case OpaqueStaticField::NumSamples:
+      return kind == StorageOpaqueType::Texture;
+    case OpaqueStaticField::ForceUnnormalizedCoords:
+    case OpaqueStaticField::MemoryLayout:
+      return false;
+  }
+  return false;
+}
+
+/** Validate owned opaque declarations without consulting the source AST. */
+void check_opaque_storage(const ResolvedModule& module,
+                          checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.scope != module.symbols.moduleScope() ||
+        symbol.kind != binding::SymbolKind::Variable || !symbol.type ||
+        !base::opaque_resource_kind(*symbol.type))
+      continue;
+    if (std::ranges::none_of(module.storage_declarations,
+                             [&](const auto& declaration) {
+                               return declaration.symbol_id == symbol.id &&
+                                      std::holds_alternative<StorageOpaqueType>(
+                                          declaration.element_type);
+                             }))
+      append_model_mismatch(
+          diagnostics, symbol.declaration_range,
+          "Bound opaque global has no owned storage declaration.");
+  }
+  for (const auto& declaration : module.storage_declarations) {
+    const auto* kind =
+        std::get_if<StorageOpaqueType>(&declaration.element_type);
+    if (!kind) {
+      if (declaration.legacy_texture ||
+          !declaration.opaque_static_objects.empty() ||
+          declaration.initialization == StorageInitializationKind::OpaqueStatic)
+        append_model_mismatch(
+            diagnostics, declaration.range,
+            "Scalar storage carries opaque resource metadata.");
+      continue;
+    }
+    const auto* symbol = owned_symbol(module, declaration.symbol_id);
+    const bool valid_kind = *kind == StorageOpaqueType::Texture ||
+                            *kind == StorageOpaqueType::Sampler ||
+                            *kind == StorageOpaqueType::Surface;
+    const bool valid_symbol =
+        valid_kind && symbol && symbol->kind == binding::SymbolKind::Variable &&
+        symbol->scope == declaration.scope_id && symbol->type &&
+        base::opaque_resource_kind(*symbol->type) == *kind &&
+        symbol->state_space == base::DeclarationStateSpace::Global &&
+        symbol->vector_width == std::nullopt &&
+        symbol->address_alignment == declaration.explicit_alignment &&
+        symbol->parameterized_count == declaration.parameterized_count;
+    const bool valid_declaration =
+        valid_symbol &&
+        (declaration.declaration_kind == StorageDeclarationKind::External ||
+         declaration.declaration_kind == StorageDeclarationKind::Definition) &&
+        declaration.scope_id == module.symbols.moduleScope() &&
+        !declaration.owner_function &&
+        declaration.space == StorageSpace::Global &&
+        declaration.vector_width == 1 && !declaration.byte_extent &&
+        declaration.alignment == declaration.explicit_alignment &&
+        (!declaration.legacy_texture || *kind == StorageOpaqueType::Texture) &&
+        declaration.initializer.empty() && !declaration.is_dynamic_shared &&
+        !declaration.is_managed && !declaration.unified_id &&
+        (std::ranges::all_of(
+             declaration.array_extents,
+             [](const auto extent) { return extent && *extent > 0; }) ||
+         (declaration.declaration_kind == StorageDeclarationKind::External &&
+          !declaration.array_extents.empty() &&
+          !declaration.array_extents.front() &&
+          std::ranges::all_of(
+              declaration.array_extents | std::views::drop(1),
+              [](const auto extent) { return extent && *extent > 0; })));
+    if (!valid_declaration) {
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Opaque storage declaration disagrees with its bound identity.");
+      continue;
+    }
+    const bool static_initialization =
+        declaration.initialization == StorageInitializationKind::OpaqueStatic;
+    if ((declaration.declaration_kind == StorageDeclarationKind::External &&
+         (static_initialization ||
+          !declaration.opaque_static_objects.empty())) ||
+        (static_initialization && declaration.opaque_static_objects.empty()) ||
+        (!static_initialization &&
+         !declaration.opaque_static_objects.empty()) ||
+        (declaration.declaration_kind == StorageDeclarationKind::External &&
+         declaration.initialization != StorageInitializationKind::External) ||
+        (declaration.declaration_kind == StorageDeclarationKind::Definition &&
+         declaration.initialization !=
+             StorageInitializationKind::Uninitialized &&
+         !static_initialization)) {
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Opaque storage has an invalid initialization state.");
+    }
+    std::vector<std::vector<uint64_t>> paths;
+    for (const auto& object : declaration.opaque_static_objects) {
+      bool valid_path =
+          object.indices.size() == declaration.array_extents.size();
+      for (size_t axis = 0; valid_path && axis < object.indices.size(); ++axis)
+        valid_path = declaration.array_extents[axis] &&
+                     object.indices[axis] < *declaration.array_extents[axis];
+      if (!valid_path ||
+          std::ranges::find(paths, object.indices) != paths.end() ||
+          object.members.empty()) {
+        append_model_mismatch(
+            diagnostics, object.range,
+            "Opaque static object has an invalid array position.");
+      }
+      paths.push_back(object.indices);
+      std::vector<OpaqueStaticField> seen;
+      for (const auto& member : object.members) {
+        const bool duplicate =
+            std::ranges::find(seen, member.field) != seen.end();
+        seen.push_back(member.field);
+        const bool field_valid = opaque_field_for_kind(member.field, *kind);
+        const auto* enumeration = std::get_if<OpaqueStaticEnum>(&member.value);
+        const auto* number = std::get_if<uint64_t>(&member.value);
+        const bool channel_type =
+            member.field == OpaqueStaticField::ChannelDataType;
+        const bool channel_order =
+            member.field == OpaqueStaticField::ChannelOrder;
+        const bool filter = member.field == OpaqueStaticField::FilterMode;
+        const bool address = member.field == OpaqueStaticField::AddressMode0 ||
+                             member.field == OpaqueStaticField::AddressMode1 ||
+                             member.field == OpaqueStaticField::AddressMode2;
+        const bool enum_valid =
+            enumeration &&
+            ((channel_type && *enumeration >= OpaqueStaticEnum::ClSnormInt8 &&
+              *enumeration <= OpaqueStaticEnum::ClFloat) ||
+             (channel_order && *enumeration >= OpaqueStaticEnum::ClR &&
+              *enumeration <= OpaqueStaticEnum::ClLuminance) ||
+             (filter && (*enumeration == OpaqueStaticEnum::Nearest ||
+                         *enumeration == OpaqueStaticEnum::Linear)) ||
+             (address && *enumeration >= OpaqueStaticEnum::Wrap &&
+              *enumeration <= OpaqueStaticEnum::ClampToBorder));
+        const bool numeric_valid =
+            number && !channel_type && !channel_order && !filter && !address &&
+            ((member.field != OpaqueStaticField::NormalizedCoords &&
+              member.field != OpaqueStaticField::ForceUnnormalizedCoords &&
+              member.field != OpaqueStaticField::MemoryLayout) ||
+             *number <= 1);
+        if (duplicate || !field_valid || (!enum_valid && !numeric_valid))
+          append_model_mismatch(
+              diagnostics, member.range,
+              "Opaque static member has an invalid field or value.");
+      }
+    }
+  }
 }
 
 /** Check metadata declarations against their owning function's binding table. */
@@ -1879,6 +2389,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_opaque_storage(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
     const auto* symbol = owned_symbol(module, alias.symbol_id);
@@ -1923,6 +2434,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
               "Resolved function has an invalid declaration scope.");
     }
     check_signature(function.contract.signature, function.range, diagnostics);
+    check_opaque_entry_parameters(module, function, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     const bool complete_instruction_provenance =
         function.instruction_ranges.size() == function.body.size() &&
@@ -2010,7 +2522,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       if (target) {
         check_function_contract_availability(function, *target, diagnostics);
         if (complete_instruction_provenance)
-          check_instruction_body(function, *target, diagnostics);
+          check_instruction_body(function, *target, region->texture_mode,
+                                 diagnostics);
       }
     }
   }
@@ -2123,8 +2636,13 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                            *active_target, resource.range,
                            resource_name(resource.kind));
       check_body_directives(function->body, *active_target, diagnostics);
-      check_instruction_body(*source_function(*function, module),
-                             *active_target, diagnostics);
+      const auto* owned = source_function(*function, module);
+      const auto mode =
+          owned && owned->source_region &&
+                  *owned->source_region < module.header.regions.size()
+              ? module.header.regions[*owned->source_region].texture_mode
+              : TextureMode::Unified;
+      check_instruction_body(*owned, *active_target, mode, diagnostics);
     }
   }
   if (diagnostics.empty())

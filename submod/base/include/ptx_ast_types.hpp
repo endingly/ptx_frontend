@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 namespace ptx_frontend::base {
 
@@ -23,6 +25,21 @@ enum class AstStateSpace : uint8_t {
   Global,
   Constant,
 };
+
+/** Identity kind of an opaque PTX resource, independent of physical layout. */
+enum class OpaqueResourceKind : uint8_t { Texture, Sampler, Surface };
+
+/** Classify a source declaration type without assigning resource storage bytes. */
+[[nodiscard]] inline std::optional<OpaqueResourceKind> opaque_resource_kind(
+    std::string_view spelling) noexcept {
+  if (spelling == ".texref")
+    return OpaqueResourceKind::Texture;
+  if (spelling == ".samplerref")
+    return OpaqueResourceKind::Sampler;
+  if (spelling == ".surfref")
+    return OpaqueResourceKind::Surface;
+  return std::nullopt;
+}
 
 /** Semantic declaration-space name for values interpreted outside the AST. */
 using DeclarationStateSpace = AstStateSpace;

@@ -70,6 +70,8 @@ class PtxCstParser {
   };
 
   [[nodiscard]] TokenId peek();
+  /** Read one token beyond the current lookahead without consuming either. */
+  [[nodiscard]] TokenId peekNext();
   TokenId consume();
   [[nodiscard]] const PtxToken& token(TokenId id) const;
   /** Build a diagnostic for a source tree that exceeds the active depth budget. */
@@ -149,6 +151,8 @@ class PtxCstParser {
   PtxLexer lexer_;
   std::vector<PtxToken> tokens_;
   std::optional<TokenId> peeked_;
+  /** One lexed successor retained until the current token is consumed. */
+  std::optional<TokenId> buffered_next_;
 };
 
 }  // namespace ptx_frontend

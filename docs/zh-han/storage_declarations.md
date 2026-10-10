@@ -6,8 +6,9 @@ declarator 提供拥有自身数据的元信息。数据类型位于
 通常的 resolved-IR header 使用。成功解析后可以销毁源码及 Syntax AST。
 
 这是从声明到 consumer 的契约，不是内存分配器，也不表示完整 PTX 声明合法性已验证。
-参数继续独立处理：`ResolvedFunction::parameter_declarations` 描述 `.param` 声明，
-其中 `EntryInput` role 标识 entry 输入参数；
+参数继续独立处理：`ResolvedFunction::parameter_declarations` 描述有确定大小的 `.param`
+声明，其中 `EntryInput` role 标识普通 entry 输入参数；opaque entry 输入则位于
+`ResolvedFunction::opaque_entry_parameters`，没有臆造的 byte layout。
 register 与 call parameter 不进入存储列表。
 
 ## 身份与布局输入
@@ -35,12 +36,14 @@ diagnostic，而不会使 size 回绕。
 
 ## 初始化器
 
-初始化分为四种明确状态：shared/local 或 opaque object 使用 `Uninitialized`；
+初始化分为四种明确状态：shared/local 或没有源码 initializer 的 opaque object 使用 `Uninitialized`；
 global/constant 隐式初始化使用 `Zero`；源码 initializer（包括空 brace list）使用
 `Explicit`；本 module 不提供初值的 external declaration 使用 `External`。
 显式 initializer 是稀疏的 scalar value 列表，各项带有对象内部的 byte offset。
-`Explicit` 中未列出的位置按零初始化；frontend 不会把大型 aggregate 展开成 byte buffer。
-递归 array/vector brace 的位置决定各项 offset。
+普通 `Explicit` 中未列出的位置按零初始化；frontend 不会把大型 aggregate 展开成 byte buffer。
+递归 array/vector brace 的位置决定各项 offset。Opaque 命名成员 initializer 使用独立的
+typed field group 与对象索引路径；它们不进入这个 byte-offset 列表，也不会为省略的 field
+推断默认值。
 
 `StorageConstant` 保存已规范化的 element bits：`bits` 为低 64 位，`high_bits` 为高
 64 位，与 host byte order 无关。不超过 64 bit 的元素，其高位 word 为零。
@@ -78,8 +81,8 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 本契约也不复现 ptxas 13.3.33 输出中观察到的异常高位 word。
 
 floating initializer 支持 `.f32/.f64` literal、符号及括号，不规范化复合浮点算术。
-opaque object metadata 限于 module-level scalar `.global` declaration；其
-field-assignment initializer 仍不在 parser/normalizer 的支持范围。
+opaque object metadata 包含保留 array shape、显式 alignment 和 typed 命名成员初始化的
+module-global 声明。其 identity 与静态 field 边界见[纹理契约](texture_coverage.md)。
 这些边界不会把不支持的值变为零。
 
 ## Diagnostic 与边界
@@ -95,7 +98,7 @@ initializer domain 的 form 必须产生明确 diagnostic，不能变成空 init
 规范基线为 [PTX ISA 9.3 variable
 rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variables)。
 可执行契约由[存储回归测试](../../submod/resolved_ir/test/test_storage_declaration_metadata.cpp)
-和[安装包 consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)验证。
+和[安装包 consumer](../../examples/texture_consumer/main.cpp)验证。
 
 分配顺序、不同对象之间的 padding、external symbol resolution、dynamic shared-memory
 size、per-CTA/per-thread instance 和 runtime memory content 均由下游负责。

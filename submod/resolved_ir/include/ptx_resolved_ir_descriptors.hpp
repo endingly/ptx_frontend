@@ -14,7 +14,7 @@ using OperandAccess = checker::OperandAccess;
 using OperandTypeExpressionKind = checker::OperandTypeExpressionKind;
 using ImmediateConversionPolicy = checker::ImmediateConversionPolicy;
 using TypeExpressionDescriptor = checker::TypeExpressionDescriptor;
-enum class OperandSyntaxShape : uint16_t {
+enum class OperandSyntaxShape : uint32_t {
   Identifier = 1 << 0,
   Immediate = 1 << 1,
   Address = 1 << 2,
@@ -29,7 +29,9 @@ enum class OperandSyntaxShape : uint16_t {
   RegisterPredicatePair = 1 << 11,
   NegatedImmediate = 1 << 12,
   TensorOperand = 1 << 13,
-  FabricHandle = 1 << 14
+  FabricHandle = 1 << 14,
+  CompoundBracket = 1 << 15,
+  VectorPredicatePair = 1 << 16
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -86,6 +88,9 @@ enum class ResolvedValueKind : uint8_t {
   TensorIm2colInfo,
   TensorOperand,
   FabricHandle,
+  TextureAccess,
+  TextureQueryResource,
+  TextureResult,
   TensorMemoryAddress,
   TcgenBracketedAddress,
   TcgenHalfSplitOffset,
@@ -108,6 +113,8 @@ struct SyntaxOperandSlotDescriptor {
   uint8_t minimum_elements = 0;
   uint8_t maximum_elements = 0;
   OperandSyntaxShape allowed_element_shapes{};
+  /** Permit the tex Notes' omitted brackets as adjacent source operands. */
+  bool texture_unbracketed = false;
 };
 enum class OperandLayoutKind : uint8_t { Flat, Call, IndirectCall };
 struct SyntaxOperandLayoutDescriptor {

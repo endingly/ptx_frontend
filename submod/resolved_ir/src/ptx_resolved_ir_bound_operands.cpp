@@ -1015,6 +1015,8 @@ enum class FormalParameterAddressPolicy : uint8_t {
 
 bool is_addressable_data_symbol(const binding::Symbol& symbol,
                                 FormalParameterAddressPolicy parameter_policy) {
+  if (symbol.type && base::opaque_resource_kind(*symbol.type))
+    return false;
   if (symbol.kind == binding::SymbolKind::Variable) {
     return symbol.state_space == syntax_ast::AstStateSpace::Local ||
            symbol.state_space == syntax_ast::AstStateSpace::Shared ||
@@ -1716,6 +1718,359 @@ resolve_fabric_handle(const syntax_ast::AstOperand& operand,
   return WithLocs<ResolvedFabricHandle>{std::move(resolved), handle->range};
 }
 
+/** Resolve a resource head as a direct opaque name or indirect scalar handle. */
+std::expected<ResolvedOpaqueResourceRef, ResolveDiagnostic>
+resolve_opaque_resource(const syntax_ast::AstIdentifierRef& identifier,
+                        base::OpaqueResourceKind expected,
+                        const ResolveContext* context) {
+  const SourceRange range = identifier.syntax.range;
+  if (context) {
+    const auto lookup =
+        context->symbols.lookup(context->scope, identifier.syntax.text);
+    if (!lookup)
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = "Opaque resource has no bound declaration."});
+    const auto& symbol = context->symbols.symbol(lookup->symbol);
+    if (symbol.type) {
+      if (const auto actual = base::opaque_resource_kind(*symbol.type)) {
+        const bool global =
+            symbol.kind == binding::SymbolKind::Variable &&
+            symbol.scope == context->symbols.moduleScope() &&
+            symbol.state_space == base::DeclarationStateSpace::Global;
+        const bool entry =
+            context->function_is_entry && context->function_scope &&
+            symbol.scope == *context->function_scope &&
+            symbol.kind == binding::SymbolKind::InputParameter &&
+            symbol.state_space == base::DeclarationStateSpace::Parameter;
+        if (*actual != expected || (!global && !entry))
+          return std::unexpected(ResolveDiagnostic{
+              .range = range,
+              .message =
+                  "Direct resource kind or declaration scope is invalid."});
+        return ResolvedOpaqueResourceRef{
+            .value = ResolvedOpaqueSymbolRef{.spelling = identifier.syntax.text,
+                                             .symbol_id = symbol.id,
+                                             .parameterized_index =
+                                                 lookup->parameterized_index,
+                                             .scope_id = symbol.scope,
+                                             .kind = *actual,
+                                             .entry_input = entry,
+                                             .range = range},
+            .expected_kind = expected,
+            .source_range = range};
+      }
+    }
+  }
+  auto register_ref =
+      resolve_register(syntax_ast::AstOperand{identifier}, context);
+  if (!register_ref)
+    return std::unexpected(register_ref.error());
+  if (!tcgen_copy_descriptor_view(register_ref->value))
+    return std::unexpected(
+        ResolveDiagnostic{.range = range,
+                          .message = "Indirect resource requires a scalar "
+                                     "64-bit integer/bit register."});
+  return ResolvedOpaqueResourceRef{.value = std::move(register_ref->value),
+                                   .expected_kind = expected,
+                                   .source_range = range};
+}
+
+/** Resolve one structural resource-and-coordinate bracket under a typed geometry. */
+std::expected<WithLocs<ResolvedTextureAccess>, ResolveDiagnostic>
+resolve_texture_access(const syntax_ast::AstOperand& operand,
+                       const ResolvedOperandBindingDescriptor& binding,
+                       const ResolvedInstructionFields& fields,
+                       const ResolveContext* context) {
+  if (!binding.texture_geometry)
+    throw ResolveException("Texture access has no generated geometry.");
+  const auto geometry = *binding.texture_geometry;
+  std::vector<syntax_ast::AstVectorElement> heads;
+  syntax_ast::AstVectorPack coordinates;
+  ResolvedTextureAccess result;
+  if (const auto* tensor =
+          std::get_if<syntax_ast::AstTensorOperand>(&operand)) {
+    if (tensor->tensor_map.offset || tensor->tensor_map.unified)
+      return std::unexpected(ResolveDiagnostic{
+          .range = tensor->tensor_map.range,
+          .message = "Texture resource head must be a simple identity."});
+    heads.push_back(std::visit(
+        [](const auto& value) -> syntax_ast::AstVectorElement { return value; },
+        tensor->tensor_map.base));
+    coordinates = tensor->coordinates;
+    result.left_bracket_range = tensor->left_bracket_range;
+    result.comma_ranges.push_back(tensor->comma_range);
+    result.right_bracket_range = tensor->right_bracket_range;
+  } else if (const auto* compound =
+                 std::get_if<syntax_ast::AstCompoundBracket>(&operand)) {
+    heads = compound->heads;
+    coordinates = compound->coordinates;
+    result.left_bracket_range = compound->left_bracket_range;
+    result.comma_ranges = compound->comma_ranges;
+    result.right_bracket_range = compound->right_bracket_range;
+  } else if (const auto* scalar =
+                 std::get_if<syntax_ast::AstFabricHandle>(&operand)) {
+    if (scalar->elements.size() < 2 || scalar->elements.size() > 3)
+      return std::unexpected(ResolveDiagnostic{
+          .range = scalar->range,
+          .message = "Scalar texture access has an invalid head count."});
+    heads.assign(scalar->elements.begin(), scalar->elements.end() - 1);
+    coordinates.elements.push_back(scalar->elements.back());
+    coordinates.range = scalar->range;
+    result.coordinates_packed = false;
+    result.left_bracket_range = scalar->left_bracket_range;
+    result.comma_ranges = scalar->comma_ranges;
+    result.right_bracket_range = scalar->right_bracket_range;
+  } else {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Texture access requires resource and coordinate source."});
+  }
+  const bool independent =
+      context && context->texture_mode == TextureMode::Independent;
+  const size_t required_heads = independent ? 2 : 1;
+  if (heads.size() != required_heads)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message =
+            "Texture resource head count disagrees with texturing mode."});
+  const auto* texture = std::get_if<syntax_ast::AstIdentifierRef>(&heads[0]);
+  if (!texture)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Texture resource must be a declaration or register."});
+  auto texture_ref = resolve_opaque_resource(
+      *texture, base::OpaqueResourceKind::Texture, context);
+  if (!texture_ref)
+    return std::unexpected(texture_ref.error());
+  if (independent &&
+      !std::holds_alternative<ResolvedOpaqueSymbolRef>(texture_ref->value))
+    return std::unexpected(ResolveDiagnostic{
+        .range = texture->syntax.range,
+        .message = "Independent texture requires a direct .texref."});
+  result.texture = std::move(*texture_ref);
+  if (independent) {
+    const auto* sampler = std::get_if<syntax_ast::AstIdentifierRef>(&heads[1]);
+    if (!sampler)
+      return std::unexpected(ResolveDiagnostic{
+          .range = syntax_ast::sourceRange(operand),
+          .message = "Independent sampler requires a direct .samplerref."});
+    auto sampler_ref = resolve_opaque_resource(
+        *sampler, base::OpaqueResourceKind::Sampler, context);
+    if (!sampler_ref)
+      return std::unexpected(sampler_ref.error());
+    if (!std::holds_alternative<ResolvedOpaqueSymbolRef>(sampler_ref->value))
+      return std::unexpected(ResolveDiagnostic{
+          .range = sampler->syntax.range,
+          .message = "Independent sampler requires a direct .samplerref."});
+    result.sampler = std::move(*sampler_ref);
+  }
+  const size_t standard = geometry == TextureGeometry::OneD ? 1
+                          : geometry == TextureGeometry::TwoD ||
+                                  geometry == TextureGeometry::ArrayOneD
+                              ? 2
+                              : 4;
+  const size_t count = coordinates.elements.size();
+  if (count != standard &&
+      !(binding.texture_legacy_v4_coordinates && count == 4))
+    return std::unexpected(ResolveDiagnostic{
+        .range = coordinates.range,
+        .message = "Texture coordinate tuple has the wrong lane count."});
+  auto ctype = type_for_operand(binding, fields, coordinates.range);
+  if (!ctype || *ctype == ScalarType::Invalid)
+    return std::unexpected(
+        ctype ? ResolveDiagnostic{.range = coordinates.range,
+                                  .message =
+                                      "Texture coordinate type is missing."}
+              : ctype.error());
+  result.coordinate_type = *ctype;
+  for (size_t index = 0; index < count; ++index) {
+    const auto role = texture_lane_role(geometry, index, count);
+    const bool mixed_tuple = geometry == TextureGeometry::ArrayOneD ||
+                             geometry == TextureGeometry::ArrayTwoD ||
+                             geometry == TextureGeometry::ArrayCube ||
+                             geometry == TextureGeometry::TwoDMultisample ||
+                             geometry == TextureGeometry::ArrayTwoDMultisample;
+    const ScalarType lane_type =
+        role == TextureLaneRole::Spatial ||
+                (role == TextureLaneRole::Ignored && !mixed_tuple)
+            ? *ctype
+            : ScalarType::U32;
+    const auto source = std::visit(
+        [](const auto& value) -> syntax_ast::AstOperand { return value; },
+        coordinates.elements[index]);
+    auto lane = resolve_reg_or_imm(source, lane_type, context);
+    if (!lane)
+      return std::unexpected(lane.error());
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane->value)) {
+      const bool valid =
+          reg->register_class == ResolvedRegisterClass::General &&
+          !reg->vector_width && reg->declared_type &&
+          base::scalar_size_of(*reg->declared_type) ==
+              base::scalar_size_of(lane_type) &&
+          (mixed_tuple || base::scalar_types_compatible(
+                              *reg->declared_type, lane_type,
+                              base::ScalarTypeSizePolicy::SameWidth));
+      if (!valid)
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(source),
+            .message =
+                "Texture coordinate lane has an incompatible scalar carrier."});
+    }
+    result.coordinates.push_back({.value = std::move(lane->value),
+                                  .role = role,
+                                  .range = syntax_ast::sourceRange(source)});
+  }
+  return WithLocs<ResolvedTextureAccess>{std::move(result),
+                                         syntax_ast::sourceRange(operand)};
+}
+
+/** Merge an omitted-bracket tex resource list without changing public AST shapes. */
+std::expected<ResolvedFieldValue, ResolveDiagnostic>
+resolve_unbracketed_texture_access(
+    const syntax_ast::AstInstruction& instruction, size_t source_index,
+    size_t source_span, const ResolvedOperandBindingDescriptor& binding,
+    const ResolvedInstructionFields& fields, const ResolveContext* context) {
+  if (!binding.texture_unbracketed || (source_span != 2 && source_span != 3) ||
+      source_index + source_span > instruction.operands.size())
+    throw ResolveException("Invalid generated omitted-bracket texture span.");
+  syntax_ast::AstCompoundBracket compound;
+  for (size_t index = 0; index + 1 < source_span; ++index) {
+    const auto* head = std::get_if<syntax_ast::AstIdentifierRef>(
+        &instruction.operands[source_index + index]);
+    if (!head)
+      return std::unexpected(ResolveDiagnostic{
+          .range = syntax_ast::sourceRange(
+              instruction.operands[source_index + index]),
+          .message = "Omitted-bracket texture resource must be a name."});
+    compound.heads.push_back(*head);
+    if (source_index + index < instruction.operand_comma_ranges.size())
+      compound.comma_ranges.push_back(
+          instruction.operand_comma_ranges[source_index + index]);
+  }
+  const auto& coordinate = instruction.operands[source_index + source_span - 1];
+  const bool packed =
+      std::holds_alternative<syntax_ast::AstVectorPack>(coordinate);
+  if (const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&coordinate)) {
+    compound.coordinates = *pack;
+  } else if (const auto* scalar =
+                 std::get_if<syntax_ast::AstIdentifierRef>(&coordinate)) {
+    compound.coordinates.elements.push_back(*scalar);
+    compound.coordinates.range = scalar->syntax.range;
+  } else {
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(coordinate),
+        .message =
+            "Omitted-bracket texture coordinates require a scalar or tuple."});
+  }
+  compound.range = SourceRange{
+      syntax_ast::sourceRange(instruction.operands[source_index]).start,
+      syntax_ast::sourceRange(coordinate).end};
+  auto resolved = resolve_texture_access(
+      syntax_ast::AstOperand{std::move(compound)}, binding, fields, context);
+  if (!resolved)
+    return std::unexpected(resolved.error());
+  resolved->value.bracketed = false;
+  resolved->value.coordinates_packed = packed;
+  return ResolvedFieldValue{std::move(*resolved)};
+}
+
+/** Resolve a simple bracket around a direct or indirect query identity. */
+std::expected<WithLocs<ResolvedTextureQueryResource>, ResolveDiagnostic>
+resolve_texture_query_resource(const syntax_ast::AstOperand& operand,
+                               const ResolvedOperandBindingDescriptor& binding,
+                               const ResolveContext* context) {
+  const auto* address = std::get_if<syntax_ast::AstAddress>(&operand);
+  if (!address || !address->bracketed || address->offset || address->unified ||
+      (!binding.texture_resource_kind &&
+       !binding.texture_query_sampler_by_mode))
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Texture query requires a simple bracketed resource."});
+  const auto* identifier =
+      std::get_if<syntax_ast::AstIdentifierRef>(&address->base);
+  if (!identifier)
+    return std::unexpected(ResolveDiagnostic{
+        .range = address->range,
+        .message =
+            "Texture query resource must be a declaration or register."});
+  const bool independent =
+      context && context->texture_mode == TextureMode::Independent;
+  if (binding.texture_resource_kind == base::OpaqueResourceKind::Sampler &&
+      !independent)
+    return std::unexpected(ResolveDiagnostic{
+        .range = address->range,
+        .message = "This sampler query requires independent texturing mode."});
+  const auto kind = binding.texture_query_sampler_by_mode
+                        ? (independent ? base::OpaqueResourceKind::Sampler
+                                       : base::OpaqueResourceKind::Texture)
+                        : *binding.texture_resource_kind;
+  auto resource = resolve_opaque_resource(*identifier, kind, context);
+  if (!resource)
+    return std::unexpected(resource.error());
+  if (independent &&
+      !std::holds_alternative<ResolvedOpaqueSymbolRef>(resource->value))
+    return std::unexpected(ResolveDiagnostic{
+        .range = identifier->syntax.range,
+        .message = "Independent texture query requires a direct resource."});
+  return WithLocs<ResolvedTextureQueryResource>{
+      ResolvedTextureQueryResource{
+          .resource = std::move(*resource),
+          .bracketed = true,
+          .left_bracket_range = address->left_bracket_range,
+          .right_bracket_range = address->right_bracket_range},
+      address->range};
+}
+
+/** Resolve a texture result pack and its optional residency destination. */
+std::expected<WithLocs<ResolvedTextureResult>, ResolveDiagnostic>
+resolve_texture_result(const syntax_ast::AstOperand& operand,
+                       const ResolvedOperandBindingDescriptor& binding,
+                       const ResolvedInstructionFields& fields,
+                       const ResolveContext* context) {
+  const auto* paired =
+      std::get_if<syntax_ast::AstVectorPredicatePair>(&operand);
+  const auto* bare = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  if (!paired && !bare)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Texture result requires a braced register pack."});
+  if (static_cast<bool>(paired) != binding.texture_residency_required)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message =
+            "Texture result residency presence disagrees with its layout."});
+  const auto& data = paired ? paired->data : *bare;
+  const syntax_ast::AstOperand data_operand{data};
+  auto type = type_for_operand(binding, fields, data.range);
+  if (!type || *type == ScalarType::Invalid)
+    return std::unexpected(
+        type ? ResolveDiagnostic{.range = data.range,
+                                 .message = "Texture result type is missing."}
+             : type.error());
+  auto vector = resolve_reg_vector(
+      data_operand, *type, binding.allowed_vector_arities, std::nullopt,
+      binding.vector_type_policy, binding.register_width_policy, false, 0,
+      binding.allowed_register_types, binding.require_uniform_register_family,
+      true, context);
+  if (!vector)
+    return std::unexpected(vector.error());
+  ResolvedTextureResult result{.data = std::move(vector->value),
+                               .result_type = *type,
+                               .data_ranges = std::move(vector->locs)};
+  if (paired) {
+    const syntax_ast::AstOperand predicate_operand{paired->predicate};
+    auto predicate = resolve_predicate(predicate_operand, context);
+    if (!predicate)
+      return std::unexpected(predicate.error());
+    result.residency = std::move(predicate->value);
+    result.residency_range = paired->predicate.syntax.range;
+    result.pipe_range = paired->pipe_range;
+  }
+  return WithLocs<ResolvedTextureResult>{std::move(result),
+                                         syntax_ast::sourceRange(operand)};
+}
+
 std::expected<WithLocs<ResolvedMovSource>, ResolveDiagnostic>
 resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
                    checker::OperandShape allowed_shapes,
@@ -1861,6 +2216,23 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
         context->symbols.lookup(context->scope, identifier->syntax.text);
     if (lookup) {
       const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
+      if (symbol.type && base::opaque_resource_kind(*symbol.type)) {
+        if (type != ScalarType::U64)
+          return std::unexpected(ResolveDiagnostic{
+              .range = identifier->syntax.range,
+              .message = "Opaque resource identity requires mov.u64."});
+        if (auto rejected = reject_shape(checker::OperandShape::Symbol,
+                                         identifier->syntax.range))
+          return std::unexpected(std::move(*rejected));
+        auto resource = resolve_opaque_resource(
+            *identifier, *base::opaque_resource_kind(*symbol.type), context);
+        if (!resource)
+          return std::unexpected(resource.error());
+        return WithLocs<ResolvedMovSource>{
+            ResolvedMovSource{
+                std::get<ResolvedOpaqueSymbolRef>(resource->value)},
+            identifier->syntax.range};
+      }
       if (symbol.kind == binding::SymbolKind::Function) {
         if (!allow_function_symbol) {
           return std::unexpected(ResolveDiagnostic{
@@ -2381,6 +2753,24 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::FabricHandle: {
       auto value = resolve_fabric_handle(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TextureAccess: {
+      auto value = resolve_texture_access(operand, binding, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TextureQueryResource: {
+      auto value = resolve_texture_query_resource(operand, binding, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::TextureResult: {
+      auto value = resolve_texture_result(operand, binding, fields, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

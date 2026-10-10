@@ -25,10 +25,15 @@ OperandSyntaxShape get_operand_syntax_shape(
           return OperandSyntaxShape::Address;
         else if constexpr (std::same_as<Item, syntax_ast::AstVectorPack>)
           return OperandSyntaxShape::VectorPack;
+        else if constexpr (std::same_as<Item,
+                                        syntax_ast::AstVectorPredicatePair>)
+          return OperandSyntaxShape::VectorPredicatePair;
         else if constexpr (std::same_as<Item, syntax_ast::AstTensorOperand>)
           return OperandSyntaxShape::TensorOperand;
         else if constexpr (std::same_as<Item, syntax_ast::AstFabricHandle>)
           return OperandSyntaxShape::FabricHandle;
+        else if constexpr (std::same_as<Item, syntax_ast::AstCompoundBracket>)
+          return OperandSyntaxShape::CompoundBracket;
         else if constexpr (std::same_as<Item, syntax_ast::AstVectorMember>)
           return OperandSyntaxShape::VectorMember;
         else if constexpr (std::same_as<Item, syntax_ast::AstCallParameterList>)
@@ -180,7 +185,8 @@ std::optional<ResolveDiagnostic> diagnose_modern_pack_mismatch(
  * @return false otherwise
  */
 bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
-                            const syntax_ast::AstInstruction& ast) {
+                            const syntax_ast::AstInstruction& ast,
+                            TextureMode texture_mode) {
   if (layout.kind == check_end::OperandLayoutKind::Call ||
       layout.kind == check_end::OperandLayoutKind::IndirectCall) {
     if (ast.operands.size() != layout.slots.size())
@@ -212,22 +218,37 @@ bool matches_operand_layout(const SyntaxOperandLayoutDescriptor& layout,
     }
     return false;
   }
-  if (ast.operands.size() > layout.slots.size())
-    return false;
-
+  size_t source_index = 0;
   for (size_t index = 0; index < layout.slots.size(); ++index) {
     const SyntaxOperandSlotDescriptor& slot = layout.slots[index];
-    if (index == ast.operands.size()) {
+    if (source_index == ast.operands.size()) {
       if (slot.presence == OperandPresence::Required)
         return false;
       continue;
     }
-
-    if (!matches_operand_slot(slot, ast.operands[index])) {
+    if (slot.texture_unbracketed &&
+        std::holds_alternative<syntax_ast::AstIdentifierRef>(
+            ast.operands[source_index])) {
+      const size_t heads = texture_mode == TextureMode::Independent ? 2 : 1;
+      if (source_index + heads >= ast.operands.size())
+        return false;
+      for (size_t head = 0; head < heads; ++head)
+        if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(
+                ast.operands[source_index + head]))
+          return false;
+      const auto& coordinate = ast.operands[source_index + heads];
+      if (!std::holds_alternative<syntax_ast::AstVectorPack>(coordinate) &&
+          !std::holds_alternative<syntax_ast::AstIdentifierRef>(coordinate))
+        return false;
+      source_index += heads + 1;
+      continue;
+    }
+    if (!matches_operand_slot(slot, ast.operands[source_index])) {
       return false;
     }
+    ++source_index;
   }
-  return true;
+  return source_index == ast.operands.size();
 }
 
 /**
@@ -307,11 +328,11 @@ bool is_more_specific_operand_layout(
  */
 std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
     const SyntaxVariantDescriptor& variant,
-    const syntax_ast::AstInstruction& ast) {
+    const syntax_ast::AstInstruction& ast, TextureMode texture_mode) {
   std::vector<SelectedOperandLayout> matches;
   for (size_t index = 0; index < variant.operand_layouts.size(); ++index) {
     const auto& layout = variant.operand_layouts[index];
-    if (!matches_operand_layout(layout, ast))
+    if (!matches_operand_layout(layout, ast, texture_mode))
       continue;
     matches.push_back(
         SelectedOperandLayout{.descriptor = layout, .index = index});

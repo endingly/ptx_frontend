@@ -273,6 +273,21 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "FabricHandle")},
                   .locations = {object_name}.{field.name}.locs,
               }}'''
+    if field.value_kind in {ResolvedValueKind.TEXTURE_ACCESS,
+                            ResolvedValueKind.TEXTURE_QUERY_RESOURCE}:
+        shape = field.value_kind.value
+        return f'''              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, shape)},
+                  .locations = {object_name}.{field.name}.locs,
+              }}'''
+    if field.value_kind is ResolvedValueKind.TEXTURE_RESULT:
+        return f'''              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "TextureResult")},
+                  .vector_arity = {object_name}.{field.name}.value.data.elements.size(),
+                  .locations = {object_name}.{field.name}.locs,
+              }}'''
     if field.value_kind is ResolvedValueKind.MATRIX_SCALE_SELECTOR:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{
@@ -808,6 +823,16 @@ def emit_check_operand_view(
                       .parameter_qualifier = symbol->parameter_qualifier,
                       .value_availability = symbol->address_availability,
                       .value_name = symbol->spelling,
+                      .locations = {object_name}.{field.name}.locs,
+                  }};
+                }}
+                if (const auto* opaque = std::get_if<ResolvedOpaqueSymbolRef>(
+                        &{object_name}.{field.name}.value)) {{
+                  return OperandView{{
+                      .field_id = "{field.name}",
+                      .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Symbol")},
+                      .register_type = ScalarType::U64,
+                      .value_name = opaque->spelling,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}

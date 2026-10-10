@@ -114,6 +114,7 @@ enum class TokenKind : uint16_t {
   DotAlign,
   DotPtr,
   DotGlobal,
+  DotTex,
   DotConst,
   DotShared,
   DotLocal,

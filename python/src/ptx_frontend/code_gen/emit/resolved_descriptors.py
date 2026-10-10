@@ -10,7 +10,7 @@ from pathlib import Path
 from ptx_frontend.base.utils import generated_at_comment, to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from .availability import emit_availability
-from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm
+from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm, TextureResourceRole
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField,
     ResolvedInstruction,
@@ -41,6 +41,13 @@ _TENSOR_ACCESS_MODE_CPP = {
     TensorAccessMode.IM2COL_W128: "Im2colW128",
     TensorAccessMode.TILE_GATHER4: "TileGather4",
     TensorAccessMode.TILE_SCATTER4: "TileScatter4",
+}
+
+_TEXTURE_GEOMETRY_CPP = {
+    "1d": "OneD", "2d": "TwoD", "3d": "ThreeD",
+    "a1d": "ArrayOneD", "a2d": "ArrayTwoD", "cube": "Cube",
+    "acube": "ArrayCube", "2dms": "TwoDMultisample",
+    "a2dms": "ArrayTwoDMultisample",
 }
 
 
@@ -414,6 +421,37 @@ def _emit_operand_binding_descriptor(
         "TensorCtaMaskRole::MulticastCluster,"
         if binding.tensor_cta_mask else ""
     )
+    texture_geometry = (
+        "\n              .texture_geometry = TextureGeometry::"
+        + _TEXTURE_GEOMETRY_CPP[binding.texture_geometry.value]
+        + ","
+        if binding.texture_geometry is not None else ""
+    )
+    texture_legacy_v4 = (
+        "\n              .texture_legacy_v4_coordinates = true,"
+        if binding.texture_legacy_v4_coordinates else ""
+    )
+    texture_unbracketed = (
+        "\n              .texture_unbracketed = true,"
+        if binding.texture_unbracketed else ""
+    )
+    texture_resource_kind = (
+        "\n              .texture_resource_kind = base::OpaqueResourceKind::"
+        + {
+            TextureResourceRole.TEXTURE: "Texture",
+            TextureResourceRole.SAMPLER: "Sampler",
+        }[binding.texture_resource_kind] + ","
+        if binding.texture_resource_kind in {TextureResourceRole.TEXTURE,
+                                             TextureResourceRole.SAMPLER} else ""
+    )
+    texture_query_sampler_by_mode = (
+        "\n              .texture_query_sampler_by_mode = true,"
+        if binding.texture_resource_kind is TextureResourceRole.SAMPLER_BY_MODE else ""
+    )
+    texture_residency_required = (
+        "\n              .texture_residency_required = true,"
+        if binding.texture_residency_required else ""
+    )
     register_width_policy = cpp_value(
         CppDomain.REGISTER_WIDTH_POLICIES,
         binding.register_width_policy.value, backend=backend,
@@ -429,7 +467,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{tensor_cta_mask_role}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{texture_geometry}{texture_legacy_v4}{texture_unbracketed}{texture_resource_kind}{texture_query_sampler_by_mode}{texture_residency_required}{tensor_cta_mask_role}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 

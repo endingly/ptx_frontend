@@ -95,6 +95,10 @@ class OperandNormalizationTests(unittest.TestCase):
                 "minimum_elements": None,
                 "maximum_elements": None,
                 "element_kinds": (),
+                "texture_geometry": None,
+                "texture_legacy_v4_coordinates": False,
+                "texture_unbracketed": False,
+                "texture_resource_kind": None,
             },
         )
         self.assertIs(

@@ -118,6 +118,9 @@ supported surface and its exclusions.
 - [Tensor-map/TMA frontend closeout](docs/us-en/tensor_async_closeout.md) and its
   [简体中文版本](docs/zh-han/tensor_async_closeout.md) map the fixed PTX 9.3
   requirements to source, tests, and the opaque-descriptor boundary.
+- [Texture and opaque resource coverage](docs/us-en/texture_coverage.md) and its
+  [简体中文版本](docs/zh-han/texture_coverage.md) describe the typed four-family
+  source contracts, declaration identity, compatibility syntax, and runtime boundary.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
 
 ## Build and install

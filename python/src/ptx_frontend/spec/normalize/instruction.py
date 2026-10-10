@@ -7,8 +7,15 @@ from ptx_frontend.spec.model import (
     FabricInstructionSpec,
     FabricOperation,
     FabricSharedAccess,
+    TextureGeometry,
+    TextureMipmapMode,
+    TextureComponent,
+    TextureQuery,
+    OpaqueResourceKind,
+    TextureInstructionSpec,
     InstructionSpec,
     OperandKind,
+    OperandTypeExpressionKind,
     SemanticRule,
     VariantSpec,
     WgmmaProtocolAction,
@@ -66,6 +73,174 @@ def _normalize_fabric_contract(raw: Any, opcode: str) -> FabricInstructionSpec |
         reports_fabric=raw["reports_fabric"],
         requires_mbarrier_layout_v1=raw["requires_mbarrier_layout_v1"],
     )
+
+
+def _normalize_texture_contract(raw: Any, opcode: str) -> TextureInstructionSpec | None:
+    """Validate closed texture-family facts at the canonical YAML boundary."""
+
+    families = {"tex", "tld4", "txq", "istypep"}
+    if raw is None:
+        if opcode in families:
+            raise ValueError(f"{opcode} variant requires a texture contract")
+        return None
+    if opcode not in families or not isinstance(raw, dict):
+        raise ValueError("texture contract belongs to a texture-family opcode")
+    allowed = {"geometry", "mipmap", "component", "query", "tested_kind",
+               "result_arity", "allows_offset", "allows_compare",
+               "allows_residency", "query_level", "indirect_availability"}
+    if set(raw) - allowed:
+        raise ValueError("texture contract has unknown fields")
+    geometry = raw.get("geometry")
+    if geometry is not None:
+        try:
+            geometry = TextureGeometry(geometry)
+        except ValueError as error:
+            raise ValueError("texture contract has unknown geometry") from error
+    try:
+        mipmap = TextureMipmapMode(raw.get("mipmap", "omitted"))
+    except (TypeError, ValueError) as error:
+        raise ValueError("texture contract has invalid mipmap") from error
+    try:
+        component = (TextureComponent(raw["component"])
+                     if raw.get("component") is not None else None)
+    except (TypeError, ValueError) as error:
+        raise ValueError("texture contract has unknown component") from error
+    try:
+        query = (TextureQuery(raw["query"])
+                 if raw.get("query") is not None else None)
+    except (TypeError, ValueError) as error:
+        raise ValueError("texture contract has unknown query") from error
+    try:
+        tested_kind = (OpaqueResourceKind(raw["tested_kind"])
+                       if raw.get("tested_kind") is not None else None)
+    except (TypeError, ValueError) as error:
+        raise ValueError("texture contract has unknown tested kind") from error
+    result_arity = raw.get("result_arity", 1)
+    if type(result_arity) is not int or result_arity not in {1, 2, 4}:
+        raise ValueError("texture contract has invalid result arity")
+    flags = {name: raw.get(name, False) for name in
+             ("allows_offset", "allows_compare", "allows_residency", "query_level")}
+    if any(type(value) is not bool for value in flags.values()):
+        raise TypeError("texture contract control flags must be boolean")
+    indirect_raw = raw.get("indirect_availability")
+    if opcode == "istypep":
+        if indirect_raw is not None:
+            raise ValueError("opaque kind test has no indirect texture gate")
+        indirect_availability = None
+    else:
+        if indirect_raw is None:
+            raise ValueError("texture resource requires an indirect availability gate")
+        indirect_availability = normalize_availability(indirect_raw)
+        if not indirect_availability:
+            raise ValueError("indirect availability gate cannot be empty")
+    if opcode in {"tex", "tld4"}:
+        if geometry is None or query or tested_kind or result_arity not in {2, 4}:
+            raise ValueError("texture access contract has invalid topology")
+        if opcode == "tld4" and (component is None or mipmap is not TextureMipmapMode.OMITTED or result_arity != 4):
+            raise ValueError("tld4 requires component and four-lane result")
+        if opcode == "tex" and component is not None:
+            raise ValueError("tex has no component selector")
+        if opcode == "tld4" and geometry not in {
+            TextureGeometry.TWO_D, TextureGeometry.ARRAY_TWO_D,
+            TextureGeometry.CUBE, TextureGeometry.ARRAY_CUBE,
+        }:
+            raise ValueError("tld4 geometry is outside its four legal forms")
+        if opcode == "tld4" and flags["allows_offset"] and geometry in {
+            TextureGeometry.CUBE, TextureGeometry.ARRAY_CUBE,
+        }:
+            raise ValueError("cube gather has no coordinate offset")
+        if opcode == "tex":
+            if geometry in {TextureGeometry.TWO_D_MULTISAMPLE,
+                            TextureGeometry.ARRAY_TWO_D_MULTISAMPLE} and (
+                    mipmap in {TextureMipmapMode.LEVEL, TextureMipmapMode.GRADIENT} or flags["allows_compare"]):
+                raise ValueError("multisample texture cannot use mipmap or compare")
+            if flags["allows_offset"] and geometry in {
+                    TextureGeometry.CUBE, TextureGeometry.ARRAY_CUBE}:
+                raise ValueError("cube texture has no coordinate offset")
+            if flags["allows_compare"] and geometry == TextureGeometry.THREE_D:
+                raise ValueError("3d texture has no depth compare")
+        if flags["query_level"]:
+            raise ValueError("texture access has no query level")
+    elif opcode == "txq":
+        if geometry or component or tested_kind or query is None or result_arity != 1 or mipmap is not TextureMipmapMode.OMITTED:
+            raise ValueError("txq requires one query and scalar result")
+        if flags["query_level"] and query not in {TextureQuery.WIDTH, TextureQuery.HEIGHT, TextureQuery.DEPTH}:
+            raise ValueError("query level belongs to dimensions")
+        if any(flags[name] for name in ("allows_offset", "allows_compare",
+                                       "allows_residency")):
+            raise ValueError("query has no access controls")
+    else:
+        if geometry or component or query or tested_kind is None or result_arity != 1 or mipmap is not TextureMipmapMode.OMITTED:
+            raise ValueError("istypep requires one queried opaque kind")
+        if any(flags.values()):
+            raise ValueError("opaque kind test has no texture controls")
+    return TextureInstructionSpec(geometry=geometry, mipmap=mipmap,
+        component=component, query=query, tested_kind=tested_kind,
+        result_arity=result_arity, indirect_availability=indirect_availability,
+        **flags)
+
+
+def _validate_texture_variant(opcode: str, variant: VariantSpec) -> None:
+    """Keep a texture descriptor, spellings, and operand layouts coherent."""
+
+    contract = variant.texture
+    if contract is None:
+        return
+    tokens = {spelling for modifier in variant.modifiers
+              for spelling in modifier_spellings(modifier)}
+    if opcode in {"tex", "tld4"}:
+        assert contract.geometry is not None
+        mip_token = {TextureMipmapMode.BASE: ".base",
+                     TextureMipmapMode.LEVEL: ".level",
+                     TextureMipmapMode.GRADIENT: ".grad"}.get(contract.mipmap)
+        if f".{contract.geometry.value}" not in tokens or (
+                mip_token is not None and mip_token not in tokens) or (
+                mip_token is None and tokens & {".base", ".level", ".grad"}):
+            raise ValueError("texture modifier spelling contradicts geometry or mipmap")
+        if f".v{contract.result_arity}" not in tokens:
+            raise ValueError("texture result arity contradicts vector modifier")
+        if opcode == "tld4" and f".{contract.component.value}" not in tokens:
+            raise ValueError("gather component contradicts its modifier")
+        for layout in variant.operand_layouts:
+            operands = layout.operands
+            if len(operands) < 2 or operands[0].kind not in {
+                    OperandKind.TEXTURE_RESULT,
+                    OperandKind.TEXTURE_RESULT_WITH_PREDICATE} or (
+                    operands[0].vector_arities != (contract.result_arity,)) or (
+                    operands[1].kind is not OperandKind.TEXTURE_ACCESS) or (
+                    operands[1].texture_geometry != contract.geometry):
+                raise ValueError("texture operand layout contradicts typed topology")
+            coordinate_type = operands[1].type_expression
+            if (coordinate_type is None or
+                    coordinate_type.kind is not OperandTypeExpressionKind.MODIFIER or
+                    coordinate_type.modifier_name != "ctype"):
+                raise ValueError("texture access must select its coordinate type from ctype")
+            has_predicate = operands[0].kind is OperandKind.TEXTURE_RESULT_WITH_PREDICATE
+            names = {operand.name for operand in operands}
+            if (has_predicate and not contract.allows_residency) or (
+                    ("offset" in names) and not contract.allows_offset) or (
+                    ("compare" in names) and not contract.allows_compare):
+                raise ValueError("texture layout uses a forbidden optional control")
+            if contract.mipmap is TextureMipmapMode.LEVEL and "lod" not in names:
+                raise ValueError("mipmap level layout lacks LOD")
+            if contract.mipmap is TextureMipmapMode.GRADIENT and not {"ddx", "ddy"} <= names:
+                raise ValueError("gradient layout lacks both derivatives")
+    elif opcode == "txq":
+        if f".{contract.query.value}" not in tokens or ".b32" not in tokens:
+            raise ValueError("query spelling contradicts typed query")
+        if contract.query_level != (".level" in tokens):
+            raise ValueError("query level modifier contradicts typed query")
+        for layout in variant.operand_layouts:
+            operands = layout.operands
+            if len(operands) != (3 if contract.query_level else 2) or (
+                    operands[1].kind is not OperandKind.TEXTURE_QUERY_RESOURCE):
+                raise ValueError("query resource or LOD layout is invalid")
+    elif opcode == "istypep":
+        spelling = {OpaqueResourceKind.TEXTURE: ".texref",
+                    OpaqueResourceKind.SAMPLER: ".samplerref",
+                    OpaqueResourceKind.SURFACE: ".surfref"}[contract.tested_kind]
+        if spelling not in tokens:
+            raise ValueError("opaque kind test spelling contradicts its descriptor")
 
 
 def _validate_fabric_variant(variant: VariantSpec) -> None:
@@ -204,6 +379,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     fabric=_normalize_fabric_contract(
                         raw_variant.get("fabric"), raw_instruction["opcode"]
                     ),
+                    texture=_normalize_texture_contract(
+                        raw_variant.get("texture"), raw_instruction["opcode"]
+                    ),
                     wgmma_protocol_action=WgmmaProtocolAction(
                         raw_variant.get("wgmma_protocol_action", "none")
                     ),
@@ -254,6 +432,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_copy_shift_variant(variant)
             validate_tcgen_mma_variant(variant)
             _validate_fabric_variant(variant)
+            _validate_texture_variant(raw_instruction["opcode"], variant)
             variants.append(variant)
 
         instructions.append(

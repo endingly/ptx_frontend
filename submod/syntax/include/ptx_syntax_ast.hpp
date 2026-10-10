@@ -70,6 +70,9 @@ struct AstAddress {
   /** Suffix location; empty when `unified` is false. */
   SourceRange unified_range;
   SourceRange range;
+  /** Exact delimiters when this address was written in brackets. */
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
 };
 
 struct AstVectorMember {
@@ -82,6 +85,16 @@ using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate>;
 
 struct AstVectorPack {
   std::vector<AstVectorElement> elements;
+  SourceRange range;
+};
+
+/** Texture result pack with a written residency predicate destination. */
+struct AstVectorPredicatePair {
+  /** Data result lanes in source order. */
+  AstVectorPack data;
+  /** Destination predicate, never a source guard. */
+  AstIdentifierRef predicate;
+  SourceRange pipe_range;
   SourceRange range;
 };
 
@@ -101,6 +114,19 @@ struct AstFabricHandle {
   /** Endpoint, data offset, and optional counter offset with individual ranges. */
   std::vector<AstVectorElement> elements;
   /** Separator locations remain owned after CST release. */
+  std::vector<SourceRange> comma_ranges;
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  SourceRange range;
+};
+
+/** Source compound bracket with scalar heads and a terminal coordinate pack. */
+struct AstCompoundBracket {
+  /** Owned head spellings; the generated operand contract assigns resource roles. */
+  std::vector<AstVectorElement> heads;
+  /** Coordinate tuple, retaining actual source arity and element spellings. */
+  AstVectorPack coordinates;
+  /** Bracket and separator locations for AST-free diagnostics after resolution. */
   std::vector<SourceRange> comma_ranges;
   SourceRange left_bracket_range;
   SourceRange right_bracket_range;
@@ -150,9 +176,10 @@ struct AstRegisterPredicatePair {
 using AstOperand =
     std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
                  AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
-                 AstTensorOperand, AstFabricHandle, AstCallParameterList,
-                 AstCallTarget, AstCallTargetSet, AstBranchTarget,
-                 AstBranchTargetSet, AstRegisterPredicatePair>;
+                 AstVectorPredicatePair, AstTensorOperand, AstFabricHandle,
+                 AstCompoundBracket, AstCallParameterList, AstCallTarget,
+                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
+                 AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {
@@ -180,6 +207,8 @@ struct AstInstruction {
   std::vector<AstOperand> operands;
   std::optional<AstPredicate> predicate;
   SourceRange range;
+  /** Exact source commas following each written operand, when present. */
+  std::vector<SourceRange> operand_comma_ranges;
 };
 
 struct AstVersionDirective {
@@ -299,8 +328,18 @@ struct AstInitializerList {
   SourceRange range;
 };
 
+/** Source-owned static assignment to one opaque-resource member. */
+struct AstNamedInitializer {
+  /** Member spelling retained until typed declaration resolution. */
+  AstSyntax member;
+  /** Constant source expression with no runtime state. */
+  AstConstantExpression value;
+  SourceRange range;
+};
+
 struct AstInitializer {
-  std::variant<AstConstantExpression, AstInitializerList> value;
+  std::variant<AstConstantExpression, AstInitializerList, AstNamedInitializer>
+      value;
   SourceRange range;
 };
 
@@ -338,6 +377,8 @@ struct AstVariableDeclaration {
   AstSyntax type;
   std::vector<AstVariableDeclarator> declarators;
   SourceRange range;
+  /** True only for the deprecated `.tex .u32` declaration spelling. */
+  bool legacy_texture = false;
 };
 
 struct AstLabel {

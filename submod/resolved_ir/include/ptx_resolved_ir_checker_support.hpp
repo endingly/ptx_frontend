@@ -71,6 +71,16 @@ OperandView project_tensor_operand(
 /** Recheck a bound transport handle's scalar types, arity, and owned ranges. */
 CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
                                 bool counted, const Context& context);
+/** Recheck mutable texture lane, type, destination, and layout contracts. */
+CheckResult check_texture_static_payload(
+    const TextureInstructionDescriptor& descriptor,
+    TextureSelectedTypes selected_types, const ResolvedTextureAccess& access,
+    const ResolvedTextureResult& result, bool residency_required,
+    const Context& context);
+/** Recheck source-independent query resource kind and handle carrier facts. */
+CheckResult check_texture_query_static_payload(
+    const TextureInstructionDescriptor& descriptor,
+    const ResolvedTextureQueryResource& resource, const Context& context);
 /** Project an owned im2col information pack for generated operand checks. */
 OperandView project_tensor_im2col_info(
     std::string_view field_id,

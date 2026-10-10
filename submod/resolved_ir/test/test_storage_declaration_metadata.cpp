@@ -383,9 +383,9 @@ TEST(ResolvedStorageDeclarations, RetainsExternalDynamicSharedAsUnknown) {
   EXPECT_EQ(imported.initialization, StorageInitializationKind::External);
 }
 
-/** Opaque globals retain identity-only metadata and reject modeled layout forms. */
+/** Opaque globals retain identity-only metadata and reject invalid layout forms. */
 TEST(ResolvedStorageDeclarations,
-     RetainsOpaqueModuleGlobalsAndRejectsUnsupportedOpaqueShapes) {
+     RetainsOpaqueModuleGlobalsAndRejectsInvalidOpaqueShapes) {
   const auto opaque = resolveSource(R"ptx(
 .global .texref texture;
 .global .samplerref sampler;
@@ -410,6 +410,19 @@ TEST(ResolvedStorageDeclarations,
               StorageInitializationKind::Uninitialized);
   }
 
+  const auto array = resolveSource(".global .texref array_texture[2];");
+  ASSERT_TRUE(array.has_value()) << array.error().front().message;
+  const auto& array_declaration = storageNamed(*array, "array_texture");
+  EXPECT_EQ(array_declaration.space, StorageSpace::Global);
+  EXPECT_EQ(array_declaration.element_type,
+            StorageElementType{StorageOpaqueType::Texture});
+  EXPECT_EQ(array_declaration.array_extents,
+            (std::vector<std::optional<uint64_t>>{2}));
+  EXPECT_FALSE(array_declaration.byte_extent);
+  EXPECT_FALSE(array_declaration.alignment);
+  EXPECT_EQ(array_declaration.initialization,
+            StorageInitializationKind::Uninitialized);
+
   /** Opaque declaration shape outside the normalized storage contract. */
   struct RejectedOpaqueFixture {
     std::string_view name;
@@ -423,10 +436,6 @@ TEST(ResolvedStorageDeclarations,
       RejectedOpaqueFixture{
           "vector",
           ".global .v2 .texref vector_texture;",
-      },
-      RejectedOpaqueFixture{
-          "array",
-          ".global .texref array_texture[2];",
       },
   };
   for (const auto& fixture : rejected_fixtures) {

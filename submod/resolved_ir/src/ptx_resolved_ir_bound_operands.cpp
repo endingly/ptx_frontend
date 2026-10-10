@@ -2050,7 +2050,8 @@ resolve_texture_result(const syntax_ast::AstOperand& operand,
              : type.error());
   auto vector = resolve_reg_vector(
       data_operand, *type, binding.allowed_vector_arities, std::nullopt,
-      binding.vector_type_policy, binding.register_width_policy, false, 0,
+      binding.vector_type_policy, binding.register_width_policy,
+      binding.allow_vector_sink, binding.vector_sink_payload_bits,
       binding.allowed_register_types, binding.require_uniform_register_family,
       true, context);
   if (!vector)

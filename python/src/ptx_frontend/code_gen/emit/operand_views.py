@@ -319,6 +319,12 @@ def emit_check_operand_view(
                   .field_id = "{field.name}",
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "TextureResult")},
                   .vector_arity = {object_name}.{field.name}.value.data.elements.size(),
+                  .vector_sink_count = [&]() {{
+                    uint8_t count = 0;
+                    for (const auto& lane : {object_name}.{field.name}.value.data.elements)
+                      count += !lane.has_value();
+                    return count;
+                  }}(),
                   .locations = {object_name}.{field.name}.locs,
               }}'''
     if field.value_kind is ResolvedValueKind.MATRIX_SCALE_SELECTOR:

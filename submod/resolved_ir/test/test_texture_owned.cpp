@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <ptx_frontend/resolved_ir/model/data_movement/tex.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/tld4.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/txq.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include "test_syntax_parse_helpers.hpp"
@@ -251,6 +252,256 @@ TEST(TextureOwned, OptionalControlsAndMixedCoordinates) {
 }
 )ptx");
   ASSERT_TRUE(module.has_value());
+  EXPECT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+}
+
+/** Depth comparisons accept typed scalar immediates on tex and tld4 forms. */
+TEST(TextureOwned, DepthCompareImmediatesRetainScalarContract) {
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<7>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], 0f3f000000;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], {-8,7}, 0f3f000000;
+  tld4.r.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], 0f3f000000;
+  tex.level.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], 0f00000000, 0f3f000000;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{%f4,%f5}], %f6;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(module);
+  ASSERT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  ASSERT_EQ(module->functions.front().body.size(), 6u);
+
+  auto* plain = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[0].get());
+  auto* offset = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[1].get());
+  auto* gather =
+      dynamic_cast<Tld4R2d*>(module->functions.front().body[2].get());
+  auto* mip = dynamic_cast<TexLevel2dF32U32S32F32*>(
+      module->functions.front().body[3].get());
+  auto* register_compare = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[4].get());
+  ASSERT_NE(plain, nullptr);
+  ASSERT_NE(offset, nullptr);
+  ASSERT_NE(gather, nullptr);
+  ASSERT_NE(mip, nullptr);
+  ASSERT_NE(register_compare, nullptr);
+  ASSERT_TRUE(plain->compare);
+  ASSERT_TRUE(offset->compare);
+  ASSERT_TRUE(gather->compare);
+  ASSERT_TRUE(mip->compare);
+  ASSERT_TRUE(register_compare->compare);
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(plain->compare->value));
+  EXPECT_TRUE(offset->offset.has_value());
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(offset->compare->value));
+  EXPECT_TRUE(
+      std::holds_alternative<ResolvedImmediate>(gather->compare->value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedImmediate>(mip->compare->value));
+  EXPECT_TRUE(std::holds_alternative<ResolvedRegisterRef>(
+      register_compare->compare->value));
+
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges[0],
+  };
+  auto& immediate = std::get<ResolvedImmediate>(plain->compare->value);
+  EXPECT_EQ(immediate.type, ScalarType::F32);
+  EXPECT_TRUE(plain->check(context));
+  immediate.type = ScalarType::S32;
+  EXPECT_FALSE(plain->check(context));
+  immediate.type = ScalarType::F32;
+  EXPECT_TRUE(plain->check(context));
+  const auto saved_compare = plain->compare;
+  plain->compare.reset();
+  EXPECT_FALSE(plain->check(context));
+  plain->compare = saved_compare;
+  EXPECT_TRUE(plain->check(context));
+}
+
+/** Texture result bit buckets preserve lane positions and reject source sinks. */
+TEST(TextureOwned, TextureResultSinksRetainDestinationPolicy) {
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<7>;
+  tex.2d.v4.f32.f32 {%f0,%f1,_,_}, [tex0,{%f4,%f5}];
+  tld4.r.2d.v4.f32.f32 {_,%f1,%f2,_}, [tex0,{%f4,%f5}];
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(module);
+  ASSERT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  auto* tex = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[0].get());
+  auto* tld4 = dynamic_cast<Tld4R2d*>(module->functions.front().body[1].get());
+  ASSERT_NE(tex, nullptr);
+  ASSERT_NE(tld4, nullptr);
+  ASSERT_EQ(tex->dst.value.data.elements.size(), 4u);
+  ASSERT_EQ(tex->dst.value.data_ranges.size(), 4u);
+  EXPECT_NE(tex->dst.value.data_ranges[2], tex->dst.value.data_ranges[3]);
+  EXPECT_FALSE(tex->dst.value.data.elements[2]);
+  EXPECT_FALSE(tex->dst.value.data.elements[3]);
+  EXPECT_FALSE(tld4->dst.value.data.elements[0]);
+  EXPECT_FALSE(tld4->dst.value.data.elements[3]);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges[0],
+  };
+  ASSERT_TRUE(tex->check(context));
+  const auto saved_first = tex->dst.value.data.elements[0];
+  const auto saved_second = tex->dst.value.data.elements[1];
+  tex->dst.value.data.elements[0].reset();
+  tex->dst.value.data.elements[1].reset();
+  EXPECT_FALSE(tex->check(context));
+  tex->dst.value.data.elements[0] = saved_first;
+  tex->dst.value.data.elements[1] = saved_second;
+  ASSERT_TRUE(tex->check(context));
+  tex->dst.value.data.elements[1]->register_class =
+      ResolvedRegisterClass::Predicate;
+  EXPECT_FALSE(tex->check(context));
+  tex->dst.value.data.elements[1] = saved_second;
+  tex->dst.value.data.elements[1] = saved_first;
+  EXPECT_FALSE(tex->check(context));
+  tex->dst.value.data.elements[1] = saved_second;
+  EXPECT_TRUE(tex->check(context));
+
+  EXPECT_FALSE(owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<6>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{_,%f5}];
+  ret;
+}
+)ptx"));
+  EXPECT_FALSE(owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .f32 %f<6>;
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3}, [tex0,{%f4,%f5}], {_,1};
+  ret;
+}
+)ptx"));
+}
+
+/** Nested coordinate immediates keep source and converted bits coherent. */
+TEST(TextureOwned, CoordinateImmediateMetadataRetainsLaneProvenance) {
+  auto module = owned_texture_module(R"ptx(
+.version 9.3
+.target sm_80
+.global .texref tex0;
+.entry kernel() {
+  .reg .s32 %r<10>;
+  .reg .f32 %f<6>;
+  tex.2d.v4.s32.s32 {%r0,%r1,%r2,%r3}, [tex0,{1,%r5}];
+  tex.a2dms.v4.s32.s32 {%r0,%r1,%r2,%r3}, [tex0,{1,2,3,4}];
+  tex.2d.v4.f32.f32 {%f0,%f1,%f2,%f3},
+      [tex0,{0f3f000000,%f5}];
+  tex.2d.v4.s32.s32 {%r0,%r1,%r2,%r3}, [tex0,{-1,%r5}];
+  tex.2d.v4.s32.s32 {%r0,%r1,%r2,%r3},
+      [tex0,{0x100000000,%r5}];
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(module);
+  ASSERT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  auto* pure = dynamic_cast<TexOmitted2dS32U32S32F32*>(
+      module->functions.front().body[0].get());
+  auto* mixed = dynamic_cast<TexOmittedA2dmsS32U32S32F32*>(
+      module->functions.front().body[1].get());
+  auto* floating = dynamic_cast<TexOmitted2dF32U32S32F32*>(
+      module->functions.front().body[2].get());
+  auto* negative = dynamic_cast<TexOmitted2dS32U32S32F32*>(
+      module->functions.front().body[3].get());
+  auto* high = dynamic_cast<TexOmitted2dS32U32S32F32*>(
+      module->functions.front().body[4].get());
+  ASSERT_NE(pure, nullptr);
+  ASSERT_NE(mixed, nullptr);
+  ASSERT_NE(floating, nullptr);
+  ASSERT_NE(negative, nullptr);
+  ASSERT_NE(high, nullptr);
+  const checker::Context context{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80},
+      .instruction_range = module->functions.front().instruction_ranges[0],
+  };
+  auto& pure_lane =
+      std::get<ResolvedImmediate>(pure->access.value.coordinates[0].value);
+  const auto original_pure = pure_lane;
+  pure_lane.bits = 2;
+  auto invalid = pure->check(context);
+  ASSERT_FALSE(invalid);
+  EXPECT_TRUE(std::ranges::any_of(invalid.error(), [&](const auto& diagnostic) {
+    return diagnostic.range == pure->access.value.coordinates[0].range;
+  }));
+  EXPECT_FALSE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+  pure_lane = original_pure;
+  pure_lane.bits = uint64_t{1} << 32;
+  EXPECT_FALSE(pure->check(context));
+  pure_lane = original_pure;
+  EXPECT_TRUE(pure->check(context));
+
+  auto& negative_lane =
+      std::get<ResolvedImmediate>(negative->access.value.coordinates[0].value);
+  const auto original_negative = negative_lane;
+  EXPECT_TRUE(negative_lane.is_negative);
+  EXPECT_EQ(negative_lane.bits, UINT32_MAX);
+  negative_lane.bits = 0;
+  EXPECT_FALSE(negative->check(context));
+  negative_lane = original_negative;
+  EXPECT_TRUE(negative->check(context));
+
+  auto& high_lane =
+      std::get<ResolvedImmediate>(high->access.value.coordinates[0].value);
+  const auto original_high = high_lane;
+  EXPECT_EQ(high_lane.integer_source_bits, uint64_t{0x100000000});
+  EXPECT_EQ(high_lane.bits, 0u);
+  high_lane.bits = 1;
+  EXPECT_FALSE(high->check(context));
+  high_lane = original_high;
+  EXPECT_TRUE(high->check(context));
+
+  auto& mixed_lane =
+      std::get<ResolvedImmediate>(mixed->access.value.coordinates[3].value);
+  const auto original_mixed = mixed_lane;
+  mixed_lane.integer_source_bits = 0;
+  invalid = mixed->check(context);
+  ASSERT_FALSE(invalid);
+  EXPECT_TRUE(std::ranges::any_of(invalid.error(), [&](const auto& diagnostic) {
+    return diagnostic.range == mixed->access.value.coordinates[3].range;
+  }));
+  mixed_lane = original_mixed;
+  EXPECT_TRUE(mixed->check(context));
+
+  auto& float_lane =
+      std::get<ResolvedImmediate>(floating->access.value.coordinates[0].value);
+  const auto original_float = float_lane;
+  float_lane.integer_source_bits = 1;
+  EXPECT_FALSE(floating->check(context));
+  float_lane = original_float;
+  float_lane.bits = uint64_t{1} << 32;
+  EXPECT_FALSE(floating->check(context));
+  float_lane = original_float;
+  EXPECT_TRUE(floating->check(context));
   EXPECT_TRUE(
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
 }

@@ -1282,6 +1282,19 @@ CheckResult check_operands(
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
 
+    if (operand->actual_shape == OperandShape::TextureResult &&
+        ((operand->vector_sink_count != 0 && !descriptor.allow_vector_sink) ||
+         operand->vector_sink_count >= operand->vector_arity)) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::InvalidVectorOperand,
+          .range = diagnostic_range(operand->locations, context),
+          .message =
+              fmt::format("Texture result '{}' uses the '_' sink in an invalid "
+                          "position.",
+                          descriptor.target_field_id),
+      });
+    }
+
     if (operand->actual_shape == OperandShape::PredicatePair) {
       for (size_t index = 0; index < operand->predicate_pair_types.size();
            ++index) {
@@ -4158,9 +4171,11 @@ CheckResult check_texture_static_payload(
     const auto* reg = std::get_if<ResolvedRegisterRef>(&lane.value);
     if (!reg) {
       const auto* immediate = std::get_if<ResolvedImmediate>(&lane.value);
-      if (!immediate || immediate->type != use_type)
+      if (!immediate || immediate->type != use_type ||
+          !valid_value_vector_immediate(*immediate))
         report(lane.range,
-               "Texture coordinate immediate has the wrong use type.");
+               "Texture coordinate immediate has invalid type or source "
+               "metadata.");
       continue;
     }
     if (reg->register_class != ResolvedRegisterClass::General ||
@@ -4180,10 +4195,11 @@ CheckResult check_texture_static_payload(
     const auto* reg = lane ? &*lane : nullptr;
     const auto lane_range =
         i < result.data_ranges.size() ? result.data_ranges[i] : range;
-    if (!reg || reg->register_class != ResolvedRegisterClass::General ||
-        reg->vector_width || !reg->declared_type ||
-        !base::scalar_types_compatible(*reg->declared_type, result.result_type,
-                                       base::ScalarTypeSizePolicy::SameWidth))
+    if (reg &&
+        (reg->register_class != ResolvedRegisterClass::General ||
+         reg->vector_width || !reg->declared_type ||
+         !base::scalar_types_compatible(*reg->declared_type, result.result_type,
+                                        base::ScalarTypeSizePolicy::SameWidth)))
       report(lane_range,
              "Texture result lane has an incompatible scalar register.");
     if (!reg)

@@ -29,7 +29,9 @@ With the repository's configured vcpkg dependencies and Python test environment,
 cmake --preset ci-linux-clang-debug -DPython3_EXECUTABLE="$PWD/.venv/bin/python"
 cmake --build --preset ci-linux-clang-debug
 ctest --preset ci-linux-clang-debug --output-on-failure
-.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module --jobs 4 -v
+.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module -v
 ```
+
+For local runs, unittest-parallel defaults to the logical CPU count; CI may explicitly set a worker count.
 
 The bounded assembler checkpoint used complete PTX 9.3 modules and `/usr/local/cuda-13.3/bin/ptxas`; its module/log package was retained separately from this repository. The documented 31/31 status is a recorded tool observation, while the commands above and linked tests are reproducible from this source tree. No release CI, public ABI freeze or simulator/GPU execution claim follows from these checks.

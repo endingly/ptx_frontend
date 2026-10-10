@@ -225,8 +225,9 @@ successful manifest. Dirty selection uses build timestamps and does not claim
 to detect content changes that preserve input mtimes. The CLI defaults to six
 artifact writers (`--jobs 6`); `--jobs 1` is serial. CMake sets that one-process
 budget with `PTX_FRONTEND_CODEGEN_JOBS` (default `6`). An unchanged build starts
-no generator Python process. Each artifact uses a sibling candidate, formats
-it, and replaces the output atomically only when bytes differ.
+no generator Python process. Each artifact emits a sibling candidate and
+replaces the output atomically only when its raw bytes differ. Generation does not invoke or require
+`clang-format`.
 
 Syntax descriptor storage supplies per-opcode free getters consumed by variant
 selection and resolution. Unsharded opcodes keep their syntax, resolved, and
@@ -262,10 +263,11 @@ shard rows into contiguous, stable-lifetime storage without heap allocation.
 The public aggregate and exact final-class identities remain the compatibility
 boundary; no mutable logical-form tag or opcode wrapper is introduced.
 
-The generator formats a sibling candidate before comparing bytes with an
-existing artifact. Identical formatted output, including the output manifest,
-keeps its modification time. Consumers can include the aggregate or a single
-opcode header.
+The generator compares raw emitted bytes from a sibling candidate with an
+existing artifact. Identical output, including the output manifest, keeps its
+modification time. Changed artifacts retain the existing file mode; failed
+emission or replacement cleans up the candidate and can be retried. Consumers
+can include the aggregate or a single opcode header.
 
 The comparison and selection spec owns the generated
 `comparison_and_selection` category. Narrow consumers use individual headers

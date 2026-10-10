@@ -119,8 +119,8 @@ supported surface and its exclusions.
 ## Build and install
 
 The reproducible local path uses CMake presets, Ninja, GCC/G++ or Clang, and the vcpkg
-manifest. Install CMake 3.28 or newer, a C++23 compiler, Python 3, Flex, and
-`clang-format`; initialize vcpkg and export its location before configuring.
+manifest. Install CMake 3.28 or newer, a C++23 compiler, Python 3, and Flex;
+initialize vcpkg and export its location before configuring.
 
 ```sh
 export VCPKG_ROOT=/path/to/vcpkg

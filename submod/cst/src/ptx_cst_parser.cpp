@@ -324,6 +324,11 @@ PtxCstParser::RecoveryResult PtxCstParser::recover(
 
   const TokenId error = consume();
   append_span(CstRecoveryKind::Error, error, error + 1);
+  // An offending semicolon already terminates this malformed source item.
+  if (token(error).kind == TokenKind::Semicolon) {
+    result.stop = RecoveryStop::Semicolon;
+    return result;
+  }
   const TokenId skipped_first = peek();
   while (token(peek()).kind != TokenKind::Eof &&
          !is_anchor(token(peek()).kind)) {
@@ -359,18 +364,64 @@ PtxCstParser::parseImmediate(bool allow_sign) {
   return syntax_cst::CstImmediate{sign, literal, {first, literal + 1}};
 }
 
+std::expected<syntax_cst::CstNumericOperand, CstParseDiagnostic>
+PtxCstParser::parseNumericOperand(int minimum_precedence) {
+  using namespace syntax_cst;
+  auto parsed =
+      parseConstantExpression(minimum_precedence, maxConstantTreeDepth);
+  if (!parsed)
+    return std::unexpected(parsed.error());
+  auto& expression = parsed->expression;
+  const auto range = expression.token_range;
+  for (auto index = range.first; index < range.last; ++index) {
+    if (token(index).kind == TokenKind::Ident &&
+        token(index).text.starts_with('%'))
+      return std::unexpected(CstParseDiagnostic{
+          token(index).range,
+          "registers cannot participate in constant expressions"});
+  }
+  if (const auto* literal = std::get_if<CstConstantLiteral>(&expression.node))
+    return CstNumericOperand{
+        CstImmediate{std::nullopt, literal->literal, range}};
+  if (const auto* unary = std::get_if<CstConstantUnary>(&expression.node)) {
+    const auto kind = token(unary->operator_token).kind;
+    if (kind == TokenKind::Plus || kind == TokenKind::Minus) {
+      if (const auto* literal =
+              std::get_if<CstConstantLiteral>(&unary->operand->node))
+        return CstNumericOperand{
+            CstImmediate{unary->operator_token, literal->literal, range}};
+    }
+  }
+  return CstNumericOperand{CstConstantOperand{
+      std::make_unique<CstConstantExpression>(std::move(expression)), range}};
+}
+
+bool PtxCstParser::atNumericStart() {
+  const auto kind = token(peek()).kind;
+  return atImmediateStart() || kind == TokenKind::LParen ||
+         kind == TokenKind::Tilde || kind == TokenKind::Exclamation;
+}
+
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseBracketedAddress(TokenId open) {
   const TokenId first = open;
   syntax_cst::CstAddressBase base;
   TokenId last = first;
 
-  if (atImmediateStart()) {
-    auto immediate = parseImmediate();
+  if (atNumericStart()) {
+    // Top-level additive operators separate the base and offset; parentheses
+    // permit the complete expression grammar inside either numeric component.
+    auto immediate =
+        parseNumericOperand(constantBinaryPrecedence(TokenKind::Plus) + 1);
     if (!immediate)
       return std::unexpected(immediate.error());
-    last = immediate->token_range.last - 1;
-    base = std::move(*immediate);
+    last = std::visit(
+        [](const auto& leaf) { return leaf.token_range.last - 1; }, *immediate);
+    base = std::visit(
+        [](auto&& leaf) -> syntax_cst::CstAddressBase {
+          return std::move(leaf);
+        },
+        std::move(*immediate));
   } else {
     auto identifier = expect(TokenKind::Ident, "address base");
     if (!identifier)
@@ -383,10 +434,11 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
   if (token(peek()).kind == TokenKind::Plus ||
       token(peek()).kind == TokenKind::Minus) {
     const TokenId op = consume();
-    auto magnitude = parseImmediate(false);
+    auto magnitude = parseNumericOperand();
     if (!magnitude)
       return std::unexpected(magnitude.error());
-    last = magnitude->token_range.last - 1;
+    last = std::visit(
+        [](const auto& leaf) { return leaf.token_range.last - 1; }, *magnitude);
     offset =
         syntax_cst::CstAddressOffset{op, std::move(*magnitude), {op, last + 1}};
   }
@@ -438,11 +490,15 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
             .token_range = {open, *close + 1},
         }};
       }
-      if (atImmediateStart()) {
-        auto immediate = parseImmediate();
+      if (atNumericStart()) {
+        auto immediate = parseNumericOperand();
         if (!immediate)
           return std::unexpected(immediate.error());
-        elements.emplace_back(std::move(*immediate));
+        elements.push_back(std::visit(
+            [](auto&& leaf) -> syntax_cst::CstVectorElement {
+              return std::move(leaf);
+            },
+            std::move(*immediate)));
       } else {
         auto identifier = expect(TokenKind::Ident, "fabric handle component");
         if (!identifier)
@@ -496,11 +552,15 @@ PtxCstParser::parseVectorPack(TokenId open) {
   for (;;) {
     if (token(peek()).kind == TokenKind::Ident) {
       elements.emplace_back(syntax_cst::CstIdentifier{consume()});
-    } else if (atImmediateStart()) {
-      auto immediate = parseImmediate();
+    } else if (atNumericStart()) {
+      auto immediate = parseNumericOperand();
       if (!immediate)
         return std::unexpected(immediate.error());
-      elements.emplace_back(std::move(*immediate));
+      elements.push_back(std::visit(
+          [](auto&& leaf) -> syntax_cst::CstVectorElement {
+            return std::move(leaf);
+          },
+          std::move(*immediate)));
     } else {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range,
@@ -548,11 +608,15 @@ PtxCstParser::parseCallParameterList(
     while (token(peek()).kind != TokenKind::RParen) {
       if (token(peek()).kind == TokenKind::Ident) {
         parameters.emplace_back(syntax_cst::CstIdentifier{consume()});
-      } else if (atImmediateStart()) {
-        auto parameter = parseImmediate();
+      } else if (atNumericStart()) {
+        auto parameter = parseNumericOperand();
         if (!parameter)
           return std::unexpected(parameter.error());
-        parameters.emplace_back(std::move(*parameter));
+        parameters.push_back(std::visit(
+            [](auto&& leaf) -> syntax_cst::CstCallParameter {
+              return std::move(leaf);
+            },
+            std::move(*parameter)));
       } else {
         return std::unexpected(CstParseDiagnostic{
             token(peek()).range,
@@ -698,22 +762,9 @@ PtxCstParser::parseOperand() {
     return syntax_cst::CstOperand{syntax_cst::CstNegatedRegisterOperand{
         minus, base, {minus, identifier + 1}}};
   }
-  if (token(peek()).kind == TokenKind::Exclamation) {
+  if (token(peek()).kind == TokenKind::Exclamation &&
+      token(peekNext()).kind == TokenKind::Ident) {
     const TokenId exclamation = consume();
-    if (atImmediateStart()) {
-      auto immediate = parseImmediate();
-      if (!immediate)
-        return std::unexpected(immediate.error());
-      if (!isIntegerLiteral(token(immediate->literal).kind) &&
-          token(immediate->literal).kind != TokenKind::WarpSz) {
-        return std::unexpected(CstParseDiagnostic{
-            token(immediate->literal).range,
-            "expected integer predicate constant after '!'"});
-      }
-      const TokenId last = immediate->token_range.last;
-      return syntax_cst::CstOperand{syntax_cst::CstNegatedImmediate{
-          exclamation, std::move(*immediate), {exclamation, last}}};
-    }
     auto name = expect(TokenKind::Ident, "predicate operand");
     if (!name)
       return std::unexpected(name.error());
@@ -740,11 +791,46 @@ PtxCstParser::parseOperand() {
         .predicate = syntax_cst::CstIdentifier{*predicate},
         .token_range = {first, *predicate + 1}}};
   }
-  if (atImmediateStart()) {
-    auto immediate = parseImmediate();
+  if (atNumericStart()) {
+    auto immediate = parseNumericOperand();
     if (!immediate)
       return std::unexpected(immediate.error());
-    return syntax_cst::CstOperand{std::move(*immediate)};
+    if (const auto* expression =
+            std::get_if<syntax_cst::CstConstantOperand>(&*immediate)) {
+      if (const auto* unary = std::get_if<syntax_cst::CstConstantUnary>(
+              &expression->expression->node);
+          unary &&
+          token(unary->operator_token).kind == TokenKind::Exclamation) {
+        const syntax_cst::CstConstantExpression* child = unary->operand.get();
+        std::optional<TokenId> sign;
+        if (const auto* signed_child =
+                std::get_if<syntax_cst::CstConstantUnary>(&child->node);
+            signed_child &&
+            (token(signed_child->operator_token).kind == TokenKind::Plus ||
+             token(signed_child->operator_token).kind == TokenKind::Minus)) {
+          sign = signed_child->operator_token;
+          child = signed_child->operand.get();
+        }
+        if (const auto* literal =
+                std::get_if<syntax_cst::CstConstantLiteral>(&child->node)) {
+          if (!isIntegerLiteral(token(literal->literal).kind) &&
+              token(literal->literal).kind != TokenKind::WarpSz)
+            return std::unexpected(CstParseDiagnostic{
+                token(literal->literal).range,
+                "expected integer predicate constant after '!'"});
+          return syntax_cst::CstOperand{syntax_cst::CstNegatedImmediate{
+              unary->operator_token,
+              syntax_cst::CstNumericOperand{syntax_cst::CstImmediate{
+                  sign,
+                  literal->literal,
+                  {sign.value_or(literal->literal), literal->literal + 1}}},
+              expression->token_range}};
+        }
+      }
+    }
+    return std::visit(
+        [](auto&& leaf) -> syntax_cst::CstOperand { return std::move(leaf); },
+        std::move(*immediate));
   }
 
   auto identifier = expect(TokenKind::Ident, "operand");
@@ -772,10 +858,11 @@ PtxCstParser::parseOperand() {
   if (token(peek()).kind == TokenKind::Plus ||
       token(peek()).kind == TokenKind::Minus) {
     const TokenId op = consume();
-    auto magnitude = parseImmediate(false);
+    auto magnitude = parseNumericOperand();
     if (!magnitude)
       return std::unexpected(magnitude.error());
-    const TokenId last = magnitude->token_range.last - 1;
+    const TokenId last = std::visit(
+        [](const auto& leaf) { return leaf.token_range.last - 1; }, *magnitude);
     syntax_cst::CstAddressOffset offset{
         op, std::move(*magnitude), {op, last + 1}};
     return syntax_cst::CstOperand{

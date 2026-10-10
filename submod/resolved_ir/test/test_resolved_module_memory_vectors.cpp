@@ -337,7 +337,9 @@ TEST(ResolvedModule, ValidatesMemoryAddressImmediateDomains) {
         std::get<syntax_ast::AstAddress>(invalid_instruction.operands.back());
     const auto expected_range =
         invalid_address.offset
-            ? invalid_address.offset->magnitude.syntax.range
+            ? std::get<syntax_ast::AstImmediate>(
+                  invalid_address.offset->magnitude)
+                  .syntax.range
             : std::get<syntax_ast::AstImmediate>(invalid_address.base)
                   .syntax.range;
     const auto invalid = resolveModule(invalid_ast);

@@ -776,6 +776,18 @@ resolve_call_arguments(const syntax_ast::AstOperand& operand,
                                    identifier->syntax.range);
       continue;
     }
+    if (const auto* expression =
+            std::get_if<syntax_ast::AstConstantOperand>(&parameter)) {
+      auto value =
+          declaration_semantics::numericConstantValue(*expression->expression);
+      if (!value)
+        return std::unexpected(ResolveDiagnostic{
+            .range = value.error().range, .message = value.error().message});
+      resolved.values.emplace_back(ResolvedCallArgument{ResolvedCallLiteral{
+                                       .source_value = std::move(*value)}},
+                                   expression->range);
+      continue;
+    }
     const auto& immediate = std::get<syntax_ast::AstImmediate>(parameter);
     resolved.values.emplace_back(
         ResolvedCallArgument{ResolvedCallLiteral{
@@ -842,8 +854,10 @@ resolve_special_register(const syntax_ast::AstOperand& operand) {
 
 /** Resolve and canonicalize one integer predicate constant. */
 std::expected<ResolvedPredicateConstant, ResolveDiagnostic>
-resolve_predicate_constant(const syntax_ast::AstImmediate& immediate,
-                           bool negated) {
+resolve_predicate_constant(
+    const std::variant<syntax_ast::AstImmediate,
+                       syntax_ast::AstConstantOperand>& immediate,
+    bool negated) {
   auto resolved = resolve_immediate_value(immediate, ScalarType::B64);
   if (!resolved)
     return std::unexpected(resolved.error());
@@ -857,8 +871,12 @@ resolve_predicate_source(const syntax_ast::AstOperand& operand,
                          bool allow_special_register,
                          const ResolveContext* context) {
   const auto range = syntax_ast::sourceRange(operand);
-  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
-    auto constant = resolve_predicate_constant(*immediate, false);
+  if (is_numeric_operand(operand)) {
+    auto value = resolve_numeric_operand(operand, ScalarType::B64);
+    if (!value)
+      return std::unexpected(value.error());
+    auto constant = std::expected<ResolvedPredicateConstant, ResolveDiagnostic>(
+        ResolvedPredicateConstant{.value = value->bits != 0});
     if (!constant)
       return std::unexpected(constant.error());
     return WithLocs<ResolvedPredicateSource>{
@@ -972,12 +990,23 @@ resolve_address_offset(
   };
   if (memory_operand && !address_offset_fits_signed32(resolved)) {
     const bool negative = subtract != resolved.value.is_negative;
+    const auto source = std::visit(
+        [](const auto& leaf) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(leaf)>,
+                                       syntax_ast::AstImmediate>)
+            return std::pair{leaf.syntax.range,
+                             std::string_view{leaf.syntax.text}};
+          else
+            return std::pair{leaf.range,
+                             std::string_view{"constant expression"}};
+        },
+        address.offset->magnitude);
     return std::unexpected(ResolveDiagnostic{
-        .range = address.offset->magnitude.syntax.range,
+        .range = source.first,
         .message = fmt::format(
             "Address offset magnitude '{}' is outside the signed 32-bit "
             "range for its '{}' operator.",
-            address.offset->magnitude.syntax.text, negative ? "-" : "+"),
+            source.second, negative ? "-" : "+"),
     });
   }
   return resolved;
@@ -1172,17 +1201,29 @@ std::expected<WithLocs<ResolvedAddress>, ResolveDiagnostic> resolve_address(
       base = std::move(*symbol);
     }
   } else {
-    const auto& immediate = std::get<syntax_ast::AstImmediate>(address->base);
     auto immediate_base =
-        resolve_immediate_value(immediate, ScalarType::U32, true);
+        resolve_immediate_value(address->base, ScalarType::U32, true);
     if (!immediate_base)
       return std::unexpected(immediate_base.error());
     if (immediate_base->is_negative) {
+      const auto source = std::visit(
+          [](const auto& leaf) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(leaf)>,
+                                         syntax_ast::AstImmediate> ||
+                          std::is_same_v<std::decay_t<decltype(leaf)>,
+                                         syntax_ast::AstIdentifierRef>)
+              return std::pair{leaf.syntax.range,
+                               std::string_view{leaf.syntax.text}};
+            else
+              return std::pair{leaf.range,
+                               std::string_view{"constant expression"}};
+          },
+          address->base);
       return std::unexpected(ResolveDiagnostic{
-          .range = immediate.syntax.range,
+          .range = source.first,
           .message = fmt::format(
               "Immediate address '{}' must be an unsigned 32-bit value.",
-              immediate.syntax.text),
+              source.second),
       });
     }
     base = std::move(*immediate_base);
@@ -1218,12 +1259,13 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
     return WithLocs<RegOrImm>{RegOrImm{register_ref->value},
                               identifier->syntax.range};
   }
-  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
+  if (is_numeric_operand(operand)) {
     auto value =
-        detail::resolve_immediate_value(*immediate, type, require_target_range);
+        detail::resolve_numeric_operand(operand, type, require_target_range);
     if (!value)
       return std::unexpected(value.error());
-    return WithLocs<RegOrImm>{RegOrImm{*value}, immediate->syntax.range};
+    return WithLocs<RegOrImm>{RegOrImm{*value},
+                              syntax_ast::sourceRange(operand)};
   }
   return std::unexpected(ResolveDiagnostic{
       .range = syntax_ast::sourceRange(operand),
@@ -1347,7 +1389,11 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
         std::get_if<syntax_ast::AstIdentifierRef>(&element);
     if (identifier == nullptr) {
       return std::unexpected(ResolveDiagnostic{
-          .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
+          .range = std::visit(
+              [](const auto& leaf) {
+                return syntax_ast::sourceRange(syntax_ast::AstOperand{leaf});
+              },
+              element),
           .message =
               "A register-vector element must be a register or '_' sink.",
       });
@@ -1473,7 +1519,11 @@ resolve_modern_register_vector(
         std::get_if<syntax_ast::AstIdentifierRef>(&element);
     if (identifier == nullptr) {
       return std::unexpected(ResolveDiagnostic{
-          .range = std::get<syntax_ast::AstImmediate>(element).syntax.range,
+          .range = std::visit(
+              [](const auto& leaf) {
+                return syntax_ast::sourceRange(syntax_ast::AstOperand{leaf});
+              },
+              element),
           .message =
               "A matrix fragment element must be a register or '_' sink.",
       });
@@ -1538,14 +1588,18 @@ resolve_tensor_coordinate(
       continue;
     }
 
-    const auto& immediate = std::get<syntax_ast::AstImmediate>(element);
+    const auto range = std::visit(
+        [](const auto& leaf) {
+          return syntax_ast::sourceRange(syntax_ast::AstOperand{leaf});
+        },
+        element);
     if (!immediate_type) {
-      auto type = type_for_operand(binding, fields, immediate.syntax.range);
+      auto type = type_for_operand(binding, fields, range);
       if (!type)
         return std::unexpected(type.error());
       if (*type == ScalarType::Invalid) {
         return std::unexpected(ResolveDiagnostic{
-            .range = immediate.syntax.range,
+            .range = range,
             .message =
                 "Tensor coordinate immediates require an operand scalar type.",
         });
@@ -1553,12 +1607,12 @@ resolve_tensor_coordinate(
       immediate_type = *type;
     }
     auto value = detail::resolve_immediate_value(
-        immediate, *immediate_type,
+        element, *immediate_type,
         binding.immediate_conversion_policy ==
             checker::ImmediateConversionPolicy::RequireTargetRange);
     if (!value)
       return std::unexpected(value.error());
-    locations.push_back(immediate.syntax.range);
+    locations.push_back(range);
     result.elements.emplace_back(std::move(*value));
   }
   WithLocs<ResolvedTensorCoordinate> resolved{std::move(result)};
@@ -1677,8 +1731,9 @@ resolve_fabric_handle(const syntax_ast::AstOperand& operand,
         std::get_if<syntax_ast::AstIdentifierRef>(&handle->elements[index]);
     if (!identifier)
       return std::unexpected(ResolveDiagnostic{
-          .range = std::get<syntax_ast::AstImmediate>(handle->elements[index])
-                       .syntax.range,
+          .range = syntax_ast::sourceRange(std::visit(
+              [](const auto& leaf) -> syntax_ast::AstOperand { return leaf; },
+              handle->elements[index])),
           .message = "Fabric handle components require registers.",
       });
     auto component =
@@ -2090,6 +2145,10 @@ resolve_unbracketed_texture_access(
                  std::get_if<syntax_ast::AstImmediate>(&coordinate)) {
     compound.coordinates.elements.push_back(*immediate);
     compound.coordinates.range = syntax_ast::sourceRange(coordinate);
+  } else if (const auto* expression =
+                 std::get_if<syntax_ast::AstConstantOperand>(&coordinate)) {
+    compound.coordinates.elements.push_back(*expression);
+    compound.coordinates.range = expression->range;
   } else {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(coordinate),
@@ -2260,16 +2319,16 @@ resolve_mov_source(const syntax_ast::AstOperand& operand, ScalarType type,
       : context->function_is_entry ? EnclosingFunctionKind::Entry
                                    : EnclosingFunctionKind::Device;
 
-  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand)) {
+  if (is_numeric_operand(operand)) {
     if (auto rejected = reject_shape(checker::OperandShape::Immediate,
-                                     immediate->syntax.range)) {
+                                     syntax_ast::sourceRange(operand))) {
       return std::unexpected(std::move(*rejected));
     }
-    auto value = detail::resolve_immediate_value(*immediate, type);
+    auto value = detail::resolve_numeric_operand(operand, type);
     if (!value)
       return std::unexpected(value.error());
     return WithLocs<ResolvedMovSource>{ResolvedMovSource{std::move(*value)},
-                                       immediate->syntax.range};
+                                       syntax_ast::sourceRange(operand)};
   }
 
   if (std::holds_alternative<syntax_ast::AstVectorMember>(operand)) {
@@ -2645,6 +2704,10 @@ resolve_video_operand(const syntax_ast::AstOperand& operand,
     return std::unexpected(ResolveDiagnostic{
         range, "Video merge requires destination selection."});
   }
+  if (std::holds_alternative<syntax_ast::AstConstantOperand>(child) &&
+      !contract.allow_immediate)
+    return std::unexpected(
+        ResolveDiagnostic{range, "Video slot requires a register carrier."});
   if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&child)) {
     if (!contract.allow_immediate ||
         (immediate->kind != base::AstImmediateKind::DecimalInteger &&
@@ -2748,9 +2811,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::WgmmaScaleD: {
-      if (const auto* immediate =
-              std::get_if<syntax_ast::AstImmediate>(&operand)) {
-        auto value = resolve_immediate_value(*immediate, ScalarType::B64);
+      if (is_numeric_operand(operand)) {
+        auto value = resolve_numeric_operand(operand, ScalarType::B64);
         if (!value)
           return std::unexpected(value.error());
         if (value->is_negative || value->bits > 1) {
@@ -2786,25 +2848,24 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::Immediate: {
-      const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
-      if (immediate == nullptr) {
+      if (!is_numeric_operand(operand)) {
         return std::unexpected(ResolveDiagnostic{
             .range = syntax_ast::sourceRange(operand),
             .message = "Expected an immediate operand.",
         });
       }
       const auto type =
-          type_for_operand(binding, fields, immediate->syntax.range);
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
       if (!type)
         return std::unexpected(type.error());
-      auto value = resolve_immediate_value(
-          *immediate, *type,
+      auto value = resolve_numeric_operand(
+          operand, *type,
           binding.immediate_conversion_policy ==
               checker::ImmediateConversionPolicy::RequireTargetRange);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{WithLocs<ResolvedImmediate>{
-          std::move(*value), immediate->syntax.range}};
+          std::move(*value), syntax_ast::sourceRange(operand)}};
     }
     case ResolvedValueKind::RegOrImm: {
       const auto type =
@@ -2848,6 +2909,27 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(address)};
     }
     case ResolvedValueKind::TcgenHalfSplitOffset: {
+      if (const auto* expression =
+              std::get_if<syntax_ast::AstConstantOperand>(&operand)) {
+        const auto value = declaration_semantics::numericConstantValue(
+            *expression->expression);
+        if (!value)
+          return std::unexpected(ResolveDiagnostic{
+              .range = value.error().range, .message = value.error().message});
+        const auto* integer =
+            std::get_if<declaration_semantics::IntegerConstantValue>(&*value);
+        if (!integer)
+          return std::unexpected(ResolveDiagnostic{
+              .range = expression->range,
+              .message = "Half-split offset requires an integer expression."});
+        return ResolvedFieldValue{WithLocs<TcgenHalfSplitOffset>{
+            TcgenHalfSplitOffset{
+                .source_bits = integer->bits,
+                .source_kind = integer->is_unsigned
+                                   ? TcgenIntegerSourceKind::Unsigned
+                                   : TcgenIntegerSourceKind::Signed},
+            expression->range}};
+      }
       const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand);
       if (!immediate ||
           (immediate->kind != syntax_ast::AstImmediateKind::DecimalInteger &&
@@ -2889,9 +2971,8 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     }
     case ResolvedValueKind::CpAsyncSourceControl: {
       const auto range = syntax_ast::sourceRange(operand);
-      if (const auto* immediate =
-              std::get_if<syntax_ast::AstImmediate>(&operand)) {
-        auto value = resolve_immediate_value(*immediate, ScalarType::U32, true);
+      if (is_numeric_operand(operand)) {
+        auto value = resolve_numeric_operand(operand, ScalarType::U32, true);
         if (!value)
           return std::unexpected(value.error());
         return ResolvedFieldValue{WithLocs<ResolvedCpAsyncSourceControl>{

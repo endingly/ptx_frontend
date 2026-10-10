@@ -251,13 +251,13 @@ def write_artifacts(context, artifacts, jobs: int) -> None:
 
     if jobs == 1:
         for artifact in artifacts:
-            write_formatted_artifact(context, artifact.emit, artifact.path)
+            write_artifact(context, artifact.emit, artifact.path)
         return
 
     with ThreadPoolExecutor(max_workers=jobs) as executor:
         futures = [
             executor.submit(
-                write_formatted_artifact, context, artifact.emit, artifact.path
+                write_artifact, context, artifact.emit, artifact.path
             )
             for artifact in artifacts
         ]
@@ -289,7 +289,23 @@ def validate_file(path: Path, option: str) -> None:
 
 
 def write_formatted_artifact(context, emit, output_path: Path) -> None:
-    """Format a sibling candidate and replace ``output_path`` only if changed."""
+    """Format a sibling candidate and replace ``output_path`` only if changed.
+
+    Retain the formatted writer for callers that explicitly need formatting;
+    normal generation uses ``write_artifact`` directly.
+    """
+
+    def emit_formatted(context, *, output_path: Path) -> None:
+        """Format emitted candidate bytes before the atomic writer compares them."""
+
+        emit(context, output_path=output_path)
+        format_file_inplace(str(output_path))
+
+    write_artifact(context, emit_formatted, output_path)
+
+
+def write_artifact(context, emit, output_path: Path) -> None:
+    """Emit a sibling candidate and atomically replace only changed raw bytes."""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_mode = (
@@ -304,7 +320,6 @@ def write_formatted_artifact(context, emit, output_path: Path) -> None:
     candidate = Path(candidate_name)
     try:
         emit(context, output_path=candidate)
-        format_file_inplace(str(candidate))
         candidate_bytes = candidate.read_bytes()
         if not output_path.exists() or output_path.read_bytes() != candidate_bytes:
             candidate.chmod(output_mode)

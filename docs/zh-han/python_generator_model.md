@@ -193,7 +193,8 @@ category 失效。CMake 重新配置可检测输入的新增和移除。Ninja �
 不保证发现内容已变但输入时间戳未变的情况。CLI 默认使用六个产物 writer
 （`--jobs 6`），`--jobs 1` 串行执行。CMake 通过
 `PTX_FRONTEND_CODEGEN_JOBS`（默认 `6`）设置该单进程预算。无变化构建不会启动
-generator Python 进程。每个产物先在同目录格式化 candidate，比较字节后仅在变化时原子替换。
+generator Python 进程。每个产物先在同目录写入 candidate，比较原始字节后仅在变化时原子替换。
+生成过程不调用也不依赖 `clang-format`。
 
 Syntax descriptor storage 提供供 variant selection/resolution 使用的逐 opcode
 自由函数 getter。未分片 opcode 的 syntax、resolved、checker descriptor 行位于同一源文件；
@@ -220,8 +221,9 @@ optional。解析返回 `std::unique_ptr<Instruction>`。生成的逐 opcode 源
 把规范顺序的静态分片行拼接为连续、生命周期稳定的存储，不使用 heap allocation。
 公共聚合头与精确 final 类身份仍是兼容边界；没有引入可变 logical-form tag 或 opcode 包装。
 
-生成器先在同目录格式化 candidate，再与已有 artifact 比较字节；格式化结果相同（包括
-output manifest）时保留 modification time。consumer 可包含聚合头或单个 opcode 头。
+生成器将同目录 candidate 的原始输出字节与已有 artifact 比较；输出相同（包括
+output manifest）时保留 modification time。产物变化时保留已有文件权限；生成或替换
+失败时清理 candidate，后续可重试。consumer 可包含聚合头或单个 opcode 头。
 
 比较与选择规范生成 `comparison_and_selection` 分区。窄 consumer 可包含
 `model/comparison_and_selection/set.gen.hpp` 等单个头；聚合头提供所有形式。

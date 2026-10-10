@@ -18,10 +18,12 @@ follow their references as needed, not as a recursive reading checklist.
 
 The model/effort requirement comes from the [registry](../../orchestration.md#model-preferences).
 Loading this skill does not switch the model or grant approval authority. Only
-Authority Sol (`gpt-6.1-sol` / `medium`) may decide architecture and core
+Authority Sol (`gpt-6.1-sol` / `high`) may decide architecture and core
 acceptance; use the packet's valid selection evidence or
 [dispatch controls](../../references/dispatch.md) when needed. Implementation Sol
-(`gpt-6-sol` / `high`) cannot satisfy this gate.
+(`gpt-6.1-sol` / `medium` by default) cannot satisfy this gate, including when
+using a justified `high` implementation exception. Authority comes from the
+assigned role as well as compliant selection, not model/effort selection alone.
 Another worker may gather evidence, but cannot sign the verdict. If Authority
 Sol is unavailable, keep that decision pending and continue independent
 authorized work.

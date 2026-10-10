@@ -15,10 +15,11 @@ Sol gate.
 ## Ownership and routing
 
 The primary agent coordinates requirements, task decomposition, integration, and
-communication. Authority Sol (`gpt-6.1-sol` / `medium`) owns architecture control
+communication. Authority Sol (`gpt-6.1-sol` / `high`) owns architecture control
 and core acceptance review, regardless of which model hosts the primary session.
-A primary confirmed to run that pair may perform those duties directly; any
-other primary routes them to a compliant Authority Sol agent. The
+A primary assigned the Authority Sol role and confirmed to run that pair may
+perform those duties directly; any other primary routes them to a compliant
+Authority Sol agent. Model/effort selection alone does not confer authority. The
 [distinct-review rule](sol.md#core-acceptance) still applies. Coordination does
 not confer authority to override an Authority Sol architectural decision or core
 verdict. User instructions and system/developer rules remain superior.
@@ -26,8 +27,8 @@ verdict. User instructions and system/developer rules remain superior.
 Authority Sol settles module boundaries, public contracts, complex ISA/semantic
 disputes, and conflicting core review findings. Implementation owners make
 ordinary choices inside those boundaries and own diagnosis, edits, tests, and
-repair. Implementation Sol (`gpt-6-sol` / `high`) owns complete cross-file or
-coupled delivery without architecture or core acceptance authority. Luna owns
+repair. Implementation Sol (`gpt-6.1-sol` / `medium` by default) owns complete
+cross-file or coupled delivery without architecture or core acceptance authority. Luna owns
 simple, single-file implementation tasks as well as evidence, verification, and
 authorized Git batches.
 Astra is available for difficult investigations and second opinions, not as the
@@ -81,36 +82,44 @@ fallbacks, compatibility aliases, or inherited worker defaults.
 
 | Role | Preferred model | Reasoning effort | Instructions |
 | --- | --- | --- | --- |
-| Architecture control and core acceptance | `gpt-6.1-sol` | `medium` only (fixed) | [Sol](sol.md) |
-| Cross-file implementation and deep debugging | `gpt-6-sol` | `high` only (fixed) | [Implementation](implementation.md) |
+| Architecture control and core acceptance | `gpt-6.1-sol` | `high` only (fixed) | [Sol](sol.md) |
+| Cross-file implementation and deep debugging | `gpt-6.1-sol` | `medium` by default; a justified `high` setting is an exception | [Implementation](implementation.md) |
 | Simple single-file implementation, evidence, verification, Git | `gpt-6-luna` | `max` only (fixed) | [Luna](luna.md) |
 | Optional specialist, second opinion, difficult implementation | `gpt-6-astra` | `low` by default; a justified higher setting is an exception | This policy and [implementation.md](implementation.md) when editing |
 
 Terra is retired from model routing; its complete-delivery responsibilities now
 live in [implementation.md](implementation.md) and are assigned by the task table.
 Do not manufacture a next-generation Terra identifier. The subagent allowlist is
-exhaustive: only the four models named above may be selected, including for
-narrow tasks and availability fallbacks. Luna owns simple single-file
+exhaustive: only the three distinct models serving the four roles above may be
+selected, including for narrow tasks and availability fallbacks. Luna owns simple single-file
 implementation tasks; no retired model may be reintroduced through a role alias
 or implicit default.
 
 ### Reasoning-effort constraints
 
-Treat the selected model and reasoning effort as one dispatch contract.
-Authority Sol is fixed at `medium`; Implementation Sol is fixed at `high`,
-including execution fallbacks. Luna is fixed at `max` even for simple scans,
-Git work, and mechanical edits. These are exact settings, not ceilings or
-recommendations: do not alter them for routine work or disputes.
-Task complexity changes scope, decomposition, or the model assignment, not a
-fixed effort. Retries, resume operations, and model substitutions follow the
-same registry; a new model uses its own effort rather than the previous worker's.
+Treat the selected model, reasoning effort, and assigned role as one dispatch
+contract. Authority Sol is fixed at `high`. Luna is fixed at `max` even for
+simple scans, Git work, and mechanical edits. These fixed settings are exact,
+not ceilings or recommendations; do not alter them for routine work or disputes.
+Implementation Sol defaults to `medium`. A specific hard diagnosis or complex
+state problem may justify `high`, with the task-based reason recorded in both
+the packet and dispatch record before dispatch. An ordinary failing test does
+not justify this upgrade. The exception changes effort only: Implementation
+Sol remains an implementation owner without architecture or core acceptance
+authority, even though its model/effort pair then matches Authority Sol's.
+
+Task complexity changes scope, decomposition, or the model assignment; it does
+not change a fixed effort. Retries, resume operations, and model substitutions
+follow the same registry and require the same exception evidence where applicable;
+a new model uses its own effort rather than the previous worker's.
 
 Astra normally uses `low`. A higher supported effort needs a specific task-based
 reason recorded in the packet and dispatch record before use. Being a specialist,
 handling a fallback, or encountering an ordinary failing test is not by itself
-that reason. An Astra exception does not change the fixed settings of either
-Sol role or Luna, and cannot transfer architecture control or core acceptance
-away from Authority Sol.
+that reason. An Astra exception does not change the fixed settings of Authority
+Sol or Luna, the Implementation Sol default/exception rules, or role authority.
+Neither an effort exception nor selecting `gpt-6.1-sol` / `high` transfers
+architecture control or core acceptance to an implementation worker.
 
 Before dispatch or resume, use [dispatch controls](references/dispatch.md) for
 supported parameters, context inheritance, and selection evidence. Reuse a valid
@@ -121,21 +130,22 @@ A required pair that cannot be selected is unavailable; use the rules below.
 
 For execution, use a supported listed model/effort pair appropriate to the task.
 Work beyond Luna's simple single-file implementation scope goes to Implementation
-Sol. If `gpt-6-luna` / `max` is unavailable, its execution may go to
-`gpt-6-sol` / `high`; Astra / `low` may take a documented specialist or
-availability fallback when justified. If `gpt-6-sol` / `high` is unavailable,
-its execution may go to Astra / `low` with the fallback reason recorded. A
-higher Astra effort still needs the exception reason above. If a required effort
+Sol. The execution fallback order is Luna / `max`, then Implementation Sol /
+`medium`, then Astra / `low`. If `gpt-6-luna` / `max` is unavailable, its
+execution may go to Implementation Sol (`gpt-6.1-sol` / `medium`). If the
+required Implementation Sol pair is unavailable, its execution may go to
+Astra / `low` with the fallback reason recorded. An implementation `high`
+exception or higher Astra effort still requires its own task-based reason;
+unavailability alone does not justify an effort change. If a required effort
 is unavailable, do not use the same model at a different effort as a workaround.
 A substitution never transfers architecture control or core acceptance away
 from Authority Sol. Astra is not the silent execution default. Resume interrupted
 work at a compliant pair or reassign its remaining bounded scope rather than
-automatically absorbing it
-into the primary. Report unavailable pairs, chosen substitutions, and any
-remaining capability or verification gaps.
+automatically absorbing it into the primary. Report unavailable pairs, chosen
+substitutions, and any remaining capability or verification gaps.
 
 Authority Sol has no cross-model or cross-effort fallback. If `gpt-6.1-sol` /
-`medium` cannot be used under the actual tools and permissions, continue
+`high` cannot be used under the actual tools and permissions, continue
 authorized evidence work, non-core delivery, and implementation inside already
 approved contracts where feasible. Proposals/prototypes may be prepared as
 unapproved work. Leave new architecture decisions and core acceptance pending
@@ -162,7 +172,8 @@ field that blocks the assigned work. Provide the objective,
 acceptance criteria, relevant files/contracts and decisions, exact editable and
 shared-state scope, core/non-core classification, owner, requested model/effort,
 required validation, search boundary/stopping condition, and concise return format.
-Take effort from the registry; include a specific reason for any Astra exception.
+Take effort from the registry; include a specific reason for any Implementation
+Sol or Astra effort exception, recorded before dispatch.
 Specify whether edits, Git operations, or external publication are authorized.
 A task packet is not permission to widen scope or weaken the Authority Sol gate.
 

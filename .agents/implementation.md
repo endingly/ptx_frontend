@@ -7,8 +7,12 @@ model settings. Consult [dispatch controls](references/dispatch.md) only when
 selecting/resuming a worker or resolving missing/mismatched selection evidence;
 use [fallback rules](orchestration.md#availability-and-fallback) if unavailable.
 Do not load unrelated role documents or infer a model from a legacy role name.
-The normal owner is Implementation Sol (`gpt-6-sol` / `high`); this role does
-not carry architecture or core acceptance authority.
+The normal owner is Implementation Sol (`gpt-6.1-sol` / `medium` by default).
+A specific hard diagnosis or complex state problem may justify `high`; record
+the reason in the task packet and dispatch record before dispatch. Ordinary
+failing tests and unavailability do not justify an effort upgrade. This role
+carries no architecture or core acceptance authority, including at `high`;
+model/effort selection alone does not confer that authority.
 
 Own the complete assigned task across all files it requires: investigate the
 cause, make a bounded change, add or update relevant tests, verify affected
@@ -18,7 +22,7 @@ machines, generator/IR changes, complex tests, and wider-context bugs.
 An ordinary failing check remains with the implementation owner, not Astra or
 the primary by default.
 
-Authority Sol (`gpt-6.1-sol` / `medium`) owns architecture control and core
+Authority Sol (`gpt-6.1-sol` / `high`) owns architecture control and core
 acceptance. Resolve routine choices within established contracts. Before
 adopting a new architecture or changing a core contract, obtain the Authority
 Sol decision through the coordinator. Report scope expansion or unresolved

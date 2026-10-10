@@ -127,8 +127,8 @@ struct AstNegatedRegisterOperand {
   SourceRange range;
 };
 
-using AstVectorElement =
-    std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand>;
+using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate,
+                                      AstConstantOperand, AstVectorMember>;
 
 struct AstVectorPack {
   std::vector<AstVectorElement> elements;

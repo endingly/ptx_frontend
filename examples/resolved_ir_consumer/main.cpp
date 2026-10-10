@@ -41,7 +41,8 @@ int main() {
 .address_size 64
 .visible .entry kernel() {
   .reg .u32 %r<2>;
-  add.u32 %r0, %r1, 7;
+  .reg .v2 .u32 V;
+  add.u32 V.x, V.g, 7;
 }
 )ptx";
   ptx_frontend::PtxSyntaxParser module_parser{module_source};
@@ -56,6 +57,19 @@ int main() {
       dynamic_cast<const ir::AddIntegerNoSat*>(
           module->functions.front().body.front().get()) == nullptr) {
     std::cerr << "installed module fixture did not resolve and validate\n";
+    return 1;
+  }
+  const auto& selected = dynamic_cast<const ir::AddIntegerNoSat&>(
+      *module->functions.front().body.front());
+  const auto& component = selected.dst.value;
+  if (!component.component || component.vector_width ||
+      component.component->origin !=
+          ir::RegisterComponentOrigin::ExplicitSelector ||
+      component.component->lane != 0 ||
+      component.component->declaration_width != 2 ||
+      !ir::valid_register_component(component) ||
+      ir::ordinary_register_lane(".r") != component.component->lane) {
+    std::cerr << "installed component metadata is inconsistent\n";
     return 1;
   }
   return 0;

@@ -122,8 +122,8 @@ struct CstNegatedRegisterOperand {
   CstTokenRange token_range;
 };
 
-using CstVectorElement =
-    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
+using CstVectorElement = std::variant<CstIdentifier, CstImmediate,
+                                      CstConstantOperand, CstVectorMember>;
 
 struct CstVectorPack {
   TokenId left_brace{};

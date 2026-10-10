@@ -288,6 +288,7 @@ def emit_check_operand_view(
                         {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")};
                     view.vector_element_types[index] =
                         register_ref->declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)});
+                    view.vector_element_registers[index] = register_ref;
                   }} else {{
                     const auto& immediate = std::get<ResolvedImmediate>(element);
                     view.vector_element_shapes[index] =
@@ -382,6 +383,7 @@ def emit_check_operand_view(
                 OperandView view{{
                     .field_id = "{field.name}",
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .register_ref = &register_ref,
                     .vector_arity = static_cast<size_t>(
                         register_ref.vector_width.value_or(0)),
                     .locations = {object_name}.{field.name}.locs,
@@ -421,6 +423,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .register_symbol_id = {object_name}.{field.name}.value.register_ref.symbol_id,
                   .register_class = {object_name}.{field.name}.value.register_ref.register_class,
+                  .register_ref = &{object_name}.{field.name}.value.register_ref,
                   .register_vector_width = {object_name}.{field.name}.value.register_ref.vector_width,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -431,6 +434,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
                   .register_symbol_id = {object_name}.{field.name}.value.register_ref.symbol_id,
                   .register_class = {object_name}.{field.name}.value.register_ref.register_class,
+                  .register_ref = &{object_name}.{field.name}.value.register_ref,
                   .register_vector_width = {object_name}.{field.name}.value.register_ref.vector_width,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -442,6 +446,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.declared_type,
                   .register_symbol_id = {object_name}.{field.name}.value.symbol_id,
                   .register_class = {object_name}.{field.name}.value.register_class,
+                  .register_ref = &{object_name}.{field.name}.value,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_kind is ResolvedValueKind.MBARRIER_STATE_TOKEN:
@@ -452,6 +457,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.register_ref
                       ? {object_name}.{field.name}.value.register_ref->declared_type
                       : std::nullopt,
+                  .register_ref = {object_name}.{field.name}.value.register_ref ? &*{object_name}.{field.name}.value.register_ref : nullptr,
                   .is_sink = !{object_name}.{field.name}.value.register_ref,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -463,6 +469,7 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.register_ref
                       ? {object_name}.{field.name}.value.register_ref->declared_type
                       : std::nullopt,
+                  .register_ref = {object_name}.{field.name}.value.register_ref ? &*{object_name}.{field.name}.value.register_ref : nullptr,
                   .is_sink = !{object_name}.{field.name}.value.register_ref,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -474,6 +481,8 @@ def emit_check_operand_view(
                   .register_type = {object_name}.{field.name}.value.data
                       ? {object_name}.{field.name}.value.data->value.declared_type
                       : std::nullopt,
+                  .register_ref = {object_name}.{field.name}.value.data ? &{object_name}.{field.name}.value.data->value : nullptr,
+                  .paired_register_refs = {{{object_name}.{field.name}.value.predicate ? &{object_name}.{field.name}.value.predicate->value.register_ref : nullptr, nullptr}},
                   .paired_destination_data_present = static_cast<bool>({object_name}.{field.name}.value.data),
                   .paired_destination_predicate_present = static_cast<bool>({object_name}.{field.name}.value.predicate),
                   .paired_destination_predicate_type = {object_name}.{field.name}.value.predicate
@@ -487,6 +496,7 @@ def emit_check_operand_view(
                   .field_id = "{field.name}",
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
                   .immediate_type = std::nullopt,
+                  .paired_register_refs = {{&{object_name}.{field.name}.value.first.register_ref, &{object_name}.{field.name}.value.second.register_ref}},
                   .predicate_pair_types = {{{object_name}.{field.name}.value.first.register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}), {object_name}.{field.name}.value.second.register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)})}},
                   .destination_predicate_negated = {object_name}.{field.name}.value.first.negated || {object_name}.{field.name}.value.second.negated,
                   .locations = {object_name}.{field.name}.locs,
@@ -496,6 +506,7 @@ def emit_check_operand_view(
                   .field_id = "{field.name}",
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "PredicatePair")},
                   .immediate_type = std::nullopt,
+                  .paired_register_refs = {{{object_name}.{field.name}.value.first ? &{object_name}.{field.name}.value.first->register_ref : nullptr, {object_name}.{field.name}.value.second ? &{object_name}.{field.name}.value.second->register_ref : nullptr}},
                   .predicate_pair_has_destination = static_cast<bool>({object_name}.{field.name}.value.first) || static_cast<bool>({object_name}.{field.name}.value.second),
                   .predicate_pair_types = {{{object_name}.{field.name}.value.first ? {object_name}.{field.name}.value.first->register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}) : {_cpp_default(backend, CppDomain.SCALAR_TYPES)}, {object_name}.{field.name}.value.second ? {object_name}.{field.name}.value.second->register_ref.declared_type.value_or({_cpp_default(backend, CppDomain.SCALAR_TYPES)}) : {_cpp_default(backend, CppDomain.SCALAR_TYPES)}}},
                   .destination_predicate_negated = ({object_name}.{field.name}.value.first && {object_name}.{field.name}.value.first->negated) || ({object_name}.{field.name}.value.second && {object_name}.{field.name}.value.second->negated),
@@ -518,6 +529,7 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .register_ref = &{object_name}.{field.name}.value.register_ref,
                   .destination_predicate_negated = {object_name}.{field.name}.value.negated,
                   .locations = {object_name}.{field.name}.locs,
               }}"""
@@ -527,6 +539,7 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Predicate")},
                   .immediate_type = std::nullopt,
                   .register_type = {object_name}.{field.name}.value.predicate ? {object_name}.{field.name}.value.predicate->register_ref.declared_type : std::nullopt,
+                  .register_ref = {object_name}.{field.name}.value.predicate ? &{object_name}.{field.name}.value.predicate->register_ref : nullptr,
                   .is_sink = !{object_name}.{field.name}.value.predicate,
                   .destination_predicate_negated = {object_name}.{field.name}.value.predicate && {object_name}.{field.name}.value.predicate->negated,
                   .locations = {object_name}.{field.name}.locs,
@@ -564,6 +577,7 @@ def emit_check_operand_view(
                   .register_type = predicate.register_ref.declared_type,
                   .register_symbol_id = predicate.register_ref.symbol_id,
                   .register_class = predicate.register_ref.register_class,
+                  .register_ref = &predicate.register_ref,
                   .register_vector_width = predicate.register_ref.vector_width,
                   .destination_predicate_negated = predicate.negated,
                   .locations = {object_name}.{field.name}.locs,
@@ -665,6 +679,8 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                   .immediate_type = std::nullopt,
                   .register_type = std::nullopt,
+                  .register_ref = std::get_if<ResolvedRegisterRef>(
+                      &{object_name}.{field.name}.value.base),
                   .address_state_space = effective_state_space,
                   .address_base_kind =
                       std::holds_alternative<ResolvedRegisterRef>(
@@ -719,6 +735,7 @@ def emit_check_operand_view(
                     .register_type = register_ref.declared_type,
                     .register_symbol_id = register_ref.symbol_id,
                     .register_class = register_ref.register_class,
+                    .register_ref = &register_ref,
                     .register_vector_width = register_ref.vector_width,
                     .locations = {object_name}.{field.name}.locs,
                 }};
@@ -749,6 +766,7 @@ def emit_check_operand_view(
                       .register_type = predicate->register_ref.declared_type,
                       .register_symbol_id = predicate->register_ref.symbol_id,
                       .register_class = predicate->register_ref.register_class,
+                      .register_ref = &predicate->register_ref,
                       .destination_predicate_negated = predicate->negated,
                       .locations = {object_name}.{field.name}.locs,
                   }};
@@ -759,6 +777,7 @@ def emit_check_operand_view(
                       .register_type = policy->register_ref.declared_type,
                       .register_symbol_id = policy->register_ref.symbol_id,
                       .register_class = policy->register_ref.register_class,
+                      .register_ref = &policy->register_ref,
                       .cp_async_cache_policy = true,
                       .locations = {object_name}.{field.name}.locs,
                   }};
@@ -769,6 +788,7 @@ def emit_check_operand_view(
                     .register_type = register_ref.declared_type,
                     .register_symbol_id = register_ref.symbol_id,
                     .register_class = register_ref.register_class,
+                    .register_ref = &register_ref,
                     .locations = {object_name}.{field.name}.locs,
                 }};
               }}()"""
@@ -830,6 +850,7 @@ def emit_check_operand_view(
                       .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Register")},
                       .immediate_type = std::nullopt,
                       .register_type = register_ref->declared_type,
+                      .register_ref = register_ref,
                       .locations = {object_name}.{field.name}.locs,
                   }};
                 }}
@@ -900,6 +921,7 @@ def emit_check_operand_view(
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Address")},
                     .immediate_type = std::nullopt,
                     .register_type = std::nullopt,
+                    .register_ref = std::get_if<ResolvedRegisterRef>(&address.base),
                     .address_state_space = state_space_from_symbol(symbol),
                     .address_base_kind =
                         std::holds_alternative<ResolvedRegisterRef>(address.base)

@@ -16,6 +16,19 @@ const FieldView* video_field(std::span<const FieldView> fields,
   return nullptr;
 }
 
+/** Test child provenance against a retained wrapper or instruction range. */
+bool video_range_inside(SourceRange child, SourceRange outer) {
+  const auto before = [](SourcePos left, SourcePos right) {
+    return left.line < right.line ||
+           (left.line == right.line && left.column <= right.column);
+  };
+  return child.start.line > 0 && child.start.column > 0 &&
+         outer.start.line > 0 && outer.start.column > 0 && outer.end.line > 0 &&
+         outer.end.column > 0 && outer.start != outer.end &&
+         before(outer.start, outer.end) && before(outer.start, child.start) &&
+         before(child.end, outer.end);
+}
+
 /** Match an owned selector alternative to the canonical slot's family. */
 bool video_selection_matches(const VideoSelector& selector,
                              VideoSelectorPolicy policy) {
@@ -121,6 +134,15 @@ CheckResult check_video_operands(std::span<const OperandDescriptor> descriptors,
     }
     if (const auto* reg =
             std::get_if<ResolvedRegisterRef>(&value.value.value)) {
+      const SourceRange child_range =
+          value.value.locs.empty() ? SourceRange{} : value.value.locs.front();
+      if (!valid_register_component(*reg) ||
+          (reg->component &&
+           (value.selector || reg->component->range != child_range ||
+            !video_range_inside(child_range, range) ||
+            (context.instruction_range != SourceRange{} &&
+             !video_range_inside(child_range, context.instruction_range)))))
+        reject(range, "Video component provenance is invalid.");
       if (!video_register_is_valid(*reg))
         reject(range,
                "Video registers require scalar 32-bit integer/bit carriers.");

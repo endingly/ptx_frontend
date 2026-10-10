@@ -205,7 +205,7 @@ for composite operands. It retains only:
 - lexical immediate kind;
 - predicate negation;
 - address base, offset operation, and bracketed grammar form;
-- vector member and vector pack structure;
+- vector member and vector pack structure, including ordinary `.xyzw/.rgba` members in brace scalar lanes;
 - call return/input parameter groups, callees, and target-set/prototype symbols;
 - direct branch label targets;
 - function-local `.callprototype` labels, signature payloads, and PTX 9.3

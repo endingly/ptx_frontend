@@ -230,6 +230,10 @@ syntax_ast::AstVectorElement lowerVectorElement(
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_cst::CstIdentifier>)
           return lowerIdentifier(cst, value);
+        else if constexpr (std::same_as<Value, syntax_cst::CstVectorMember>)
+          return syntax_ast::AstVectorMember{
+              lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
+              cst.sourceRange(value.token_range)};
         else
           return lowerImmediate(cst, value);
       },

@@ -908,6 +908,10 @@ struct OperandView {
   std::optional<binding::SymbolId> register_symbol_id;
   /** Resolved register category, independent of an unknown declaration type. */
   std::optional<ResolvedRegisterClass> register_class;
+  /** Borrowed scalar carrier, valid only for this operand-view traversal. */
+  const ResolvedRegisterRef* register_ref = nullptr;
+  /** Borrowed data/predicate carriers for paired scalar destinations. */
+  std::array<const ResolvedRegisterRef*, 2> paired_register_refs{};
   /** Declared vector lane count; scalar TCGEN sources require absence. */
   std::optional<uint8_t> register_vector_width;
   /** A cp.async fourth operand is an explicit cache policy, not source size. */
@@ -1254,6 +1258,43 @@ struct ResolvedOpaqueEntryParameter {
   SourceRange range;
 };
 enum class ResolvedRegisterClass : uint8_t { General, Predicate };
+/** Distinguish source-written selectors from implicit named-vector lanes. */
+enum class RegisterComponentOrigin : uint8_t {
+  ExplicitSelector,
+  NamedProjection
+};
+
+/** Exact selector text and location; never synthesized for implicit lanes. */
+struct ResolvedRegisterSelector {
+  /** Source spelling including its leading dot, such as .x or .r. */
+  std::string spelling;
+  /** Location of the written selector alone. */
+  SourceRange range;
+  /** Compare source provenance as well as spelling. */
+  bool operator==(const ResolvedRegisterSelector&) const = default;
+};
+
+/** Owned scalar projection of a real ordinary vector-register declaration. */
+struct ResolvedRegisterComponent {
+  /** Canonical x/r=0, y/g=1, z/b=2, w/a=3 lane identity. */
+  uint8_t lane{};
+  /** Actual declaration width, independent of the effective scalar shape. */
+  uint8_t declaration_width{};
+  /** Explicit source selector or future implicit whole-vector projection. */
+  RegisterComponentOrigin origin{RegisterComponentOrigin::ExplicitSelector};
+  /** Written base, including any parameterized-register member suffix. */
+  std::string base_spelling;
+  /** Exact base identifier range; named projections reuse the whole range. */
+  SourceRange base_range;
+  /** Complete component range; named projections reuse the whole range. */
+  SourceRange range;
+  /** Present only when the source explicitly wrote a selector. */
+  std::optional<ResolvedRegisterSelector> selector;
+  /** Compare all owned projection metadata. */
+  bool operator==(const ResolvedRegisterComponent&) const = default;
+};
+
+/** Register carrier with real declaration identity and optional scalar projection. */
 struct ResolvedRegisterRef {
   std::string spelling;
   ResolvedRegisterClass register_class;
@@ -1261,9 +1302,77 @@ struct ResolvedRegisterRef {
   std::optional<binding::SymbolId> symbol_id;
   std::optional<uint32_t> parameterized_index;
   std::optional<ScalarType> declared_type;
+  /** Effective whole-vector width; absent for scalars and selected components. */
   std::optional<uint8_t> vector_width;
+  /** Component declaration width/provenance, without inventing a scalar symbol. */
+  std::optional<ResolvedRegisterComponent> component;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
+/** Decode an ordinary selector without extending the hardware component domain. */
+inline std::optional<uint8_t> ordinary_register_lane(
+    std::string_view selector) {
+  if (selector == ".x" || selector == ".r")
+    return 0;
+  if (selector == ".y" || selector == ".g")
+    return 1;
+  if (selector == ".z" || selector == ".b")
+    return 2;
+  if (selector == ".w" || selector == ".a")
+    return 3;
+  return std::nullopt;
+}
+
+/** Validate explicit scalar/brace provenance; reserved named projections fail. */
+inline bool valid_register_component(const ResolvedRegisterRef& ref) {
+  if (!ref.component)
+    return true;
+  const auto& part = *ref.component;
+  const auto before = [](SourcePos left, SourcePos right) {
+    return left.line < right.line ||
+           (left.line == right.line && left.column <= right.column);
+  };
+  const auto nonempty = [&](SourceRange range) {
+    return range.start.line > 0 && range.start.column > 0 &&
+           before(range.start, range.end) && range.start != range.end;
+  };
+  if (!ref.symbol_id || !ref.declared_type || ref.vector_width ||
+      ref.register_class != ResolvedRegisterClass::General ||
+      (*ref.declared_type == ScalarType::Pred ||
+       *ref.declared_type == ScalarType::Invalid) ||
+      (part.declaration_width != 2 && part.declaration_width != 4) ||
+      part.lane >= part.declaration_width || part.base_spelling.empty() ||
+      !nonempty(part.base_range) || !nonempty(part.range) ||
+      part.base_range.start.line != part.base_range.end.line ||
+      part.base_range.end.column - part.base_range.start.column !=
+          static_cast<int32_t>(part.base_spelling.size()) ||
+      part.range.start != part.base_range.start)
+    return false;
+  if (part.origin != RegisterComponentOrigin::ExplicitSelector ||
+      !part.selector)
+    return false;
+  const auto lane = ordinary_register_lane(part.selector->spelling);
+  return lane == part.lane && nonempty(part.selector->range) &&
+         part.selector->range.start.line == part.selector->range.end.line &&
+         part.selector->range.end.column - part.selector->range.start.column ==
+             static_cast<int32_t>(part.selector->spelling.size()) &&
+         before(part.base_range.end, part.selector->range.start) &&
+         part.range.end == part.selector->range.end &&
+         ref.spelling == part.base_spelling + part.selector->spelling;
+}
+
+/** Compare physical register identity, treating ordinary selector aliases equally. */
+inline bool same_register_storage(const ResolvedRegisterRef& left,
+                                  const ResolvedRegisterRef& right) {
+  if (left.symbol_id && right.symbol_id)
+    return left.symbol_id == right.symbol_id &&
+           left.parameterized_index == right.parameterized_index &&
+           (left.component ? std::optional{left.component->lane}
+                           : std::nullopt) ==
+               (right.component ? std::optional{right.component->lane}
+                                : std::nullopt);
+  return left.spelling == right.spelling;
+}
+
 /** Runtime-opaque stack position with owned register and function provenance. */
 struct ResolvedStackToken {
   /** Scalar integer/bit carrier; no runtime token origin is inferred. */

@@ -21,6 +21,8 @@ from ptx_frontend.spec.model import (
     TextureComponent,
     TextureQuery,
     OpaqueResourceKind,
+    StackInstructionSpec,
+    StackOperation,
     TextureInstructionSpec,
     InstructionSpec,
     OperandKind,
@@ -40,6 +42,7 @@ from .constraints import (
     _normalize_immediate_range_constraints,
     _normalize_immediate_multiple_of_constraint,
 )
+from .surface import normalize_surface_contract, validate_surface_variant
 from .availability import normalize_availability
 from .layout import normalize_operand_layouts
 from .matrix import normalize_matrix
@@ -154,6 +157,58 @@ def _normalize_fabric_contract(raw: Any, opcode: str) -> FabricInstructionSpec |
         reports_fabric=raw["reports_fabric"],
         requires_mbarrier_layout_v1=raw["requires_mbarrier_layout_v1"],
     )
+
+
+def _normalize_stack_contract(raw: Any, opcode: str) -> StackInstructionSpec | None:
+    """Validate the closed canonical stack operation and width metadata."""
+    if raw is None:
+        if opcode in {"stacksave", "stackrestore", "alloca"}:
+            raise ValueError("stack instructions require a typed stack contract")
+        return None
+    operation = StackOperation(raw["operation"])
+    if {"stacksave": StackOperation.SAVE, "stackrestore": StackOperation.RESTORE,
+            "alloca": StackOperation.ALLOCATE}.get(opcode) is not operation:
+        raise ValueError("stack operation disagrees with opcode")
+    if raw["width"] not in (32, 64) or raw.get("default_alignment", 8) != 8:
+        raise ValueError("invalid stack width or default alignment")
+    return StackInstructionSpec(operation, raw["width"])
+
+
+def _validate_stack_variant(variant: VariantSpec) -> None:
+    """Require canonical stack metadata to agree with carrier and source layouts."""
+    contract = variant.stack
+    if contract is None:
+        return
+    scalar = f"u{contract.width}"
+    if len(variant.modifiers) != 1 or variant.modifiers[0].name != "type":
+        raise ValueError("stack forms require one fixed type modifier")
+    modifier = variant.modifiers[0]
+    if modifier.presence.value != "fixed" or modifier.value != scalar:
+        raise ValueError("stack width disagrees with its fixed type")
+    allocate = contract.operation is StackOperation.ALLOCATE
+    expected_counts = (2, 3) if allocate else (1,)
+    if tuple(len(layout.operands) for layout in variant.operand_layouts) != expected_counts:
+        raise ValueError("stack source layouts disagree with operation")
+    for layout in variant.operand_layouts:
+        carrier = layout.operands[0]
+        expected_kind = OperandKind.LOCAL_ALLOCATION_RESULT if allocate else OperandKind.STACK_TOKEN
+        restore = contract.operation is StackOperation.RESTORE
+        if (carrier.kind is not expected_kind or carrier.type_expression is None
+                or carrier.type_expression.scalar_type != scalar
+                or carrier.role is None or carrier.role.value != ("src" if restore else "dst")
+                or carrier.access is None or carrier.access.value != ("read" if restore else "write")):
+            raise ValueError("stack carrier role or width disagrees with contract")
+        if allocate:
+            size = layout.operands[1]
+            if (size.name != "size" or size.kind is not OperandKind.REGISTER_OR_IMMEDIATE
+                    or size.type_expression is None or size.type_expression.scalar_type != scalar):
+                raise ValueError("allocation byte count must use the selected unsigned width")
+            if len(layout.operands) == 3:
+                alignment = layout.operands[2]
+                if (alignment.name != "alignment" or alignment.kind is not OperandKind.IMMEDIATE
+                        or alignment.type_expression is None
+                        or alignment.type_expression.scalar_type != "u32"):
+                    raise ValueError("allocation alignment must be an independent u32 constant")
 
 
 def _normalize_texture_contract(raw: Any, opcode: str) -> TextureInstructionSpec | None:
@@ -460,6 +515,10 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     fabric=_normalize_fabric_contract(
                         raw_variant.get("fabric"), raw_instruction["opcode"]
                     ),
+                    surface=normalize_surface_contract(raw_variant.get("surface"), raw_instruction["opcode"]),
+                    stack=_normalize_stack_contract(
+                        raw_variant.get("stack"), raw_instruction["opcode"]
+                    ),
                     video=_normalize_video_contract(raw_variant.get("video")),
                     texture=_normalize_texture_contract(
                         raw_variant.get("texture"), raw_instruction["opcode"]
@@ -514,6 +573,8 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_sync_variant(variant)
             validate_tcgen_copy_shift_variant(variant)
             validate_tcgen_mma_variant(variant)
+            validate_surface_variant(raw_instruction["opcode"], variant)
+            _validate_stack_variant(variant)
             _validate_fabric_variant(variant)
             _validate_texture_variant(raw_instruction["opcode"], variant)
             variants.append(variant)

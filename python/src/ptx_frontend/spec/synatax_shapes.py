@@ -27,6 +27,8 @@ class OperandSyntaxShape(IntFlag):
 
 
 OPERAND_SYNTAX_SHAPES = {
+    OperandKind.STACK_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.LOCAL_ALLOCATION_RESULT: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.VIDEO_OPERAND: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     OperandKind.REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.IMMEDIATE: OperandSyntaxShape.IMMEDIATE,
@@ -76,6 +78,8 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.TENSOR_IM2COL_INFO: OperandSyntaxShape.VECTOR_PACK,
     OperandKind.TENSOR_OPERAND: OperandSyntaxShape.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: OperandSyntaxShape.FABRIC_HANDLE,
+    OperandKind.SURFACE_ACCESS: (OperandSyntaxShape.TENSOR_OPERAND | OperandSyntaxShape.COMPOUND_BRACKET | OperandSyntaxShape.FABRIC_HANDLE),
+    OperandKind.SURFACE_QUERY_RESOURCE: OperandSyntaxShape.ADDRESS,
     OperandKind.TEXTURE_ACCESS: (
         OperandSyntaxShape.TENSOR_OPERAND | OperandSyntaxShape.COMPOUND_BRACKET
         | OperandSyntaxShape.FABRIC_HANDLE

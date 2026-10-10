@@ -620,6 +620,10 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedFabricHandle> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSurfaceAccess> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedSurfaceQueryResource> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedStackToken> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedLocalAllocationResult> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureAccess> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureQueryResource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTextureResult> ||
@@ -784,6 +788,19 @@ void collect_operand_references(
       collect_operand_references(value.counter_offset->value,
                                  value.counter_offset->locs, fallback, uses,
                                  address_resolution_policy);
+  } else if constexpr (std::same_as<Value, ResolvedSurfaceAccess>) {
+    collect_resource(value.surface, value.surface.source_range);
+    for (const auto& lane : value.coordinates) {
+      const std::array<SourceRange, 1> range{lane.range};
+      collect_operand_references(lane.value, range, fallback, uses,
+                                 address_resolution_policy);
+    }
+  } else if constexpr (std::same_as<Value, ResolvedSurfaceQueryResource>) {
+    collect_resource(value.resource, value.resource.source_range);
+  } else if constexpr (std::same_as<Value, ResolvedStackToken> ||
+                       std::same_as<Value, ResolvedLocalAllocationResult>) {
+    collect_operand_references(value.register_ref, locations, fallback, uses,
+                               address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedTextureAccess>) {
     collect_resource(value.texture, value.texture.source_range);
     if (value.sampler)
@@ -1032,6 +1049,32 @@ class ReferenceCollector final : public detail::IReferenceObserver {
                      checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
+  /** Collect each surface identity and nested coordinate register. */
+  void surface_access(const ResolvedSurfaceAccess& value,
+                      std::span<const SourceRange> locations,
+                      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect a direct or indirect surface query identity. */
+  void surface_query_resource(
+      const ResolvedSurfaceQueryResource& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect the register nested in a stack token. */
+  void stack_token(const ResolvedStackToken& value,
+                   std::span<const SourceRange> locations,
+                   checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect the register nested in a local stack result. */
+  void local_allocation_result(
+      const ResolvedLocalAllocationResult& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
   /** Collect bound resource heads and coordinate registers in an access. */
   void texture_access(const ResolvedTextureAccess& value,
                       std::span<const SourceRange> locations,
@@ -1185,6 +1228,45 @@ void check_address_symbol_binding(const binding::Symbol& bound_symbol,
   }
 }
 
+/** Compare cached stack ownership to the actual containing module function. */
+struct StackContextObserver final : detail::IReferenceObserver {
+  /** Borrowed containing function, valid throughout immediate traversal. */
+  const ResolvedFunction& function;
+  /** Borrowed sink owned by the active module validation call. */
+  checker::CheckDiagnostics& diagnostics;
+  /** Fallback source anchor of the instruction being visited. */
+  SourceRange range;
+  /** Borrow the function and diagnostic sink only for immediate traversal. */
+  StackContextObserver(const ResolvedFunction& owner,
+                       checker::CheckDiagnostics& output, SourceRange source)
+      : function(owner), diagnostics(output), range(source) {}
+  /** Require exact function provenance, including full-module binding presence. */
+  void check(EnclosingFunctionKind kind, std::optional<binding::ScopeId> scope,
+             const ResolvedRegisterRef& reg) {
+    const auto expected = function.is_entry ? EnclosingFunctionKind::Entry
+                                            : EnclosingFunctionKind::Device;
+    if (kind != expected || scope != function.declaration_scope ||
+        !reg.symbol_id)
+      append_model_mismatch(
+          diagnostics, range,
+          "Stack operand ownership disagrees with its containing function.");
+  }
+  /** Recheck the stack token's cached context. */
+  void stack_token(const ResolvedStackToken& value,
+                   std::span<const SourceRange>,
+                   checker::AddressSymbolResolutionPolicy) override {
+    check(value.enclosing_function_kind, value.function_scope,
+          value.register_ref);
+  }
+  /** Recheck the local allocation's cached context. */
+  void local_allocation_result(
+      const ResolvedLocalAllocationResult& value, std::span<const SourceRange>,
+      checker::AddressSymbolResolutionPolicy) override {
+    check(value.enclosing_function_kind, value.function_scope,
+          value.register_ref);
+  }
+};
+
 /** Revalidate identities embedded in generated instruction operand payloads. */
 void check_module_references(const ResolvedModule& module,
                              const ResolvedFunction& function,
@@ -1193,6 +1275,9 @@ void check_module_references(const ResolvedModule& module,
   for (size_t index = 0; index < function.body.size(); ++index) {
     if (!function.body[index])
       continue;
+    StackContextObserver stack_context(function, diagnostics,
+                                       function.instruction_ranges[index]);
+    function.body[index]->visit_references(stack_context);
     ReferenceCollector collector(uses, function.instruction_ranges[index]);
     function.body[index]->visit_references(collector);
   }

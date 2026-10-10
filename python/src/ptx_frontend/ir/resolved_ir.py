@@ -41,7 +41,10 @@ from ptx_frontend.spec.model import (
     OperandRegisterWidthPolicy,
     OperandRole,
     OperandSpec,
+    SurfaceGeometry,
+    SurfaceInstructionSpec,
     TextureGeometry,
+    StackInstructionSpec,
     TextureInstructionSpec,
     TextureResourceRole,
     OperandStateSpaceExpression,
@@ -177,6 +180,10 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: ResolvedValueKind.FABRIC_HANDLE,
+    OperandKind.SURFACE_ACCESS: ResolvedValueKind.SURFACE_ACCESS,
+    OperandKind.SURFACE_QUERY_RESOURCE: ResolvedValueKind.SURFACE_QUERY_RESOURCE,
+    OperandKind.STACK_TOKEN: ResolvedValueKind.STACK_TOKEN,
+    OperandKind.LOCAL_ALLOCATION_RESULT: ResolvedValueKind.LOCAL_ALLOCATION_RESULT,
     OperandKind.VIDEO_OPERAND: ResolvedValueKind.VIDEO_OPERAND,
     OperandKind.TEXTURE_ACCESS: ResolvedValueKind.TEXTURE_ACCESS,
     OperandKind.TEXTURE_QUERY_RESOURCE: ResolvedValueKind.TEXTURE_QUERY_RESOURCE,
@@ -246,6 +253,10 @@ class ResolvedOperandShape(Enum):
     PREDICATE_PAIR = "PredicatePair"
     TENSOR_OPERAND = "TensorOperand"
     FABRIC_HANDLE = "FabricHandle"
+    SURFACE_ACCESS = "SurfaceAccess"
+    SURFACE_QUERY_RESOURCE = "SurfaceQueryResource"
+    STACK_TOKEN = "StackToken"
+    LOCAL_ALLOCATION_RESULT = "LocalAllocationResult"
     VIDEO_OPERAND = "VideoOperand"
     TEXTURE_ACCESS = "TextureAccess"
     TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
@@ -413,6 +424,8 @@ class ResolvedVariant:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    surface: SurfaceInstructionSpec | None = None
+    stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     video: VideoInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
@@ -535,6 +548,7 @@ class ResolvedOperandBinding:
     tensor_access_mode: TensorAccessMode | None = None
     expected_tensor_rank: int | None = None
     tensor_cta_mask: bool = False
+    surface_geometry: SurfaceGeometry | None = None
     video: VideoOperandSpec | None = None
     video_instruction: VideoInstructionSpec | None = None
     texture_geometry: TextureGeometry | None = None
@@ -626,6 +640,10 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
     OperandKind.FABRIC_HANDLE: (ResolvedOperandShape.FABRIC_HANDLE,),
+    OperandKind.SURFACE_ACCESS: (ResolvedOperandShape.SURFACE_ACCESS,),
+    OperandKind.SURFACE_QUERY_RESOURCE: (ResolvedOperandShape.SURFACE_QUERY_RESOURCE,),
+    OperandKind.STACK_TOKEN: (ResolvedOperandShape.STACK_TOKEN,),
+    OperandKind.LOCAL_ALLOCATION_RESULT: (ResolvedOperandShape.LOCAL_ALLOCATION_RESULT,),
     OperandKind.VIDEO_OPERAND: (ResolvedOperandShape.VIDEO_OPERAND,),
     OperandKind.TEXTURE_ACCESS: (ResolvedOperandShape.TEXTURE_ACCESS,),
     OperandKind.TEXTURE_QUERY_RESOURCE: (ResolvedOperandShape.TEXTURE_QUERY_RESOURCE,),
@@ -904,6 +922,8 @@ def _build_variant(
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
+        surface=variant.surface,
+        stack=variant.stack,
         texture=variant.texture,
         video=variant.video,
         wgmma_protocol_action=variant.wgmma_protocol_action,
@@ -1976,6 +1996,7 @@ def _build_operand_layout(
                     if operand.kind is OperandKind.TENSOR_OPERAND else None
                 ),
                 tensor_cta_mask=(tensor_multicast and operand.name == "cta_mask"),
+                surface_geometry=operand.surface_geometry,
                 video=(replace(operand.video,
                                type_modifier=modifier_field_ids[operand.video.type_modifier])
                        if operand.video and operand.video.type_modifier else operand.video),

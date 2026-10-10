@@ -8,6 +8,7 @@ SPEC_DIR = packaged_spec_dir()
 
 
 EXPECTED_FILES = {
+    "surface.yaml": ("surface", "surface", "9.7.12"),
     "video.yaml": ("video", "video", "9.7.19"),
     "arithmetic.yaml": ("arithmetic", "arithmetic", None),
     "comparison_and_selection.yaml": (
@@ -36,6 +37,12 @@ EXPECTED_FILES = {
 }
 
 EXPECTED_SECTIONS = {
+    "surface.yaml": {
+        "suld": {"9.7.12.1"},
+        "sust": {"9.7.12.2"},
+        "sured": {"9.7.12.3"},
+        "suq": {"9.7.12.4"},
+    },
     "video.yaml": {
         "vadd": {"9.7.19.1.1"},
         "vsub": {"9.7.19.1.1"},
@@ -230,7 +237,7 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             paths,
             set(EXPECTED_FILES)
             | {"asynchronous_warpgroup_matrix_multiply_accumulate.yaml",
-               "tensor_memory_data_movement.yaml", "texture.yaml"},
+               "tensor_memory_data_movement.yaml", "texture.yaml", "stack_manipulation.yaml"},
         )
 
         for name, (category, codegen_category, section) in EXPECTED_FILES.items():

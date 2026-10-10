@@ -1777,6 +1777,134 @@ resolve_opaque_resource(const syntax_ast::AstIdentifierRef& identifier,
                                    .source_range = range};
 }
 
+/** Resolve a surface bracket without applying texture-mode or sampling rules. */
+std::expected<WithLocs<ResolvedSurfaceAccess>, ResolveDiagnostic>
+resolve_surface_access(const syntax_ast::AstOperand& operand,
+                       const ResolvedOperandBindingDescriptor& binding,
+                       const ResolveContext* context) {
+  if (!binding.surface_geometry)
+    throw ResolveException("Surface access has no generated geometry.");
+  const auto geometry = *binding.surface_geometry;
+  std::vector<syntax_ast::AstVectorElement> heads;
+  syntax_ast::AstVectorPack coordinates;
+  ResolvedSurfaceAccess result;
+  if (const auto* tensor =
+          std::get_if<syntax_ast::AstTensorOperand>(&operand)) {
+    if (tensor->tensor_map.offset || tensor->tensor_map.unified)
+      return std::unexpected(ResolveDiagnostic{
+          .range = tensor->tensor_map.range,
+          .message = "Surface resource head must be a simple identity."});
+    heads.push_back(std::visit(
+        [](const auto& value) -> syntax_ast::AstVectorElement { return value; },
+        tensor->tensor_map.base));
+    coordinates = tensor->coordinates;
+    result.left_bracket_range = tensor->left_bracket_range;
+    result.comma_ranges.push_back(tensor->comma_range);
+    result.right_bracket_range = tensor->right_bracket_range;
+  } else if (const auto* compound =
+                 std::get_if<syntax_ast::AstCompoundBracket>(&operand)) {
+    heads = compound->heads;
+    coordinates = compound->coordinates;
+    result.left_bracket_range = compound->left_bracket_range;
+    result.comma_ranges = compound->comma_ranges;
+    result.right_bracket_range = compound->right_bracket_range;
+  } else if (const auto* scalar =
+                 std::get_if<syntax_ast::AstFabricHandle>(&operand)) {
+    if (scalar->elements.size() != 2)
+      return std::unexpected(
+          ResolveDiagnostic{.range = scalar->range,
+                            .message = "Scalar surface access requires one "
+                                       "resource and one coordinate."});
+    heads.push_back(scalar->elements.front());
+    coordinates.elements.push_back(scalar->elements.back());
+    coordinates.range = scalar->range;
+    result.coordinates_packed = false;
+    result.left_bracket_range = scalar->left_bracket_range;
+    result.comma_ranges = scalar->comma_ranges;
+    result.right_bracket_range = scalar->right_bracket_range;
+  } else {
+    return std::unexpected(
+        ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                          .message = "Surface access requires a bracketed "
+                                     "resource and coordinate tuple."});
+  }
+  if (heads.size() != 1 ||
+      coordinates.elements.size() != surface_coordinate_arity(geometry) ||
+      (!result.coordinates_packed && geometry != SurfaceGeometry::OneD))
+    return std::unexpected(
+        ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                          .message = "Surface coordinate tuple or resource "
+                                     "head count disagrees with geometry."});
+  const auto* head = std::get_if<syntax_ast::AstIdentifierRef>(&heads.front());
+  if (!head)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Surface resource must be a declaration or register."});
+  auto resource = resolve_opaque_resource(
+      *head, base::OpaqueResourceKind::Surface, context);
+  if (!resource)
+    return std::unexpected(resource.error());
+  result.surface = std::move(*resource);
+  for (size_t index = 0; index < coordinates.elements.size(); ++index) {
+    const auto role = surface_lane_role(geometry, index);
+    const auto use_type =
+        role == SurfaceLaneRole::Spatial ? ScalarType::S32 : ScalarType::U32;
+    const auto source = std::visit(
+        [](const auto& value) -> syntax_ast::AstOperand { return value; },
+        coordinates.elements[index]);
+    auto lane = resolve_reg_or_imm(source, use_type, context);
+    if (!lane)
+      return std::unexpected(lane.error());
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane->value)) {
+      const auto kind = reg->declared_type
+                            ? base::scalar_kind(*reg->declared_type)
+                            : base::ScalarKind::Invalid;
+      if (reg->register_class != ResolvedRegisterClass::General ||
+          reg->vector_width || !reg->declared_type ||
+          base::scalar_size_of(*reg->declared_type) != 4 ||
+          (kind != base::ScalarKind::Signed &&
+           kind != base::ScalarKind::Unsigned && kind != base::ScalarKind::Bit))
+        return std::unexpected(
+            ResolveDiagnostic{.range = syntax_ast::sourceRange(source),
+                              .message = "Surface coordinate requires a scalar "
+                                         "32-bit integer/bit carrier."});
+    }
+    result.coordinates.push_back({.value = std::move(lane->value),
+                                  .role = role,
+                                  .range = syntax_ast::sourceRange(source)});
+  }
+  return WithLocs<ResolvedSurfaceAccess>{std::move(result),
+                                         syntax_ast::sourceRange(operand)};
+}
+
+/** Resolve required simple brackets around one surface resource identity. */
+std::expected<WithLocs<ResolvedSurfaceQueryResource>, ResolveDiagnostic>
+resolve_surface_query_resource(const syntax_ast::AstOperand& operand,
+                               const ResolveContext* context) {
+  const auto* address = std::get_if<syntax_ast::AstAddress>(&operand);
+  if (!address || !address->bracketed || address->offset || address->unified)
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "Surface query requires a simple bracketed resource."});
+  const auto* head = std::get_if<syntax_ast::AstIdentifierRef>(&address->base);
+  if (!head)
+    return std::unexpected(ResolveDiagnostic{
+        .range = address->range,
+        .message =
+            "Surface query resource must be a declaration or register."});
+  auto resource = resolve_opaque_resource(
+      *head, base::OpaqueResourceKind::Surface, context);
+  if (!resource)
+    return std::unexpected(resource.error());
+  return WithLocs<ResolvedSurfaceQueryResource>{
+      ResolvedSurfaceQueryResource{
+          .resource = std::move(*resource),
+          .bracketed = true,
+          .left_bracket_range = address->left_bracket_range,
+          .right_bracket_range = address->right_bracket_range},
+      address->range};
+}
+
 /** Resolve one structural resource-and-coordinate bracket under a typed geometry. */
 std::expected<WithLocs<ResolvedTextureAccess>, ResolveDiagnostic>
 resolve_texture_access(const syntax_ast::AstOperand& operand,
@@ -2961,6 +3089,40 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::SurfaceAccess: {
+      auto value = resolve_surface_access(operand, binding, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::SurfaceQueryResource: {
+      auto value = resolve_surface_query_resource(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::StackToken:
+    case ResolvedValueKind::LocalAllocationResult: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      const auto kind =
+          context && context->function_scope
+              ? (context->function_is_entry ? EnclosingFunctionKind::Entry
+                                            : EnclosingFunctionKind::Device)
+              : EnclosingFunctionKind::Unknown;
+      const auto scope = context ? context->function_scope : std::nullopt;
+      if (field.value_kind == ResolvedValueKind::StackToken) {
+        WithLocs<ResolvedStackToken> token{
+            ResolvedStackToken{std::move(value->value), kind, scope}};
+        token.locs = std::move(value->locs);
+        return ResolvedFieldValue{std::move(token)};
+      }
+      WithLocs<ResolvedLocalAllocationResult> result{
+          ResolvedLocalAllocationResult{std::move(value->value), kind, scope}};
+      result.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(result)};
     }
     case ResolvedValueKind::TextureAccess: {
       auto value = resolve_texture_access(operand, binding, fields, context);

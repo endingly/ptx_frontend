@@ -719,6 +719,10 @@ $defs:
       - tensor_im2col_info
       - tensor_operand
       - fabric_handle
+      - surface_access
+      - surface_query_resource
+      - stack_token
+      - local_allocation_result
       - video_operand
       - texture_access
       - texture_query_resource
@@ -906,6 +910,8 @@ $defs:
         type: string
         pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
 
+      surface_geometry:
+        enum: [1d, 2d, 3d, a1d, a2d]
       texture_geometry:
         description: "Static coordinate topology for a texture access."
         type: string
@@ -1692,6 +1698,16 @@ $defs:
         type: string
         enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, mbarrier_complete_tx16b, fabric_read_wait, wgmma_group, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
 
+      stack:
+        description: "Static operation, scalar width and default byte alignment."
+        type: object
+        additionalProperties: false
+        required: [operation, width]
+        properties:
+          operation: {enum: [save, restore, allocate]}
+          width: {enum: [32, 64]}
+          default_alignment: {const: 8}
+
       fabric:
         description: "Typed static CFT requirements of one exact fabric form."
         type: object
@@ -1705,6 +1721,17 @@ $defs:
           reports_fabric: {type: boolean}
           requires_mbarrier_layout_v1: {type: boolean}
 
+      surface:
+        type: object
+        additionalProperties: false
+        properties:
+          geometry: {enum: [1d, 2d, 3d, a1d, a2d]}
+          addressing: {enum: [b, p]}
+          boundary: {enum: [trap, clamp, zero]}
+          operation: {enum: [add, min, max, and, or]}
+          query: {enum: [width, height, depth, channel_data_type, channel_order, array_size, memory_layout]}
+          vector_arity: {enum: [1, 2, 4]}
+          indirect_availability: {$ref: "#/$defs/availability"}
       video:
         type: object
         additionalProperties: false

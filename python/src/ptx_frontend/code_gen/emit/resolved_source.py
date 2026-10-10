@@ -130,7 +130,9 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
     cross_checks = cross_checks.replace("instruction.address_qualifier", "selected.address_qualifier")
     mma_check = _emit_tcgen_mma_source_check(variant, layout, slots, backend)
     tensor_checks = _emit_tensor_layout_checks(variant, layout, slots, backend)
+    surface_check = _emit_surface_layout_check(entry, variant, layout, slots, backend)
     texture_check = _emit_texture_layout_check(entry, variant, layout, slots, backend)
+    stack_check = _emit_stack_layout_check(entry, variant, layout, slots, backend)
     matrix = f"&{name}::matrix_topology" if variant.matrix is not None else "nullptr"
     return f"""    case {layout_index}: {{
       const auto availability_check = checker::check_operand_layout_availability(
@@ -151,9 +153,46 @@ def _emit_check_layout(entry, variant, variant_index: int, layout_index: int, ba
 {mma_check}
 {tensor_checks}
 {texture_check}
+{surface_check}
+{stack_check}
 {cross_checks}
       break;
     }}"""
+
+
+def _emit_surface_layout_check(entry, variant, layout, slots, backend) -> str:
+    """Recheck nested surface payloads after selected-layout presence guards."""
+    if variant.surface is None:
+        return ""
+    access = next(field for field in layout.fields if field.value_kind in {
+        ResolvedValueKind.SURFACE_ACCESS, ResolvedValueKind.SURFACE_QUERY_RESOURCE})
+    member = _member_expr(access, operand_slot_for_field(slots, access, backend))
+    name = form_name(entry, variant)
+    if variant.surface.query is not None:
+        expression = f"checker::check_surface_query_static_payload({name}::surface_contract, {member}.value, context)"
+    else:
+        expression = f"checker::check_surface_static_payload({name}::surface_contract, selected.surface_selected_types(), {member}.value, context)"
+    return f"      const auto surface_payload_check = {expression};\n" + _append_result("surface_payload_check")
+def _emit_stack_layout_check(entry, variant, layout, slots, backend) -> str:
+    """Recheck owned stack carrier and unconverted alignment provenance."""
+    if variant.stack is None:
+        return ""
+    def pointer(kind):
+        """Borrow the field selected by this exact layout."""
+        field = next((f for f in layout.fields if f.value_kind is kind), None)
+        if field is None:
+            return "nullptr"
+        member = _member_expr(field, operand_slot_for_field(slots, field, backend))
+        return "&" + member + ".value"
+    alignment = next((f for f in layout.fields if f.source_name == "alignment"), None)
+    align = ("&" + _member_expr(alignment, operand_slot_for_field(slots, alignment, backend)) + ".value"
+             if alignment else "nullptr")
+    return f"""      const auto stack_payload_check = checker::check_stack_static_payload(
+          {form_name(entry, variant)}::stack_contract,
+          {pointer(ResolvedValueKind.STACK_TOKEN)},
+          {pointer(ResolvedValueKind.LOCAL_ALLOCATION_RESULT)},
+          {pointer(ResolvedValueKind.REG_OR_IMM)}, {align}, context);
+{_append_result('stack_payload_check')}"""
 
 
 def _emit_texture_layout_check(entry, variant, layout, slots, backend) -> str:

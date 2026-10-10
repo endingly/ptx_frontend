@@ -268,6 +268,11 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           tag(output, "operand-vector-member");
           identifier(output, node.base);
           atom(output, node.selector.text);
+        } else if constexpr (std::same_as<
+                                 Node, syntax_ast::AstNegatedRegisterOperand>) {
+          tag(output, "operand-arithmetic-negated-register");
+          std::visit([&output](const auto& child) { operand(output, child); },
+                     node.operand);
         } else if constexpr (std::same_as<Node, syntax_ast::AstVectorPack>) {
           tag(output, "operand-vector-pack");
           number(output, node.elements.size());

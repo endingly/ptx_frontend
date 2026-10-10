@@ -81,6 +81,15 @@ struct AstVectorMember {
   SourceRange range;
 };
 
+/** Arithmetic minus applied to one register spelling, before semantic binding. */
+struct AstNegatedRegisterOperand {
+  /** Plain or selected identifier; no recursive unary operand trees. */
+  std::variant<AstIdentifierRef, AstVectorMember> operand;
+  /** Location of the arithmetic minus independently of the child. */
+  SourceRange minus_range;
+  SourceRange range;
+};
+
 using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate>;
 
 struct AstVectorPack {
@@ -173,13 +182,12 @@ struct AstRegisterPredicatePair {
 };
 
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
-using AstOperand =
-    std::variant<AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate,
-                 AstImmediate, AstAddress, AstVectorMember, AstVectorPack,
-                 AstVectorPredicatePair, AstTensorOperand, AstFabricHandle,
-                 AstCompoundBracket, AstCallParameterList, AstCallTarget,
-                 AstCallTargetSet, AstBranchTarget, AstBranchTargetSet,
-                 AstRegisterPredicatePair>;
+using AstOperand = std::variant<
+    AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate, AstImmediate,
+    AstAddress, AstVectorMember, AstNegatedRegisterOperand, AstVectorPack,
+    AstVectorPredicatePair, AstTensorOperand, AstFabricHandle,
+    AstCompoundBracket, AstCallParameterList, AstCallTarget, AstCallTargetSet,
+    AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
 
 /** Return the source range shared by every operand alternative. */
 inline SourceRange sourceRange(const AstOperand& operand) {

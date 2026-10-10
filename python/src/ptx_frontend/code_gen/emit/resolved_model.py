@@ -208,6 +208,7 @@ REFERENCE_TYPES = (
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
     "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
+    "ResolvedVideoOperand",
     "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
     "ResolvedTextureResult",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
@@ -534,6 +535,15 @@ def _form_contract(variant, backend) -> str:
             "  /** Borrow the immutable topology of this exact final form. */\n"
             "  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept {\n"
             "    return &matrix_topology;\n  }"
+        )
+    if variant.video is not None:
+        lanes = {"scalar": "Scalar", "two": "Two", "four": "Four"}[variant.video.lanes.value]
+        operation = file_stem_to_pascal_case(variant.video.operation.value)
+        parts.append(
+            "  /** Immutable packed-lane topology for typed selector queries. */\n"
+            f"  inline static constexpr VideoLanes video_lanes = VideoLanes::{lanes};\n"
+            "  /** Closed arithmetic operation category of this video form. */\n"
+            f"  inline static constexpr VideoOperation video_operation = VideoOperation::{operation};"
         )
     if variant.texture is not None:
         parts.append(_texture_descriptor(variant))

@@ -65,6 +65,10 @@ struct Context {
   SourceRange instruction_range;
 };
 
+/** Recheck typed video carriers, selections, immediates, and cross-slot controls. */
+CheckResult check_video_operands(std::span<const OperandDescriptor>,
+                                 std::span<const FieldView>,
+                                 std::span<const OperandView>, const Context&);
 /** Project an owned tensor operand into descriptor and coordinate checks. */
 OperandView project_tensor_operand(
     std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand);

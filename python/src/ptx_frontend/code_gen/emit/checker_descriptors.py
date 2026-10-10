@@ -400,6 +400,10 @@ def _emit_modifier_value_descriptor(
               .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
               .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
               .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
+              .video_scale = {members[ResolvedValueKind.VIDEO_SCALE]},
+              .video_shift_mode = {members[ResolvedValueKind.VIDEO_SHIFT_MODE]},
+              .video_secondary_op = {members[ResolvedValueKind.VIDEO_SECONDARY_OP]},
+              .video_type = {members[ResolvedValueKind.VIDEO_TYPE]},
               .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
               .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
 {availability}

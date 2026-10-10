@@ -6,6 +6,10 @@ from typing import Any
 
 from ptx_frontend.spec.model import (
     MbarrierStateTokenForm,
+    VideoOperandSpec,
+    VideoOperandTypeUse,
+    VideoOperandPosition,
+    VideoSelectorPolicy,
     OperandAddressBasePolicy,
     OperandAddressOffsetDomain,
     OperandAccess,
@@ -136,7 +140,40 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     elif texture_resource_kind is not None:
         raise ValueError("texture_resource_kind requires texture_query_resource")
 
+    video = None
+    if kind is OperandKind.VIDEO_OPERAND:
+        contract = raw.get("video")
+        if not isinstance(contract, dict) or set(contract) - {
+            "position", "selector", "type_modifier", "type_use", "allow_immediate", "allow_negate"
+        }:
+            raise ValueError("video_operand requires a closed typed video contract")
+        position = VideoOperandPosition(contract["position"])
+        selection = VideoSelectorPolicy(contract["selector"])
+        immediate = contract.get("allow_immediate", False)
+        negate = contract.get("allow_negate", False)
+        if type(immediate) is not bool or type(negate) is not bool:
+            raise TypeError("video operand immediate and negate controls must be boolean")
+        if position is VideoOperandPosition.DESTINATION and (immediate or negate):
+            raise ValueError("video destination cannot be immediate or negated")
+        type_modifier = contract.get("type_modifier")
+        if type_modifier is not None and (
+            not isinstance(type_modifier, str) or
+            re.fullmatch(r"[a-z][a-z0-9_]*", type_modifier) is None
+        ):
+            raise ValueError("video type_modifier must identify one modifier")
+        type_use = VideoOperandTypeUse(contract.get("type_use", "unsigned"))
+        if type_modifier is not None:
+            if type_use is VideoOperandTypeUse.BIT_CARRIER:
+                raise ValueError("video bit carrier cannot reference a type modifier")
+            type_use = VideoOperandTypeUse.MODIFIER_FIELD
+        elif type_use is VideoOperandTypeUse.MODIFIER_FIELD:
+            raise ValueError("video modifier type use requires type_modifier")
+        video = VideoOperandSpec(position, selection, type_use, type_modifier, immediate, negate)
+    elif "video" in raw:
+        raise ValueError("video operand contract requires video_operand")
+
     return OperandSpec(
+        video=video,
         name=raw["name"],
         kind=kind,
         role=role,

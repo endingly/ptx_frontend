@@ -600,6 +600,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedMbarrierStateToken> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, RegOrImm> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedVideoOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedShflSyncDestination> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePair> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePairOrSink> ||
@@ -692,6 +693,9 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, ResolvedRegisterOrSink>) {
     if (value.register_ref)
       collect_register(*value.register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedVideoOperand>) {
+    collect_operand_references(value.value.value, value.value.locs, fallback,
+                               uses, address_resolution_policy);
   } else if constexpr (std::same_as<Value, RegOrImm>) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
@@ -856,6 +860,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
                      SourceRange fallback)
       : uses_(uses), fallback_(fallback) {}
+  /** Collect a video carrier independently of its retained selector or minus. */
+  void video_operand(const ResolvedVideoOperand& value,
+                     std::span<const SourceRange> locations,
+                     checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
   /** Collect declaration identities from a borrowed RegOrImm. */
   void reg_or_imm(const RegOrImm& value, std::span<const SourceRange> locations,
                   checker::AddressSymbolResolutionPolicy policy) override {

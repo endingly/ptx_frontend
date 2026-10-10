@@ -584,3 +584,7 @@ form，以及 call adjacency/predication constraint 均由 module resolution 覆
 metadata、由生成的 `Mov::Scalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
 所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。
+
+## Owned Video 操作数
+
+`ResolvedVideoOperand` 拥有带位置的 `RegOrImm`、可选带位置的 `VideoSelector` variant、书写的寄存器取负 Boolean 及可选 minus range。Identifier 位置与外层 selector/negation range 分离，用于绑定诊断。Source 数组保留书写的高到低 digit 顺序，索引连接后的 A+B carrier。`video_default_selector` 和 `video_effective_selector` 提供默认值，不虚构书写来源。生成 form 公开静态 `video_lanes`/`video_operation`。`video_mad_interpretation` 独立于书写 dtype 推导 product/input-C/final 符号；负数常量不变成寄存器取负控制。公开 helper 位于 `<ptx_frontend/resolved_ir/ptx_video.hpp>`。Checker operand view 仅在同步检查期间借用 owned Video payload；模块引用遍历使用内部 carrier 的 identifier 位置。

@@ -73,6 +73,15 @@ struct CstVectorMember {
   CstTokenRange token_range;
 };
 
+/** Arithmetic minus applied to one identifier or selected register spelling. */
+struct CstNegatedRegisterOperand {
+  /** Written minus token; never a predicate complement. */
+  TokenId minus{};
+  /** Nonrecursive child retaining its own token range. */
+  std::variant<CstIdentifier, CstVectorMember> operand;
+  CstTokenRange token_range;
+};
+
 using CstVectorElement = std::variant<CstIdentifier, CstImmediate>;
 
 struct CstVectorPack {
@@ -170,13 +179,12 @@ struct CstRegisterPredicatePair {
   CstTokenRange token_range;
 };
 
-using CstOperand =
-    std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
-                 CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
-                 CstVectorPredicatePair, CstTensorOperand, CstFabricHandle,
-                 CstCompoundBracket, CstCallParameterList, CstCallTarget,
-                 CstCallTargetSet, CstBranchTarget, CstBranchTargetSet,
-                 CstRegisterPredicatePair>;
+using CstOperand = std::variant<
+    CstIdentifier, CstPredicateOperand, CstNegatedImmediate, CstImmediate,
+    CstAddress, CstVectorMember, CstNegatedRegisterOperand, CstVectorPack,
+    CstVectorPredicatePair, CstTensorOperand, CstFabricHandle,
+    CstCompoundBracket, CstCallParameterList, CstCallTarget, CstCallTargetSet,
+    CstBranchTarget, CstBranchTargetSet, CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;

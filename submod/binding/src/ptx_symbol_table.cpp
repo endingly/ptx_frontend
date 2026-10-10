@@ -1156,6 +1156,21 @@ struct SymbolTableBuilder {
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstVectorMember>) {
             addReference(scope, ReferenceKind::InstructionOperand, value.base);
+          } else if constexpr (std::same_as<
+                                   Value,
+                                   syntax_ast::AstNegatedRegisterOperand>) {
+            std::visit(
+                [&](const auto& child) {
+                  using Child = std::remove_cvref_t<decltype(child)>;
+                  if constexpr (std::same_as<Child,
+                                             syntax_ast::AstIdentifierRef>)
+                    addReference(scope, ReferenceKind::InstructionOperand,
+                                 child);
+                  else
+                    addReference(scope, ReferenceKind::InstructionOperand,
+                                 child.base);
+                },
+                value.operand);
           } else if constexpr (std::same_as<Value, syntax_ast::AstVectorPack>) {
             for (const auto& element : value.elements) {
               if (const auto* identifier =

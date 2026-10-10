@@ -14,10 +14,11 @@ from ptx_frontend.spec.model import (
     OperandKind,
     OperandLayoutKind as ModelOperandLayoutKind,
     OperandSpec,
+    VideoSelectorPolicy,
     VariantSpec,
     modifier_spellings,
 )
-from ptx_frontend.spec.synatax_shapes import OperandSyntaxShape, OPERAND_SYNTAX_SHAPES
+from ptx_frontend.spec.synatax_shapes import OperandSyntaxShape, OPERAND_SYNTAX_SHAPES, operand_syntax_shapes
 
 
 class ModifierPresence(Enum):
@@ -176,7 +177,7 @@ def _build_operand_slot_descriptor_view(
 ) -> SyntaxOperandSlotDescriptor:
     """Return the AST operand slot descriptor for one normalized PTX operand spec."""
     try:
-        shapes = OPERAND_SYNTAX_SHAPES[operand.kind]
+        shapes = operand_syntax_shapes(operand)
     except KeyError as error:
         raise ValueError(
             f"operand {operand.name!r}: unsupported syntax operand kind "

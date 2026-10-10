@@ -470,6 +470,25 @@ def _emit_operand_binding_descriptor(
         CppDomain.IMMEDIATE_CONVERSION_POLICIES,
         binding.immediate_conversion_policy.value, backend=backend,
     )
+    video = ""
+    if binding.video is not None:
+        slot = binding.video
+        topology = binding.video_instruction
+        assert topology is not None
+        cpp = lambda value: "".join(part.title() for part in value.split("_"))
+        video = f'''
+              .video = checker::VideoOperandDescriptor{{
+                  .lanes = VideoLanes::{cpp(topology.lanes.value)},
+                  .operation = VideoOperation::{cpp(topology.operation.value)},
+                  .position = VideoOperandPosition::{cpp(slot.position.value)},
+                  .selector = VideoSelectorPolicy::{cpp(slot.selector.value)},
+                  .type_use = VideoOperandTypeUse::{cpp(slot.type_use.value)},
+                  .type_field_id = "{slot.type_modifier or ""}",
+                  .sat_field_id = "{topology.sat_modifier or ""}",
+                  .po_field_id = "{topology.po_modifier or ""}",
+                  .allow_immediate = {str(slot.allow_immediate).lower()},
+                  .allow_negate = {str(slot.allow_negate).lower()},
+              }},'''
     return f"""          check_end::ResolvedOperandBindingDescriptor{{
               .target_field_id = "{binding.target_field_id}",
               .type_expression = {_emit_type_expression_descriptor(binding.type_expression, backend)},
@@ -478,7 +497,7 @@ def _emit_operand_binding_descriptor(
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{source_value_vector}{signed_vector_range}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
               .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{texture_geometry}{texture_legacy_v4}{texture_unbracketed}{texture_resource_kind}{texture_query_sampler_by_mode}{texture_residency_required}{tensor_cta_mask_role}
-              .immediate_conversion_policy = {immediate_conversion_policy},
+              .immediate_conversion_policy = {immediate_conversion_policy},{video}
           }}"""
 
 

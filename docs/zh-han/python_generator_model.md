@@ -301,3 +301,7 @@ generator 测试套件的验收范围内。C++ 测试则验证真实 parser、re
 
 推荐顺序：先扩展 schema 与 normalized dataclass，再扩展 Syntax/Resolved model，最后
 修改 emitter 与测试。不要让 emitter 从原始 YAML 读取新字段，这会绕过一致性检查。
+
+## Video topology 投影
+
+Frozen `VideoInstructionSpec` 与 `VideoOperandSpec` 保存 lane/operation、角色、selector、coercion 及书写取负义务。Normalization 在语法语言 overlap 检查前验证字段引用和 selector topology。Selection 与 overlap 验证共用 typed slot shape，使 scalar merge 和 secondary 形式保持区分。Backend projection 通过既有字段 alias map 重写 modifier 引用，包括 `.sat` → `saturate`；C++ policy 接收 typed enum 和稳定 field ID，不按 opcode 名或原始 suffix 分支。生成类及 checker descriptor 消费此 normalized 契约。

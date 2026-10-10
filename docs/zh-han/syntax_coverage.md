@@ -9,6 +9,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 
 | 范围 | 状态 | 当前实现子集 |
 | --- | --- | --- |
+| PTX 9.3 Video | 支持源码家族 | 全部 23 个 scalar/SIMD2/SIMD4 opcode，独立 Video 类型、selector/mask、寄存器取负、立即数来源及目标检查；见 [Video 覆盖](video_coverage.md)。算术执行不属于 frontend。 |
 | Token 与 trivia | 部分支持 | identifier、dot identifier、literal、标点、注释、空白与部分稳定 directive；未修改的 `CstFile::sourceText()` 会从 token buffer 逐字节 round-trip |
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、vector member/vector pack，以及 call/branch 专用 operand shape |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` 会 lower 为有序且 independent 于 AST 的 source-configuration region。每个 region 拥有 effective version、target-option spelling、address width 与 explicit/defaulted provenance；省略 address size 时拥有 PTX 的 32-bit default，而非 host property。已识别的 region 会提供 target-aware module validation，但不构成 hardware configuration 或 execution contract。 |

@@ -200,3 +200,7 @@ Syntax AST or Resolved IR.
 `SourceRange` currently stores line and column only. A future multi-file CST
 and robust edit system should extend locations with a source identity and byte
 offsets. This does not require widening the Syntax AST responsibility.
+
+## Arithmetic-negated register syntax
+
+`CstNegatedRegisterOperand` retains the minus token and a child limited to one identifier or vector member. `AstNegatedRegisterOperand` owns the minus range, child range and full range. The parser recognizes `-Ident[.selector]` before signed-numeric immediate parsing; it does not introduce recursive unary operands. The distinct `ArithmeticNegatedRegister` syntax shape is enabled only for approved `vmad` source slots. Binding, lowering, source identity and layout classification traverse this child explicitly. Predicate `!` negation remains separate, and `!-%r` is rejected.

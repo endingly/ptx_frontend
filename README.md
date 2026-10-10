@@ -50,6 +50,9 @@ supported surface and its exclusions.
 - [`slct` coverage](docs/us-en/slct_coverage.md) and its
   [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
   types, numeric selectors, `.ftz`, operand containers, and target limits.
+- [Video instruction coverage](docs/us-en/video_coverage.md) and its
+  [简体中文版本](docs/zh-han/video_coverage.md) define all 23 scalar/two-lane/four-lane
+  opcodes, owned selectors and register negation, target gates, and static checks.
 - [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
   and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
   `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.

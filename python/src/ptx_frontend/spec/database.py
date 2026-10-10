@@ -19,7 +19,7 @@ from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
-from .synatax_shapes import OPERAND_SYNTAX_SHAPES
+from .synatax_shapes import OPERAND_SYNTAX_SHAPES, operand_syntax_shapes
 
 PTX_INSTRUCTION_SCHEMA = packaged_spec_schema()
 
@@ -211,8 +211,8 @@ def _validate_variant_modifier_exclusivity(instruction: InstructionSpec) -> None
                 if all(
                     len(left_layout.operands) != len(right_layout.operands)
                     or any(
-                        not (OPERAND_SYNTAX_SHAPES[left_operand.kind]
-                             & OPERAND_SYNTAX_SHAPES[right_operand.kind])
+                        not (operand_syntax_shapes(left_operand)
+                             & operand_syntax_shapes(right_operand))
                         for left_operand, right_operand in zip(
                             left_layout.operands, right_layout.operands
                         )

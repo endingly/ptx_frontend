@@ -14,6 +14,7 @@ instruction_identity:
     matrix: 5
     parallel_synchronization_and_communication: 6
     tensor_memory: 7
+    video: 10
 
 # This file maps normalized semantic values to C++ expressions and declares
 # runtime lookup tables. PTX legality, variants, layouts, and availability stay
@@ -408,6 +409,10 @@ domains:
       TcgenRepeat: TcgenRepeat
       TcgenReductionOp: TcgenReductionOp
       TcgenWaitClass: TcgenWaitClass
+      VideoScale: VideoScale
+      VideoShiftMode: VideoShiftMode
+      VideoSecondaryOp: VideoSecondaryOp
+      VideoType: VideoType
       AsyncProxyKind: AsyncProxyKind
       ProxyKindPair: ProxyKindPair
       Register: ResolvedRegisterRef
@@ -435,6 +440,7 @@ domains:
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
       FabricHandle: ResolvedFabricHandle
+      VideoOperand: ResolvedVideoOperand
       TextureAccess: ResolvedTextureAccess
       TextureQueryResource: ResolvedTextureQueryResource
       TextureResult: ResolvedTextureResult
@@ -483,6 +489,7 @@ domains:
       IMMEDIATE: check_end::OperandSyntaxShape::Immediate
       ADDRESS: check_end::OperandSyntaxShape::Address
       VECTOR_MEMBER: check_end::OperandSyntaxShape::VectorMember
+      ARITHMETIC_NEGATED_REGISTER: check_end::OperandSyntaxShape::ArithmeticNegatedRegister
       VECTOR_PACK: check_end::OperandSyntaxShape::VectorPack
       PREDICATE: check_end::OperandSyntaxShape::Predicate
       CALL_PARAMETER_LIST: check_end::OperandSyntaxShape::Group
@@ -522,6 +529,10 @@ domains:
       TcgenRepeat: check_end::ResolvedValueKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedValueKind::TcgenReductionOp
       TcgenWaitClass: check_end::ResolvedValueKind::TcgenWaitClass
+      VideoScale: check_end::ResolvedValueKind::VideoScale
+      VideoShiftMode: check_end::ResolvedValueKind::VideoShiftMode
+      VideoSecondaryOp: check_end::ResolvedValueKind::VideoSecondaryOp
+      VideoType: check_end::ResolvedValueKind::VideoType
       AsyncProxyKind: check_end::ResolvedValueKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedValueKind::ProxyKindPair
       MbarrierStateToken: check_end::ResolvedValueKind::MbarrierStateToken
@@ -549,6 +560,7 @@ domains:
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
       FabricHandle: check_end::ResolvedValueKind::FabricHandle
+      VideoOperand: check_end::ResolvedValueKind::VideoOperand
       TextureAccess: check_end::ResolvedValueKind::TextureAccess
       TextureQueryResource: check_end::ResolvedValueKind::TextureQueryResource
       TextureResult: check_end::ResolvedValueKind::TextureResult
@@ -594,6 +606,7 @@ domains:
       Vector: check_end::OperandShape::Vector
       TensorOperand: check_end::OperandShape::TensorOperand
       FabricHandle: check_end::OperandShape::FabricHandle
+      VideoOperand: check_end::OperandShape::VideoOperand
       TextureAccess: check_end::OperandShape::TextureAccess
       TextureQueryResource: check_end::OperandShape::TextureQueryResource
       TextureResult: check_end::OperandShape::TextureResult
@@ -635,6 +648,10 @@ domains:
       TcgenRepeat: check_end::ResolvedModifierDefaultKind::TcgenRepeat
       TcgenReductionOp: check_end::ResolvedModifierDefaultKind::TcgenReductionOp
       TcgenWaitClass: check_end::ResolvedModifierDefaultKind::TcgenWaitClass
+      VideoScale: check_end::ResolvedModifierDefaultKind::VideoScale
+      VideoShiftMode: check_end::ResolvedModifierDefaultKind::VideoShiftMode
+      VideoSecondaryOp: check_end::ResolvedModifierDefaultKind::VideoSecondaryOp
+      VideoType: check_end::ResolvedModifierDefaultKind::VideoType
       AsyncProxyKind: check_end::ResolvedModifierDefaultKind::AsyncProxyKind
       ProxyKindPair: check_end::ResolvedModifierDefaultKind::ProxyKindPair
 
@@ -663,5 +680,44 @@ domains:
       TcgenRepeat: checker::ModifierValueKind::TcgenRepeat
       TcgenReductionOp: checker::ModifierValueKind::TcgenReductionOp
       TcgenWaitClass: checker::ModifierValueKind::TcgenWaitClass
+      VideoScale: checker::ModifierValueKind::VideoScale
+      VideoShiftMode: checker::ModifierValueKind::VideoShiftMode
+      VideoSecondaryOp: checker::ModifierValueKind::VideoSecondaryOp
+      VideoType: checker::ModifierValueKind::VideoType
       AsyncProxyKind: checker::ModifierValueKind::AsyncProxyKind
       ProxyKindPair: checker::ModifierValueKind::ProxyKindPair
+
+  video_types:
+    cpp_type: VideoType
+    default: VideoType::S32
+    runtime_lookup: ptx_suffix
+    values:
+      s32: VideoType::S32
+      u32: VideoType::U32
+
+  video_secondary_ops:
+    cpp_type: VideoSecondaryOp
+    default: VideoSecondaryOp::None
+    runtime_lookup: ptx_suffix
+    values:
+      none: VideoSecondaryOp::None
+      add: VideoSecondaryOp::Add
+      min: VideoSecondaryOp::Min
+      max: VideoSecondaryOp::Max
+
+  video_shift_modes:
+    cpp_type: VideoShiftMode
+    default: VideoShiftMode::Clamp
+    runtime_lookup: ptx_suffix
+    values:
+      clamp: VideoShiftMode::Clamp
+      wrap: VideoShiftMode::Wrap
+
+  video_scales:
+    cpp_type: VideoScale
+    default: VideoScale::None
+    runtime_lookup: ptx_suffix
+    values:
+      none: VideoScale::None
+      shr7: VideoScale::Shr7
+      shr15: VideoScale::Shr15

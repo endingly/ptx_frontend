@@ -113,6 +113,22 @@ _RESOLVED_MODIFIER_VALUE_TRAITS: dict[
         cpp_domain=CppDomain.TCGEN_REDUCTION_OPS,
         descriptor_member="tcgen_reduction_op",
     ),
+    ResolvedValueKind.VIDEO_TYPE: ResolvedValueTraits(
+        cpp_domain=CppDomain.VIDEO_TYPES,
+        descriptor_member="video_type",
+    ),
+    ResolvedValueKind.VIDEO_SECONDARY_OP: ResolvedValueTraits(
+        cpp_domain=CppDomain.VIDEO_SECONDARY_OPS,
+        descriptor_member="video_secondary_op",
+    ),
+    ResolvedValueKind.VIDEO_SHIFT_MODE: ResolvedValueTraits(
+        cpp_domain=CppDomain.VIDEO_SHIFT_MODES,
+        descriptor_member="video_shift_mode",
+    ),
+    ResolvedValueKind.VIDEO_SCALE: ResolvedValueTraits(
+        cpp_domain=CppDomain.VIDEO_SCALES,
+        descriptor_member="video_scale",
+    ),
     ResolvedValueKind.TCGEN_WAIT: ResolvedValueTraits(
         cpp_domain=CppDomain.TCGEN_WAIT_CLASSES,
         descriptor_member="tcgen_wait_class",

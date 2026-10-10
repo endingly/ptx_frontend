@@ -100,6 +100,7 @@ class OperandNormalizationTests(unittest.TestCase):
                 "texture_legacy_v4_coordinates": False,
                 "texture_unbracketed": False,
                 "texture_resource_kind": None,
+                "video": None,
             },
         )
         self.assertIs(

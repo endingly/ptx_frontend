@@ -1,6 +1,15 @@
 from typing import Any
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    VideoInstructionSpec,
+    VideoLanes,
+    VideoOperation,
+    VideoOperandPosition,
+    VideoOperandTypeUse,
+    VideoSelectorPolicy,
+    OperandRole,
+    OperandAccess,
+    ModifierKind,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     FabricEndpointKind,
@@ -47,6 +56,78 @@ from .validation import (
     _validate_modifier_state_space_expressions,
     _validate_modifier_type_expressions,
 )
+
+
+def _normalize_video_contract(raw: Any) -> VideoInstructionSpec | None:
+    """Decode the closed canonical video topology before generator decisions."""
+
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) - {"lanes", "operation", "sat_modifier", "po_modifier"} or not {"lanes", "operation"} <= set(raw):
+        raise ValueError("video instruction requires lanes and operation")
+    return VideoInstructionSpec(VideoLanes(raw["lanes"]), VideoOperation(raw["operation"]),
+                                raw.get("sat_modifier"), raw.get("po_modifier"))
+
+
+def _validate_video_variant(variant: VariantSpec) -> None:
+    """Reject contradictory topology, carrier, selector, and field references."""
+
+    contract = variant.video
+    operands = [operand for layout in variant.operand_layouts for operand in layout.operands]
+    if contract is None:
+        if any(operand.video is not None for operand in operands):
+            raise ValueError("video operands require a video instruction contract")
+        return
+    modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+    for name in (contract.sat_modifier, contract.po_modifier):
+        if name is not None and (name not in modifiers or modifiers[name].kind is not ModifierKind.FLAG):
+            raise ValueError("video control must reference a declared Boolean modifier")
+    if contract.po_modifier is not None and contract.operation is not VideoOperation.MAD:
+        raise ValueError("video po control requires mad")
+    for layout in variant.operand_layouts:
+        if len(layout.operands) not in (3, 4):
+            raise ValueError("video layout requires three or four operands")
+        expected = [VideoOperandPosition.DESTINATION, VideoOperandPosition.A,
+                    VideoOperandPosition.B, VideoOperandPosition.C]
+        for index, operand in enumerate(layout.operands):
+            slot = operand.video
+            if operand.kind is not OperandKind.VIDEO_OPERAND or slot is None:
+                raise ValueError("video instruction requires typed video operands")
+            if slot.position is not expected[index]:
+                raise ValueError("video layout positions must be destination, a, b, c")
+            destination = slot.position is VideoOperandPosition.DESTINATION
+            if ((operand.role is not (OperandRole.DESTINATION if destination else OperandRole.SOURCE)) or
+                operand.access is not (OperandAccess.WRITE if destination else OperandAccess.READ)):
+                raise ValueError("video operand role/access contradicts its position")
+            if slot.type_use is VideoOperandTypeUse.BIT_CARRIER and (
+                contract.operation is not VideoOperation.MAD or
+                slot.position is not VideoOperandPosition.C
+            ):
+                raise ValueError("video bit-carrier interpretation requires mad c")
+            if slot.allow_negate and contract.operation is not VideoOperation.MAD:
+                raise ValueError("arithmetic register negation requires video mad")
+            if slot.allow_immediate and contract.lanes is not VideoLanes.SCALAR:
+                raise ValueError("video immediates require scalar topology")
+            if slot.type_modifier is not None and (
+                slot.type_modifier not in modifiers or
+                modifiers[slot.type_modifier].kind is not ModifierKind.VIDEO_TYPE
+            ):
+                raise ValueError("video type_modifier must reference a typed video modifier")
+            if slot.position is VideoOperandPosition.C and slot.selector is not VideoSelectorPolicy.NONE:
+                raise ValueError("video c operand has no selector")
+            scalar = {VideoSelectorPolicy.NONE, VideoSelectorPolicy.OPTIONAL_SCALAR,
+                      VideoSelectorPolicy.REQUIRED_SCALAR}
+            if contract.lanes is VideoLanes.SCALAR:
+                if slot.selector not in scalar:
+                    raise ValueError("scalar video cannot use SIMD selectors")
+                if not destination and slot.selector is VideoSelectorPolicy.REQUIRED_SCALAR:
+                    raise ValueError("required scalar selection belongs to merge destination")
+            elif slot.position is not VideoOperandPosition.C:
+                policy = ((VideoSelectorPolicy.HALF_MASK if destination else VideoSelectorPolicy.HALF_SWIZZLE)
+                          if contract.lanes is VideoLanes.TWO else
+                          (VideoSelectorPolicy.BYTE_MASK if destination else VideoSelectorPolicy.BYTE_SWIZZLE))
+                if slot.selector is not policy:
+                    raise ValueError("SIMD video selector contradicts lane topology or role")
 
 
 def _normalize_fabric_contract(raw: Any, opcode: str) -> FabricInstructionSpec | None:
@@ -379,6 +460,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     fabric=_normalize_fabric_contract(
                         raw_variant.get("fabric"), raw_instruction["opcode"]
                     ),
+                    video=_normalize_video_contract(raw_variant.get("video")),
                     texture=_normalize_texture_contract(
                         raw_variant.get("texture"), raw_instruction["opcode"]
                     ),
@@ -426,6 +508,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                         raw_variant, operand_layouts
                     ),
                 )
+            _validate_video_variant(variant)
             validate_tcgen_allocation_variant(variant)
             validate_tcgen_transfer_variant(variant)
             validate_tcgen_sync_variant(variant)

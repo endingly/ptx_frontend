@@ -332,6 +332,14 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.tcgen_repeat == actual.tcgen_repeat;
     case ModifierValueKind::TcgenReductionOp:
       return descriptor.tcgen_reduction_op == actual.tcgen_reduction_op;
+    case ModifierValueKind::VideoType:
+      return descriptor.video_type == actual.video_type;
+    case ModifierValueKind::VideoSecondaryOp:
+      return descriptor.video_secondary_op == actual.video_secondary_op;
+    case ModifierValueKind::VideoShiftMode:
+      return descriptor.video_shift_mode == actual.video_shift_mode;
+    case ModifierValueKind::VideoScale:
+      return descriptor.video_scale == actual.video_scale;
     case ModifierValueKind::TcgenWaitClass:
       return descriptor.tcgen_wait_class == actual.tcgen_wait_class;
     case ModifierValueKind::AsyncProxyKind:
@@ -864,6 +872,10 @@ CheckResult check_operands(
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
     const Context& context, const MatrixInstructionDescriptor* matrix) {
+  if (auto video_check =
+          check_video_operands(descriptors, fields, operands, context);
+      !video_check)
+    return video_check;
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {

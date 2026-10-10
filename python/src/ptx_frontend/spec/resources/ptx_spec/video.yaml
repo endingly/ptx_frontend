@@ -1,0 +1,2538 @@
+# PTX 9.3 video instructions.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+schema: ptx-instr/v1
+ptx_isa: '9.3'
+category: video
+codegen_category: video
+section: 9.7.19
+instructions:
+- opcode: vadd
+  section: 9.7.19.1.1
+  doc: Scalar video add with typed selection, saturation, and secondary operation.
+  syntax: vadd.dtype.atype.btype{.sat}[.secop] d, a, b[, c];
+  variants:
+  - name: vadd_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vsub
+  section: 9.7.19.1.1
+  doc: Typed vsub video instruction with source-faithful selectors and controls.
+  syntax: vsub.dtype.atype.btype{.sat}[.secop] d, a, b[, c];
+  variants:
+  - name: vsub_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vmad
+  section: 9.7.19.1.3
+  doc: Typed vmad video instruction with source-faithful selectors and controls.
+  syntax: vmad.dtype.atype.btype{.po}{.sat}{.scale} d, a, b, c;
+  variants:
+  - name: vmad_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: mad
+      sat_modifier: sat
+      po_modifier: po
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: po
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .po
+      default: false
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: scale
+      kind: video_scale
+      presence: optional
+      values:
+      - shr7
+      - shr15
+      domain: video_scales
+      default: none
+    operand_layouts:
+    - name: mad
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+          allow_negate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+          allow_negate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          allow_immediate: true
+          allow_negate: true
+          type_use: bit_carrier
+- opcode: vabsdiff
+  section: 9.7.19.1.1
+  doc: Typed vabsdiff video instruction with source-faithful selectors and controls.
+  syntax: vabsdiff.dtype.atype.btype{.sat}[.secop] d, a, b[, c];
+  variants:
+  - name: vabsdiff_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vmin
+  section: 9.7.19.1.1
+  doc: Typed vmin video instruction with source-faithful selectors and controls.
+  syntax: vmin.dtype.atype.btype{.sat}[.secop] d, a, b[, c];
+  variants:
+  - name: vmin_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vmax
+  section: 9.7.19.1.1
+  doc: Typed vmax video instruction with source-faithful selectors and controls.
+  syntax: vmax.dtype.atype.btype{.sat}[.secop] d, a, b[, c];
+  variants:
+  - name: vmax_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vshl
+  section: 9.7.19.1.2
+  doc: Typed vshl video instruction with source-faithful selectors and controls.
+  syntax: vshl.dtype.atype.u32{.sat}.mode[.secop] d, a, b[, c];
+  variants:
+  - name: vshl_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: shift
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: mode
+      kind: video_shift_mode
+      presence: required
+      values:
+      - clamp
+      - wrap
+      domain: video_shift_modes
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vshr
+  section: 9.7.19.1.2
+  doc: Typed vshr video instruction with source-faithful selectors and controls.
+  syntax: vshr.dtype.atype.u32{.sat}.mode[.secop] d, a, b[, c];
+  variants:
+  - name: vshr_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: shift
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: mode
+      kind: video_shift_mode
+      presence: required
+      values:
+      - clamp
+      - wrap
+      domain: video_shift_modes
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+          allow_immediate: true
+- opcode: vset
+  section: 9.7.19.1.4
+  doc: Typed vset video instruction with source-faithful selectors and controls.
+  syntax: vset.atype.btype.cmp[.secop] d, a, b[, c];
+  variants:
+  - name: vset_scalar
+    availability:
+      ptx: '2.0'
+      sm: 20
+    video:
+      lanes: scalar
+      operation: compare
+    modifiers:
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: comparison
+      kind: comparison
+      presence: required
+      values:
+      - eq
+      - ne
+      - lt
+      - le
+      - gt
+      - ge
+      domain: comparison_operators
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      - min
+      - max
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: plain
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+    - name: secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: none
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          allow_immediate: true
+    - name: merge
+      forbidden_modifiers:
+      - secondary
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: required_scalar
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: optional_scalar
+          type_modifier: atype
+          allow_immediate: true
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: optional_scalar
+          type_modifier: btype
+          allow_immediate: true
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          allow_immediate: true
+- opcode: vadd2
+  section: 9.7.19.2.1
+  doc: Typed vadd2 video instruction with source-faithful selectors and controls.
+  syntax: vadd2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vadd2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vsub2
+  section: 9.7.19.2.1
+  doc: Typed vsub2 video instruction with source-faithful selectors and controls.
+  syntax: vsub2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vsub2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vavrg2
+  section: 9.7.19.2.1
+  doc: Typed vavrg2 video instruction with source-faithful selectors and controls.
+  syntax: vavrg2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vavrg2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vabsdiff2
+  section: 9.7.19.2.1
+  doc: Typed vabsdiff2 video instruction with source-faithful selectors and controls.
+  syntax: vabsdiff2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vabsdiff2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vmin2
+  section: 9.7.19.2.1
+  doc: Typed vmin2 video instruction with source-faithful selectors and controls.
+  syntax: vmin2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vmin2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vmax2
+  section: 9.7.19.2.1
+  doc: Typed vmax2 video instruction with source-faithful selectors and controls.
+  syntax: vmax2.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vmax2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vset2
+  section: 9.7.19.2.2
+  doc: Typed vset2 video instruction with source-faithful selectors and controls.
+  syntax: vset2.atype.btype.cmp{.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vset2_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: two
+      operation: compare
+    modifiers:
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: comparison
+      kind: comparison
+      presence: required
+      values:
+      - eq
+      - ne
+      - lt
+      - le
+      - gt
+      - ge
+      domain: comparison_operators
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: half_mask
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: half_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: half_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+- opcode: vadd4
+  section: 9.7.19.2.3
+  doc: Typed vadd4 video instruction with source-faithful selectors and controls.
+  syntax: vadd4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vadd4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vsub4
+  section: 9.7.19.2.3
+  doc: Typed vsub4 video instruction with source-faithful selectors and controls.
+  syntax: vsub4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vsub4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vavrg4
+  section: 9.7.19.2.3
+  doc: Typed vavrg4 video instruction with source-faithful selectors and controls.
+  syntax: vavrg4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vavrg4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vabsdiff4
+  section: 9.7.19.2.3
+  doc: Typed vabsdiff4 video instruction with source-faithful selectors and controls.
+  syntax: vabsdiff4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vabsdiff4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vmin4
+  section: 9.7.19.2.3
+  doc: Typed vmin4 video instruction with source-faithful selectors and controls.
+  syntax: vmin4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vmin4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vmax4
+  section: 9.7.19.2.3
+  doc: Typed vmax4 video instruction with source-faithful selectors and controls.
+  syntax: vmax4.dtype.atype.btype{.sat|.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vmax4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: arithmetic
+      sat_modifier: sat
+    modifiers:
+    - name: dtype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: sat
+      kind: flag
+      presence: optional
+      values:
+      - value: true
+        token: .sat
+      default: false
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+          type_modifier: dtype
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none
+          type_modifier: dtype
+- opcode: vset4
+  section: 9.7.19.2.4
+  doc: Typed vset4 video instruction with source-faithful selectors and controls.
+  syntax: vset4.atype.btype.cmp{.add} d{.mask}, a{.asel}, b{.bsel}, c;
+  variants:
+  - name: vset4_packed
+    availability:
+      ptx: '3.0'
+      sm: 30
+    video:
+      lanes: four
+      operation: compare
+    modifiers:
+    - name: atype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: btype
+      kind: video_type
+      presence: required
+      values:
+      - s32
+      - u32
+      domain: video_types
+    - name: comparison
+      kind: comparison
+      presence: required
+      values:
+      - eq
+      - ne
+      - lt
+      - le
+      - gt
+      - ge
+      domain: comparison_operators
+    - name: secondary
+      kind: video_secondary_op
+      presence: optional
+      values:
+      - add
+      domain: video_secondary_ops
+      default: none
+    operand_layouts:
+    - name: packed
+      operands:
+      - name: dst
+        kind: video_operand
+        role: dst
+        access: write
+        video:
+          position: destination
+          selector: byte_mask
+      - name: a
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: a
+          selector: byte_swizzle
+          type_modifier: atype
+      - name: b
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: b
+          selector: byte_swizzle
+          type_modifier: btype
+      - name: c
+        kind: video_operand
+        role: src
+        access: read
+        video:
+          position: c
+          selector: none

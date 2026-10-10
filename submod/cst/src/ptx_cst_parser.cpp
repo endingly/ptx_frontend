@@ -682,6 +682,22 @@ PtxCstParser::parseIndexedBranchOperands() {
 
 std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
 PtxCstParser::parseOperand() {
+  if (token(peek()).kind == TokenKind::Minus &&
+      token(peekNext()).kind == TokenKind::Ident) {
+    const TokenId minus = consume();
+    const TokenId identifier = consume();
+    const syntax_cst::CstIdentifier base{identifier};
+    if (token(peek()).kind == TokenKind::DotIdent) {
+      const TokenId selector = consume();
+      return syntax_cst::CstOperand{syntax_cst::CstNegatedRegisterOperand{
+          minus,
+          syntax_cst::CstVectorMember{
+              base, selector, {identifier, selector + 1}},
+          {minus, selector + 1}}};
+    }
+    return syntax_cst::CstOperand{syntax_cst::CstNegatedRegisterOperand{
+        minus, base, {minus, identifier + 1}}};
+  }
   if (token(peek()).kind == TokenKind::Exclamation) {
     const TokenId exclamation = consume();
     if (atImmediateStart()) {

@@ -418,7 +418,7 @@ family scope，绝不表示整部 PTX ISA。
 | Hopper WGMMA | 进入 1.0 | M16 |
 | Blackwell TCGEN05 | 进入 1.0 | M17/M18 |
 | Stack manipulation | 默认延后 | post-1.0 |
-| Video instructions | 明确不进入 1.0 | post-1.0 |
+| Video instructions | 当前分支提供 PTX 9.3 全部 23 个 scalar/SIMD2/SIMD4 opcode 的类型化源码与静态检查；算术执行另行负责 | post-1.0 |
 | Misc instructions | `trap` 已完成；`setmaxnreg` 进入 common profile；其他延后 | M9/M12 |
 | Multimem | base identity 可预留；完整 instruction family 延后 | post-1.0 |
 | Special registers | cluster/smem/graph modern subset进入 1.0 | M11 |
@@ -1314,7 +1314,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 | Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
 | Surface | `suld/sust/sured/suq` |
 | Stack | `stacksave/stackrestore/alloca` |
-| Video | scalar/SIMD video instruction family |
+| Video | 当前分支提供全部 23 个 opcode、23 个类型化 variant、39 个 operand layout，含 scalar/SIMD2/SIMD4 selector/mask、vmad register-negation、整数来源与 AST-free 检查；[覆盖与边界](../docs/zh-han/video_coverage.md)。GPU 算术、CFG 与执行语义仍属后续验证。 |
 | Extended precision | 跨指令 carry-chain analysis 与 execution |
 | Transcendental | rcp/sqrt/rsqrt/sin/cos/lg2/ex2/tanh 完整 cross-product |
 | Legacy/deprecated | deprecated shfl/vote、legacy banks、历史 matrix variant |

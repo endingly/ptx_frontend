@@ -362,3 +362,7 @@ generator suite. C++ tests cover the real parser/resolver/checker path.
 Extend schema and normalized dataclasses first, then Syntax/Resolved models,
 then emitters and tests. Do not make an emitter read a new raw YAML field: that
 bypasses the consistency boundary.
+
+## Video topology projection
+
+Frozen `VideoInstructionSpec` and `VideoOperandSpec` carry lane/operation, role, selector, coercion and written-negation obligations. Normalization validates field references and selector topology before syntax-language overlap checks. The same typed slot shape feeds selection and overlap validation, so scalar merge and secondary forms remain distinct. Backend projection rewrites modifier references through the existing field-alias map, including `.sat` → `saturate`; C++ policy receives typed enums and stable field IDs, not opcode-name or raw-suffix branches. Generated classes and checker descriptors consume this normalized contract.

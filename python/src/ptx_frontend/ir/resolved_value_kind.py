@@ -28,6 +28,10 @@ class ResolvedValueKind(Enum):
     TCGEN_NUM = "TcgenRepeat"
     TCGEN_RED_OP = "TcgenReductionOp"
     TCGEN_WAIT = "TcgenWaitClass"
+    VIDEO_SCALE = "VideoScale"
+    VIDEO_SHIFT_MODE = "VideoShiftMode"
+    VIDEO_SECONDARY_OP = "VideoSecondaryOp"
+    VIDEO_TYPE = "VideoType"
     ASYNC_PROXY_KIND = "AsyncProxyKind"
     PROXY_KIND_PAIR = "ProxyKindPair"
 
@@ -52,6 +56,7 @@ class ResolvedValueKind(Enum):
     TENSOR_IM2COL_INFO = "TensorIm2colInfo"
     TENSOR_OPERAND = "TensorOperand"
     FABRIC_HANDLE = "FabricHandle"
+    VIDEO_OPERAND = "VideoOperand"
     TEXTURE_ACCESS = "TextureAccess"
     TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
     TEXTURE_RESULT = "TextureResult"

@@ -6,7 +6,7 @@ from ptx_frontend.spec.model import (
     OperandSpec,
 )
 from .availability import normalize_availability
-from ptx_frontend.spec.synatax_shapes import OPERAND_SYNTAX_SHAPES
+from ptx_frontend.spec.synatax_shapes import operand_syntax_shapes
 from .operands import normalize_operand
 
 
@@ -179,7 +179,7 @@ def _modern_pack_interval(operand: OperandSpec) -> tuple[int, int] | None:
 
 
 def _flat_slot_overlap(left: OperandSpec, right: OperandSpec) -> bool:
-    if not (OPERAND_SYNTAX_SHAPES[left.kind] & OPERAND_SYNTAX_SHAPES[right.kind]):
+    if not (operand_syntax_shapes(left) & operand_syntax_shapes(right)):
         return False
     left_interval = _modern_pack_interval(left)
     right_interval = _modern_pack_interval(right)
@@ -195,8 +195,8 @@ def _flat_slot_overlap(left: OperandSpec, right: OperandSpec) -> bool:
 
 
 def _flat_slot_is_subset(candidate: OperandSpec, other: OperandSpec) -> bool:
-    candidate_shapes = OPERAND_SYNTAX_SHAPES[candidate.kind]
-    other_shapes = OPERAND_SYNTAX_SHAPES[other.kind]
+    candidate_shapes = operand_syntax_shapes(candidate)
+    other_shapes = operand_syntax_shapes(other)
     if (candidate_shapes & other_shapes) != candidate_shapes:
         return False
     candidate_interval = _modern_pack_interval(candidate)

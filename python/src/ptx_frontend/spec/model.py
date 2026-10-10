@@ -71,6 +71,64 @@ class FabricInstructionSpec:
     requires_mbarrier_layout_v1: bool = False
 
 
+class SurfaceGeometry(Enum):
+    """Surface coordinate topology, without texture sampling geometries."""
+
+    ONE_D = "1d"
+    TWO_D = "2d"
+    THREE_D = "3d"
+    ARRAY_ONE_D = "a1d"
+    ARRAY_TWO_D = "a2d"
+
+
+class SurfaceAddressingMode(Enum):
+    """Whether the x coordinate selects bytes or formatted samples."""
+
+    BYTE = "b"
+    SAMPLE = "p"
+
+
+class SurfaceBoundaryMode(Enum):
+    """Source-selected handling of out-of-bounds surface accesses."""
+
+    TRAP = "trap"
+    CLAMP = "clamp"
+    ZERO = "zero"
+
+
+class SurfaceReductionOperation(Enum):
+    """The five reduction operations admitted by surface Syntax."""
+
+    ADD = "add"
+    MIN = "min"
+    MAX = "max"
+    AND = "and"
+    OR = "or"
+
+
+class SurfaceQuery(Enum):
+    """Statically selected property; the returned value remains a runtime fact."""
+
+    WIDTH = "width"
+    HEIGHT = "height"
+    DEPTH = "depth"
+    CHANNEL_DATA_TYPE = "channel_data_type"
+    CHANNEL_ORDER = "channel_order"
+    ARRAY_SIZE = "array_size"
+    MEMORY_LAYOUT = "memory_layout"
+
+
+@dataclass(frozen=True)
+class SurfaceInstructionSpec:
+    """Closed exact-form surface semantics from the canonical ISA input."""
+
+    geometry: SurfaceGeometry | None = None
+    addressing: SurfaceAddressingMode | None = None
+    boundary: SurfaceBoundaryMode | None = None
+    operation: SurfaceReductionOperation | None = None
+    query: SurfaceQuery | None = None
+    vector_arity: int = 1
+    indirect_availability: dict[str, Any] = field(default_factory=dict)
 class StackOperation(Enum):
     """Static action performed on the current thread stack."""
 
@@ -524,6 +582,8 @@ class OperandKind(_SemanticToken):
     TENSOR_IM2COL_INFO = "tensor_im2col_info"
     TENSOR_OPERAND = "tensor_operand"
     FABRIC_HANDLE = "fabric_handle"
+    SURFACE_ACCESS = "surface_access"
+    SURFACE_QUERY_RESOURCE = "surface_query_resource"
     STACK_TOKEN = "stack_token"
     LOCAL_ALLOCATION_RESULT = "local_allocation_result"
     TEXTURE_ACCESS = "texture_access"
@@ -833,6 +893,7 @@ class OperandSpec:
     minimum_elements: int | None = None
     maximum_elements: int | None = None
     element_kinds: tuple[OperandKind, ...] = ()
+    surface_geometry: SurfaceGeometry | None = None
     texture_geometry: TextureGeometry | None = None
     texture_legacy_v4_coordinates: bool = False
     texture_unbracketed: bool = False
@@ -879,6 +940,7 @@ class VariantSpec:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    surface: SurfaceInstructionSpec | None = None
     stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE

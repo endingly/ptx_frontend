@@ -4043,8 +4043,8 @@ CheckResult check_cp_async_rule(std::span<const FieldView> fields,
 }
 
 /** Check one opaque resource's owned kind and indirect carrier metadata. */
-void check_texture_resource_static(const ResolvedOpaqueResourceRef& resource,
-                                   CheckDiagnostics& diagnostics) {
+void check_opaque_resource_static(const ResolvedOpaqueResourceRef& resource,
+                                  CheckDiagnostics& diagnostics) {
   const auto report = [&](std::string message) {
     diagnostics.push_back({
         .kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
@@ -4100,6 +4100,126 @@ void check_texture_indirect_gate(const TextureInstructionDescriptor& descriptor,
         .message = "Indirect texture resource is unavailable for this target.",
     });
   }
+}
+
+/** Check a surface identity and apply its canonical indirect-resource gate. */
+void check_surface_resource_static(
+    const SurfaceInstructionDescriptor& descriptor,
+    const ResolvedOpaqueResourceRef& resource, const Context& context,
+    CheckDiagnostics& diagnostics) {
+  check_opaque_resource_static(resource, diagnostics);
+  if (resource.expected_kind != base::OpaqueResourceKind::Surface)
+    diagnostics.push_back(
+        {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+         .range = resource.source_range,
+         .message = "Surface use requires a surface resource kind."});
+  if (std::holds_alternative<ResolvedRegisterRef>(resource.value)) {
+    if (!descriptor.indirect_availability)
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+           .range = resource.source_range,
+           .message = "Surface form lacks an indirect resource gate."});
+    else if (!is_available(*descriptor.indirect_availability, context.target))
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::UnsupportedAvailability,
+           .range = resource.source_range,
+           .message =
+               "Indirect surface resource is unavailable for this target."});
+  }
+}
+
+/** Recheck owned surface lanes and mutable selected data types without syntax. */
+CheckResult check_surface_static_payload(
+    const SurfaceInstructionDescriptor& descriptor,
+    SurfaceSelectedTypes selected_types, const ResolvedSurfaceAccess& access,
+    const Context& context) {
+  CheckDiagnostics diagnostics;
+  const auto report = [&](SourceRange range, std::string message) {
+    diagnostics.push_back(
+        {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+         .range = range,
+         .message = std::move(message)});
+  };
+  check_surface_resource_static(descriptor, access.surface, context,
+                                diagnostics);
+  if (!descriptor.geometry || !descriptor.addressing || !descriptor.boundary ||
+      descriptor.query) {
+    report(context.instruction_range,
+           "Surface access has an invalid operation descriptor.");
+    return std::unexpected(std::move(diagnostics));
+  }
+  const auto geometry = *descriptor.geometry;
+  if (!access.bracketed ||
+      access.coordinates.size() != surface_coordinate_arity(geometry) ||
+      (!access.coordinates_packed && geometry != SurfaceGeometry::OneD) ||
+      access.comma_ranges.size() != 1)
+    report(context.instruction_range,
+           "Surface coordinate tuple or bracket topology disagrees with "
+           "geometry.");
+  if (!selected_types.data_type ||
+      *selected_types.data_type == ScalarType::Invalid ||
+      descriptor.vector_arity *
+              base::scalar_size_of(
+                  selected_types.data_type.value_or(ScalarType::Invalid)) >
+          16)
+    report(context.instruction_range,
+           "Surface selected type or vector payload exceeds its 128-bit "
+           "contract.");
+  for (size_t index = 0; index < access.coordinates.size(); ++index) {
+    const auto& lane = access.coordinates[index];
+    const auto role = surface_lane_role(geometry, index);
+    if (lane.role != role)
+      report(lane.range,
+             "Surface coordinate lane role disagrees with geometry.");
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane.value)) {
+      const auto kind = reg->declared_type
+                            ? base::scalar_kind(*reg->declared_type)
+                            : base::ScalarKind::Invalid;
+      if (reg->register_class != ResolvedRegisterClass::General ||
+          reg->vector_width || !reg->declared_type ||
+          base::scalar_size_of(*reg->declared_type) != 4 ||
+          (kind != base::ScalarKind::Signed &&
+           kind != base::ScalarKind::Unsigned && kind != base::ScalarKind::Bit))
+        report(
+            lane.range,
+            "Surface coordinate requires a scalar 32-bit integer/bit carrier.");
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(lane.value);
+      const auto use_type =
+          role == SurfaceLaneRole::Spatial ? ScalarType::S32 : ScalarType::U32;
+      if (immediate.type != use_type ||
+          !valid_value_vector_immediate(immediate))
+        report(lane.range,
+               "Surface coordinate immediate has invalid type or source "
+               "metadata.");
+    }
+  }
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
+}
+
+/** Recheck the simple surface query resource after mutation and syntax release. */
+CheckResult check_surface_query_static_payload(
+    const SurfaceInstructionDescriptor& descriptor,
+    const ResolvedSurfaceQueryResource& resource, const Context& context) {
+  CheckDiagnostics diagnostics;
+  if (!descriptor.query || descriptor.geometry || descriptor.addressing ||
+      descriptor.boundary || descriptor.operation)
+    diagnostics.push_back(
+        {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+         .range = context.instruction_range,
+         .message = "Surface query has an invalid operation descriptor."});
+  if (!resource.bracketed)
+    diagnostics.push_back(
+        {.kind = CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+         .range = resource.resource.source_range,
+         .message = "Surface query requires source brackets."});
+  check_surface_resource_static(descriptor, resource.resource, context,
+                                diagnostics);
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
 }
 
 /** Validate instruction-local stack semantics without runtime stack simulation. */
@@ -4205,13 +4325,13 @@ CheckResult check_texture_static_payload(
          .message = std::move(message)});
   };
   const auto range = context.instruction_range;
-  check_texture_resource_static(access.texture, diagnostics);
+  check_opaque_resource_static(access.texture, diagnostics);
   check_texture_indirect_gate(descriptor, access.texture, context, diagnostics);
   if (access.texture.expected_kind != base::OpaqueResourceKind::Texture)
     report(access.texture.source_range,
            "Texture access requires a texture resource kind.");
   if (access.sampler) {
-    check_texture_resource_static(*access.sampler, diagnostics);
+    check_opaque_resource_static(*access.sampler, diagnostics);
     check_texture_indirect_gate(descriptor, *access.sampler, context,
                                 diagnostics);
     if (access.sampler->expected_kind != base::OpaqueResourceKind::Sampler)
@@ -4358,7 +4478,7 @@ CheckResult check_texture_query_static_payload(
         .range = resource.resource.source_range,
         .message = "Texture query resource must retain source brackets.",
     });
-  check_texture_resource_static(resource.resource, diagnostics);
+  check_opaque_resource_static(resource.resource, diagnostics);
   check_texture_indirect_gate(descriptor, resource.resource, context,
                               diagnostics);
   bool kind_allowed = false;

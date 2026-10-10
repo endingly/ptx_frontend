@@ -47,6 +47,7 @@ using ResolvedFieldValue = std::variant<
     WithLocs<ResolvedValueVector>, WithLocs<ResolvedTensorCoordinate>,
     WithLocs<ResolvedTensorIm2colInfo>, WithLocs<ResolvedTensorOperand>,
     WithLocs<ResolvedFabricHandle>, WithLocs<ResolvedOpaqueResourceRef>,
+    WithLocs<ResolvedSurfaceAccess>, WithLocs<ResolvedSurfaceQueryResource>,
     WithLocs<ResolvedStackToken>, WithLocs<ResolvedLocalAllocationResult>,
     WithLocs<ResolvedTextureAccess>, WithLocs<ResolvedTextureQueryResource>,
     WithLocs<ResolvedTextureResult>, WithLocs<TensorMemoryAddress>,

@@ -14,6 +14,7 @@ instruction_identity:
     matrix: 5
     parallel_synchronization_and_communication: 6
     tensor_memory: 7
+    surface: 8
     stack_manipulation: 9
 
 # This file maps normalized semantic values to C++ expressions and declares
@@ -436,6 +437,8 @@ domains:
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
       FabricHandle: ResolvedFabricHandle
+      SurfaceAccess: ResolvedSurfaceAccess
+      SurfaceQueryResource: ResolvedSurfaceQueryResource
       StackToken: ResolvedStackToken
       LocalAllocationResult: ResolvedLocalAllocationResult
       TextureAccess: ResolvedTextureAccess
@@ -552,6 +555,8 @@ domains:
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
       FabricHandle: check_end::ResolvedValueKind::FabricHandle
+      SurfaceAccess: check_end::ResolvedValueKind::SurfaceAccess
+      SurfaceQueryResource: check_end::ResolvedValueKind::SurfaceQueryResource
       StackToken: check_end::ResolvedValueKind::StackToken
       LocalAllocationResult: check_end::ResolvedValueKind::LocalAllocationResult
       TextureAccess: check_end::ResolvedValueKind::TextureAccess
@@ -599,6 +604,8 @@ domains:
       Vector: check_end::OperandShape::Vector
       TensorOperand: check_end::OperandShape::TensorOperand
       FabricHandle: check_end::OperandShape::FabricHandle
+      SurfaceAccess: check_end::OperandShape::SurfaceAccess
+      SurfaceQueryResource: check_end::OperandShape::SurfaceQueryResource
       StackToken: check_end::OperandShape::StackToken
       LocalAllocationResult: check_end::OperandShape::LocalAllocationResult
       TextureAccess: check_end::OperandShape::TextureAccess

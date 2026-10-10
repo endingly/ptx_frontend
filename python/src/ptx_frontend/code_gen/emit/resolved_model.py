@@ -66,6 +66,42 @@ _TEXTURE_GEOMETRY_CPP = {
 }
 
 
+def _surface_descriptor(variant) -> str:
+    """Emit immutable surface topology plus its mutable selected data type."""
+    contract = variant.surface
+    if contract is None:
+        return ""
+    def selected(domain: str, value) -> str:
+        """Spell a closed enum value or an absent form fact."""
+        if value is None:
+            return "std::nullopt"
+        name = ({"b": "Byte", "p": "Sample"}.get(value.value)
+                if domain == "SurfaceAddressingMode" else None)
+        if domain == "SurfaceGeometry":
+            name = _TEXTURE_GEOMETRY_CPP[value.value]
+        return domain + "::" + (name or file_stem_to_pascal_case(value.value))
+    gate = emit_availability(contract.indirect_availability)
+    return f'''  /** Canonical gate for a scalar register-carried surface resource. */
+  inline static constexpr checker::AvailabilityDescriptor indirect_gate{gate};
+  /** Immutable exact-form surface semantics, independent of texture mode. */
+  inline static constexpr SurfaceInstructionDescriptor surface_contract{{
+      .geometry = {selected("SurfaceGeometry", contract.geometry)},
+      .addressing = {selected("SurfaceAddressingMode", contract.addressing)},
+      .boundary = {selected("SurfaceBoundaryMode", contract.boundary)},
+      .operation = {selected("SurfaceReductionOperation", contract.operation)},
+      .query = {selected("SurfaceQuery", contract.query)},
+      .vector_arity = {contract.vector_arity},
+      .indirect_availability = &indirect_gate,
+  }};
+  /** Borrow immutable exact-form surface semantics. */
+  const SurfaceInstructionDescriptor* surface_descriptor() const noexcept override {{
+    return &surface_contract;
+  }}
+  /** Read the current mutable data type without consulting source syntax. */
+  SurfaceSelectedTypes surface_selected_types() const noexcept override {{
+    return {{.data_type = dtype.value}};
+  }}
+'''
 def _stack_descriptor(variant) -> str:
     """Emit immutable stack semantics from canonical metadata."""
     contract = variant.stack
@@ -226,6 +262,7 @@ REFERENCE_TYPES = (
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
     "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
+    "ResolvedSurfaceAccess", "ResolvedSurfaceQueryResource",
     "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
     "ResolvedTextureResult", "ResolvedStackToken", "ResolvedLocalAllocationResult",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
@@ -318,6 +355,14 @@ class Instruction {{
   Opcode opcode_kind() const noexcept;
   /** Return its canonical opcode mnemonic. */
   std::string_view opcode_name() const noexcept;
+  /** Return immutable surface-family facts, or null for other instructions. */
+  virtual const SurfaceInstructionDescriptor* surface_descriptor() const noexcept {{
+    return nullptr;
+  }}
+  /** Return current type modifiers for surface forms. */
+  virtual SurfaceSelectedTypes surface_selected_types() const noexcept {{
+    return {{}};
+  }}
   /** Borrow static stack semantics, or null for another family. */
   virtual const StackInstructionDescriptor* stack_descriptor() const noexcept {{
     return nullptr;
@@ -557,6 +602,8 @@ def _form_contract(variant, backend) -> str:
             "  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept {\n"
             "    return &matrix_topology;\n  }"
         )
+    if variant.surface is not None:
+        parts.append(_surface_descriptor(variant))
     if variant.texture is not None:
         parts.append(_texture_descriptor(variant))
     if variant.stack is not None:

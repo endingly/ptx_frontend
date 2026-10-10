@@ -1312,7 +1312,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 | Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；[覆盖与边界](../docs/zh-han/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
 | Fabric | 当前分支提供 PTX 9.3 类型化 CFT handle、`fabric.try_get/put/red/pullred`、`submit`、`wait` 六族与六种 fabric proxy fence 源码及静态前端检查；[覆盖与边界](../docs/zh-han/fabric_coverage.md)。逻辑端点设置、运行时资源状态、提交/完成协议和 GPU 结果仍属后续验证，不由前端推断。 |
 | Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
-| Surface | `suld/sust/sured/suq` |
+| Surface | 当前分支提供 PTX 9.3 `suld/sust/sured/suq` 四族 340 个 typed form，覆盖 1,864 种合法 mnemonic 组合；独立 surface descriptor、opaque 资源与坐标、静态类型/shape/availability 检查；[覆盖与边界](../docs/zh-han/surface_coverage.md)。实际 surface 配置、格式转换、边界行为与运行时访问有效性仍属后续验证。 |
 | Stack | 当前分支提供 `stacksave/stackrestore/alloca` 三族、u32/u64 两宽与省略/显式 alignment，共八个 PTX 9.3 source forms，具备 typed token/local-result、AST-free 静态检查与安装 consumer；[覆盖与边界](../docs/zh-han/stack_manipulation_coverage.md)。运行时栈内存、溢出、token 来源/寿命与跨 CFG 栈纪律仍属后续验证。 |
 | Video | scalar/SIMD video instruction family |
 | Extended precision | 跨指令 carry-chain analysis 与 execution |

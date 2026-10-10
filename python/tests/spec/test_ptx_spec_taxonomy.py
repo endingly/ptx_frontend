@@ -8,6 +8,7 @@ SPEC_DIR = packaged_spec_dir()
 
 
 EXPECTED_FILES = {
+    "surface.yaml": ("surface", "surface", "9.7.12"),
     "arithmetic.yaml": ("arithmetic", "arithmetic", None),
     "comparison_and_selection.yaml": (
         "comparison_and_selection",
@@ -35,6 +36,12 @@ EXPECTED_FILES = {
 }
 
 EXPECTED_SECTIONS = {
+    "surface.yaml": {
+        "suld": {"9.7.12.1"},
+        "sust": {"9.7.12.2"},
+        "sured": {"9.7.12.3"},
+        "suq": {"9.7.12.4"},
+    },
     "arithmetic.yaml": {
         "add": {"9.7.1.1", "9.7.2.1", "9.7.3.3", "9.7.4.1", "9.7.5.1"},
         "addc": {"9.7.2.2"},

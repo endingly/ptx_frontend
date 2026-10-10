@@ -15,6 +15,7 @@ from ptx_frontend.spec.model import (
     OperandRegisterWidthPolicy,
     OperandRole,
     OperandSpec,
+    SurfaceGeometry,
     TextureGeometry,
     TextureResourceRole,
     OperandStateSpaceExpression,
@@ -109,6 +110,14 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
     )
     immediate_conversion = _normalize_immediate_conversion(raw)
     address = _normalize_address_options(raw)
+    surface_geometry = None
+    if kind is OperandKind.SURFACE_ACCESS:
+        try:
+            surface_geometry = SurfaceGeometry(raw["surface_geometry"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("surface_access requires a known surface_geometry") from error
+    elif "surface_geometry" in raw:
+        raise ValueError("surface_geometry requires surface_access")
     texture_geometry = None
     if kind is OperandKind.TEXTURE_ACCESS:
         try:
@@ -165,6 +174,7 @@ def normalize_operand(raw: dict[str, Any]) -> OperandSpec:
         minimum_elements=pack.minimum_elements,
         maximum_elements=pack.maximum_elements,
         element_kinds=pack.element_kinds,
+        surface_geometry=surface_geometry,
         texture_geometry=texture_geometry,
         texture_legacy_v4_coordinates=texture_legacy_v4_coordinates,
         texture_unbracketed=texture_unbracketed,
@@ -484,10 +494,11 @@ def _normalize_register_width(
             OperandKind.REGISTER,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.REGISTER_VECTOR,
+            OperandKind.VALUE_VECTOR,
         }:
             raise ValueError(
                 f"operand {raw['name']!r}: equal_or_wider register_width is "
-                "only valid for kind 'reg', 'reg_or_imm', or 'reg_vector'"
+                "only valid for kind 'reg', 'reg_or_imm', 'reg_vector', or 'value_vector'"
             )
         if type_expression is None:
             raise ValueError(

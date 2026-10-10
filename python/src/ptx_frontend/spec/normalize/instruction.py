@@ -33,6 +33,7 @@ from .constraints import (
     _normalize_immediate_range_constraints,
     _normalize_immediate_multiple_of_constraint,
 )
+from .surface import normalize_surface_contract, validate_surface_variant
 from .availability import normalize_availability
 from .layout import normalize_operand_layouts
 from .matrix import normalize_matrix
@@ -433,6 +434,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     fabric=_normalize_fabric_contract(
                         raw_variant.get("fabric"), raw_instruction["opcode"]
                     ),
+                    surface=normalize_surface_contract(raw_variant.get("surface"), raw_instruction["opcode"]),
                     stack=_normalize_stack_contract(
                         raw_variant.get("stack"), raw_instruction["opcode"]
                     ),
@@ -488,6 +490,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_sync_variant(variant)
             validate_tcgen_copy_shift_variant(variant)
             validate_tcgen_mma_variant(variant)
+            validate_surface_variant(raw_instruction["opcode"], variant)
             _validate_stack_variant(variant)
             _validate_fabric_variant(variant)
             _validate_texture_variant(raw_instruction["opcode"], variant)

@@ -431,6 +431,11 @@ def _emit_operand_binding_descriptor(
         "TensorCtaMaskRole::MulticastCluster,"
         if binding.tensor_cta_mask else ""
     )
+    surface_geometry = (
+        "\n              .surface_geometry = SurfaceGeometry::"
+        + _TEXTURE_GEOMETRY_CPP[binding.surface_geometry.value] + ","
+        if binding.surface_geometry is not None else ""
+    )
     texture_geometry = (
         "\n              .texture_geometry = TextureGeometry::"
         + _TEXTURE_GEOMETRY_CPP[binding.texture_geometry.value]
@@ -477,7 +482,7 @@ def _emit_operand_binding_descriptor(
               .role = {cpp_value(CppDomain.RESOLVED_OPERAND_ROLES, binding.role.value, backend=backend)},
               .access = {cpp_value(CppDomain.RESOLVED_OPERAND_ACCESS, binding.access.value, backend=backend)},
               .allowed_shapes = {allowed_shapes},{vector_arities}{vector_arity_modifier}{vector_policy}{allow_vector_sink}{vector_sink_payload_bits}{allowed_register_types}{require_uniform_register_family}{source_value_vector}{signed_vector_range}{allow_destination_sink}{allow_predicate_sink}{mbarrier_state_token_form}{sink_availability}{allow_function_symbol}
-              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{texture_geometry}{texture_legacy_v4}{texture_unbracketed}{texture_resource_kind}{texture_query_sampler_by_mode}{texture_residency_required}{tensor_cta_mask_role}
+              .preserve_parameter_address_space = {str(binding.preserve_parameter_address_space).lower()},{type_tag}{cardinality}{element_shapes}{address_state_spaces}{state_space}{address_base_policy}{address_offset_domain}{parameter_constraint}{expected_tensor_mode}{expected_tensor_rank}{surface_geometry}{texture_geometry}{texture_legacy_v4}{texture_unbracketed}{texture_resource_kind}{texture_query_sampler_by_mode}{texture_residency_required}{tensor_cta_mask_role}
               .immediate_conversion_policy = {immediate_conversion_policy},
           }}"""
 

@@ -530,6 +530,7 @@ class ResolvedOperandBinding:
     vector_arity_modifier_field_id: str | None = None
     vector_type_policy: ResolvedVectorTypePolicy = ResolvedVectorTypePolicy.AGGREGATE
     allow_vector_sink: bool = False
+    allow_named_vector: bool = False
     vector_sink_payload_bits: int = 0
     allowed_vector_register_types: tuple[str, ...] = ()
     require_uniform_vector_register_family: bool = False
@@ -1961,6 +1962,7 @@ def _build_operand_layout(
                     operand.vector_type_policy.value.capitalize()
                 ),
                 allow_vector_sink=operand.vector_allow_sink,
+                allow_named_vector=operand.vector_allow_named,
                 vector_sink_payload_bits=operand.vector_sink_payload_bits,
                 allowed_vector_register_types=operand.vector_allowed_register_types,
                 require_uniform_vector_register_family=(

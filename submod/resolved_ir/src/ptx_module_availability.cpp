@@ -540,6 +540,8 @@ struct ModuleReferenceUse {
   bool requires_predicate_register{};
   /** Address-base grammar excludes ordinary selected register components. */
   bool excludes_register_component{};
+  /** True only for a lane in a structurally validated complete named vector. */
+  bool named_vector_projection{};
   bool function_local{};
   SourceRange range;
 };
@@ -737,12 +739,20 @@ void collect_operand_references(
     else
       collect_register(std::get<ResolvedRegisterRef>(value));
   } else if constexpr (std::same_as<Value, ResolvedRegisterVector>) {
+    const bool named =
+        value.source.kind == ResolvedVectorSourceKind::NamedVector &&
+        valid_register_vector_source(value, locations, true, fallback);
+    if (value.source.whole_base)
+      collect_operand_references(value.source.whole_base->value,
+                                 value.source.whole_base->locs, fallback, uses,
+                                 address_resolution_policy);
     for (size_t index = 0; index < value.elements.size(); ++index)
       if (value.elements[index]) {
         const std::array<SourceRange, 1> lane_range{
             index < locations.size() ? locations[index] : fallback};
         collect_operand_references(*value.elements[index], lane_range, fallback,
                                    uses, address_resolution_policy);
+        uses.back().named_vector_projection = named;
       }
   } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
     for (size_t index = 0; index < value.elements.size(); ++index) {
@@ -901,8 +911,9 @@ class ReferenceCollector final : public detail::IReferenceObserver {
  public:
   /** Borrow destination and instruction fallback only for one synchronous visit. */
   ReferenceCollector(std::vector<ModuleReferenceUse>& uses,
-                     SourceRange fallback)
-      : uses_(uses), fallback_(fallback) {}
+                     SourceRange fallback,
+                     checker::CheckDiagnostics& diagnostics)
+      : uses_(uses), fallback_(fallback), diagnostics_(diagnostics) {}
   /** Collect a video carrier independently of its retained selector or minus. */
   void video_operand(const ResolvedVideoOperand& value,
                      std::span<const SourceRange> locations,
@@ -1028,6 +1039,10 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void register_vector(const ResolvedRegisterVector& value,
                        std::span<const SourceRange> locations,
                        checker::AddressSymbolResolutionPolicy policy) override {
+    if (!valid_register_vector_source(value, locations, true, fallback_))
+      append_model_mismatch(
+          diagnostics_, fallback_,
+          "Owned register vector has invalid source provenance.");
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect bound register lanes from a borrowed source value vector. */
@@ -1153,6 +1168,8 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   std::vector<ModuleReferenceUse>& uses_;
   /** Owned instruction source range used when an operand has no explicit range. */
   SourceRange fallback_;
+  /** Borrowed only for the synchronous instruction reference visit. */
+  checker::CheckDiagnostics& diagnostics_;
 };
 /** Return a symbol only when an externally supplied identity is in table bounds. */
 const binding::Symbol* owned_symbol(const ResolvedModule& module,
@@ -1326,7 +1343,8 @@ void check_module_references(const ResolvedModule& module,
     StackContextObserver stack_context(function, diagnostics,
                                        function.instruction_ranges[index]);
     function.body[index]->visit_references(stack_context);
-    ReferenceCollector collector(uses, function.instruction_ranges[index]);
+    ReferenceCollector collector(uses, function.instruction_ranges[index],
+                                 diagnostics);
     function.body[index]->visit_references(collector);
   }
   for (const auto& use : uses) {
@@ -1368,7 +1386,7 @@ void check_module_references(const ResolvedModule& module,
           cached.component ? std::optional{cached.component->declaration_width}
                            : cached.vector_width;
       bool component_binding_valid =
-          valid_register_component(cached) &&
+          (valid_register_component(cached) || use.named_vector_projection) &&
           !(use.excludes_register_component && cached.component);
       if (cached.component) {
         const auto lookup = module.symbols.lookup(

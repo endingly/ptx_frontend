@@ -33,16 +33,21 @@ TEST(ResolvedIrChecker, RevalidatesExecutionPredicateMetadata) {
       .target = {.ptx_version = {9, 3}, .sm_version = 90},
       .instruction_range = kInstructionRange,
   };
-  auto mov = resolve_guarded("@%p0 mov.b32 %r0, {%h0, %h1};");
+  constexpr std::string_view mov_source = "@%p0 mov.b32 %r0, {%h0, %h1};";
+  const Context mov_context{
+      .target = context.target,
+      .instruction_range = {{1, 1},
+                            {1, static_cast<int32_t>(mov_source.size() + 1)}}};
+  auto mov = resolve_guarded(mov_source);
   ASSERT_TRUE(mov.has_value()) << mov.error().message;
   auto& mov_value = **mov;
   ASSERT_TRUE(mov_value.execution_predicate.has_value());
   ASSERT_FALSE(mov_value.execution_predicate->locs.empty());
   const SourceRange guard_range = mov_value.execution_predicate->locs.front();
-  EXPECT_TRUE(mov_value.check(context).has_value());
+  EXPECT_TRUE(mov_value.check(mov_context).has_value());
   mov_value.execution_predicate->value.register_ref.register_class =
       ResolvedRegisterClass::General;
-  const auto invalid_class = mov_value.check(context);
+  const auto invalid_class = mov_value.check(mov_context);
   ASSERT_FALSE(invalid_class.has_value());
   EXPECT_EQ(invalid_class.error().front().kind,
             CheckDiagnosticKind::InvalidExecutionPredicate);

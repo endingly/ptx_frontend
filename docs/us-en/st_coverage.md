@@ -1,5 +1,7 @@
 # ST Coverage
 
+Ordinary named v2/v4 data registers (at most 128 declared bits) are accepted alongside braces for ordinary LD/ST, LDNC and LDU. Modern 256-bit and async store forms remain brace-only; see [owned source contract](resolved_ir_design.md#named-memory-vector-sources).
+
 This document records the PTX 9.3 `st` forms accepted by the frontend. The
 machine-readable authority is
 `python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`; this

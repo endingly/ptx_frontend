@@ -213,6 +213,7 @@ def emit_check_operand_view(
                 OperandView view{{
                     .field_id = "{field.name}",
                     .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "Vector")},
+                    .register_vector = &{object_name}.{field.name}.value,
                     .vector_arity = {object_name}.{field.name}.value.elements.size(),
                     .locations = {object_name}.{field.name}.locs,
                 }};

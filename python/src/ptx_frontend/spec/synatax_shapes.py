@@ -26,6 +26,8 @@ class OperandSyntaxShape(IntFlag):
 
 
 OPERAND_SYNTAX_SHAPES = {
+    OperandKind.STACK_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.LOCAL_ALLOCATION_RESULT: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.IMMEDIATE: OperandSyntaxShape.IMMEDIATE,
     OperandKind.REGISTER_OR_IMMEDIATE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,

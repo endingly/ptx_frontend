@@ -121,6 +121,9 @@ supported surface and its exclusions.
 - [Texture and opaque resource coverage](docs/us-en/texture_coverage.md) and its
   [简体中文版本](docs/zh-han/texture_coverage.md) describe the typed four-family
   source contracts, declaration identity, compatibility syntax, and runtime boundary.
+- [Stack manipulation coverage](docs/us-en/stack_manipulation_coverage.md) and its
+  [简体中文版本](docs/zh-han/stack_manipulation_coverage.md) describe all eight
+  typed source forms, owned function context, alignment conversion and runtime boundaries.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
 
 ## Build and install

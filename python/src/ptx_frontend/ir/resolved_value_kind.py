@@ -52,6 +52,8 @@ class ResolvedValueKind(Enum):
     TENSOR_IM2COL_INFO = "TensorIm2colInfo"
     TENSOR_OPERAND = "TensorOperand"
     FABRIC_HANDLE = "FabricHandle"
+    STACK_TOKEN = "StackToken"
+    LOCAL_ALLOCATION_RESULT = "LocalAllocationResult"
     TEXTURE_ACCESS = "TextureAccess"
     TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
     TEXTURE_RESULT = "TextureResult"

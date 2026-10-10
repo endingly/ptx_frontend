@@ -30,6 +30,8 @@ REFERENCE_VALUE_KINDS = frozenset({
     ResolvedValueKind.TENSOR_IM2COL_INFO,
     ResolvedValueKind.TENSOR_OPERAND,
     ResolvedValueKind.FABRIC_HANDLE,
+    ResolvedValueKind.STACK_TOKEN,
+    ResolvedValueKind.LOCAL_ALLOCATION_RESULT,
     ResolvedValueKind.TEXTURE_ACCESS,
     ResolvedValueKind.TEXTURE_QUERY_RESOURCE,
     ResolvedValueKind.TEXTURE_RESULT,

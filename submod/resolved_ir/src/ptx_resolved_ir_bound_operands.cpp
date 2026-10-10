@@ -2836,6 +2836,28 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::StackToken:
+    case ResolvedValueKind::LocalAllocationResult: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      const auto kind =
+          context && context->function_scope
+              ? (context->function_is_entry ? EnclosingFunctionKind::Entry
+                                            : EnclosingFunctionKind::Device)
+              : EnclosingFunctionKind::Unknown;
+      const auto scope = context ? context->function_scope : std::nullopt;
+      if (field.value_kind == ResolvedValueKind::StackToken) {
+        WithLocs<ResolvedStackToken> token{
+            ResolvedStackToken{std::move(value->value), kind, scope}};
+        token.locs = std::move(value->locs);
+        return ResolvedFieldValue{std::move(token)};
+      }
+      WithLocs<ResolvedLocalAllocationResult> result{
+          ResolvedLocalAllocationResult{std::move(value->value), kind, scope}};
+      result.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(result)};
+    }
     case ResolvedValueKind::TextureAccess: {
       auto value = resolve_texture_access(operand, binding, fields, context);
       if (!value)

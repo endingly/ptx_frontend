@@ -229,7 +229,7 @@ resolver/checker。
 - texture/surface；
 - video instructions；
 - 完整 multimem；
-- 完整 stack manipulation；
+- stack manipulation 的运行时栈纪律与执行验证；
 - 所有 legacy/deprecated variant；
 - 全部 transcendental、extended-precision 与 packed cross-product；
 - WGMMA/TCGEN05 的 simulator execution；
@@ -417,7 +417,7 @@ family scope，绝不表示整部 PTX ISA。
 | WMMA compatibility | representative slice 进入 1.0 | M15 |
 | Hopper WGMMA | 进入 1.0 | M16 |
 | Blackwell TCGEN05 | 进入 1.0 | M17/M18 |
-| Stack manipulation | 默认延后 | post-1.0 |
+| Stack manipulation | 八个 typed source forms 与静态 frontend 检查已实现；运行时栈纪律与执行延后 | [覆盖与边界](../docs/zh-han/stack_manipulation_coverage.md) |
 | Video instructions | 明确不进入 1.0 | post-1.0 |
 | Misc instructions | `trap` 已完成；`setmaxnreg` 进入 common profile；其他延后 | M9/M12 |
 | Multimem | base identity 可预留；完整 instruction family 延后 | post-1.0 |
@@ -1313,7 +1313,7 @@ M19 diagnostics/CI/reproducibility infrastructure
 | Fabric | 当前分支提供 PTX 9.3 类型化 CFT handle、`fabric.try_get/put/red/pullred`、`submit`、`wait` 六族与六种 fabric proxy fence 源码及静态前端检查；[覆盖与边界](../docs/zh-han/fabric_coverage.md)。逻辑端点设置、运行时资源状态、提交/完成协议和 GPU 结果仍属后续验证，不由前端推断。 |
 | Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
 | Surface | `suld/sust/sured/suq` |
-| Stack | `stacksave/stackrestore/alloca` |
+| Stack | 当前分支提供 `stacksave/stackrestore/alloca` 三族、u32/u64 两宽与省略/显式 alignment，共八个 PTX 9.3 source forms，具备 typed token/local-result、AST-free 静态检查与安装 consumer；[覆盖与边界](../docs/zh-han/stack_manipulation_coverage.md)。运行时栈内存、溢出、token 来源/寿命与跨 CFG 栈纪律仍属后续验证。 |
 | Video | scalar/SIMD video instruction family |
 | Extended precision | 跨指令 carry-chain analysis 与 execution |
 | Transcendental | rcp/sqrt/rsqrt/sin/cos/lg2/ex2/tanh 完整 cross-product |

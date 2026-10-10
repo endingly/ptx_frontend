@@ -66,6 +66,24 @@ _TEXTURE_GEOMETRY_CPP = {
 }
 
 
+def _stack_descriptor(variant) -> str:
+    """Emit immutable stack semantics from canonical metadata."""
+    contract = variant.stack
+    if contract is None:
+        return ""
+    operation = file_stem_to_pascal_case(contract.operation.value)
+    return f"""  /** Static stack operation and minimum default alignment in bytes. */
+  inline static constexpr StackInstructionDescriptor stack_contract{{
+      .operation = StackOperation::{operation}, .width = {contract.width},
+      .default_alignment = {contract.default_alignment},
+  }};
+  /** Borrow the exact form's immutable stack contract. */
+  const StackInstructionDescriptor* stack_descriptor() const noexcept override {{
+    return &stack_contract;
+  }}
+"""
+
+
 def _texture_descriptor(variant) -> str:
     """Emit the closed exact-form texture semantics exposed to consumers."""
 
@@ -209,7 +227,7 @@ REFERENCE_TYPES = (
     "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
     "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
-    "ResolvedTextureResult",
+    "ResolvedTextureResult", "ResolvedStackToken", "ResolvedLocalAllocationResult",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
     "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
 )
@@ -300,6 +318,10 @@ class Instruction {{
   Opcode opcode_kind() const noexcept;
   /** Return its canonical opcode mnemonic. */
   std::string_view opcode_name() const noexcept;
+  /** Borrow static stack semantics, or null for another family. */
+  virtual const StackInstructionDescriptor* stack_descriptor() const noexcept {{
+    return nullptr;
+  }}
   /** Return immutable texture-family facts, or null for other instructions. */
   virtual const TextureInstructionDescriptor* texture_descriptor() const noexcept {{
     return nullptr;
@@ -537,6 +559,8 @@ def _form_contract(variant, backend) -> str:
         )
     if variant.texture is not None:
         parts.append(_texture_descriptor(variant))
+    if variant.stack is not None:
+        parts.append(_stack_descriptor(variant))
     parts.extend(_tcgen_form_contract(variant))
     return "\n".join(parts)
 

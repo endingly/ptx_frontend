@@ -43,6 +43,8 @@ constexpr CatalogEntry kTargetProfiles[]{
     {"sm_13", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_20", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_30", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_50", kNoEnabledFamilyFeatures, kNoCapabilities},
+    {"sm_52", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_70", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_72", kNoEnabledFamilyFeatures, kNoCapabilities},
     {"sm_75", kNoEnabledFamilyFeatures, kNoCapabilities},

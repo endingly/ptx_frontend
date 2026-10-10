@@ -711,6 +711,8 @@ $defs:
       - tensor_im2col_info
       - tensor_operand
       - fabric_handle
+      - stack_token
+      - local_allocation_result
       - texture_access
       - texture_query_resource
       - texture_result
@@ -1670,6 +1672,16 @@ $defs:
         description: "Instruction-local asynchronous completion mechanism."
         type: string
         enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, mbarrier_complete_tx16b, fabric_read_wait, wgmma_group, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
+
+      stack:
+        description: "Static operation, scalar width and default byte alignment."
+        type: object
+        additionalProperties: false
+        required: [operation, width]
+        properties:
+          operation: {enum: [save, restore, allocate]}
+          width: {enum: [32, 64]}
+          default_alignment: {const: 8}
 
       fabric:
         description: "Typed static CFT requirements of one exact fabric form."

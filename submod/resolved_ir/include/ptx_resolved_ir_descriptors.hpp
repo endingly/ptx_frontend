@@ -89,6 +89,8 @@ enum class ResolvedValueKind : uint8_t {
   TensorIm2colInfo,
   TensorOperand,
   FabricHandle,
+  StackToken,
+  LocalAllocationResult,
   TextureAccess,
   TextureQueryResource,
   TextureResult,

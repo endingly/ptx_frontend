@@ -40,6 +40,7 @@ from ptx_frontend.spec.model import (
     OperandRole,
     OperandSpec,
     TextureGeometry,
+    StackInstructionSpec,
     TextureInstructionSpec,
     TextureResourceRole,
     OperandStateSpaceExpression,
@@ -175,6 +176,8 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.TENSOR_IM2COL_INFO: ResolvedValueKind.TENSOR_IM2COL_INFO,
     OperandKind.TENSOR_OPERAND: ResolvedValueKind.TENSOR_OPERAND,
     OperandKind.FABRIC_HANDLE: ResolvedValueKind.FABRIC_HANDLE,
+    OperandKind.STACK_TOKEN: ResolvedValueKind.STACK_TOKEN,
+    OperandKind.LOCAL_ALLOCATION_RESULT: ResolvedValueKind.LOCAL_ALLOCATION_RESULT,
     OperandKind.TEXTURE_ACCESS: ResolvedValueKind.TEXTURE_ACCESS,
     OperandKind.TEXTURE_QUERY_RESOURCE: ResolvedValueKind.TEXTURE_QUERY_RESOURCE,
     OperandKind.TEXTURE_RESULT: ResolvedValueKind.TEXTURE_RESULT,
@@ -243,6 +246,8 @@ class ResolvedOperandShape(Enum):
     PREDICATE_PAIR = "PredicatePair"
     TENSOR_OPERAND = "TensorOperand"
     FABRIC_HANDLE = "FabricHandle"
+    STACK_TOKEN = "StackToken"
+    LOCAL_ALLOCATION_RESULT = "LocalAllocationResult"
     TEXTURE_ACCESS = "TextureAccess"
     TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
     TEXTURE_RESULT = "TextureResult"
@@ -409,6 +414,7 @@ class ResolvedVariant:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
@@ -619,6 +625,8 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.TENSOR_IM2COL_INFO: (ResolvedOperandShape.VECTOR,),
     OperandKind.TENSOR_OPERAND: (ResolvedOperandShape.TENSOR_OPERAND,),
     OperandKind.FABRIC_HANDLE: (ResolvedOperandShape.FABRIC_HANDLE,),
+    OperandKind.STACK_TOKEN: (ResolvedOperandShape.STACK_TOKEN,),
+    OperandKind.LOCAL_ALLOCATION_RESULT: (ResolvedOperandShape.LOCAL_ALLOCATION_RESULT,),
     OperandKind.TEXTURE_ACCESS: (ResolvedOperandShape.TEXTURE_ACCESS,),
     OperandKind.TEXTURE_QUERY_RESOURCE: (ResolvedOperandShape.TEXTURE_QUERY_RESOURCE,),
     OperandKind.TEXTURE_RESULT: (ResolvedOperandShape.TEXTURE_RESULT,),
@@ -895,6 +903,7 @@ def _build_variant(
         condition_code_effect=variant.condition_code_effect,
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
+        stack=variant.stack,
         texture=variant.texture,
         wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),

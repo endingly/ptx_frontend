@@ -71,6 +71,23 @@ class FabricInstructionSpec:
     requires_mbarrier_layout_v1: bool = False
 
 
+class StackOperation(Enum):
+    """Static action performed on the current thread stack."""
+
+    SAVE = "save"
+    RESTORE = "restore"
+    ALLOCATE = "allocate"
+
+
+@dataclass(frozen=True)
+class StackInstructionSpec:
+    """Exact stack form width and default minimum byte alignment."""
+
+    operation: StackOperation
+    width: int
+    default_alignment: int = 8
+
+
 class TextureGeometry(Enum):
     """Texture coordinate topology independent of opcode spelling."""
 
@@ -507,6 +524,8 @@ class OperandKind(_SemanticToken):
     TENSOR_IM2COL_INFO = "tensor_im2col_info"
     TENSOR_OPERAND = "tensor_operand"
     FABRIC_HANDLE = "fabric_handle"
+    STACK_TOKEN = "stack_token"
+    LOCAL_ALLOCATION_RESULT = "local_allocation_result"
     TEXTURE_ACCESS = "texture_access"
     TEXTURE_QUERY_RESOURCE = "texture_query_resource"
     TEXTURE_RESULT = "texture_result"
@@ -860,6 +879,7 @@ class VariantSpec:
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
+    stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None

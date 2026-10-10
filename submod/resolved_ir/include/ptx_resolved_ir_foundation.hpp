@@ -352,6 +352,19 @@ struct MatrixInstructionDescriptor {
 };
 /** Function provenance retained for resolved memory addresses. */
 enum class EnclosingFunctionKind : uint8_t { Unknown, Entry, Device };
+/** Stack action independent of opcode spellings. */
+enum class StackOperation : uint8_t { Save, Restore, Allocate };
+/** Immutable static stack form semantics; alignment is a minimum in bytes. */
+struct StackInstructionDescriptor {
+  /** Source-selected save, restore or allocation action. */
+  StackOperation operation;
+  /** Unsigned operand-use width in bits, restricted to 32 or 64. */
+  uint8_t width;
+  /** Default minimum alignment in bytes when no explicit constant is present. */
+  uint32_t default_alignment = 8;
+  /** Compare exact static contracts. */
+  bool operator==(const StackInstructionDescriptor&) const = default;
+};
 /** Parameter role independent of binding-layer enum types. */
 enum class ParameterDirection : uint8_t { None, Input, Return, CallArgument };
 /** PTX 9.3 subqualifier retained for a .param memory access. */
@@ -540,7 +553,9 @@ enum class OperandShape : uint32_t {
   FabricHandle = 1 << 16,
   TextureAccess = 1 << 17,
   TextureQueryResource = 1 << 18,
-  TextureResult = 1 << 19
+  TextureResult = 1 << 19,
+  StackToken = uint32_t{1} << 24,
+  LocalAllocationResult = uint32_t{1} << 25
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -1089,6 +1104,33 @@ struct ResolvedRegisterRef {
   std::optional<ScalarType> declared_type;
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
+};
+/** Runtime-opaque stack position with owned register and function provenance. */
+struct ResolvedStackToken {
+  /** Scalar integer/bit carrier; no runtime token origin is inferred. */
+  ResolvedRegisterRef register_ref;
+  /** Unknown when the caller supplies no owning function scope. */
+  EnclosingFunctionKind enclosing_function_kind =
+      EnclosingFunctionKind::Unknown;
+  /** Stable owning function scope, absent only for fragments. */
+  std::optional<binding::ScopeId> function_scope;
+  /** Compare carrier and cached ownership. */
+  bool operator==(const ResolvedStackToken&) const = default;
+};
+/** Local stack allocation result; the runtime address is not simulated. */
+struct ResolvedLocalAllocationResult {
+  /** Scalar destination preserving declared register type and binding. */
+  ResolvedRegisterRef register_ref;
+  /** Unknown when the caller supplies no owning function scope. */
+  EnclosingFunctionKind enclosing_function_kind =
+      EnclosingFunctionKind::Unknown;
+  /** Stable owning function scope, absent only for fragments. */
+  std::optional<binding::ScopeId> function_scope;
+  /** Address-space role of the produced value, independent of address size. */
+  base::DeclarationStateSpace address_state_space =
+      base::DeclarationStateSpace::Local;
+  /** Compare carrier, local role and cached ownership. */
+  bool operator==(const ResolvedLocalAllocationResult&) const = default;
 };
 /** Bound direct resource declaration, independent of generic address layout. */
 struct ResolvedOpaqueSymbolRef {

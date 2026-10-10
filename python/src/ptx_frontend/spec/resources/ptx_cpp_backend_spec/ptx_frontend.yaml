@@ -14,6 +14,7 @@ instruction_identity:
     matrix: 5
     parallel_synchronization_and_communication: 6
     tensor_memory: 7
+    stack_manipulation: 9
 
 # This file maps normalized semantic values to C++ expressions and declares
 # runtime lookup tables. PTX legality, variants, layouts, and availability stay
@@ -435,6 +436,8 @@ domains:
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
       FabricHandle: ResolvedFabricHandle
+      StackToken: ResolvedStackToken
+      LocalAllocationResult: ResolvedLocalAllocationResult
       TextureAccess: ResolvedTextureAccess
       TextureQueryResource: ResolvedTextureQueryResource
       TextureResult: ResolvedTextureResult
@@ -549,6 +552,8 @@ domains:
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
       FabricHandle: check_end::ResolvedValueKind::FabricHandle
+      StackToken: check_end::ResolvedValueKind::StackToken
+      LocalAllocationResult: check_end::ResolvedValueKind::LocalAllocationResult
       TextureAccess: check_end::ResolvedValueKind::TextureAccess
       TextureQueryResource: check_end::ResolvedValueKind::TextureQueryResource
       TextureResult: check_end::ResolvedValueKind::TextureResult
@@ -594,6 +599,8 @@ domains:
       Vector: check_end::OperandShape::Vector
       TensorOperand: check_end::OperandShape::TensorOperand
       FabricHandle: check_end::OperandShape::FabricHandle
+      StackToken: check_end::OperandShape::StackToken
+      LocalAllocationResult: check_end::OperandShape::LocalAllocationResult
       TextureAccess: check_end::OperandShape::TextureAccess
       TextureQueryResource: check_end::OperandShape::TextureQueryResource
       TextureResult: check_end::OperandShape::TextureResult

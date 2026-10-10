@@ -201,6 +201,27 @@ syntax_ast::AstInitializer lowerInitializer(
   return AstInitializer{AstInitializerList{std::move(elements), range}, range};
 }
 
+/** Lower an owned numeric expression without evaluating its source operators. */
+syntax_ast::AstConstantOperand lowerImmediate(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstConstantOperand& operand) {
+  return {std::make_unique<syntax_ast::AstConstantExpression>(
+              lowerConstantExpression(cst, *operand.expression)),
+          cst.sourceRange(operand.token_range)};
+}
+
+/** Lower either numeric leaf shape while retaining single-literal compatibility. */
+std::variant<syntax_ast::AstImmediate, syntax_ast::AstConstantOperand>
+lowerImmediate(const syntax_cst::CstFile& cst,
+               const syntax_cst::CstNumericOperand& operand) {
+  return std::visit(
+      [&cst](const auto& leaf) -> std::variant<syntax_ast::AstImmediate,
+                                               syntax_ast::AstConstantOperand> {
+        return lowerImmediate(cst, leaf);
+      },
+      operand);
+}
+
 syntax_ast::AstVectorElement lowerVectorElement(
     const syntax_cst::CstFile& cst,
     const syntax_cst::CstVectorElement& element) {
@@ -247,13 +268,16 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstNegatedImmediate{
               lowerImmediate(cst, value.immediate),
               cst.sourceRange(value.token_range)};
-        } else if constexpr (std::same_as<Value, syntax_cst::CstImmediate>) {
+        } else if constexpr (std::same_as<Value, syntax_cst::CstImmediate> ||
+                             std::same_as<Value,
+                                          syntax_cst::CstConstantOperand>) {
           return lowerImmediate(cst, value);
         } else if constexpr (std::same_as<Value, syntax_cst::CstAddress>) {
           auto base = std::visit(
               [&cst](const auto& item)
                   -> std::variant<syntax_ast::AstIdentifierRef,
-                                  syntax_ast::AstImmediate> {
+                                  syntax_ast::AstImmediate,
+                                  syntax_ast::AstConstantOperand> {
                 using Item = std::remove_cvref_t<decltype(item)>;
                 if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
                   return lowerIdentifier(cst, item);

@@ -1,5 +1,22 @@
 # Declaration Semantics 设计
 
+## 共享数值求值
+
+`numericConstantValue()` 将拥有源码树的表达式求值为整数 64-bit bits 与 signedness，
+或 f64 值；带位置的错误区分 invalid expression 和没有数值的合法 symbolic/deferred
+expression。指令数值位置拒绝这两类错误。原有 optional
+`constantIntegerValue()` 与 `constantArrayExtent()` helper 保持兼容。
+整数/浮点混合算术和相互 cast 无效。整数或浮点除零（包括负零）无效。
+conditional 两个分支及 logical 两个 operand 均检查，即使值未被选中；
+浮点溢出不新增统一的 finite-only 限制。
+
+二元 `&`、`|`、`^` 保持 usual arithmetic conversions：两个 signed 输入产生
+signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3 §4.5.5
+正文及有限 CUDA 13.3 assembler 交叉检查；Table 5 的 unsigned 摘要与之不同。
+一元 `~` 产生 unsigned，remainder 将两输入解释为 unsigned 并产生 signed。
+shift count 超出 0–63 仍显式报 frontend error；assembler 接受部分较大的 shift，
+因此该 domain 边界不表示与 assembler 完全一致。
+
 ## 定位与 API
 
 declaration semantics 位于 lexical binding 之后、Resolved IR 之前。公开入口为：

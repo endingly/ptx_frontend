@@ -15,6 +15,26 @@ and the module declaration sequence for cross-declaration compatibility.
 `resolveModule()` runs both binding and this pass automatically and accumulates
 their diagnostics before resolving any instruction.
 
+## Shared numeric evaluation
+
+`numericConstantValue()` evaluates an owned source tree to either integer
+64-bit bits plus signedness or an f64 value. Its located error distinguishes an
+invalid expression from a valid symbolic/deferred expression with no numeric
+value. Instruction uses reject either error. The optional
+`constantIntegerValue()` and `constantArrayExtent()` helpers remain compatible.
+Mixed integer/floating arithmetic and casts are invalid. Division by integer
+or floating zero, including negative zero, is invalid. Both conditional arms
+and logical operands are checked even when their values are unselected.
+Floating overflow is not subject to an additional blanket finite-only rule.
+
+Binary `&`, `|`, and `^` retain the usual arithmetic conversions (two signed
+inputs give a signed result; any unsigned input gives an unsigned result).
+This follows PTX 9.3 §4.5.5 prose and bounded CUDA 13.3 assembler checks;
+Table 5's unsigned summary differs. Unary `~` gives unsigned, while remainder
+interprets both inputs unsigned and produces signed. Shift counts outside
+0–63 remain explicit frontend errors. The assembler accepts some larger shifts,
+so this resource/domain boundary does not claim complete assembler parity.
+
 ## Arrays and initializers
 
 Integer literals share decimal, leading-zero octal, and hexadecimal decoding

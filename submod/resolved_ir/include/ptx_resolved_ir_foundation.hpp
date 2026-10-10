@@ -23,6 +23,7 @@
 #include <ptx_frontend/common/source_loc.hpp>
 #include <ptx_frontend/resolved_ir/ptx_storage_declarations.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
+#include <ptx_frontend/semantic/ptx_constant_value.hpp>
 
 namespace ptx_frontend::resolved_ir {
 
@@ -1562,6 +1563,8 @@ struct ResolvedCallLiteral {
   std::string spelling;
   /** Base lexical category independent of complete syntax-AST ownership. */
   base::LiteralCategory kind{};
+  /** Evaluated expression domain retained before a formal scalar type is known. */
+  std::optional<declaration_semantics::NumericConstantValue> source_value;
   /** Formal-driven typed value present after successful module call checking. */
   std::optional<ResolvedImmediate> value;
   bool operator==(const ResolvedCallLiteral&) const = default;

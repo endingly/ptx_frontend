@@ -40,6 +40,29 @@ struct AstPredicateOperand {
   SourceRange range;
 };
 
+struct AstConstantExpression;
+
+/** An independently owned numeric expression with value-copy operand semantics. */
+struct AstConstantOperand {
+  /** Owned source operation tree; never aliases another operand's mutable tree. */
+  std::unique_ptr<AstConstantExpression> expression;
+  /** Full written expression range. */
+  SourceRange range;
+  /** Take ownership of a lowered constant tree. */
+  AstConstantOperand(std::unique_ptr<AstConstantExpression> value,
+                     SourceRange loc);
+  /** Clone the complete operation tree. */
+  AstConstantOperand(const AstConstantOperand& other);
+  /** Replace this tree with an independent clone. */
+  AstConstantOperand& operator=(const AstConstantOperand& other);
+  /** Transfer the exclusively owned tree. */
+  AstConstantOperand(AstConstantOperand&&) noexcept;
+  /** Transfer the exclusively owned tree. */
+  AstConstantOperand& operator=(AstConstantOperand&&) noexcept;
+  /** Destroy the exclusively owned tree. */
+  ~AstConstantOperand();
+};
+
 /** A lexical literal whose semantic value is decoded during resolution. */
 struct AstImmediate {
   AstSyntax syntax;
@@ -48,7 +71,7 @@ struct AstImmediate {
 
 /** An integer instruction operand complemented as a predicate constant. */
 struct AstNegatedImmediate {
-  AstImmediate immediate;
+  std::variant<AstImmediate, AstConstantOperand> immediate;
   SourceRange range;
 };
 
@@ -56,13 +79,13 @@ struct AstAddressOffset {
   enum class Operator : uint8_t { Add, Subtract };
 
   Operator operation = Operator::Add;
-  AstImmediate magnitude;
+  std::variant<AstImmediate, AstConstantOperand> magnitude;
   SourceRange range;
 };
 
 /** An unresolved bracketed or unbracketed PTX address expression. */
 struct AstAddress {
-  std::variant<AstIdentifierRef, AstImmediate> base;
+  std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand> base;
   std::optional<AstAddressOffset> offset;
   bool bracketed{};
   /** PTX `.unified` address suffix independent of declaration attributes. */
@@ -90,7 +113,8 @@ struct AstNegatedRegisterOperand {
   SourceRange range;
 };
 
-using AstVectorElement = std::variant<AstIdentifierRef, AstImmediate>;
+using AstVectorElement =
+    std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand>;
 
 struct AstVectorPack {
   std::vector<AstVectorElement> elements;
@@ -147,7 +171,8 @@ enum class AstCallParameterListKind : uint8_t {
   Input,
 };
 
-using AstCallParameter = std::variant<AstIdentifierRef, AstImmediate>;
+using AstCallParameter =
+    std::variant<AstIdentifierRef, AstImmediate, AstConstantOperand>;
 
 struct AstCallParameterList {
   AstCallParameterListKind kind{};
@@ -184,8 +209,8 @@ struct AstRegisterPredicatePair {
 /** Grammar shapes consumed by descriptor-driven operand resolution. */
 using AstOperand = std::variant<
     AstIdentifierRef, AstPredicateOperand, AstNegatedImmediate, AstImmediate,
-    AstAddress, AstVectorMember, AstNegatedRegisterOperand, AstVectorPack,
-    AstVectorPredicatePair, AstTensorOperand, AstFabricHandle,
+    AstConstantOperand, AstAddress, AstVectorMember, AstNegatedRegisterOperand,
+    AstVectorPack, AstVectorPredicatePair, AstTensorOperand, AstFabricHandle,
     AstCompoundBracket, AstCallParameterList, AstCallTarget, AstCallTargetSet,
     AstBranchTarget, AstBranchTargetSet, AstRegisterPredicatePair>;
 

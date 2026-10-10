@@ -78,6 +78,11 @@ class PtxCstParser {
   [[nodiscard]] CstParseDiagnostic depthLimitExceeded(
       TokenId id, std::string_view tree_kind) const;
   [[nodiscard]] bool atImmediateStart();
+  /** Test a numeric expression prefix without consuming register/address syntax. */
+  [[nodiscard]] bool atNumericStart();
+  /** Parse a numeric leaf while preserving the legacy single-literal shape. */
+  std::expected<syntax_cst::CstNumericOperand, CstParseDiagnostic>
+  parseNumericOperand(int minimum_precedence = 0);
   [[nodiscard]] RecoveryResult recover(TokenId first,
                                        const CstParseDiagnostic& diagnostic,
                                        RecoveryContext context);

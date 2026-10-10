@@ -3,10 +3,16 @@ from ptx_frontend.spec.model import (
     AsyncCompletionKind,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
+    FabricEndpointKind,
+    FabricInstructionSpec,
+    FabricOperation,
+    FabricSharedAccess,
     InstructionSpec,
+    OperandKind,
     SemanticRule,
     VariantSpec,
     WgmmaProtocolAction,
+    modifier_spellings,
 )
 from .constraints import (
     _normalize_operand_type_compatibilities,
@@ -34,6 +40,120 @@ from .validation import (
     _validate_modifier_state_space_expressions,
     _validate_modifier_type_expressions,
 )
+
+
+def _normalize_fabric_contract(raw: Any, opcode: str) -> FabricInstructionSpec | None:
+    """Require an exact typed CFT contract on each declared fabric form."""
+
+    if raw is None:
+        if opcode == "fabric":
+            raise ValueError("fabric variant requires a fabric contract")
+        return None
+    if opcode != "fabric" or not isinstance(raw, dict):
+        raise ValueError("fabric contract belongs to the canonical fabric opcode")
+    expected = {"operation", "endpoint", "shared_access", "counted",
+                "reports_fabric", "requires_mbarrier_layout_v1"}
+    if set(raw) != expected:
+        raise ValueError("fabric contract requires all six typed fields")
+    for field_name in ("counted", "reports_fabric", "requires_mbarrier_layout_v1"):
+        if type(raw[field_name]) is not bool:
+            raise TypeError(f"fabric {field_name} must be boolean")
+    return FabricInstructionSpec(
+        operation=FabricOperation(raw["operation"]),
+        endpoint=FabricEndpointKind(raw["endpoint"]),
+        shared_access=FabricSharedAccess(raw["shared_access"]),
+        counted=raw["counted"],
+        reports_fabric=raw["reports_fabric"],
+        requires_mbarrier_layout_v1=raw["requires_mbarrier_layout_v1"],
+    )
+
+
+def _validate_fabric_variant(variant: VariantSpec) -> None:
+    """Reject contradictory CFT metadata before it reaches generated classes."""
+
+    contract = variant.fabric
+    if contract is None:
+        return
+    if len(variant.operand_layouts) != 1:
+        raise ValueError("fabric form requires one exact operand layout")
+    operands = variant.operand_layouts[0].operands
+    spellings = {spelling for field in variant.modifiers
+                 for spelling in modifier_spellings(field)}
+    operation = contract.operation
+    if f".{operation.value}" not in spellings:
+        raise ValueError("fabric operation metadata must match its suffix")
+    try_form = operation in {FabricOperation.TRY_GET, FabricOperation.TRY_PUT,
+                             FabricOperation.TRY_RED, FabricOperation.TRY_PULLRED}
+    if contract.reports_fabric != try_form or contract.requires_mbarrier_layout_v1 != try_form:
+        raise ValueError("fabric report and layout contract must match try forms")
+    expected_completion = {
+        FabricOperation.TRY_GET: AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES,
+        FabricOperation.TRY_PUT: AsyncCompletionKind.MBARRIER_COMPLETE_TX16B,
+        FabricOperation.TRY_RED: AsyncCompletionKind.MBARRIER_COMPLETE_TX16B,
+        FabricOperation.TRY_PULLRED: AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES,
+        FabricOperation.SUBMIT: AsyncCompletionKind.NONE,
+        FabricOperation.WAIT: AsyncCompletionKind.FABRIC_READ_WAIT,
+    }[operation]
+    if variant.completion_kind is not expected_completion:
+        raise ValueError("fabric completion identity contradicts the operation")
+    if contract.counted != (".counted::bytes" in spellings):
+        raise ValueError("fabric counted metadata contradicts the written modifier")
+    if operation in {FabricOperation.SUBMIT, FabricOperation.WAIT}:
+        if (operands or contract.endpoint is not FabricEndpointKind.NONE or
+                contract.shared_access is not FabricSharedAccess.NONE or contract.counted):
+            raise ValueError("fabric submit/wait have no endpoint or explicit operands")
+        return
+    has_async_shared = (
+        {".async", ".shared::cta"} <= spellings or
+        ".async.shared::cta" in spellings
+    )
+    if (not has_async_shared or
+            not {".relaxed", ".sys", ".mbarrier::report::fabric"} <= spellings):
+        raise ValueError("fabric try form lacks fixed async/shared/ordering/report modifiers")
+    completion_token = (
+        ".mbarrier::complete_tx::bytes"
+        if expected_completion is AsyncCompletionKind.MBARRIER_COMPLETE_TX_BYTES
+        else ".mbarrier::complete_tx::16B"
+    )
+    if completion_token not in spellings:
+        raise ValueError("fabric completion modifier contradicts the contract")
+    expected_shared = (FabricSharedAccess.WRITE if operation in {
+        FabricOperation.TRY_GET, FabricOperation.TRY_PULLRED}
+        else FabricSharedAccess.READ)
+    if contract.shared_access is not expected_shared:
+        raise ValueError("fabric shared access direction contradicts the operation")
+    if operation is FabricOperation.TRY_GET and contract.endpoint is not FabricEndpointKind.UNICAST:
+        raise ValueError("fabric try_get requires a unicast endpoint")
+    if operation is FabricOperation.TRY_PULLRED and contract.endpoint is not FabricEndpointKind.MULTICAST:
+        raise ValueError("fabric try_pullred requires a multicast endpoint")
+    if (operation in {FabricOperation.TRY_PUT, FabricOperation.TRY_RED} and
+            contract.endpoint not in {FabricEndpointKind.UNICAST,
+                                      FabricEndpointKind.MULTICAST}):
+        raise ValueError("fabric put/red require a unicast or multicast endpoint")
+    if (".multimem" in spellings) != (contract.endpoint is FabricEndpointKind.MULTICAST):
+        raise ValueError("fabric endpoint topology contradicts multimem presence")
+    expected_handle = "src" if expected_shared is FabricSharedAccess.WRITE else "dst"
+    handles = [item for item in operands if item.kind is OperandKind.FABRIC_HANDLE]
+    if len(handles) != 1 or handles[0].name != expected_handle:
+        raise ValueError("fabric form requires one direction-specific CFT handle")
+    names = [item.name for item in operands]
+    if names[:4] != ["dst", "src", "size", "mbar"]:
+        raise ValueError("fabric transfer operands must retain ISA order")
+    if (operands[2].kind is not OperandKind.REGISTER_OR_IMMEDIATE or
+            operands[3].kind is not OperandKind.ADDRESS):
+        raise ValueError("fabric size and mbar operands have wrong kinds")
+    if operation is FabricOperation.TRY_PULLRED:
+        if (".sync" not in spellings or len(operands) != 5 or
+                operands[4].name != "membermask" or
+                operands[4].kind is not OperandKind.IMMEDIATE or contract.counted):
+            raise ValueError("fabric pullred requires one immediate member mask")
+    elif operation is FabricOperation.TRY_PUT and ".cp_mask" in spellings:
+        if (contract.counted or len(operands) != 5 or
+                operands[4].name != "bytemask" or
+                operands[4].kind is not OperandKind.REGISTER_OR_IMMEDIATE):
+            raise ValueError("fabric cp_mask requires a final u16 mask, not counted")
+    elif len(operands) != 4:
+        raise ValueError("fabric form has an unexpected operand")
 
 
 def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, ...]:
@@ -80,6 +200,9 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
                     name=raw_variant["name"],
                     completion_kind=AsyncCompletionKind(
                         raw_variant.get("completion_kind", "none")
+                    ),
+                    fabric=_normalize_fabric_contract(
+                        raw_variant.get("fabric"), raw_instruction["opcode"]
                     ),
                     wgmma_protocol_action=WgmmaProtocolAction(
                         raw_variant.get("wgmma_protocol_action", "none")
@@ -130,6 +253,7 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             validate_tcgen_sync_variant(variant)
             validate_tcgen_copy_shift_variant(variant)
             validate_tcgen_mma_variant(variant)
+            _validate_fabric_variant(variant)
             variants.append(variant)
 
         instructions.append(

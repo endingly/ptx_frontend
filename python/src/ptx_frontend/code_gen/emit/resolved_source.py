@@ -37,7 +37,7 @@ from ptx_frontend.ir.resolved_ir import (
     TensorAccessMode,
 )
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
-from ptx_frontend.spec.model import AsyncCompletionKind, SemanticRule
+from ptx_frontend.spec.model import AsyncCompletionKind, FabricOperation, SemanticRule
 
 
 def _append_result(expression: str) -> str:
@@ -801,6 +801,17 @@ def _emit_cross_rule_checks(
                                  immediate_multiple_of_check.error().end());
             }}
 """
+    if variant.fabric is not None and variant.fabric.operation in {
+        FabricOperation.TRY_GET, FabricOperation.TRY_PUT,
+        FabricOperation.TRY_RED, FabricOperation.TRY_PULLRED,
+    }:
+        handle_field = ("src" if variant.fabric.operation in {
+            FabricOperation.TRY_GET, FabricOperation.TRY_PULLRED} else "dst")
+        checks += _emit_named_rule_check(
+            "fabric_handle_check",
+            f"check_fabric_handle(selected.{handle_field}, "
+            f"{'true' if variant.fabric.counted else 'false'}, context)",
+        )
     if (
         variant.completion_kind is AsyncCompletionKind.BULK_GROUP
         and any(

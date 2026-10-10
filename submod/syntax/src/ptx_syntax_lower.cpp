@@ -296,6 +296,28 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
               cst.token(value.comma).range,
               cst.token(value.right_bracket).range,
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<Value, syntax_cst::CstFabricHandle>) {
+          std::vector<syntax_ast::AstVectorElement> elements;
+          elements.reserve(value.elements.size());
+          for (const auto& element : value.elements)
+            elements.push_back(std::visit(
+                [&cst](const auto& item) -> syntax_ast::AstVectorElement {
+                  using Item = std::remove_cvref_t<decltype(item)>;
+                  if constexpr (std::same_as<Item, syntax_cst::CstIdentifier>)
+                    return lowerIdentifier(cst, item);
+                  else
+                    return lowerImmediate(cst, item);
+                },
+                element));
+          std::vector<SourceRange> commas;
+          commas.reserve(value.commas.size());
+          for (const auto comma : value.commas)
+            commas.push_back(cst.token(comma).range);
+          return syntax_ast::AstFabricHandle{
+              std::move(elements), std::move(commas),
+              cst.token(value.left_bracket).range,
+              cst.token(value.right_bracket).range,
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value,
                                           syntax_cst::CstCallParameterList>) {
           std::vector<syntax_ast::AstCallParameter> parameters;

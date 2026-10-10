@@ -93,6 +93,17 @@ struct CstTensorOperand {
   CstTokenRange token_range;
 };
 
+/** Bracketed scalar elements of a CUDA Fabric Transport handle. */
+struct CstFabricHandle {
+  /** Endpoint, data offset, and optional counter offset in source order. */
+  std::vector<CstAddressBase> elements;
+  /** Comma tokens between elements, retained for precise diagnostics. */
+  std::vector<TokenId> commas;
+  TokenId left_bracket{};
+  TokenId right_bracket{};
+  CstTokenRange token_range;
+};
+
 enum class CstCallParameterListKind : uint8_t {
   Return,
   Input,
@@ -139,9 +150,9 @@ struct CstRegisterPredicatePair {
 using CstOperand =
     std::variant<CstIdentifier, CstPredicateOperand, CstNegatedImmediate,
                  CstImmediate, CstAddress, CstVectorMember, CstVectorPack,
-                 CstTensorOperand, CstCallParameterList, CstCallTarget,
-                 CstCallTargetSet, CstBranchTarget, CstBranchTargetSet,
-                 CstRegisterPredicatePair>;
+                 CstTensorOperand, CstFabricHandle, CstCallParameterList,
+                 CstCallTarget, CstCallTargetSet, CstBranchTarget,
+                 CstBranchTargetSet, CstRegisterPredicatePair>;
 
 struct CstOperandElement {
   CstOperand operand;

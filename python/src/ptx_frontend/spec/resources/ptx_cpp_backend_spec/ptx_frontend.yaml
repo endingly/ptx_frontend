@@ -357,6 +357,9 @@ domains:
     values:
       tensormap::generic: ProxyKindPair::TensormapToGeneric
       async::generic: ProxyKindPair::AsyncToGeneric
+      generic::fabric: ProxyKindPair::GenericToFabric
+      fabric::generic: ProxyKindPair::FabricToGeneric
+      fabric::fabric: ProxyKindPair::FabricToFabric
 
   parameter_directions:
     cpp_type: ParameterDirection
@@ -430,6 +433,7 @@ domains:
       TensorCoordinate: ResolvedTensorCoordinate
       TensorIm2colInfo: ResolvedTensorIm2colInfo
       TensorOperand: ResolvedTensorOperand
+      FabricHandle: ResolvedFabricHandle
       TensorMemoryAddress: TensorMemoryAddress
       TcgenBracketedAddress: TensorMemoryAddress
       TcgenHalfSplitOffset: TcgenHalfSplitOffset
@@ -484,6 +488,7 @@ domains:
       BRANCH_TARGET_SET: check_end::OperandSyntaxShape::BranchTargetSet
       REGISTER_PREDICATE_PAIR: check_end::OperandSyntaxShape::RegisterPredicatePair
       TENSOR_OPERAND: check_end::OperandSyntaxShape::TensorOperand
+      FABRIC_HANDLE: check_end::OperandSyntaxShape::FabricHandle
       NEGATED_IMMEDIATE: check_end::OperandSyntaxShape::NegatedImmediate
 
   resolved_value_kinds:
@@ -536,6 +541,7 @@ domains:
       TensorCoordinate: check_end::ResolvedValueKind::TensorCoordinate
       TensorIm2colInfo: check_end::ResolvedValueKind::TensorIm2colInfo
       TensorOperand: check_end::ResolvedValueKind::TensorOperand
+      FabricHandle: check_end::ResolvedValueKind::FabricHandle
       TensorMemoryAddress: check_end::ResolvedValueKind::TensorMemoryAddress
       TcgenBracketedAddress: check_end::ResolvedValueKind::TcgenBracketedAddress
       TcgenHalfSplitOffset: check_end::ResolvedValueKind::TcgenHalfSplitOffset
@@ -577,6 +583,7 @@ domains:
       Symbol: check_end::OperandShape::Symbol
       Vector: check_end::OperandShape::Vector
       TensorOperand: check_end::OperandShape::TensorOperand
+      FabricHandle: check_end::OperandShape::FabricHandle
       BranchTarget: check_end::OperandShape::BranchTarget
       SpecialRegister: check_end::OperandShape::SpecialRegister
       DirectCallTarget: check_end::OperandShape::DirectCallTarget

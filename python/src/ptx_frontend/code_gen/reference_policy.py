@@ -28,6 +28,7 @@ REFERENCE_VALUE_KINDS = frozenset({
     ResolvedValueKind.TENSOR_COORDINATE,
     ResolvedValueKind.TENSOR_IM2COL_INFO,
     ResolvedValueKind.TENSOR_OPERAND,
+    ResolvedValueKind.FABRIC_HANDLE,
     ResolvedValueKind.TENSOR_MEMORY_ADDRESS,
     ResolvedValueKind.TCGEN_BRACKETED_ADDRESS,
     ResolvedValueKind.MATRIX_SCALE_SELECTOR,

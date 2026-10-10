@@ -24,10 +24,51 @@ class AsyncCompletionKind(Enum):
     ASYNC_GROUP = "async_group"
     BULK_GROUP = "bulk_group"
     MBARRIER_COMPLETE_TX_BYTES = "mbarrier_complete_tx_bytes"
+    MBARRIER_COMPLETE_TX16B = "mbarrier_complete_tx16b"
+    FABRIC_READ_WAIT = "fabric_read_wait"
     WGMMA_GROUP = "wgmma_group"
     TCGEN_LOAD_WAIT = "tcgen_load_wait"
     TCGEN_STORE_WAIT = "tcgen_store_wait"
     TCGEN_MBARRIER_ARRIVE_ONE = "tcgen_mbarrier_arrive_one"
+
+
+class FabricOperation(Enum):
+    """Source-visible CFT action selected by one exact instruction form."""
+
+    TRY_GET = "try_get"
+    TRY_PUT = "try_put"
+    TRY_RED = "try_red"
+    TRY_PULLRED = "try_pullred"
+    SUBMIT = "submit"
+    WAIT = "wait"
+
+
+class FabricEndpointKind(Enum):
+    """Logical endpoint topology required at runtime, never inferred from a register."""
+
+    NONE = "none"
+    UNICAST = "unicast"
+    MULTICAST = "multicast"
+
+
+class FabricSharedAccess(Enum):
+    """Direction of the operation's local CTA-shared data access."""
+
+    NONE = "none"
+    READ = "read"
+    WRITE = "write"
+
+
+@dataclass(frozen=True)
+class FabricInstructionSpec:
+    """Immutable per-form CFT protocol requirements carried into generated IR."""
+
+    operation: FabricOperation
+    endpoint: FabricEndpointKind
+    shared_access: FabricSharedAccess
+    counted: bool = False
+    reports_fabric: bool = False
+    requires_mbarrier_layout_v1: bool = False
 
 
 class WgmmaProtocolAction(Enum):
@@ -379,6 +420,7 @@ class OperandKind(_SemanticToken):
     TENSOR_COORDINATE = "tensor_coordinate"
     TENSOR_IM2COL_INFO = "tensor_im2col_info"
     TENSOR_OPERAND = "tensor_operand"
+    FABRIC_HANDLE = "fabric_handle"
     TENSOR_MEMORY_ADDRESS = "tensor_memory_address"
     TENSOR_MEMORY_ADDRESS_BRACKET = "tensor_memory_address_bracket"
     TCGEN_HALF_SPLIT_OFFSET = "tcgen_half_split_offset"
@@ -722,6 +764,7 @@ class VariantSpec:
     matrix: MatrixSpec | None = None
     condition_code_effect: ConditionCodeEffect = ConditionCodeEffect.NONE
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
+    fabric: FabricInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()

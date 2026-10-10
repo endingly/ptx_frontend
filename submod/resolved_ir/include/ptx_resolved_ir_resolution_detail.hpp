@@ -45,8 +45,9 @@ using ResolvedFieldValue = std::variant<
     WithLocs<ResolvedVectorSpecialRegisterRef>, WithLocs<ResolvedSymbolRef>,
     WithLocs<ResolvedAddress>, WithLocs<ResolvedRegisterVector>,
     WithLocs<ResolvedTensorCoordinate>, WithLocs<ResolvedTensorIm2colInfo>,
-    WithLocs<ResolvedTensorOperand>, WithLocs<TensorMemoryAddress>,
-    WithLocs<TcgenHalfSplitOffset>, WithLocs<ResolvedMatrixScaleSelector>,
+    WithLocs<ResolvedTensorOperand>, WithLocs<ResolvedFabricHandle>,
+    WithLocs<TensorMemoryAddress>, WithLocs<TcgenHalfSplitOffset>,
+    WithLocs<ResolvedMatrixScaleSelector>,
     WithLocs<ResolvedSharedMatrixDescriptor>, WithLocs<ResolvedFunctionRef>,
     WithLocs<ResolvedIndirectCallee>, WithLocs<ResolvedCallParameterRef>,
     WithLocs<ResolvedCallArguments>>;

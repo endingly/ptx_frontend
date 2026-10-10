@@ -249,6 +249,9 @@ class BackendModelTests(unittest.TestCase):
             {
                 "tensormap::generic": "ProxyKindPair::TensormapToGeneric",
                 "async::generic": "ProxyKindPair::AsyncToGeneric",
+                "generic::fabric": "ProxyKindPair::GenericToFabric",
+                "fabric::generic": "ProxyKindPair::FabricToGeneric",
+                "fabric::fabric": "ProxyKindPair::FabricToFabric",
             },
         )
         self.assertEqual(

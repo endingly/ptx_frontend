@@ -13,6 +13,27 @@
 namespace ptx_frontend::resolved_ir::checker {
 namespace {
 
+/** Compare source positions without relying on unavailable ordering operators. */
+bool fabric_pos_le(SourcePos first, SourcePos second) noexcept {
+  return first.line < second.line ||
+         (first.line == second.line && first.column <= second.column);
+}
+
+/** Strict source ordering, so zero-length mutable ranges are rejected. */
+bool fabric_pos_lt(SourcePos first, SourcePos second) noexcept {
+  return fabric_pos_le(first, second) && first != second;
+}
+
+/** Require a nonempty source range enclosed by the complete handle operand. */
+bool fabric_range_inside(SourceRange inner, SourceRange outer) noexcept {
+  return inner.start.line > 0 && inner.start.column > 0 && inner.end.line > 0 &&
+         inner.end.column > 0 && fabric_pos_lt(inner.start, inner.end) &&
+         outer.start.line > 0 && outer.start.column > 0 && outer.end.line > 0 &&
+         outer.end.column > 0 && fabric_pos_lt(outer.start, outer.end) &&
+         fabric_pos_le(outer.start, inner.start) &&
+         fabric_pos_le(inner.end, outer.end);
+}
+
 std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
@@ -491,6 +512,67 @@ void append_parameter_address_diagnostics(
 }
 
 }  // namespace
+
+CheckResult check_fabric_handle(const WithLocs<ResolvedFabricHandle>& handle,
+                                bool counted, const Context& context) {
+  const auto fail = [&](std::string_view message) -> CheckResult {
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = handle.locs.empty() ? context.instruction_range
+                                     : handle.locs.front(),
+        .message = std::string(message),
+    }});
+  };
+  const auto& value = handle.value;
+  // Only the default outer range is omitted; the handle always owns valid ranges.
+  if (handle.locs.size() != 1 ||
+      !fabric_range_inside(handle.locs.front(), handle.locs.front()) ||
+      (context.instruction_range != SourceRange{} &&
+       !fabric_range_inside(handle.locs.front(), context.instruction_range)) ||
+      value.counter_offset.has_value() != counted ||
+      value.comma_ranges.size() != (counted ? 2u : 1u))
+    return fail("Fabric handle arity or source range is inconsistent.");
+  const SourceRange outer = handle.locs.front();
+  if (!fabric_range_inside(value.left_bracket_range, outer) ||
+      !fabric_range_inside(value.right_bracket_range, outer))
+    return fail("Fabric handle bracket locations are invalid.");
+  const auto check_component = [&](const WithLocs<ResolvedRegisterRef>& part,
+                                   uint8_t required_width) -> bool {
+    const auto& reg = part.value;
+    const auto kind = reg.declared_type ? base::scalar_kind(*reg.declared_type)
+                                        : base::ScalarKind::Invalid;
+    return part.locs.size() == 1 &&
+           fabric_range_inside(part.locs.front(), outer) &&
+           reg.register_class == ResolvedRegisterClass::General &&
+           !reg.vector_width && (!reg.symbol_id || reg.declared_type) &&
+           (!reg.declared_type ||
+            (base::scalar_size_of(*reg.declared_type) == required_width &&
+             (kind == base::ScalarKind::Unsigned ||
+              kind == base::ScalarKind::Signed ||
+              kind == base::ScalarKind::Bit)));
+  };
+  if (!check_component(value.endpoint, 4) ||
+      !check_component(value.data_offset, 8) ||
+      (value.counter_offset && !check_component(*value.counter_offset, 8)))
+    return fail(
+        "Fabric handle components require scalar 32/64-bit integer registers.");
+  std::array<SourceRange, 3> component_ranges{
+      value.endpoint.locs.front(), value.data_offset.locs.front(),
+      value.counter_offset ? value.counter_offset->locs.front()
+                           : SourceRange{}};
+  if (!fabric_pos_le(value.left_bracket_range.end, component_ranges[0].start) ||
+      !fabric_pos_le(component_ranges[counted ? 2 : 1].end,
+                     value.right_bracket_range.start))
+    return fail("Fabric handle component order is invalid.");
+  for (size_t index = 0; index < value.comma_ranges.size(); ++index) {
+    const auto comma = value.comma_ranges[index];
+    if (!fabric_range_inside(comma, outer) ||
+        !fabric_pos_le(component_ranges[index].end, comma.start) ||
+        !fabric_pos_le(comma.end, component_ranges[index + 1].start))
+      return fail("Fabric handle separator locations are invalid.");
+  }
+  return {};
+}
 
 OperandView project_tensor_operand(
     std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand) {
@@ -1831,8 +1913,28 @@ CheckResult check_modifier_value_domain(
         descriptors, [&actual](const ModifierValueDomainDescriptor& entry) {
           return matches_modifier_value(entry, actual);
         });
-    if (it != descriptors.end())
+    if (it != descriptors.end()) {
+      // A two-valued boolean domain is a presence-only optional flag: its
+      // written token and stored value must remain paired after resolution.
+      if (actual.value_kind == ModifierValueKind::Bool &&
+          std::ranges::any_of(
+              descriptors,
+              [&actual](const ModifierValueDomainDescriptor& entry) {
+                return entry.kind_id == actual.kind_id &&
+                       entry.value_kind == ModifierValueKind::Bool &&
+                       entry.bool_value != actual.bool_value;
+              }) &&
+          actual.bool_value != !actual.locations.empty()) {
+        diagnostics.push_back(CheckDiagnostic{
+            .kind = CheckDiagnosticKind::ModuleSourceMismatch,
+            .range = diagnostic_range(actual.locations, context),
+            .message = fmt::format(
+                "Optional modifier '{}' disagrees with its source presence.",
+                actual.kind_id),
+        });
+      }
       continue;
+    }
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
         .range = diagnostic_range(actual.locations, context),

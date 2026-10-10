@@ -343,6 +343,15 @@ checker::CheckResult check_source_associations(const syntax_ast::AstModule& ast,
   return {};
 }
 
+/** Owned instruction source maps require positive, ordered, nonempty ranges. */
+bool valid_instruction_range(SourceRange range) noexcept {
+  return range.start.line > 0 && range.start.column > 0 && range.end.line > 0 &&
+         range.end.column > 0 &&
+         (range.start.line < range.end.line ||
+          (range.start.line == range.end.line &&
+           range.start.column < range.end.column));
+}
+
 /** Check every IR instruction using its owned source location. */
 void check_instruction_body(const ResolvedFunction& function,
                             const checker::TargetInfo& target,
@@ -350,6 +359,14 @@ void check_instruction_body(const ResolvedFunction& function,
   for (size_t i = 0; i < function.body.size(); ++i) {
     if (!function.body[i])
       continue;
+    if (!valid_instruction_range(function.instruction_ranges[i])) {
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
+          .range = function.instruction_ranges[i],
+          .message = "Resolved instruction source range is invalid.",
+      });
+      continue;
+    }
     const checker::Context context{
         .target = target,
         .instruction_range = function.instruction_ranges[i],
@@ -470,6 +487,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorCoordinate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorIm2colInfo> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedTensorOperand> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedFabricHandle> ||
     std::same_as<std::remove_cvref_t<Value>, TensorMemoryAddress> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMatrixScaleSelector> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedSharedMatrixDescriptor> ||
@@ -591,6 +609,15 @@ void collect_operand_references(
       collect_operand_references(*register_ref, coordinate_range, fallback,
                                  uses, address_resolution_policy);
     }
+  } else if constexpr (std::same_as<Value, ResolvedFabricHandle>) {
+    collect_operand_references(value.endpoint.value, value.endpoint.locs,
+                               fallback, uses, address_resolution_policy);
+    collect_operand_references(value.data_offset.value, value.data_offset.locs,
+                               fallback, uses, address_resolution_policy);
+    if (value.counter_offset)
+      collect_operand_references(value.counter_offset->value,
+                                 value.counter_offset->locs, fallback, uses,
+                                 address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedAddress>) {
     if (const auto* register_ref =
             std::get_if<ResolvedRegisterRef>(&value.base))
@@ -788,6 +815,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void tensor_operand(const ResolvedTensorOperand& value,
                       std::span<const SourceRange> locations,
                       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect each bound register in a borrowed transport handle. */
+  void fabric_handle(const ResolvedFabricHandle& value,
+                     std::span<const SourceRange> locations,
+                     checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect a borrowed Tensor Memory address register, when present. */
@@ -1918,6 +1951,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     }
     if (complete_instruction_provenance) {
       for (size_t index = 0; index < function.body.size(); ++index) {
+        const auto range = function.instruction_ranges[index];
+        if (!valid_instruction_range(range))
+          invalid(range, "Resolved instruction source range is invalid.");
         if (!function.body[index])
           invalid(function.instruction_ranges[index],
                   "Resolved function contains an empty instruction owner.");

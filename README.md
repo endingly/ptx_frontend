@@ -56,6 +56,10 @@ supported surface and its exclusions.
 - [Multimem frontend coverage](docs/us-en/multimem_coverage.md) and its
   [简体中文版本](docs/zh-han/multimem_coverage.md) define the seven PTX 9.3
   source families, typed owned operands, target gates, and runtime boundary.
+- [Fabric/CFT frontend coverage](docs/us-en/fabric_coverage.md) and its
+  [简体中文版本](docs/zh-han/fabric_coverage.md) define the six PTX 9.3 source
+  families, six proxy fences, typed handles, completion contracts, and runtime
+  obligations.
 - [TCGEN MMA frontend family coverage](docs/us-en/tcgen_mma_family_coverage.md)
   and its [简体中文版本](docs/zh-han/tcgen_mma_family_coverage.md) map all four
   fixed PTX 9.3 source families, owned and conditional checks, validation,

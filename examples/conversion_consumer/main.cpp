@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <optional>
@@ -106,8 +107,12 @@ bool rejectsMutation(const ir::ResolvedModule& module,
                      std::string_view description) {
   const auto result = ir::validateModule(
       module, ir::ModuleValidationPolicy::RequireCompleteContext);
-  const bool matched = !result && !result.error().empty() &&
-                       result.error().front().kind == expected;
+  // Source consistency may be diagnosed before the rule targeted by a mutation.
+  const bool matched =
+      !result &&
+      std::ranges::any_of(result.error(), [expected](const auto& diagnostic) {
+        return diagnostic.kind == expected;
+      });
   if (!matched && !result && !result.error().empty())
     std::cerr << "observed validation diagnostic: "
               << result.error().front().message << '\n';

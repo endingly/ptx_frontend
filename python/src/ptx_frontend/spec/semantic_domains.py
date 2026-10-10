@@ -126,7 +126,7 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
     SemanticDomain.ASYNC_PROXY_KIND: frozenset({
         "async", "async.global", "async.shared::cta", "async.shared::cluster",
     }),
-    SemanticDomain.PROXY_KIND_PAIR: frozenset({"tensormap::generic", "async::generic"}),
+    SemanticDomain.PROXY_KIND_PAIR: frozenset({"tensormap::generic", "async::generic", "generic::fabric", "fabric::generic", "fabric::fabric"}),
     # Compatibility rules name the frontend special-register identity without
     # the source '%' prefix.  This is intentionally broader than the current
     # C++ compatibility map; code generation reports an unsupported mapping.

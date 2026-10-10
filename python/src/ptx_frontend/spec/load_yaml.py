@@ -5,7 +5,8 @@ import yaml
 
 def load_yaml(path: Traversable) -> dict[str, Any]:
     """Load a YAML file and return its contents as a dictionary."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loader = getattr(yaml, "CSafeLoader", None) or yaml.SafeLoader
+    data = yaml.load(path.read_text(encoding="utf-8"), Loader=loader)
     if not isinstance(data, dict):
         raise TypeError(f"{path}: expected YAML mapping")
     return data

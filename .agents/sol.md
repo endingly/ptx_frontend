@@ -3,11 +3,12 @@
 Use this document for architecture decisions, core-boundary classification, and
 core acceptance, not every review or task mentioning PTX. The
 [registry](orchestration.md#model-preferences) assigns this authority only to
-Authority Sol (`gpt-6.1-sol` / `medium`); use the packet's selection evidence, or
+Authority Sol (`gpt-6.1-sol` / `high`); use the packet's selection evidence, or
 [dispatch controls](references/dispatch.md) when that evidence is missing or
 invalid. Loading this file does not select a model. Implementation Sol
-(`gpt-6-sol` / `high`) has no architecture or core acceptance authority. The
-coordinator cannot override Authority Sol's architectural/core verdict.
+(`gpt-6.1-sol` / `medium` by default, including a justified `high` exception)
+has no architecture or core acceptance authority. Model/effort selection alone
+does not confer authority. The coordinator cannot override Authority Sol's architectural/core verdict.
 
 ## Core boundary
 
@@ -80,7 +81,7 @@ An empty summary or successful command is not acceptance.
 
 Limit acceptance to the reviewed inputs. Material subsequent changes, integration
 conflicts, or broken validation require focused Authority Sol re-review, not
-automatic reuse of a verdict. When the required `gpt-6.1-sol` / `medium`
+automatic reuse of a verdict. When the required `gpt-6.1-sol` / `high`
 selection or review is missing, follow
 [availability rules](orchestration.md#availability-and-fallback): keep the
 gate pending while continuing independent authorized work. Another model or

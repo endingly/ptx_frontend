@@ -28,11 +28,17 @@ class FormShardTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        """Lower the real corpus once so tests use its exact form identities."""
+        """Lower the real cp forms once for shard-local assertions."""
 
         database = get_packaged_spec_database()
         backend = load_cpp_backend(BACKEND_SPEC)
-        context = build_generation_context(database, backend)
+        cp_spec = next(
+            instruction for instruction in database.instructions
+            if instruction.opcode == "cp"
+        )
+        context = build_generation_context(
+            replace(database, instructions=(cp_spec,)), backend
+        )
         cls.cp = next(
             entry for entry in context.entries
             if entry.specification.opcode == "cp"

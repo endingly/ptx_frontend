@@ -77,6 +77,162 @@ TEST(Fabric, SixFamiliesAndCompletion) {
             FabricSharedAccess::None);
 }
 
+/** Direct checks retain handle integrity when the optional outer range is absent. */
+TEST(Fabric, DirectHandleRanges) {
+  std::optional<ResolvedModule> owned;
+  {
+    auto ast = test_helpers::parseModule(fabric_source(R"ptx(
+  fabric.try_get.async.shared::cta.mbarrier::complete_tx::bytes.mbarrier::report::fabric.relaxed.sys.b128 [data], [%endpoint, %dataoff], 16, [bar];
+  fabric.try_put.async.shared::cta.mbarrier::complete_tx::16B.mbarrier::report::fabric.relaxed.sys.b128 [%endpoint, %dataoff], [data], 16, [bar];
+  fabric.try_red.async.shared::cta.mbarrier::complete_tx::16B.mbarrier::report::fabric.relaxed.sys.add.u32 [%endpoint, %dataoff], [data], 16, [bar];
+  fabric.try_pullred.async.multimem.shared::cta.mbarrier::complete_tx::bytes.mbarrier::report::fabric.relaxed.sys.add.u32.sync [data], [%endpoint, %dataoff], 16, [bar], 0xffffffff;
+  fabric.try_put.async.shared::cta.mbarrier::complete_tx::16B.mbarrier::report::fabric.counted::bytes.relaxed.sys.b128 [%endpoint, %dataoff, %counteroff], [data], 16, [bar];
+)ptx"));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto module = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(module.has_value()) << module.error().front().message;
+    owned.emplace(std::move(*module));
+  }
+  ASSERT_TRUE(validateModule(*owned));
+  const auto profile = base::find_target_profile("sm_100");
+  ASSERT_TRUE(profile);
+  const checker::Context target_only{
+      .target = {.ptx_version = {9, 3},
+                 .sm_version = profile->identity.architecture.number,
+                 .enabled_family_features = profile->enabled_family_features,
+                 .identity = profile->identity,
+                 .capabilities = profile->capabilities},
+  };
+  auto& function = owned->functions.front();
+  // Each form is checked after releasing its source AST.
+  for (size_t index = 0; index + 1 < function.body.size(); ++index) {
+    SCOPED_TRACE(index);
+    auto& form = *function.body[index];
+    EXPECT_TRUE(form.check(target_only));
+    auto context = target_only;
+    context.instruction_range = function.instruction_ranges[index];
+    EXPECT_TRUE(form.check(context));
+    for (const SourceRange invalid : {
+             SourceRange{{1, 1}, {1, 2}},
+             SourceRange{{0, 1}, {1000, 1}},
+             SourceRange{{1, 0}, {1000, 1}},
+             SourceRange{{1000, 1}, {1, 1}},
+             SourceRange{{1, 1}, {1, 1}},
+             SourceRange{{-1, 1}, {1000, 1}},
+         }) {
+      context.instruction_range = invalid;
+      EXPECT_FALSE(form.check(context));
+    }
+  }
+  // Mutate production handles rather than constructing unchecked test payloads.
+  const auto exercise_handle = [&](auto& form, auto& handle) {
+    const auto original = handle;
+    const auto rejected = [&]() {
+      EXPECT_FALSE(form.check(target_only));
+      handle = original;
+      ASSERT_TRUE(form.check(target_only));
+    };
+    handle.locs.clear();
+    rejected();
+    handle.locs.front() = {};
+    rejected();
+    handle.locs.front().end = handle.locs.front().start;
+    rejected();
+    handle.value.left_bracket_range = {};
+    rejected();
+    handle.value.right_bracket_range.end =
+        handle.value.right_bracket_range.start;
+    rejected();
+    handle.value.left_bracket_range = handle.value.right_bracket_range;
+    rejected();
+    handle.value.comma_ranges.clear();
+    rejected();
+    handle.value.comma_ranges.front() = {};
+    rejected();
+    handle.value.comma_ranges.front() = handle.value.right_bracket_range;
+    rejected();
+    handle.value.endpoint.locs.clear();
+    rejected();
+    handle.value.data_offset.locs.front().end =
+        handle.value.data_offset.locs.front().start;
+    rejected();
+    handle.value.endpoint.value.declared_type = base::ScalarType::B64;
+    rejected();
+    handle.value.data_offset.value.declared_type = base::ScalarType::F64;
+    rejected();
+    handle.value.endpoint.value.declared_type.reset();
+    rejected();
+    handle.value.endpoint.value.register_class =
+        ResolvedRegisterClass::Predicate;
+    rejected();
+    if (handle.value.counter_offset) {
+      handle.value.counter_offset.reset();
+      rejected();
+      handle.value.counter_offset->locs.front() = {};
+      rejected();
+      handle.value.counter_offset->value.declared_type = base::ScalarType::B32;
+      rejected();
+      handle.value.comma_ranges.back() = handle.value.left_bracket_range;
+      rejected();
+    } else {
+      handle.value.counter_offset = handle.value.data_offset;
+      rejected();
+    }
+  };
+  auto& get = dynamic_cast<FabricTryGet&>(*function.body[0]);
+  exercise_handle(get, get.src);
+  auto& put = dynamic_cast<FabricTryPutUnicastOrdinary&>(*function.body[1]);
+  exercise_handle(put, put.dst);
+  auto& red = dynamic_cast<FabricTryRedUnicastOrdinaryAdd&>(*function.body[2]);
+  exercise_handle(red, red.dst);
+  auto& pullred = dynamic_cast<FabricTryPullredAddOrdinary&>(*function.body[3]);
+  exercise_handle(pullred, pullred.src);
+  auto& counted = dynamic_cast<FabricTryPutUnicastCounted&>(*function.body[4]);
+  exercise_handle(counted, counted.dst);
+
+  const auto original_range = function.instruction_ranges.front();
+  for (const SourceRange invalid : {
+           SourceRange{},
+           SourceRange{{0, 1}, {1000, 1}},
+           SourceRange{{1, 0}, {1000, 1}},
+           SourceRange{{-1, 1}, {1000, 1}},
+           SourceRange{{1000, 1}, {1, 1}},
+           SourceRange{{1, 1}, {1, 1}},
+           SourceRange{{1, 1}, {1, 2}},
+       }) {
+    function.instruction_ranges.front() = invalid;
+    EXPECT_FALSE(validateModule(*owned));
+    function.instruction_ranges.front() = original_range;
+    ASSERT_TRUE(validateModule(*owned));
+  }
+}
+
+/** AST-associated validation also requires the module's owned instruction ranges. */
+TEST(Fabric, AstAssociatedInstructionRanges) {
+  auto ast = test_helpers::parseModule(fabric_source(
+      "fabric.try_get.async.shared::cta.mbarrier::complete_tx::bytes."
+      "mbarrier::report::fabric.relaxed.sys.b128 "
+      "[data], [%endpoint, %dataoff], 16, [bar];"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module.has_value()) << module.error().front().message;
+  auto& range = module->functions.front().instruction_ranges.front();
+  const auto original = range;
+  for (const SourceRange invalid : {
+           SourceRange{},
+           SourceRange{{0, 1}, {1000, 1}},
+           SourceRange{{1000, 1}, {1, 1}},
+           SourceRange{{1, 1}, {1, 1}},
+           SourceRange{{1, 1}, {1, 2}},
+       }) {
+    range = invalid;
+    EXPECT_FALSE(validateModule(*ast, *module));
+    EXPECT_FALSE(checkModuleAvailability(*ast, *module));
+    range = original;
+    ASSERT_TRUE(validateModule(*ast, *module));
+  }
+}
+
 /** Multicast put/red and counted reductions preserve topology and arity. */
 TEST(Fabric, MulticastForms) {
   for (std::string_view candidate : {

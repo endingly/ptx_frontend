@@ -67,10 +67,12 @@
 ```sh
 cmake --build --preset ci-linux-gcc-debug --parallel
 ctest --preset ci-linux-gcc-debug --parallel 2 --output-on-failure
-.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module -j 2
+.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module
 ctest --preset ci-python-and-package-consumer --parallel 2 --output-on-failure -R '^ptx_frontend\.package_consumer$'
 python3 .github/scripts/check_clang_format.py --clang-format clang-format-21
 ```
+
+本地复跑命令未指定 Python worker 数时，unittest-parallel 默认使用逻辑 CPU 数；下方 `-j2` 和 6.650 秒保留当次执行记录。
 
 在 `cf80148` 之后、全树 format 之后，当前工作树已报告以下实际结果：
 

@@ -29,7 +29,9 @@
 cmake --preset ci-linux-clang-debug -DPython3_EXECUTABLE="$PWD/.venv/bin/python"
 cmake --build --preset ci-linux-clang-debug
 ctest --preset ci-linux-clang-debug --output-on-failure
-.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module --jobs 4 -v
+.venv/bin/python -m unittest_parallel -s python/tests -t python -p 'test_*.py' --level=module -v
 ```
+
+本地运行时，unittest-parallel 默认使用逻辑 CPU 数；CI 可以显式指定 worker 数。
 
 有界汇编检查点使用完整 PTX 9.3 模块及 `/usr/local/cuda-13.3/bin/ptxas`，模块和日志包单独保留，未纳入本仓库。这里的 31/31 是已记录的工具观察；上面的命令与已链接测试则可直接从当前源码树复现。由此不能推断发布 CI、公开 ABI 冻结或模拟器／GPU 执行已获验证。

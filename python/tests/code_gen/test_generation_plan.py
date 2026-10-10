@@ -1313,8 +1313,11 @@ class GenerationPlanTests(unittest.TestCase):
             self.backend.domains["resolved_value_cpp_types"], values=types
         )
         alternate = replace(self.backend, domains=domains)
-        first = build_generation_context(self.database, self.backend)
-        second = build_generation_context(self.database, alternate)
+        add = next(instruction for instruction in self.database.instructions
+                   if instruction.opcode == "add")
+        database = replace(self.database, instructions=(add,))
+        first = build_generation_context(database, self.backend)
+        second = build_generation_context(database, alternate)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             first_path = root / "first.hpp"

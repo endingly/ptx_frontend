@@ -356,6 +356,12 @@ selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许
 `.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
 [LD](ld_coverage.md) 与 [ST](st_coverage.md)。
 
+`vector.allow_named` 是默认 false 的 Boolean，仅 element-policy `reg_vector` 可用。
+它传播至 binding 与 `OperandDescriptor::allow_named_vector`，仅为 opted slot 添加
+identifier syntax。普通 LD/LDNC/LDU destination 与普通 ST source opt-in；async/bulk
+store 和其他 consumer 不开放。Named 声明仍限 v2/v4、128 bit，独立于现代 256-bit
+brace 支持。详见 [owned provenance](resolved_ir_design.md#named-memory-vector-source)。
+
 `reg_vector` operand 必须用 `vector.arity` 声明合法元素数。静态形式使用整数或列表：
 
 ```yaml

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <compare>
@@ -28,6 +29,8 @@
 namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
+struct ResolvedRegisterVector;
+struct ResolvedVectorSource;
 struct ResolvedImmediate;
 struct ResolvedTensorOperand;
 struct ResolvedVideoOperand;
@@ -801,6 +804,8 @@ struct OperandDescriptor {
   std::string_view vector_arity_modifier_field_id{};
   VectorTypePolicy vector_type_policy = VectorTypePolicy::Aggregate;
   bool allow_vector_sink = false;
+  /** Admit an owned named ordinary vector, never a generic source vector. */
+  bool allow_named_vector = false;
   size_t vector_sink_payload_bits = 0;
   /** Optional declared lane-type domain, independent of instruction suffix. */
   std::span<const base::ScalarType> allowed_register_types;
@@ -956,6 +961,8 @@ struct OperandView {
   /** Borrowed lane references; null for sinks and non-register lanes. */
   std::array<const ResolvedRegisterRef*, kMaxOperandElements>
       vector_element_registers{};
+  /** Borrowed complete register-vector source; valid only during checking. */
+  const ResolvedRegisterVector* register_vector = nullptr;
   /** Borrowed typed values for source-vector lanes, null for registers. */
   std::array<const ResolvedImmediate*, kMaxOperandElements>
       vector_element_immediates{};
@@ -1557,10 +1564,106 @@ struct ResolvedImmediate {
          (range->minimum <= 0 ||
           *value.integer_source_bits >= static_cast<uint64_t>(range->minimum));
 }
+/** Whole ordinary vector declaration reference, without implicit lane selection. */
+struct ResolvedVectorRegisterRef {
+  ResolvedRegisterRef register_ref;
+  /** Compare the real declaration identity and cached shape. */
+  bool operator==(const ResolvedVectorRegisterRef&) const = default;
+};
+/** Written source form of a register-vector operand. */
+enum class ResolvedVectorSourceKind : uint8_t { BraceList, NamedVector };
+/** Owned source provenance; no borrowed syntax survives resolution. */
+struct ResolvedVectorSource {
+  ResolvedVectorSourceKind kind{ResolvedVectorSourceKind::BraceList};
+  /** Present only for a named source, with its exact identifier location. */
+  std::optional<WithLocs<ResolvedVectorRegisterRef>> whole_base;
+  /** Complete written identifier or brace-list range. */
+  SourceRange range;
+  /** Compare source form and all retained provenance. */
+  bool operator==(const ResolvedVectorSource&) const = default;
+};
+/** Register lanes with explicit brace or complete named-vector provenance. */
 struct ResolvedRegisterVector {
   std::vector<std::optional<ResolvedRegisterRef>> elements;
+  ResolvedVectorSource source;
+  /** Compare lane payloads and source provenance. */
   bool operator==(const ResolvedRegisterVector&) const = default;
 };
+
+/** Validate vector provenance; only a complete named container admits projections.
+ * Empty brace provenance remains compatible with legacy standalone payloads;
+ * owned/source-aware callers require it and provide the owning instruction range.
+ */
+inline bool valid_register_vector_source(const ResolvedRegisterVector& vector,
+                                         std::span<const SourceRange> locations,
+                                         bool require_brace_range = false,
+                                         SourceRange owner = {}) {
+  const auto before = [](SourcePos left, SourcePos right) {
+    return left.line < right.line ||
+           (left.line == right.line && left.column <= right.column);
+  };
+  const auto valid = [&](SourceRange range) {
+    return range.start.line > 0 && range.start.column > 0 &&
+           range.end.line > 0 && range.end.column > 0 &&
+           before(range.start, range.end) && range.start != range.end;
+  };
+  const auto inside = [&](SourceRange inner, SourceRange outer) {
+    return valid(inner) && valid(outer) && before(outer.start, inner.start) &&
+           before(inner.end, outer.end);
+  };
+  const auto& source = vector.source;
+  if (source.kind == ResolvedVectorSourceKind::BraceList) {
+    if (source.whole_base)
+      return false;
+    for (const auto& lane : vector.elements)
+      if (lane && !valid_register_component(*lane))
+        return false;
+    if (source.range == SourceRange{})
+      return !require_brace_range;
+    return valid(source.range) &&
+           (owner == SourceRange{} || inside(source.range, owner)) &&
+           locations.size() == vector.elements.size() &&
+           std::ranges::all_of(locations, [&](SourceRange range) {
+             return inside(range, source.range);
+           });
+  }
+  if (source.kind != ResolvedVectorSourceKind::NamedVector ||
+      !source.whole_base || !valid(source.range) ||
+      (owner != SourceRange{} && !inside(source.range, owner)) ||
+      source.whole_base->locs.size() != 1 ||
+      source.whole_base->locs.front() != source.range)
+    return false;
+  const auto& base = source.whole_base->value.register_ref;
+  const size_t arity = vector.elements.size();
+  if (!base.symbol_id || !base.declared_type || base.component ||
+      base.register_class != ResolvedRegisterClass::General ||
+      (arity != 2 && arity != 4) || base.vector_width != arity ||
+      *base.declared_type == ScalarType::Pred ||
+      *base.declared_type == ScalarType::Invalid ||
+      base::scalar_size_of(*base.declared_type) == 0 ||
+      arity * base::scalar_size_of(*base.declared_type) > 16 ||
+      locations.size() != arity || base.spelling.empty() ||
+      source.range.start.line != source.range.end.line ||
+      source.range.end.column - source.range.start.column !=
+          static_cast<int32_t>(base.spelling.size()))
+    return false;
+  for (size_t index = 0; index < arity; ++index) {
+    if (!vector.elements[index] || locations[index] != source.range)
+      return false;
+    auto expected = base;
+    expected.vector_width.reset();
+    expected.component = ResolvedRegisterComponent{
+        .lane = static_cast<uint8_t>(index),
+        .declaration_width = static_cast<uint8_t>(arity),
+        .origin = RegisterComponentOrigin::NamedProjection,
+        .base_spelling = base.spelling,
+        .base_range = source.range,
+        .range = source.range};
+    if (*vector.elements[index] != expected)
+      return false;
+  }
+  return true;
+}
 /** Owned CUDA Fabric Transport handle with bound scalar register components. */
 struct ResolvedFabricHandle {
   /** Unsigned 32-bit endpoint value in a 32-bit integer/bit register carrier. */
@@ -1627,10 +1730,6 @@ struct ResolvedPredicateSpecialRegister {
 using ResolvedPredicateSource =
     std::variant<ResolvedPredicate, ResolvedPredicateSpecialRegister,
                  ResolvedPredicateConstant>;
-struct ResolvedVectorRegisterRef {
-  ResolvedRegisterRef register_ref;
-  bool operator==(const ResolvedVectorRegisterRef&) const = default;
-};
 struct ResolvedVectorSpecialRegisterRef {
   std::string spelling;
   base::SpecialRegisterId id;

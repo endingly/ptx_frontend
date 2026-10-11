@@ -890,6 +890,46 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
+    const auto* descriptor = [&]() -> const OperandDescriptor* {
+      for (const auto& item : descriptors)
+        if (item.target_field_id == operand.field_id)
+          return &item;
+      return nullptr;
+    }();
+    const bool named =
+        operand.register_vector && operand.register_vector->source.kind ==
+                                       ResolvedVectorSourceKind::NamedVector;
+    bool matches_view =
+        !operand.register_vector ||
+        operand.vector_arity == operand.register_vector->elements.size();
+    if (operand.register_vector)
+      for (size_t index = 0;
+           index < std::min(operand.vector_arity, kMaxOperandElements);
+           ++index) {
+        if (index >= operand.register_vector->elements.size()) {
+          matches_view = false;
+          break;
+        }
+        const auto& lane = operand.register_vector->elements[index];
+        matches_view =
+            matches_view && operand.vector_element_registers[index] ==
+                                (lane ? &*lane : nullptr);
+      }
+    const bool valid_source =
+        !operand.register_vector ||
+        (matches_view &&
+         valid_register_vector_source(*operand.register_vector,
+                                      operand.locations, false,
+                                      context.instruction_range) &&
+         (!named ||
+          (descriptor && descriptor->allow_named_vector &&
+           descriptor->vector_type_policy == VectorTypePolicy::Element &&
+           !descriptor->source_value_vector)));
+    if (!valid_source)
+      diagnostics.push_back(
+          {CheckDiagnosticKind::InvalidVectorOperand,
+           diagnostic_range(operand.locations, context),
+           "Register vector has invalid or unsupported source provenance."});
     const auto check_component = [&](const ResolvedRegisterRef* reg,
                                      SourceRange range) {
       if (reg &&
@@ -912,10 +952,11 @@ CheckResult check_operands(
       check_component(reg, diagnostic_range(operand.locations, context));
     for (size_t index = 0;
          index < std::min(operand.vector_arity, kMaxOperandElements); ++index)
-      check_component(operand.vector_element_registers[index],
-                      index < operand.locations.size()
-                          ? operand.locations[index]
-                          : context.instruction_range);
+      if (!named || !valid_source)
+        check_component(operand.vector_element_registers[index],
+                        index < operand.locations.size()
+                            ? operand.locations[index]
+                            : context.instruction_range);
     if ((operand.actual_shape != OperandShape::Vector &&
          operand.actual_shape != OperandShape::TensorOperand) ||
         (operand.vector_arity != 0 &&
@@ -1060,8 +1101,12 @@ CheckResult check_operands(
               operand->vector_element_registers[previous];
           if (earlier == nullptr)
             continue;
-          const bool same_register = same_register_storage(*lane, *earlier) ||
-                                     lane->spelling == earlier->spelling;
+          const bool named = operand->register_vector &&
+                             operand->register_vector->source.kind ==
+                                 ResolvedVectorSourceKind::NamedVector;
+          const bool same_register =
+              same_register_storage(*lane, *earlier) ||
+              (!named && lane->spelling == earlier->spelling);
           if (!same_register)
             continue;
           diagnostics.push_back(CheckDiagnostic{

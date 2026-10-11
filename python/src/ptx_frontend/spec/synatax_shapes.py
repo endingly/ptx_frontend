@@ -112,6 +112,8 @@ def operand_syntax_shapes(operand: OperandSpec) -> OperandSyntaxShape:
     """Return canonical source shapes including typed video slot restrictions."""
 
     shapes = OPERAND_SYNTAX_SHAPES[operand.kind]
+    if operand.vector_allow_named:
+        shapes |= OperandSyntaxShape.IDENTIFIER_REF
     if operand.video is not None:
         policy = operand.video.selector
         if policy is VideoSelectorPolicy.NONE:

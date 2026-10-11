@@ -886,6 +886,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -913,6 +914,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -940,6 +942,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -963,6 +966,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
     - name: address
       kind: addr
       role: addr
@@ -992,6 +996,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -1019,6 +1024,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -1047,6 +1053,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: address
@@ -1104,6 +1111,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
 
@@ -1127,6 +1135,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
 
@@ -1154,6 +1163,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
 
@@ -1176,6 +1186,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
 
@@ -1198,6 +1209,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: cache_policy
@@ -1283,6 +1295,7 @@ operand_patterns:
         arity:
           expr: modifier(vector)
         type_policy: element
+        allow_named: true
         allow_sink: true
         sink_payload_bits: 256
     - name: cache_policy

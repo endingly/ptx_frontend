@@ -42,7 +42,9 @@ int main() {
 .visible .entry kernel() {
   .reg .u32 %r<2>;
   .reg .v2 .u32 V;
+  .reg .u64 %rd;
   add.u32 V.x, V.g, 7;
+  ld.v2.u32 V, [%rd];
 }
 )ptx";
   ptx_frontend::PtxSyntaxParser module_parser{module_source};
@@ -53,7 +55,7 @@ int main() {
   }
   auto module = ir::resolveAndValidateModule(*module_ast);
   if (!module || module->functions.size() != 1 ||
-      module->functions.front().body.size() != 1 ||
+      module->functions.front().body.size() != 2 ||
       dynamic_cast<const ir::AddIntegerNoSat*>(
           module->functions.front().body.front().get()) == nullptr) {
     std::cerr << "installed module fixture did not resolve and validate\n";
@@ -72,5 +74,34 @@ int main() {
     std::cerr << "installed component metadata is inconsistent\n";
     return 1;
   }
+  const auto& named = dynamic_cast<const ir::LdGenericVector&>(
+      *module->functions.front().body[1]);
+  const auto& source = named.dst.value.source;
+  if (source.kind != ir::ResolvedVectorSourceKind::NamedVector ||
+      !source.whole_base ||
+      !ir::valid_register_vector_source(named.dst.value, named.dst.locs) ||
+      named.dst.value.elements[0]->component->origin !=
+          ir::RegisterComponentOrigin::NamedProjection ||
+      named.dst.value.elements[0]->component->selector ||
+      ir::valid_register_component(*named.dst.value.elements[0])) {
+    std::cerr << "installed named vector provenance is inconsistent\n";
+    return 1;
+  }
+  /** Inspect complete named provenance through the installed public visitor. */
+  struct NamedVectorObserver final : ir::detail::IReferenceObserver {
+    /** Number of complete named-vector payloads observed synchronously. */
+    size_t named_count{};
+    /** Consume the container without retaining any borrowed payload or ranges. */
+    void register_vector(const ir::ResolvedRegisterVector& value,
+                         std::span<const ptx_frontend::SourceRange> locations,
+                         ir::checker::AddressSymbolResolutionPolicy) override {
+      if (value.source.whole_base &&
+          ir::valid_register_vector_source(value, locations))
+        ++named_count;
+    }
+  } named_observer;
+  named.visit_references(named_observer);
+  if (named_observer.named_count != 1)
+    return 1;
   return 0;
 }

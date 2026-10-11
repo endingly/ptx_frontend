@@ -1,5 +1,7 @@
 # LD 覆盖情况
 
+普通 LD/ST、LDNC 与 LDU 在 brace 外接受 named v2/v4 data register（实际声明最多 128 bit）。现代 256-bit 和 async store form 仍只接受 brace；详见 [owned source contract](resolved_ir_design.md#named-memory-vector-source)。
+
 本文记录 frontend 接受的 PTX 9.3 `ld` 与 `ld.global.nc` form。machine-readable
 authority 是 `python/src/ptx_frontend/spec/resources/ptx_spec/data_movement_and_conversion.yaml`；
 本文描述 public boundary，不表示 simulator execution 或 GPU conformance。

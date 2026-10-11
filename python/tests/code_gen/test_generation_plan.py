@@ -355,6 +355,46 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertIn("class RetBare final", generated)
         self.assertIn("WithLocs<bool> uni", generated)
 
+    def test_named_vector_data_admission_is_operand_local(self) -> None:
+        """Opted memory slots emit admission without widening other families."""
+        from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy
+
+        observed = set()
+        for entry in self.context.entries:
+            opcode = entry.specification.opcode
+            for variant in entry.resolved.variants:
+                for layout in variant.operand_layouts:
+                    for binding in layout.bindings:
+                        if binding.allow_named_vector:
+                            observed.add(opcode)
+                            self.assertIn(opcode, {"ld", "ldu", "st"})
+                            self.assertIs(binding.vector_type_policy,
+                                          ResolvedVectorTypePolicy.ELEMENT)
+                            self.assertEqual(binding.target_field_id,
+                                             "src" if opcode == "st" else "dst")
+                            self.assertFalse(any(
+                                field.name in {"async", "bulk"} and
+                                field.constant_value is True
+                                for field in variant.modifier_fields))
+                        if opcode not in {"ld", "ldu", "st"} or any(
+                            field.name in {"async", "bulk"} and
+                            field.constant_value is True
+                            for field in variant.modifier_fields
+                        ):
+                            self.assertFalse(binding.allow_named_vector)
+        self.assertEqual(observed, {"ld", "ldu", "st"})
+        _, output = self.full_generation()
+        load_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_data_movement_ld*.gen.cpp"))
+        self.assertIn(".allow_named_vector = true", load_source)
+        self.assertIn(".register_vector = &", load_source)
+        for opcode in ("atom", "red", "cp", "tex", "mov"):
+            emitted = "\n".join(
+                path.read_text() for path in output.rglob("*.gen.cpp")
+                if re.fullmatch(rf"resolved_ir_.+_{opcode}(?:_.*)?\.gen\.cpp", path.name)
+            )
+            self.assertTrue(emitted, opcode)
+            self.assertFalse(".allow_named_vector = true" in emitted, opcode)
+
     def test_full_direct_class_corpus_and_layout_slots(self) -> None:
         """Plan every form once and keep overloaded fields typed by layout."""
 

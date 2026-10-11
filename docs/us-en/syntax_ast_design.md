@@ -49,6 +49,14 @@ Only one bracket pair is accepted: nested `[A[index]]`, repeated `A[i][j]`
 and dynamic arithmetic such as `A[i+j]` or `A[i*2]` are unsupported.
 Parsing this shape does not grant instruction-family admission or array binding.
 
+## Named memory-vector syntax
+
+Named data vectors use the existing identifier node, without synthesizing brace
+lanes or selectors in CST/AST. Only opted ordinary LD/ST, LDNC and LDU slots admit
+this shape; declaration-bound resolution records the owned whole source and
+implicit lane origins described in [Resolved IR](resolved_ir_design.md#named-memory-vector-sources).
+Brace syntax and the separate named-array address grammar are unchanged.
+
 ## CST ownership and representation
 
 Public CST headers live under `submod/cst/include`. A `syntax_cst::CstFile`

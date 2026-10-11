@@ -280,7 +280,8 @@ resolve_register(const syntax_ast::AstOperand& operand,
 
 std::expected<WithLocs<ResolvedVectorRegisterRef>, ResolveDiagnostic>
 resolve_vector_register(const syntax_ast::AstOperand& operand,
-                        const ResolveContext* context) {
+                        const ResolveContext* context,
+                        uint8_t declaration_width = 4) {
   const auto* identifier = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
   if (identifier == nullptr) {
     return std::unexpected(ResolveDiagnostic{
@@ -294,9 +295,9 @@ resolve_vector_register(const syntax_ast::AstOperand& operand,
         .message = "A vector register operand requires a module declaration.",
     });
   }
-  auto value =
-      resolve_bound_register(*identifier, ResolvedRegisterClass::General,
-                             *context, identifier->syntax.range, 4);
+  auto value = resolve_bound_register(
+      *identifier, ResolvedRegisterClass::General, *context,
+      identifier->syntax.range, declaration_width);
   if (!value)
     return std::unexpected(value.error());
   return WithLocs<ResolvedVectorRegisterRef>{
@@ -1526,8 +1527,10 @@ std::optional<ResolveDiagnostic> duplicate_destination_lane(
       const auto& earlier = vector.elements[previous];
       if (!earlier)
         continue;
-      const bool same_register = same_register_storage(*lane, *earlier) ||
-                                 lane->spelling == earlier->spelling;
+      const bool same_register =
+          same_register_storage(*lane, *earlier) ||
+          (vector.source.kind != ResolvedVectorSourceKind::NamedVector &&
+           lane->spelling == earlier->spelling);
       if (same_register) {
         return ResolveDiagnostic{
             .range = locations[index],
@@ -1551,9 +1554,26 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
                    bool allow_sink, size_t sink_payload_bits,
                    std::span<const ScalarType> allowed_register_types,
                    bool require_uniform_register_family, bool is_destination,
-                   const ResolveContext* context) {
+                   const ResolveContext* context, bool allow_named = false) {
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
-  if (vector == nullptr) {
+  const auto range = syntax_ast::sourceRange(operand);
+  std::optional<WithLocs<ResolvedVectorRegisterRef>> whole_base;
+  if (!vector && allow_named && required_arity &&
+      (*required_arity == 2 || *required_arity == 4) &&
+      vector_type_policy == checker::VectorTypePolicy::Element) {
+    auto whole = resolve_vector_register(operand, context, *required_arity);
+    if (!whole)
+      return std::unexpected(whole.error());
+    if (!whole->value.register_ref.declared_type ||
+        scalar_size_of(*whole->value.register_ref.declared_type) *
+                *required_arity >
+            16)
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = "A named vector declaration must not exceed 128 bits."});
+    whole_base = std::move(*whole);
+  }
+  if (vector == nullptr && !whole_base) {
     return std::unexpected(ResolveDiagnostic{
         .range = syntax_ast::sourceRange(operand),
         .message = "Expected a vector-pack operand.",
@@ -1562,15 +1582,15 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   if (vector_type_policy == checker::VectorTypePolicy::Aggregate &&
       scalar_kind(instruction_type) != base::ScalarKind::Bit) {
     return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
+        .range = range,
         .message = "A vector mov requires a bit-size instruction type.",
     });
   }
 
-  const size_t arity = vector->elements.size();
+  const size_t arity = whole_base ? *required_arity : vector->elements.size();
   if (required_arity && arity != *required_arity) {
     return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
+        .range = range,
         .message = fmt::format("This vector operand requires {} elements.",
                                *required_arity),
     });
@@ -1582,7 +1602,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
       8u;
   if (vector_payload_bits > checker::kMaxRegisterVectorPayloadBits) {
     return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
+        .range = range,
         .message = fmt::format("This vector operand's payload width ({} bits) "
                                "exceeds the supported "
                                "{} bit limit.",
@@ -1593,7 +1613,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   if (!required_arity &&
       std::ranges::find(allowed_arities, arity) == allowed_arities.end()) {
     return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
+        .range = range,
         .message =
             vector_type_policy == checker::VectorTypePolicy::Aggregate
                 ? "A vector mov requires two or four elements."
@@ -1605,7 +1625,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
     const size_t instruction_bytes = scalar_size_of(instruction_type);
     if (instruction_bytes % arity != 0 || instruction_bytes / arity == 0) {
       return std::unexpected(ResolveDiagnostic{
-          .range = vector->range,
+          .range = range,
           .message = "Vector mov elements must be at least eight bits wide.",
       });
     }
@@ -1613,29 +1633,32 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   }
 
   ResolvedRegisterVector result;
+  result.source.range = range;
+  if (whole_base) {
+    result.source.kind = ResolvedVectorSourceKind::NamedVector;
+    result.source.whole_base = *whole_base;
+  }
   result.elements.reserve(arity);
   std::vector<SourceRange> locations;
   locations.reserve(arity);
   size_t sink_count = 0;
   std::optional<bool> floating_register_family;
-  for (const auto& element : vector->elements) {
+  for (size_t index = 0; index < arity; ++index) {
+    const syntax_ast::AstOperand register_operand =
+        whole_base ? operand
+                   : std::visit(
+                         [](const auto& leaf) -> syntax_ast::AstOperand {
+                           return leaf;
+                         },
+                         vector->elements[index]);
     const auto* identifier =
-        std::get_if<syntax_ast::AstIdentifierRef>(&element);
-    if (identifier == nullptr &&
-        !std::holds_alternative<syntax_ast::AstVectorMember>(element)) {
+        std::get_if<syntax_ast::AstIdentifierRef>(&register_operand);
+    if (!identifier &&
+        !std::holds_alternative<syntax_ast::AstVectorMember>(register_operand))
       return std::unexpected(ResolveDiagnostic{
-          .range = std::visit(
-              [](const auto& leaf) {
-                return syntax_ast::sourceRange(syntax_ast::AstOperand{leaf});
-              },
-              element),
+          .range = syntax_ast::sourceRange(register_operand),
           .message =
-              "A register-vector element must be a register or '_' sink.",
-      });
-    }
-    const syntax_ast::AstOperand register_operand = std::visit(
-        [](const auto& leaf) -> syntax_ast::AstOperand { return leaf; },
-        element);
+              "A register-vector element must be a register or '_' sink."});
     const auto element_range = syntax_ast::sourceRange(register_operand);
     locations.push_back(element_range);
     if (identifier && identifier->syntax.text == "_") {
@@ -1658,7 +1681,21 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
       continue;
     }
 
-    auto register_ref = resolve_register(register_operand, context);
+    auto register_ref = [&]()
+        -> std::expected<WithLocs<ResolvedRegisterRef>, ResolveDiagnostic> {
+      if (!whole_base)
+        return resolve_register(register_operand, context);
+      auto lane = whole_base->value.register_ref;
+      lane.vector_width.reset();
+      lane.component = ResolvedRegisterComponent{
+          .lane = static_cast<uint8_t>(index),
+          .declaration_width = static_cast<uint8_t>(arity),
+          .origin = RegisterComponentOrigin::NamedProjection,
+          .base_spelling = lane.spelling,
+          .base_range = range,
+          .range = range};
+      return WithLocs<ResolvedRegisterRef>{std::move(lane), range};
+    }();
     if (!register_ref)
       return std::unexpected(register_ref.error());
     if (!allowed_register_types.empty() && register_ref->value.declared_type &&
@@ -1713,7 +1750,7 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   }
   if (sink_count == arity) {
     return std::unexpected(ResolveDiagnostic{
-        .range = vector->range,
+        .range = range,
         .message = "A vector must contain at least one register.",
     });
   }
@@ -1749,6 +1786,7 @@ resolve_modern_register_vector(
   }
 
   ResolvedRegisterVector result;
+  result.source.range = vector->range;
   result.elements.reserve(vector->elements.size());
   std::vector<SourceRange> locations;
   locations.reserve(vector->elements.size());
@@ -3404,7 +3442,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
           binding.require_uniform_register_family,
           binding.access == checker::OperandAccess::Write ||
               binding.access == checker::OperandAccess::ReadWrite,
-          context);
+          context, binding.allow_named_vector);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

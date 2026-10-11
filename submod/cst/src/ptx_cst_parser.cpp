@@ -495,7 +495,7 @@ PtxCstParser::parseBracketedAddress(TokenId open) {
         if (!immediate)
           return std::unexpected(immediate.error());
         elements.push_back(std::visit(
-            [](auto&& leaf) -> syntax_cst::CstVectorElement {
+            [](auto&& leaf) -> syntax_cst::CstAddressBase {
               return std::move(leaf);
             },
             std::move(*immediate)));
@@ -551,7 +551,14 @@ PtxCstParser::parseVectorPack(TokenId open) {
 
   for (;;) {
     if (token(peek()).kind == TokenKind::Ident) {
-      elements.emplace_back(syntax_cst::CstIdentifier{consume()});
+      const TokenId identifier = consume();
+      if (token(peek()).kind == TokenKind::DotIdent) {
+        const TokenId selector = consume();
+        elements.emplace_back(syntax_cst::CstVectorMember{
+            {identifier}, selector, {identifier, selector + 1}});
+      } else {
+        elements.emplace_back(syntax_cst::CstIdentifier{identifier});
+      }
     } else if (atNumericStart()) {
       auto immediate = parseNumericOperand();
       if (!immediate)

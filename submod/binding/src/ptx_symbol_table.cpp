@@ -1140,6 +1140,11 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&element)) {
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              } else if (const auto* member =
+                             std::get_if<syntax_ast::AstVectorMember>(
+                                 &element)) {
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
               }
             }
           } else if constexpr (std::same_as<Value,
@@ -1162,6 +1167,10 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+              else if (const auto* member =
+                           std::get_if<syntax_ast::AstVectorMember>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstVectorMember>) {
             addReference(scope, ReferenceKind::InstructionOperand, value.base);
@@ -1191,7 +1200,10 @@ struct SymbolTableBuilder {
                   continue;
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
-              }
+              } else if (const auto* member =
+                             std::get_if<syntax_ast::AstVectorMember>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             }
           } else if constexpr (std::same_as<
                                    Value, syntax_ast::AstVectorPredicatePair>) {
@@ -1200,6 +1212,11 @@ struct SymbolTableBuilder {
                       std::get_if<syntax_ast::AstIdentifierRef>(&element))
                 addReference(scope, ReferenceKind::InstructionOperand,
                              *identifier);
+            for (const auto& element : value.data.elements)
+              if (const auto* member =
+                      std::get_if<syntax_ast::AstVectorMember>(&element))
+                addReference(scope, ReferenceKind::InstructionOperand,
+                             member->base);
             addReference(scope, ReferenceKind::Predicate, value.predicate);
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstCallParameterList>) {

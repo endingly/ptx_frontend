@@ -314,10 +314,11 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
       [&](const auto& leaf)
           -> std::expected<ResolvedImmediate, ResolveDiagnostic> {
         using T = std::remove_cvref_t<decltype(leaf)>;
-        if constexpr (std::same_as<T, syntax_ast::AstIdentifierRef>)
-          return std::unexpected(
-              ResolveDiagnostic{.range = leaf.syntax.range,
-                                .message = "Expected a numeric constant."});
+        if constexpr (std::same_as<T, syntax_ast::AstIdentifierRef> ||
+                      std::same_as<T, syntax_ast::AstVectorMember>)
+          return std::unexpected(ResolveDiagnostic{
+              .range = syntax_ast::sourceRange(syntax_ast::AstOperand{leaf}),
+              .message = "Expected a numeric constant."});
         else
           return resolve_immediate_value(leaf, type, require_target_range);
       },

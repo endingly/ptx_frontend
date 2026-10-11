@@ -28,6 +28,7 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
   .reg .f32 %d<4>, %c<4>;
   .reg .b32 %a<4>, %b<4>, %e, %sa, %sb;
   .reg .u16 %byte_id, %thread_id;
+  .reg .v2 .u16 Selector;
   mma.sync.aligned.m16n8k16.row.col.f64.f64.f64.f64.rn
     {%fd0,%fd1,%fd2,%fd3}, {%fa0,%fa1,%fa2,%fa3,%fa4,%fa5,%fa6,%fa7},
     {%fb0,%fb1,%fb2,%fb3}, {%fc0,%fc1,%fc2,%fc3};
@@ -39,7 +40,7 @@ TEST(WarpMatrixMmaCoverage, ResolvesOwnedTopologyAndRejectsMutation) {
     {%c0,%c1,%c2,%c3}, %sa, {0,0}, %sb, {2,3};
   mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.block_scale.scale_vec::1X.f32.e4m3.e4m3.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1},
-    {%c0,%c1,%c2,%c3}, %sa, {%byte_id,%thread_id}, %sb, {2,3};
+    {%c0,%c1,%c2,%c3}, %sa, {Selector.x,Selector.y}, %sb, {2,3};
   mma.sp::ordered_metadata.sync.aligned.m16n8k64.row.col.kind::mxf8f6f4.block_scale.scale_vec::1X.f32.e4m3.e4m3.f32.ue8m0
     {%d0,%d1,%d2,%d3}, {%a0,%a1,%a2,%a3}, {%b0,%b1,%b2,%b3},
     {%c0,%c1,%c2,%c3}, %e, 0, %sa, {0,0}, %sb, {2,3};

@@ -538,6 +538,8 @@ struct ModuleReferenceUse {
   bool requires_register_state{};
   /** True when the binding must name a scalar .reg .pred declaration. */
   bool requires_predicate_register{};
+  /** Address-base grammar excludes ordinary selected register components. */
+  bool excludes_register_component{};
   bool function_local{};
   SourceRange range;
 };
@@ -735,9 +737,13 @@ void collect_operand_references(
     else
       collect_register(std::get<ResolvedRegisterRef>(value));
   } else if constexpr (std::same_as<Value, ResolvedRegisterVector>) {
-    for (const auto& element : value.elements)
-      if (element)
-        collect_register(*element);
+    for (size_t index = 0; index < value.elements.size(); ++index)
+      if (value.elements[index]) {
+        const std::array<SourceRange, 1> lane_range{
+            index < locations.size() ? locations[index] : fallback};
+        collect_operand_references(*value.elements[index], lane_range, fallback,
+                                   uses, address_resolution_policy);
+      }
   } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
     for (size_t index = 0; index < value.elements.size(); ++index) {
       const auto* register_ref =
@@ -749,21 +755,27 @@ void collect_operand_references(
       collect_operand_references(*register_ref, lane_range, fallback, uses,
                                  address_resolution_policy);
     }
-  } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate>) {
-    for (const auto& element : value.elements)
-      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
-        collect_register(*register_ref);
-  } else if constexpr (std::same_as<Value, ResolvedTensorIm2colInfo>) {
-    for (const auto& element : value.elements)
-      if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&element))
-        collect_register(*register_ref);
+  } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate> ||
+                       std::same_as<Value, ResolvedTensorIm2colInfo>) {
+    for (size_t index = 0; index < value.elements.size(); ++index)
+      if (const auto* register_ref =
+              std::get_if<ResolvedRegisterRef>(&value.elements[index])) {
+        const std::array<SourceRange, 1> lane_range{
+            index < locations.size() ? locations[index] : fallback};
+        collect_operand_references(*register_ref, lane_range, fallback, uses,
+                                   address_resolution_policy);
+      }
   } else if constexpr (std::same_as<Value, TensorMemoryAddress>) {
     collect_operand_references(value.value, locations, fallback, uses,
                                address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedMatrixScaleSelector>) {
-    collect_operand_references(value.byte_id, locations, fallback, uses,
+    const std::array<SourceRange, 1> byte_range{
+        !locations.empty() ? locations[0] : fallback};
+    const std::array<SourceRange, 1> thread_range{
+        locations.size() > 1 ? locations[1] : fallback};
+    collect_operand_references(value.byte_id, byte_range, fallback, uses,
                                address_resolution_policy);
-    collect_operand_references(value.thread_id, locations, fallback, uses,
+    collect_operand_references(value.thread_id, thread_range, fallback, uses,
                                address_resolution_policy);
   } else if constexpr (std::same_as<Value, ResolvedSharedMatrixDescriptor>) {
     collect_register(value.register_ref);
@@ -786,12 +798,16 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, ResolvedFabricHandle>) {
     collect_operand_references(value.endpoint.value, value.endpoint.locs,
                                fallback, uses, address_resolution_policy);
+    uses.back().excludes_register_component = true;
     collect_operand_references(value.data_offset.value, value.data_offset.locs,
                                fallback, uses, address_resolution_policy);
-    if (value.counter_offset)
+    uses.back().excludes_register_component = true;
+    if (value.counter_offset) {
       collect_operand_references(value.counter_offset->value,
                                  value.counter_offset->locs, fallback, uses,
                                  address_resolution_policy);
+      uses.back().excludes_register_component = true;
+    }
   } else if constexpr (std::same_as<Value, ResolvedSurfaceAccess>) {
     collect_resource(value.surface, value.surface.source_range);
     for (const auto& lane : value.coordinates) {
@@ -837,9 +853,10 @@ void collect_operand_references(
         collect_operand_references(index->value, index->locs, fallback, uses,
                                    address_resolution_policy);
     if (const auto* register_ref =
-            std::get_if<ResolvedRegisterRef>(&value.base))
+            std::get_if<ResolvedRegisterRef>(&value.base)) {
       collect_register(*register_ref);
-    else if (const auto* symbol = std::get_if<ResolvedSymbolRef>(&value.base))
+      uses.back().excludes_register_component = true;
+    } else if (const auto* symbol = std::get_if<ResolvedSymbolRef>(&value.base))
       collect_operand_references(*symbol, locations, fallback, uses,
                                  address_resolution_policy, &value);
   } else if constexpr (std::same_as<Value, ResolvedMovSource>) {
@@ -1347,8 +1364,23 @@ void check_module_references(const ResolvedModule& module,
           symbol->type ? detail::scalar_type_from_ptx_name(*symbol->type)
                        : std::nullopt;
       const auto& cached = *use.register_ref;
+      const auto declaration_width =
+          cached.component ? std::optional{cached.component->declaration_width}
+                           : cached.vector_width;
+      bool component_binding_valid =
+          valid_register_component(cached) &&
+          !(use.excludes_register_component && cached.component);
+      if (cached.component) {
+        const auto lookup = module.symbols.lookup(
+            symbol->scope, cached.component->base_spelling);
+        component_binding_valid =
+            component_binding_valid && lookup && lookup->symbol == symbol->id &&
+            lookup->parameterized_index == cached.parameterized_index &&
+            cached.component->range == use.range;
+      }
       if (!declared || cached.declared_type != declared ||
-          cached.vector_width != symbol->vector_width ||
+          declaration_width != symbol->vector_width ||
+          !component_binding_valid ||
           cached.register_class != (*declared == ScalarType::Pred
                                         ? ResolvedRegisterClass::Predicate
                                         : ResolvedRegisterClass::General)) {

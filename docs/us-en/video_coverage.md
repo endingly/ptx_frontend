@@ -12,6 +12,20 @@ No maximum target or removal gate is specified. Old minimum targets are frontend
 
 Every register carrier is scalar, general, 32-bit integer/bit storage. Scalar source roles also accept integer constants with existing 32-bit conversion and original 64-bit source provenance; SIMD source roles require registers. Float, vector, predicate, sink, special-register and symbol operands are rejected. Immediate selectors are unsupported.
 
+An ordinary vector's explicit `.xyzw/.rgba` component is an effective scalar
+carrier wherever the existing role accepts a plain 32-bit register, including
+permitted `vmad` register minus. The component selector is not a VIDEO
+`.b0/.h0` selection: its VIDEO selector remains absent. Merge destinations still
+require their actual VIDEO selector; chained `V.x.b0`, hardware components and
+unpermitted minus remain rejected. Owned and standalone checking retain the
+component child's range separately from an outer minus and reject fabricated
+component-plus-VIDEO-selector combinations. This frontend domain follows the
+ISA scalar-carrier contract; bounded CUDA 13.3 V13.3.33 probes rejected tested
+`vadd V.x` and `vmad -V.x` forms even with initialized inputs, while ordinary
+`add V.x` and negated scalar `vmad` controls assembled. This is a compiler
+compatibility difference, not evidence of GPU behavior or complete assembler
+parity.
+
 `ResolvedVideoOperand` owns its located register-or-immediate value, optional typed selector, and register-negation flag/minus range. Scalar byte selectors are `b0..b3`, halfword selectors `h0..h1`. Scalar three-operand forms have an unselected destination. Four-operand secondary forms use `.add/.min/.max`; merge forms require a selected destination and no secondary suffix. Scalar saturation may combine with secondary operations. Shift instructions require `.clamp/.wrap` after optional `.sat` and use unsigned `btype`. `vset` has two source types and comparison only, with unsigned destination/C interpretation.
 
 Packed source swizzles index the concatenated A+B carriers: two-lane digits range `0..3`, four-lane digits `0..7`. Repetition is legal for sources. Arrays retain written high-to-low digit order. Destination masks are nonempty descending subsets without repetition, including masked `.add` accumulation. Default selectors are A=`h10`/`b3210`, B=`h32`/`b7654`, destination=`h10`/`b3210`. `video_effective_selector` returns these typed defaults while preserving omission in the owned operand. SIMD saturation and `.add` cannot coexist; `vset2/4` has no saturation.

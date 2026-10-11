@@ -157,7 +157,7 @@ Syntax AST 不再保存 trivia、标点 token 或组合 operand 的重建文本�
 - immediate 的词法类别；
 - predicate 是否取反；
 - address base、offset operation 与是否有括号这一 grammar form；
-- vector member/vector pack 结构；
+- vector member/vector pack 结构，包括 brace scalar lane 中的普通 `.xyzw/.rgba` member；
 - call return/input parameter group、callee、target-set/prototype symbol；
 - direct branch label target；
 - function-local `.callprototype` label、signature payload 和 PTX 9.3 suffix payload；

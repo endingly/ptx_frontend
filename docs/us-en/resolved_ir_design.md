@@ -1,5 +1,25 @@
 # C++ Resolved IR Design
 
+## Integrated vector data movement
+
+The complete-module regression chains below exercise parsing, binding, resolution
+and checking together. They also validate owned IR after the original source and
+AST are destroyed and the module is copied and moved. This is frontend evidence,
+not GPU execution, broadcast/truncation semantics or assembler parity.
+
+| Supported chain or boundary | Preserved contract and compatibility |
+| --- | --- |
+| Named v4 f32 LD → scalar component → named/brace MOV → ST | One real declaration identity underlies canonical lanes; `.xyzw` and `.rgba` are explicit ordinary-register selectors, while named projections retain the whole identifier range without fabricated selectors. Ordinary `.w` does not add hardware `%tid.w`. |
+| v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed values, parameterized register members and source form survive ownership transfer. Destination aliases of one lane are duplicates; repeated sources and source/destination overlap remain legal. |
+| Named v2 f64 NC/LDU → MOV → ST | Memory and MOV retain their own type policies. Existing availability remains distinct: NC needs PTX 3.1 / SM 32, generic LDU PTX 2.0 / SM 20, explicit-global LDU PTX 2.0 plus f64 SM 13, and f64 MOV SM 13. |
+| Named-array constant address → vector LD → MOV → ST | A declared `.v4 .f32 A[]` still has scalar index stride four bytes, not sixteen. `A[4]` contributes sixteen bytes and can satisfy v4 alignment; a dynamic index reduces the known alignment to `gcd(base alignment, 4)`, so the same vector access is rejected when only four-byte alignment is guaranteed. |
+| Adjacent unsupported combinations | Atom/red remain brace-only; scalar bit pack/unpack retains its sink and B128 gates and does not admit named aggregates, float packing or scalar-to-scalar B128. Modern 256-bit memory uses legal scalar brace lanes, not oversized ordinary named declarations or widened vector MOV. |
+
+Owned revalidation checks complete source forms, component origin/order, actual
+declaration width, type/arity and source ownership, with located failures for
+tampered payloads. These integration checks supplement the individual family
+regressions; they do not imply the full ISA cross-product or a stable 1.0 API.
+
 ## Explicit vector MOV
 
 The existing `mov_v4_u32` / `MovV4U32` semantic identity now covers explicit

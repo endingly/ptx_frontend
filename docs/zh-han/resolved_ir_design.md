@@ -1,5 +1,23 @@
 # C++ Resolved IR 设计
 
+## 向量数据搬运集成
+
+下列完整 module 回归链同时验证 parsing、binding、resolution 与 checking。
+原始 source 和 AST 销毁、module copy/move 后，还会验证 owned IR。这是
+frontend 证据，不代表 GPU 执行、broadcast/truncation 语义或 assembler parity。
+
+| 支持链路或边界 | 保留的契约与兼容性 |
+| --- | --- |
+| Named v4 f32 LD → scalar component → named/brace MOV → ST | Canonical lane 关联同一真实声明 identity；`.xyzw`/`.rgba` 为普通 register 的显式 selector，named projection 保留完整 identifier range，不伪造 selector。普通 `.w` 不会新增 hardware `%tid.w`。 |
+| v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed value、parameterized register member 和 source form 在所有权转移后保留。同 lane 的 destination alias 仍为重复；source 重复和 source/destination overlap 合法。 |
+| Named v2 f64 NC/LDU → MOV → ST | Memory 与 MOV 保留各自 type policy。既有 availability 不混用：NC 需 PTX 3.1 / SM 32，generic LDU 需 PTX 2.0 / SM 20，explicit-global LDU 需 PTX 2.0 并叠加 f64 SM 13，f64 MOV 需 SM 13。 |
+| Named-array constant address → vector LD → MOV → ST | 声明 `.v4 .f32 A[]` 的 index stride 仍为标量四字节，不是十六字节。`A[4]` 贡献十六字节，可满足 v4 alignment；动态 index 将已知对齐降为 `gcd(base alignment, 4)`，仅保证四字节对齐时同一 vector access 被拒绝。 |
+| 邻接的不支持组合 | Atom/red 保持 brace-only；scalar bit pack/unpack 保留 sink/B128 门槛，不接纳 named aggregate、float packing 或 scalar-to-scalar B128。现代 256-bit memory 使用合法 scalar brace lane，不依赖超宽普通 named 声明，也不扩宽 vector MOV。 |
+
+Owned revalidation 检查完整 source form、component origin/order、实际声明宽度、
+type/arity 和 source owner，并对被篡改 payload 提供带位置的失败。这些集成检查
+补充各 family 的独立回归，不意味着完整 ISA cross-product 或稳定 1.0 API。
+
 ## 显式 vector MOV
 
 既有 `mov_v4_u32` / `MovV4U32` 语义 identity 现覆盖 `.v2`/`.v4` MOV，类型为

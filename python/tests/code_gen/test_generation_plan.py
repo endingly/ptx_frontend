@@ -320,6 +320,18 @@ class GenerationPlanTests(unittest.TestCase):
         assert cls._full_output is not None
         return cls._full_plan, cls._full_output
 
+    def test_ret_header_preserves_uniformity_on_the_canonical_class(self) -> None:
+        """The generated public return payload owns its optional assertion."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            header = Path(directory) / "ret.gen.hpp"
+            generate_resolved_opcode_header(
+                self.context, category="control_flow", opcode="ret", output_path=header
+            )
+            generated = header.read_text(encoding="utf-8")
+        self.assertIn("class RetBare final", generated)
+        self.assertIn("WithLocs<bool> uni", generated)
+
     def test_full_direct_class_corpus_and_layout_slots(self) -> None:
         """Plan every form once and keep overloaded fields typed by layout."""
 

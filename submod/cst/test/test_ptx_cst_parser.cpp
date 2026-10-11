@@ -272,6 +272,36 @@ TEST(PtxCstParser, RetainsDedicatedCallOperandStructure) {
   EXPECT_EQ(result->token(target_set.name.token).text, "targets");
 }
 
+/** Return suffixes and guards preserve their spelling and surrounding trivia. */
+TEST(PtxCstParser, RoundTripsUniformReturnAndGuards) {
+  for (const std::string_view source :
+       {"ret;", "ret.uni;", "@%p0 ret;", "@%p0 ret.uni;", "@!%p0 ret;",
+        " // return\n@!%p0 ret /* assertion */ .uni ;"}) {
+    SCOPED_TRACE(source);
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseInstruction();
+    ASSERT_TRUE(parsed.has_value()) << parsed.diagnostics.front().message;
+    EXPECT_TRUE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed->sourceText(), source);
+    const auto* instruction = parsed->instruction();
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_EQ(parsed->token(instruction->opcode).text, "ret");
+    EXPECT_TRUE(instruction->operands.empty());
+    const bool uniform = source.find(".uni") != std::string_view::npos;
+    ASSERT_EQ(instruction->modifiers.size(), uniform ? 1u : 0u);
+    if (uniform) {
+      EXPECT_EQ(parsed->token(instruction->modifiers.front()).text, ".uni");
+    }
+    ASSERT_EQ(instruction->predicate.has_value(),
+              source.find('@') != std::string_view::npos);
+    if (instruction->predicate) {
+      EXPECT_EQ(parsed->token(instruction->predicate->name).text, "%p0");
+      EXPECT_EQ(instruction->predicate->exclamation_token.has_value(),
+                source.find("@!") != std::string_view::npos);
+    }
+  }
+}
+
 TEST(PtxCstParser, RetainsDedicatedDirectBranchTarget) {
   PtxCstParser parser("@%p bra.uni done;");
 

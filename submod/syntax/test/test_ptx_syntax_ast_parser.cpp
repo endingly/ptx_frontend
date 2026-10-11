@@ -129,6 +129,33 @@ TEST(PtxSyntaxParser, RejectsRecursiveArithmeticRegisterMinus) {
   }
 }
 
+/** Lowering preserves uniformity and positive/negated guard source ranges. */
+TEST(PtxSyntaxParser, PreservesUniformReturnAndGuardRanges) {
+  for (const std::string_view source :
+       {"ret;", "ret.uni;", "@%p0 ret;", "@%p0 ret.uni;", "@!%p0 ret;",
+        "@!%p0 ret.uni;"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto parsed = parser.parseInstruction();
+    ASSERT_TRUE(parsed.has_value()) << parsed.diagnostics.front().message;
+    EXPECT_TRUE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed->opcode.syntax.text, "ret");
+    EXPECT_TRUE(parsed->operands.empty());
+    const bool uniform = source.find(".uni") != std::string_view::npos;
+    ASSERT_EQ(parsed->modifiers.size(), uniform ? 1u : 0u);
+    if (uniform)
+      EXPECT_EQ(sourceSlice(source, parsed->modifiers.front().syntax.range),
+                ".uni");
+    ASSERT_EQ(parsed->predicate.has_value(), source.front() == '@');
+    if (parsed->predicate) {
+      EXPECT_EQ(parsed->predicate->name.syntax.text, "%p0");
+      EXPECT_EQ(parsed->predicate->negated, source[1] == '!');
+      EXPECT_EQ(sourceSlice(source, parsed->predicate->range),
+                parsed->predicate->negated ? "@!%p0" : "@%p0");
+    }
+  }
+}
+
 TEST(PtxSyntaxParser, ParsesPredicateAddressAndVectorMember) {
   PtxSyntaxParser parser("@!%p add.u32 [%rd1+16], %r2.x, %r3;");
 

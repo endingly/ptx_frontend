@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/control_flow/ret.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvt.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cvta.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/isspacep.gen.hpp>
@@ -495,6 +496,56 @@ TEST(OwnedModuleHandoff, RevalidatesExecutionPredicateDeclarationsWithoutAst) {
   expect_owned_model_mismatch(module,
                               ModuleValidationPolicy::RequireCompleteContext);
   mov.execution_predicate->value.register_ref = original_guard;
+}
+
+/** Entry and device returns own uniformity and guards after source release. */
+TEST(OwnedModuleHandoff, RetainsUniformReturnAndGuardsWithoutAst) {
+  std::optional<ResolvedModule> owned;
+  {
+    const std::string body = R"ptx(
+  .reg .pred %p0;
+  ret;
+  ret.uni;
+  @%p0 ret;
+  @%p0 ret.uni;
+  @!%p0 ret;
+  @!%p0 ret.uni;
+)ptx";
+    const std::string source = ".version 9.3\n.target sm_80\n.func device() {" +
+                               body + "}\n.entry kernel() {" + body + "}\n";
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    EXPECT_TRUE(validateModule(*parsed, *resolved).has_value());
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(owned.has_value());
+  ASSERT_EQ(owned->functions.size(), 2u);
+  for (auto& function : owned->functions) {
+    ASSERT_EQ(function.body.size(), 6u);
+    for (std::size_t index = 0; index < function.body.size(); ++index) {
+      const auto* ret =
+          dynamic_cast<const RetBare*>(function.body[index].get());
+      ASSERT_NE(ret, nullptr);
+      EXPECT_EQ(ret->uni.value, index % 2 == 1);
+      EXPECT_EQ(ret->uni.locs.size(), index % 2);
+      ASSERT_EQ(ret->execution_predicate.has_value(), index >= 2);
+      if (ret->execution_predicate) {
+        EXPECT_EQ(ret->execution_predicate->value.negated, index >= 4);
+        EXPECT_TRUE(
+            ret->execution_predicate->value.register_ref.symbol_id.has_value());
+      }
+    }
+  }
+  expect_owned_validation_success(
+      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  auto& guarded = dynamic_cast<RetBare&>(*owned->functions.front().body.back());
+  ASSERT_TRUE(guarded.execution_predicate.has_value());
+  guarded.execution_predicate->value.register_ref.declared_type =
+      ScalarType::U32;
+  expect_owned_model_mismatch(*owned,
+                              ModuleValidationPolicy::RequireCompleteContext);
 }
 
 /** Valid predicate declarations retain their existing binding forms. */

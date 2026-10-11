@@ -36,6 +36,19 @@ parenthesize a base expression containing additive or lower-precedence operators
 Exact `0f` single-precision bit patterns remain valid literal operands, but
 cannot participate in constant expressions.
 
+## Named array-address syntax
+
+`A[index]` is one unbracketed address expression, distinct from `[A+offset]`.
+The CST and AST own a separate named-index payload with bracket, index,
+operator and displacement ranges. The index is an integer constant expression,
+a bound scalar integer/bit register, or that register followed by `+`/`-` and
+an integer constant expression. Register names need not begin with `%`.
+`A[idx-1]`, `A[idx - 1]` and `A[idx+-1]` preserve their written operations;
+constant expression trees are deep-copied and included in source identity.
+Only one bracket pair is accepted: nested `[A[index]]`, repeated `A[i][j]`
+and dynamic arithmetic such as `A[i+j]` or `A[i*2]` are unsupported.
+Parsing this shape does not grant instruction-family admission or array binding.
+
 ## CST ownership and representation
 
 Public CST headers live under `submod/cst/include`. A `syntax_cst::CstFile`

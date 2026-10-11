@@ -54,7 +54,9 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const check_end::ResolvedFieldDescriptor& field,
     const check_end::ResolvedOperandBindingDescriptor& binding,
     const syntax_ast::AstOperand& operand,
-    const ResolvedInstructionFields& fields, const ResolveContext* context);
+    const ResolvedInstructionFields& fields, const ResolveContext* context,
+    NamedArrayAddressPolicy named_array_policy =
+        NamedArrayAddressPolicy::Reject);
 
 /** Merge tex compatibility source slots under one generated resource contract. */
 std::expected<ResolvedFieldValue, ResolveDiagnostic>

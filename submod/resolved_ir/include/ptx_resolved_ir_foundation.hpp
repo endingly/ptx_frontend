@@ -1627,6 +1627,31 @@ struct ResolvedAddressOffset {
 }
 using ResolvedAddressBase =
     std::variant<ResolvedRegisterRef, ResolvedImmediate, ResolvedSymbolRef>;
+/** Admission and byte-displacement domain selected by the final instruction form. */
+enum class NamedArrayAddressPolicy : uint8_t { Reject, Memory, Mov };
+/** Owned symbolic array subscript, independent of a byte-address addend. */
+struct ResolvedNamedArrayIndex {
+  /** Source integer bits/signedness or the exact bound scalar index carrier. */
+  std::variant<declaration_semantics::IntegerConstantValue,
+               WithLocs<ResolvedRegisterRef>>
+      index;
+  /** Register displacement in element units; absent for a constant-only index. */
+  std::optional<declaration_semantics::IntegerConstantValue> displacement;
+  /** Written operator retained independently of normalized byte displacement. */
+  ResolvedAddressOffsetOperator operation = ResolvedAddressOffsetOperator::Add;
+  /** Bytes per declaration scalar element, excluding vectors and inner extents. */
+  uint64_t scalar_stride{};
+  /** Checked constant contribution in bytes; dynamic register arithmetic is symbolic. */
+  int64_t byte_displacement{};
+  /** Exact base, subscript child, optional operator/term and bracket provenance. */
+  SourceRange base_range;
+  SourceRange index_range;
+  SourceRange operator_range;
+  SourceRange displacement_range;
+  SourceRange left_bracket_range;
+  SourceRange right_bracket_range;
+  SourceRange range;
+};
 /** A PTX address expression with resolved base, offset, and function context. */
 struct ResolvedAddress {
   ResolvedAddressBase base;
@@ -1640,9 +1665,21 @@ struct ResolvedAddress {
   bool unified = false;
   /** Suffix provenance for checker diagnostics. */
   SourceRange unified_range;
+  /** An owned named subscript; mutually exclusive with the byte offset. */
+  std::optional<ResolvedNamedArrayIndex> named_index;
   /** A symbol base can carry contextual availability without value equality. */
   bool operator==(const ResolvedAddress&) const = delete;
 };
+/** Compute a checked signed byte contribution without evaluating an index register. */
+std::optional<int64_t> named_array_byte_displacement(
+    const ResolvedNamedArrayIndex& index);
+/** Revalidate the symbolic subscript and its source ranges for one consumer. */
+bool valid_named_array_address(const ResolvedAddress& address,
+                               NamedArrayAddressPolicy policy,
+                               SourceRange range);
+/** Return guaranteed alignment after byte offsets or scalar-stride indexing. */
+std::optional<uint64_t> resolved_address_alignment(
+    const ResolvedAddress& address);
 struct ResolvedOperandLayoutTag {
   uint16_t value = 0;
   bool operator==(const ResolvedOperandLayoutTag&) const = default;

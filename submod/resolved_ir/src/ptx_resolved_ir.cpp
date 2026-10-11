@@ -54,7 +54,8 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
     const syntax_ast::AstInstruction& ast,
     const check_end::SyntaxInstructionDescriptor& syntax_instruction,
     const check_end::ResolvedInstructionDescriptor& resolved_instruction,
-    std::string_view variant_name, const ResolveContext* context) {
+    std::string_view variant_name, const ResolveContext* context,
+    NamedArrayAddressPolicy named_array_policy) {
   const SyntaxVariantDescriptor& syntax_variant =
       detail::find_syntax_variant_descriptor(syntax_instruction, variant_name);
   const ResolvedVariantDescriptor& resolved_variant =
@@ -165,8 +166,9 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
         omitted_brackets
             ? detail::resolve_unbracketed_texture_access(
                   ast, source_index, source_span, binding, fields, context)
-            : detail::resolve_operand_value(
-                  field, binding, ast.operands[source_index], fields, context);
+            : detail::resolve_operand_value(field, binding,
+                                            ast.operands[source_index], fields,
+                                            context, named_array_policy);
     if (!value)
       return std::unexpected(value.error());
     source_index += source_span;

@@ -26,6 +26,9 @@ struct ResolveContext {
   std::span<const binding::SymbolId> unified_storage_symbols;
   /** Source-associated module texturing mode for direct resource resolution. */
   TextureMode texture_mode = TextureMode::Unified;
+  /** Borrowed owned shapes, valid only throughout this synchronous resolution. */
+  std::span<const ResolvedStorageDeclaration> storage_declarations;
+  std::span<const ResolvedParameterDeclaration> parameter_declarations;
 };
 
 /** Preserve the written atomic address suffix after syntax selection. */

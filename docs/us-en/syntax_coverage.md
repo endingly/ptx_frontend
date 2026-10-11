@@ -11,6 +11,7 @@ execution evidence for eleven commonly used operation names.
 
 | Area | Status | Implemented subset |
 | --- | --- | --- |
+| Named array addresses | Supported subset | Dedicated MOV address sources and ordinary LD/ST accept one `A[index]`, with declaration scalar-element stride and preserved direct-minus/plus-negative source operations. Family/qualifier exclusions and the ptxas spelling discrepancy are documented in [named address semantics](resolved_ir_design.md#named-array-addresses); see [syntax and ranges](syntax_ast_design.md#named-array-address-syntax). |
 | PTX 9.3 video | Supported source family | All 23 scalar/SIMD2/SIMD4 opcodes with separate video types, selectors/masks, register negation, immediate provenance and target checks; see [video coverage](video_coverage.md). Arithmetic execution is outside the frontend. |
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
 | Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, vector members/packs, and dedicated call/branch operand shapes |

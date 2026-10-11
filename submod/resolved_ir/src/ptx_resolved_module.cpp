@@ -1092,6 +1092,32 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
   };
 }
 
+/** Collect body parameter shapes once, preserving lexical record order and scope. */
+void collect_body_parameters(
+    const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+    const binding::SymbolTable& symbols, binding::ScopeId scope,
+    ResolvedFunction& function) {
+  for (const auto& item : body) {
+    if (const auto* declaration =
+            std::get_if<syntax_ast::AstVariableDeclaration>(&item);
+        declaration &&
+        declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
+      for (const auto& declarator : declaration->declarators) {
+        const auto symbol = declared_symbol(symbols, scope, declarator);
+        if (!symbol)
+          throw ResolveException("Bound body parameter has no local symbol.");
+        function.parameter_declarations.push_back(resolve_parameter_declaration(
+            *declaration, declarator, symbols.symbol(*symbol)));
+      }
+    } else if (const auto* block =
+                   std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+               block && *block) {
+      collect_body_parameters((*block)->body, symbols,
+                              block_scope(symbols, scope, **block), function);
+    }
+  }
+}
+
 void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
                   const ResolveContext& context,
                   const binding::SymbolTable& symbols,
@@ -1100,20 +1126,8 @@ void resolve_body(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
                   ResolvedFunction& resolved_function,
                   ModuleResolveDiagnostics& diagnostics) {
   for (const auto& body_item : body) {
-    if (const auto* declaration =
-            std::get_if<syntax_ast::AstVariableDeclaration>(&body_item);
-        declaration &&
-        declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
-      for (const auto& declarator : declaration->declarators) {
-        const auto symbol = declared_symbol(symbols, context.scope, declarator);
-        if (!symbol)
-          throw ResolveException("Bound body parameter has no local symbol.");
-        resolved_function.parameter_declarations.push_back(
-            resolve_parameter_declaration(*declaration, declarator,
-                                          symbols.symbol(*symbol)));
-      }
-    } else if (const auto* instruction =
-                   std::get_if<syntax_ast::AstInstruction>(&body_item)) {
+    if (const auto* instruction =
+            std::get_if<syntax_ast::AstInstruction>(&body_item)) {
       auto resolved = resolveInstruction(*instruction, context);
       if (!resolved) {
         diagnostics.push_back(std::move(resolved.error()));
@@ -1363,6 +1377,10 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
                           : ParameterDeclarationRole::DeviceInput);
     resolve_control_contracts(function->body, binding_result.table, scope,
                               signatures, resolved_function);
+    collect_body_parameters(function->body, binding_result.table, scope,
+                            resolved_function);
+    context.storage_declarations = *storage;
+    context.parameter_declarations = resolved_function.parameter_declarations;
     resolve_body(function->body, context, binding_result.table, signatures,
                  call_argument_properties, resolved_function, diagnostics);
     check_call_staging_body(*function, function->body, binding_result.table,

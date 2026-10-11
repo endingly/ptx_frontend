@@ -320,6 +320,29 @@ class GenerationPlanTests(unittest.TestCase):
         assert cls._full_output is not None
         return cls._full_plan, cls._full_output
 
+    def test_named_array_address_policy_is_final_variant_local(self) -> None:
+        """Only ordinary LD/ST opt in; overlapping rules cannot widen other families."""
+        from ptx_frontend.code_gen.emit.resolved_source import _named_array_policy
+
+        observed = {}
+        for entry in self.context.entries:
+            if entry.specification.opcode not in {"ld", "ldu", "st", "cp", "atom"}:
+                continue
+            for variant in entry.resolved.variants:
+                policy = _named_array_policy(entry, variant)
+                observed[(entry.specification.opcode, variant.variant_id)] = policy
+                if entry.specification.opcode in {"ldu", "cp", "atom"}:
+                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
+                if any(field.name in {"nc", "async", "bulk"} and field.constant_value is True
+                       for field in variant.modifier_fields):
+                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
+        self.assertTrue(any(opcode == "ld" and policy.endswith("::Memory")
+                            for (opcode, _), policy in observed.items()))
+        self.assertTrue(any(opcode == "st" and policy.endswith("::Memory")
+                            for (opcode, _), policy in observed.items()))
+        self.assertTrue(any(opcode == "ld" and policy.endswith("::Reject")
+                            for (opcode, _), policy in observed.items()))
+
     def test_ret_header_preserves_uniformity_on_the_canonical_class(self) -> None:
         """The generated public return payload owns its optional assertion."""
 

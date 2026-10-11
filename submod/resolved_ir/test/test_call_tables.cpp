@@ -339,6 +339,48 @@ TEST(CallTables, OwnsContractsAndVisitorAfterSourceRelease) {
   EXPECT_EQ(observer.table, moved.call_tables.front().symbol_id);
 }
 
+/** Bound initializer tokens retain source order after coherent owned reordering. */
+TEST(CallTables, RejectsReorderedOwnedInitializerReferences) {
+  for (const auto declaration :
+       {".global .u64 T[4] = {f,g,f};", ".const .u32 T[] = {f,g,f};",
+        ".global .u32 T[3] = {\n (f),\n (g),\n f\n};",
+        ".const .u64 T[4] = {(f), (g), f};"}) {
+    SCOPED_TRACE(declaration);
+    auto module = [&] {
+      const auto ast = test_helpers::parseModule(table_module(declaration));
+      EXPECT_TRUE(ast);
+      return resolveAndValidateModule(*ast);
+    }();
+    ASSERT_TRUE(module) << module.error().front().message;
+    auto copied = *module;
+    auto moved = std::move(*module);
+    for (auto* owned : {&copied, &moved}) {
+      ASSERT_TRUE(validateModule(*owned));
+      auto& storage = owned->storage_declarations.front();
+      auto& slots = owned->call_tables.front().slots;
+      ASSERT_GE(storage.initializer.size(), 2u);
+      ASSERT_GE(slots.size(), 2u);
+      std::swap(storage.initializer[0], storage.initializer[1]);
+      std::swap(slots[0], slots[1]);
+      const uint64_t stride =
+          owned->call_tables.front().element_type == base::ScalarType::U32 ? 4
+                                                                           : 8;
+      for (size_t index = 0; index < 2; ++index) {
+        storage.initializer[index].byte_offset = index * stride;
+        slots[index].index = index;
+        slots[index].byte_offset = index * stride;
+      }
+      const auto checked = validateModule(*owned);
+      ASSERT_FALSE(checked);
+      EXPECT_TRUE(std::ranges::any_of(checked.error(), [](const auto&
+                                                              diagnostic) {
+        return diagnostic.message ==
+               "Call table initializer references must follow source order.";
+      }));
+    }
+  }
+}
+
 /** Each mutation starts from an independently validated complete-context baseline. */
 TEST(CallTables, RejectsOwnedContractAndStorageTampering) {
   for (unsigned mutation = 0; mutation < 36; ++mutation) {

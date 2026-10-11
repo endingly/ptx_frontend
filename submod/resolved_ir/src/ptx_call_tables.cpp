@@ -112,6 +112,12 @@ std::expected<ResolvedCallTableContract, std::string> build_call_table(
       return fail(
           "Call table entry requires its exact previously declared function "
           "occurrence.");
+    if (!targets.empty() &&
+        std::tie(targets.back().end.line, targets.back().end.column) >
+            std::tie(reference->range.start.line,
+                     reference->range.start.column))
+      return fail(
+          "Call table initializer references must follow source order.");
     if (std::ranges::find(targets, reference->range) != targets.end())
       return fail("Call table entries cannot reuse another initializer token.");
     targets.push_back(reference->range);

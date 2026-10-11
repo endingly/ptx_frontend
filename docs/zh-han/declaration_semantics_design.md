@@ -115,6 +115,12 @@ binding 负责。module resolution 会把有效 prototype 转为与 function 相
 并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
 availability 仍留给后续工作。
 
+普通 storage 仅在作为 indirect-call flist 消费时检查 call-table 适用性。module 层复用
+owned sparse storage relocation 以及本 pass 完整的 `FunctionSignature` equality，保留
+精确 token 的 prior-function 规则。允许表 target 重复和隐式 zero tail，刻意区别于
+`.calltargets` 的 duplicate policy。未被消费的 mixed function/numeric 或 mixed-signature
+data 仍是普通合法 storage。
+
 ## 参数声明
 
 参数另有按上下文区分的[覆盖与验证契约](parameter_declarations.md)，包括支持的类型、

@@ -36,6 +36,7 @@ struct ResolvedVectorSpecialRegisterRef;
 struct ResolvedImmediate;
 struct ResolvedTensorOperand;
 struct ResolvedVideoOperand;
+struct ResolvedCallTableRef;
 
 /** Logical video operand position defining types and omitted selector defaults. */
 enum class VideoOperandPosition : uint8_t { Destination, A, B, C };
@@ -823,6 +824,8 @@ struct OperandDescriptor {
       MbarrierStateTokenForm::Register;
   AvailabilityDescriptor sink_availability;
   bool allow_function_symbol = false;
+  /** Admit storage-backed tables only in the final indirect-call metadata slot. */
+  bool allow_call_table = false;
   /** Preserve a formal parameter's declared state space while resolving an address. */
   bool preserve_parameter_address_space = false;
   std::string_view type_tag{};
@@ -917,6 +920,8 @@ struct OperandView {
   std::optional<ResolvedRegisterClass> register_class;
   /** Borrowed scalar carrier, valid only for this operand-view traversal. */
   const ResolvedRegisterRef* register_ref = nullptr;
+  /** Borrowed table reference; its owned module supplies storage and signature. */
+  const ResolvedCallTableRef* call_table_ref = nullptr;
   /** Borrowed data/predicate carriers for paired scalar destinations. */
   std::array<const ResolvedRegisterRef*, 2> paired_register_refs{};
   /** Declared vector lane count; scalar TCGEN sources require absence. */
@@ -1791,8 +1796,20 @@ struct ResolvedIndirectMetadataRef {
   std::optional<binding::SymbolKind> declaration_kind;
   bool operator==(const ResolvedIndirectMetadataRef&) const = default;
 };
+/** An indirect-call flist naming actual array storage, never metadata identity. */
+struct ResolvedCallTableRef {
+  /** Owned written name, resolved through the call's lexical scope. */
+  std::string spelling;
+  /** Actual Variable identity in the owning module's symbol table. */
+  binding::SymbolId symbol_id;
+  /** Exact written flist identifier range. */
+  SourceRange range;
+  /** Compare retained identity and provenance without borrowing syntax. */
+  bool operator==(const ResolvedCallTableRef&) const = default;
+};
 using ResolvedIndirectCallee =
-    std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef>;
+    std::variant<ResolvedRegisterRef, ResolvedIndirectMetadataRef,
+                 ResolvedCallTableRef>;
 struct ResolvedCallParameterRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;

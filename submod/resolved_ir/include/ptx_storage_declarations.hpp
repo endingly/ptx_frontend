@@ -67,6 +67,8 @@ struct StorageRelocation {
   uint64_t addend_bits{};
   /** Raw mask() immediate: 0xff shifted by 0, 8, ..., 56; applied after the addend. */
   std::optional<uint64_t> byte_mask;
+  /** Exact bound symbol token, retained through parenthesized/operator wrappers. */
+  SourceRange target_range;
 };
 
 /** One explicitly supplied scalar initializer, flattened in declaration order. */

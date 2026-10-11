@@ -125,6 +125,14 @@ qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
+union 另含 `ResolvedCallTableRef`，其 ID 是真实 storage variable，而非 metadata label。
+`ResolvedModule::call_tables` 只拥有被消费的表：scope/owner、declaration provenance、
+有序显式 slot 的 byte offset 与 bound/canonical function ID、精确 initializer 和 target-token
+range，以及完整公共 signature。省略的 sparse tail 不产生 slot。owned validation 由真实
+storage、initializer reference 和 canonical function contract 重建表，关联词法 flist use 与
+prior declaration occurrence，拒绝 missing/extra/stale contract 及一致篡改的 cache field。
+visitor 暴露实际 union branch；不保留借用的 AST 数据，也不证明 runtime pointer membership。
+
 活跃的公共入口是
 `<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`，
 聚合手写 foundation、module container 和生成的 final 语义形式类。逐 opcode

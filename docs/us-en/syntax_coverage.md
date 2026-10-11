@@ -105,6 +105,7 @@ hardware behavior. `—` = no support at that stage.
 | `.branchtargets` | D | T | T | Y | Y / I | C / I | Owns bound, expanded logical targets; `brx.idx` consumer is PTX 6.0 / SM 30, with no CFG/protocol proof |
 | `.callprototype` | D | T | T | Y | Y / I | C / I | Owns normalized signature and supported ABI metadata. AST-free validation rechecks its identity, scope, and signature, not prototype ABI/`.noreturn` availability; indirect-call availability remains consumer-driven. |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; indirect-call availability remains consumer-driven |
+| Call-table flist arrays | D | T | T | Y | Y / I | C / I | Initialized scalar u32/u64 one-dimensional global/const arrays; owned real-storage identity, sparse explicit function slots, common full signature, lexical order and AST-free storage/function rejoin. Duplicates/implicit zero tails allowed; no runtime pointer-membership proof. |
 | `.common` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.const` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.entry` | D | E | E | Y | Y | C | Existing function node |

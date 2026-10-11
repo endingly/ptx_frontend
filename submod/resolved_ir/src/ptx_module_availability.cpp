@@ -6,6 +6,7 @@
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_call_tables.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
@@ -19,6 +20,7 @@
 #include <ranges>
 #include <span>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
@@ -737,6 +739,10 @@ void collect_operand_references(
     if (const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(&value))
       append_reference(uses, metadata->symbol_id, std::nullopt,
                        metadata->declaration_kind, true, locations, fallback);
+    else if (const auto* table = std::get_if<ResolvedCallTableRef>(&value))
+      append_reference(uses, table->symbol_id, std::nullopt,
+                       binding::SymbolKind::Variable, false, locations,
+                       fallback);
     else
       collect_register(std::get<ResolvedRegisterRef>(value));
   } else if constexpr (std::same_as<Value, ResolvedRegisterVector>) {
@@ -2227,14 +2233,14 @@ void check_control_contracts(const ResolvedModule& module,
   }
 }
 
-/** Per-validation O(1) lookup of direct and metadata call signatures. */
+/** Per-validation O(1) lookup of direct and indirect call signatures. */
 struct OwnedSignatureIndex {
   /** Canonical function identity to its retained ABI signature. */
   std::unordered_map<uint32_t, const declaration_semantics::FunctionSignature*>
       direct;
-  /** Function-local metadata identity to its retained ABI signature. */
+  /** Actual metadata-label or storage identity to its retained ABI signature. */
   std::unordered_map<uint32_t, const declaration_semantics::FunctionSignature*>
-      metadata;
+      indirect;
 };
 
 /** Build an ephemeral signature index and diagnose incompatible duplicate owners. */
@@ -2259,14 +2265,17 @@ OwnedSignatureIndex build_signature_index(
     insert(index.direct, function.contract.canonical_function,
            function.contract.signature, function.range, "canonical function");
     for (const auto& prototype : function.call_prototypes) {
-      insert(index.metadata, prototype.symbol_id, prototype.signature,
+      insert(index.indirect, prototype.symbol_id, prototype.signature,
              prototype.range, ".callprototype");
     }
     for (const auto& targets : function.call_target_sets) {
-      insert(index.metadata, targets.symbol_id, targets.signature,
+      insert(index.indirect, targets.symbol_id, targets.signature,
              targets.range, ".calltargets");
     }
   }
+  for (const auto& table : module.call_tables)
+    insert(index.indirect, table.symbol_id, table.signature, table.range,
+           "call table");
   return index;
 }
 
@@ -2283,18 +2292,22 @@ const declaration_semantics::FunctionSignature* direct_signature(
   return found == signatures.direct.end() ? nullptr : found->second;
 }
 
-/** Return the O(1) signature selected by a local metadata identity. */
-const declaration_semantics::FunctionSignature* metadata_signature(
+/** Return the O(1) signature selected by an actual indirect contract identity. */
+const declaration_semantics::FunctionSignature* indirect_signature(
     const OwnedSignatureIndex& signatures, binding::SymbolId symbol_id) {
-  const auto found = signatures.metadata.find(symbol_id.value);
-  return found == signatures.metadata.end() ? nullptr : found->second;
+  const auto found = signatures.indirect.find(symbol_id.value);
+  return found == signatures.indirect.end() ? nullptr : found->second;
 }
 
-/** Return the metadata identity retained by either indirect call operand. */
-std::optional<binding::SymbolId> indirect_metadata_identity(
+/** Return the metadata-label or storage identity retained by a flist operand. */
+std::optional<binding::SymbolId> indirect_contract_identity(
     const ResolvedIndirectCallee& callee) {
   const auto* metadata = std::get_if<ResolvedIndirectMetadataRef>(&callee);
-  return metadata == nullptr ? std::nullopt : metadata->symbol_id;
+  if (metadata)
+    return metadata->symbol_id;
+  if (const auto* table = std::get_if<ResolvedCallTableRef>(&callee))
+    return table->symbol_id;
+  return std::nullopt;
 }
 
 using call_argument_compatibility::CallArgumentCompatibility;
@@ -2530,7 +2543,7 @@ void check_typed_call_literals(
     void indirect_callee(const ResolvedIndirectCallee& value,
                          std::span<const SourceRange>,
                          checker::AddressSymbolResolutionPolicy) override {
-      if (const auto metadata = indirect_metadata_identity(value))
+      if (const auto metadata = indirect_contract_identity(value))
         indirect_metadata = metadata;
       saw_target = true;
     }
@@ -2561,7 +2574,7 @@ void check_typed_call_literals(
     }
     const declaration_semantics::FunctionSignature* signature = nullptr;
     if (observer.indirect_metadata)
-      signature = metadata_signature(signatures, *observer.indirect_metadata);
+      signature = indirect_signature(signatures, *observer.indirect_metadata);
     else if (observer.direct_target)
       signature = direct_signature(module, signatures, *observer.direct_target);
     if (!signature) {
@@ -2576,6 +2589,131 @@ void check_typed_call_literals(
     check_call_returns(observer.returns ? &*observer.returns : nullptr,
                        signature->return_parameters, declarations, diagnostics,
                        function.instruction_ranges[index]);
+  }
+}
+
+/** Rejoin consumed call tables to actual storage, lexical uses, and functions. */
+void check_call_tables(const ResolvedModule& module,
+                       checker::CheckDiagnostics& diagnostics) {
+  detail::CallTableSignatures signatures;
+  for (const auto& function : module.functions)
+    signatures.try_emplace(function.contract.canonical_function.value,
+                           function.contract.signature);
+  std::unordered_map<uint32_t, size_t> consumed;
+  std::vector<SourceRange> seen_uses;
+  /** Borrow the table branch and its locations during one instruction visit. */
+  struct TableObserver final : detail::IReferenceObserver {
+    /** References are borrowed only until the current instruction visit ends. */
+    std::vector<
+        std::pair<const ResolvedCallTableRef*, std::span<const SourceRange>>>
+        uses;
+    /** Retain the actual union branch, not a metadata-shaped surrogate. */
+    void indirect_callee(const ResolvedIndirectCallee& value,
+                         std::span<const SourceRange> locations,
+                         checker::AddressSymbolResolutionPolicy) override {
+      if (const auto* table = std::get_if<ResolvedCallTableRef>(&value))
+        uses.emplace_back(table, locations);
+    }
+  };
+  for (const auto& function : module.functions) {
+    for (size_t index = 0; index < function.body.size(); ++index) {
+      if (!function.body[index])
+        continue;
+      TableObserver observer;
+      function.body[index]->visit_references(observer);
+      for (const auto& [ref, locations] : observer.uses) {
+        ++consumed[ref->symbol_id.value];
+        seen_uses.push_back(ref->range);
+        const binding::SymbolReference* source = nullptr;
+        for (const auto& candidate : module.symbols.references())
+          if (candidate.kind == binding::ReferenceKind::CallTargetSet &&
+              candidate.range == ref->range) {
+            if (source) {
+              source = nullptr;
+              break;
+            }
+            source = &candidate;
+          }
+        const auto* symbol = owned_symbol(module, ref->symbol_id);
+        const auto lookup =
+            source ? module.symbols.lookup(source->scope, ref->spelling)
+                   : std::nullopt;
+        const auto key = [](SourcePos p) {
+          return std::tuple{p.line, p.column};
+        };
+        const bool inside_instruction =
+            index < function.instruction_ranges.size() &&
+            ref->range.start.line > 0 && ref->range.start.column > 0 &&
+            key(function.instruction_ranges[index].start) <=
+                key(ref->range.start) &&
+            key(ref->range.start) < key(ref->range.end) &&
+            key(ref->range.end) <= key(function.instruction_ranges[index].end);
+        const bool valid_use =
+            symbol && source && source->target && lookup &&
+            symbol->kind == binding::SymbolKind::Variable &&
+            source->spelling == ref->spelling &&
+            source->target->symbol == ref->symbol_id &&
+            !source->target->parameterized_index &&
+            lookup->symbol == ref->symbol_id && !lookup->parameterized_index &&
+            locations.size() == 1 && inside_instruction &&
+            locations.front() == ref->range &&
+            is_function_owned_scope(module, source->scope,
+                                    function.declaration_scope) &&
+            is_operand_scope(module, symbol->scope,
+                             function.declaration_scope) &&
+            module.symbols.hasPriorDeclaration(ref->symbol_id, ref->range) ==
+                true;
+        if (!valid_use)
+          append_model_mismatch(
+              diagnostics, ref->range,
+              "Call table reference disagrees with its lexical storage use.");
+        const auto count = std::ranges::count_if(
+            module.call_tables,
+            [&](const auto& t) { return t.symbol_id == ref->symbol_id; });
+        if (count != 1)
+          append_model_mismatch(
+              diagnostics, ref->range,
+              "Call table reference requires exactly one owned contract.");
+      }
+    }
+  }
+  for (const auto& reference : module.symbols.references()) {
+    if (reference.kind != binding::ReferenceKind::CallTargetSet ||
+        !reference.target)
+      continue;
+    const auto* symbol = owned_symbol(module, reference.target->symbol);
+    if (symbol && symbol->kind == binding::SymbolKind::Variable &&
+        std::ranges::count(seen_uses, reference.range) != 1)
+      append_model_mismatch(
+          diagnostics, reference.range,
+          "Owned call table source use is missing or duplicated.");
+  }
+  for (const auto& table : module.call_tables) {
+    if (!consumed.contains(table.symbol_id.value))
+      append_model_mismatch(diagnostics, table.range,
+                            "Unconsumed or stale call table contract.");
+    const ResolvedStorageDeclaration* storage = nullptr;
+    size_t count = 0;
+    for (const auto& declaration : module.storage_declarations)
+      if (declaration.symbol_id == table.symbol_id &&
+          declaration.declaration_kind == StorageDeclarationKind::Definition) {
+        storage = &declaration;
+        ++count;
+      }
+    if (count != 1) {
+      append_model_mismatch(
+          diagnostics, table.range,
+          "Call table has no unique actual storage definition.");
+      continue;
+    }
+    const auto reconstructed =
+        detail::build_call_table(*storage, module.symbols, signatures);
+    if (!reconstructed || *reconstructed != table)
+      append_model_mismatch(diagnostics, table.range,
+                            reconstructed
+                                ? "Call table contract disagrees with actual "
+                                  "storage or function signatures."
+                                : reconstructed.error());
   }
 }
 
@@ -2690,6 +2828,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
   check_opaque_storage(module, diagnostics);
+  check_call_tables(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
     const auto* symbol = owned_symbol(module, alias.symbol_id);

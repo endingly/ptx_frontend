@@ -29,8 +29,8 @@ branch target。binding 会检查当前已可判定的 symbol kind：
 - direct branch target 必须是当前 function scope 的 label。
 - `brx.idx` target list 必须是当前 function scope 的 `.branchtargets` declaration。
 
-indirect-call 的 target-set operand 必须指向 function-local `.callprototype` 或
-`.calltargets` declaration。它们的 label，以及 `.branchtargets` label，现在都有稳定的
+indirect-call 的 target-set operand 指向 function-local `.callprototype`、
+`.calltargets` declaration，或受支持的词法可见 call-table array。它们的 label，以及 `.branchtargets` label，现在都有稳定的
 function-scope symbol。declaration semantics 会检查 metadata member 与 target-set signature；
 generated instruction layout 与 normal module metadata use 现已通过各自 descriptor resolve。
 
@@ -64,14 +64,36 @@ register target 与最终 metadata operand 都 resolve 为 `ResolvedIndirectCall
 区分 `CallTarget` 与 `CallTargetSet`。这些 layout 要求 PTX 2.1 与 SM 20。为保持兼容，公开
 modifier variant 仍名为 `call_direct`。
 
-`ResolvedIndirectCallee` 现在表示一个 indirect-call component：non-predicate `.reg` target，或
-function-local metadata label。module 中后者保留 `SymbolId`，并区分 `.callprototype` 与
+`ResolvedIndirectCallee` 表示一个 indirect-call component：non-predicate `.reg` target、
+function-local metadata label，或下文的 call-table reference。module 中 metadata label 保留 `SymbolId`，并区分 `.callprototype` 与
 `.calltargets`；standalone resolution 只保留 spelling。它不携带 signature 或 member list。module
 resolution 将每个 function-local metadata `SymbolId` 索引到 canonical signature：`.callprototype`
 转换自身的 return/input contract（包括 `.noreturn`），`.calltargets` 则复用 declaration semantics
 已经验证的首个 member signature。direct 与 indirect call 随后共享同一 arity、literal typing 与
 argument-compatibility 检查；后者的 diagnostic 会指出 metadata label。未匹配任何 descriptor
 的 malformed metadata-bearing call syntax 现由通用 descriptor layout diagnostic 处理。
+
+## Call-table flist array
+
+既有 indirect-call layout 也接受最终 storage 名称，例如
+`call %fp, (1+2), table;`。独立的 `ResolvedCallTableRef` branch 保存真实 variable
+`SymbolId`、书写名称和 range，不将 storage 改标为 metadata。module 为每个被消费的表
+拥有一个 `ResolvedCallTableContract`，以其公共完整 function signature 复用正常
+return/input ABI 以及 formal-driven literal/expression 检查。
+
+支持 module 或词法可见 local scope 的已初始化一维 scalar `.u32/.u64`
+`.global/.const` array；允许 inferred extent，element width 无须等于 function-pointer
+width。显式 entry 必须是完整、无 mask、zero-addend 的 device-function relocation。
+保留顺序与重复 target；省略的尾部是 zero-fill，不是 callable slot，且至少需要一个
+callable entry。numeric/mixed、masked/addended、nonfunction、vector、多维、parameter
+和 extern-only 表不支持作为 flist，但不因此使无关普通 data 非法。
+
+表 declaration 必须先于 call。函数引用继续使用精确 token 的 prior-declaration 规则，
+包括 alias occurrence 和兼容 prototype/definition identity。所有 target 的完整 normalized
+ABI 与 `.noreturn` 必须一致。不证明 loaded-pointer membership 或 mutable runtime contents。
+已保存的 ptxas 13.3.33 compile-only 证据接受 partial/duplicate 表，但 mixed function/numeric
+call control 会导致 assembler crash；frontend 对该 unsupported subset 正常诊断，不声称
+assembler parity 或 GPU execution。
 
 ## Return uniformity
 

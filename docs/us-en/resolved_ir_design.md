@@ -132,6 +132,17 @@ module indirect calls preserve the bound target and metadata identities, then
 reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
+The union additionally contains `ResolvedCallTableRef`, whose ID is the actual
+storage variable, not a metadata label. `ResolvedModule::call_tables` owns only
+consumed tables, including scope/owner, declaration provenance, ordered explicit
+slots with byte offsets and bound/canonical function IDs, exact initializer and
+target-token ranges, and the full common signature. Sparse omitted tails do not
+create slots. Owned validation reconstructs each contract from real storage,
+initializer references and canonical function contracts, rejoins lexical flist
+uses and prior declaration occurrences, and rejects missing/extra/stale contracts
+or coherent cached-field mutations. Visitors expose the actual union branch.
+No borrowed AST data or runtime pointer-membership proof is retained.
+
 The active public entry point is
 `<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`.
 It aggregates handwritten foundation and module containers with generated

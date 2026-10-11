@@ -131,6 +131,8 @@ struct SymbolDeclarationOccurrence {
   SourceRange range;
   /** Source traversal position; absent when the source location is ambiguous. */
   std::optional<uint32_t> lexical_order;
+  /** Complete variable declaration extent, absent for other occurrence kinds. */
+  std::optional<SourceRange> variable_declaration_range;
 };
 
 enum class BindDiagnosticKind : uint8_t {
@@ -214,6 +216,9 @@ class SymbolTable {
    */
   [[nodiscard]] std::optional<bool> hasPriorDeclaration(
       SymbolId symbol, SourceRange use) const noexcept;
+  /** Rejoin a retained storage extent to an actual variable declaration occurrence. */
+  [[nodiscard]] bool hasVariableDeclaration(SymbolId symbol,
+                                            SourceRange range) const noexcept;
 
  private:
   friend struct SymbolTableBuilder;

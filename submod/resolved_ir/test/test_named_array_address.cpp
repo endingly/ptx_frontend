@@ -90,6 +90,41 @@ TEST(NamedArrayAddress, KeepsDynamicRegisterTypeAndWrittenOperation) {
   }
 }
 
+/** Spacing preserves equivalent displacement without erasing written operators. */
+TEST(NamedArrayAddress, PreservesAllThreeWrittenMinusForms) {
+  const auto parsed = test_helpers::parseModule(
+      named_module("mov.u64 %rd, A[%r-1]; mov.u64 %rd, A[%r - 1]; "
+                   "mov.u64 %rd, A[%r + -1];"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  auto module = resolveAndValidateModule(*parsed);
+  ASSERT_TRUE(module) << module.error().front().message;
+  const auto& first = mov_address(*module);
+  ASSERT_TRUE(first.named_index);
+  const auto& first_reg =
+      std::get<WithLocs<ResolvedRegisterRef>>(first.named_index->index);
+  for (size_t index = 0; index < 3; ++index) {
+    const auto& address = mov_address(*module, index);
+    ASSERT_TRUE(address.named_index);
+    const auto& named = *address.named_index;
+    const auto& reg = std::get<WithLocs<ResolvedRegisterRef>>(named.index);
+    EXPECT_EQ(std::get<ResolvedSymbolRef>(address.base).symbol_id,
+              std::get<ResolvedSymbolRef>(first.base).symbol_id);
+    EXPECT_EQ(reg.value.symbol_id, first_reg.value.symbol_id);
+    EXPECT_EQ(reg.value.declared_type, ScalarType::U32);
+    EXPECT_EQ(named.scalar_stride, 4u);
+    EXPECT_EQ(named.byte_displacement, -4);
+    EXPECT_EQ(resolved_address_alignment(address), 4u);
+    EXPECT_EQ(named.operation, index == 2
+                                   ? ResolvedAddressOffsetOperator::Add
+                                   : ResolvedAddressOffsetOperator::Subtract);
+    EXPECT_NE(named.operator_range, SourceRange{});
+    EXPECT_EQ(named.operator_range.start.line, named.operator_range.end.line);
+    EXPECT_EQ(
+        named.operator_range.end.column - named.operator_range.start.column, 1);
+  }
+  EXPECT_TRUE(validateModule(*module));
+}
+
 TEST(NamedArrayAddress, RejectsNonArrayBadIndexAndScaledOverflow) {
   constexpr std::string_view operations[] = {
       "mov.u64 %rd, scalar[0];", "mov.u64 %rd, A[floating];",

@@ -132,5 +132,42 @@ int main() {
   module->functions.front().body[3]->visit_references(mov_observer);
   if (mov_observer.named_count != 1 || !ir::validateModule(*module))
     return 1;
+  ptx_frontend::PtxSyntaxParser table_parser{R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.func f(.reg .u32 x);
+.global .u32 targets[4] = {f,f};
+.entry caller() { .reg .u64 fp; call fp, (1+2), targets; }
+)ptx"};
+  auto table_ast = table_parser.parseModule();
+  if (!table_ast || !table_ast.diagnostics.empty())
+    return 1;
+  auto table_module = ir::resolveAndValidateModule(*table_ast);
+  if (!table_module || table_module->call_tables.size() != 1)
+    return 1;
+  const auto& table = table_module->call_tables.front();
+  if (table.symbol_id != table_module->storage_declarations.front().symbol_id ||
+      table.slots.size() != 2 || table.slots[1].byte_offset != 4 ||
+      table.slots[0].canonical_function != table.slots[1].canonical_function ||
+      table.signature.parameters.size() != 1)
+    return 1;
+  /** Exercise the installed indirect union without treating storage as metadata. */
+  struct TableObserver final : ir::detail::IReferenceObserver {
+    /** Owned identity copied during a synchronous visit. */
+    std::optional<ptx_frontend::binding::SymbolId> table;
+    /** Observe the real storage branch through the existing call visitor. */
+    void indirect_callee(const ir::ResolvedIndirectCallee& callee,
+                         std::span<const ptx_frontend::SourceRange>,
+                         ir::checker::AddressSymbolResolutionPolicy) override {
+      if (const auto* reference =
+              std::get_if<ir::ResolvedCallTableRef>(&callee))
+        table = reference->symbol_id;
+    }
+  } table_observer;
+  table_module->functions.back().body.front()->visit_references(table_observer);
+  if (table_observer.table != table.symbol_id ||
+      !ir::validateModule(*table_module))
+    return 1;
   return 0;
 }

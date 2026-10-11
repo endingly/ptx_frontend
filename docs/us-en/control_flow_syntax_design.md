@@ -39,8 +39,9 @@ the symbol kinds it can already determine:
 - a `brx.idx` target list names a `.branchtargets` declaration in the current
   function scope.
 
-An indirect-call target-set operand must name a function-local `.callprototype`
-or `.calltargets` declaration. Their labels, and `.branchtargets` labels, now
+An indirect-call target-set operand names a function-local `.callprototype`
+or `.calltargets` declaration, or a supported lexically visible call-table array.
+Their labels, and `.branchtargets` labels, now
 have stable function-scope symbols. Declaration semantics validates metadata
 members and target-set signatures; generated instruction layout and normal
 module metadata use now resolve through their descriptors.
@@ -91,9 +92,10 @@ state-space/alignment. Each input literal is typed against its corresponding
 formal and reports literal-kind or overflow errors at that literal. The check
 belongs to module resolution, not the generated single-instruction checker.
 
-`ResolvedIndirectCallee` now represents one indirect-call component: either a
-non-predicate `.reg` target or a function-local metadata label. In a module,
-the latter retains its `SymbolId` and whether it names `.callprototype` or
+`ResolvedIndirectCallee` represents one indirect-call component: a
+non-predicate `.reg` target, a function-local metadata label, or a call-table
+reference described below. In a module, a metadata label retains its `SymbolId`
+and whether it names `.callprototype` or
 `.calltargets`; standalone resolution retains only its spelling. It carries no
 signature or member list. Module resolution indexes each function-local
 metadata `SymbolId` to the canonical signature: `.callprototype` converts its
@@ -103,6 +105,33 @@ and indirect calls then share the same arity, literal typing, and
 argument-compatibility check; the latter reports the metadata label. The
 generic descriptor layout diagnostic handles malformed metadata-bearing call
 syntax that matches no descriptor.
+
+## Call-table flist arrays
+
+The existing indirect-call layouts also admit a final storage name, for example
+`call %fp, (1+2), table;`. `ResolvedCallTableRef` is a distinct indirect-callee
+branch retaining the actual variable `SymbolId`, written name and range; storage
+is not relabeled as metadata. The module owns one `ResolvedCallTableContract`
+per consumed table and reuses its common full function signature for the normal
+return/input ABI and formal-driven literal/expression checks.
+
+Supported tables are initialized one-dimensional scalar `.u32/.u64` arrays in
+`.global/.const`, at module scope or a visible local scope. Inferred extent is
+supported, and element width need not match function-pointer width. Explicit
+entries must be complete unmasked zero-addend device-function relocations.
+Order and duplicate targets survive; omitted tails are zero-fill, not callable
+slots. At least one callable entry is required. Numeric/mixed, masked/addended,
+nonfunction, vector, multidimensional, parameter and extern-only tables remain
+unsupported as flist, without invalidating unrelated ordinary data.
+
+The table declaration must precede the call. Function references retain the
+existing exact-token prior-declaration rule, including aliases and compatible
+prototype/definition identity. Target signatures must agree in all normalized
+ABI fields and `.noreturn`. This proves neither loaded-pointer membership nor
+mutable runtime contents. Stored ptxas 13.3.33 compile-only evidence accepts
+partial/duplicate tables but crashes on mixed function/numeric call controls;
+the frontend diagnoses that unsupported subset, with no assembler-parity or
+GPU-execution claim.
 
 ## Return uniformity
 

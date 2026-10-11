@@ -937,12 +937,33 @@ CheckResult check_operands(
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
+    if (operand.call_table_ref &&
+        (operand.call_table_ref->spelling.empty() ||
+         operand.locations.size() != 1 ||
+         operand.call_table_ref->range != operand.locations.front() ||
+         !fabric_range_inside(operand.call_table_ref->range,
+                              operand.call_table_ref->range) ||
+         (context.instruction_range != SourceRange{} &&
+          !fabric_range_inside(operand.call_table_ref->range,
+                               context.instruction_range))))
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::ModuleSourceMismatch,
+           .range = context.instruction_range,
+           .message =
+               "Call table reference has inconsistent source provenance."});
     const auto* descriptor = [&]() -> const OperandDescriptor* {
       for (const auto& item : descriptors)
         if (item.target_field_id == operand.field_id)
           return &item;
       return nullptr;
     }();
+    if (operand.call_table_ref &&
+        (!descriptor || !descriptor->allow_call_table))
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::ModuleSourceMismatch,
+           .range = context.instruction_range,
+           .message =
+               "Call table is allowed only in the final flist operand."});
     const bool named =
         (operand.register_vector &&
          operand.register_vector->source.kind ==

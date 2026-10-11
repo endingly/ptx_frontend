@@ -409,6 +409,7 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         OperandKind.TEXTURE_RESULT_WITH_PREDICATE,
         OperandKind.VECTOR_REGISTER,
         OperandKind.VECTOR_SPECIAL_REGISTER,
+        OperandKind.MOV_VECTOR_SOURCE,
     }:
         vector = raw.get("vector")
         if not isinstance(vector, dict) or "arity" not in vector:
@@ -456,6 +457,11 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
             raw["access"] is not OperandAccess.READ or vector_allow_sink
         ):
             raise ValueError("value_vector requires read access and disallows sinks")
+        if raw["kind"] is OperandKind.MOV_VECTOR_SOURCE and (
+            raw["access"] is not OperandAccess.READ or vector_allow_sink
+            or vector_type_policy is not OperandVectorTypePolicy.ELEMENT
+        ):
+            raise ValueError("mov_vector_src requires read access, element policy and no sinks")
         if (raw["kind"] is OperandKind.VALUE_VECTOR and
                 vector_type_policy is not OperandVectorTypePolicy.ELEMENT):
             raise ValueError("value_vector requires element type policy")

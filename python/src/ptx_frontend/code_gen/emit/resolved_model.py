@@ -261,6 +261,7 @@ REFERENCE_TYPES = (
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
     "ResolvedValueVector",
+    "ResolvedMovVectorSource",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
     "ResolvedSurfaceAccess", "ResolvedSurfaceQueryResource",
     "ResolvedVideoOperand",

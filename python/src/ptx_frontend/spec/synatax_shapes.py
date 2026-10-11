@@ -50,6 +50,7 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.CLUSTER_ADDRESS: (OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.ADDRESS),
     OperandKind.VECTOR_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.VECTOR_SPECIAL_REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.MOV_VECTOR_SOURCE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_PACK,
     OperandKind.PREDICATE: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.PREDICATE_OR_SINK: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.PREDICATE_SOURCE: (

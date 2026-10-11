@@ -356,7 +356,7 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertIn("WithLocs<bool> uni", generated)
 
     def test_named_vector_data_admission_is_operand_local(self) -> None:
-        """Opted memory slots emit admission without widening other families."""
+        """Opted memory and explicit MOV slots do not widen unrelated families."""
         from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy
 
         observed = set()
@@ -367,7 +367,9 @@ class GenerationPlanTests(unittest.TestCase):
                     for binding in layout.bindings:
                         if binding.allow_named_vector:
                             observed.add(opcode)
-                            self.assertIn(opcode, {"ld", "ldu", "st"})
+                            self.assertIn(opcode, {"ld", "ldu", "st", "mov"})
+                            if opcode == "mov":
+                                self.assertEqual(variant.cpp_name, "V4U32")
                             self.assertIs(binding.vector_type_policy,
                                           ResolvedVectorTypePolicy.ELEMENT)
                             self.assertEqual(binding.target_field_id,
@@ -376,18 +378,19 @@ class GenerationPlanTests(unittest.TestCase):
                                 field.name in {"async", "bulk"} and
                                 field.constant_value is True
                                 for field in variant.modifier_fields))
-                        if opcode not in {"ld", "ldu", "st"} or any(
+                        if (opcode not in {"ld", "ldu", "st", "mov"}
+                            or (opcode == "mov" and variant.cpp_name != "V4U32")) or any(
                             field.name in {"async", "bulk"} and
                             field.constant_value is True
                             for field in variant.modifier_fields
                         ):
                             self.assertFalse(binding.allow_named_vector)
-        self.assertEqual(observed, {"ld", "ldu", "st"})
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov"})
         _, output = self.full_generation()
         load_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_data_movement_ld*.gen.cpp"))
         self.assertIn(".allow_named_vector = true", load_source)
         self.assertIn(".register_vector = &", load_source)
-        for opcode in ("atom", "red", "cp", "tex", "mov"):
+        for opcode in ("atom", "red", "cp", "tex"):
             emitted = "\n".join(
                 path.read_text() for path in output.rglob("*.gen.cpp")
                 if re.fullmatch(rf"resolved_ir_.+_{opcode}(?:_.*)?\.gen\.cpp", path.name)

@@ -31,6 +31,8 @@ namespace ptx_frontend::resolved_ir {
 struct ResolvedRegisterRef;
 struct ResolvedRegisterVector;
 struct ResolvedVectorSource;
+struct ResolvedMovValueVector;
+struct ResolvedVectorSpecialRegisterRef;
 struct ResolvedImmediate;
 struct ResolvedTensorOperand;
 struct ResolvedVideoOperand;
@@ -963,6 +965,10 @@ struct OperandView {
       vector_element_registers{};
   /** Borrowed complete register-vector source; valid only during checking. */
   const ResolvedRegisterVector* register_vector = nullptr;
+  /** Borrowed ordinary MOV source; null for whole hardware vectors. */
+  const ResolvedMovValueVector* mov_value_vector = nullptr;
+  /** Borrowed distinct whole-hardware MOV source; never projected scalar lanes. */
+  const ResolvedVectorSpecialRegisterRef* mov_hardware_vector = nullptr;
   /** Borrowed typed values for source-vector lanes, null for registers. */
   std::array<const ResolvedImmediate*, kMaxOperandElements>
       vector_element_immediates{};
@@ -1735,6 +1741,42 @@ struct ResolvedVectorSpecialRegisterRef {
   base::SpecialRegisterId id;
   bool operator==(const ResolvedVectorSpecialRegisterRef&) const = default;
 };
+/** One scalar explicit-vector MOV lane; special identity is never a register alias. */
+using ResolvedMovVectorLane =
+    std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                 ResolvedSpecialRegisterRef>;
+/** Owned ordered MOV values with the same brace/named provenance as register vectors. */
+struct ResolvedMovValueVector {
+  /** Actual scalar values, in written or canonical named-projection order. */
+  std::vector<ResolvedMovVectorLane> elements;
+  /** Complete owned source form; only a validated named container admits projections. */
+  ResolvedVectorSource source;
+  /** Compare all values and provenance without consulting syntax lifetime. */
+  bool operator==(const ResolvedMovValueVector&) const = default;
+};
+/** Explicit vector MOV source, separate from both scalar MOV and generic value vectors. */
+using ResolvedMovVectorSource =
+    std::variant<ResolvedMovValueVector, ResolvedVectorSpecialRegisterRef>;
+/** Reuse register-vector source validation without authorizing scalar projections. */
+inline bool valid_mov_vector_source(const ResolvedMovValueVector& value,
+                                    std::span<const SourceRange> locations,
+                                    bool require_brace_range = false,
+                                    SourceRange owner = {}) {
+  if (locations.size() != value.elements.size())
+    return false;
+  ResolvedRegisterVector registers{.source = value.source};
+  for (const auto& lane : value.elements) {
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane))
+      registers.elements.emplace_back(*reg);
+    else {
+      if (value.source.kind == ResolvedVectorSourceKind::NamedVector)
+        return false;
+      registers.elements.emplace_back(std::nullopt);
+    }
+  }
+  return valid_register_vector_source(registers, locations, require_brace_range,
+                                      owner);
+}
 struct ResolvedFunctionRef {
   std::string spelling;
   std::optional<binding::SymbolId> symbol_id;

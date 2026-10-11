@@ -1,5 +1,39 @@
 # C++ Resolved IR 设计
 
+## 显式 vector MOV
+
+既有 `mov_v4_u32` / `MovV4U32` 语义 identity 现覆盖 `.v2`/`.v4` MOV，类型为
+`b/u/s16`、`b/u/s32`、`f32`、`b/u/s64` 和 `f64`，总宽不超过 128 bit
+（因此不接受 `.v4` × 64）。PTX 1.0 baseline 与 f64 SM 13 门槛保留。
+这是逐 element-width MOV，不是 scalar bit-aggregate packing。
+
+公共 API 迁移：`MovV4U32::dst` 现为 `WithLocs<ResolvedRegisterVector>`；
+`src` 为 `WithLocs<ResolvedMovVectorSource>`。后者区分 `ResolvedMovValueVector`
+（有序 `ResolvedMovVectorLane` register/immediate/scalar-special 值，加公共
+`ResolvedVectorSource`）与既有 `ResolvedVectorSpecialRegisterRef`。
+typed reference callback 为 `IReferenceObserver::mov_vector_source`。
+generic `RegOrImm`、`ResolvedValueVector` 与 scalar `ResolvedMovSource` 没有扩宽。
+
+Named/brace source 与 destination 可自由组合，但 arity 必须精确相同，逐 lane
+沿用 scalar MOV 同宽类型兼容规则，不使用 memory widening。Named base/lane 的
+真实 identity、member、canonical 顺序和完整 identifier range 复用下文完整
+named provenance；只有完整 container 才授权 implicit projection。Brace destination
+允许 sink，但至少保留一个真实 register，且不能重复物理 destination（alias 同 lane
+也算重复）。Source 重复和 source/destination overlap 合法。Brace source 接受普通
+scalar/显式 component register、numeric literal/constant expression 和 scalar special
+read；每个 special lane 保留真实 registry identity、component、历史 scalar MOV
+类型兼容与 PTX/SM/capability 门槛。
+
+Whole hardware vector 仍为独立 width-four intrinsic-u32 read，只兼容 u32/s32/b32
+并保留原 availability；不伪造第四个 scalar hardware selector。Sink、predicate、
+nested whole vector、address、function 与 symbol 不能作为 source lane。
+`mov.v2.u32 V, 1` 等 bare scalar vector source 仍是 frontend 不支持的子集，
+不宣称 ISA-invalid 或 broadcast/truncation 语义。Scalar `.b16/.b32/.b64/.b128`
+pack/unpack 保持 brace-only，包括 B128 PTX 8.3 / SM 70 门槛；不加入 named scalar
+aggregate、floating pack 或 scalar-to-scalar B128。其他 family fence 与现代 256-bit
+brace memory form 不变。Source 释放及 module copy/move 后，owned validation
+重联完整 base/lane 声明与 source owner。
+
 ## 具名数组地址
 
 专用 address-source MOV 与普通 LD（ISA §9.7.9.8）/ ST（§9.7.9.11）

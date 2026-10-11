@@ -327,7 +327,8 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         vector_layout = descriptor.variants[2].operand_layouts[0]
         self.assertEqual(
             [slot.allowed_syntax_shapes for slot in vector_layout.slots],
-            [OperandSyntaxShape.IDENTIFIER_REF, OperandSyntaxShape.IDENTIFIER_REF],
+            [OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_PACK,
+             OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_PACK],
         )
 
     def test_mapa_cluster_source_layout_allows_register_symbol_or_address_forms(self) -> None:

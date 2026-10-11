@@ -2846,6 +2846,80 @@ vector_arity_for_operand(const ResolvedOperandBindingDescriptor& binding,
 }
 
 /** Resolve a read-only brace pack whose lanes can be registers or immediates. */
+/** Resolve the bounded vector MOV source without widening scalar source domains. */
+std::expected<WithLocs<ResolvedMovVectorSource>, ResolveDiagnostic>
+resolve_mov_vector_source(const syntax_ast::AstOperand& operand,
+                          ScalarType type, uint8_t arity,
+                          const ResolveContext* context) {
+  const auto range = syntax_ast::sourceRange(operand);
+  if ((arity != 2 && arity != 4) || arity * scalar_size_of(type) > 16)
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = "Explicit vector MOV payload must not exceed 128 bits."});
+  if (const auto* id = std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+      id && binding::isSpecialRegister(id->syntax.text)) {
+    auto special = resolve_vector_special_register(operand);
+    if (!special)
+      return std::unexpected(special.error());
+    return WithLocs<ResolvedMovVectorSource>{std::move(special->value), range};
+  }
+  const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&operand);
+  ResolvedMovValueVector result;
+  result.source.range = range;
+  std::vector<SourceRange> locations;
+  if (!pack) {
+    auto regs = resolve_reg_vector(operand, type, {}, arity,
+                                   checker::VectorTypePolicy::Element,
+                                   base::ScalarTypeSizePolicy::SameWidth, false,
+                                   0, {}, false, false, context, true);
+    if (!regs)
+      return std::unexpected(regs.error());
+    result.source = std::move(regs->value.source);
+    for (auto& reg : regs->value.elements)
+      result.elements.emplace_back(std::move(*reg));
+    locations = std::move(regs->locs);
+  } else {
+    if (pack->elements.size() != arity)
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = "Explicit vector MOV requires exact lane arity."});
+    for (const auto& element : pack->elements) {
+      const auto leaf = std::visit(
+          [](const auto& value) -> syntax_ast::AstOperand { return value; },
+          element);
+      const auto lane_range = syntax_ast::sourceRange(leaf);
+      locations.push_back(lane_range);
+      if (is_numeric_operand(leaf)) {
+        auto immediate = detail::resolve_numeric_operand(leaf, type);
+        if (!immediate)
+          return std::unexpected(immediate.error());
+        result.elements.emplace_back(std::move(*immediate));
+      } else {
+        bool special = false;
+        if (const auto* id = std::get_if<syntax_ast::AstIdentifierRef>(&leaf))
+          special = binding::isSpecialRegister(id->syntax.text);
+        if (const auto* member =
+                std::get_if<syntax_ast::AstVectorMember>(&leaf))
+          special = binding::isSpecialRegister(member->base.syntax.text);
+        if (special) {
+          auto value = resolve_special_register(leaf);
+          if (!value)
+            return std::unexpected(value.error());
+          result.elements.emplace_back(std::move(value->value));
+        } else {
+          auto value = resolve_register(leaf, context);
+          if (!value)
+            return std::unexpected(value.error());
+          result.elements.emplace_back(std::move(value->value));
+        }
+      }
+    }
+  }
+  WithLocs<ResolvedMovVectorSource> value{std::move(result)};
+  value.locs = std::move(locations);
+  return value;
+}
+
 std::expected<WithLocs<ResolvedValueVector>, ResolveDiagnostic>
 resolve_value_vector(const syntax_ast::AstOperand& operand,
                      const ResolvedOperandBindingDescriptor& binding,
@@ -3357,6 +3431,24 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       auto value = resolve_mov_source(
           operand, *type, binding.allowed_shapes, binding.allow_function_symbol,
           binding.preserve_parameter_address_space, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
+    case ResolvedValueKind::MovVectorSource: {
+      auto type =
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      if (!type)
+        return std::unexpected(type.error());
+      auto arity = vector_arity_for_operand(binding, fields,
+                                            syntax_ast::sourceRange(operand));
+      if (!arity)
+        return std::unexpected(arity.error());
+      if (!*arity)
+        return std::unexpected(ResolveDiagnostic{
+            .range = syntax_ast::sourceRange(operand),
+            .message = "Explicit vector MOV requires an arity modifier."});
+      auto value = resolve_mov_vector_source(operand, *type, **arity, context);
       if (!value)
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};

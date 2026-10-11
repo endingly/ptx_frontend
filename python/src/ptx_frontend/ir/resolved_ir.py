@@ -158,6 +158,7 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.PREDICATE_PAIR: ResolvedValueKind.PREDICATE_PAIR,
     OperandKind.PREDICATE_PAIR_OR_SINK: ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
     OperandKind.MOV_SCALAR_SOURCE: ResolvedValueKind.MOV_SOURCE,
+    OperandKind.MOV_VECTOR_SOURCE: ResolvedValueKind.MOV_VECTOR_SOURCE,
     OperandKind.CP_ASYNC_SOURCE_CONTROL: ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL,
     OperandKind.CLUSTER_ADDRESS: ResolvedValueKind.MOV_SOURCE,
     OperandKind.VECTOR_REGISTER: ResolvedValueKind.VECTOR_REGISTER,
@@ -616,6 +617,7 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     ),
     OperandKind.VECTOR_REGISTER: (ResolvedOperandShape.VECTOR,),
     OperandKind.VECTOR_SPECIAL_REGISTER: (ResolvedOperandShape.VECTOR,),
+    OperandKind.MOV_VECTOR_SOURCE: (ResolvedOperandShape.VECTOR,),
     OperandKind.PREDICATE: (ResolvedOperandShape.PREDICATE,),
     OperandKind.PREDICATE_OR_SINK: (ResolvedOperandShape.PREDICATE,),
     OperandKind.PREDICATE_SOURCE: (

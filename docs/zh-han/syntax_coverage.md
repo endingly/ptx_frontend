@@ -57,6 +57,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `slct` | 支持 | PTX 9.3 全部 ordinary data type、numeric selector、`.ftz`、operand container 与 `.f64` target 边界见 [SLCT 覆盖](slct_coverage.md)；不执行选择运算 |
 | 已建模的 `ld`/`st` | 支持 | Scalar/vector、shared 子空间、cache-control 组合、有序语义、NC load 和 unified-address 检查见 [LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)；内存执行与分配不属于 frontend |
 | Named memory data vector | 支持子集 | 普通 LD/ST、LDNC 与 LDU 接受 named v2/v4 普通 register，实际声明最多 128 bit；[来源、brace 兼容性与排除项](resolved_ir_design.md#named-memory-vector-source)。Array-address admission 独立。 |
+| 显式 vector MOV | 支持子集 | Named/brace v2/v4 operand，总宽最多 128 bit，scalar MOV 同宽 lane、numeric expression 与 scalar-special source；whole hardware vector read 独立。见[类型、公共 API 与未支持 scalar source](resolved_ir_design.md#显式-vector-mov)。Scalar bit pack/unpack 仍独立且 brace-only。 |
 | 扩展精度整数 | 支持 | §9.7.2 全部文档化的 `add`/`addc`/`sub`/`subc`/`mad`/`madc` type、mode 与 CC-effect 组合均提供 typed carry/borrow effect 和目标检查，见 [carry 覆盖](carry_coverage.md)；运行时 CC 状态仍不属于 frontend |
 | 已建模的 `mad` | 支持子集 | 保留 integer 与 carry form；explicit-rounding FP32/FP64 form、operand、target minimum 及排除的 legacy profile 见 [MAD 覆盖](mad_coverage.md)。 |
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |

@@ -34,7 +34,8 @@ TEST(CheckerProjectionSafety, RejectsMutatedVectorRegisterWidths) {
   };
   for (const uint8_t width : {0, 4, 65, 255}) {
     SCOPED_TRACE(static_cast<unsigned>(width));
-    primitive->dst.value.register_ref.vector_width = width;
+    primitive->dst.value.source.whole_base->value.register_ref.vector_width =
+        width;
     const auto result = primitive->check(context);
     if (width == 4) {
       EXPECT_TRUE(result.has_value());

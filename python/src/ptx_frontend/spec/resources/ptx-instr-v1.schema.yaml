@@ -697,6 +697,7 @@ $defs:
       - pred_pair
       - pred_pair_or_sink
       - mov_scalar_src
+      - mov_vector_src
       - cp_async_source_control
       - cluster_address
       - vector_reg

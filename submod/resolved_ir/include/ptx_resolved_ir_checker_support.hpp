@@ -64,6 +64,10 @@ struct Context {
   TargetInfo target;
   SourceRange instruction_range;
 };
+/** Borrow ordinary lane identities or distinct hardware metadata for vector MOV. */
+OperandView project_mov_vector_source(
+    std::string_view field_id,
+    const WithLocs<ResolvedMovVectorSource>& operand);
 
 /** Recheck typed video carriers, selections, immediates, and cross-slot controls. */
 CheckResult check_video_operands(std::span<const OperandDescriptor>,

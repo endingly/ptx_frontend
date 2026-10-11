@@ -236,6 +236,8 @@ def emit_check_operand_view(
                 }}
                 return view;
               }}()"""
+    if field.value_kind is ResolvedValueKind.MOV_VECTOR_SOURCE:
+        return f'checker::project_mov_vector_source("{field.name}", {object_name}.{field.name})'
     if field.value_kind is ResolvedValueKind.VALUE_VECTOR:
         return f"""              [&]() -> OperandView {{
                 OperandView view{{

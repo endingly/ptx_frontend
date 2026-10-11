@@ -2189,13 +2189,19 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
 
         vector = instruction.variants[2]
         self.assertEqual(vector.cpp_name, "V4U32")
+        self.assertEqual(sum(v.cpp_name == "V4U32" for v in instruction.variants), 1)
+        self.assertEqual(tuple(value.value for value in mov.variants[2].modifiers[0].values), ("v2", "v4"))
+        self.assertEqual(vector.operand_layouts[0].fields[1].value_kind,
+                         ResolvedValueKind.MOV_VECTOR_SOURCE)
+        self.assertTrue(vector.operand_layouts[0].bindings[0].allow_named_vector)
+        self.assertTrue(vector.operand_layouts[0].bindings[0].allow_vector_sink)
         self.assertEqual(
             [(field.name, field_cpp_type(field)) for field in vector.fields],
             [
                 ("vector", "WithLocs<VectorArity>"),
                 ("type", "WithLocs<ScalarType>"),
-                ("dst", "WithLocs<ResolvedVectorRegisterRef>"),
-                ("src", "WithLocs<ResolvedVectorSpecialRegisterRef>"),
+                ("dst", "WithLocs<ResolvedRegisterVector>"),
+                ("src", "WithLocs<ResolvedMovVectorSource>"),
             ],
         )
         for binding in vector.operand_layouts[0].bindings:

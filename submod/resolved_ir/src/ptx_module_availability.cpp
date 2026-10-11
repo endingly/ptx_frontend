@@ -614,6 +614,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePairOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicateOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedMovSource> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedMovVectorSource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedCpAsyncSourceControl> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicate> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicateSource> ||
@@ -754,6 +755,25 @@ void collect_operand_references(
                                    uses, address_resolution_policy);
         uses.back().named_vector_projection = named;
       }
+  } else if constexpr (std::same_as<Value, ResolvedMovVectorSource>) {
+    if (const auto* vector = std::get_if<ResolvedMovValueVector>(&value)) {
+      const bool named =
+          vector->source.kind == ResolvedVectorSourceKind::NamedVector &&
+          valid_mov_vector_source(*vector, locations, true, fallback);
+      if (vector->source.whole_base)
+        collect_operand_references(vector->source.whole_base->value,
+                                   vector->source.whole_base->locs, fallback,
+                                   uses, address_resolution_policy);
+      for (size_t index = 0; index < vector->elements.size(); ++index)
+        if (const auto* reg =
+                std::get_if<ResolvedRegisterRef>(&vector->elements[index])) {
+          const std::array<SourceRange, 1> lane_range{
+              index < locations.size() ? locations[index] : fallback};
+          collect_operand_references(*reg, lane_range, fallback, uses,
+                                     address_resolution_policy);
+          uses.back().named_vector_projection = named;
+        }
+    }
   } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
     for (size_t index = 0; index < value.elements.size(); ++index) {
       const auto* register_ref =
@@ -1049,6 +1069,17 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void value_vector(const ResolvedValueVector& value,
                     std::span<const SourceRange> locations,
                     checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Rejoin owned vector MOV base and lanes, requiring complete source provenance. */
+  void mov_vector_source(
+      const ResolvedMovVectorSource& value,
+      std::span<const SourceRange> locations,
+      checker::AddressSymbolResolutionPolicy policy) override {
+    if (const auto* vector = std::get_if<ResolvedMovValueVector>(&value);
+        vector && !valid_mov_vector_source(*vector, locations, true, fallback_))
+      append_model_mismatch(diagnostics_, fallback_,
+                            "Owned vector MOV has invalid source provenance.");
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedShflSyncDestination. */

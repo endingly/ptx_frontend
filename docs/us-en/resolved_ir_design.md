@@ -1,5 +1,42 @@
 # C++ Resolved IR Design
 
+## Explicit vector MOV
+
+The existing `mov_v4_u32` / `MovV4U32` semantic identity now covers explicit
+`.v2`/`.v4` MOV with `b/u/s16`, `b/u/s32`, `f32`, `b/u/s64`, and `f64`, with
+at most 128 total bits (so no `.v4` × 64). It retains PTX 1.0 availability and
+the f64 SM 13 floor. This is element-width MOV, not scalar bit-aggregate packing.
+
+Public API migration: `MovV4U32::dst` is now `WithLocs<ResolvedRegisterVector>`;
+`src` is `WithLocs<ResolvedMovVectorSource>`. The latter is a variant of
+`ResolvedMovValueVector` (ordered `ResolvedMovVectorLane` register/immediate/
+scalar-special values plus common `ResolvedVectorSource`) and the existing
+`ResolvedVectorSpecialRegisterRef`. Its typed reference callback is
+`IReferenceObserver::mov_vector_source`. Generic `RegOrImm`, `ResolvedValueVector`,
+and scalar `ResolvedMovSource` have not widened.
+
+Named and braced destinations/sources combine freely with exact arity and scalar
+MOV same-width type compatibility, never memory widening. Named source/base/lane
+identity, member, canonical order and exact whole-identifier locations reuse the
+complete named provenance contract below; only that container admits implicit
+projections. Brace destination sinks require at least one real register and no
+duplicate physical destination (aliases count as duplicates). Source repeats and
+source/destination overlap are legal. Brace sources accept scalar ordinary or
+explicit-component registers, numeric literals/constant expressions and scalar
+special reads. Each special lane retains its real registry identity, component,
+historical scalar MOV type compatibility and PTX/SM/capability checks.
+
+Whole hardware vectors remain separate width-four intrinsic-u32 reads, usable
+only with u32/s32/b32 and their existing availability. No fourth scalar hardware
+selector is invented. Sinks, predicate lanes, nested whole vectors, addresses,
+functions and symbols are not source lanes. Bare scalar vector sources such as
+`mov.v2.u32 V, 1` remain an unsupported frontend subset, not an ISA-invalid claim
+or a broadcast/truncation promise. Scalar `.b16/.b32/.b64/.b128` pack/unpack stays
+brace-only, including the B128 PTX 8.3 / SM 70 gates. No named scalar aggregate,
+floating pack or scalar-to-scalar B128 form is added. Other family fences and
+modern 256-bit brace memory forms are unchanged. Owned validation rejoins complete
+base/lane declarations and source ownership after source release/copy/move.
+
 ## Named array addresses
 
 Dedicated address-source MOV and ordinary LD (ISA §9.7.9.8) / ST (§9.7.9.11)

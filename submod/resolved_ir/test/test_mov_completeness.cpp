@@ -181,7 +181,9 @@ TEST(MovCompleteness, SeparatesScalarFromBitPackUnpack) {
 
   const auto& vector_special = dynamic_cast<const MovV4U32&>(*body[2]);
   EXPECT_EQ(vector_special.type.value, ScalarType::U32);
-  EXPECT_EQ(vector_special.src.value.spelling, "%clusterid");
+  EXPECT_EQ(std::get<ResolvedVectorSpecialRegisterRef>(vector_special.src.value)
+                .spelling,
+            "%clusterid");
 
   const checker::Context b128_target{
       .target = {.ptx_version = {9, 3}, .sm_version = 90},

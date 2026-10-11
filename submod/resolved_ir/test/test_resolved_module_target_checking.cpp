@@ -128,9 +128,17 @@ TEST(ResolvedModule, ResolvesV4ClusterSpecialRegisterMoves) {
   ASSERT_EQ(body.size(), 4u);
   for (const auto& instruction : body) {
     const auto& vector = dynamic_cast<const MovV4U32&>(*instruction);
-    EXPECT_EQ(vector.dst.value.register_ref.vector_width, 4u);
-    EXPECT_EQ(vector.dst.value.register_ref.declared_type, ScalarType::B32);
-    EXPECT_EQ(base::metadata(vector.src.value.id).vector_width, 4u);
+    EXPECT_EQ(
+        vector.dst.value.source.whole_base->value.register_ref.vector_width,
+        4u);
+    EXPECT_EQ(
+        vector.dst.value.source.whole_base->value.register_ref.declared_type,
+        ScalarType::B32);
+    EXPECT_EQ(
+        base::metadata(
+            std::get<ResolvedVectorSpecialRegisterRef>(vector.src.value).id)
+            .vector_width,
+        4u);
   }
 
   constexpr std::array<std::string_view, 1> cluster_capabilities{"cluster"};

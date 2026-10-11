@@ -52,7 +52,8 @@ Parsing this shape does not grant instruction-family admission or array binding.
 ## Named memory-vector syntax
 
 Named data vectors use the existing identifier node, without synthesizing brace
-lanes or selectors in CST/AST. Only opted ordinary LD/ST, LDNC and LDU slots admit
+lanes or selectors in CST/AST. Only opted ordinary LD/ST, LDNC, LDU and explicit
+vector MOV slots admit
 this shape; declaration-bound resolution records the owned whole source and
 implicit lane origins described in [Resolved IR](resolved_ir_design.md#named-memory-vector-sources).
 Brace syntax and the separate named-array address grammar are unchanged.

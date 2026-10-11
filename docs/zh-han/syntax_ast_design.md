@@ -41,7 +41,7 @@ displacement range。index 可以是整数常量表达式、绑定的标量整�
 ## Named memory-vector 语法
 
 Named data vector 使用既有 identifier node，CST/AST 不合成 brace lane 或 selector。
-只有 opt-in 的普通 LD/ST、LDNC 与 LDU slot 接受该 shape；声明绑定后的 resolution
+只有 opt-in 的普通 LD/ST、LDNC、LDU 与显式 vector MOV slot 接受该 shape；声明绑定后的 resolution
 记录 owned whole source 和 implicit lane origin，详见
 [Resolved IR](resolved_ir_design.md#named-memory-vector-source)。Brace 语法和独立
 named-array address grammar 不变。

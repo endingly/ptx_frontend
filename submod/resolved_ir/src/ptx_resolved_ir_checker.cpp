@@ -1,4 +1,5 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 
 #include "ptx_resolved_ir_packed_literal.hpp"
 
@@ -878,6 +879,52 @@ void append_matrix_operand_diagnostics(const MatrixInstructionDescriptor*,
                                        std::span<const OperandView>,
                                        const Context&, CheckDiagnostics&);
 
+/** Project vector MOV payloads while retaining real borrowed lane carriers. */
+OperandView project_mov_vector_source(
+    std::string_view field_id,
+    const WithLocs<ResolvedMovVectorSource>& operand) {
+  OperandView view{.field_id = field_id,
+                   .actual_shape = OperandShape::Vector,
+                   .locations = operand.locs};
+  if (const auto* values =
+          std::get_if<ResolvedMovValueVector>(&operand.value)) {
+    view.mov_value_vector = values;
+    view.vector_arity = values->elements.size();
+    for (size_t index = 0;
+         index < std::min(view.vector_arity, kMaxOperandElements); ++index) {
+      const auto& lane = values->elements[index];
+      if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane)) {
+        view.vector_element_shapes[index] = OperandShape::Register;
+        view.vector_element_types[index] =
+            reg->declared_type.value_or(ScalarType::Invalid);
+        view.vector_element_registers[index] = reg;
+      } else if (const auto* immediate =
+                     std::get_if<ResolvedImmediate>(&lane)) {
+        view.vector_element_shapes[index] = OperandShape::Immediate;
+        view.vector_element_types[index] = immediate->type;
+        view.vector_element_immediates[index] = immediate;
+      } else {
+        view.vector_element_shapes[index] = OperandShape::SpecialRegister;
+        view.vector_element_types[index] =
+            base::metadata(std::get<ResolvedSpecialRegisterRef>(lane).id)
+                .element_type;
+      }
+    }
+  } else {
+    const auto& special =
+        std::get<ResolvedVectorSpecialRegisterRef>(operand.value);
+    const auto info = base::metadata(special.id);
+    view.mov_hardware_vector = &special;
+    view.vector_arity = info.vector_width;
+    view.special_register_type = info.element_type;
+    view.special_register_id = special.id;
+    view.value_availability = special_register_availability(info);
+    view.value_name = special.spelling;
+    std::ranges::fill(view.vector_element_types, info.element_type);
+  }
+  return view;
+}
+
 CheckResult check_operands(
     std::span<const OperandDescriptor> descriptors,
     std::span<const FieldView> fields, std::span<const OperandView> operands,
@@ -897,8 +944,11 @@ CheckResult check_operands(
       return nullptr;
     }();
     const bool named =
-        operand.register_vector && operand.register_vector->source.kind ==
-                                       ResolvedVectorSourceKind::NamedVector;
+        (operand.register_vector &&
+         operand.register_vector->source.kind ==
+             ResolvedVectorSourceKind::NamedVector) ||
+        (operand.mov_value_vector && operand.mov_value_vector->source.kind ==
+                                         ResolvedVectorSourceKind::NamedVector);
     bool matches_view =
         !operand.register_vector ||
         operand.vector_arity == operand.register_vector->elements.size();
@@ -916,15 +966,19 @@ CheckResult check_operands(
                                 (lane ? &*lane : nullptr);
       }
     const bool valid_source =
-        !operand.register_vector ||
-        (matches_view &&
-         valid_register_vector_source(*operand.register_vector,
+        operand.mov_value_vector
+            ? valid_mov_vector_source(*operand.mov_value_vector,
                                       operand.locations, false,
-                                      context.instruction_range) &&
-         (!named ||
-          (descriptor && descriptor->allow_named_vector &&
-           descriptor->vector_type_policy == VectorTypePolicy::Element &&
-           !descriptor->source_value_vector)));
+                                      context.instruction_range)
+            : !operand.register_vector ||
+                  (matches_view &&
+                   valid_register_vector_source(*operand.register_vector,
+                                                operand.locations, false,
+                                                context.instruction_range) &&
+                   (!named || (descriptor && descriptor->allow_named_vector &&
+                               descriptor->vector_type_policy ==
+                                   VectorTypePolicy::Element &&
+                               !descriptor->source_value_vector)));
     if (!valid_source)
       diagnostics.push_back(
           {CheckDiagnosticKind::InvalidVectorOperand,
@@ -1376,6 +1430,125 @@ CheckResult check_operands(
       }
     }
     append_value_availability_diagnostics(*operand, context, diagnostics);
+
+    if (operand->mov_value_vector || operand->mov_hardware_vector) {
+      const auto invalid = [&](SourceRange range, std::string message) {
+        diagnostics.push_back({CheckDiagnosticKind::InvalidVectorOperand, range,
+                               std::move(message)});
+      };
+      const auto range = diagnostic_range(operand->locations, context);
+      const auto* arity_field =
+          find_field(fields, descriptor.vector_arity_modifier_field_id);
+      if (!arity_field || !arity_field->vector_arity ||
+          operand->vector_arity !=
+              vector_arity_count(*arity_field->vector_arity) ||
+          (operand->vector_arity != 2 && operand->vector_arity != 4) ||
+          operand->vector_arity * scalar_size_of(expected_type) > 16) {
+        invalid(
+            range,
+            "Explicit vector MOV requires exact arity and at most 128 bits.");
+        continue;
+      }
+      if (operand->mov_hardware_vector) {
+        const auto& special = *operand->mov_hardware_vector;
+        const auto info = base::lookup(special.spelling);
+        if (!info || info->id != special.id || info->vector_width != 4 ||
+            info->element_type != ScalarType::U32 ||
+            operand->locations.size() != 1 ||
+            !fabric_range_inside(range, range) ||
+            (context.instruction_range != SourceRange{} &&
+             !fabric_range_inside(range, context.instruction_range)) ||
+            (expected_type != ScalarType::U32 &&
+             expected_type != ScalarType::S32 &&
+             expected_type != ScalarType::B32))
+          invalid(range,
+                  "Whole hardware vector MOV requires a four-lane intrinsic "
+                  "u32 source.");
+        continue;
+      }
+      const auto& values = *operand->mov_value_vector;
+      if (!valid_mov_vector_source(values, operand->locations, false,
+                                   context.instruction_range)) {
+        invalid(range, "Vector MOV source has invalid brace/named provenance.");
+        continue;
+      }
+      const bool named_source =
+          values.source.kind == ResolvedVectorSourceKind::NamedVector;
+      for (size_t index = 0; index < values.elements.size(); ++index) {
+        const std::array<SourceRange, 1> lane_range{operand->locations[index]};
+        OperandView lane{.field_id = operand->field_id,
+                         .locations = lane_range};
+        if (const auto* reg =
+                std::get_if<ResolvedRegisterRef>(&values.elements[index])) {
+          lane.actual_shape = OperandShape::Register;
+          lane.register_type = reg->declared_type;
+          lane.register_ref = named_source ? nullptr : reg;
+          if (reg->vector_width ||
+              reg->register_class != ResolvedRegisterClass::General ||
+              (reg->symbol_id && !reg->declared_type) || reg->spelling == "_" ||
+              reg->declared_type == ScalarType::Pred)
+            invalid(
+                lane_range.front(),
+                "Vector MOV source requires a scalar non-predicate register.");
+        } else if (const auto* immediate = std::get_if<ResolvedImmediate>(
+                       &values.elements[index])) {
+          lane.actual_shape = OperandShape::Immediate;
+          lane.immediate_type = immediate->type;
+          lane.immediate_bits = immediate->bits;
+          lane.immediate_is_negative = immediate->is_negative;
+          lane.integer_source_bits = immediate->integer_source_bits;
+          if (immediate->type != expected_type ||
+              !valid_value_vector_immediate(*immediate))
+            invalid(lane_range.front(),
+                    "Vector MOV immediate has invalid typed value provenance.");
+        } else {
+          const auto& special =
+              std::get<ResolvedSpecialRegisterRef>(values.elements[index]);
+          const auto info = base::lookup(special.spelling);
+          const auto metadata = base::metadata(special.id);
+          const bool selection_matches =
+              !special.component ||
+              (*special.component == base::VectorComponent::X &&
+               special.spelling.ends_with(".x")) ||
+              (*special.component == base::VectorComponent::Y &&
+               special.spelling.ends_with(".y")) ||
+              (*special.component == base::VectorComponent::Z &&
+               special.spelling.ends_with(".z"));
+          if (!info || info->id != special.id ||
+              metadata.element_type == ScalarType::Pred ||
+              info->vector_width != 1 || !selection_matches ||
+              ((metadata.vector_width > 1) != special.component.has_value()) ||
+              (special.component &&
+               *special.component != base::VectorComponent::X &&
+               *special.component != base::VectorComponent::Y &&
+               *special.component != base::VectorComponent::Z))
+            invalid(lane_range.front(),
+                    "Vector MOV special lane has invalid intrinsic identity or "
+                    "selection.");
+          lane.actual_shape = OperandShape::SpecialRegister;
+          lane.special_register_id = special.id;
+          lane.special_register_type = metadata.element_type;
+          lane.value_availability = special_register_availability(metadata);
+          lane.value_name = special.spelling;
+        }
+        auto scalar_descriptor = descriptor;
+        scalar_descriptor.allowed_shapes = OperandShape::Register |
+                                           OperandShape::Immediate |
+                                           OperandShape::SpecialRegister;
+        scalar_descriptor.vector_arity_modifier_field_id = {};
+        scalar_descriptor.allow_named_vector = false;
+        const std::array<OperandDescriptor, 1> lane_descriptors{
+            scalar_descriptor};
+        const std::array<OperandView, 1> lane_views{lane};
+        if (auto result =
+                check_operands(lane_descriptors, fields, lane_views,
+                               type_compatibilities, context, nullptr);
+            !result)
+          diagnostics.insert(diagnostics.end(), result.error().begin(),
+                             result.error().end());
+      }
+      continue;
+    }
 
     if (operand->actual_shape == OperandShape::TextureResult &&
         ((operand->vector_sink_count != 0 && !descriptor.allow_vector_sink) ||

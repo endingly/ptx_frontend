@@ -691,6 +691,7 @@ std::optional<StorageRelocation> symbol_relocation(
       .symbol_id = target.id,
       .parameterized_index = lookup.parameterized_index,
       .address_kind = address_kind,
+      .target_range = symbol.name.syntax.range,
   };
 }
 

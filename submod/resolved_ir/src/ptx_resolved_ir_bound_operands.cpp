@@ -10,6 +10,7 @@
 
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include <ptx_frontend/resolved_ir/ptx_video.hpp>
 
@@ -742,8 +743,25 @@ resolve_indirect_callee(const syntax_ast::AstOperand& operand,
       });
     }
     const binding::Symbol& symbol = context->symbols.symbol(lookup->symbol);
-    if (lookup->parameterized_index ||
+    if (!lookup->parameterized_index &&
         symbol.kind == binding::SymbolKind::Variable) {
+      const bool storage = std::ranges::any_of(
+          context->call_tables, [&](const auto& declaration) {
+            return declaration.symbol_id == symbol.id;
+          });
+      if (!storage || context->symbols.hasPriorDeclaration(
+                          symbol.id, metadata->name.syntax.range) != true)
+        return std::unexpected(ResolveDiagnostic{
+            .range = metadata->range,
+            .message = "Call table requires prior owned storage declaration."});
+      return WithLocs<ResolvedIndirectCallee>{
+          ResolvedIndirectCallee{
+              ResolvedCallTableRef{.spelling = metadata->name.syntax.text,
+                                   .symbol_id = symbol.id,
+                                   .range = metadata->name.syntax.range}},
+          metadata->range};
+    }
+    if (lookup->parameterized_index) {
       return std::unexpected(ResolveDiagnostic{
           .range = metadata->range,
           .message = "Indirect call metadata variables and call-table arrays "

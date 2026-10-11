@@ -6,6 +6,7 @@
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include "ptx_call_tables.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_source_identity.hpp"
 #include "ptx_storage_declarations.hpp"
@@ -34,6 +35,66 @@ using CallArgumentPropertyIndex =
     std::unordered_map<uint32_t, CallArgumentProperties>;
 using FunctionSignatureIndex =
     std::unordered_map<uint32_t, declaration_semantics::FunctionSignature>;
+
+/** Materialize only lexically consumed storage tables, sharing the call ABI index. */
+void index_call_tables(const std::vector<syntax_ast::AstFunctionBodyItem>& body,
+                       const binding::SymbolTable& symbols,
+                       binding::ScopeId scope,
+                       std::span<const ResolvedStorageDeclaration> storage,
+                       FunctionSignatureIndex& signatures,
+                       std::vector<ResolvedCallTableContract>& tables,
+                       ModuleResolveDiagnostics& diagnostics) {
+  for (const auto& item : body) {
+    if (const auto* block =
+            std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
+        block && *block) {
+      const auto child = symbols.blockScope(scope, (*block)->range);
+      if (child)
+        index_call_tables((*block)->body, symbols, *child, storage, signatures,
+                          tables, diagnostics);
+    } else if (const auto* instruction =
+                   std::get_if<syntax_ast::AstInstruction>(&item)) {
+      for (const auto& operand : instruction->operands) {
+        const auto* name = std::get_if<syntax_ast::AstCallTargetSet>(&operand);
+        if (!name)
+          continue;
+        const auto lookup = symbols.lookup(scope, name->name.syntax.text);
+        if (!lookup || symbols.symbol(lookup->symbol).kind !=
+                           binding::SymbolKind::Variable)
+          continue;
+        const auto reject = [&](std::string message) {
+          diagnostics.push_back(
+              {.range = name->range, .message = std::move(message)});
+        };
+        if (lookup->parameterized_index ||
+            symbols.hasPriorDeclaration(lookup->symbol,
+                                        name->name.syntax.range) != true) {
+          reject("Call table storage must be declared before its flist use.");
+          continue;
+        }
+        if (std::ranges::any_of(tables, [&](const auto& t) {
+              return t.symbol_id == lookup->symbol;
+            }))
+          continue;
+        const auto found = std::ranges::find_if(storage, [&](const auto& d) {
+          return d.symbol_id == lookup->symbol &&
+                 d.declaration_kind == StorageDeclarationKind::Definition;
+        });
+        if (found == storage.end()) {
+          reject("Call table requires owned initialized array storage.");
+          continue;
+        }
+        auto table = detail::build_call_table(*found, symbols, signatures);
+        if (!table) {
+          reject(table.error());
+          continue;
+        }
+        signatures.emplace(table->symbol_id.value, table->signature);
+        tables.push_back(std::move(*table));
+      }
+    }
+  }
+}
 
 /** Translate AST state space without accepting invalid constructed values. */
 CallArgumentStateSpace call_state_space(syntax_ast::AstStateSpace state_space) {
@@ -1249,6 +1310,15 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
   }
 
   std::vector<ResolvedFunction> functions;
+  std::vector<ResolvedCallTableContract> call_tables;
+  for (const auto& item : ast.items) {
+    if (const auto* function = std::get_if<syntax_ast::AstFunction>(&item))
+      index_call_tables(function->body, binding_result.table,
+                        declaration_scope(*function), *storage, signatures,
+                        call_tables, diagnostics);
+  }
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
   /** Region zero is the targetless prefix before the first .target directive. */
   std::size_t active_region = 0;
   for (const syntax_ast::AstModuleItem& item : ast.items) {
@@ -1380,6 +1450,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
     collect_body_parameters(function->body, binding_result.table, scope,
                             resolved_function);
     context.storage_declarations = *storage;
+    context.call_tables = call_tables;
     context.parameter_declarations = resolved_function.parameter_declarations;
     resolve_body(function->body, context, binding_result.table, signatures,
                  call_argument_properties, resolved_function, diagnostics);
@@ -1427,6 +1498,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
       .header = std::move(header),
       .range = ast.range,
       .storage_declarations = std::move(*storage),
+      .call_tables = std::move(call_tables),
       .source_identity = detail::module_source_identity(ast),
   };
   return module;

@@ -140,6 +140,13 @@ Module resolution converts a valid prototype to the same canonical signature
 as a function and reuses the validated first `.calltargets` member signature
 for indirect-call ABI checking. ABI suffix availability remains later work.
 
+Call-table eligibility is checked only when ordinary storage is consumed as an
+indirect-call flist. The module layer reuses owned sparse storage relocations and
+this pass's complete `FunctionSignature` equality, preserving the exact-token
+prior-function rule. Repeated table targets and implicit zero tails are permitted;
+this differs deliberately from `.calltargets` duplicate policy. Unconsumed mixed
+function/numeric or mixed-signature data remains ordinary legal storage.
+
 ## Parameter declarations
 
 Parameters have a context-aware [coverage and validation contract](parameter_declarations.md),

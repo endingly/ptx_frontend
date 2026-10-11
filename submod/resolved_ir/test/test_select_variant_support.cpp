@@ -539,8 +539,7 @@ TEST(ResolveIndirectCallee, RejectsInvalidMetadataAndDirectCalleeKinds) {
       indirect_metadata_instruction("table"), &context);
   ASSERT_FALSE(global_array.has_value());
   EXPECT_EQ(global_array.error().message,
-            "Indirect call metadata variables and call-table arrays are not "
-            "supported.");
+            "Call table requires prior owned storage declaration.");
 
   const auto missing = resolve_indirect_callee_field(
       indirect_metadata_instruction("missing"), &context);

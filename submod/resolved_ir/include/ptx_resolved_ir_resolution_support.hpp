@@ -12,6 +12,8 @@
 
 namespace ptx_frontend::resolved_ir {
 
+struct ResolvedCallTableContract;
+
 /** Declaration context used while resolving an instruction inside a module. */
 struct ResolveContext {
   /** Borrowed lexical symbol table; caller keeps it alive through resolution. */
@@ -29,6 +31,8 @@ struct ResolveContext {
   /** Borrowed owned shapes, valid only throughout this synchronous resolution. */
   std::span<const ResolvedStorageDeclaration> storage_declarations;
   std::span<const ResolvedParameterDeclaration> parameter_declarations;
+  /** Validated consumed tables, borrowed only during synchronous module resolution. */
+  std::span<const ResolvedCallTableContract> call_tables;
 };
 
 /** Preserve the written atomic address suffix after syntax selection. */

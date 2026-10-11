@@ -542,6 +542,7 @@ class ResolvedOperandBinding:
     mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
     sink_availability: tuple[tuple[str, Any], ...] = ()
     allow_function_symbol: bool = False
+    allow_call_table: bool = False
     preserve_parameter_address_space: bool = False
     type_tag: str | None = None
     minimum_elements: int | None = None
@@ -1977,6 +1978,7 @@ def _build_operand_layout(
                 mbarrier_state_token_form=operand.mbarrier_state_token_form,
                 sink_availability=tuple(operand.sink_availability.items()),
                 allow_function_symbol=operand.kind == OperandKind.MOV_SCALAR_SOURCE,
+                allow_call_table=operand.kind == OperandKind.INDIRECT_CALL_METADATA,
                 preserve_parameter_address_space=(
                     operand.kind == OperandKind.CLUSTER_ADDRESS
                 ),

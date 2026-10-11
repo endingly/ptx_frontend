@@ -393,6 +393,16 @@ std::optional<bool> SymbolTable::hasPriorDeclaration(
   return unknown_occurrence_order ? std::nullopt : std::optional{false};
 }
 
+bool SymbolTable::hasVariableDeclaration(SymbolId symbol,
+                                         SourceRange range) const noexcept {
+  if (symbol.value >= declaration_occurrences_.size())
+    return false;
+  for (const auto& occurrence : declaration_occurrences_[symbol.value])
+    if (occurrence.variable_declaration_range == range)
+      return true;
+  return false;
+}
+
 struct SymbolTableBuilder {
   struct FunctionContext {
     const syntax_ast::AstFunction* function{};
@@ -467,6 +477,7 @@ struct SymbolTableBuilder {
   void indexVariableInitializers(
       const syntax_ast::AstVariableDeclaration& declaration) {
     for (const auto& declarator : declaration.declarators) {
+      indexSourceRange(declarator.name.syntax.range);
       if (!declarator.initializer)
         continue;
       const auto index_initializer =
@@ -510,6 +521,9 @@ struct SymbolTableBuilder {
           if (const auto* target_set =
                   std::get_if<syntax_ast::AstBranchTargetSet>(&operand))
             indexSourceRange(target_set->name.syntax.range);
+          else if (const auto* call_set =
+                       std::get_if<syntax_ast::AstCallTargetSet>(&operand))
+            indexSourceRange(call_set->name.syntax.range);
         }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);
@@ -534,7 +548,9 @@ struct SymbolTableBuilder {
   }
 
   /** Retain a declaration occurrence independently of its canonical SymbolId. */
-  void recordDeclarationOccurrence(SymbolId symbol, SourceRange range) {
+  void recordDeclarationOccurrence(
+      SymbolId symbol, SourceRange range,
+      std::optional<SourceRange> variable_range = std::nullopt) {
     if (symbol.value >= result.table.declaration_occurrences_.size())
       throw std::logic_error("Symbol occurrence has no stable identity.");
     const auto order = result.table.source_orders_.find(range);
@@ -544,7 +560,8 @@ struct SymbolTableBuilder {
             .range = range,
             .lexical_order = order == result.table.source_orders_.end()
                                  ? std::nullopt
-                                 : std::optional{order->second}});
+                                 : std::optional{order->second},
+            .variable_declaration_range = variable_range});
   }
 
   /** Associate a declaration's range with its scope, not its canonical symbol. */
@@ -786,7 +803,7 @@ struct SymbolTableBuilder {
             ? SymbolKind::CallParameter
             : SymbolKind::Variable;
     for (const auto& declarator : declaration.declarators) {
-      addSymbol(
+      const SymbolId variable = addSymbol(
           scope, kind, declarator.name.syntax.text,
           declarator.name.syntax.range, declaration_linkage,
           declaration.state_space,
@@ -796,6 +813,8 @@ struct SymbolTableBuilder {
               declaration.legacy_texture ? ".texref" : declaration.type.text),
           parameterizedCount(declarator), scope == result.table.moduleScope(),
           false, vectorWidth(declaration.vector_type));
+      recordDeclarationOccurrence(variable, declarator.name.syntax.range,
+                                  declarator.range);
     }
   }
 
@@ -1267,10 +1286,12 @@ struct SymbolTableBuilder {
               diagnoseInvalidTarget(
                   reference,
                   kind == SymbolKind::CallPrototype ||
-                      kind == SymbolKind::CallTargetSet,
-                  fmt::format("Call target set '{}' must name a "
-                              ".callprototype or .calltargets declaration.",
-                              value.name.syntax.text));
+                      kind == SymbolKind::CallTargetSet ||
+                      kind == SymbolKind::Variable,
+                  fmt::format(
+                      "Call target set '{}' must name a "
+                      ".callprototype, .calltargets, or storage declaration.",
+                      value.name.syntax.text));
             }
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstBranchTargetSet>) {

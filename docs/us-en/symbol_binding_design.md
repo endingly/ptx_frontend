@@ -164,7 +164,11 @@ Dedicated call/branch AST nodes produce distinct reference kinds. Binding now
 checks that a callee is a function or `.reg` function pointer, call parameters
 belong to `.reg`/`.param`, a direct branch target is a label in the current
 function, and an indirect target-set operand is a `.callprototype` or
-`.calltargets` symbol. The three metadata declaration kinds have stable
+`.calltargets` symbol, or an actual storage variable consumed as a call-table
+flist. Table eligibility remains module resolution's responsibility. Variable
+declarator names and flist names participate in the existing lexical-order index;
+owned variable occurrences retain their declarator ranges for AST-free joins.
+The three metadata declaration kinds have stable
 function-scope `SymbolId` values. Member validation, duplicate policy, and
 prototype/signature semantics are checked by declaration semantics; binding
 does not resolve metadata members or instruction use. See

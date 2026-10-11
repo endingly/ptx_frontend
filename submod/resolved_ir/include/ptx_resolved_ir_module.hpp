@@ -283,6 +283,45 @@ struct ResolvedFunction {
   std::string source_identity;
 };
 
+/** One callable explicit slot; omitted sparse tails are not callable targets. */
+struct ResolvedCallTableSlot {
+  /** Zero-based array element index, preserved in initializer order. */
+  uint64_t index{};
+  /** Byte offset in the actual storage object, not a simulated address. */
+  uint64_t byte_offset{};
+  /** Bound function or alias identity written at this slot. */
+  binding::SymbolId symbol_id;
+  /** Canonical device-function identity used for signature equality. */
+  binding::SymbolId canonical_function;
+  /** Complete initializer expression and exact referenced function token. */
+  SourceRange range;
+  SourceRange target_range;
+  /** Compare owned slot identity, order, and source provenance. */
+  bool operator==(const ResolvedCallTableSlot&) const = default;
+};
+/** Owned contract materialized only for storage consumed by a call flist. */
+struct ResolvedCallTableContract {
+  /** Actual storage Variable identity; no synthetic metadata symbol is created. */
+  binding::SymbolId symbol_id;
+  /** Storage lexical scope and optional enclosing function. */
+  binding::ScopeId scope_id;
+  std::optional<binding::SymbolId> owner_function;
+  /** Cached actual scalar storage domain; rejoined to the owned declaration. */
+  StorageSpace space{};
+  base::ScalarType element_type{base::ScalarType::Invalid};
+  /** Declared/inferred element count and complete object size in bytes. */
+  uint64_t extent{};
+  uint64_t byte_extent{};
+  /** Owned declaration spelling and complete storage declaration range. */
+  std::string name;
+  SourceRange range;
+  /** Ordered explicit callable slots; duplicates remain significant. */
+  std::vector<ResolvedCallTableSlot> slots;
+  /** Full normalized ABI shared by all slots, independent of element width. */
+  declaration_semantics::FunctionSignature signature;
+  /** Compare complete owned table contracts. */
+  bool operator==(const ResolvedCallTableContract&) const = default;
+};
 /** Owns all resolved declarations, functions, and source correspondence data. */
 struct ResolvedModule {
   /** Owning symbol table; every retained SymbolId and ScopeId refers to it. */
@@ -297,6 +336,8 @@ struct ResolvedModule {
   SourceRange range;
   /** Owned non-parameter storage declarations, in source traversal order. */
   std::vector<ResolvedStorageDeclaration> storage_declarations;
+  /** Consumed call tables keyed by actual storage identity; unique per module. */
+  std::vector<ResolvedCallTableContract> call_tables;
   /** Canonical module syntax identity excluding target, version, and locations. */
   std::string source_identity;
 };

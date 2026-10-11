@@ -193,6 +193,7 @@ def emit_check_operand_view(
         return f"""              OperandView{{
                   .field_id = "{field.name}",
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "IndirectCallee")},
+                  .call_table_ref = std::get_if<ResolvedCallTableRef>(&{object_name}.{field.name}.value),
                   .locations = {object_name}.{field.name}.locs,
               }}"""
     if field.value_kind is ResolvedValueKind.CALL_RETURN_PARAMETER:

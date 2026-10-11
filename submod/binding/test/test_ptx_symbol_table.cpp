@@ -640,8 +640,8 @@ TEST(PtxSymbolTable, DiagnosesNonCallMetadataTargetSetReference) {
   EXPECT_EQ(binding_result.diagnostics.front().kind,
             binding::BindDiagnosticKind::InvalidReferenceTarget);
   EXPECT_EQ(binding_result.diagnostics.front().message,
-            "Call target set 'branches' must name a .callprototype or "
-            ".calltargets declaration.");
+            "Call target set 'branches' must name a .callprototype, "
+            ".calltargets, or storage declaration.");
 }
 
 TEST(PtxSymbolTable, DiagnosesInvalidIndexedBranchTargetSetReference) {

@@ -73,6 +73,17 @@ resolution 将每个 function-local metadata `SymbolId` 索引到 canonical sign
 argument-compatibility 检查；后者的 diagnostic 会指出 metadata label。未匹配任何 descriptor
 的 malformed metadata-bearing call syntax 现由通用 descriptor layout diagnostic 处理。
 
+## Return uniformity
+
+`ret{.uni};` 在 device function 和 entry 中均支持无 predicate、`@p` 与 `@!p`
+形式，沿用 PTX 1.0 / 全架构的 availability。规范 variant `ret_bare` 与生成的
+`RetBare` 类保持稳定。其 `WithLocs<bool> uni` 字段默认是 `false` 且没有 location；
+显式 `.uni` 将它设为 `true`，并保留 modifier 的精确 range。execution predicate
+独立保留其 negation 和绑定的 register identity；两者在 AST 释放后仍保留，并支持
+owned-module validation。`.uni` 记录程序员对 uniform return behavior 的保证，
+frontend 不证明运行时 divergence 或 convergence。未知或重复的 modifier 及意外
+operand 仍会被拒绝。
+
 ## function-local `.callprototype` 语法
 
 Parser 现在将 PTX 9.3 的 `.callprototype` declaration 保留为专用的 function-body

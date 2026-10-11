@@ -104,6 +104,19 @@ argument-compatibility check; the latter reports the metadata label. The
 generic descriptor layout diagnostic handles malformed metadata-bearing call
 syntax that matches no descriptor.
 
+## Return uniformity
+
+`ret{.uni};` accepts unpredicated, `@p`, and `@!p` forms in both device
+functions and entries, with the existing PTX 1.0 / all-architecture availability.
+The canonical `ret_bare` variant and generated `RetBare` class remain stable.
+Its `WithLocs<bool> uni` field defaults to `false` with no locations; a written
+`.uni` sets it to `true` and retains the exact modifier range. The execution
+predicate is retained independently, including its negation and bound register
+identity, and both survive AST release for owned-module validation.
+`.uni` records the programmer's guarantee of uniform return behavior. The
+frontend does not prove dynamic divergence or convergence. Unknown or repeated
+modifiers and unexpected operands remain invalid.
+
 ## Function-local `.callprototype` syntax
 
 The parser now retains PTX 9.3 `.callprototype` declarations as dedicated

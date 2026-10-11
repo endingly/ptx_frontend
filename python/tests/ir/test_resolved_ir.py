@@ -1912,7 +1912,8 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         )
         self.assertIs(variant.rule, SemanticRule.CONTROL_FLOW_BRX_IDX)
 
-    def test_ret_uses_a_bare_zero_operand_variant(self) -> None:
+    def test_ret_preserves_optional_uniformity_in_its_zero_operand_variant(self) -> None:
+        """Keep the canonical class while retaining the optional assertion."""
         database = self.database
         ret = next(
             instruction
@@ -1921,11 +1922,25 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         )
         instruction = from_instruction_spec(ret)
 
+        modifier = ret.variants[0].modifiers[0]
+        self.assertEqual(modifier.name, "uni")
+        self.assertEqual(modifier.kind.value, "flag")
+        self.assertEqual(modifier.presence.value, "optional")
+        self.assertEqual(modifier.token, ".uni")
+        self.assertIs(modifier.default, False)
         self.assertEqual(instruction.cpp_name, "Ret")
         self.assertEqual(len(instruction.variants), 1)
         variant = instruction.variants[0]
         self.assertEqual(variant.cpp_name, "Bare")
-        self.assertEqual(variant.fields, ())
+        self.assertEqual(
+            [(field.name, field_cpp_type(field)) for field in variant.fields],
+            [("uni", "WithLocs<bool>")],
+        )
+        binding = variant.modifier_bindings[0]
+        self.assertIsNotNone(binding.default_value)
+        assert binding.default_value is not None
+        self.assertIs(binding.default_value.value, False)
+        self.assertEqual(binding.default_value.value_kind.value, "Bool")
         self.assertEqual(variant.operand_layouts[0].fields, ())
         self.assertEqual(variant.operand_layouts[0].bindings, ())
 

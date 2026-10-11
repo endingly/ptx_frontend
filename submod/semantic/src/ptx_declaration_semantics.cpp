@@ -8,6 +8,7 @@
 #include <bit>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <compare>
 #include <limits>
 #include <string_view>
@@ -46,6 +47,8 @@ struct ExpressionInfo {
   };
 
   std::optional<IntegerValue> integer_value;
+  /** Concrete binary64 value when the expression is floating and evaluable. */
+  std::optional<double> floating_value;
 };
 
 using DiagnosticSink = std::vector<DeclarationDiagnostic>*;
@@ -265,13 +268,17 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
   return {};
 }
 
-ExpressionInfo classifyExpression(const AstConstantExpression& expression,
-                                  DiagnosticSink diagnostics);
+ExpressionInfo classifyExpression(
+    const AstConstantExpression& expression, DiagnosticSink diagnostics,
+    ConstantEvaluationDiagnostic* failure = nullptr);
 
 ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
-                              DiagnosticSink diagnostics) {
-  const ExpressionInfo left = classifyExpression(*binary.left, diagnostics);
-  const ExpressionInfo right = classifyExpression(*binary.right, diagnostics);
+                              DiagnosticSink diagnostics,
+                              ConstantEvaluationDiagnostic* failure) {
+  const ExpressionInfo left =
+      classifyExpression(*binary.left, diagnostics, failure);
+  const ExpressionInfo right =
+      classifyExpression(*binary.right, diagnostics, failure);
   using Operator = AstConstantBinaryOperator;
 
   const bool comparison = binary.operation == Operator::Less ||
@@ -306,6 +313,54 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
   }
 
   if (left.category == ExpressionCategory::Floating) {
+    if (left.floating_value && right.floating_value) {
+      const double lhs = *left.floating_value, rhs = *right.floating_value;
+      if (comparison) {
+        bool result = false;
+        switch (binary.operation) {
+          case Operator::Less:
+            result = lhs < rhs;
+            break;
+          case Operator::LessEqual:
+            result = lhs <= rhs;
+            break;
+          case Operator::Greater:
+            result = lhs > rhs;
+            break;
+          case Operator::GreaterEqual:
+            result = lhs >= rhs;
+            break;
+          case Operator::Equal:
+            result = lhs == rhs;
+            break;
+          case Operator::NotEqual:
+            result = lhs != rhs;
+            break;
+          default:
+            break;
+        }
+        return {ExpressionCategory::Integer, signedBoolean(result)};
+      }
+      switch (binary.operation) {
+        case Operator::Multiply:
+          return {ExpressionCategory::Floating, std::nullopt, lhs * rhs};
+        case Operator::Divide:
+          if (rhs == 0.0) {
+            if (failure && (failure->message.empty() || failure->deferred))
+              *failure = {{binary.left->range.start, binary.right->range.end},
+                          "Constant expression has division by zero.",
+                          false};
+            return {};
+          }
+          return {ExpressionCategory::Floating, std::nullopt, lhs / rhs};
+        case Operator::Add:
+          return {ExpressionCategory::Floating, std::nullopt, lhs + rhs};
+        case Operator::Subtract:
+          return {ExpressionCategory::Floating, std::nullopt, lhs - rhs};
+        default:
+          return {};
+      }
+    }
     if (comparison)
       return {ExpressionCategory::Integer, std::nullopt};
     switch (binary.operation) {
@@ -321,14 +376,28 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
 
   if (!left.integer_value || !right.integer_value)
     return {ExpressionCategory::Integer, std::nullopt};
+  if (failure && (failure->message.empty() || failure->deferred)) {
+    if ((binary.operation == Operator::Divide ||
+         binary.operation == Operator::Remainder) &&
+        right.integer_value->bits == 0)
+      *failure = {{binary.left->range.start, binary.right->range.end},
+                  "Constant expression has division or remainder by zero.",
+                  false};
+    else if ((binary.operation == Operator::ShiftLeft ||
+              binary.operation == Operator::ShiftRight) &&
+             right.integer_value->bits >= 64)
+      *failure = {binary.right->range,
+                  "Constant expression shift count must be in 0..63.", false};
+  }
   return evaluateIntegerBinary(binary.operation, *left.integer_value,
                                *right.integer_value);
 }
 
 ExpressionInfo classifyExpression(const AstConstantExpression& expression,
-                                  DiagnosticSink diagnostics) {
-  return std::visit(
-      [diagnostics](const auto& value) -> ExpressionInfo {
+                                  DiagnosticSink diagnostics,
+                                  ConstantEvaluationDiagnostic* failure) {
+  const auto result = std::visit(
+      [diagnostics, failure](const auto& value) -> ExpressionInfo {
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
@@ -337,6 +406,11 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
               const auto integer = parseIntegerLiteral(value.value.syntax.text);
               if (!integer) {
                 reportInvalidIntegerLiteral(diagnostics, value.value);
+                if (failure && (failure->message.empty() || failure->deferred))
+                  *failure = {value.value.syntax.range,
+                              "Integer literal is not representable in the "
+                              "64-bit source domain.",
+                              false};
                 return {};
               }
               return {ExpressionCategory::Integer, integer};
@@ -348,21 +422,54 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                           .type = ExpressionInfo::IntegerType::Signed,
                       }};
             case syntax_ast::AstImmediateKind::F32Hex:
-            case syntax_ast::AstImmediateKind::F64Hex:
-            case syntax_ast::AstImmediateKind::DecimalFloat:
+              if (failure) {
+                if (failure->message.empty() || failure->deferred)
+                  *failure = {value.value.syntax.range,
+                              "Exact single-precision bit patterns cannot "
+                              "participate in constant expressions.",
+                              false};
+                return {};
+              }
               return {ExpressionCategory::Floating, std::nullopt};
+            case syntax_ast::AstImmediateKind::F64Hex: {
+              uint64_t bits{};
+              const auto& text = value.value.syntax.text;
+              const auto parsed = std::from_chars(
+                  text.data() + 2, text.data() + text.size(), bits, 16);
+              if (parsed.ec != std::errc{} ||
+                  parsed.ptr != text.data() + text.size())
+                return {};
+              return {ExpressionCategory::Floating, std::nullopt,
+                      std::bit_cast<double>(bits)};
+            }
+            case syntax_ast::AstImmediateKind::DecimalFloat: {
+              double number{};
+              const auto& text = value.value.syntax.text;
+              const auto parsed =
+                  std::from_chars(text.data(), text.data() + text.size(),
+                                  number, std::chars_format::general);
+              if (parsed.ec != std::errc{} ||
+                  parsed.ptr != text.data() + text.size())
+                return {};
+              return {ExpressionCategory::Floating, std::nullopt, number};
+            }
           }
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantSymbol>) {
+          if (failure && failure->message.empty())
+            *failure = {
+                value.name.syntax.range,
+                "Symbolic expression has no concrete numeric operand value.",
+                true};
           return {ExpressionCategory::Address, std::nullopt};
         } else if constexpr (std::same_as<
                                  Value, syntax_ast::AstConstantParenthesized>) {
-          return classifyExpression(*value.expression, diagnostics);
+          return classifyExpression(*value.expression, diagnostics, failure);
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCall>) {
           const ExpressionInfo callee =
-              classifyExpression(*value.callee, diagnostics);
+              classifyExpression(*value.callee, diagnostics, failure);
           const ExpressionInfo argument =
-              classifyExpression(*value.argument, diagnostics);
+              classifyExpression(*value.argument, diagnostics, failure);
           const auto* callee_symbol =
               std::get_if<syntax_ast::AstConstantSymbol>(&value.callee->node);
           if (callee_symbol != nullptr &&
@@ -385,7 +492,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           return {};
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCast>) {
           ExpressionInfo operand =
-              classifyExpression(*value.operand, diagnostics);
+              classifyExpression(*value.operand, diagnostics, failure);
           if (operand.category != ExpressionCategory::Integer)
             return {};
           if (operand.integer_value) {
@@ -398,7 +505,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantUnary>) {
           ExpressionInfo operand =
-              classifyExpression(*value.operand, diagnostics);
+              classifyExpression(*value.operand, diagnostics, failure);
           if (value.operation == AstConstantUnaryOperator::Plus ||
               value.operation == AstConstantUnaryOperator::Minus) {
             if (operand.category != ExpressionCategory::Integer &&
@@ -410,6 +517,9 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
               operand.integer_value->bits =
                   uint64_t{0} - operand.integer_value->bits;
             }
+            if (value.operation == AstConstantUnaryOperator::Minus &&
+                operand.floating_value)
+              operand.floating_value = -*operand.floating_value;
             return operand;
           }
           if (operand.category != ExpressionCategory::Integer)
@@ -428,14 +538,14 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           return operand;
         } else if constexpr (std::same_as<Value,
                                           syntax_ast::AstConstantBinary>) {
-          return classifyBinary(value, diagnostics);
+          return classifyBinary(value, diagnostics, failure);
         } else {
           const ExpressionInfo condition =
-              classifyExpression(*value.condition, diagnostics);
+              classifyExpression(*value.condition, diagnostics, failure);
           ExpressionInfo true_value =
-              classifyExpression(*value.true_expression, diagnostics);
+              classifyExpression(*value.true_expression, diagnostics, failure);
           ExpressionInfo false_value =
-              classifyExpression(*value.false_expression, diagnostics);
+              classifyExpression(*value.false_expression, diagnostics, failure);
           if (condition.category != ExpressionCategory::Integer ||
               true_value.category != false_value.category) {
             return {};
@@ -460,6 +570,14 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
         return {};
       },
       expression.node);
+  if (failure && result.category == ExpressionCategory::Invalid &&
+      (failure->message.empty() || failure->deferred)) {
+    *failure = {expression.range,
+                "Invalid constant expression (operand types, literal, "
+                "division/remainder by zero, or shift count).",
+                false};
+  }
+  return result;
 }
 
 std::string expressionKey(const AstConstantExpression& expression) {
@@ -2271,6 +2389,23 @@ FunctionSignature functionSignature(
   append_contracts(prototype.return_parameters, signature.return_parameters);
   append_contracts(prototype.parameters, signature.parameters);
   return signature;
+}
+
+std::expected<NumericConstantValue, ConstantEvaluationDiagnostic>
+numericConstantValue(const syntax_ast::AstConstantExpression& expression) {
+  ConstantEvaluationDiagnostic failure;
+  const auto info = classifyExpression(expression, nullptr, &failure);
+  if (!failure.message.empty())
+    return std::unexpected(std::move(failure));
+  if (info.category == ExpressionCategory::Integer && info.integer_value)
+    return NumericConstantValue{IntegerConstantValue{
+        info.integer_value->bits,
+        info.integer_value->type == ExpressionInfo::IntegerType::Unsigned}};
+  if (info.category == ExpressionCategory::Floating && info.floating_value)
+    return NumericConstantValue{FloatingConstantValue{*info.floating_value}};
+  return std::unexpected(ConstantEvaluationDiagnostic{
+      expression.range, "Constant expression has no concrete numeric value.",
+      true});
 }
 
 std::optional<uint64_t> constantArrayExtent(

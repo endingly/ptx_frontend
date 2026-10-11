@@ -247,13 +247,18 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           tag(output, "operand-predicate");
           number(output, node.negated);
           identifier(output, node.name);
+        } else if constexpr (std::same_as<Node,
+                                          syntax_ast::AstConstantOperand>) {
+          tag(output, "operand-constant-expression");
+          constant_expression(output, *node.expression);
         } else if constexpr (std::same_as<Node, syntax_ast::AstImmediate>) {
           tag(output, "operand-immediate");
           immediate(output, node);
         } else if constexpr (std::same_as<Node,
                                           syntax_ast::AstNegatedImmediate>) {
           tag(output, "operand-negated-immediate");
-          immediate(output, node.immediate);
+          std::visit([&output](const auto& leaf) { operand(output, leaf); },
+                     node.immediate);
         } else if constexpr (std::same_as<Node, syntax_ast::AstAddress>) {
           tag(output, "operand-address");
           number(output, node.bracketed);
@@ -262,7 +267,8 @@ inline void operand(std::string& output, const syntax_ast::AstOperand& value) {
           tag(output, node.offset ? "offset-present" : "offset-none");
           if (node.offset) {
             number(output, node.offset->operation);
-            immediate(output, node.offset->magnitude);
+            std::visit([&output](const auto& leaf) { operand(output, leaf); },
+                       node.offset->magnitude);
           }
         } else if constexpr (std::same_as<Node, syntax_ast::AstVectorMember>) {
           tag(output, "operand-vector-member");

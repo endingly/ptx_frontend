@@ -1,29 +1,35 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include <ptx_frontend/base/base.hpp>
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/semantic/ptx_constant_value.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::declaration_semantics {
 
-/** A fully evaluated integer constant with the signedness used by PTX rules. */
-struct IntegerConstantValue {
-  /** Two's-complement bits of the evaluated 64-bit integer expression. */
-  uint64_t bits{};
-  /** True when the expression's usual-arithmetic result is unsigned. */
-  bool is_unsigned{};
-
-  /** Compare the normalized integer bits and signedness. */
-  bool operator==(const IntegerConstantValue&) const = default;
+/** Why a source constant cannot supply a concrete numeric operand value. */
+struct ConstantEvaluationDiagnostic {
+  /** Failing subexpression rather than an unrelated instruction range. */
+  SourceRange range;
+  /** Explanation of the invalid or deferred numeric use. */
+  std::string message;
+  /** True for a valid symbolic/deferred expression without a numeric value. */
+  bool deferred{};
 };
+
+/** Evaluate a bounded source tree, distinguishing invalid from deferred values. */
+[[nodiscard]] std::expected<NumericConstantValue, ConstantEvaluationDiagnostic>
+numericConstantValue(const syntax_ast::AstConstantExpression& expression);
 
 /** Build the canonical signature used by declaration checking and call ABI work. */
 [[nodiscard]] FunctionSignature functionSignature(

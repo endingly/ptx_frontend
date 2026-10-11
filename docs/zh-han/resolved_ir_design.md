@@ -1,5 +1,17 @@
 # C++ Resolved IR 设计
 
+## 指令常量表达式求值与转换
+
+拥有源码树的 constant-expression operand 先经共享 semantic evaluator 求值，
+再按数值 use site 转换。整数 source bits 和 signedness 保留至折叠之后；浮点表达式
+在 f64 域求值，最终 f32 narrowing 复用 round-to-nearest、ties-to-even 的位转换。
+operand-specific narrowing、严格 representability、predicate truth 和 fixed control
+均检查求值后的值。symbolic/deferred expression 不能提供指令数值 operand。
+call expression argument 在 `ResolvedCallLiteral::source_value` 保留拥有自身数据的
+typed numeric source，直到 formal 确定目标 type；释放 AST 后，owned-module
+validation 仍重新检查这一转换。CST/AST source identity 保留 operation tree；
+Resolved IR 无需新增通用 expression tree。
+
 ## 状态与边界
 
 本文描述当前实现的 Resolved PTX IR，而不是一个未来的 CFG、SSA 或后端 IR

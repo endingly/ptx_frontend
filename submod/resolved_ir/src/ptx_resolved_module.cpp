@@ -689,16 +689,34 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     for (size_t index = 0; index < count; ++index) {
       const auto& actual = actuals->parameters[index];
       const SourceRange range = std::visit(
-          [](const auto& value) { return value.syntax.range; }, actual);
+          [](const auto& value) {
+            return syntax_ast::sourceRange(syntax_ast::AstOperand{value});
+          },
+          actual);
       const auto formal_properties =
           declaration_semantics::call_argument_properties(formals[index]);
       CallArgumentProperties actual_properties;
-      if (const auto* immediate =
-              std::get_if<syntax_ast::AstImmediate>(&actual)) {
-        const auto literal = resolve_call_literal(
-            ResolvedCallLiteral{.spelling = immediate->syntax.text,
-                                .kind = immediate->kind},
-            range, formals[index]);
+      if (!std::holds_alternative<syntax_ast::AstIdentifierRef>(actual)) {
+        ResolvedCallLiteral source;
+        if (const auto* immediate =
+                std::get_if<syntax_ast::AstImmediate>(&actual)) {
+          source.spelling = immediate->syntax.text;
+          source.kind = immediate->kind;
+        } else {
+          const auto& expression =
+              std::get<syntax_ast::AstConstantOperand>(actual);
+          const auto evaluated = declaration_semantics::numericConstantValue(
+              *expression.expression);
+          if (!evaluated) {
+            diagnostics.push_back(
+                ResolveDiagnostic{.range = evaluated.error().range,
+                                  .message = evaluated.error().message});
+            continue;
+          }
+          source.source_value = *evaluated;
+        }
+        const auto literal =
+            resolve_call_literal(source, range, formals[index]);
         if (!literal) {
           diagnostics.push_back(std::move(literal.error()));
           continue;

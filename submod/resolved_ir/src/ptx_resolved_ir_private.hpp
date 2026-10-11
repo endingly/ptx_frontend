@@ -5,12 +5,42 @@
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
+#include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
 namespace ptx_frontend::resolved_ir::detail {
 
 /** Decode an AST immediate without borrowing it beyond the returned value. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
+    bool require_target_range = false);
+
+/** Convert an evaluated numeric source with the existing operand width/range policy. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
+    const declaration_semantics::NumericConstantValue& value, SourceRange range,
+    ScalarType type, bool require_target_range = false);
+
+/** Evaluate an owned source expression, then apply the operand conversion. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const syntax_ast::AstConstantOperand& operand, ScalarType type,
+    bool require_target_range = false);
+
+/** Resolve either literal or expression numeric syntax. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const std::variant<syntax_ast::AstImmediate,
+                       syntax_ast::AstConstantOperand>& operand,
+    ScalarType type, bool require_target_range = false);
+
+/** Decode a numeric tuple/address leaf; identifiers remain invalid here. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const syntax_ast::AstVectorElement& operand, ScalarType type,
+    bool require_target_range = false);
+
+/** Return a numeric source shape, including owned constant expressions. */
+bool is_numeric_operand(const syntax_ast::AstOperand& operand);
+
+/** Resolve numeric source syntax held in the shared operand variant. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
+    const syntax_ast::AstOperand& operand, ScalarType type,
     bool require_target_range = false);
 
 /** Resolve a predicate name against an optional declaration context; no borrow escapes. */

@@ -22,7 +22,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | Formal parameter | 支持子集 | `.reg/.param`、alignment、scalar type、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
 | Variable declaration | 支持子集 | module/function scope、linkage qualifier、`.reg/.param/.local/.shared/.global/.const`、窄 `.attribute(.managed/.unified)`、alignment、vector/base type、parameterized name、多维 array，以及 `.global/.const` initializer |
 | Function body | 支持子集 | variable declaration、label、当前 instruction grammar，以及递归绑定的 nested block；resolution 会按源码顺序递归平铺 instruction，call staging 限于各 lexical block |
-| Constant expression | 支持子集 | literal/symbol、括号、`.s64/.u64` cast、一元/二元/三元运算、`generic(symbol)` 与 mask initializer operator |
+| Constant expression | 支持子集 | 声明/指令共享数值树：括号、整数运算/cast、同类型 f64 算术/比较/三元运算；call/tuple/predicate/address 数值叶；depth 128、shift count 0–63。精确 `0f` 仅作 literal；`generic(symbol)` 与 mask 仍是 initializer operator。详见 [共享数值求值](declaration_semantics_design.md#共享数值求值)。 |
 | Initializer | 支持子集 | scalar expression、递归 brace list、未定长首维；拒绝 `.extern`、parameterized name 及非 `.global/.const` initializer |
 | Symbol binding | 支持子集 | module/function/nested-block scope、变量/参数/函数/label、lexical shadowing、parameterized member、instruction/initializer/dimension/control-flow reference，以及隔离的 debug file/string metadata identity；label 与 control-flow metadata 保持 function-local |
 | Declaration 语义 | 支持子集 | 正整数 array extent、未定长首维推导、initializer type/brace shape/元素上限、symbol address、module linkage-compatible redeclaration，以及已支持 entry resource 的 version/conflict 规则 |

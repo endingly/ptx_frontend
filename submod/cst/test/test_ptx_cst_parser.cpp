@@ -1642,9 +1642,15 @@ TEST(PtxCstParser, ParsesNegatedIntegerInstructionOperands) {
         &instruction->operands[1].operand);
     ASSERT_NE(negated, nullptr);
     EXPECT_EQ(result->token(negated->exclamation_token).text, "!");
-    EXPECT_EQ(result->token(negated->immediate.literal).text,
-              source.ends_with("!-1;") ? "1" : "0");
-    EXPECT_EQ(negated->immediate.sign.has_value(), source.ends_with("!-1;"));
+    EXPECT_EQ(
+        result
+            ->token(
+                std::get<syntax_cst::CstImmediate>(negated->immediate).literal)
+            .text,
+        source.ends_with("!-1;") ? "1" : "0");
+    EXPECT_EQ(
+        std::get<syntax_cst::CstImmediate>(negated->immediate).sign.has_value(),
+        source.ends_with("!-1;"));
   }
 }
 

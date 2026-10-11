@@ -1,5 +1,19 @@
 # CST 与 Syntax AST 设计
 
+## 指令常量表达式
+
+指令的数值位置复用声明常量表达式语法：括号、优先级、整数一元/二元/三元运算、
+`(.s64)`/`(.u64)` cast，以及同类型 f64 算术与比较、整数条件的浮点三元表达式。
+单个 literal 保留原有表示。`CstConstantOperand` 与 `AstConstantOperand`
+独占 operation tree 和完整/子表达式 range；复制 wrapper 时深复制整棵树。
+表达式匹配既有 Immediate syntax descriptor。call input、source tuple、
+predicate constant 和 address 中的常量部分复用这一语法；register-only 位置
+仍受 descriptor 限制。所有表达式入口共享 depth-128 预算及通常的 recovery 规则。
+symbol address 与仅用于 initializer 的运算保持各自语义。
+在 bracketed address 中，顶层 `+`/`-` 仍分隔 base 与 offset；base 中包含
+加减或更低优先级运算时需加括号。精确 `0f` 单精度
+bit-pattern 仍可作为 literal operand，但不能参与常量表达式。
+
 ## 前端分层
 
 当前前端已经把具体源码表示与供 resolve 使用的语法模型分开：

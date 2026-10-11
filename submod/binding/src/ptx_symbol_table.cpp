@@ -1108,6 +1108,10 @@ struct SymbolTableBuilder {
           } else if constexpr (std::same_as<Value,
                                             syntax_ast::AstPredicateOperand>) {
             addReference(scope, ReferenceKind::Predicate, value.name);
+          } else if constexpr (std::same_as<Value,
+                                            syntax_ast::AstConstantOperand>) {
+            bindConstantExpression(scope, ReferenceKind::InstructionOperand,
+                                   *value.expression);
           } else if constexpr (std::same_as<Value, syntax_ast::AstImmediate> ||
                                std::same_as<Value,
                                             syntax_ast::AstNegatedImmediate>) {

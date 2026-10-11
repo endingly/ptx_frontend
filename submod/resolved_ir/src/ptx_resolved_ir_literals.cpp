@@ -36,43 +36,37 @@ std::expected<uint64_t, ResolveDiagnostic> parse_unsigned_literal(
   return value;
 }
 
-std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
-    const syntax_ast::AstImmediate& immediate, ScalarType type,
-    std::string_view text, bool negative, bool require_target_range = false) {
+/** Apply a scalar operand's integer conversion to an already evaluated source. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> convert_integer_value(
+    declaration_semantics::IntegerConstantValue source, SourceRange range,
+    ScalarType type, bool require_target_range,
+    std::string_view spelling = "constant expression") {
   using base::ScalarKind;
   const ScalarKind kind = scalar_kind(type);
   if (kind != ScalarKind::Unsigned && kind != ScalarKind::Signed &&
       kind != ScalarKind::Bit && !is_raw32_fp8x4_type(type)) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format(
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = fmt::format(
             "Integer literal '{}' is incompatible with scalar type '{}'.",
-            immediate.syntax.text, to_string(type))));
+            spelling, to_string(type))});
   }
   const uint8_t byte_size = scalar_size_of(type);
   if (byte_size == 0 || byte_size > sizeof(uint64_t)) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format("Immediate type '{}' is not representable in 64 bits.",
-                    to_string(type))));
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message =
+            fmt::format("Immediate type '{}' is not representable in 64 bits.",
+                        to_string(type))});
   }
   const uint8_t bit_width = byte_size * 8;
   const uint64_t bit_mask = bit_width == 64
                                 ? std::numeric_limits<uint64_t>::max()
                                 : (uint64_t{1} << bit_width) - 1;
 
-  const auto magnitude = base::parseIntegerMagnitude(text);
-  if (!magnitude)
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format("Invalid integer literal '{}'.", immediate.syntax.text)));
-
-  const bool source_is_unsigned =
-      text.ends_with('u') || text.ends_with('U') ||
-      *magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
-  const uint64_t source_bits = negative ? uint64_t{0} - *magnitude : *magnitude;
+  const uint64_t source_bits = source.bits;
   const bool source_is_negative =
-      !source_is_unsigned && std::bit_cast<int64_t>(source_bits) < 0;
+      !source.is_unsigned && std::bit_cast<int64_t>(source_bits) < 0;
   if (require_target_range) {
     const uint64_t positive_limit = kind == base::ScalarKind::Signed
                                         ? (uint64_t{1} << (bit_width - 1)) - 1
@@ -84,11 +78,11 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
                                    ? uint64_t{0} - source_bits <= negative_limit
                                    : source_bits <= positive_limit;
     if (!representable) {
-      return std::unexpected(invalid_immediate(
-          immediate,
-          fmt::format(
+      return std::unexpected(ResolveDiagnostic{
+          .range = range,
+          .message = fmt::format(
               "Integer literal '{}' is out of range for scalar type '{}'.",
-              immediate.syntax.text, to_string(type))));
+              spelling, to_string(type))});
     }
   }
   return ResolvedImmediate{
@@ -97,6 +91,24 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
       .is_negative = source_is_negative,
       .integer_source_bits = source_bits,
   };
+}
+
+/** Decode one integer literal, then share the typed source conversion path. */
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_integer_literal(
+    const syntax_ast::AstImmediate& immediate, ScalarType type,
+    std::string_view text, bool negative, bool require_target_range = false) {
+  const auto magnitude = base::parseIntegerMagnitude(text);
+  if (!magnitude)
+    return std::unexpected(invalid_immediate(
+        immediate,
+        fmt::format("Invalid integer literal '{}'.", immediate.syntax.text)));
+  return convert_integer_value(
+      {negative ? uint64_t{0} - *magnitude : *magnitude,
+       text.ends_with('u') || text.ends_with('U') ||
+           *magnitude >
+               static_cast<uint64_t>(std::numeric_limits<int64_t>::max())},
+      immediate.syntax.range, type, require_target_range,
+      immediate.syntax.text);
 }
 
 /**
@@ -254,6 +266,93 @@ resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                            .type = type};
 }
 
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
+    const declaration_semantics::NumericConstantValue& value, SourceRange range,
+    ScalarType type, bool require_target_range) {
+  if (const auto* integer =
+          std::get_if<declaration_semantics::IntegerConstantValue>(&value))
+    return convert_integer_value(*integer, range, type, require_target_range);
+  if (type != ScalarType::F32 && type != ScalarType::F64)
+    return std::unexpected(
+        ResolveDiagnostic{.range = range,
+                          .message = "Floating constant expression is "
+                                     "incompatible with operand scalar type."});
+  const auto bits = std::bit_cast<uint64_t>(
+      std::get<declaration_semantics::FloatingConstantValue>(value).value);
+  return ResolvedImmediate{
+      .bits = type == ScalarType::F32 ? narrow_float_literal_bits(bits) : bits,
+      .type = type};
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const syntax_ast::AstConstantOperand& operand, ScalarType type,
+    bool require_target_range) {
+  const auto value =
+      declaration_semantics::numericConstantValue(*operand.expression);
+  if (!value)
+    return std::unexpected(ResolveDiagnostic{.range = value.error().range,
+                                             .message = value.error().message});
+  return resolve_numeric_value(*value, operand.range, type,
+                               require_target_range);
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const std::variant<syntax_ast::AstImmediate,
+                       syntax_ast::AstConstantOperand>& operand,
+    ScalarType type, bool require_target_range) {
+  return std::visit(
+      [&](const auto& leaf) {
+        return resolve_immediate_value(leaf, type, require_target_range);
+      },
+      operand);
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
+    const syntax_ast::AstVectorElement& operand, ScalarType type,
+    bool require_target_range) {
+  return std::visit(
+      [&](const auto& leaf)
+          -> std::expected<ResolvedImmediate, ResolveDiagnostic> {
+        using T = std::remove_cvref_t<decltype(leaf)>;
+        if constexpr (std::same_as<T, syntax_ast::AstIdentifierRef>)
+          return std::unexpected(
+              ResolveDiagnostic{.range = leaf.syntax.range,
+                                .message = "Expected a numeric constant."});
+        else
+          return resolve_immediate_value(leaf, type, require_target_range);
+      },
+      operand);
+}
+
+bool is_numeric_operand(const syntax_ast::AstOperand& operand) {
+  return std::holds_alternative<syntax_ast::AstImmediate>(operand) ||
+         std::holds_alternative<syntax_ast::AstConstantOperand>(operand) ||
+         std::holds_alternative<syntax_ast::AstNegatedImmediate>(operand);
+}
+
+std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
+    const syntax_ast::AstOperand& operand, ScalarType type,
+    bool require_target_range) {
+  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&operand))
+    return resolve_immediate_value(*immediate, type, require_target_range);
+  if (const auto* expression =
+          std::get_if<syntax_ast::AstConstantOperand>(&operand))
+    return resolve_immediate_value(*expression, type, require_target_range);
+  if (const auto* negated =
+          std::get_if<syntax_ast::AstNegatedImmediate>(&operand)) {
+    auto value = resolve_immediate_value(negated->immediate, ScalarType::B64);
+    if (!value)
+      return std::unexpected(value.error());
+    return resolve_numeric_value(
+        declaration_semantics::IntegerConstantValue{
+            value->bits == 0 ? uint64_t{1} : uint64_t{0}, false},
+        negated->range, type, require_target_range);
+  }
+  return std::unexpected(
+      ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                        .message = "Expected a numeric constant operand."});
+}
+
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     bool require_target_range) {
@@ -302,6 +401,13 @@ resolve_call_literal(
             "Call literal '{}' has unsupported formal scalar type '{}'.",
             literal.spelling, formal.type_spelling),
     });
+  }
+  if (literal.source_value) {
+    auto value = detail::resolve_numeric_value(*literal.source_value, range,
+                                               formal.scalar_type, true);
+    if (!value)
+      return std::unexpected(value.error());
+    return WithLocs<ResolvedImmediate>{std::move(*value), range};
   }
   const syntax_ast::AstImmediate immediate{
       .syntax = {.text = literal.spelling, .range = range},

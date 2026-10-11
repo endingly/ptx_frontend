@@ -15,7 +15,8 @@ OperandSyntaxShape get_operand_syntax_shape(
         using Item = std::remove_cvref_t<decltype(item)>;
         if constexpr (std::same_as<Item, syntax_ast::AstIdentifierRef>)
           return OperandSyntaxShape::Identifier;
-        else if constexpr (std::same_as<Item, syntax_ast::AstImmediate>)
+        else if constexpr (std::same_as<Item, syntax_ast::AstImmediate> ||
+                           std::same_as<Item, syntax_ast::AstConstantOperand>)
           return OperandSyntaxShape::Immediate;
         else if constexpr (std::same_as<Item, syntax_ast::AstNegatedImmediate>)
           return OperandSyntaxShape::NegatedImmediate;
@@ -106,7 +107,9 @@ OperandSyntaxShape vector_element_syntax_shape(
 bool matches_operand_slot(const SyntaxOperandSlotDescriptor& slot,
                           const syntax_ast::AstOperand& operand) {
   if (!allows_shape(slot.allowed_shapes,
-                    check_end::get_operand_syntax_shape(operand))) {
+                    check_end::get_operand_syntax_shape(operand)) &&
+      !(std::holds_alternative<syntax_ast::AstNegatedImmediate>(operand) &&
+        allows_shape(slot.allowed_shapes, OperandSyntaxShape::Immediate))) {
     return false;
   }
 
@@ -167,7 +170,10 @@ std::optional<ResolveDiagnostic> diagnose_modern_pack_mismatch(
         continue;
       }
       const auto range = std::visit(
-          [](const auto& value) { return value.syntax.range; }, element);
+          [](const auto& value) {
+            return syntax_ast::sourceRange(syntax_ast::AstOperand{value});
+          },
+          element);
       return ResolveDiagnostic{
           .range = range,
           .message =

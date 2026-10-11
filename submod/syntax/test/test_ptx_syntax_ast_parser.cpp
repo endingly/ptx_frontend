@@ -173,7 +173,9 @@ TEST(PtxSyntaxParser, ParsesPredicateAddressAndVectorMember) {
   EXPECT_TRUE(address.bracketed);
   ASSERT_TRUE(address.offset.has_value());
   EXPECT_EQ(address.offset->operation, AstAddressOffset::Operator::Add);
-  EXPECT_EQ(address.offset->magnitude.syntax.text, "16");
+  EXPECT_EQ(
+      std::get<syntax_ast::AstImmediate>(address.offset->magnitude).syntax.text,
+      "16");
 
   ASSERT_TRUE(std::holds_alternative<AstVectorMember>(instruction.operands[1]));
   const auto& member = std::get<AstVectorMember>(instruction.operands[1]);
@@ -377,7 +379,9 @@ TEST(PtxSyntaxParser, LowersUnbracketedAddressOffsetOperation) {
   EXPECT_FALSE(address.bracketed);
   ASSERT_TRUE(address.offset.has_value());
   EXPECT_EQ(address.offset->operation, AstAddressOffset::Operator::Subtract);
-  EXPECT_EQ(address.offset->magnitude.syntax.text, "4");
+  EXPECT_EQ(
+      std::get<syntax_ast::AstImmediate>(address.offset->magnitude).syntax.text,
+      "4");
 }
 
 TEST(PtxSyntaxParser, ParsesNegatedPredicateOperand) {
@@ -876,7 +880,8 @@ TEST(PtxSyntaxParser, LowersNegatedIntegerInstructionOperands) {
   const auto* negated =
       std::get_if<syntax_ast::AstNegatedImmediate>(&result->operands[1]);
   ASSERT_NE(negated, nullptr);
-  EXPECT_EQ(negated->immediate.syntax.text, "-1");
+  EXPECT_EQ(std::get<syntax_ast::AstImmediate>(negated->immediate).syntax.text,
+            "-1");
 }
 
 TEST(PtxSyntaxParser, LowersModuleAndFunctionVariableDeclarations) {

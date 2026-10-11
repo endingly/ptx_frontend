@@ -303,6 +303,18 @@ and `ScalarType`. Integer forms also retain evaluated 64-bit source bits and
 numerical signed-negativity, so fixed-control checks never reinterpret literal
 text or trust a narrowed value.
 
+Owned constant-expression operands are evaluated through the shared semantic
+evaluator before conversion at their numeric use site. Integer source bits and
+signedness survive folding; floating expressions evaluate in f64 and final f32
+narrowing uses the existing round-to-nearest, ties-to-even bit conversion.
+Operand-specific narrowing, strict representability, predicate truth and fixed
+controls apply to evaluated values. Symbolic/deferred expressions cannot supply
+instruction numeric operands. Call expression arguments retain an owned typed
+numeric source in `ResolvedCallLiteral::source_value` until a formal supplies
+the destination type; owned-module validation rechecks that conversion after
+the AST is released. Source identity retains the expression operation tree in
+the CST/AST boundary; Resolved IR requires no generic expression tree.
+
 `AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type

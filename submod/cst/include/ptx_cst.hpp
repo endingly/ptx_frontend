@@ -29,6 +29,32 @@ struct CstImmediate {
   CstTokenRange token_range;
 };
 
+struct CstConstantExpression;
+
+/** An owned constant tree used in an instruction numeric leaf position. */
+struct CstConstantOperand {
+  /** Exclusively owned syntax tree, limited by the parser depth budget. */
+  std::unique_ptr<CstConstantExpression> expression;
+  /** Full written expression token range. */
+  CstTokenRange token_range;
+  /** Own a parsed operation tree. */
+  CstConstantOperand(std::unique_ptr<CstConstantExpression> value,
+                     CstTokenRange range);
+  /** Copy syntax with independent tree ownership. */
+  CstConstantOperand(const CstConstantOperand&);
+  /** Replace syntax with an independently cloned tree. */
+  CstConstantOperand& operator=(const CstConstantOperand&);
+  /** Transfer tree ownership. */
+  CstConstantOperand(CstConstantOperand&&) noexcept;
+  /** Transfer tree ownership. */
+  CstConstantOperand& operator=(CstConstantOperand&&) noexcept;
+  /** Release the bounded owned tree. */
+  ~CstConstantOperand();
+};
+
+/** Literal or expression syntax before operand-specific numeric conversion. */
+using CstNumericOperand = std::variant<CstImmediate, CstConstantOperand>;
+
 struct CstPredicate {
   TokenId at_token{};
   std::optional<TokenId> exclamation_token;
@@ -45,17 +71,18 @@ struct CstPredicateOperand {
 /** An integer instruction operand complemented with a leading ``!``. */
 struct CstNegatedImmediate {
   TokenId exclamation_token{};
-  CstImmediate immediate;
+  CstNumericOperand immediate;
   CstTokenRange token_range;
 };
 
 struct CstAddressOffset {
   TokenId operator_token{};
-  CstImmediate magnitude;
+  CstNumericOperand magnitude;
   CstTokenRange token_range;
 };
 
-using CstAddressBase = std::variant<CstIdentifier, CstImmediate>;
+using CstAddressBase =
+    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
 
 struct CstAddress {
   std::optional<TokenId> left_bracket;
@@ -82,7 +109,8 @@ struct CstNegatedRegisterOperand {
   CstTokenRange token_range;
 };
 
-using CstVectorElement = std::variant<CstIdentifier, CstImmediate>;
+using CstVectorElement =
+    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
 
 struct CstVectorPack {
   TokenId left_brace{};
@@ -141,7 +169,8 @@ enum class CstCallParameterListKind : uint8_t {
   Input,
 };
 
-using CstCallParameter = std::variant<CstIdentifier, CstImmediate>;
+using CstCallParameter =
+    std::variant<CstIdentifier, CstImmediate, CstConstantOperand>;
 
 struct CstCallParameterList {
   CstCallParameterListKind kind{};
@@ -181,8 +210,8 @@ struct CstRegisterPredicatePair {
 
 using CstOperand = std::variant<
     CstIdentifier, CstPredicateOperand, CstNegatedImmediate, CstImmediate,
-    CstAddress, CstVectorMember, CstNegatedRegisterOperand, CstVectorPack,
-    CstVectorPredicatePair, CstTensorOperand, CstFabricHandle,
+    CstConstantOperand, CstAddress, CstVectorMember, CstNegatedRegisterOperand,
+    CstVectorPack, CstVectorPredicatePair, CstTensorOperand, CstFabricHandle,
     CstCompoundBracket, CstCallParameterList, CstCallTarget, CstCallTargetSet,
     CstBranchTarget, CstBranchTargetSet, CstRegisterPredicatePair>;
 

@@ -18,6 +18,24 @@ source -> lexer token buffer -> CST -> Syntax AST -> symbol binding -> Resolved 
 - Resolved IR owns selected variants, typed modifiers and operands, semantic
   values, and target checking metadata.
 
+## Instruction constant expressions
+
+Instruction numeric positions reuse the declaration constant-expression grammar:
+parentheses, precedence, integer unary/binary/conditional operators and
+`(.s64)`/`(.u64)` casts, and homogeneous f64 arithmetic/comparisons with an
+integer condition for floating ternaries. Single literal leaves retain their
+existing representation. `CstConstantOperand` and `AstConstantOperand` own the
+operation tree and full/subexpression ranges; copying either wrapper deep-copies
+its tree. Expression operands match the existing Immediate syntax descriptor.
+Call inputs, source tuples, predicate constants and address constant portions
+use this shared grammar; register-only positions retain their descriptor limits.
+Every expression entry shares the depth-128 budget and ordinary recovery rules.
+Symbol addresses and initializer-only operators retain their separate semantics.
+In bracketed addresses, top-level `+`/`-` still separate base and offset;
+parenthesize a base expression containing additive or lower-precedence operators.
+Exact `0f` single-precision bit patterns remain valid literal operands, but
+cannot participate in constant expressions.
+
 ## CST ownership and representation
 
 Public CST headers live under `submod/cst/include`. A `syntax_cst::CstFile`

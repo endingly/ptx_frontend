@@ -65,6 +65,10 @@ struct Context {
   SourceRange instruction_range;
 };
 
+/** Recheck typed video carriers, selections, immediates, and cross-slot controls. */
+CheckResult check_video_operands(std::span<const OperandDescriptor>,
+                                 std::span<const FieldView>,
+                                 std::span<const OperandView>, const Context&);
 /** Project an owned tensor operand into descriptor and coordinate checks. */
 OperandView project_tensor_operand(
     std::string_view field_id, const WithLocs<ResolvedTensorOperand>& operand);
@@ -80,6 +84,12 @@ CheckResult check_surface_static_payload(
 CheckResult check_surface_query_static_payload(
     const SurfaceInstructionDescriptor& descriptor,
     const ResolvedSurfaceQueryResource& resource, const Context& context);
+/** Recheck stack carrier roles, fragment ownership and alignment provenance. */
+CheckResult check_stack_static_payload(
+    const StackInstructionDescriptor& descriptor,
+    const ResolvedStackToken* token,
+    const ResolvedLocalAllocationResult* result, const RegOrImm* size,
+    const ResolvedImmediate* alignment, const Context& context);
 /** Recheck mutable texture lane, type, destination, and layout contracts. */
 CheckResult check_texture_static_payload(
     const TextureInstructionDescriptor& descriptor,

@@ -11,6 +11,7 @@
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_special_register.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
+#include <ptx_frontend/resolved_ir/ptx_video.hpp>
 
 namespace ptx_frontend::resolved_ir {
 using check_end::OperandPresence;
@@ -2551,12 +2552,137 @@ resolve_value_vector(const syntax_ast::AstOperand& operand,
   return resolved;
 }
 
+/** Decode a video selector using the canonical role-specific typed policy. */
+std::expected<VideoSelector, ResolveDiagnostic> resolve_video_selector(
+    const syntax_ast::AstSyntax& source, VideoSelectorPolicy policy) {
+  const auto fail = [&]() -> std::expected<VideoSelector, ResolveDiagnostic> {
+    return std::unexpected(
+        ResolveDiagnostic{source.range, "Invalid video selector."});
+  };
+  const std::string_view spelling = source.text;
+  if (spelling.size() < 3 || spelling.front() != '.')
+    return fail();
+  const char unit = spelling[1];
+  const auto digits = spelling.substr(2);
+  std::array<uint8_t, 4> indices{};
+  if (digits.size() > indices.size())
+    return fail();
+  for (size_t index = 0; index < digits.size(); ++index) {
+    if (digits[index] < '0' || digits[index] > '7')
+      return fail();
+    indices[index] = static_cast<uint8_t>(digits[index] - '0');
+  }
+  VideoSelector result;
+  switch (policy) {
+    case VideoSelectorPolicy::OptionalScalar:
+    case VideoSelectorPolicy::RequiredScalar:
+      if (digits.size() != 1)
+        return fail();
+      if (unit == 'b')
+        result = VideoByteSelector{indices[0]};
+      else if (unit == 'h')
+        result = VideoHalfSelector{indices[0]};
+      else
+        return fail();
+      break;
+    case VideoSelectorPolicy::HalfSwizzle:
+      if (unit != 'h' || digits.size() != 2)
+        return fail();
+      result = VideoHalfSwizzle{{indices[0], indices[1]}};
+      break;
+    case VideoSelectorPolicy::ByteSwizzle:
+      if (unit != 'b' || digits.size() != 4)
+        return fail();
+      result = VideoByteSwizzle{indices};
+      break;
+    case VideoSelectorPolicy::HalfMask:
+      if (unit != 'h' || digits.size() > 2)
+        return fail();
+      result = VideoHalfMask{{indices[0], indices[1]},
+                             static_cast<uint8_t>(digits.size())};
+      break;
+    case VideoSelectorPolicy::ByteMask:
+      if (unit != 'b')
+        return fail();
+      result = VideoByteMask{indices, static_cast<uint8_t>(digits.size())};
+      break;
+    case VideoSelectorPolicy::None:
+      return fail();
+  }
+  if (!video_selector_is_well_formed(result))
+    return fail();
+  return result;
+}
+
+/** Resolve a source-faithful video carrier, selector, and arithmetic minus. */
+std::expected<WithLocs<ResolvedVideoOperand>, ResolveDiagnostic>
+resolve_video_operand(const syntax_ast::AstOperand& operand,
+                      const checker::VideoOperandDescriptor& contract,
+                      const ResolvedInstructionFields& fields,
+                      const ResolveContext* context) {
+  syntax_ast::AstOperand child = operand;
+  ResolvedVideoOperand result;
+  const SourceRange range = syntax_ast::sourceRange(operand);
+  if (const auto* negated =
+          std::get_if<syntax_ast::AstNegatedRegisterOperand>(&operand)) {
+    if (!contract.allow_negate)
+      return std::unexpected(
+          ResolveDiagnostic{range, "Video slot forbids arithmetic minus."});
+    result.negated = true;
+    result.minus_range = negated->minus_range;
+    child = std::visit(
+        [](const auto& value) -> syntax_ast::AstOperand { return value; },
+        negated->operand);
+  }
+  if (const auto* member = std::get_if<syntax_ast::AstVectorMember>(&child)) {
+    auto selector = resolve_video_selector(member->selector, contract.selector);
+    if (!selector)
+      return std::unexpected(selector.error());
+    result.selector =
+        WithLocs<VideoSelector>{std::move(*selector), member->selector.range};
+    child = member->base;
+  } else if (contract.selector == VideoSelectorPolicy::RequiredScalar) {
+    return std::unexpected(ResolveDiagnostic{
+        range, "Video merge requires destination selection."});
+  }
+  if (const auto* immediate = std::get_if<syntax_ast::AstImmediate>(&child)) {
+    if (!contract.allow_immediate ||
+        (immediate->kind != base::AstImmediateKind::DecimalInteger &&
+         immediate->kind != base::AstImmediateKind::HexInteger &&
+         immediate->kind != base::AstImmediateKind::WarpSize))
+      return std::unexpected(
+          ResolveDiagnostic{range, "Video slot requires an integer carrier."});
+  }
+  ScalarType type = contract.type_use == VideoOperandTypeUse::BitCarrier
+                        ? ScalarType::B32
+                        : ScalarType::U32;
+  if (contract.type_use == VideoOperandTypeUse::ModifierField) {
+    const auto selected =
+        resolved_modifier<VideoType>(fields, contract.type_field_id).value;
+    type = selected == VideoType::S32 ? ScalarType::S32 : ScalarType::U32;
+  }
+  auto value = resolve_reg_or_imm(child, type, context);
+  if (!value)
+    return std::unexpected(value.error());
+  result.value = std::move(*value);
+  return WithLocs<ResolvedVideoOperand>{std::move(result), range};
+}
+
 std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedFieldDescriptor& field,
     const ResolvedOperandBindingDescriptor& binding,
     const syntax_ast::AstOperand& operand,
     const ResolvedInstructionFields& fields, const ResolveContext* context) {
   switch (field.value_kind) {
+    case ResolvedValueKind::VideoOperand: {
+      if (!binding.video)
+        throw ResolveException("Video operand lacks a typed slot contract.");
+      auto value =
+          resolve_video_operand(operand, *binding.video, fields, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
+    }
     case ResolvedValueKind::Register: {
       auto value = resolve_register(operand, context);
       if (!value)
@@ -2976,6 +3102,28 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{std::move(*value)};
     }
+    case ResolvedValueKind::StackToken:
+    case ResolvedValueKind::LocalAllocationResult: {
+      auto value = resolve_register(operand, context);
+      if (!value)
+        return std::unexpected(value.error());
+      const auto kind =
+          context && context->function_scope
+              ? (context->function_is_entry ? EnclosingFunctionKind::Entry
+                                            : EnclosingFunctionKind::Device)
+              : EnclosingFunctionKind::Unknown;
+      const auto scope = context ? context->function_scope : std::nullopt;
+      if (field.value_kind == ResolvedValueKind::StackToken) {
+        WithLocs<ResolvedStackToken> token{
+            ResolvedStackToken{std::move(value->value), kind, scope}};
+        token.locs = std::move(value->locs);
+        return ResolvedFieldValue{std::move(token)};
+      }
+      WithLocs<ResolvedLocalAllocationResult> result{
+          ResolvedLocalAllocationResult{std::move(value->value), kind, scope}};
+      result.locs = std::move(value->locs);
+      return ResolvedFieldValue{std::move(result)};
+    }
     case ResolvedValueKind::TextureAccess: {
       auto value = resolve_texture_access(operand, binding, fields, context);
       if (!value)
@@ -3066,6 +3214,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     case ResolvedValueKind::TcgenDataMovementShape:
     case ResolvedValueKind::TcgenRepeat:
     case ResolvedValueKind::TcgenReductionOp:
+    case ResolvedValueKind::VideoType:
+    case ResolvedValueKind::VideoSecondaryOp:
+    case ResolvedValueKind::VideoShiftMode:
+    case ResolvedValueKind::VideoScale:
     case ResolvedValueKind::TcgenWaitClass:
     case ResolvedValueKind::AsyncProxyKind:
     case ResolvedValueKind::ProxyKindPair:

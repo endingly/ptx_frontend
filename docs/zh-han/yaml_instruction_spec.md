@@ -601,3 +601,9 @@ PYTHONPATH=python python3 -m unittest discover -s python/tests -t python -p 'tes
 cmake --build out/build/ci-linux-gcc-debug -j2
 ctest --preset ci-linux-gcc-debug --output-on-failure
 ```
+
+## Typed Video 契约
+
+`video` category 拥有 23 个 opcode variant 和 39 个 operand layout。Variant 的封闭 `video` mapping 包含 `lanes: scalar|two|four`、`operation: arithmetic|shift|compare|mad` 及可选、已验证的 Boolean `sat_modifier`/`po_modifier` 字段引用。每个 `video_operand` 的封闭 mapping 包含逻辑 `position`、typed `selector` policy、可选且引用 `video_type` 字段的 `type_modifier`，以及 `allow_immediate`/`allow_negate`。Normalizer 拒绝角色矛盾、SIMD 立即数、非 Mad 取负、selector topology 错误及缺失字段引用。
+
+`type_use: bit_carrier` 仅允许 Mad C，不能与 `type_modifier` 并用，选择 B32 立即数转换。Type modifier 推导 `ModifierField` 解释；省略 type use 默认 `Unsigned`，用于 set D/C。四个封闭 modifier domain 是 `video_type`、`video_secondary_op`、`video_shift_mode` 和 `video_scale`。Video 语义不转换成普通整数操作别名。语法 shape 推导仅在 scalar merge layout 接受 selected destination，仅在批准的 Mad source slot 接受 arithmetic-negated register。见 [Video 覆盖](video_coverage.md)。

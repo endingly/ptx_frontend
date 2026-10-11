@@ -11,6 +11,7 @@ execution evidence for eleven commonly used operation names.
 
 | Area | Status | Implemented subset |
 | --- | --- | --- |
+| PTX 9.3 video | Supported source family | All 23 scalar/SIMD2/SIMD4 opcodes with separate video types, selectors/masks, register negation, immediate provenance and target checks; see [video coverage](video_coverage.md). Arithmetic execution is outside the frontend. |
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
 | Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, vector members/packs, and dedicated call/branch operand shapes |
 | Module header | Supported subset | `.version`, `.target`, and `.address_size` lower to ordered, AST-independent source-configuration regions. Each region owns its effective version, target-option spellings, address width, and explicit/defaulted provenance; an omitted address size owns PTX's 32-bit default rather than a host property. A recognized region supplies target-aware module validation, but is not a hardware-configuration or execution contract. |

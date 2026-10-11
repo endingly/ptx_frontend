@@ -452,6 +452,50 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> parse_bool_modifier(
   return ResolvedFieldValue{WithLocs<bool>{true, modifier.syntax.range}};
 }
 
+/** Resolve one closed video modifier domain from its written suffix. */
+std::expected<WithLocs<VideoType>, ResolveDiagnostic> resolve_video_type(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value =
+      lookup_ptx_suffix(generated_detail::kVideoTypes, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(
+        ResolveDiagnostic{modifier.syntax.range, "Unknown video modifier."});
+  return WithLocs<VideoType>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed video modifier domain from its written suffix. */
+std::expected<WithLocs<VideoSecondaryOp>, ResolveDiagnostic>
+resolve_video_secondary_op(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kVideoSecondaryOps,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(
+        ResolveDiagnostic{modifier.syntax.range, "Unknown video modifier."});
+  return WithLocs<VideoSecondaryOp>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed video modifier domain from its written suffix. */
+std::expected<WithLocs<VideoShiftMode>, ResolveDiagnostic>
+resolve_video_shift_mode(const syntax_ast::AstModifier& modifier) {
+  const auto value = lookup_ptx_suffix(generated_detail::kVideoShiftModes,
+                                       modifier.syntax.text);
+  if (!value)
+    return std::unexpected(
+        ResolveDiagnostic{modifier.syntax.range, "Unknown video modifier."});
+  return WithLocs<VideoShiftMode>{*value, modifier.syntax.range};
+}
+
+/** Resolve one closed video modifier domain from its written suffix. */
+std::expected<WithLocs<VideoScale>, ResolveDiagnostic> resolve_video_scale(
+    const syntax_ast::AstModifier& modifier) {
+  const auto value =
+      lookup_ptx_suffix(generated_detail::kVideoScales, modifier.syntax.text);
+  if (!value)
+    return std::unexpected(
+        ResolveDiagnostic{modifier.syntax.range, "Unknown video modifier."});
+  return WithLocs<VideoScale>{*value, modifier.syntax.range};
+}
+
 #define PTX_DEFINE_TYPED_MODIFIER_PARSER(name, resolver)              \
   /** Parse the named modifier domain into its erased field value. */ \
   std::expected<ResolvedFieldValue, ResolveDiagnostic>                \
@@ -482,6 +526,10 @@ PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_collector, resolve_tcgen_collector)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_shape, resolve_tcgen_shape)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_repeat, resolve_tcgen_repeat)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_reduction_op, resolve_tcgen_reduction_op)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(video_type, resolve_video_type)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(video_secondary_op, resolve_video_secondary_op)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(video_shift_mode, resolve_video_shift_mode)
+PTX_DEFINE_TYPED_MODIFIER_PARSER(video_scale, resolve_video_scale)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(tcgen_wait_class, resolve_tcgen_wait_class)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(async_proxy_kind, resolve_async_proxy_kind)
 PTX_DEFINE_TYPED_MODIFIER_PARSER(proxy_kind_pair, resolve_proxy_kind_pair)
@@ -539,6 +587,16 @@ PTX_DEFINE_MODIFIER_DEFAULT(async_proxy_kind, AsyncProxyKind, async_proxy_kind,
                             true)
 PTX_DEFINE_MODIFIER_DEFAULT(proxy_kind_pair, ProxyKindPair, proxy_kind_pair,
                             true)
+
+PTX_DEFINE_MODIFIER_DEFAULT(video_type, VideoType, video_type, true)
+
+PTX_DEFINE_MODIFIER_DEFAULT(video_secondary_op, VideoSecondaryOp,
+                            video_secondary_op, true)
+
+PTX_DEFINE_MODIFIER_DEFAULT(video_shift_mode, VideoShiftMode, video_shift_mode,
+                            true)
+
+PTX_DEFINE_MODIFIER_DEFAULT(video_scale, VideoScale, video_scale, true)
 
 #undef PTX_DEFINE_MODIFIER_DEFAULT
 
@@ -618,6 +676,14 @@ struct ModifierDomainMapping {
     default_tcgen_repeat_modifier, "Tensor Memory repeat", Supported)          \
   X(TcgenReductionOp, TcgenReductionOp, parse_tcgen_reduction_op_modifier,     \
     default_tcgen_reduction_op_modifier, "Tensor Memory reduction", Supported) \
+  X(VideoType, VideoType, parse_video_type_modifier,                           \
+    default_video_type_modifier, "video", Supported)                           \
+  X(VideoSecondaryOp, VideoSecondaryOp, parse_video_secondary_op_modifier,     \
+    default_video_secondary_op_modifier, "video", Supported)                   \
+  X(VideoShiftMode, VideoShiftMode, parse_video_shift_mode_modifier,           \
+    default_video_shift_mode_modifier, "video", Supported)                     \
+  X(VideoScale, VideoScale, parse_video_scale_modifier,                        \
+    default_video_scale_modifier, "video", Supported)                          \
   X(TcgenWaitClass, TcgenWaitClass, parse_tcgen_wait_class_modifier,           \
     default_tcgen_wait_class_modifier, "Tensor Memory wait", Supported)        \
   X(AsyncProxyKind, AsyncProxyKind, parse_async_proxy_kind_modifier,           \

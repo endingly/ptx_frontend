@@ -29,6 +29,39 @@ namespace ptx_frontend::resolved_ir {
 struct ResolvedRegisterRef;
 struct ResolvedImmediate;
 struct ResolvedTensorOperand;
+struct ResolvedVideoOperand;
+
+/** Logical video operand position defining types and omitted selector defaults. */
+enum class VideoOperandPosition : uint8_t { Destination, A, B, C };
+/** Instruction-local obligations independent of opcode spelling. */
+enum class VideoOperation : uint8_t { Arithmetic, Shift, Compare, Mad };
+/** Permitted selector family and source-written presence for one operand. */
+enum class VideoSelectorPolicy : uint8_t {
+  None,
+  OptionalScalar,
+  RequiredScalar,
+  HalfSwizzle,
+  ByteSwizzle,
+  HalfMask,
+  ByteMask
+};
+/** Scalar constant coercion policy independent of video arithmetic signedness. */
+enum class VideoOperandTypeUse : uint8_t {
+  Unsigned,
+  ModifierField,
+  BitCarrier
+};
+/** Signedness of video arithmetic independently of the 32-bit carrier type. */
+enum class VideoType : uint8_t { S32, U32 };
+/** Number of packed operations represented by a video instruction form. */
+enum class VideoLanes : uint8_t { Scalar = 1, Two = 2, Four = 4 };
+/** Optional second arithmetic operation applied to the primary video result. */
+enum class VideoSecondaryOp : uint8_t { None, Add, Min, Max };
+/** Required scalar video shift-count interpretation. */
+enum class VideoShiftMode : uint8_t { Clamp, Wrap };
+/** Optional vmad product scaling, preserving an omitted scale. */
+enum class VideoScale : uint8_t { None, Shr7, Shr15 };
+
 enum class ResolvedRegisterClass : uint8_t;
 
 /**
@@ -352,6 +385,19 @@ struct MatrixInstructionDescriptor {
 };
 /** Function provenance retained for resolved memory addresses. */
 enum class EnclosingFunctionKind : uint8_t { Unknown, Entry, Device };
+/** Stack action independent of opcode spellings. */
+enum class StackOperation : uint8_t { Save, Restore, Allocate };
+/** Immutable static stack form semantics; alignment is a minimum in bytes. */
+struct StackInstructionDescriptor {
+  /** Source-selected save, restore or allocation action. */
+  StackOperation operation;
+  /** Unsigned operand-use width in bits, restricted to 32 or 64. */
+  uint8_t width;
+  /** Default minimum alignment in bytes when no explicit constant is present. */
+  uint32_t default_alignment = 8;
+  /** Compare exact static contracts. */
+  bool operator==(const StackInstructionDescriptor&) const = default;
+};
 /** Parameter role independent of binding-layer enum types. */
 enum class ParameterDirection : uint8_t { None, Input, Return, CallArgument };
 /** PTX 9.3 subqualifier retained for a .param memory access. */
@@ -622,7 +668,10 @@ enum class OperandShape : uint32_t {
   TextureQueryResource = 1 << 18,
   TextureResult = 1 << 19,
   SurfaceAccess = 1 << 20,
-  SurfaceQueryResource = 1 << 21
+  SurfaceQueryResource = 1 << 21,
+  StackToken = uint32_t{1} << 24,
+  LocalAllocationResult = uint32_t{1} << 25,
+  VideoOperand = uint32_t{1} << 28
 };
 constexpr OperandShape operator|(OperandShape lhs, OperandShape rhs) {
   using Underlying = std::underlying_type_t<OperandShape>;
@@ -723,6 +772,22 @@ inline constexpr size_t kMaxRegisterVectorPayloadBits = 256;
 /** Largest explicit register fragment; ordinary operand limits remain narrower. */
 inline constexpr size_t kMaxOperandElements = 128;
 /** Semantic constraints for one generated operand position. */
+/** Canonical video slot obligations retained by generated checker metadata. */
+struct VideoOperandDescriptor {
+  VideoLanes lanes = VideoLanes::Scalar;
+  VideoOperation operation = VideoOperation::Arithmetic;
+  VideoOperandPosition position = VideoOperandPosition::Destination;
+  VideoSelectorPolicy selector = VideoSelectorPolicy::None;
+  VideoOperandTypeUse type_use = VideoOperandTypeUse::Unsigned;
+  /** Field identity used only for ModifierField interpretation; empty for
+   * Unsigned and BitCarrier interpretations. */
+  std::string_view type_field_id;
+  /** Generated Boolean flag identities, empty when the form has no control. */
+  std::string_view sat_field_id;
+  std::string_view po_field_id;
+  bool allow_immediate = false;
+  bool allow_negate = false;
+};
 struct OperandDescriptor {
   std::string_view target_field_id;
   TypeExpressionDescriptor type_expression;
@@ -785,6 +850,8 @@ struct OperandDescriptor {
   /** Independent conversion contract; type provenance does not select it. */
   ImmediateConversionPolicy immediate_conversion_policy =
       ImmediateConversionPolicy::Narrow;
+  /** Present only for compound typed video operands. */
+  std::optional<VideoOperandDescriptor> video;
 };
 struct FieldView {
   std::string_view field_id;
@@ -809,6 +876,10 @@ struct FieldView {
   std::optional<TcgenRepeat> tcgen_repeat;
   std::optional<TcgenReductionOp> tcgen_reduction_op;
   std::optional<TcgenWaitClass> tcgen_wait_class;
+  std::optional<VideoScale> video_scale;
+  std::optional<VideoShiftMode> video_shift_mode;
+  std::optional<VideoSecondaryOp> video_secondary_op;
+  std::optional<VideoType> video_type;
   std::optional<AsyncProxyKind> async_proxy_kind;
   std::optional<ProxyKindPair> proxy_kind_pair;
   std::span<const SourceRange> locations;
@@ -889,6 +960,8 @@ struct OperandView {
   std::optional<TensorRank> tensor_rank;
   /** Borrowed owned payload for rank, provenance, and signedness checks. */
   const ResolvedTensorOperand* tensor_operand = nullptr;
+  /** Borrowed owned video value; lifetime is the synchronous checker call. */
+  const ResolvedVideoOperand* video_operand = nullptr;
   /** Original element count before fixed-size checker projection. */
   size_t vector_arity = 0;
   uint8_t vector_sink_count = 0;
@@ -940,6 +1013,10 @@ enum class ModifierValueKind : uint8_t {
   TcgenRepeat,
   TcgenReductionOp,
   TcgenWaitClass,
+  VideoScale,
+  VideoShiftMode,
+  VideoSecondaryOp,
+  VideoType,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -968,6 +1045,10 @@ struct ModifierValueAvailabilityDescriptor {
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
   TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
+  VideoScale video_scale = VideoScale::None;
+  VideoShiftMode video_shift_mode = VideoShiftMode::Clamp;
+  VideoSecondaryOp video_secondary_op = VideoSecondaryOp::None;
+  VideoType video_type = VideoType::S32;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
@@ -1000,6 +1081,10 @@ struct ModifierValueDomainDescriptor {
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
   TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
+  VideoScale video_scale = VideoScale::None;
+  VideoShiftMode video_shift_mode = VideoShiftMode::Clamp;
+  VideoSecondaryOp video_secondary_op = VideoSecondaryOp::None;
+  VideoType video_type = VideoType::S32;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
 };
@@ -1028,6 +1113,10 @@ struct ModifierValueView {
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
   TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
+  VideoScale video_scale = VideoScale::None;
+  VideoShiftMode video_shift_mode = VideoShiftMode::Clamp;
+  VideoSecondaryOp video_secondary_op = VideoSecondaryOp::None;
+  VideoType video_type = VideoType::S32;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   bool is_present = false;
@@ -1174,6 +1263,81 @@ struct ResolvedRegisterRef {
   std::optional<uint8_t> vector_width;
   bool operator==(const ResolvedRegisterRef&) const = default;
 };
+/** Runtime-opaque stack position with owned register and function provenance. */
+struct ResolvedStackToken {
+  /** Scalar integer/bit carrier; no runtime token origin is inferred. */
+  ResolvedRegisterRef register_ref;
+  /** Unknown when the caller supplies no owning function scope. */
+  EnclosingFunctionKind enclosing_function_kind =
+      EnclosingFunctionKind::Unknown;
+  /** Stable owning function scope, absent only for fragments. */
+  std::optional<binding::ScopeId> function_scope;
+  /** Compare carrier and cached ownership. */
+  bool operator==(const ResolvedStackToken&) const = default;
+};
+/** Local stack allocation result; the runtime address is not simulated. */
+struct ResolvedLocalAllocationResult {
+  /** Scalar destination preserving declared register type and binding. */
+  ResolvedRegisterRef register_ref;
+  /** Unknown when the caller supplies no owning function scope. */
+  EnclosingFunctionKind enclosing_function_kind =
+      EnclosingFunctionKind::Unknown;
+  /** Stable owning function scope, absent only for fragments. */
+  std::optional<binding::ScopeId> function_scope;
+  /** Address-space role of the produced value, independent of address size. */
+  base::DeclarationStateSpace address_state_space =
+      base::DeclarationStateSpace::Local;
+  /** Compare carrier, local role and cached ownership. */
+  bool operator==(const ResolvedLocalAllocationResult&) const = default;
+};
+/** One byte selected from a scalar 32-bit source or merge destination. */
+struct VideoByteSelector {
+  /** Byte index within one 32-bit register, in 0..3. */
+  uint8_t index{};
+  /** Compare the selected byte identity. */
+  bool operator==(const VideoByteSelector&) const = default;
+};
+/** One halfword selected from a scalar 32-bit source or merge destination. */
+struct VideoHalfSelector {
+  /** Halfword index within one 32-bit register, in 0..1. */
+  uint8_t index{};
+  /** Compare the selected halfword identity. */
+  bool operator==(const VideoHalfSelector&) const = default;
+};
+/** Two source halfwords selected from the concatenated a/b register pair. */
+struct VideoHalfSwizzle {
+  /** Written most-significant-to-least-significant digits in 0..3; repeats allowed. */
+  std::array<uint8_t, 2> indices{};
+  /** Compare the written source selection order. */
+  bool operator==(const VideoHalfSwizzle&) const = default;
+};
+/** Four source bytes selected from the concatenated a/b register pair. */
+struct VideoByteSwizzle {
+  /** Written most-significant-to-least-significant digits in 0..7; repeats allowed. */
+  std::array<uint8_t, 4> indices{};
+  /** Compare the written source selection order. */
+  bool operator==(const VideoByteSwizzle&) const = default;
+};
+/** Nonempty two-lane destination write mask in canonical descending order. */
+struct VideoHalfMask {
+  /** Only the first count entries are live; indices are in 0..1. */
+  std::array<uint8_t, 2> indices{};
+  uint8_t count{};
+  /** Compare the retained destination mask representation. */
+  bool operator==(const VideoHalfMask&) const = default;
+};
+/** Nonempty four-lane destination write mask in canonical descending order. */
+struct VideoByteMask {
+  /** Only the first count entries are live; indices are in 0..3. */
+  std::array<uint8_t, 4> indices{};
+  uint8_t count{};
+  /** Compare the retained destination mask representation. */
+  bool operator==(const VideoByteMask&) const = default;
+};
+/** Typed scalar selection, cross-source swizzle, or SIMD destination mask. */
+using VideoSelector =
+    std::variant<VideoByteSelector, VideoHalfSelector, VideoHalfSwizzle,
+                 VideoByteSwizzle, VideoHalfMask, VideoByteMask>;
 /** Bound direct resource declaration, independent of generic address layout. */
 struct ResolvedOpaqueSymbolRef {
   /** Source spelling retained for diagnostics and consumer display. */
@@ -1481,6 +1645,18 @@ struct ResolvedOperandLayoutTag {
   bool operator==(const ResolvedOperandLayoutTag&) const = default;
 };
 using RegOrImm = std::variant<ResolvedRegisterRef, ResolvedImmediate>;
+/** Owned video register or constant operand, retaining written selection and minus. */
+struct ResolvedVideoOperand {
+  /** Owned source value and its identifier or literal location. */
+  WithLocs<RegOrImm> value;
+  /** Absence retains an omitted selector instead of inventing explicit syntax. */
+  std::optional<WithLocs<VideoSelector>> selector;
+  /** Written arithmetic minus, meaningful only for supported vmad sources. */
+  bool negated{};
+  /** Independent minus location; absent for a non-negated source. */
+  std::optional<SourceRange> minus_range;
+};
+
 /** Read-only braced source lanes retaining register identities or typed values. */
 struct ResolvedValueVector {
   /** Ordered lane payload; WithLocs owns corresponding source ranges. */

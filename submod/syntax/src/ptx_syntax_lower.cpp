@@ -288,6 +288,26 @@ syntax_ast::AstOperand lowerOperand(const syntax_cst::CstFile& cst,
           return syntax_ast::AstVectorMember{
               lowerIdentifier(cst, value.base), leafSyntax(cst, value.selector),
               cst.sourceRange(value.token_range)};
+        } else if constexpr (std::same_as<
+                                 Value,
+                                 syntax_cst::CstNegatedRegisterOperand>) {
+          auto child = std::visit(
+              [&](const auto& item)
+                  -> std::variant<syntax_ast::AstIdentifierRef,
+                                  syntax_ast::AstVectorMember> {
+                using Child = std::remove_cvref_t<decltype(item)>;
+                if constexpr (std::same_as<Child, syntax_cst::CstIdentifier>)
+                  return lowerIdentifier(cst, item);
+                else
+                  return syntax_ast::AstVectorMember{
+                      lowerIdentifier(cst, item.base),
+                      leafSyntax(cst, item.selector),
+                      cst.sourceRange(item.token_range)};
+              },
+              value.operand);
+          return syntax_ast::AstNegatedRegisterOperand{
+              std::move(child), cst.token(value.minus).range,
+              cst.sourceRange(value.token_range)};
         } else if constexpr (std::same_as<Value, syntax_cst::CstVectorPack>) {
           std::vector<syntax_ast::AstVectorElement> elements;
           elements.reserve(value.elements.size());

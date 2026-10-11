@@ -55,12 +55,20 @@ _MODIFIER_VALUE_KINDS: dict[ModifierKind, ResolvedValueKind] = {
     ModifierKind.TCGEN_NUM: ResolvedValueKind.TCGEN_NUM,
     ModifierKind.TCGEN_RED_OP: ResolvedValueKind.TCGEN_RED_OP,
     ModifierKind.TCGEN_WAIT: ResolvedValueKind.TCGEN_WAIT,
+    ModifierKind.VIDEO_SCALE: ResolvedValueKind.VIDEO_SCALE,
+    ModifierKind.VIDEO_SHIFT_MODE: ResolvedValueKind.VIDEO_SHIFT_MODE,
+    ModifierKind.VIDEO_SECONDARY_OP: ResolvedValueKind.VIDEO_SECONDARY_OP,
+    ModifierKind.VIDEO_TYPE: ResolvedValueKind.VIDEO_TYPE,
     ModifierKind.PROXY: ResolvedValueKind.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: ResolvedValueKind.PROXY_KIND_PAIR,
 }
 
 
 _STRING_POLICIES: dict[ResolvedValueKind, tuple[str, str, str, bool]] = {
+    ResolvedValueKind.VIDEO_SCALE: ("video", "video", "video", True),
+    ResolvedValueKind.VIDEO_SHIFT_MODE: ("video", "video", "video", False),
+    ResolvedValueKind.VIDEO_SECONDARY_OP: ("video", "video", "video", True),
+    ResolvedValueKind.VIDEO_TYPE: ("video", "video", "video", False),
     ResolvedValueKind.SCALAR_TYPE: ("scalar-type", "scalar-type", "type", True),
     ResolvedValueKind.ROUNDING_MODE: ("rounding", "RoundingMode", "rounding", True),
     ResolvedValueKind.COMPARISON_OPERATOR: ("comparison", "comparison", "comparison", False),

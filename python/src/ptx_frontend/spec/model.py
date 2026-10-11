@@ -129,6 +129,21 @@ class SurfaceInstructionSpec:
     query: SurfaceQuery | None = None
     vector_arity: int = 1
     indirect_availability: dict[str, Any] = field(default_factory=dict)
+class StackOperation(Enum):
+    """Static action performed on the current thread stack."""
+
+    SAVE = "save"
+    RESTORE = "restore"
+    ALLOCATE = "allocate"
+
+
+@dataclass(frozen=True)
+class StackInstructionSpec:
+    """Exact stack form width and default minimum byte alignment."""
+
+    operation: StackOperation
+    width: int
+    default_alignment: int = 8
 
 
 class TextureGeometry(Enum):
@@ -505,6 +520,10 @@ class ModifierKind(_SemanticToken):
     TCGEN_NUM = "tcgen_num"
     TCGEN_RED_OP = "tcgen_red_op"
     TCGEN_WAIT = "tcgen_wait"
+    VIDEO_SCALE = "video_scale"
+    VIDEO_SHIFT_MODE = "video_shift_mode"
+    VIDEO_SECONDARY_OP = "video_secondary_op"
+    VIDEO_TYPE = "video_type"
     MEMORY_ORDER = "memory_order"
     PROXY = "proxy"
     PROXY_PAIR = "proxy_pair"
@@ -569,6 +588,9 @@ class OperandKind(_SemanticToken):
     FABRIC_HANDLE = "fabric_handle"
     SURFACE_ACCESS = "surface_access"
     SURFACE_QUERY_RESOURCE = "surface_query_resource"
+    STACK_TOKEN = "stack_token"
+    LOCAL_ALLOCATION_RESULT = "local_allocation_result"
+    VIDEO_OPERAND = "video_operand"
     TEXTURE_ACCESS = "texture_access"
     TEXTURE_QUERY_RESOURCE = "texture_query_resource"
     TEXTURE_RESULT = "texture_result"
@@ -840,6 +862,74 @@ def modifier_spellings(modifier: ModifierSpec) -> tuple[str, ...]:
     return ()
 
 
+class VideoLanes(_SemanticToken):
+    """Static packed video lane topology, independent of carrier declarations."""
+
+    SCALAR = "scalar"
+    TWO = "two"
+    FOUR = "four"
+
+
+class VideoOperation(_SemanticToken):
+    """Instruction-local video obligations used by generated descriptors."""
+
+    ARITHMETIC = "arithmetic"
+    SHIFT = "shift"
+    COMPARE = "compare"
+    MAD = "mad"
+
+
+class VideoOperandPosition(_SemanticToken):
+    """Logical video position defining type use and omitted selector defaults."""
+
+    DESTINATION = "destination"
+    A = "a"
+    B = "b"
+    C = "c"
+
+
+class VideoSelectorPolicy(_SemanticToken):
+    """Closed source-selection or destination-mask domain for one slot."""
+
+    NONE = "none"
+    OPTIONAL_SCALAR = "optional_scalar"
+    REQUIRED_SCALAR = "required_scalar"
+    HALF_SWIZZLE = "half_swizzle"
+    BYTE_SWIZZLE = "byte_swizzle"
+    HALF_MASK = "half_mask"
+    BYTE_MASK = "byte_mask"
+
+
+@dataclass(frozen=True)
+class VideoInstructionSpec:
+    """Typed static video topology and instruction-local checker obligations."""
+
+    lanes: VideoLanes
+    operation: VideoOperation
+    sat_modifier: str | None = None
+    po_modifier: str | None = None
+
+
+class VideoOperandTypeUse(_SemanticToken):
+    """Scalar constant coercion without conflating video arithmetic semantics."""
+
+    UNSIGNED = "unsigned"
+    MODIFIER_FIELD = "modifier_field"
+    BIT_CARRIER = "bit_carrier"
+
+
+@dataclass(frozen=True)
+class VideoOperandSpec:
+    """Source-faithful video slot contract, separate from ordinary integers."""
+
+    position: VideoOperandPosition
+    selector: VideoSelectorPolicy
+    type_use: VideoOperandTypeUse = VideoOperandTypeUse.UNSIGNED
+    type_modifier: str | None = None
+    allow_immediate: bool = False
+    allow_negate: bool = False
+
+
 @dataclass(frozen=True)
 class OperandSpec:
     """One normalized source-level PTX operand."""
@@ -881,6 +971,7 @@ class OperandSpec:
     texture_legacy_v4_coordinates: bool = False
     texture_unbracketed: bool = False
     texture_resource_kind: TextureResourceRole | None = None
+    video: VideoOperandSpec | None = None
 
 
 @dataclass(frozen=True)
@@ -924,7 +1015,9 @@ class VariantSpec:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
     surface: SurfaceInstructionSpec | None = None
+    stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
+    video: VideoInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     rule: SemanticRule | None = None
     operand_type_compatibilities: tuple[OperandTypeCompatibilitySpec, ...] = ()

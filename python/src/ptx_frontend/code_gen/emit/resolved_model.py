@@ -102,6 +102,22 @@ def _surface_descriptor(variant) -> str:
     return {{.data_type = dtype.value}};
   }}
 '''
+def _stack_descriptor(variant) -> str:
+    """Emit immutable stack semantics from canonical metadata."""
+    contract = variant.stack
+    if contract is None:
+        return ""
+    operation = file_stem_to_pascal_case(contract.operation.value)
+    return f"""  /** Static stack operation and minimum default alignment in bytes. */
+  inline static constexpr StackInstructionDescriptor stack_contract{{
+      .operation = StackOperation::{operation}, .width = {contract.width},
+      .default_alignment = {contract.default_alignment},
+  }};
+  /** Borrow the exact form's immutable stack contract. */
+  const StackInstructionDescriptor* stack_descriptor() const noexcept override {{
+    return &stack_contract;
+  }}
+"""
 
 
 def _texture_descriptor(variant) -> str:
@@ -247,8 +263,9 @@ REFERENCE_TYPES = (
     "ResolvedValueVector",
     "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
     "ResolvedSurfaceAccess", "ResolvedSurfaceQueryResource",
+    "ResolvedVideoOperand",
     "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
-    "ResolvedTextureResult",
+    "ResolvedTextureResult", "ResolvedStackToken", "ResolvedLocalAllocationResult",
     "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
     "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
 )
@@ -346,6 +363,10 @@ class Instruction {{
   /** Return current type modifiers for surface forms. */
   virtual SurfaceSelectedTypes surface_selected_types() const noexcept {{
     return {{}};
+  }}
+  /** Borrow static stack semantics, or null for another family. */
+  virtual const StackInstructionDescriptor* stack_descriptor() const noexcept {{
+    return nullptr;
   }}
   /** Return immutable texture-family facts, or null for other instructions. */
   virtual const TextureInstructionDescriptor* texture_descriptor() const noexcept {{
@@ -584,8 +605,19 @@ def _form_contract(variant, backend) -> str:
         )
     if variant.surface is not None:
         parts.append(_surface_descriptor(variant))
+    if variant.video is not None:
+        lanes = {"scalar": "Scalar", "two": "Two", "four": "Four"}[variant.video.lanes.value]
+        operation = file_stem_to_pascal_case(variant.video.operation.value)
+        parts.append(
+            "  /** Immutable packed-lane topology for typed selector queries. */\n"
+            f"  inline static constexpr VideoLanes video_lanes = VideoLanes::{lanes};\n"
+            "  /** Closed arithmetic operation category of this video form. */\n"
+            f"  inline static constexpr VideoOperation video_operation = VideoOperation::{operation};"
+        )
     if variant.texture is not None:
         parts.append(_texture_descriptor(variant))
+    if variant.stack is not None:
+        parts.append(_stack_descriptor(variant))
     parts.extend(_tcgen_form_contract(variant))
     return "\n".join(parts)
 

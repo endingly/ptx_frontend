@@ -13,6 +13,8 @@ from typing import overload
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    VideoInstructionSpec,
+    VideoOperandSpec,
     FabricInstructionSpec,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
@@ -42,6 +44,7 @@ from ptx_frontend.spec.model import (
     SurfaceGeometry,
     SurfaceInstructionSpec,
     TextureGeometry,
+    StackInstructionSpec,
     TextureInstructionSpec,
     TextureResourceRole,
     OperandStateSpaceExpression,
@@ -179,6 +182,9 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.FABRIC_HANDLE: ResolvedValueKind.FABRIC_HANDLE,
     OperandKind.SURFACE_ACCESS: ResolvedValueKind.SURFACE_ACCESS,
     OperandKind.SURFACE_QUERY_RESOURCE: ResolvedValueKind.SURFACE_QUERY_RESOURCE,
+    OperandKind.STACK_TOKEN: ResolvedValueKind.STACK_TOKEN,
+    OperandKind.LOCAL_ALLOCATION_RESULT: ResolvedValueKind.LOCAL_ALLOCATION_RESULT,
+    OperandKind.VIDEO_OPERAND: ResolvedValueKind.VIDEO_OPERAND,
     OperandKind.TEXTURE_ACCESS: ResolvedValueKind.TEXTURE_ACCESS,
     OperandKind.TEXTURE_QUERY_RESOURCE: ResolvedValueKind.TEXTURE_QUERY_RESOURCE,
     OperandKind.TEXTURE_RESULT: ResolvedValueKind.TEXTURE_RESULT,
@@ -249,6 +255,9 @@ class ResolvedOperandShape(Enum):
     FABRIC_HANDLE = "FabricHandle"
     SURFACE_ACCESS = "SurfaceAccess"
     SURFACE_QUERY_RESOURCE = "SurfaceQueryResource"
+    STACK_TOKEN = "StackToken"
+    LOCAL_ALLOCATION_RESULT = "LocalAllocationResult"
+    VIDEO_OPERAND = "VideoOperand"
     TEXTURE_ACCESS = "TextureAccess"
     TEXTURE_QUERY_RESOURCE = "TextureQueryResource"
     TEXTURE_RESULT = "TextureResult"
@@ -416,7 +425,9 @@ class ResolvedVariant:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
     surface: SurfaceInstructionSpec | None = None
+    stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
+    video: VideoInstructionSpec | None = None
     wgmma_protocol_action: WgmmaProtocolAction = WgmmaProtocolAction.NONE
     atomic_address_qualifier_domain: tuple[AtomicAddressQualifierValue, ...] = ()
     tcgen_commit_address_spelling: TcgenCommitAddressSpelling | None = None
@@ -538,6 +549,8 @@ class ResolvedOperandBinding:
     expected_tensor_rank: int | None = None
     tensor_cta_mask: bool = False
     surface_geometry: SurfaceGeometry | None = None
+    video: VideoOperandSpec | None = None
+    video_instruction: VideoInstructionSpec | None = None
     texture_geometry: TextureGeometry | None = None
     texture_legacy_v4_coordinates: bool = False
     texture_unbracketed: bool = False
@@ -629,6 +642,9 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.FABRIC_HANDLE: (ResolvedOperandShape.FABRIC_HANDLE,),
     OperandKind.SURFACE_ACCESS: (ResolvedOperandShape.SURFACE_ACCESS,),
     OperandKind.SURFACE_QUERY_RESOURCE: (ResolvedOperandShape.SURFACE_QUERY_RESOURCE,),
+    OperandKind.STACK_TOKEN: (ResolvedOperandShape.STACK_TOKEN,),
+    OperandKind.LOCAL_ALLOCATION_RESULT: (ResolvedOperandShape.LOCAL_ALLOCATION_RESULT,),
+    OperandKind.VIDEO_OPERAND: (ResolvedOperandShape.VIDEO_OPERAND,),
     OperandKind.TEXTURE_ACCESS: (ResolvedOperandShape.TEXTURE_ACCESS,),
     OperandKind.TEXTURE_QUERY_RESOURCE: (ResolvedOperandShape.TEXTURE_QUERY_RESOURCE,),
     OperandKind.TEXTURE_RESULT: (ResolvedOperandShape.TEXTURE_RESULT,),
@@ -896,6 +912,7 @@ def _build_variant(
             tensor_access_mode,
             expected_tensor_rank,
             tensor_multicast,
+            variant.video,
         )
         for layout in variant.operand_layouts
     )
@@ -906,7 +923,9 @@ def _build_variant(
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
         surface=variant.surface,
+        stack=variant.stack,
         texture=variant.texture,
+        video=variant.video,
         wgmma_protocol_action=variant.wgmma_protocol_action,
         cpp_name=_variant_cpp_name(opcode, variant.name),
         modifier_fields=modifier_fields,
@@ -1891,6 +1910,7 @@ def _build_operand_layout(
     tensor_access_mode: TensorAccessMode | None = None,
     expected_tensor_rank: int | None = None,
     tensor_multicast: bool = False,
+    video_instruction: VideoInstructionSpec | None = None,
 ) -> ResolvedOperandLayout:
     fields = tuple(_build_operand_field(operand) for operand in operands)
     return ResolvedOperandLayout(
@@ -1977,6 +1997,13 @@ def _build_operand_layout(
                 ),
                 tensor_cta_mask=(tensor_multicast and operand.name == "cta_mask"),
                 surface_geometry=operand.surface_geometry,
+                video=(replace(operand.video,
+                               type_modifier=modifier_field_ids[operand.video.type_modifier])
+                       if operand.video and operand.video.type_modifier else operand.video),
+                video_instruction=(replace(video_instruction,
+                    sat_modifier=modifier_field_ids.get(video_instruction.sat_modifier),
+                    po_modifier=modifier_field_ids.get(video_instruction.po_modifier))
+                    if video_instruction else None),
                 texture_geometry=operand.texture_geometry,
                 texture_legacy_v4_coordinates=operand.texture_legacy_v4_coordinates,
                 texture_unbracketed=operand.texture_unbracketed,

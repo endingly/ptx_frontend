@@ -66,6 +66,10 @@ def emit_check_modifier_view(
                   .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
                   .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
                   .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
+                  .video_scale = {members[ResolvedValueKind.VIDEO_SCALE]},
+                  .video_shift_mode = {members[ResolvedValueKind.VIDEO_SHIFT_MODE]},
+                  .video_secondary_op = {members[ResolvedValueKind.VIDEO_SECONDARY_OP]},
+                  .video_type = {members[ResolvedValueKind.VIDEO_TYPE]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .locations = {locations},
@@ -159,6 +163,10 @@ def emit_check_modifier_value_view(
                   .tcgen_repeat = {members[ResolvedValueKind.TCGEN_NUM]},
                   .tcgen_reduction_op = {members[ResolvedValueKind.TCGEN_RED_OP]},
                   .tcgen_wait_class = {members[ResolvedValueKind.TCGEN_WAIT]},
+                  .video_scale = {members[ResolvedValueKind.VIDEO_SCALE]},
+                  .video_shift_mode = {members[ResolvedValueKind.VIDEO_SHIFT_MODE]},
+                  .video_secondary_op = {members[ResolvedValueKind.VIDEO_SECONDARY_OP]},
+                  .video_type = {members[ResolvedValueKind.VIDEO_TYPE]},
                   .async_proxy_kind = {members[ResolvedValueKind.ASYNC_PROXY_KIND]},
                   .proxy_kind_pair = {members[ResolvedValueKind.PROXY_KIND_PAIR]},
                   .is_present = {is_present},
@@ -306,6 +314,13 @@ def emit_check_operand_view(
                   .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "FabricHandle")},
                   .locations = {object_name}.{field.name}.locs,
               }}'''
+    if field.value_kind is ResolvedValueKind.VIDEO_OPERAND:
+        return f'''              OperandView{{
+                  .field_id = "{field.name}",
+                  .actual_shape = {_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, "VideoOperand")},
+                  .video_operand = &{object_name}.{field.name}.value,
+                  .locations = {object_name}.{field.name}.locs,
+              }}'''
     if field.value_kind in {ResolvedValueKind.SURFACE_ACCESS,
                             ResolvedValueKind.SURFACE_QUERY_RESOURCE,
                             ResolvedValueKind.TEXTURE_ACCESS,
@@ -398,6 +413,17 @@ def emit_check_operand_view(
                   view.vector_element_types[index] = info.element_type;
                 return view;
               }}()"""
+    if field.value_kind in {ResolvedValueKind.STACK_TOKEN,
+                            ResolvedValueKind.LOCAL_ALLOCATION_RESULT}:
+        shape = _cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, field.value_kind.value)
+        return f"""              OperandView{{
+                  .field_id = "{field.name}", .actual_shape = {shape},
+                  .register_type = {object_name}.{field.name}.value.register_ref.declared_type,
+                  .register_symbol_id = {object_name}.{field.name}.value.register_ref.symbol_id,
+                  .register_class = {object_name}.{field.name}.value.register_ref.register_class,
+                  .register_vector_width = {object_name}.{field.name}.value.register_ref.vector_width,
+                  .locations = {object_name}.{field.name}.locs,
+              }}"""
     if field.value_kind is ResolvedValueKind.SHARED_MATRIX_DESCRIPTOR:
         return f"""              OperandView{{
                   .field_id = "{field.name}",

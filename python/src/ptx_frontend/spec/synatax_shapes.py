@@ -1,6 +1,6 @@
 from enum import IntFlag
 
-from ptx_frontend.spec.model import OperandKind
+from ptx_frontend.spec.model import OperandKind, OperandSpec, VideoSelectorPolicy
 
 
 class OperandSyntaxShape(IntFlag):
@@ -23,9 +23,13 @@ class OperandSyntaxShape(IntFlag):
     FABRIC_HANDLE = 1 << 14
     COMPOUND_BRACKET = 1 << 15
     VECTOR_PREDICATE_PAIR = 1 << 16
+    ARITHMETIC_NEGATED_REGISTER = 1 << 17
 
 
 OPERAND_SYNTAX_SHAPES = {
+    OperandKind.STACK_TOKEN: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.LOCAL_ALLOCATION_RESULT: OperandSyntaxShape.IDENTIFIER_REF,
+    OperandKind.VIDEO_OPERAND: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     OperandKind.REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.IMMEDIATE: OperandSyntaxShape.IMMEDIATE,
     OperandKind.REGISTER_OR_IMMEDIATE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
@@ -102,3 +106,20 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.CALL_RETURN_PARAMETER: OperandSyntaxShape.CALL_PARAMETER_LIST,
     OperandKind.CALL_ARGUMENTS: OperandSyntaxShape.CALL_PARAMETER_LIST,
 }
+
+
+def operand_syntax_shapes(operand: OperandSpec) -> OperandSyntaxShape:
+    """Return canonical source shapes including typed video slot restrictions."""
+
+    shapes = OPERAND_SYNTAX_SHAPES[operand.kind]
+    if operand.video is not None:
+        policy = operand.video.selector
+        if policy is VideoSelectorPolicy.NONE:
+            shapes = OperandSyntaxShape.IDENTIFIER_REF
+        elif policy is VideoSelectorPolicy.REQUIRED_SCALAR:
+            shapes = OperandSyntaxShape.VECTOR_MEMBER
+        if operand.video.allow_immediate:
+            shapes |= OperandSyntaxShape.IMMEDIATE
+        if operand.video.allow_negate:
+            shapes |= OperandSyntaxShape.ARITHMETIC_NEGATED_REGISTER
+    return shapes

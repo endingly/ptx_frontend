@@ -96,6 +96,39 @@ TEST(PtxSyntaxParser, ParsesInstructionWithoutCstTrivia) {
   EXPECT_EQ(std::get<AstImmediate>(instruction.operands[2]).syntax.text, "-1");
 }
 
+/** Arithmetic register minus retains each child and its own source range. */
+TEST(PtxSyntaxParser, PreservesArithmeticNegatedRegisterOperands) {
+  constexpr std::string_view source =
+      "vmad.s32.s32.s32 %r0, - %r1.h0, -%r2, %r3;";
+  PtxSyntaxParser parser(source);
+  auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(result.diagnostics.empty());
+  ASSERT_EQ(result->operands.size(), 4u);
+  const auto& selected =
+      std::get<syntax_ast::AstNegatedRegisterOperand>(result->operands[1]);
+  EXPECT_EQ(sourceSlice(source, selected.minus_range), "-");
+  EXPECT_EQ(sourceSlice(source, selected.range), "- %r1.h0");
+  const auto& member = std::get<AstVectorMember>(selected.operand);
+  EXPECT_EQ(member.base.syntax.text, "%r1");
+  EXPECT_EQ(member.selector.text, ".h0");
+  EXPECT_EQ(sourceSlice(source, member.range), "%r1.h0");
+  const auto& plain =
+      std::get<syntax_ast::AstNegatedRegisterOperand>(result->operands[2]);
+  EXPECT_EQ(std::get<AstIdentifierRef>(plain.operand).syntax.text, "%r2");
+}
+
+/** Unary register operands remain deliberately nonrecursive. */
+TEST(PtxSyntaxParser, RejectsRecursiveArithmeticRegisterMinus) {
+  for (const auto source : {"vmad.s32.s32.s32 %r0, !-%r1, %r2, %r3;",
+                            "vmad.s32.s32.s32 %r0, --%r1, %r2, %r3;",
+                            "vmad.s32.s32.s32 %r0, -{%r1}, %r2, %r3;"}) {
+    PtxSyntaxParser parser(source);
+    auto result = parser.parseInstruction();
+    EXPECT_TRUE(!result.has_value() || !result.diagnostics.empty());
+  }
+}
+
 TEST(PtxSyntaxParser, ParsesPredicateAddressAndVectorMember) {
   PtxSyntaxParser parser("@!%p add.u32 [%rd1+16], %r2.x, %r3;");
 

@@ -698,3 +698,9 @@ PYTHONPATH=python python3 -m unittest discover -s python/tests -t python -p 'tes
 cmake --build out/build/ci-linux-gcc-debug -j2
 ctest --preset ci-linux-gcc-debug --output-on-failure
 ```
+
+## Typed video contracts
+
+The `video` category owns 23 opcode variants and 39 operand layouts. A variant's closed `video` mapping carries `lanes: scalar|two|four`, `operation: arithmetic|shift|compare|mad`, and optional validated Boolean `sat_modifier`/`po_modifier` field references. Each `video_operand` has its own closed mapping: logical `position`, typed `selector` policy, optional `type_modifier` referring to a `video_type` field, and `allow_immediate`/`allow_negate` flags. The normalizer rejects contradictory roles, SIMD immediates, non-Mad negation, incorrect selector topology and missing field references.
+
+`type_use: bit_carrier` is restricted to Mad C and cannot coexist with `type_modifier`; it selects B32 immediate coercion. A type modifier infers `ModifierField` interpretation; omitted type use defaults to `Unsigned`, used by set D/C. The four closed modifier domains are `video_type`, `video_secondary_op`, `video_shift_mode`, and `video_scale`. Video semantics never become generic integer-operation aliases. Syntax shape derivation admits selected destinations only for scalar merge layouts and arithmetic-negated registers only in approved Mad source slots. See [video coverage](video_coverage.md).

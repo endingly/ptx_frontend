@@ -31,7 +31,8 @@ enum class OperandSyntaxShape : uint32_t {
   TensorOperand = 1 << 13,
   FabricHandle = 1 << 14,
   CompoundBracket = 1 << 15,
-  VectorPredicatePair = 1 << 16
+  VectorPredicatePair = 1 << 16,
+  ArithmeticNegatedRegister = 1 << 17
 };
 constexpr OperandSyntaxShape operator|(OperandSyntaxShape lhs,
                                        OperandSyntaxShape rhs) {
@@ -63,6 +64,10 @@ enum class ResolvedValueKind : uint8_t {
   TcgenRepeat,
   TcgenReductionOp,
   TcgenWaitClass,
+  VideoScale,
+  VideoShiftMode,
+  VideoSecondaryOp,
+  VideoType,
   AsyncProxyKind,
   ProxyKindPair,
   Register,
@@ -91,6 +96,9 @@ enum class ResolvedValueKind : uint8_t {
   FabricHandle,
   SurfaceAccess,
   SurfaceQueryResource,
+  StackToken,
+  LocalAllocationResult,
+  VideoOperand,
   TextureAccess,
   TextureQueryResource,
   TextureResult,
@@ -172,6 +180,10 @@ enum class ResolvedModifierDefaultKind : uint8_t {
   TcgenRepeat,
   TcgenReductionOp,
   TcgenWaitClass,
+  VideoScale,
+  VideoShiftMode,
+  VideoSecondaryOp,
+  VideoType,
   AsyncProxyKind,
   ProxyKindPair
 };
@@ -196,6 +208,10 @@ struct ResolvedModifierDefaultDescriptor {
   TcgenRepeat tcgen_repeat = TcgenRepeat::X1;
   TcgenReductionOp tcgen_reduction_op = TcgenReductionOp::Min;
   TcgenWaitClass tcgen_wait_class = TcgenWaitClass::Load;
+  VideoScale video_scale = VideoScale::None;
+  VideoShiftMode video_shift_mode = VideoShiftMode::Clamp;
+  VideoSecondaryOp video_secondary_op = VideoSecondaryOp::None;
+  VideoType video_type = VideoType::S32;
   base::AsyncProxyKind async_proxy_kind = base::AsyncProxyKind::Async;
   base::ProxyKindPair proxy_kind_pair = base::ProxyKindPair::TensormapToGeneric;
   base::MemoryConsistency memory_consistency = base::MemoryConsistency::Omitted;

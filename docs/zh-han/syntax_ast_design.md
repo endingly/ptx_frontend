@@ -153,3 +153,7 @@ Syntax AST 或 Resolved IR 反向恢复源码布局。
 
 `SourceRange` 目前只有行列信息。未来支持多文件 CST 与可靠 edit 时，应增加 source
 identity 与 byte offset；这不需要重新扩大 Syntax AST 的职责。
+
+## Arithmetic-negated register 语法
+
+`CstNegatedRegisterOperand` 保留 minus token，child 限定为一个 identifier 或 vector member。`AstNegatedRegisterOperand` 拥有 minus range、child range 及 full range。Parser 在带符号数字立即数解析前识别 `-Ident[.selector]`，不引入递归 unary operand。独立的 `ArithmeticNegatedRegister` syntax shape 仅在批准的 `vmad` source slot 开放。Binding、lowering、source identity 与 layout classification 显式遍历该 child。Predicate `!` 取反保持独立，拒绝 `!-%r`。

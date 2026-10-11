@@ -71,6 +71,10 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ResolvedValueKind.TCGEN_NUM,
                     ResolvedValueKind.TCGEN_RED_OP,
                     ResolvedValueKind.TCGEN_WAIT,
+                    ResolvedValueKind.VIDEO_TYPE,
+                    ResolvedValueKind.VIDEO_SECONDARY_OP,
+                    ResolvedValueKind.VIDEO_SHIFT_MODE,
+                    ResolvedValueKind.VIDEO_SCALE,
                     ResolvedValueKind.ASYNC_PROXY_KIND,
                     ResolvedValueKind.PROXY_KIND_PAIR,
                 }
@@ -187,6 +191,10 @@ class ResolvedValueTraitsTests(unittest.TestCase):
             "tcgen_num": ResolvedValueKind.TCGEN_NUM,
             "tcgen_red_op": ResolvedValueKind.TCGEN_RED_OP,
             "tcgen_wait": ResolvedValueKind.TCGEN_WAIT,
+            "video_type": ResolvedValueKind.VIDEO_TYPE,
+            "video_secondary_op": ResolvedValueKind.VIDEO_SECONDARY_OP,
+            "video_shift_mode": ResolvedValueKind.VIDEO_SHIFT_MODE,
+            "video_scale": ResolvedValueKind.VIDEO_SCALE,
             "proxy": ResolvedValueKind.ASYNC_PROXY_KIND,
             "proxy_pair": ResolvedValueKind.PROXY_KIND_PAIR,
         }

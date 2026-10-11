@@ -332,6 +332,14 @@ bool matches_modifier_value(const Descriptor& descriptor,
       return descriptor.tcgen_repeat == actual.tcgen_repeat;
     case ModifierValueKind::TcgenReductionOp:
       return descriptor.tcgen_reduction_op == actual.tcgen_reduction_op;
+    case ModifierValueKind::VideoType:
+      return descriptor.video_type == actual.video_type;
+    case ModifierValueKind::VideoSecondaryOp:
+      return descriptor.video_secondary_op == actual.video_secondary_op;
+    case ModifierValueKind::VideoShiftMode:
+      return descriptor.video_shift_mode == actual.video_shift_mode;
+    case ModifierValueKind::VideoScale:
+      return descriptor.video_scale == actual.video_scale;
     case ModifierValueKind::TcgenWaitClass:
       return descriptor.tcgen_wait_class == actual.tcgen_wait_class;
     case ModifierValueKind::AsyncProxyKind:
@@ -864,6 +872,10 @@ CheckResult check_operands(
     std::span<const FieldView> fields, std::span<const OperandView> operands,
     std::span<const OperandTypeCompatibilityDescriptor> type_compatibilities,
     const Context& context, const MatrixInstructionDescriptor* matrix) {
+  if (auto video_check =
+          check_video_operands(descriptors, fields, operands, context);
+      !video_check)
+    return video_check;
   CheckDiagnostics diagnostics;
 
   for (const OperandView& operand : operands) {
@@ -4217,6 +4229,95 @@ CheckResult check_surface_query_static_payload(
          .message = "Surface query requires source brackets."});
   check_surface_resource_static(descriptor, resource.resource, context,
                                 diagnostics);
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+  return {};
+}
+
+/** Validate instruction-local stack semantics without runtime stack simulation. */
+CheckResult check_stack_static_payload(
+    const StackInstructionDescriptor& descriptor,
+    const ResolvedStackToken* token,
+    const ResolvedLocalAllocationResult* result, const RegOrImm* size,
+    const ResolvedImmediate* alignment, const Context& context) {
+  CheckDiagnostics diagnostics;
+  const auto fail = [&](std::string message) {
+    diagnostics.push_back({CheckDiagnosticKind::RuleViolation,
+                           context.instruction_range, std::move(message)});
+  };
+  if ((descriptor.width != 32 && descriptor.width != 64) ||
+      descriptor.default_alignment != 8 ||
+      (descriptor.operation != StackOperation::Save &&
+       descriptor.operation != StackOperation::Restore &&
+       descriptor.operation != StackOperation::Allocate))
+    fail("Invalid static stack instruction descriptor.");
+  const bool allocate = descriptor.operation == StackOperation::Allocate;
+  if (allocate != (result != nullptr) || allocate == (token != nullptr))
+    fail("Stack operand role disagrees with operation.");
+  const auto* reg = token    ? &token->register_ref
+                    : result ? &result->register_ref
+                             : nullptr;
+  if (reg) {
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width || (reg->symbol_id && !reg->declared_type))
+      fail("Stack operands require scalar general registers.");
+    if (reg->declared_type) {
+      const auto kind = base::scalar_kind(*reg->declared_type);
+      if (base::scalar_size_of(*reg->declared_type) * 8 != descriptor.width ||
+          (kind != base::ScalarKind::Unsigned &&
+           kind != base::ScalarKind::Signed && kind != base::ScalarKind::Bit))
+        fail("Stack register width or scalar kind disagrees with instruction.");
+    }
+    const auto kind = token ? token->enclosing_function_kind
+                            : result->enclosing_function_kind;
+    const auto scope = token ? token->function_scope : result->function_scope;
+    if ((kind == EnclosingFunctionKind::Unknown) != !scope ||
+        (kind != EnclosingFunctionKind::Unknown &&
+         kind != EnclosingFunctionKind::Entry &&
+         kind != EnclosingFunctionKind::Device))
+      fail("Stack operand function provenance is inconsistent.");
+  }
+  if (allocate != (size != nullptr))
+    fail("Stack byte-count presence disagrees with operation.");
+  if (size) {
+    if (const auto* carrier = std::get_if<ResolvedRegisterRef>(size)) {
+      if (carrier->register_class != ResolvedRegisterClass::General ||
+          carrier->vector_width ||
+          (carrier->symbol_id && !carrier->declared_type) ||
+          (carrier->declared_type &&
+           (!is_integer_type(*carrier->declared_type) ||
+            base::scalar_size_of(*carrier->declared_type) * 8 !=
+                descriptor.width)))
+        fail(
+            "Stack byte count requires a scalar integer/bit register of the "
+            "selected width.");
+    } else {
+      const auto& immediate = std::get<ResolvedImmediate>(*size);
+      const uint64_t mask = descriptor.width == 32 ? UINT32_MAX : UINT64_MAX;
+      const auto expected =
+          descriptor.width == 32 ? ScalarType::U32 : ScalarType::U64;
+      if (immediate.type != expected || !immediate.integer_source_bits ||
+          immediate.bits != (*immediate.integer_source_bits & mask) ||
+          (immediate.is_negative &&
+           (*immediate.integer_source_bits & (uint64_t{1} << 63)) == 0))
+        fail(
+            "Stack byte count has inconsistent unsigned use-width conversion.");
+    }
+  }
+  if (result &&
+      result->address_state_space != base::DeclarationStateSpace::Local)
+    fail("Stack allocation result must retain its local address role.");
+  if (alignment) {
+    const auto source = alignment->integer_source_bits;
+    if (!allocate || alignment->type != ScalarType::U32 || !source ||
+        alignment->bits != (*source & UINT32_MAX) ||
+        (alignment->is_negative && (*source & (uint64_t{1} << 63)) == 0) ||
+        alignment->bits == 0 || alignment->bits > (uint64_t{1} << 23) ||
+        (alignment->bits & (alignment->bits - 1)) != 0)
+      fail(
+          "Stack alignment after u32 conversion must be a power of two from 1 "
+          "through 2^23.");
+  }
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
   return {};

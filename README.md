@@ -50,6 +50,9 @@ supported surface and its exclusions.
 - [`slct` coverage](docs/us-en/slct_coverage.md) and its
   [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
   types, numeric selectors, `.ftz`, operand containers, and target limits.
+- [Video instruction coverage](docs/us-en/video_coverage.md) and its
+  [简体中文版本](docs/zh-han/video_coverage.md) define all 23 scalar/two-lane/four-lane
+  opcodes, owned selectors and register negation, target gates, and static checks.
 - [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
   and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
   `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
@@ -127,6 +130,9 @@ supported surface and its exclusions.
 - [Texture and opaque resource coverage](docs/us-en/texture_coverage.md) and its
   [简体中文版本](docs/zh-han/texture_coverage.md) describe the typed four-family
   source contracts, declaration identity, compatibility syntax, and runtime boundary.
+- [Stack manipulation coverage](docs/us-en/stack_manipulation_coverage.md) and its
+  [简体中文版本](docs/zh-han/stack_manipulation_coverage.md) describe all eight
+  typed source forms, owned function context, alignment conversion and runtime boundaries.
 - The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
 
 ## Build and install

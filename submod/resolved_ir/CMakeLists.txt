@@ -16,6 +16,7 @@ add_library(ptx_frontend_resolved_ir STATIC
     src/ptx_resolved_ir_bound_operands.cpp
     src/ptx_resolved_ir_layout.cpp
     src/ptx_resolved_ir_checker.cpp
+    src/ptx_video.cpp
     src/ptx_storage_declarations.cpp
     src/ptx_resolved_module.cpp
     src/ptx_module_availability.cpp

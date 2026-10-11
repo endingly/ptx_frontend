@@ -1,0 +1,184 @@
+# PTX stack manipulation instructions.
+# yaml-language-server: $schema=../ptx-instr-v1.schema.yaml
+schema: ptx-instr/v1
+ptx_isa: '9.3'
+category: stack_manipulation
+codegen_category: stack_manipulation
+section: 9.7.18
+instructions:
+- opcode: stacksave
+  section: 9.7.18.1
+  doc: Manipulate the current thread stack with static typed operands.
+  variants:
+  - name: stacksave_u32
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: save
+      width: 32
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u32
+    operand_layouts:
+    - name: scalar
+      operands:
+      - name: dst
+        kind: stack_token
+        role: dst
+        access: write
+        type: u32
+  - name: stacksave_u64
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: save
+      width: 64
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u64
+    operand_layouts:
+    - name: scalar
+      operands:
+      - name: dst
+        kind: stack_token
+        role: dst
+        access: write
+        type: u64
+- opcode: stackrestore
+  section: 9.7.18.2
+  doc: Manipulate the current thread stack with static typed operands.
+  variants:
+  - name: stackrestore_u32
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: restore
+      width: 32
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u32
+    operand_layouts:
+    - name: scalar
+      operands:
+      - name: token
+        kind: stack_token
+        role: src
+        access: read
+        type: u32
+  - name: stackrestore_u64
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: restore
+      width: 64
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u64
+    operand_layouts:
+    - name: scalar
+      operands:
+      - name: token
+        kind: stack_token
+        role: src
+        access: read
+        type: u64
+- opcode: alloca
+  section: 9.7.18.3
+  doc: Manipulate the current thread stack with static typed operands.
+  variants:
+  - name: alloca_u32
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: allocate
+      width: 32
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u32
+    operand_layouts:
+    - name: default_alignment
+      operands:
+      - &id001
+        name: dst
+        kind: local_allocation_result
+        role: dst
+        access: write
+        type: u32
+      - &id002
+        name: size
+        kind: reg_or_imm
+        role: src
+        access: read
+        type: u32
+    - name: explicit_alignment
+      operands:
+      - *id001
+      - *id002
+      - name: alignment
+        kind: imm
+        role: src
+        access: read
+        type: u32
+  - name: alloca_u64
+    availability:
+      ptx: '7.3'
+      sm: 52
+    stack:
+      operation: allocate
+      width: 64
+      default_alignment: 8
+    modifiers:
+    - name: type
+      kind: type
+      domain: scalar_types
+      presence: fixed
+      value: u64
+    operand_layouts:
+    - name: default_alignment
+      operands:
+      - &id003
+        name: dst
+        kind: local_allocation_result
+        role: dst
+        access: write
+        type: u64
+      - &id004
+        name: size
+        kind: reg_or_imm
+        role: src
+        access: read
+        type: u64
+    - name: explicit_alignment
+      operands:
+      - *id003
+      - *id004
+      - name: alignment
+        kind: imm
+        role: src
+        access: read
+        type: u32

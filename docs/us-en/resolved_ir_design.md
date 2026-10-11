@@ -755,3 +755,7 @@ type domain; declaration-type availability for wider `.b128` registers remains
 outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.
+
+## Owned video operands
+
+`ResolvedVideoOperand` owns a located `RegOrImm`, an optional located `VideoSelector` variant, a written register-negation Boolean and optional minus range. Identifier locations remain separate from the enclosing selector/negation range for binding diagnostics. Source arrays preserve written high-to-low digit order and index concatenated A+B carriers. `video_default_selector` and `video_effective_selector` expose defaults without inventing written provenance. Generated forms expose static `video_lanes`/`video_operation`. `video_mad_interpretation` derives product/input-C/final signs independently of written dtype; numeric negative constants never become register-negation controls. Public helpers are in `<ptx_frontend/resolved_ir/ptx_video.hpp>`. Checker operand views borrow owned Video payloads only for synchronous checking; module reference traversal uses the inner carrier's identifier locations.

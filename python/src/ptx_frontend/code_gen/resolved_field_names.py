@@ -87,6 +87,16 @@ def _with_cpp_backend_variant_field_names(
             bindings=tuple(
                 replace(
                     binding,
+                    video=(replace(binding.video,
+                        type_modifier=rename(binding.video.type_modifier)
+                        if binding.video.type_modifier else None)
+                        if binding.video else None),
+                    video_instruction=(replace(binding.video_instruction,
+                        sat_modifier=rename(binding.video_instruction.sat_modifier)
+                        if binding.video_instruction.sat_modifier else None,
+                        po_modifier=rename(binding.video_instruction.po_modifier)
+                        if binding.video_instruction.po_modifier else None)
+                        if binding.video_instruction else None),
                     type_expression=replace(
                         binding.type_expression,
                         modifier_field_id=(

@@ -444,6 +444,10 @@ $defs:
       - tcgen_num
       - tcgen_red_op
       - tcgen_wait
+      - video_scale
+      - video_shift_mode
+      - video_secondary_op
+      - video_type
       - memory_order
       - proxy
       - proxy_pair
@@ -638,6 +642,10 @@ $defs:
                 - tcgen_num
                 - tcgen_red_op
                 - tcgen_wait
+                - video_scale
+                - video_shift_mode
+                - video_secondary_op
+                - video_type
                 - memory_order
                 - proxy
                 - proxy_pair
@@ -713,6 +721,9 @@ $defs:
       - fabric_handle
       - surface_access
       - surface_query_resource
+      - stack_token
+      - local_allocation_result
+      - video_operand
       - texture_access
       - texture_query_resource
       - texture_result
@@ -792,6 +803,18 @@ $defs:
 
       access:
         $ref: "#/$defs/operand_access"
+
+      video:
+        type: object
+        additionalProperties: false
+        required: [position, selector]
+        properties:
+          position: {enum: [destination, a, b, c]}
+          selector: {enum: [none, optional_scalar, required_scalar, half_swizzle, byte_swizzle, half_mask, byte_mask]}
+          type_modifier: {$ref: "#/$defs/schema_identifier"}
+          type_use: {enum: [unsigned, modifier_field, bit_carrier]}
+          allow_immediate: {type: boolean}
+          allow_negate: {type: boolean}
 
       type:
         description: >
@@ -1675,6 +1698,16 @@ $defs:
         type: string
         enum: [none, async_group, bulk_group, mbarrier_complete_tx_bytes, mbarrier_complete_tx16b, fabric_read_wait, wgmma_group, tcgen_load_wait, tcgen_store_wait, tcgen_mbarrier_arrive_one]
 
+      stack:
+        description: "Static operation, scalar width and default byte alignment."
+        type: object
+        additionalProperties: false
+        required: [operation, width]
+        properties:
+          operation: {enum: [save, restore, allocate]}
+          width: {enum: [32, 64]}
+          default_alignment: {const: 8}
+
       fabric:
         description: "Typed static CFT requirements of one exact fabric form."
         type: object
@@ -1699,6 +1732,16 @@ $defs:
           query: {enum: [width, height, depth, channel_data_type, channel_order, array_size, memory_layout]}
           vector_arity: {enum: [1, 2, 4]}
           indirect_availability: {$ref: "#/$defs/availability"}
+      video:
+        type: object
+        additionalProperties: false
+        required: [lanes, operation]
+        properties:
+          lanes: {enum: [scalar, two, four]}
+          operation: {enum: [arithmetic, shift, compare, mad]}
+          sat_modifier: {$ref: "#/$defs/schema_identifier"}
+          po_modifier: {$ref: "#/$defs/schema_identifier"}
+
       texture:
         description: "Typed static contract for a texture-family exact form."
         type: object

@@ -9,6 +9,7 @@ SPEC_DIR = packaged_spec_dir()
 
 EXPECTED_FILES = {
     "surface.yaml": ("surface", "surface", "9.7.12"),
+    "video.yaml": ("video", "video", "9.7.19"),
     "arithmetic.yaml": ("arithmetic", "arithmetic", None),
     "comparison_and_selection.yaml": (
         "comparison_and_selection",
@@ -41,6 +42,31 @@ EXPECTED_SECTIONS = {
         "sust": {"9.7.12.2"},
         "sured": {"9.7.12.3"},
         "suq": {"9.7.12.4"},
+    },
+    "video.yaml": {
+        "vadd": {"9.7.19.1.1"},
+        "vsub": {"9.7.19.1.1"},
+        "vmad": {"9.7.19.1.3"},
+        "vabsdiff": {"9.7.19.1.1"},
+        "vmin": {"9.7.19.1.1"},
+        "vmax": {"9.7.19.1.1"},
+        "vshl": {"9.7.19.1.2"},
+        "vshr": {"9.7.19.1.2"},
+        "vset": {"9.7.19.1.4"},
+        "vadd2": {"9.7.19.2.1"},
+        "vsub2": {"9.7.19.2.1"},
+        "vavrg2": {"9.7.19.2.1"},
+        "vabsdiff2": {"9.7.19.2.1"},
+        "vmin2": {"9.7.19.2.1"},
+        "vmax2": {"9.7.19.2.1"},
+        "vset2": {"9.7.19.2.2"},
+        "vadd4": {"9.7.19.2.3"},
+        "vsub4": {"9.7.19.2.3"},
+        "vavrg4": {"9.7.19.2.3"},
+        "vabsdiff4": {"9.7.19.2.3"},
+        "vmin4": {"9.7.19.2.3"},
+        "vmax4": {"9.7.19.2.3"},
+        "vset4": {"9.7.19.2.4"},
     },
     "arithmetic.yaml": {
         "add": {"9.7.1.1", "9.7.2.1", "9.7.3.3", "9.7.4.1", "9.7.5.1"},
@@ -211,7 +237,7 @@ class PtxSpecTaxonomyTests(unittest.TestCase):
             paths,
             set(EXPECTED_FILES)
             | {"asynchronous_warpgroup_matrix_multiply_accumulate.yaml",
-               "tensor_memory_data_movement.yaml", "texture.yaml"},
+               "tensor_memory_data_movement.yaml", "texture.yaml", "stack_manipulation.yaml"},
         )
 
         for name, (category, codegen_category, section) in EXPECTED_FILES.items():

@@ -35,6 +35,10 @@ class SemanticDomain(Enum):
     TCGEN_NUM = "tcgen_num"
     TCGEN_RED_OP = "tcgen_red_op"
     TCGEN_WAIT = "tcgen_wait"
+    VIDEO_SCALE = "video_scale"
+    VIDEO_SHIFT_MODE = "video_shift_mode"
+    VIDEO_SECONDARY_OP = "video_secondary_op"
+    VIDEO_TYPE = "video_type"
     ASYNC_PROXY_KIND = "async_proxy_kind"
     PROXY_KIND_PAIR = "proxy_kind_pair"
     SPECIAL_REGISTER = "special_register"
@@ -64,12 +68,20 @@ MODIFIER_SEMANTIC_DOMAINS = MappingProxyType({
     ModifierKind.TCGEN_NUM: SemanticDomain.TCGEN_NUM,
     ModifierKind.TCGEN_RED_OP: SemanticDomain.TCGEN_RED_OP,
     ModifierKind.TCGEN_WAIT: SemanticDomain.TCGEN_WAIT,
+    ModifierKind.VIDEO_SCALE: SemanticDomain.VIDEO_SCALE,
+    ModifierKind.VIDEO_SHIFT_MODE: SemanticDomain.VIDEO_SHIFT_MODE,
+    ModifierKind.VIDEO_SECONDARY_OP: SemanticDomain.VIDEO_SECONDARY_OP,
+    ModifierKind.VIDEO_TYPE: SemanticDomain.VIDEO_TYPE,
     ModifierKind.PROXY: SemanticDomain.ASYNC_PROXY_KIND,
     ModifierKind.PROXY_PAIR: SemanticDomain.PROXY_KIND_PAIR,
 })
 
 
 SEMANTIC_DOMAIN_VALUES = MappingProxyType({
+    SemanticDomain.VIDEO_SCALE: frozenset({'none', 'shr15', 'shr7'}),
+    SemanticDomain.VIDEO_SHIFT_MODE: frozenset({'wrap', 'clamp'}),
+    SemanticDomain.VIDEO_SECONDARY_OP: frozenset({'none', 'min', 'add', 'max'}),
+    SemanticDomain.VIDEO_TYPE: frozenset({'s32', 'u32'}),
     # PTX scalar types are intentionally broader than the current C++ map.
     SemanticDomain.SCALAR_TYPE: frozenset({
         "pred", "b1", "b2", "b4", "b6", "b8", "b16", "b32", "b64", "b128",
@@ -147,6 +159,8 @@ SEMANTIC_DOMAIN_VALUES = MappingProxyType({
 # the vocabulary avoids leaking sentinel branches through normalizers and
 # generators.
 SEMANTIC_DOMAIN_DEFAULT_ONLY_VALUES = MappingProxyType({
+    SemanticDomain.VIDEO_SECONDARY_OP: frozenset({"none"}),
+    SemanticDomain.VIDEO_SCALE: frozenset({"none"}),
     SemanticDomain.CACHE_OPERATOR: frozenset({"unspecified"}),
     SemanticDomain.EVICTION_PRIORITY: frozenset({"invalid"}),
     SemanticDomain.PREFETCH_SIZE: frozenset({"none"}),

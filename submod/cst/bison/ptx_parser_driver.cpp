@@ -224,18 +224,69 @@ ExpressionGuard::~ExpressionGuard() {
   driver->initializer_anchor = previous_initializer_anchor;
 }
 
-PtxParserDriver::PtxParserDriver(std::string_view source, EntryMode mode)
-    : entry_mode(mode), lexer_(source) {}
+PtxParserDriver::PtxParserDriver(std::string_view source) : lexer_(source) {}
 
-CstParseResult PtxParserDriver::parse() {
+void PtxParserDriver::beginEntry(EntryMode mode) {
+  entry_mode = mode;
+  entry_pending = true;
+  entry_first = next_;
+  root.reset();
+  diagnostics.clear();
+  remaining_depth = PtxCstParser::maxConstantTreeDepth;
+  expected.reset();
+  expected_name.clear();
+  statement_first = next_;
+  recovery_error.reset();
+  operand_expected = true;
+  unclassified_paren.reset();
+  initializer_anchor.reset();
+  initializer_child_pending = false;
+  declaration_space = TokenKind::DotGlobal;
+  declaration_external = false;
+  parameterized_declarator = false;
+  body_eligible = false;
+  next_item = true;
+  bodies.clear();
+  nested_depth = 0;
+  shifted_through_ = next_ == 0 ? std::nullopt : std::optional{next_ - 1};
+  last_ = shifted_through_.value_or(0);
+  pending_diagnostic_.reset();
+}
+
+void PtxParserDriver::retainFailureCursor() {
+  // Syntax failures retain Bison's eager lookahead; action failures can happen
+  // after their last fetched token was consumed, before a successor was fetched.
+  next_ = shifted_through_ && last_ <= *shifted_through_ ? *shifted_through_ + 1
+                                                         : last_;
+}
+
+CstParseResult PtxParserDriver::parse(EntryMode mode) {
+  if (exhausted_) {
+    CstParseDiagnostic diagnostic{
+        eof_range_,
+        mode == EntryMode::Instruction ? "expected instruction opcode"
+                                       : "expected module item",
+        mode == EntryMode::Instruction ? std::optional{TokenKind::Ident}
+                                       : std::nullopt};
+    return {.value = std::nullopt, .diagnostics = {std::move(diagnostic)}};
+  }
+  beginEntry(mode);
   try {
-    GeneratedPtxParser parser(*this);
-    const auto status = parser.parse();
-    if (status != 0 || !root)
+    int status;
+    {
+      GeneratedPtxParser parser(*this);
+      status = parser.parse();
+    }
+    if (status != 0 || !root) {
+      retainFailureCursor();
       return {.value = std::nullopt, .diagnostics = std::move(diagnostics)};
+    }
+    eof_range_ = tokens_.back().range;
+    exhausted_ = true;
     return {.value = syntax_cst::CstFile{std::move(tokens_), std::move(*root)},
             .diagnostics = std::move(diagnostics)};
   } catch (GeneratedParseFailure& failure) {
+    retainFailureCursor();
     diagnostics.push_back(std::move(failure.diagnostic));
     return {.value = std::nullopt, .diagnostics = std::move(diagnostics)};
   }
@@ -443,13 +494,20 @@ syntax_cst::CstInstruction PtxParserDriver::instruction(
           std::move(operands),       semicolon,   {head.first, semicolon + 1}};
 }
 
+std::optional<PtxParserDriver::TokenId> PtxParserDriver::numericRegister(
+    syntax_cst::CstTokenRange range) const {
+  for (auto i = range.first; i < range.last; ++i)
+    if (token(i).kind == TokenKind::Ident && token(i).text.starts_with('%'))
+      return i;
+  return std::nullopt;
+}
+
 syntax_cst::CstNumericOperand PtxParserDriver::numeric(
     ParsedExpression expression) const {
   using namespace syntax_cst;
   const auto range = expression.expression.token_range;
-  for (auto i = range.first; i < range.last; ++i)
-    if (token(i).kind == TokenKind::Ident && token(i).text.starts_with('%'))
-      fail(i, "registers cannot participate in constant expressions");
+  if (const auto reg = numericRegister(range))
+    fail(*reg, "registers cannot participate in constant expressions");
   const auto& node = expression.expression.node;
   if (const auto* literal = std::get_if<CstConstantLiteral>(&node))
     return CstImmediate{std::nullopt, literal->literal, range};
@@ -527,9 +585,10 @@ void PtxParserDriver::failRange(SourceRange range, std::string message,
 void PtxParserDriver::diagnose(CstParseDiagnostic diagnostic) {
   if (entry_mode == EntryMode::Instruction)
     throw GeneratedParseFailure{std::move(diagnostic)};
-  recovery_error = shifted_through_ && lookahead() <= *shifted_through_
-                       ? *shifted_through_ + 1
-                       : lookahead();
+  if (!recovery_error)
+    recovery_error = shifted_through_ && lookahead() <= *shifted_through_
+                         ? *shifted_through_ + 1
+                         : lookahead();
   diagnostics.push_back(std::move(diagnostic));
 }
 
@@ -564,7 +623,7 @@ void PtxParserDriver::beginStatement(TokenId first) {
 }
 
 CstParseResult parseGenerated(std::string_view source, EntryMode mode) {
-  return PtxParserDriver(source, mode).parse();
+  return PtxParserDriver(source).parse(mode);
 }
 
 GeneratedPtxParser::symbol_type yylex(PtxParserDriver& driver) {

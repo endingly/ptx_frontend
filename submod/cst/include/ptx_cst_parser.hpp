@@ -1,20 +1,23 @@
 #pragma once
 
 #include <cstddef>
-#include <expected>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include <ptx_frontend/cst/ptx_cst.hpp>
 #include <ptx_frontend/lexer/ptx_lexer.hpp>
 
 namespace ptx_frontend {
 
+/** One source-located parser failure, optionally naming a missing token kind. */
 struct CstParseDiagnostic {
+  /** Original source span; missing-token diagnostics can use an anchor location. */
   SourceRange range;
+  /** Owned human-readable failure explanation. */
   std::string message;
+  /** Present only when the grammar requires a particular missing token kind. */
   std::optional<TokenKind> expected_kind;
 };
 
@@ -22,142 +25,35 @@ using CstParseDiagnostics = DiagnosticCollection<CstParseDiagnostic>;
 using CstParseResult =
     ResultWithDiagnostics<syntax_cst::CstFile, CstParseDiagnostic>;
 
-/** Parses a PTX instruction fragment or module into a lossless CST. */
+/** Owns one source stream and parses a fragment or module into a lossless CST. */
 class PtxCstParser {
  public:
   /** Maximum permitted height of a constant expression or initializer tree. */
   static constexpr std::size_t maxConstantTreeDepth = 128;
 
+  /** Copy source into an owned scanner; the caller's view need not stay alive. */
   explicit PtxCstParser(std::string_view source);
+  /** Destroy private parser state without exposing generated implementation types. */
+  ~PtxCstParser();
+  /** Scanner ownership cannot be duplicated. */
+  PtxCstParser(const PtxCstParser&) = delete;
+  /** Scanner ownership cannot be reassigned by copying. */
+  PtxCstParser& operator=(const PtxCstParser&) = delete;
+  /** Preserve the established nonmovable stream-owning public type. */
+  PtxCstParser(PtxCstParser&&) = delete;
+  /** Preserve the established nonmovable stream-owning public type. */
+  PtxCstParser& operator=(PtxCstParser&&) = delete;
 
+  /** Parse one complete instruction; a value exhausts the stream, failure retains it. */
   CstParseResult parseInstruction();
+  /** Parse/recover a module; any returned value transfers and exhausts the stream. */
   CstParseResult parseModule();
 
  private:
-  using TokenId = syntax_cst::TokenId;
-
-  enum class RecoveryStop {
-    Semicolon,
-    RightBrace,
-    FunctionBoundary,
-    ModuleItem,
-    Eof,
-  };
-
-  enum class RecoveryContext {
-    FunctionBody,
-    Module,
-  };
-
-  struct RecoveryResult {
-    std::vector<syntax_cst::CstRecoveryNode> nodes;
-    std::optional<TokenId> last;
-    RecoveryStop stop{};
-  };
-
-  /** A parsed expression together with its private structural tree height. */
-  struct ParsedConstantExpression {
-    syntax_cst::CstConstantExpression expression;
-    /** Leaf expressions have height one; each expression wrapper adds one. */
-    std::size_t depth{};
-  };
-
-  /** A parsed initializer together with its private structural tree height. */
-  struct ParsedInitializer {
-    syntax_cst::CstInitializer initializer;
-    /** Scalar initializer wrappers add no height; initializer lists add one. */
-    std::size_t depth{};
-  };
-
-  [[nodiscard]] TokenId peek();
-  /** Read one token beyond the current lookahead without consuming either. */
-  [[nodiscard]] TokenId peekNext();
-  TokenId consume();
-  [[nodiscard]] const PtxToken& token(TokenId id) const;
-  /** Build a diagnostic for a source tree that exceeds the active depth budget. */
-  [[nodiscard]] CstParseDiagnostic depthLimitExceeded(
-      TokenId id, std::string_view tree_kind) const;
-  [[nodiscard]] bool atImmediateStart();
-  /** Test a numeric expression prefix without consuming register/address syntax. */
-  [[nodiscard]] bool atNumericStart();
-  /** Parse a numeric leaf while preserving the legacy single-literal shape. */
-  std::expected<syntax_cst::CstNumericOperand, CstParseDiagnostic>
-  parseNumericOperand(int minimum_precedence = 0);
-  [[nodiscard]] RecoveryResult recover(TokenId first,
-                                       const CstParseDiagnostic& diagnostic,
-                                       RecoveryContext context);
-
-  std::expected<TokenId, CstParseDiagnostic> expect(TokenKind kind,
-                                                    std::string_view name);
-  std::expected<TokenId, CstParseDiagnostic> expectIntegerLiteral(
-      std::string_view name);
-  std::expected<syntax_cst::CstImmediate, CstParseDiagnostic> parseImmediate(
-      bool allow_sign = true);
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseOperand();
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
-  parseBracketedAddress(TokenId open);
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseVectorPack(
-      TokenId open);
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
-  parseCallParameterList(syntax_cst::CstCallParameterListKind kind);
-  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
-  parseCallOperands();
-  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
-  parseBranchOperands();
-  std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
-  parseIndexedBranchOperands();
-  std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
-  parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
-  std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantExpression(int minimum_precedence, std::size_t remaining_depth);
-  std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantUnary(std::size_t remaining_depth);
-  std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantPrimary(std::size_t remaining_depth);
-  std::expected<ParsedInitializer, CstParseDiagnostic> parseInitializer(
-      std::size_t remaining_depth);
-  std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
-  parseVariableDeclaration(std::vector<TokenId> qualifiers = {},
-                           std::optional<TokenId> first_token = std::nullopt);
-  std::expected<syntax_cst::CstAttributeList, CstParseDiagnostic>
-  parseAttributeList();
-  std::expected<syntax_cst::CstFunctionParameter, CstParseDiagnostic>
-  parseFunctionParameter();
-  std::expected<syntax_cst::CstFunctionParameterList, CstParseDiagnostic>
-  parseFunctionParameterList();
-  std::expected<syntax_cst::CstCallPrototype, CstParseDiagnostic>
-  parseCallPrototype(TokenId label, TokenId colon);
-  std::expected<syntax_cst::CstCallTargets, CstParseDiagnostic>
-  parseCallTargets(TokenId label, TokenId colon);
-  std::expected<syntax_cst::CstBranchTargets, CstParseDiagnostic>
-  parseBranchTargets(TokenId label, TokenId colon);
-  std::expected<syntax_cst::CstLocDirective, CstParseDiagnostic>
-  parseLocDirective();
-  std::expected<syntax_cst::CstPragma, CstParseDiagnostic> parsePragma();
-  std::expected<syntax_cst::CstKernelResourceDirective, CstParseDiagnostic>
-  parseKernelResourceDirective();
-  std::expected<syntax_cst::CstLanguageDirective, CstParseDiagnostic>
-  parseLanguageDirective();
-  std::expected<syntax_cst::CstAliasDirective, CstParseDiagnostic>
-  parseAliasDirective();
-  std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
-  parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
-                        std::size_t block_depth = 0);
-  std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock(
-      CstParseDiagnostics& diagnostics, std::size_t block_depth);
-  std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
-  parseModuleDirective();
-  std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
-  parseSectionDirective();
-  std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
-      std::vector<TokenId> qualifiers, TokenId first_token,
-      CstParseDiagnostics& diagnostics);
-
-  PtxLexer lexer_;
-  std::vector<PtxToken> tokens_;
-  std::optional<TokenId> peeked_;
-  /** One lexed successor retained until the current token is consumed. */
-  std::optional<TokenId> buffered_next_;
+  /** Hides the persistent driver and all generated parser headers from consumers. */
+  struct Impl;
+  /** Sole owner of scanner/cursor state; results independently own transferred tokens. */
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace ptx_frontend

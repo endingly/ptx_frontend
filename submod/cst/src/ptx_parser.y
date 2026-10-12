@@ -51,7 +51,7 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::CstCallParameterList> input_list return_list
 %type <std::vector<syntax_cst::CstCallParameter>> input_parameters input_parameters_nonempty
 %type <syntax_cst::CstAddressBase> address_base bracket_component input_parameter
-%type <AddressContent> address_content
+%type <AddressContent> address_content bracket_content
 %type <BracketHeads> bracket_heads
 %type <std::optional<syntax_cst::CstAddressOffset>> address_offset
 %type <std::optional<syntax_cst::TokenId>> unified selector
@@ -78,7 +78,8 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::CstAttributeList> attributes attribute_list
 %type <std::optional<syntax_cst::CstAttributeList>> optional_attributes
 %type <syntax_cst::CstFunctionParameter> parameter parameter_head parameter_base
-%type <syntax_cst::TokenId> parameter_space pointer_space
+%type <syntax_cst::TokenId> parameter_space pointer_space invalid_parameter_space version_value section_name
+%type <syntax_cst::TokenId> address_size file_index file_timestamp file_size
 %type <syntax_cst::CstFunctionParameterList> parameter_list parameters parameters_nonempty
 %type <std::optional<syntax_cst::CstFunctionParameterList>> optional_parameters
 %type <syntax_cst::CstFunction> entry_head func_head function_header function_open
@@ -97,7 +98,7 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::CstLocDirective> location
 %type <std::optional<syntax_cst::CstLocInlineContext>> inline_context
 %type <std::optional<syntax_cst::TokenId>> inline_offset
-%type <syntax_cst::TokenId> identifier_or_dot prototype_sink section_atom raw_atom
+%type <syntax_cst::TokenId> prototype_sink section_atom raw_atom
 %type <syntax_cst::TokenId> rejected_module_identifier
 %type <syntax_cst::TokenId> dimension_open
 %type <syntax_cst::TokenId> rejected_module_token rejected_body_token
@@ -246,11 +247,11 @@ bracket_operand:
     const auto last = $4 ? *$4 + 1 : $3 + 1;
     $$ = CstAddress{$1, std::move($2.base), std::move($2.offset), $3, $4, {$1,last}};
   }
-| LBRACKET address_content COMMA vector RBRACKET {
+| LBRACKET bracket_content vector RBRACKET {
     $$ = CstTensorOperand{$1,
         CstAddress{std::nullopt,std::move($2.base),std::move($2.offset),
-                   std::nullopt,std::nullopt,{$1+1,$3}},
-        $3,std::move($4),$5,{$1,$5+1}};
+                   std::nullopt,std::nullopt,{$1+1,$2.token_range.last}},
+        $2.token_range.last,std::move($3),$4,{$1,$4+1}};
   }
 | LBRACKET bracket_heads RBRACKET {
     $$ = CstFabricHandle{std::move($2.heads),std::move($2.commas),$1,$3,{$1,$3+1}};
@@ -260,11 +261,18 @@ bracket_operand:
     $$ = CstCompoundBracket{std::move($2.heads),std::move($2.commas),
                             std::move($4),$1,$5,{$1,$5+1}};
   };
+bracket_content: address_content COMMA {
+  // A coordinate pack permits the endpoint offset; scalar fabric components
+  // reject it before parsing any component, even when that component is invalid.
+  driver.markShifted($2); PTX_FETCH_LOOKAHEAD();
+  if($1.offset && driver.token(driver.lookahead()).kind!=TokenKind::LBrace)
+    driver.fail($2,"fabric handle endpoint cannot have an offset");
+  $$=std::move($1);
+};
 bracket_heads:
-  address_content COMMA bracket_component {
-    if ($1.offset) driver.fail($2,"fabric handle endpoint cannot have an offset");
-    $$.heads.push_back(std::move($1.base)); $$.heads.push_back(std::move($3));
-    $$.commas.push_back($2);
+  bracket_content bracket_component {
+    $$.heads.push_back(std::move($1.base)); $$.heads.push_back(std::move($2));
+    $$.commas.push_back($1.token_range.last);
   }
 | bracket_heads COMMA bracket_component {
     $1.heads.push_back(std::move($3)); $1.commas.push_back($2); $$ = std::move($1);
@@ -341,13 +349,13 @@ call_operands:
   };
 module: module_items {
   if($1.empty()) driver.fail(driver.lookahead(),"expected module item");
-  TokenId last=0;
+  TokenId last=driver.entry_first;
   for(const auto& item:$1) std::visit([&](const auto& node) {
     using T=std::decay_t<decltype(node)>;
     if constexpr(std::is_same_v<T,CstRecoveryNode>) { if(node.token_range) last=std::max(last,node.token_range->last); }
     else last=std::max(last,node.token_range.last);
   },item);
-  $$={std::move($1),{0,std::max(last,1u)}};
+  $$={std::move($1),{driver.entry_first,std::max(last,driver.entry_first+1)}};
 };
 module_items:
   %empty { driver.itemBoundary(); }
@@ -507,12 +515,19 @@ initializer_elements:
 initializer_nonempty:
   initializer { $$.depth=$1.depth; $$.elements.push_back(std::move($1.initializer)); }
 | initializer_nonempty COMMA initializer { $1.commas.push_back($2); $1.depth=std::max($1.depth,$3.depth); $1.elements.push_back(std::move($3.initializer)); $$=std::move($1); };
-parameter_space: state_space {
-  driver.markShifted($1);
-  if(driver.token($1).kind!=TokenKind::DotReg && driver.token($1).kind!=TokenKind::DotParam)
-    driver.fail($1,"expected '.reg' or '.param' parameter");
-  $$=$1;
-};
+parameter_space: DOT_REG { driver.markShifted($1); $$=$1; }
+| DOT_PARAM { driver.markShifted($1); $$=$1; };
+// Invalid state candidates reduce directly as a failed parameter, before a
+// following type can trigger LAC. RP remains the empty-list terminator; commas
+// retain their separate leading/separator/trailing productions below.
+invalid_parameter_space:
+  LITERAL | identifier | dot_identifier | LP | QUESTION | COLON | SEMI | AT | LBRACKET | RBRACKET
+| PLUS | MINUS | NOT | TILDE | STAR | SLASH | PERCENT | SHL | SHR | LT | LE | GT | GE | EQ | NE | AMP | CARET | PIPE | AND | OR
+| DOT_GLOBAL | DOT_CONST | DOT_SHARED | DOT_LOCAL | DOT_WEAK | ENTRY | DOT_VERSION | DOT_TARGET | DOT_ADDRESS_SIZE
+| DOT_LOC | DOT_PRAGMA | DOT_FILE | DOT_SECTION | DOT_EXTERN | DOT_VISIBLE | DOT_FUNC | DOT_CALL_PROTOTYPE
+| DOT_CALL_TARGETS | DOT_BRANCH_TARGETS | DOT_MAXNREG | DOT_MAXNTID | DOT_REQNTID | DOT_MINNCTAPERSM
+| DOT_REQNCTAPERCLUSTER | DOT_EXPLICITCLUSTER | DOT_MAXCLUSTERRANK | DOT_NORETURN | DOT_ALIGN | DOT_PTR | DOT_TEX
+| STRING | DOT | EQ_ASSIGN | INVALID | LBRACE | RBRACE;
 pointer_space: DOT_CONST | DOT_GLOBAL | DOT_LOCAL | DOT_SHARED;
 parameter_base: parameter_space alignment dot_identifier {
   driver.markShifted($3);
@@ -530,7 +545,10 @@ parameter_head: parameter_base { $$=std::move($1); }
 | parameter_base DOT_PTR DOT_ALIGN decimal {
   $1.pointer_directive=$2; $1.pointer_align_directive=$3; $1.pointer_alignment=$4; $$=std::move($1);
 };
-parameter: parameter_head identifier {
+parameter: invalid_parameter_space {
+  driver.markShifted($1); driver.fail($1,"expected '.reg' or '.param' parameter");
+}
+| parameter_head identifier {
   $$=std::move($1); $$.name=$2; $$.token_range={$$.state_space,$2+1}; driver.markShifted($2);
 }
 | parameter_head identifier LBRACKET optional_expression RBRACKET {
@@ -545,6 +563,9 @@ parameters_nonempty:
   parameter { $$.parameters.push_back(std::move($1)); }
 | parameters_nonempty COMMA parameter { $1.commas.push_back($2); $1.parameters.push_back(std::move($3)); $$=std::move($1); }
 | parameters_nonempty COMMA RP {
+  driver.markShifted($3); driver.fail($3,"expected '.reg' or '.param' parameter");
+}
+| parameters_nonempty COMMA COMMA {
   driver.markShifted($3); driver.fail($3,"expected '.reg' or '.param' parameter");
 };
 parameter_list: LP parameters RP {
@@ -690,24 +711,48 @@ resource:
   $$.values=std::move($2); for(std::size_t i=1;i<$$.values.size();++i) $$.commas.push_back($$.values[i]-1);
   $$.token_range={$1,$$.values.back()+1}; driver.markShifted($$.values.back());
 };
+version_value: LITERAL {
+  if(driver.token($1).kind!=TokenKind::F64) {
+    // An expect-style rejection leaves the real token available to recovery,
+    // even if generated lookahead has already fetched its successor.
+    driver.recovery_error=$1;
+    driver.fail($1,"expected PTX version",TokenKind::F64);
+  }
+  driver.markShifted($1); $$=$1;
+};
+address_size: LITERAL {
+  if(driver.token($1).kind!=TokenKind::Decimal) driver.recovery_error=$1;
+  $$=driver.literal($1,"address size"); driver.markShifted($1);
+};
+file_index: LITERAL {
+  if(driver.token($1).kind!=TokenKind::Decimal && driver.token($1).kind!=TokenKind::Hex)
+    driver.recovery_error=$1;
+  $$=driver.literal($1,"file index",true,false); driver.markShifted($1);
+};
+file_timestamp: LITERAL {
+  if(driver.token($1).kind!=TokenKind::Decimal) driver.recovery_error=$1;
+  $$=driver.literal($1,"file timestamp"); driver.markShifted($1);
+};
+file_size: LITERAL {
+  if(driver.token($1).kind!=TokenKind::Decimal) driver.recovery_error=$1;
+  $$=driver.literal($1,"file size"); driver.markShifted($1);
+};
 module_directive:
-  DOT_VERSION LITERAL optional_semi {
-    if(driver.token($2).kind!=TokenKind::F64) driver.fail($2,"expected PTX version",TokenKind::F64);
+  DOT_VERSION version_value optional_semi {
     $$={$1,{$2},{},$3,{$1,$3.value_or($2)+1}}; driver.markShifted($$.token_range.last-1);
   }
-| DOT_ADDRESS_SIZE decimal optional_semi { $$={$1,{$2},{},$3,{$1,$3.value_or($2)+1}}; driver.markShifted($$.token_range.last-1); }
+| DOT_ADDRESS_SIZE address_size optional_semi { $$={$1,{$2},{},$3,{$1,$3.value_or($2)+1}}; driver.markShifted($$.token_range.last-1); }
 | DOT_TARGET target_values optional_semi {
   const auto last=$3.value_or($2.back()); std::vector<TokenId> commas;
   for(std::size_t i=1;i<$2.size();++i) commas.push_back($2[i]-1);
   $$={$1,std::move($2),std::move(commas),$3,{$1,last+1}}; driver.markShifted(last);
 }
-| DOT_FILE integer STRING optional_semi { $$={$1,{$2,$3},{},$4,{$1,$4.value_or($3)+1}}; driver.markShifted($$.token_range.last-1); }
-| DOT_FILE integer STRING COMMA decimal COMMA decimal optional_semi { $$={$1,{$2,$3,$5,$7},{$4,$6},$8,{$1,$8.value_or($7)+1}}; driver.markShifted($$.token_range.last-1); };
+| DOT_FILE file_index STRING optional_semi { $$={$1,{$2,$3},{},$4,{$1,$4.value_or($3)+1}}; driver.markShifted($$.token_range.last-1); }
+| DOT_FILE file_index STRING COMMA file_timestamp COMMA file_size optional_semi { $$={$1,{$2,$3,$5,$7},{$4,$6},$8,{$1,$8.value_or($7)+1}}; driver.markShifted($$.token_range.last-1); };
 alias: ALIAS identifier COMMA identifier SEMI { $$={$1,$2,$3,$4,$5,{$1,$5+1}}; driver.markShifted($5); };
 target_values:
   identifier { $$={$1}; }
 | target_values COMMA identifier { $1.push_back($3); $$=std::move($1); };
-identifier_or_dot: identifier | dot_identifier;
 loc_file: LITERAL { $$=driver.literal($1,"source file index",true,false); driver.markShifted($1); };
 loc_line: LITERAL { $$=driver.literal($1,"source line number"); driver.markShifted($1); };
 loc_column: LITERAL { $$=driver.literal($1,"source column position"); driver.markShifted($1); };
@@ -769,7 +814,13 @@ branch_target_values:
 branch_targets: identifier COLON DOT_BRANCH_TARGETS branch_target_values SEMI {
   $$=std::move($4); $$.label=$1; $$.colon=$2; $$.directive=$3; $$.semicolon=$5; $$.token_range={$1,$5+1}; driver.markShifted($5);
 };
-section: DOT_SECTION identifier_or_dot LBRACE section_payload RBRACE optional_semi {
+section_name: source_token {
+  driver.markShifted($1);
+  if(driver.token($1).kind!=TokenKind::Ident && driver.token($1).kind!=TokenKind::DotIdent)
+    driver.fail($1,"expected section name");
+  $$=$1;
+};
+section: DOT_SECTION section_name LBRACE section_payload RBRACE optional_semi {
   const auto last=$6.value_or($5); $$={$1,$2,$3,std::move($4),$5,$6,{$1,last+1}}; driver.markShifted(last);
 };
 section_payload:
@@ -987,6 +1038,19 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
   }
   CstParseDiagnostic diagnostic{driver.token(driver.lookahead()).range,"expected operand",std::nullopt};
   const auto current=driver.lookahead();
+  bool initial_address_base=false, named_index_close=false, coordinates_close=false, fabric_close=false;
+  for(int i=0;i<yystack_.size();++i) {
+    const auto kind=yystack_[i].kind();
+    coordinates_close|=kind==symbol_kind::S_vector;
+    fabric_close|=kind==symbol_kind::S_bracket_heads || kind==symbol_kind::S_bracket_component;
+    if(kind==symbol_kind::S_LBRACKET) {
+      initial_address_base=i==0;
+      named_index_close=i+1<yystack_.size() && yystack_[i+1].kind()==symbol_kind::S_identifier;
+      break;
+    }
+    if(kind==symbol_kind::S_ordinary_head || kind==symbol_kind::S_call_head ||
+        kind==symbol_kind::S_module_items || kind==symbol_kind::S_body) break;
+  }
   // LAC may reject lookahead before an empty context action runs. The live
   // generated stack still identifies the owning production without reparsing
   // source tokens or consuming the offending lookahead.
@@ -1065,7 +1129,10 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
     diagnostic.message="expected "+driver.expected_name;
     diagnostic.expected_kind=TokenKind::RParen;
   } else if(rb && !operand) {
-    diagnostic.message="expected ']'"; diagnostic.expected_kind=TokenKind::RBracket;
+    diagnostic.message=named_index_close?"expected ']' after named-array index":
+        coordinates_close?(fabric_close?"expected ']' after compound bracket coordinates":"expected ']' after tensor coordinates"):
+        fabric_close?"expected ']' after fabric handle":"expected ']'";
+    diagnostic.expected_kind=TokenKind::RBracket;
   } else if(comma && !operand && !semi && spelling=="brx") {
     diagnostic.message="expected ',' after brx.idx index register";
     diagnostic.expected_kind=TokenKind::Comma;
@@ -1088,6 +1155,8 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
     else if(offending==TokenKind::Comma && spelling=="brx")
       diagnostic.message="brx.idx accepts exactly an index and target list";
     else { diagnostic.message="expected ';'"; diagnostic.expected_kind=TokenKind::Semicolon; }
+  } else if(operand && initial_address_base && !named_index_close) {
+    diagnostic.message="expected address base"; diagnostic.expected_kind=TokenKind::Ident;
   } else if(operand) diagnostic.message="expected constant expression";
   if(driver.entry_mode==EntryMode::Module && head<0) {
     bool section_owner=false, file_owner=false, version_owner=false;
@@ -1097,11 +1166,27 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
     bool parameter_owner=false, parameter_base_owner=false, variable_name_owner=false;
     bool pointer_owner=false, pragma_owner=false, alias_owner=false, language_owner=false;
     bool resource_owner=false, single_resource=false, has_left_brace=false;
+    bool header_name_pending=false, header_identifier=false, header_parameter=false;
+    bool parameter_complete=false, prototype_sink_seen=false, prototype_sink_pending=false;
+    bool file_index_seen=false, file_string_seen=false;
+    int file_commas=0;
     std::string_view location_expected;
     std::optional<TokenKind> location_kind;
     for(int i=0;i<yystack_.size();++i) {
       const auto kind=yystack_[i].kind();
       if(kind==symbol_kind::S_module_items || kind==symbol_kind::S_body) break;
+      header_identifier|=kind==symbol_kind::S_identifier;
+      header_parameter|=kind==symbol_kind::S_LP;
+      parameter_complete|=kind==symbol_kind::S_parameter || kind==symbol_kind::S_parameters_nonempty ||
+          (kind==symbol_kind::S_parameter_head && header_identifier);
+      prototype_sink_seen|=kind==symbol_kind::S_prototype_sink;
+      if(kind==symbol_kind::S_DOT_CALL_PROTOTYPE)
+        prototype_sink_pending=!prototype_sink_seen && !parameter_owner && !header_parameter;
+      file_index_seen|=kind==symbol_kind::S_file_index;
+      file_string_seen|=kind==symbol_kind::S_STRING;
+      file_commas+=kind==symbol_kind::S_COMMA;
+      if(kind==symbol_kind::S_ENTRY || kind==symbol_kind::S_DOT_FUNC)
+        header_name_pending=!header_identifier && !header_parameter;
       has_left_brace|=kind==symbol_kind::S_LBRACE;
       if(location_expected.empty()) {
         if(kind==symbol_kind::S_inline_line) { location_expected="inlined source column position"; location_kind=TokenKind::Decimal; }
@@ -1148,12 +1233,14 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
          driver.token(current-2).kind==TokenKind::DotMinnctapersm ||
          driver.token(current-2).kind==TokenKind::DotMaxclusterrank)) {
       diagnostic.message="this kernel resource directive accepts one value"; diagnostic.expected_kind.reset();
-    } else if(driver.bodies.size() && (offending==TokenKind::DotCallPrototype ||
+    } else if(driver.bodies.size() && current==driver.statement_first && (offending==TokenKind::DotCallPrototype ||
         offending==TokenKind::DotCallTargets || offending==TokenKind::DotBranchTargets)) {
       diagnostic.message="'"+std::string(driver.token(current).text)+"' requires a preceding function-local label";
       diagnostic.expected_kind.reset();
     } else if(prototype_owner && semi) {
       diagnostic.message="expected ';' after .callprototype"; diagnostic.expected_kind=TokenKind::Semicolon;
+    } else if(prototype_sink_pending) {
+      diagnostic.message="expected '_' in .callprototype"; diagnostic.expected_kind=TokenKind::Ident;
     } else if(call_targets_owner || branch_targets_owner) {
       diagnostic.expected_kind.reset();
       if(branch_targets_owner && previous==TokenKind::Lt) {
@@ -1168,6 +1255,13 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
       else if(offending==TokenKind::Semicolon)
         diagnostic.message=call_targets_owner?".calltargets requires at least one function target":".branchtargets requires at least one label target";
       else { diagnostic.message=call_targets_owner?"expected call target function":"expected branch target label"; diagnostic.expected_kind=TokenKind::Ident; }
+    } else if(parameter_owner && rb && !operand) {
+      diagnostic.message="expected ']'"; diagnostic.expected_kind=TokenKind::RBracket;
+    } else if(parameter_complete && rp &&
+        !(offending==TokenKind::LBracket && previous==TokenKind::RBracket)) {
+      diagnostic.message="expected ')'"; diagnostic.expected_kind=TokenKind::RParen;
+    } else if(header_name_pending) {
+      diagnostic.message="expected function name"; diagnostic.expected_kind=TokenKind::Ident;
     } else if(parameter_owner && previous==TokenKind::DotAlign) {
       diagnostic.message=pointer_owner?"expected pointer alignment":"expected parameter alignment";
       diagnostic.expected_kind=TokenKind::Decimal;
@@ -1190,6 +1284,15 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
       diagnostic.expected_kind=has_left_brace?TokenKind::RBrace:TokenKind::LBrace;
     } else if(version_owner) {
       diagnostic.message="expected PTX version"; diagnostic.expected_kind=TokenKind::F64;
+    } else if(file_owner && comma) {
+      diagnostic.message="expected comma before file size"; diagnostic.expected_kind=TokenKind::Comma;
+    } else if(file_owner && !file_index_seen) {
+      diagnostic.message="expected file index"; diagnostic.expected_kind.reset();
+    } else if(file_owner && file_string_seen && file_commas) {
+      diagnostic.message=file_commas==1?"expected file timestamp":"expected file size";
+      diagnostic.expected_kind=TokenKind::Decimal;
+    } else if(other_owner && previous==TokenKind::DotAddressSize) {
+      diagnostic.message="expected address size"; diagnostic.expected_kind=TokenKind::Decimal;
     } else if(target_owner) {
       diagnostic.message=previous==TokenKind::Comma?"expected target option":"expected target architecture";
       diagnostic.expected_kind=TokenKind::Ident;
@@ -1204,12 +1307,8 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
     } else if(declaration_owner && !semi && !operand && !bracket) {
       diagnostic.message="expected variable type"; diagnostic.expected_kind=TokenKind::DotIdent;
     } else if(resource_owner) {
-      if(single_resource && offending==TokenKind::Comma) {
-        diagnostic.message="this kernel resource directive accepts one value"; diagnostic.expected_kind.reset();
-      } else {
-        diagnostic.message=previous==TokenKind::Comma?"expected kernel resource value after comma":"expected kernel resource value";
-        diagnostic.expected_kind=TokenKind::Decimal;
-      }
+      diagnostic.message=previous==TokenKind::Comma?"expected kernel resource value after comma":"expected kernel resource value";
+      diagnostic.expected_kind=TokenKind::Decimal;
     } else if(pragma_owner) {
       diagnostic.message=semi?"expected pragma terminator":previous==TokenKind::Comma?"expected pragma string after comma":"expected pragma string";
       diagnostic.expected_kind=semi?TokenKind::Semicolon:TokenKind::String;
@@ -1217,8 +1316,6 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
       diagnostic.message="expected ',' in .alias"; diagnostic.expected_kind=TokenKind::Comma;
     } else if(language_owner) {
       diagnostic.message="expected string or integer in .language"; diagnostic.expected_kind.reset();
-    } else if(file_owner && comma) {
-      diagnostic.message="expected comma before file size"; diagnostic.expected_kind=TokenKind::Comma;
     } else if(location_owner && comma) {
       diagnostic.message="expected comma before inlined_at"; diagnostic.expected_kind=TokenKind::Comma;
     } else if(file_owner && !operand) {
@@ -1241,6 +1338,64 @@ void ptx_frontend::detail::GeneratedPtxParser::report_syntax_error(const context
       diagnostic.message="expected module directive, variable declaration, or function";
       diagnostic.expected_kind.reset();
     }
+  }
+  // LAC can prove an operand is complete but reject the following statement
+  // token before numeric normalization runs. Validate only the live operand's
+  // completed expression; comma/head boundaries exclude prior plain registers.
+  if(semi && head>=0 && spelling.empty()) {
+    std::optional<TokenId> reg;
+    for(int i=0;i<head && !reg;++i) {
+      const auto kind=yystack_[i].kind();
+      if(kind==symbol_kind::S_COMMA) break;
+      switch(kind) {
+        case symbol_kind::S_expression:
+        case symbol_kind::S_numeric_expression:
+        case symbol_kind::S_operand_expression:
+        case symbol_kind::S_unary:
+        case symbol_kind::S_numeric_unary:
+        case symbol_kind::S_operand_unary:
+        case symbol_kind::S_postfix:
+        case symbol_kind::S_numeric_postfix:
+        case symbol_kind::S_atom:
+        case symbol_kind::S_numeric_atom:
+        case symbol_kind::S_cast_expression:
+        case symbol_kind::S_logical_or:
+        case symbol_kind::S_logical_and:
+        case symbol_kind::S_bit_or:
+        case symbol_kind::S_bit_xor:
+        case symbol_kind::S_bit_and:
+        case symbol_kind::S_equality:
+        case symbol_kind::S_relation:
+        case symbol_kind::S_shift:
+        case symbol_kind::S_sum:
+        case symbol_kind::S_product:
+        case symbol_kind::S_numeric_logical_or:
+        case symbol_kind::S_numeric_logical_and:
+        case symbol_kind::S_numeric_bit_or:
+        case symbol_kind::S_numeric_bit_xor:
+        case symbol_kind::S_numeric_bit_and:
+        case symbol_kind::S_numeric_equality:
+        case symbol_kind::S_numeric_relation:
+        case symbol_kind::S_numeric_shift:
+        case symbol_kind::S_numeric_sum:
+        case symbol_kind::S_numeric_product:
+        case symbol_kind::S_operand_logical_or:
+        case symbol_kind::S_operand_logical_and:
+        case symbol_kind::S_operand_bit_or:
+        case symbol_kind::S_operand_bit_xor:
+        case symbol_kind::S_operand_bit_and:
+        case symbol_kind::S_operand_equality:
+        case symbol_kind::S_operand_relation:
+        case symbol_kind::S_operand_shift:
+        case symbol_kind::S_operand_sum:
+        case symbol_kind::S_operand_product:
+          reg=driver.numericRegister(yystack_[i].value.as<ParsedExpression>().expression.token_range);
+          break;
+        default: break;
+      }
+    }
+    if(reg) diagnostic={driver.token(*reg).range,
+        "registers cannot participate in constant expressions",std::nullopt};
   }
   driver.diagnose(std::move(diagnostic));
 }

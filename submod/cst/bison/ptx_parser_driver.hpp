@@ -116,9 +116,9 @@ class PtxParserDriver {
   using BodyGuard = std::unique_ptr<BodyFrame>;
 
   /** Copy input into the existing reentrant lexer; no source view is retained. */
-  explicit PtxParserDriver(std::string_view source, EntryMode mode);
+  explicit PtxParserDriver(std::string_view source);
   /** Parse the selected root and transfer the complete token buffer on success. */
-  CstParseResult parse();
+  CstParseResult parse(EntryMode mode);
   /** Return the next stable source token; repeated EOF does not duplicate it. */
   TokenId nextToken();
   /** Replay a fetched token when a scanner-side failure precedes its delivery. */
@@ -165,6 +165,8 @@ class PtxParserDriver {
       TokenId semicolon) const;
   /** Normalize single signed literals and reject register-bearing numeric trees. */
   syntax_cst::CstNumericOperand numeric(ParsedExpression expression) const;
+  /** Locate the first forbidden register in a completed numeric tree, read-only. */
+  std::optional<TokenId> numericRegister(syntax_cst::CstTokenRange range) const;
   /** Normalize predicate constants while preserving ordinary numeric operands. */
   syntax_cst::CstOperand numericOperand(ParsedExpression expression) const;
   /** Convert a numeric leaf/tree into the existing address-base alternative. */
@@ -208,8 +210,10 @@ class PtxParserDriver {
   void initializerAllowed(TokenId equals) const;
 
   /** Synthetic entry mode is returned once, before the uninterrupted source. */
-  EntryMode entry_mode;
+  EntryMode entry_mode{EntryMode::Instruction};
   bool entry_pending{true};
+  /** Logical source start of this entry; earlier tokens remain owned as a prefix. */
+  TokenId entry_first{};
   /** Generated actions supply one root; tokens are transferred only afterward. */
   std::optional<syntax_cst::CstRoot> root;
   CstParseDiagnostics diagnostics;
@@ -220,6 +224,7 @@ class PtxParserDriver {
   std::string expected_name;
   /** Source start of the current statement and its first offending lookahead. */
   TokenId statement_first{};
+  /** Logical recovery cursor; an expect-style rejection may retain its token. */
   std::optional<TokenId> recovery_error;
   /** Prefix lexical state is structural, independent of opcode legality. */
   bool operand_expected{true};
@@ -253,9 +258,17 @@ class PtxParserDriver {
   std::optional<TokenId> shifted_through_;
   /** Full action diagnostic carried through Bison's private syntax_error type. */
   mutable std::optional<CstParseDiagnostic> pending_diagnostic_;
+  /** True only after a value transfers tokens; later entries use cached EOF. */
+  bool exhausted_{};
+  /** Original EOF location survives transfer independently of the token buffer. */
+  SourceRange eof_range_;
+  /** Reset generated per-entry state without restarting the owned source stream. */
+  void beginEntry(EntryMode mode);
+  /** Restore the logical unconsumed position after generated failure unwinding. */
+  void retainFailureCursor();
 };
 
-/** Private migration entry used by differential tests before facade cutover. */
+/** Parse a fresh private generated entry for differential and construction tests. */
 CstParseResult parseGenerated(std::string_view source, EntryMode mode);
 
 }  // namespace ptx_frontend::detail

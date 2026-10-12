@@ -36,27 +36,26 @@ parenthesize a base expression containing additive or lower-precedence operators
 Exact `0f` single-precision bit patterns remain valid literal operands, but
 cannot participate in constant expressions.
 
-The experimental `PTX_FRONTEND_USE_BISON_PARSER` CMake option (default `OFF`)
-selects a generated Bison C++ backend for the complete constant-expression
-grammar. With `ON`, the existing `PtxCstParser` and `PtxSyntaxParser` entry
-points use it for declaration dimensions, scalar initializers (including named
-members and brace-list elements), and instruction numeric positions. Literals,
-symbols, parentheses, unary operators, `.s64`/`.u64` casts, postfix initializer
-calls, binary operators, and conditional expressions share the same CST nodes,
-token ranges, depth budget, and source fidelity as the handwritten backend.
-Instruction/module grammar, initializer lists, and module recovery remain
-handwritten. A generated expression failure returns directly to that recovery
-boundary; it never retries with the handwritten expression parser.
+## Generated parser
 
-Configure with
-`cmake -S . -B out/bison -DPTX_FRONTEND_USE_BISON_PARSER=ON -DBUILD_TESTING=ON`,
-then build and test with `cmake --build out/bison` and
-`ctest --test-dir out/bison --output-on-failure` (using the usual dependency and
-compiler settings for your environment). Bison 3.8 or newer is required only
-when this option is enabled. Generated files stay in the build directory;
-their headers and the cursor adapter are private and are not installed or
-required by consumers of the installed frontend. The default configuration
-continues to use the handwritten expression parser while parity is evaluated.
+The supported source grammar uses one generated Bison C++ parser behind the
+existing `PtxCstParser` and `PtxSyntaxParser` entry points. Its private owning
+driver feeds the existing lexer stream directly to the grammar and builds the
+existing CST. Generated productions own instruction and operand shapes,
+constant expressions, declarations and initializers, module/function structure,
+and error recovery. There is no handwritten grammar fallback or experimental
+backend switch. The supported syntax and downstream semantic boundaries remain
+those documented here; this replacement does not imply complete PTX ISA support
+or a performance guarantee. Instruction legality, binding, resolution, and
+target checks remain in their existing downstream layers.
+
+Source builds require Bison 3.8 or newer in addition to Flex and the usual
+compiler/dependencies; use the normal build configuration described in the
+[README](../../README.md#build-and-install). Generated files stay in the build
+directory. The generated headers and owning driver are private, are not
+installed, and do not become dependencies of consumers of the installed
+frontend. Installed CMake packages do not require Bison to configure or compile
+a consumer.
 
 ## Named array-address syntax
 
@@ -121,6 +120,23 @@ if (cst)
   assert(cst->sourceText() == source);
 ```
 
+`PtxCstParser` copies the source at construction, owns one lexical stream, and
+is neither copyable nor movable. The caller may release or change its input
+after construction; a returned `CstFile` owns its tokens and remains valid after
+the parser is destroyed. Entries do not restart from the beginning of the
+source. A no-value failure leaves the parser at its logical unconsumed position,
+so a later entry can resume there; this need not yield a valid root. Any later
+successful result still owns the complete buffered source prefix, while its
+root range can start after that prefix.
+
+Returning a value, including a recovered module with diagnostics, transfers
+the token buffer and exhausts that CST parser instance. Subsequent
+`parseInstruction()` calls safely return no value with `expected instruction
+opcode`; subsequent `parseModule()` calls return no value with `expected module
+item`, both at the original EOF range. This corrects the former stale-token
+exception after transfer. Construct another parser to parse the full source
+again.
+
 `parseInstruction()` accepts exactly one complete instruction fragment, while
 `parseModule()` requires a module root. At outermost module scope, `.file`
 accepts exactly `file_index "filename"` or
@@ -179,9 +195,9 @@ Source constant-expression and initializer trees share a maximum depth of 128
 unary, cast, parenthesized, call, binary, conditional, or brace-list node adds
 one to its deepest child. The scalar-initializer wrapper adds no level. This
 is a frontend resource limit, not a PTX language limit; shallow lists may have
-more than 128 elements. Recursive parsing checks the remaining depth before
-descending, and iterative binary/postfix construction checks tree height before
-adding a parent. Over-limit input produces a source-located parse diagnostic
+more than 128 elements. Grammar actions check the remaining depth before
+constructing nested trees and check binary/postfix tree height before adding a
+parent. Over-limit input produces a source-located parse diagnostic
 and follows normal lossless recovery, keeping partial-tree cleanup and later
 lowering, checking, and destruction bounded. This source-parser guarantee does
 not validate arbitrarily deep CST/AST trees manually constructed by callers.
@@ -209,6 +225,9 @@ with their `SourceRange`.
 `PtxSyntaxParser` remains as a convenience facade. Its `parseInstruction()`
 and `parseModule()` perform source -> CST -> AST for fragment and module
 clients respectively, mapping CST/lowering diagnostics in order.
+Unlike the stream-owning CST parser, this facade owns a source string and
+creates a fresh CST parser for every entry call. It remains copyable and movable;
+repeated calls parse the complete owned source independently.
 
 `AstFile` mirrors the same root distinction and `AstModule` provides typed
 containers for the supported module directives and functions. `AstFunction`

@@ -8,6 +8,196 @@
 namespace ptx_frontend::detail {
 namespace {
 
+/** Compare the exact recovery contract, including absent and zero-width spans. */
+void expectRecoveryIdentity(const syntax_cst::CstRecoveryNode& actual,
+                            const syntax_cst::CstRecoveryNode& expected) {
+  EXPECT_EQ(actual.kind, expected.kind);
+  EXPECT_EQ(actual.expected_kind, expected.expected_kind);
+  EXPECT_EQ(actual.range, expected.range);
+  ASSERT_EQ(actual.token_range.has_value(), expected.token_range.has_value());
+  if (actual.token_range) {
+    EXPECT_EQ(actual.token_range->first, expected.token_range->first);
+    EXPECT_EQ(actual.token_range->last, expected.token_range->last);
+  }
+}
+
+/** Traverse nested bodies so depth failures cannot hide a lost recovery neighbor. */
+void expectBodyIdentity(
+    const std::vector<syntax_cst::CstFunctionBodyItem>& actual,
+    const std::vector<syntax_cst::CstFunctionBodyItem>& expected) {
+  ASSERT_EQ(actual.size(), expected.size());
+  for (std::size_t i = 0; i < actual.size(); ++i) {
+    ASSERT_EQ(actual[i].index(), expected[i].index());
+    if (const auto* recovery =
+            std::get_if<syntax_cst::CstRecoveryNode>(&actual[i]))
+      expectRecoveryIdentity(
+          *recovery, std::get<syntax_cst::CstRecoveryNode>(expected[i]));
+    else if (const auto* block =
+                 std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(
+                     &actual[i])) {
+      const auto& reference =
+          *std::get<std::unique_ptr<syntax_cst::CstBlock>>(expected[i]);
+      EXPECT_EQ((*block)->left_brace, reference.left_brace);
+      EXPECT_EQ((*block)->right_brace, reference.right_brace);
+      EXPECT_EQ((*block)->token_range.first, reference.token_range.first);
+      EXPECT_EQ((*block)->token_range.last, reference.token_range.last);
+      expectBodyIdentity((*block)->body, reference.body);
+    } else if (const auto* instruction =
+                   std::get_if<syntax_cst::CstInstruction>(&actual[i])) {
+      const auto& reference = std::get<syntax_cst::CstInstruction>(expected[i]);
+      EXPECT_EQ(instruction->opcode, reference.opcode);
+      EXPECT_EQ(instruction->semicolon, reference.semicolon);
+      EXPECT_EQ(instruction->token_range.first, reference.token_range.first);
+      EXPECT_EQ(instruction->token_range.last, reference.token_range.last);
+    }
+  }
+}
+
+/** Compare module neighbors, all diagnostics and every original token/trivia span. */
+void expectModuleIdentity(std::string_view source) {
+  const auto reference = PtxCstParser(source).parseModule();
+  const auto actual = parseGenerated(source, EntryMode::Module);
+  ASSERT_TRUE(reference.has_value());
+  ASSERT_TRUE(actual.has_value());
+  EXPECT_EQ(actual->sourceText(), source);
+  ASSERT_EQ(actual.diagnostics.size(), reference.diagnostics.size());
+  for (std::size_t i = 0; i < actual.diagnostics.size(); ++i) {
+    EXPECT_EQ(actual.diagnostics[i].message, reference.diagnostics[i].message);
+    EXPECT_EQ(actual.diagnostics[i].range, reference.diagnostics[i].range);
+    EXPECT_EQ(actual.diagnostics[i].expected_kind,
+              reference.diagnostics[i].expected_kind);
+  }
+  ASSERT_EQ(actual->tokens.size(), reference->tokens.size());
+  for (std::size_t i = 0; i < actual->tokens.size(); ++i) {
+    const auto& token = actual->tokens[i];
+    const auto& original = reference->tokens[i];
+    EXPECT_EQ(token.kind, original.kind);
+    EXPECT_EQ(token.text, original.text);
+    EXPECT_EQ(token.range, original.range);
+    ASSERT_EQ(token.leading_trivia.size(), original.leading_trivia.size());
+    for (std::size_t j = 0; j < token.leading_trivia.size(); ++j) {
+      EXPECT_EQ(token.leading_trivia[j].kind, original.leading_trivia[j].kind);
+      EXPECT_EQ(token.leading_trivia[j].text, original.leading_trivia[j].text);
+      EXPECT_EQ(token.leading_trivia[j].range,
+                original.leading_trivia[j].range);
+    }
+  }
+  const auto& items = actual->module()->items;
+  const auto& originals = reference->module()->items;
+  ASSERT_EQ(items.size(), originals.size());
+  for (std::size_t i = 0; i < items.size(); ++i) {
+    ASSERT_EQ(items[i].index(), originals[i].index());
+    if (const auto* function =
+            std::get_if<syntax_cst::CstFunction>(&items[i])) {
+      const auto& original = std::get<syntax_cst::CstFunction>(originals[i]);
+      EXPECT_EQ(function->name, original.name);
+      EXPECT_EQ(function->left_brace, original.left_brace);
+      EXPECT_EQ(function->right_brace, original.right_brace);
+      EXPECT_EQ(function->token_range.first, original.token_range.first);
+      EXPECT_EQ(function->token_range.last, original.token_range.last);
+      expectBodyIdentity(function->body, original.body);
+    } else if (const auto* recovery =
+                   std::get_if<syntax_cst::CstRecoveryNode>(&items[i]))
+      expectRecoveryIdentity(
+          *recovery, std::get<syntax_cst::CstRecoveryNode>(originals[i]));
+  }
+}
+
+/** Synthetic closes are confined to item boundaries and retain each real anchor. */
+TEST(GeneratedPtxParser, RecoversMissingBodyBracesAtEligibleBoundaries) {
+  constexpr std::array sources{
+      ".entry a(){ .visible .entry b(){ret;}",
+      ".entry a(){ { { ret; .entry b(){ret;}",
+      ".entry a(){ { { ret; .version 9.3 .entry b(){ret;}",
+      ".entry a(){ { { ret;",
+      ".entry a(){ { {",
+      ".entry a(){mov.u32 %r,1 .entry b(){ret;}",
+      ".entry a(){mov.u32 %r,1 .reg .u32 %s; ret;}",
+      ".entry a(){ld.weak.global.u32 %r,[address]; .reg .u32 %s; .pragma "
+      "\"body\"; .loc 1 2 3; {ret;} ret;}",
+      ".section .debug_info { { .entry .global .pragma } .b8 0; } .entry "
+      "a(){ret;}"};
+  for (const auto source : sources) {
+    SCOPED_TRACE(source);
+    expectModuleIdentity(source);
+  }
+}
+
+/** Function braces do not spend the 256-level nested block budget. */
+TEST(GeneratedPtxParser, PreservesNestedBlockDepthBoundaryAndRecoveryCursor) {
+  for (const std::size_t count : {256u, 257u}) {
+    const std::string source = ".entry a(){" + std::string(count, '{') +
+                               "ret;" + std::string(count, '}') +
+                               "} .entry survivor(){ret;}";
+    SCOPED_TRACE(count);
+    expectModuleIdentity(source);
+    const auto result = parseGenerated(source, EntryMode::Module);
+    ASSERT_TRUE(result.has_value());
+    if (count == 256)
+      EXPECT_TRUE(result.diagnostics.empty());
+    else {
+      ASSERT_FALSE(result.diagnostics.empty());
+      EXPECT_EQ(result.diagnostics.front().message,
+                "nested block depth exceeds parser limit");
+    }
+    ASSERT_TRUE(std::holds_alternative<syntax_cst::CstFunction>(
+        result->module()->items.back()));
+    EXPECT_EQ(result
+                  ->token(std::get<syntax_cst::CstFunction>(
+                              result->module()->items.back())
+                              .name)
+                  .text,
+              "survivor");
+  }
+}
+
+/** Unsupported lookahead cannot suppress an already-completed predecessor. */
+TEST(GeneratedPtxParser, RetainsCompletedItemsBeforeUnsupportedLookahead) {
+  for (const auto source :
+       {".target sm_80 .unknown 64; .entry survivor(){ret;}",
+        ".func f(){label: .unknown value; ret;}", ".version 9.3 .unknown 0;"}) {
+    SCOPED_TRACE(source);
+    expectModuleIdentity(source);
+  }
+}
+
+/** Empty parameter lists must not make a nonempty list's comma optional. */
+TEST(GeneratedPtxParser, RejectsLeadingParameterCommas) {
+  for (const auto source :
+       {".entry k(, .param .u32 x) { ret; }", ".func (, .reg .u32 r) f();",
+        ".func f(, .param .u32 x);",
+        ".func f(){ p: .callprototype (, .reg .u32 r) _; ret; }",
+        ".func f(){ p: .callprototype _ (, .param .u32 x); ret; }"}) {
+    SCOPED_TRACE(source);
+    expectModuleIdentity(source);
+    const auto result = parseGenerated(source, EntryMode::Module);
+    ASSERT_FALSE(result.diagnostics.empty());
+    EXPECT_EQ(result.diagnostics.front().message,
+              "expected '.reg' or '.param' parameter");
+  }
+}
+
+/** Prefix rejection and missing metadata terminators preserve ordered neighbors. */
+TEST(GeneratedPtxParser, PreservesMalformedModulePrefixRecovery) {
+  for (const auto source :
+       {".entry k(){.loc 1 2 3, bogus f, inlined_at 1 2 3; ret;}",
+        ".entry k(){.loc 1 2 3, function_name f, bogus 1 2 3; ret;}",
+        ".entry k(){.loc 1 2 3, function_name 1, inlined_at 1 2 3; ret;}",
+        ".entry k(){.loc 1 2 3, function_name f+1.0, inlined_at 1 2 3; ret;}",
+        ".entry k(){.loc 1 2 3, function_name f, inlined_at 1 2 -1; ret;}",
+        ".entry k(){.loc 1 2; ret;}",
+        ".entry k(){.loc 1 2 3, function_name f, inlined_at; ret;}",
+        ".global .attribute(.unknown(1,2)) .u32 x; .entry good(){ret;}",
+        ".global .attribute(.unified(1,2,3)) .u32 x; .entry good(){ret;}",
+        ".entry k(){t: .calltargets f .reg .u32 r; ret;}",
+        ".entry k(){t: .branchtargets a .reg .u32 r; ret;}",
+        ".entry k(){p: .callprototype _ .abi_preserve; ret;}"}) {
+    SCOPED_TRACE(source);
+    expectModuleIdentity(source);
+    EXPECT_FALSE(parseGenerated(source, EntryMode::Module).diagnostics.empty());
+  }
+}
+
 /** Compare generated standalone forms with the established facade shapes. */
 TEST(GeneratedPtxParser, PreservesStandaloneInstructionForms) {
   constexpr std::array sources{

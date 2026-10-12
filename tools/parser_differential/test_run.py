@@ -133,6 +133,21 @@ class DifferentialChecks(unittest.TestCase):
         self.assertEqual(run.select_cases(cases, "all", None)[0], cases)
         self.assertEqual(run.select_cases(cases, "module", "^malformed/")[0], [])
 
+    def test_frozen_corpus_has_unique_names_and_negative_families(self):
+        """Explicit negative arrays stay in the default corpus with frozen provenance."""
+        tool = Path(run.__file__).resolve().parent
+        fixtures = json.loads((tool / "corpus.json").read_text())
+        names = [case["name"] for case in fixtures]
+        self.assertEqual(len(names), len(set(names)))
+        operands = [case for case in fixtures if case["name"].startswith("generated-malformed-operand/")]
+        negatives = [case for case in fixtures if case["name"].startswith("frozen-negative/")]
+        self.assertEqual(len(operands), 24)
+        self.assertEqual(len(negatives), 27)
+        self.assertIn("ce29d74", operands[0]["provenance"])
+        self.assertIn(run.REFERENCE, negatives[0]["provenance"])
+        self.assertTrue(all(case in run.corpus(tool, tool.parents[1], 42, 0)
+                            for case in operands + negatives))
+
 
 if __name__ == "__main__":
     unittest.main()

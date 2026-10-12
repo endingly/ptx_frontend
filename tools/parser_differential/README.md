@@ -55,7 +55,18 @@ named `type` remain independently observable.
 `corpus.json` freezes source literals from CST/Syntax AST regressions at the
 reference revision (names give their source file and line), expression and
 malformed-expression regressions from the accepted expression prototype, and
-explicit boundary/operand fixtures. Reference-version M9 files and lexer/CST
+explicit boundary/operand fixtures.
+The `generated-malformed-operand/00..23` fixtures freeze the accepted generated
+instruction tests at `ce29d74`; `frozen-negative/` freezes the previously omitted
+malformed layout, metadata, declaration, attribute and function-header arrays
+from the reference CST/Syntax tests. The first fixture in each family records
+its source revision and test name in `provenance`; all values are literal and
+participate in the default corpus without filtering.
+`recovery/` adds minimized completed-predecessor fuzz regressions and explicit
+missing-close/neighbor cases. `supported-boundary/` covers malformed parameter,
+declaration, resource, pragma, alias, file, location, language and section forms
+within the fixed reference grammar; it does not extend the accepted PTX subset.
+Reference-version M9 files and lexer/CST
 fuzz seeds are added from the fixed archive. Generated limit cases cover depth
 128 expressions/initializers and depth 256 blocks, including over-limit prefixes.
 Deterministic fuzz uses a recorded seed, 100 cases by default, arbitrary byte

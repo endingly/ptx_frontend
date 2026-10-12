@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
@@ -45,12 +46,51 @@ struct BracketHeads {
   std::vector<syntax_cst::TokenId> commas;
 };
 
+/** Initializer syntax with its bounded expression/list tree height. */
+struct ParsedInitializer {
+  /** Owns the initializer tree; token identities borrow the driver's buffer. */
+  syntax_cst::CstInitializer initializer;
+  /** Scalar wrappers add no level; lists and named members add one. */
+  std::size_t depth{};
+};
+
+/** Source-ordered initializer elements with separators and maximum child height. */
+struct InitializerElements {
+  /** Owns children in written order, without synthesizing separators. */
+  std::vector<syntax_cst::CstInitializer> elements;
+  std::vector<syntax_cst::TokenId> commas;
+  /** Maximum child height, or zero for an empty list. */
+  std::size_t depth{};
+};
+
+/** Optional written two-token alignment or count prefix. */
+using OptionalTokenPair =
+    std::optional<std::pair<syntax_cst::TokenId, syntax_cst::TokenId>>;
+
+class PtxParserDriver;
+
+/** One active generated body frame; lifetime follows its grammar semantic value. */
+struct BodyFrame {
+  /** Borrowed driver outlives all generated semantic values. */
+  PtxParserDriver* driver{};
+  /** Identity of the written opening brace, never a synthetic source token. */
+  syntax_cst::TokenId brace{};
+  /** Function braces do not spend the nested block budget. */
+  bool nested{};
+  /** A private missing-close terminal belongs to this frame at most once. */
+  bool close_issued{};
+  /** Remove the frame on successful reduction or generated error unwinding. */
+  ~BodyFrame();
+};
+
+/** A real close token or the exclusive endpoint at a retained missing-close anchor. */
+using BodyClose =
+    std::pair<std::optional<syntax_cst::TokenId>, syntax_cst::TokenId>;
+
 /** Unwind generated standalone parsing while retaining a source diagnostic. */
 struct GeneratedParseFailure {
   CstParseDiagnostic diagnostic;
 };
-
-class PtxParserDriver;
 
 /** Restore the enclosing expression budget and diagnostic expectation. */
 struct ExpressionGuard {
@@ -60,6 +100,10 @@ struct ExpressionGuard {
   std::size_t previous_budget{};
   std::optional<TokenKind> previous_expected;
   std::string previous_name;
+  /** Initializer opening token retained independently of expression delimiters. */
+  std::optional<syntax_cst::TokenId> previous_initializer_anchor;
+  /** Written initializer brace when this guard owns a list. */
+  syntax_cst::TokenId anchor{};
   /** Restore state even when the generated parser discards a partial tree. */
   ~ExpressionGuard();
 };
@@ -69,6 +113,7 @@ class PtxParserDriver {
  public:
   using TokenId = syntax_cst::TokenId;
   using Guard = std::unique_ptr<ExpressionGuard>;
+  using BodyGuard = std::unique_ptr<BodyFrame>;
 
   /** Copy input into the existing reentrant lexer; no source view is retained. */
   explicit PtxParserDriver(std::string_view source, EntryMode mode);
@@ -128,14 +173,39 @@ class PtxParserDriver {
   [[noreturn]] void fail(
       TokenId id, std::string message,
       std::optional<TokenKind> expected = std::nullopt) const;
+  /** Emit a diagnostic for a complete written construct rather than one token. */
+  [[noreturn]] void failRange(
+      SourceRange range, std::string message,
+      std::optional<TokenKind> expected = std::nullopt) const;
   /** Append one generated diagnostic in source order for module recovery. */
   void diagnose(CstParseDiagnostic diagnostic);
   /** Consume an action failure once when Bison enters its normal error path. */
   void generatedError(std::string message);
   /** Reset statement-local resource and lexical state after a grammar boundary. */
   void beginStatement(TokenId first);
-  /** Record source spans skipped by a generated error-to-semicolon production. */
-  std::vector<syntax_cst::CstRecoveryNode> recoverStatement(TokenId semicolon);
+  /** Validate a literal at a grammar-defined integer/decimal-only position. */
+  TokenId literal(TokenId id, std::string_view name, bool integer = false,
+                  bool expected_decimal = true) const;
+  /** Install one grammar-owned body frame before fetching its first item. */
+  BodyGuard openBody(TokenId brace, bool nested);
+  /** Restore body frame/depth state during ordinary or error destruction. */
+  void leaveBody(BodyFrame* frame);
+  /** Mark the exact generated boundary before the next body item. */
+  void bodyBoundary();
+  /** Start the next source item even when Bison already owns its lookahead. */
+  void itemBoundary();
+  /** Report an unsupported item without shifting its offending lookahead. */
+  void rejectItem(bool body) const;
+  /** Emit one missing-close terminal only at an eligible boundary. */
+  bool missingClose(TokenId anchor);
+  /** Construct the existing zero-width CST recovery marker at a real anchor. */
+  syntax_cst::CstRecoveryNode inserted(TokenKind kind, TokenId anchor) const;
+  /** Recover one failed module/body item, replaying its preserved real anchor. */
+  std::vector<syntax_cst::CstRecoveryNode> synchronize(bool body);
+  /** Preserve header token ordering without duplicating source tokens. */
+  std::vector<TokenId> tokenSpan(TokenId first, TokenId last) const;
+  /** Validate declaration-only initializer admission before parsing its value. */
+  void initializerAllowed(TokenId equals) const;
 
   /** Synthetic entry mode is returned once, before the uninterrupted source. */
   EntryMode entry_mode;
@@ -154,13 +224,30 @@ class PtxParserDriver {
   /** Prefix lexical state is structural, independent of opcode legality. */
   bool operand_expected{true};
   std::optional<TokenId> unclassified_paren;
+  /** Innermost list brace used for depth diagnostics before entering a child. */
+  std::optional<TokenId> initializer_anchor;
+  /** One scanner delivery is pending after a generated initializer opening. */
+  bool initializer_child_pending{};
+  /** Current declaration admission state, set by generated declaration heads. */
+  TokenKind declaration_space{TokenKind::DotGlobal};
+  bool declaration_external{};
+  bool parameterized_declarator{};
+  /** Generated boundaries alone enable missing-close detection. */
+  bool body_eligible{};
+  /** The next fetched real token starts an item unless already prefetched. */
+  bool next_item{true};
+  /** Borrowed frame pointers in source nesting order; semantic values own them. */
+  std::vector<BodyFrame*> bodies;
+  /** Number of active nested blocks, excluding the enclosing function. */
+  std::size_t nested_depth{};
 
  private:
   /** Owns scanner input and trivia until tokens are moved into the CST file. */
   PtxLexer lexer_;
   std::vector<PtxToken> tokens_;
-  /** Monotonic token index; Bison owns any earlier retained lookahead. */
+  /** Logical cursor into stable cached tokens; only one fetched token is replayed. */
   TokenId next_{};
+  /** Most recently fetched real token, including a retained EOF/anchor. */
   TokenId last_{};
   /** Largest token known consumed, distinguished from eager Bison lookahead. */
   std::optional<TokenId> shifted_through_;

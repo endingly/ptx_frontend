@@ -7,10 +7,221 @@
 
 namespace ptx_frontend::detail {
 
+namespace {
+/** Classify the original narrower boundary that ends an unterminated body. */
+bool bodyAnchor(TokenKind kind) {
+  return kind == TokenKind::DotEntry || kind == TokenKind::DotFunc ||
+         kind == TokenKind::DotExtern || kind == TokenKind::DotVisible ||
+         kind == TokenKind::DotWeak || kind == TokenKind::DotVersion ||
+         kind == TokenKind::DotTarget || kind == TokenKind::DotAddressSize ||
+         kind == TokenKind::DotFile || kind == TokenKind::DotSection;
+}
+/** Module synchronization accepts declaration and pragma starts as well. */
+bool moduleAnchor(TokenKind kind) {
+  return bodyAnchor(kind) || kind == TokenKind::DotPragma ||
+         kind == TokenKind::DotReg || kind == TokenKind::DotParam ||
+         kind == TokenKind::DotLocal || kind == TokenKind::DotShared ||
+         kind == TokenKind::DotGlobal || kind == TokenKind::DotConst ||
+         kind == TokenKind::DotTex;
+}
+/** Preserve a valid following body item when only its predecessor lacks ';'. */
+bool bodyItemStart(TokenKind kind) {
+  return kind == TokenKind::LBrace || kind == TokenKind::At ||
+         kind == TokenKind::Ident || kind == TokenKind::DotLoc ||
+         kind == TokenKind::DotCallPrototype ||
+         kind == TokenKind::DotCallTargets ||
+         kind == TokenKind::DotBranchTargets ||
+         (moduleAnchor(kind) && !bodyAnchor(kind));
+}
+}  // namespace
+
+BodyFrame::~BodyFrame() {
+  driver->leaveBody(this);
+}
+
+PtxParserDriver::TokenId PtxParserDriver::literal(TokenId id,
+                                                  std::string_view name,
+                                                  bool integer,
+                                                  bool expected_decimal) const {
+  const auto kind = token(id).kind;
+  if (kind != TokenKind::Decimal && !(integer && kind == TokenKind::Hex))
+    fail(id, "expected " + std::string(name),
+         expected_decimal ? std::optional{TokenKind::Decimal} : std::nullopt);
+  return id;
+}
+
+PtxParserDriver::BodyGuard PtxParserDriver::openBody(TokenId brace,
+                                                     bool nested) {
+  if (nested && nested_depth >= 256)
+    fail(brace, "nested block depth exceeds parser limit");
+  markShifted(brace);
+  auto frame = std::make_unique<BodyFrame>();
+  frame->driver = this;
+  frame->brace = brace;
+  frame->nested = nested;
+  if (nested)
+    ++nested_depth;
+  bodies.push_back(frame.get());
+  return frame;
+}
+
+void PtxParserDriver::leaveBody(BodyFrame* frame) {
+  if (bodies.empty() || bodies.back() != frame)
+    throw std::logic_error(
+        "generated body frames must unwind in source nesting order");
+  bodies.pop_back();
+  if (frame->nested)
+    --nested_depth;
+  body_eligible = false;
+}
+
+void PtxParserDriver::itemBoundary() {
+  next_item = true;
+  if (shifted_through_ && last_ > *shifted_through_) {
+    statement_first = last_;
+    next_item = false;
+  }
+  recovery_error.reset();
+  remaining_depth = PtxCstParser::maxConstantTreeDepth;
+  expected.reset();
+  expected_name.clear();
+  operand_expected = true;
+  unclassified_paren.reset();
+  initializer_anchor.reset();
+  initializer_child_pending = false;
+}
+
+void PtxParserDriver::bodyBoundary() {
+  itemBoundary();
+  body_eligible = true;
+}
+
+void PtxParserDriver::rejectItem(bool body) const {
+  const auto id = lookahead();
+  const auto kind = token(id).kind;
+  if (kind == TokenKind::DotCallPrototype ||
+      kind == TokenKind::DotCallTargets || kind == TokenKind::DotBranchTargets)
+    fail(id, "'" + std::string(token(id).text) +
+                 (body ? "' requires a preceding function-local label"
+                       : "' is only valid inside a function body"));
+  if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
+      kind == TokenKind::DotReqntid || kind == TokenKind::DotMinnctapersm ||
+      kind == TokenKind::DotReqnctapercluster ||
+      kind == TokenKind::DotExplicitcluster ||
+      kind == TokenKind::DotMaxclusterrank)
+    fail(id,
+         "kernel resource directives are only valid in an entry function "
+         "header");
+  if (body)
+    fail(id, "expected instruction opcode", TokenKind::Ident);
+  fail(id, "expected module directive, variable declaration, or function");
+}
+
+bool PtxParserDriver::missingClose(TokenId anchor) {
+  if (!body_eligible || bodies.empty() || bodies.back()->close_issued)
+    return false;
+  body_eligible = false;
+  if (token(anchor).kind != TokenKind::Eof && !bodyAnchor(token(anchor).kind))
+    return false;
+  bodies.back()->close_issued = true;
+  replayToken(anchor);
+  return true;
+}
+
+syntax_cst::CstRecoveryNode PtxParserDriver::inserted(TokenKind kind,
+                                                      TokenId anchor) const {
+  const auto position = token(anchor).range.start;
+  return {syntax_cst::CstRecoveryKind::Inserted,
+          kind,
+          std::nullopt,
+          {position, position}};
+}
+
+std::vector<PtxParserDriver::TokenId> PtxParserDriver::tokenSpan(
+    TokenId first, TokenId last) const {
+  std::vector<TokenId> result;
+  for (auto id = first; id < last; ++id)
+    result.push_back(id);
+  return result;
+}
+
+void PtxParserDriver::initializerAllowed(TokenId equals) const {
+  if (parameterized_declarator)
+    fail(equals, "parameterized variable names cannot have an initializer");
+  if (declaration_space != TokenKind::DotGlobal &&
+      declaration_space != TokenKind::DotConst)
+    fail(equals,
+         "variable initializer requires '.global' or '.const' state space");
+  if (declaration_external)
+    fail(equals, "external variable declaration cannot have an initializer");
+}
+
+std::vector<syntax_cst::CstRecoveryNode> PtxParserDriver::synchronize(
+    bool body) {
+  using namespace syntax_cst;
+  std::vector<CstRecoveryNode> nodes;
+  auto current = recovery_error.value_or(lookahead());
+  while (tokens_.size() <= current)
+    nextToken();
+  next_ = current;
+  nextToken();
+  const auto span = [&](CstRecoveryKind kind, TokenId first, TokenId last) {
+    if (first < last)
+      nodes.push_back({kind, std::nullopt, CstTokenRange{first, last},
+                       sourceRange({first, last})});
+  };
+  const auto anchor = [&](TokenKind kind) {
+    return body ? kind == TokenKind::RBrace || bodyAnchor(kind)
+                : moduleAnchor(kind);
+  };
+  const bool missing_semi =
+      !diagnostics.empty() &&
+      diagnostics.back().expected_kind == TokenKind::Semicolon;
+  span(CstRecoveryKind::Skipped, statement_first, current);
+  if (token(current).kind == TokenKind::Eof) {
+    nodes.push_back({CstRecoveryKind::Error, std::nullopt, std::nullopt,
+                     token(current).range});
+    if (missing_semi)
+      nodes.push_back(inserted(TokenKind::Semicolon, current));
+    replayToken(current);
+  } else if (((body || current != statement_first) &&
+              anchor(token(current).kind)) ||
+             (body && missing_semi && bodyItemStart(token(current).kind))) {
+    if (missing_semi)
+      nodes.push_back(inserted(TokenKind::Semicolon, current));
+    replayToken(current);
+  } else {
+    const auto error = current;
+    span(CstRecoveryKind::Error, error, error + 1);
+    markShifted(error);
+    if (token(error).kind != TokenKind::Semicolon) {
+      current = nextToken();
+      const auto first = current;
+      while (token(current).kind != TokenKind::Eof &&
+             !anchor(token(current).kind)) {
+        if (token(current).kind == TokenKind::Semicolon)
+          break;
+        current = nextToken();
+      }
+      const bool semicolon = token(current).kind == TokenKind::Semicolon;
+      span(CstRecoveryKind::Skipped, first, current + (semicolon ? 1 : 0));
+      if (semicolon)
+        markShifted(current);
+      else if (current > first)
+        markShifted(current - 1);
+      if (!semicolon)
+        replayToken(current);
+    }
+  }
+  body_eligible = false;
+  return nodes;
+}
+
 ExpressionGuard::~ExpressionGuard() {
   driver->remaining_depth = previous_budget;
   driver->expected = previous_expected;
   driver->expected_name = std::move(previous_name);
+  driver->initializer_anchor = previous_initializer_anchor;
 }
 
 PtxParserDriver::PtxParserDriver(std::string_view source, EntryMode mode)
@@ -98,6 +309,7 @@ PtxParserDriver::Guard PtxParserDriver::expectClosing(TokenKind closing,
   guard->previous_budget = remaining_depth;
   guard->previous_expected = expected;
   guard->previous_name = expected_name;
+  guard->previous_initializer_anchor = initializer_anchor;
   expected = closing;
   expected_name = std::move(name);
   return guard;
@@ -300,8 +512,12 @@ syntax_cst::CstAddressBase PtxParserDriver::numericBase(
 
 void PtxParserDriver::fail(TokenId id, std::string message,
                            std::optional<TokenKind> expected_kind) const {
-  CstParseDiagnostic diagnostic{token(id).range, std::move(message),
-                                expected_kind};
+  failRange(token(id).range, std::move(message), expected_kind);
+}
+
+void PtxParserDriver::failRange(SourceRange range, std::string message,
+                                std::optional<TokenKind> expected_kind) const {
+  CstParseDiagnostic diagnostic{range, std::move(message), expected_kind};
   if (entry_mode == EntryMode::Instruction)
     throw GeneratedParseFailure{std::move(diagnostic)};
   pending_diagnostic_ = std::move(diagnostic);
@@ -347,30 +563,6 @@ void PtxParserDriver::beginStatement(TokenId first) {
   expected_name.clear();
 }
 
-std::vector<syntax_cst::CstRecoveryNode> PtxParserDriver::recoverStatement(
-    TokenId semicolon) {
-  using namespace syntax_cst;
-  std::vector<CstRecoveryNode> nodes;
-  const auto error = recovery_error.value_or(statement_first);
-  if (statement_first < error)
-    nodes.push_back({CstRecoveryKind::Skipped, std::nullopt,
-                     CstTokenRange{statement_first, error},
-                     sourceRange({statement_first, error})});
-  nodes.push_back({CstRecoveryKind::Error, std::nullopt,
-                   CstTokenRange{error, error + 1}, token(error).range});
-  if (error < semicolon)
-    nodes.push_back({CstRecoveryKind::Skipped, std::nullopt,
-                     CstTokenRange{error + 1, semicolon + 1},
-                     sourceRange({error + 1, semicolon + 1})});
-  recovery_error.reset();
-  operand_expected = true;
-  unclassified_paren.reset();
-  remaining_depth = PtxCstParser::maxConstantTreeDepth;
-  expected.reset();
-  expected_name.clear();
-  return nodes;
-}
-
 CstParseResult parseGenerated(std::string_view source, EntryMode mode) {
   return PtxParserDriver(source, mode).parse();
 }
@@ -387,6 +579,20 @@ GeneratedPtxParser::symbol_type yylex(PtxParserDriver& driver) {
   const auto id = driver.nextToken();
   const auto& token = driver.token(id);
   const auto kind = token.kind;
+  if (driver.next_item) {
+    driver.statement_first = id;
+    driver.next_item = false;
+  }
+  if (driver.missingClose(id))
+    return Parser::make_MISSING_RBRACE(id);
+  if (driver.initializer_child_pending) {
+    driver.initializer_child_pending = false;
+    if (driver.remaining_depth == 0 && kind != Kind::RBrace) {
+      driver.replayToken(id);
+      driver.fail(*driver.initializer_anchor,
+                  "initializer tree depth limit exceeded");
+    }
+  }
   if (driver.unclassified_paren) {
     const auto anchor = *driver.unclassified_paren;
     driver.unclassified_paren.reset();
@@ -418,6 +624,20 @@ GeneratedPtxParser::symbol_type yylex(PtxParserDriver& driver) {
         return Parser::make_BRX(id);
       return Parser::make_IDENT(id);
     case Kind::DotIdent:
+      if (token.text == ".attribute")
+        return Parser::make_ATTRIBUTE(id);
+      if (token.text == ".alias")
+        return Parser::make_ALIAS(id);
+      if (token.text == ".language")
+        return Parser::make_LANGUAGE(id);
+      if (token.text == ".blocksareclusters")
+        return Parser::make_BLOCKS_CLUSTERS(id);
+      if (token.text == ".abi_preserve")
+        return Parser::make_ABI_PRESERVE(id);
+      if (token.text == ".abi_preserve_control")
+        return Parser::make_ABI_CONTROL(id);
+      if (token.text == ".v2" || token.text == ".v4")
+        return Parser::make_VECTOR_TYPE(id);
       if (token.text == ".s64" || token.text == ".u64")
         return Parser::make_CAST(id);
       if (token.text == ".unified")

@@ -155,7 +155,7 @@ rendering 或 filesystem 失败。
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | resolver 使用的运行期 value-domain lookup table |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | 跨 opcode 的解析分发 |
 | `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | 稳定的逐 opcode resolver、selector 与 descriptor getter 入口；小 opcode 还包含未分片的方法及 descriptor 行 |
-| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | 大 opcode 规范形式分片的有界方法定义与静态 descriptor 行 |
+| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | 大 opcode 规范形式分片的有界方法定义与静态 descriptor 行；WGMMA 方法分片还定义私有的精确形式构造 helper |
 
 C++ backend YAML 为每个 `codegen_category` 显式分配唯一的 8 位 ID。在完整的
 normalized snapshot 内，各 category 的 opcode 按顺序取得从 1 开始的编号，
@@ -215,6 +215,14 @@ optional。解析返回 `std::unique_ptr<Instruction>`。生成的逐 opcode 源
 形式超过 64 个时，声明、方法与 descriptor 行按规范顺序拆成每片最多 64 个形式的
 确定性分片，由 CMake 编入 `resolved_ir` library。consumer 仍使用同一逐 opcode include
 入口；分片不承诺新增形式对其他代码完全没有编译影响。
+
+WGMMA 的稳定逐 opcode resolver 仍选择 descriptor 身份、解析字段，并按精确形式 kind
+分发。既有方法分片还通过借用 resolver 临时字段的私有 helper 构造各自负责的形式。
+公开生成头与产物清单不变。
+
+其他 opcode 的方法分片直接包含所需的 checker 与 descriptor 接口。WGMMA 方法分片
+仍包含私有构造器所需的 resolution-detail 接口。descriptor 分片只需 descriptor 接口，
+无需载入 checker 函数声明。
 
 公共 syntax、resolved 与 checker descriptor getter 返回 `const&` 且为 `noexcept`。
 大 opcode 的每个 getter 使用有界且只执行一次的 function-local `static const std::array`

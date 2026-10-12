@@ -8,6 +8,34 @@
 `ptx_frontend::ptx_frontend` 会链接它。接口使用直接语义形式类和
 `std::unique_ptr<Instruction>` 所有权。
 
+## 静态库与共享库
+
+`BUILD_SHARED_LIBS` 默认值为 `OFF`。配置源码构建时设置
+`-DBUILD_SHARED_LIBS=ON` 可选择共享库，显式设置 `-DBUILD_SHARED_LIBS=OFF`
+则选择静态归档。嵌入构建时，请在 `add_subdirectory(ptx_frontend)` 之前设置该变量。
+两种模式应使用独立的 build 与 install prefix；每个安装包只包含所选择的模式。
+
+七个编译组件（`base`、`lexer`、`cst`、`syntax`、`binding`、`semantic` 和
+`resolved_ir`）遵循该设置。Linux 共享模式生成七个
+`libptx_frontend_<component>.so` 库。`common` 和 `ptx_frontend` umbrella
+继续是 interface target。两种模式使用相同的 target 名称、组件选择方式和传递依赖。
+
+CMake 会为共享组件启用位置无关代码（PIC）。链接到共享组件的任何静态依赖，
+包括静态 `fmt`，也必须使用 PIC 构建。本项目不会修改 imported dependency 的
+构建设置。下游查找安装包仍需要提供 `fmt` 和 `magic_enum`。
+
+安装后的 Linux 共享组件会在 install runtime search path 中追加 `$ORIGIN`，
+使安装前缀迁移后仍能找到同目录的组件库。Consumer 必须使运行时 loader 能找到
+安装的 library 目录；链接 imported CMake target 通常会为 build-tree 可执行文件
+提供适当的 runtime path。部署时还须通过正常 loader 配置提供共享的第三方依赖。
+现有 Linux Clang CI 继续使用默认静态模式。共享模式已在本地通过完整 Release
+构建、C++ 测试及安装目录迁移后的独立 installed consumer 验证。
+
+共享构建已在 Linux 验证。Windows 共享配置会明确报错，因为 DLL export/import
+支持尚未审计；macOS 共享构建尚未验证。共享模式不新增稳定 ABI 或 SONAME 版本
+保证。Frontend 更新后，应使用匹配的安装头文件、库和兼容的 C++ toolchain
+重新构建 consumer。现有 `SameMinorVersion` CMake package 版本兼容规则保持不变。
+
 ## `ptx_spec`
 
 consumer 可以通过以下方式请求通用 PTX ISA specification：
@@ -45,6 +73,12 @@ database = load_packaged_spec_database()
 `ptx_frontend.code_gen` 继续作为 frontend 源码构建所需的实现 namespace。其会随 wheel 打包的 `cli`、`context`、`plan` 与 `emit` modules 构成确定性的 in-tree generator：冻结 context 只投影一次 backend alias，同一 plan 决定稳定的 listing 与 manifest 顺序。`--jobs` 大于一时，各产物的 emission 完成顺序可变；生成字节不依赖 worker 顺序。CLI 默认使用六个 worker，`--jobs 1` 保持串行生成。源码构建通过 `PTX_FRONTEND_CODEGEN_JOBS` CMake cache 变量设置单进程产物 writer 预算（默认 `6`）。一个聚合构建命令根据贡献文件及成员清单的时间戳选择变动的 category，再在同一 Python 进程中生成这些 category 和所需共享产物。单独的配置阶段描述来自一次归一化的规格快照，并将来源依赖分配给有贡献的 category。源码构建图位于 `cmake/ptx_resolved_ir_codegen.cmake`；`submod/resolved_ir/CMakeLists.txt` 使用其返回的生成源码和 include 路径。新的下游代码不应依赖这些实现 API。仓库专用的 corpus tools 位于 `tools/corpus`，不打入 wheel；wheel 也不安装 `ptx-frontend-codegen` console script。
 
 ## 测试 profile
+
+Linux Clang 21 configure preset 为静态归档选择 `/usr/bin/llvm-ar-21` 和
+`/usr/bin/llvm-ranlib-21`。共享 Linux CI setup 通过 `llvm-21` package 安装这些工具。
+本地 preset 用户也需要该 package，或者在 CMake 命令行覆盖 `CMAKE_AR` 和
+`CMAKE_RANLIB`。GCC preset 和不使用这些 preset 的配置继续采用 CMake 的 toolchain
+选择，包括通过 `add_subdirectory` 嵌入的构建。
 
 `BUILD_TESTING=ON` 会构建活跃的 C++ 测试套件，包括
 `resolved_ir_smoke` 和 `test_resolved_ir`。

@@ -523,22 +523,18 @@ void {name}::visit_references(
 }}"""
 
 
-def _emit_resolve(entry, backend) -> str:
-    """Resolve descriptor names once, then dispatch typed form/layout indices."""
+def _emit_construction_cases(entry, variants, backend, *, borrowed_fields: bool) -> str:
+    """Build exact-form cases using the caller's scratch-field access mode."""
 
-    prefix = entry.specification.opcode.replace(".", "_")
-    identity_map = "\n".join(
-        f'    if (*selected == "{variant.cpp_name}") '
-        f'return {form_name(entry, variant)}::kind;'
-        for variant in entry.resolved.variants
-    )
+    field_access = "fields." if borrowed_fields else "fields->"
+    field_argument = "fields" if borrowed_fields else "*fields"
     clauses = []
-    for variant in entry.resolved.variants:
+    for variant in variants:
         name = form_name(entry, variant)
         slots = operand_slots(variant, backend)
         modifiers = "\n".join(
             f"      value->{field.name} = resolved_modifier<"
-            f"{field_value_cpp_type(field, backend=backend)}>(*fields, "
+            f"{field_value_cpp_type(field, backend=backend)}>({field_argument}, "
             f'"{field.name}");'
             for field in variant.modifier_fields
             if field.storage is ResolvedFieldStorage.INSTANCE
@@ -548,11 +544,13 @@ def _emit_resolve(entry, backend) -> str:
             assignments = "\n".join(
                 f"        value->{operand_slot_for_field(slots, field, backend).member_name} = "
                 f"resolved_operand<{field_value_cpp_type(field, backend=backend)}>("
-                f'*fields, "{field.name}");'
+                f'{field_argument}, "{field.name}");'
                 for field in layout.fields
                 if field.storage is ResolvedFieldStorage.INSTANCE
             )
+            operand_names = ", ".join(field.name for field in layout.fields) or "(none)"
             layouts.append(f"""      case {index}:
+        // Operands: {operand_names}
 {assignments}
         return value;""")
         layout_switch = "\n".join(layouts)
@@ -562,16 +560,78 @@ def _emit_resolve(entry, backend) -> str:
         )
         clauses.append(f"""    case {name}::kind: {{
     auto value = std::make_unique<{name}>();
-    value->execution_predicate = std::move(fields->execution_predicate);
-    value->operand_layout = fields->operand_layout;
+    value->execution_predicate = std::move({field_access}execution_predicate);
+    value->operand_layout = {field_access}operand_layout;
 {atomic}{modifiers}
-    switch (fields->operand_layout.value) {{
+    switch ({field_access}operand_layout.value) {{
 {layout_switch}
       default:
         throw ResolveException("Unknown {name} operand layout.");
     }}
     }}""")
-    cases = "\n".join(clauses)
+    return "\n".join(clauses)
+
+
+def _wgmma_construction_helper_name(shard_index: int) -> str:
+    """Name one private WGMMA construction helper by canonical physical shard."""
+
+    return f"wgmma_construct_{shard_index:03d}"
+
+
+def _emit_wgmma_construction_helper(entry, shard_index: int, backend) -> str:
+    """Emit one exact-kind builder over an existing WGMMA methods shard."""
+
+    if entry.resolved.atomic_address_qualifier is not None:
+        raise ValueError("WGMMA shard construction cannot access an AST qualifier")
+    variants = tuple(entry.resolved.variants[index]
+                     for index in form_shards(entry)[shard_index])
+    cases = _emit_construction_cases(
+        entry, variants, backend, borrowed_fields=True
+    )
+    helper = _wgmma_construction_helper_name(shard_index)
+    return f"""/** Construct an exact WGMMA form owned by this physical methods shard. */
+std::unique_ptr<Instruction> {helper}(
+    InstructionKind kind, ResolvedInstructionFields& fields) {{
+  switch (kind) {{
+{cases}
+    default:
+      throw ResolveException("Unknown {entry.cpp_name} descriptor identity.");
+  }}
+}}"""
+
+
+def _emit_wgmma_construction_declarations(entry) -> str:
+    """Declare private shard builders at the WGMMA entrypoint only."""
+
+    declarations = "\n".join(
+        f"/** Construct one exact form from borrowed WGMMA scratch fields. */\n"
+        f"std::unique_ptr<Instruction> {_wgmma_construction_helper_name(index)}("
+        "InstructionKind kind, ResolvedInstructionFields& fields);"
+        for index, _ in enumerate(form_shards(entry))
+    )
+    return f"namespace generated_detail {{\n{declarations}\n}}\n\n"
+
+
+def _emit_resolve(entry, backend) -> str:
+    """Resolve descriptor names once, then dispatch typed form/layout indices."""
+
+    prefix = entry.specification.opcode.replace(".", "_")
+    identity_map = "\n".join(
+        f'    if (*selected == "{variant.cpp_name}") '
+        f'return {form_name(entry, variant)}::kind;'
+        for variant in entry.resolved.variants
+    )
+    if entry.specification.opcode == "wgmma" and form_shards(entry):
+        cases = "\n".join(
+            f"    case {form_name(entry, entry.resolved.variants[index])}::kind: "
+            f"return generated_detail::{_wgmma_construction_helper_name(shard_index)}(kind, *fields);"
+            for shard_index, indices in enumerate(form_shards(entry))
+            for index in indices
+        )
+    else:
+        cases = _emit_construction_cases(
+            entry, entry.resolved.variants, backend, borrowed_fields=False
+        )
     named_policies = "\n".join(
         f"    case {form_name(entry, variant)}::kind: return {_named_array_policy(entry, variant)};"
         for variant in entry.resolved.variants
@@ -628,7 +688,10 @@ def generate_resolved_opcode_source(
     methods = "" if form_shards(entry) else _emit_form_methods(
         entry, enumerate(instruction.variants), backend
     )
-    resolver = _emit_resolve(entry, backend)
+    resolver = (
+        _emit_wgmma_construction_declarations(entry)
+        if opcode == "wgmma" and shards else ""
+    ) + _emit_resolve(entry, backend)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor_getters = (
         _emit_sharded_descriptor_getters(entry, len(shards)) if shards else f"""
@@ -757,7 +820,6 @@ def generate_resolved_descriptor_shard_source(
 #include <array>
 #include <span>
 #include <{INCLUDE_ROOT}/ptx_resolved_ir_descriptors.hpp>
-#include <{INCLUDE_ROOT}/ptx_resolved_ir_checker_support.hpp>
 
 namespace ptx_frontend::resolved_ir {{
 namespace {{
@@ -822,6 +884,18 @@ def generate_resolved_form_shard_source(
         ((index, entry.resolved.variants[index]) for index in indices),
         context.backend,
     )
+    if opcode == "wgmma":
+        methods += (
+            "\n\nnamespace generated_detail {\n"
+            + _emit_wgmma_construction_helper(entry, shard_index, context.backend)
+            + "\n}  // namespace generated_detail"
+        )
+    support_headers = (
+        f"#include <{INCLUDE_ROOT}/ptx_resolved_ir_resolution_detail.hpp>"
+        if opcode == "wgmma" else
+        f"#include <{INCLUDE_ROOT}/ptx_resolved_ir_checker_support.hpp>\n"
+        f"#include <{INCLUDE_ROOT}/ptx_resolved_ir_descriptors.hpp>"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(f"""// Generated by ptx_frontend resolved IR code generation. Do not edit.
 #include <array>
@@ -830,7 +904,7 @@ def generate_resolved_form_shard_source(
 #include <variant>
 #include <utility>
 #include <{INCLUDE_ROOT}/model/{category}/{opcode}_forms_{shard_index:03d}.gen.hpp>
-#include <{INCLUDE_ROOT}/ptx_resolved_ir_resolution_detail.hpp>
+{support_headers}
 
 namespace ptx_frontend::resolved_ir {{
 

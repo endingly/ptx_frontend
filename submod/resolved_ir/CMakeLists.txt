@@ -8,7 +8,7 @@ ptx_configure_resolved_ir_codegen(
     resolved_generated_private
     resolved_generated_public)
 
-add_library(ptx_frontend_resolved_ir STATIC
+add_library(ptx_frontend_resolved_ir
     ${resolved_generated_sources}
     src/ptx_resolved_ir.cpp
     src/ptx_resolved_ir_modifiers.cpp

@@ -177,7 +177,7 @@ rendering or filesystem failure.
 | `private/resolved_value_domains.gen.hpp` | `emit.value_domains` | runtime value-domain lookup tables used by the resolver |
 | `private/resolved_ir_dispatch.gen.cpp` | `emit.resolved_dispatch` | opcode-independent resolution dispatch |
 | `private/resolved_ir_<category>_<opcode>.gen.cpp` | `emit.resolved_source` | stable opcode resolver, selector, and descriptor-getter entry points; unsharded methods and rows for small opcodes |
-| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | bounded method definitions and static descriptor rows for canonical form shards |
+| `private/resolved_ir_<category>_<opcode>_{methods,descriptors}_NNN.gen.cpp` | `emit.resolved_source` | bounded method definitions and static descriptor rows for canonical form shards; WGMMA method shards also define private exact-form construction helpers |
 
 The C++ backend YAML allocates an explicit, unique 8-bit ID to each
 `codegen_category`. Within a complete normalized snapshot, each category's
@@ -255,6 +255,17 @@ declarations, methods, and descriptor rows into deterministic shards of at
 most 64 forms, compiled into the `resolved_ir` library. Consumers retain the
 same opcode include entry point. A shard does not promise that adding a form
 has no compile fanout.
+
+WGMMA's stable per-opcode resolver still selects the descriptor identity,
+resolves fields, and dispatches by exact form kind. Its existing method shards
+also construct the forms they own, using private helpers over the borrowed
+resolver scratch fields. This changes no public generated header or artifact
+inventory.
+
+Method shards for other opcodes include the checker and descriptor interfaces
+they use directly. WGMMA method shards retain the resolution-detail interface
+for their private builders. Descriptor shards use the descriptor interface
+without loading checker function declarations.
 
 The public syntax, resolved, and checker descriptor getters return `const&`
 and are `noexcept`. For a sharded opcode, each getter uses a bounded one-time

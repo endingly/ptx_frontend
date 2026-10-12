@@ -1,5 +1,5 @@
 file(GLOB_RECURSE lexer_srcs src/*cpp)
-add_library(ptx_frontend_lexer STATIC)
+add_library(ptx_frontend_lexer)
 set_property(TARGET ptx_frontend_lexer PROPERTY EXPORT_NAME lexer)
 target_sources(ptx_frontend_lexer PRIVATE ${lexer_srcs})
 add_library(ptx_frontend::lexer ALIAS ptx_frontend_lexer)

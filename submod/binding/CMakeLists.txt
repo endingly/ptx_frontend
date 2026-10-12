@@ -1,5 +1,5 @@
 file(GLOB_RECURSE binding_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(ptx_frontend_binding STATIC ${binding_srcs})
+add_library(ptx_frontend_binding ${binding_srcs})
 set_property(TARGET ptx_frontend_binding PROPERTY EXPORT_NAME binding)
 add_library(ptx_frontend::binding ALIAS ptx_frontend_binding)
 register_headers(ptx_frontend_binding binding PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

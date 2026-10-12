@@ -158,6 +158,11 @@ class FormShardTests(unittest.TestCase):
                 self.assertIn(f"_syntax_variants_{index:03d}()", descriptor)
                 self.assertIn(f"_resolved_variants_{index:03d}()", descriptor)
                 self.assertIn(f"_checker_variants_{index:03d}()", descriptor)
+                self.assertIn("ptx_resolved_ir_descriptors.hpp", descriptor)
+                self.assertNotIn("ptx_resolved_ir_checker_support.hpp", descriptor)
+                self.assertIn("ptx_resolved_ir_checker_support.hpp", methods)
+                self.assertIn("ptx_resolved_ir_descriptors.hpp", methods)
+                self.assertNotIn("ptx_resolved_ir_resolution_detail.hpp", methods)
 
     def test_shrink_removes_stale_shards_and_preserves_unowned_files(self) -> None:
         """A smaller plan removes old shards without touching consumer output."""

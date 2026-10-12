@@ -1,5 +1,5 @@
 file(GLOB_RECURSE base_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(ptx_frontend_base STATIC ${base_srcs})
+add_library(ptx_frontend_base ${base_srcs})
 set_property(TARGET ptx_frontend_base PROPERTY EXPORT_NAME base)
 add_library(ptx_frontend::base ALIAS ptx_frontend_base)
 register_headers(ptx_frontend_base base PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

@@ -411,7 +411,7 @@ availability at PTX 8.3 / SM 70; `.sys` with `.b128` additionally requires PTX
 8.4. An exact `.b128` declaration therefore satisfies a selected `.b128` memory
 instruction. The `equal_or_wider` escape hatch still does not admit a wider
 actual `.b128` register for a narrower selected instruction. The focused
-[LD](ld_coverage.md) and [ST](st_coverage.md) documents state the supported
+[LD](converage/ld_coverage.md) and [ST](converage/st_coverage.md) documents state the supported
 memory forms and their remaining boundaries.
 
 `vector.allow_named` is a Boolean, default false, accepted only on element-policy
@@ -628,7 +628,7 @@ that exact target spelling. The schema, normalizer, and generated descriptor
 permit one through six clauses. `setmaxnreg` uses all six: exact `sm_90a`
 (PTX 8.0), exact `sm_100a` (8.6), exact `sm_120a` (8.7), enabled `sm_100f`
 and `sm_120f` families (8.8), and enabled `sm_110f` family (9.0). See
-[miscellaneous coverage](miscellaneous_coverage.md) for the instruction contract.
+[miscellaneous coverage](converage/miscellaneous_coverage.md) for the instruction contract.
 
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.
@@ -710,4 +710,4 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 
 The `video` category owns 23 opcode variants and 39 operand layouts. A variant's closed `video` mapping carries `lanes: scalar|two|four`, `operation: arithmetic|shift|compare|mad`, and optional validated Boolean `sat_modifier`/`po_modifier` field references. Each `video_operand` has its own closed mapping: logical `position`, typed `selector` policy, optional `type_modifier` referring to a `video_type` field, and `allow_immediate`/`allow_negate` flags. The normalizer rejects contradictory roles, SIMD immediates, non-Mad negation, incorrect selector topology and missing field references.
 
-`type_use: bit_carrier` is restricted to Mad C and cannot coexist with `type_modifier`; it selects B32 immediate coercion. A type modifier infers `ModifierField` interpretation; omitted type use defaults to `Unsigned`, used by set D/C. The four closed modifier domains are `video_type`, `video_secondary_op`, `video_shift_mode`, and `video_scale`. Video semantics never become generic integer-operation aliases. Syntax shape derivation admits selected destinations only for scalar merge layouts and arithmetic-negated registers only in approved Mad source slots. See [video coverage](video_coverage.md).
+`type_use: bit_carrier` is restricted to Mad C and cannot coexist with `type_modifier`; it selects B32 immediate coercion. A type modifier infers `ModifierField` interpretation; omitted type use defaults to `Unsigned`, used by set D/C. The four closed modifier domains are `video_type`, `video_secondary_op`, `video_shift_mode`, and `video_scale`. Video semantics never become generic integer-operation aliases. Syntax shape derivation admits selected destinations only for scalar merge layouts and arithmetic-negated registers only in approved Mad source slots. See [video coverage](converage/video_coverage.md).

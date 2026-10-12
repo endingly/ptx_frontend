@@ -96,7 +96,7 @@ These are compiler observations, not GPU execution or runtime width/sign rules.
 
 The entry point contracts below describe modeled checks, not exhaustive PTX
 validation. Header/target, storage and ABI follow-ups are recorded in
-[current coverage](coverage_status.md). Complete source context is distinct
+[current coverage](converage/coverage_status.md). Complete source context is distinct
 from completeness of the validator; runtime behavior remains outside this layer.
 
 ## Status and scope
@@ -645,7 +645,7 @@ store truncation. A wider actual `.b128` register is deliberately rejected by
 the `EqualOrWider` policy for a narrower selected instruction; an exact `.b128`
 declaration is accepted for a selected `.b128` memory instruction. Exact
 `.b128` compatibility remains unchanged for existing `mov` vector consumers.
-The focused [LD coverage](ld_coverage.md) and [ST coverage](st_coverage.md)
+The focused [LD coverage](converage/ld_coverage.md) and [ST coverage](converage/st_coverage.md)
 documents define the current memory subset.
 
 Explicit loads accept `.const/.global/.local/.param/.shared`, while stores

@@ -58,5 +58,5 @@ atomicity、运行时 peer/mask 成员资格、barrier 完成和 descriptor 内�
 不属于 #152 前端收口；若要实现，须另行明确字节布局范围，调用者已知事实查询
 **不能**代替它。选定 tensor
 形式已支持规范 [cache-hint/policy 操作数](tensor_cache_controls.md)，它与 descriptor
-事实独立。准确形式、证据与剩余义务见 [tensor async 覆盖](tensor_async_coverage.md)
-和 [frontend 收口矩阵](tensor_async_closeout.md)。
+事实独立。准确形式、证据与剩余义务见 [tensor async 覆盖](converage/tensor_async_coverage.md)
+和 [frontend 收口矩阵](converage/tensor_async_closeout.md)。

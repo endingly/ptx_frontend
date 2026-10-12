@@ -56,4 +56,4 @@ im2col 信息但带末尾 policy 的 load 判为“预期 vector”，尽管规�
 公开 `query_tensor_cache_controls(const Instruction&)` 查询从选中的自有形式复制书写的 hint、可选带位置 policy、诊断
 及适用性标记；它不读取不透明 tensor-map 字节，也不推断 descriptor 内容。
 独立的条件 descriptor 查询见[调用者已知 tensor-map 事实](tensor_map_known_facts.md)，
-支持的形式见[tensor async 覆盖](tensor_async_coverage.md)。
+支持的形式见[tensor async 覆盖](converage/tensor_async_coverage.md)。

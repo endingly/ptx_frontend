@@ -96,7 +96,7 @@ Resolved IR 无需新增通用 expression tree。
 ## 当前验证边界
 
 下文 entry point 契约描述已建模检查，不表示穷尽 PTX 验证。
-header/target、storage 和 ABI 后续事项见[当前覆盖范围](coverage_status.md)。
+header/target、storage 和 ABI 后续事项见[当前覆盖范围](converage/coverage_status.md)。
 完整源码上下文不等于 validator 完整；运行时行为仍在本层范围之外。
 
 ## 状态与边界
@@ -508,7 +508,7 @@ register 不超过 64-bit 的 wider load destination 与 store source（包括 s
 wider actual `.b128` register 用于 narrower selected instruction 时，仍由 `EqualOrWider`
 policy 明确拒绝；exact `.b128` declaration 可用于 selected `.b128` memory instruction。
 既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。当前 memory subset 见
-[LD 覆盖](ld_coverage.md) 与 [ST 覆盖](st_coverage.md)。
+[LD 覆盖](converage/ld_coverage.md) 与 [ST 覆盖](converage/st_coverage.md)。
 
 explicit load 接受 `.const/.global/.local/.param/.shared`，store 接受
 `.global/.local/.param/.shared`；`WithLocs` 同时保留 runtime state-space/type modifier 的值与

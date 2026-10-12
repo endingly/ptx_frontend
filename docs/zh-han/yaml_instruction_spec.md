@@ -354,7 +354,7 @@ same-width。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value
 8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
 selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
 `.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
-[LD](ld_coverage.md) 与 [ST](st_coverage.md)。
+[LD](converage/ld_coverage.md) 与 [ST](converage/st_coverage.md)。
 
 `vector.allow_named` 是默认 false 的 Boolean，仅 element-policy `reg_vector` 可用。
 它传播至 binding 与 `OperandDescriptor::allow_named_vector`，仅为 opted slot 添加
@@ -545,7 +545,7 @@ Python 测试。
 与生成的 descriptor 允许一至六个 clause。`setmaxnreg` 使用全部六个：exact
 `sm_90a`（PTX 8.0）、exact `sm_100a`（8.6）、exact `sm_120a`（8.7）、
 已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
-family（9.0）。指令契约见[杂项指令覆盖范围](miscellaneous_coverage.md)。
+family（9.0）。指令契约见[杂项指令覆盖范围](converage/miscellaneous_coverage.md)。
 
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
 只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，
@@ -612,4 +612,4 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 
 `video` category 拥有 23 个 opcode variant 和 39 个 operand layout。Variant 的封闭 `video` mapping 包含 `lanes: scalar|two|four`、`operation: arithmetic|shift|compare|mad` 及可选、已验证的 Boolean `sat_modifier`/`po_modifier` 字段引用。每个 `video_operand` 的封闭 mapping 包含逻辑 `position`、typed `selector` policy、可选且引用 `video_type` 字段的 `type_modifier`，以及 `allow_immediate`/`allow_negate`。Normalizer 拒绝角色矛盾、SIMD 立即数、非 Mad 取负、selector topology 错误及缺失字段引用。
 
-`type_use: bit_carrier` 仅允许 Mad C，不能与 `type_modifier` 并用，选择 B32 立即数转换。Type modifier 推导 `ModifierField` 解释；省略 type use 默认 `Unsigned`，用于 set D/C。四个封闭 modifier domain 是 `video_type`、`video_secondary_op`、`video_shift_mode` 和 `video_scale`。Video 语义不转换成普通整数操作别名。语法 shape 推导仅在 scalar merge layout 接受 selected destination，仅在批准的 Mad source slot 接受 arithmetic-negated register。见 [Video 覆盖](video_coverage.md)。
+`type_use: bit_carrier` 仅允许 Mad C，不能与 `type_modifier` 并用，选择 B32 立即数转换。Type modifier 推导 `ModifierField` 解释；省略 type use 默认 `Unsigned`，用于 set D/C。四个封闭 modifier domain 是 `video_type`、`video_secondary_op`、`video_shift_mode` 和 `video_scale`。Video 语义不转换成普通整数操作别名。语法 shape 推导仅在 scalar merge layout 接受 selected destination，仅在批准的 Mad source slot 接受 arithmetic-negated register。见 [Video 覆盖](converage/video_coverage.md)。

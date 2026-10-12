@@ -139,7 +139,7 @@ use `.param`. Binding remains the owner of duplicate declaration labels.
 Module resolution converts a valid prototype to the same canonical signature
 as a function and reuses the validated first `.calltargets` member signature
 for indirect-call ABI checking. Modeled ABI suffix availability is checked by
-module validation; the [current limits](coverage_status.md) still apply.
+module validation; the [current limits](converage/coverage_status.md) still apply.
 
 Call-table eligibility is checked only when ordinary storage is consumed as an
 indirect-call flist. The module layer reuses owned sparse storage relocations and

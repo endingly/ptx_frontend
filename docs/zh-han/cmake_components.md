@@ -51,7 +51,7 @@ find_package(ptx_frontend CONFIG REQUIRED COMPONENTS ptx_spec)
 - `ptx_frontend_PTX_CPP_BACKEND_SPEC`：已安装的 C++ backend 映射 YAML 路径；
 - `ptx_frontend_PTX_CPP_BACKEND_SCHEMA`：已安装的 backend schema 路径。
 
-PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库输入目录。源码生成递归追踪该目录中的 YAML，并与 Python loader 一样排除 `.schema.yaml` 文件。文件集合变化也会使生成失效，避免移除输入后遗留过时产物。
+PTX specification 的 canonical source 位于 `python/src/ptx_frontend/spec/resources/ptx_spec`，同时也作为 Python package data 发布。CMake 的 `ptx_spec` component 将独立 raw data 安装至 `share/ptx_frontend/ptx_spec` 和 `share/ptx_frontend/ptx-instr-v1.schema.yaml`。`instructions/ptx_spec` 是源码构建使用的仓库路径；tracked `instructions` symlink 指向 Python resource directory，两者是同一份源码数据。源码生成递归追踪该目录中的 YAML，并与 Python loader 一样排除 `.schema.yaml` 文件。文件集合变化也会使生成失效，避免移除输入后遗留过时产物。
 
 C++ backend 映射以 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 为源码输入，安装至 `share/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml`；schema 安装至 `share/ptx_frontend/ptx-cpp-backend-v2.schema.yaml`。请求 `ptx_spec` 时会检查四项资源，导出路径相对于 package 的安装前缀计算，因此安装目录可整体迁移。
 
@@ -62,7 +62,7 @@ C++ backend 映射以 `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` 为�
 需要复用规范化 PTX specification model 的 Python consumer，应当使用公共 `ptx_frontend.spec` namespace：
 
 ```python
-from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 
 database = load_packaged_spec_database()
@@ -84,3 +84,12 @@ Linux Clang 21 configure preset 为静态归档选择 `/usr/bin/llvm-ar-21` 和
 `resolved_ir_smoke` 和 `test_resolved_ir`。
 GCC 和 Clang 的 Debug/Release preset 都启用该选项。可在独立构建目录中通过
 `examples/resolved_ir_consumer` 检查已安装的 `resolved_ir` 组件。
+
+## 前提与测试边界
+
+Python 安装要求 Python 3.14 或更高版本。loader 位于
+`ptx_frontend.spec.database`，model type 位于 `ptx_frontend.spec.model`，
+resource helper 位于 `ptx_frontend.spec.resources`；namespace 根不重新导出这些 API。
+Linux Clang 配置除 preset 的 LLVM archive tool 外还要求 `ld.lld-21` 或 `ld.lld`；
+CI 安装 `lld-21`。CTest preset 排除 `python_test`，installed C++ public API consumer
+由 Clang Debug Linux CI 的独立 step 验证。Python unit lane 需单独运行。

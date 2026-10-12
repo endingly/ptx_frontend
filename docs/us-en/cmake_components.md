@@ -64,7 +64,9 @@ The package then defines:
 - `ptx_frontend_PTX_CPP_BACKEND_SPEC`, the installed C++ backend mapping YAML path;
 - `ptx_frontend_PTX_CPP_BACKEND_SCHEMA`, the installed backend schema path.
 
-The canonical PTX specification lives in `python/src/ptx_frontend/spec/resources/ptx_spec` and is also packaged as Python package data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` is the repository input directory used by the source build. Source generation tracks YAML files recursively below that directory, excluding `.schema.yaml` files as the Python loader does. Changes to the file set also invalidate generation so removed inputs cannot leave obsolete generated outputs.
+The canonical PTX specification lives in `python/src/ptx_frontend/spec/resources/ptx_spec` and is also packaged as Python package data. The CMake `ptx_spec` component installs independent raw data at `share/ptx_frontend/ptx_spec` and `share/ptx_frontend/ptx-instr-v1.schema.yaml`. `instructions/ptx_spec` is the repository source-build spelling; the tracked
+`instructions` symlink aliases the Python resource directory, so both paths
+refer to the same source data. Source generation tracks YAML files recursively below that directory, excluding `.schema.yaml` files as the Python loader does. Changes to the file set also invalidate generation so removed inputs cannot leave obsolete generated outputs.
 
 The C++ backend mapping is sourced from `instructions/ptx_cpp_backend_spec/ptx_frontend.yaml` and installed at `share/ptx_frontend/ptx_cpp_backend_spec/ptx_frontend.yaml`. Its schema is installed at `share/ptx_frontend/ptx-cpp-backend-v2.schema.yaml`. The four resource paths are checked when `ptx_spec` is requested, and the exported paths are relative to the package's installed prefix so the package can be relocated.
 
@@ -75,7 +77,7 @@ The installed CMake package does not export a code-generation component or a `pt
 Python consumers that need the normalized PTX specification model should use the public `ptx_frontend.spec` namespace:
 
 ```python
-from ptx_frontend.spec import load_packaged_spec_database
+from ptx_frontend.spec.database import load_packaged_spec_database
 from ptx_frontend.spec.model import InstructionSpec
 
 database = load_packaged_spec_database()
@@ -99,3 +101,13 @@ selection, including builds embedded with `add_subdirectory`.
 testing. Check the installed `resolved_ir` component with
 `examples/resolved_ir_consumer` in a separate build directory and installed
 package prefix.
+
+## Prerequisites and test boundaries
+
+Python installation requires Python 3.14 or newer. Loaders are in
+`ptx_frontend.spec.database`, model types in `ptx_frontend.spec.model`, and
+resource helpers in `ptx_frontend.spec.resources`; the namespace root does not
+re-export these APIs. Linux Clang configuration requires `ld.lld-21` or
+`ld.lld` in addition to the preset's LLVM archive tools; CI installs `lld-21`.
+CTest presets exclude `python_test`; installed C++ public API consumer verification runs as a separate
+Clang Debug Linux CI step. Run the Python unit lane separately.

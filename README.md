@@ -1,7 +1,7 @@
 # PTX Frontend
 
-PTX Frontend is a C++23 library for parsing and analysing a deliberately
-limited subset of NVIDIA PTX. It provides a lossless concrete syntax tree, a
+PTX Frontend is a pre-1.0 C++23 library for parsing and analysing NVIDIA PTX.
+It provides a lossless concrete syntax tree, a
 typed Syntax AST, lexical binding, declaration validation, and generated
 Resolved IR with target-aware checking for modelled instructions.
 
@@ -9,137 +9,17 @@ It is a frontend, not an assembler, code generator, or GPU executor. It does
 not claim complete PTX ISA coverage; consult the coverage documents for the
 supported surface and its exclusions.
 
-## Documentation
-
-- [English documentation](docs/us-en/) and [简体中文文档](docs/zh-han/) cover
-  design decisions, public contracts, and per-family support boundaries.
-- [Conversion coverage](docs/us-en/conversion_coverage.md) and its
-  [简体中文版本](docs/zh-han/conversion_coverage.md) define the modelled
-  `isspacep`, `cvta`, `cvt`, `cvt.pack`, `prmt`, `mapa`, and `getctarank`
-  surface, including target-qualified modern conversion forms.
-- [`testp` and `copysign` coverage](docs/us-en/testp_copysign_coverage.md) and
-  its [简体中文版本](docs/zh-han/testp_copysign_coverage.md) define the currently
-  modelled floating classification and sign-copy forms.
-- [Floating `abs` and `neg` coverage](docs/us-en/abs_neg_coverage.md) and its
-  [简体中文版本](docs/zh-han/abs_neg_coverage.md) define their scalar, half, and
-  bfloat source, storage, modifier, and target contracts.
-- [Floating `mad` coverage](docs/us-en/mad_coverage.md) and its
-  [简体中文版本](docs/zh-han/mad_coverage.md) define the explicit-rounding FP32
-  and FP64 forms and their excluded legacy profiles.
-- [Floating `div` coverage](docs/us-en/div_coverage.md) and its
-  [简体中文版本](docs/zh-han/div_coverage.md) define the explicit approximate,
-  full-range, and rounded FP32/FP64 forms.
-- [Floating reciprocal and square-root coverage](docs/us-en/unary_float_coverage.md)
-  and its [简体中文版本](docs/zh-han/unary_float_coverage.md) define the explicit
-  `rcp`, `sqrt`, and `rsqrt` FP32/FP64 forms.
-- [Floating transcendental coverage](docs/us-en/transcendental_coverage.md) and
-  its [简体中文版本](docs/zh-han/transcendental_coverage.md) define the explicit
-  `sin`, `cos`, `lg2`, `ex2`, and `tanh` FP32 and half/bfloat forms.
-- [Floating min/max coverage](docs/us-en/min_max_coverage.md) and its
-  [简体中文版本](docs/zh-han/min_max_coverage.md) define the two-source and
-  three-source FP32 forms, FP64, and the half/bfloat cohorts.
-- [Floating and mixed `add`/`sub` coverage](docs/us-en/add_sub_coverage.md) and
-  its [简体中文版本](docs/zh-han/add_sub_coverage.md) reconcile the scalar,
-  packed, half/bfloat, and mixed-precision operand contracts.
-- [Ordinary `selp` coverage](docs/us-en/selp_coverage.md) and its
-  [简体中文版本](docs/zh-han/selp_coverage.md) define the modelled scalar types,
-  predicate operand, and `.f64` target boundary.
-- [`set` coverage](docs/us-en/set_coverage.md) and its
-  [简体中文版本](docs/zh-han/set_coverage.md) define ordinary and half/bfloat
-  result/source types, Boolean and `.ftz` controls, and target limits.
-- [`slct` coverage](docs/us-en/slct_coverage.md) and its
-  [简体中文版本](docs/zh-han/slct_coverage.md) define all ordinary selected-data
-  types, numeric selectors, `.ftz`, operand containers, and target limits.
-- [Video instruction coverage](docs/us-en/video_coverage.md) and its
-  [简体中文版本](docs/zh-han/video_coverage.md) define all 23 scalar/two-lane/four-lane
-  opcodes, owned selectors and register negation, target gates, and static checks.
-- [Miscellaneous instruction coverage](docs/us-en/miscellaneous_coverage.md)
-  and its [简体中文版本](docs/zh-han/miscellaneous_coverage.md) define `brkpt`,
-  `nanosleep`, `pmevent`, `trap`, and both `setmaxnreg` actions.
-- [Multimem frontend coverage](docs/us-en/multimem_coverage.md) and its
-  [简体中文版本](docs/zh-han/multimem_coverage.md) define the seven PTX 9.3
-  source families, typed owned operands, target gates, and runtime boundary.
-- [Fabric/CFT frontend coverage](docs/us-en/fabric_coverage.md) and its
-  [简体中文版本](docs/zh-han/fabric_coverage.md) define the six PTX 9.3 source
-  families, six proxy fences, typed handles, completion contracts, and runtime
-  obligations.
-- [TCGEN MMA frontend family coverage](docs/us-en/tcgen_mma_family_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_family_coverage.md) map all four
-  fixed PTX 9.3 source families, owned and conditional checks, validation,
-  and remaining runtime obligations.
-- [TCGEN dense unscaled f8f6f4 MMA coverage](docs/us-en/tcgen_mma_f8f6f4_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_f8f6f4_coverage.md) describe
-  canonical source roles, K32 shape/type rules, and caller-known obligations.
-- [TCGEN dense MX8 block-scale MMA coverage](docs/us-en/tcgen_mma_mx8_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_mx8_coverage.md) describe
-  typed selector provenance, two scale roles, and caller-known layout checks.
-- [TCGEN dense MX4 block-scale MMA coverage](docs/us-en/tcgen_mma_mx4_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_mx4_coverage.md) describe
-  K64/K96 rows, selector gates, and conditional scale-layout facts.
-- [TCGEN dense MX NV block-scale MMA coverage](docs/us-en/tcgen_mma_mxnv_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_mxnv_coverage.md) describe
-  mandatory selectors, scale types, and K64/K96 layout obligations.
-- [TCGEN ordinary sparse MMA coverage](docs/us-en/tcgen_mma_sparse_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_sparse_coverage.md) describe
-  four sparse kinds, metadata placement, and caller-known sparsity obligations.
-- [TCGEN sparse MX MMA coverage](docs/us-en/tcgen_mma_sparse_mx_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_sparse_mx_coverage.md) describe
-  three block-scaled sparse kinds, factor rows, and pairwise metadata rules.
-- [TCGEN non-WS A collector coverage](docs/us-en/tcgen_mma_a_collector_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_a_collector_coverage.md) describe
-  typed collector and ashift source controls with conditional history facts.
-- [TCGEN MX A collector coverage](docs/us-en/tcgen_mma_mx_a_collector_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_mx_a_collector_coverage.md) describe
-  A collector controls on six dense/sparse block-scaled identities.
-- [TCGEN dense WS MMA coverage](docs/us-en/tcgen_mma_ws_dense_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_dense_coverage.md) describe
-  B collector controls, optional zero-column source, and conditional WS facts.
-- [TCGEN sparse WS MMA coverage](docs/us-en/tcgen_mma_ws_sparse_coverage.md)
-  and its [简体中文版本](docs/zh-han/tcgen_mma_ws_sparse_coverage.md) describe
-  mandatory metadata, compressed K, and conditional WS sparse facts.
-- [Installed CMake components](docs/us-en/cmake_components.md) describe downstream targets and public PTX-spec data.
-- [CTA `barrier.sync`/`barrier.arrive`/`barrier.red` coverage](docs/us-en/barrier_sync_coverage.md) and its
-  [简体中文版本](docs/zh-han/barrier_sync_coverage.md) describe the modeled
-  synchronization and reduction slice and its static/runtime boundary.
-- [`mbarrier.test_wait` qualifier coverage](docs/us-en/mbarrier_test_wait_coverage.md) and its
-  [简体中文版本](docs/zh-han/mbarrier_test_wait_coverage.md) describe the paired
-  semantics and scope qualifiers and their target limits.
-- [`mbarrier.try_wait` qualifier coverage](docs/us-en/mbarrier_try_wait_coverage.md) and its
-  [简体中文版本](docs/zh-han/mbarrier_try_wait_coverage.md) describe the paired
-  qualifiers, optional time hint, and target limits.
-- [`membar` level coverage](docs/us-en/membar_coverage.md) and its
-  [简体中文版本](docs/zh-han/membar_coverage.md) describe CTA, GPU, system,
-  alias-proxy, and async-proxy barrier forms and their target limits.
-- [Ordinary `fence` coverage](docs/us-en/fence_coverage.md) and its
-  [简体中文版本](docs/zh-han/fence_coverage.md) describe ordinary semantics,
-  scope, restricted forms, alias-proxy ordering, and target limits.
-- [Resolved IR design](docs/us-en/resolved_ir_design.md) describes resolution
-  and validation entry points.
-- [Tensor async cache controls](docs/us-en/tensor_cache_controls.md) and their
-  [简体中文版本](docs/zh-han/tensor_cache_controls.md) document the supported TMA
-  hint and final policy operands, owned query, and static check boundary.
-- [Tensor-map/TMA frontend closeout](docs/us-en/tensor_async_closeout.md) and its
-  [简体中文版本](docs/zh-han/tensor_async_closeout.md) map the fixed PTX 9.3
-  requirements to source, tests, and the opaque-descriptor boundary.
-- [Surface frontend coverage](docs/us-en/surface_coverage.md) and its
-  [简体中文版本](docs/zh-han/surface_coverage.md) describe all four PTX 9.3
-  surface families, 1,864 legal mnemonic combinations, independent typed
-  resources and coordinates, static feature gates, and runtime boundaries.
-  The explicit generic `sm_50` target profile supports the minimum target for
-  64-bit surface min/max; its enabled family and capability domains are empty.
-- [Texture and opaque resource coverage](docs/us-en/texture_coverage.md) and its
-  [简体中文版本](docs/zh-han/texture_coverage.md) describe the typed four-family
-  source contracts, declaration identity, compatibility syntax, and runtime boundary.
-- [Stack manipulation coverage](docs/us-en/stack_manipulation_coverage.md) and its
-  [简体中文版本](docs/zh-han/stack_manipulation_coverage.md) describe all eight
-  typed source forms, owned function context, alignment conversion and runtime boundaries.
-- The [project Wiki](https://github.com/endingly/ptx_frontend/wiki) provides additional project material.
+Technical guides, architecture, coverage boundaries, and contribution details
+live in the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki).
+The Wiki links the detailed [English](docs/us-en/) and [简体中文](docs/zh-han/)
+reference documents maintained with the source.
 
 ## Build and install
 
 The reproducible local path uses CMake presets, Ninja, GCC/G++ or Clang, and the vcpkg
-manifest. Install CMake 3.28 or newer, a C++23 compiler, Python 3, Flex, and
-Bison 3.8 or newer; initialize vcpkg and export its location before configuring.
+manifest. Install CMake 3.28 or newer, Ninja, a C++23 compiler,
+Python 3.14 or newer, Flex, and Bison 3.8 or newer;
+initialize vcpkg and export its location before configuring.
 
 ```sh
 export VCPKG_ROOT=/path/to/vcpkg
@@ -167,12 +47,12 @@ Compiled components are static by default. Configure with
 `-DBUILD_SHARED_LIBS=OFF` to select static components explicitly. Use separate
 build and install directories for the two modes. Linux shared builds install
 seven component libraries; the public component target names stay the same.
-See the [component documentation](docs/us-en/cmake_components.md) for dependency,
+See the [Wiki build guide](https://github.com/endingly/ptx_frontend/wiki/Build-Install-and-CI) for dependency,
 runtime-loading, platform, and ABI requirements.
 `ci-linux-gcc-release` provides the corresponding Release build. The
 `ci-linux-clang-debug` and `ci-linux-clang-release` presets provide Clang 21
 builds with the same test profiles and are used by GitHub Actions. See the
-[CMake component documentation](docs/us-en/cmake_components.md) for embedded
+[Wiki build guide](https://github.com/endingly/ptx_frontend/wiki/Build-Install-and-CI) for embedded
 builds, Python specification-model use, and optional consumer coverage.
 
 ## Use from an installed package
@@ -182,6 +62,8 @@ Point CMake at the installed prefix through `CMAKE_PREFIX_PATH`. Make `fmt` and
 the needed component:
 
 ```cmake
+cmake_minimum_required(VERSION 3.28)
+project(ptx_example LANGUAGES CXX)
 find_package(ptx_frontend 0.7.0 CONFIG REQUIRED COMPONENTS resolved_ir)
 
 add_executable(example main.cpp)
@@ -189,15 +71,17 @@ target_compile_features(example PRIVATE cxx_std_23)
 target_link_libraries(example PRIVATE ptx_frontend::resolved_ir)
 ```
 
-Here is a small parse-and-resolve example:
+Here is a small parse-and-validate example (`main.cpp`):
 
 ```cpp
 #include <iostream>
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+/** Parse and validate a module, reporting frontend diagnostics. */
 int main() {
   constexpr std::string_view source = R"ptx(
 .version 8.0
@@ -217,7 +101,7 @@ int main() {
     return 1;
   }
 
-  auto module = ptx_frontend::resolved_ir::resolveModule(*parsed);
+  auto module = ptx_frontend::resolved_ir::resolveAndValidateModule(*parsed);
   if (!module) {
     for (const auto& diagnostic : module.error())
       std::cerr << diagnostic.message << '\n';
@@ -228,9 +112,12 @@ int main() {
 }
 ```
 
-Use `resolveAndValidateModule` or `validateModule` when your application needs
-an explicit complete target-validation contract; see the [Resolved IR
-design](docs/us-en/resolved_ir_design.md) for their distinct guarantees.
+Configure your consumer with `-DCMAKE_PREFIX_PATH=/absolute/path/to/out/install/ci-linux-gcc-debug`
+and a toolchain that finds the dependencies, then build and run it. Expected
+output is `resolved functions: 1`. This checks frontend structure and modeled
+constraints; it does not prove dataflow or GPU execution.
+See the [Wiki](https://github.com/endingly/ptx_frontend/wiki/Resolved-IR-and-Checking)
+for resolution-only and owned-IR validation APIs.
 
 ## License
 

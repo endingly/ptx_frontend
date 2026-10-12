@@ -155,8 +155,9 @@ All four signature forms are accepted: `_`, `_ (params)`, `(return) _`, and
 punctuation, `.noreturn`, `.abi_preserve N`, and `.abi_preserve_control N`.
 AST retains their semantic spellings and source ranges. Declaration semantics
 rejects `.noreturn` with return parameters and validates array formals; parsing
-at module scope is rejected. Binding owns the local label; I06 can retain its
-resolved identity, while instruction layout and ABI use remain later work.
+at module scope is rejected. Binding owns the local label. Current indirect-call
+layouts consume that bound prototype identity and reuse the shared call ABI
+contract; see [Resolved IR](resolved_ir_design.md) for entry points and limits.
 
 ## Function-local `.calltargets` syntax
 

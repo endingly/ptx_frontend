@@ -20,3 +20,7 @@ corpus rejected the tested hint-only spellings, so this consumer uses the
 matched hint-plus-policy form. See
 [English cache coverage](../../docs/us-en/tensor_cache_controls.md) and
 [中文缓存控制说明](../../docs/zh-han/tensor_cache_controls.md).
+
+The consumer also needs `fmt` and `magic_enum` CMake configurations. Make them
+available through the same vcpkg toolchain or add its installed dependency
+prefix to `CMAKE_PREFIX_PATH` alongside the frontend installation.

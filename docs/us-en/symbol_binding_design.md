@@ -207,6 +207,8 @@ formal parameters; direct `ld.param`/`st.param` addresses are valid, while
 `ResolvedFunctionRef` with the same stable `SymbolId` and its `.func`/`.entry`
 classification. The checker requires PTX 3.1 / SM 35 for a kernel-function
 address; a device-function address uses the base PTX 1.0 availability of
-`mov`. Remaining work includes:
-
-- state-space compatibility and the remaining special-register/type forms.
+`mov`. Lexical binding records declaration identities and metadata;
+instruction-specific state-space and special-register/type compatibility is
+checked during Resolved IR resolution/checking for modeled forms. Remaining
+work concerns unmodeled instruction/operand forms rather than a missing
+compatibility phase.

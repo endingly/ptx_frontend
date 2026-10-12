@@ -74,4 +74,4 @@ is unnecessary in the current direct-class model.
 The public `query_tensor_cache_controls(const Instruction&)` query copies the selected written hint, optional located policy, diagnostics, and an applicability indicator from the exact owned form. It does not inspect opaque tensor-map bytes or infer descriptor
 content. See [caller-known tensor-map facts](tensor_map_known_facts.md) for the
 separate conditional descriptor query, and
-[tensor async coverage](tensor_async_coverage.md) for the supported forms.
+[tensor async coverage](converage/tensor_async_coverage.md) for the supported forms.

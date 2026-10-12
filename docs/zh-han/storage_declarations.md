@@ -82,7 +82,7 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 
 floating initializer 支持 `.f32/.f64` literal、符号及括号，不规范化复合浮点算术。
 opaque object metadata 包含保留 array shape、显式 alignment 和 typed 命名成员初始化的
-module-global 声明。其 identity 与静态 field 边界见[纹理契约](texture_coverage.md)。
+module-global 声明。其 identity 与静态 field 边界见[纹理契约](converage/texture_coverage.md)。
 这些边界不会把不支持的值变为零。
 
 ## Diagnostic 与边界

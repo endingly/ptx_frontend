@@ -96,7 +96,7 @@ Floating initialization supports `.f32`/`.f64` literals with signs and
 parentheses; compound floating arithmetic is not normalized. Opaque object
 metadata includes module-global declarations with preserved array shape,
 explicit alignment, and typed named-member initialization. See the
-[texture contract](texture_coverage.md) for its identity and static-field boundary.
+[texture contract](converage/texture_coverage.md) for its identity and static-field boundary.
 These boundaries do not turn unsupported values into zero.
 
 ## Diagnostics and boundaries

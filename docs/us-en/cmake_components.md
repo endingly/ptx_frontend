@@ -50,6 +50,13 @@ database = load_packaged_spec_database()
 
 ## Test profiles
 
+The Linux Clang 21 configure presets select `/usr/bin/llvm-ar-21` and
+`/usr/bin/llvm-ranlib-21` for static archives. The shared Linux CI setup installs
+these tools through the `llvm-21` package. Local preset users need that package
+too, or can override `CMAKE_AR` and `CMAKE_RANLIB` on the CMake command line.
+GCC presets and configurations without these presets retain CMake's toolchain
+selection, including builds embedded with `add_subdirectory`.
+
 `BUILD_TESTING=ON` builds the active C++ suites, including
 `resolved_ir_smoke` and `test_resolved_ir`. The GCC and Clang Debug/Release presets enable
 testing. Check the installed `resolved_ir` component with

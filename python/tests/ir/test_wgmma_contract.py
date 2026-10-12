@@ -3,15 +3,18 @@
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
-from ptx_frontend.code_gen.context import build_generation_context
+from ptx_frontend.code_gen.context import GenerationContext, build_generation_context
 from ptx_frontend.code_gen.emit.resolved_model import form_shards
 from ptx_frontend.code_gen.emit.resolved_source import (
     generate_resolved_form_shard_source,
+    generate_resolved_opcode_source,
 )
+from ptx_frontend.code_gen.plan import build_generation_plan
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
 from ptx_frontend.ir.resolved_value_kind import ResolvedValueKind
 from ptx_frontend.spec.database import (
@@ -46,6 +49,7 @@ class WgmmaContractTests(unittest.TestCase):
         )
         cls.instruction = cls.database.instructions[0]
         cls.backend = load_cpp_backend(packaged_backend_spec())
+        cls.context = build_generation_context(cls.database, cls.backend)
 
     def test_exact_matrix_and_control_census(self) -> None:
         """Retain every legal issue topology and each distinct protocol action."""
@@ -155,7 +159,7 @@ class WgmmaContractTests(unittest.TestCase):
     def test_private_shards_cover_each_logical_form_once(self) -> None:
         """Check the 63/64 boundary and final partial shard in emitted switches."""
 
-        context = build_generation_context(self.database, self.backend)
+        context = self.context
         instruction = context.entries[0]
         shards = form_shards(instruction)
         count = len(shards)
@@ -178,6 +182,137 @@ class WgmmaContractTests(unittest.TestCase):
                     path.read_text().count("::instruction_kind() const noexcept"),
                     len(shards[shard]),
                 )
+
+    def test_typed_construction_shards_preserve_exact_dispatch_and_field_order(self) -> None:
+        """Every WGMMA form has one private builder case and one entry dispatch."""
+
+        entry = self.context.entries[0]
+        shards = form_shards(entry)
+        names = tuple(entry.cpp_name + variant.cpp_name
+                      for variant in entry.resolved.variants)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entrypoint = root / "resolved_ir_matrix_wgmma.gen.cpp"
+            generate_resolved_opcode_source(
+                self.context, category="matrix", opcode="wgmma",
+                output_path=entrypoint,
+            )
+            source = entrypoint.read_text(encoding="utf-8")
+            dispatch = source.split("  if (!fields) return std::unexpected(fields.error());\n", 1)[1]
+            dispatched = re.findall(
+                r"    case (Wgmma\w+)::kind: return generated_detail::"
+                r"wgmma_construct_(\d{3})\(kind, \*fields\);", dispatch,
+            )
+            self.assertEqual(
+                dispatched,
+                [(names[index], f"{shard_index:03d}")
+                 for shard_index, indices in enumerate(shards) for index in indices],
+            )
+            self.assertEqual(source.count("std::make_unique<Wgmma"), 0)
+            self.assertEqual(source.count("resolve_fields(ast,"), 1)
+            self.assertEqual(source.count("select_variant_name(ast,"), 1)
+            for shard_index in range(len(shards)):
+                declaration = (
+                    f"wgmma_construct_{shard_index:03d}(InstructionKind kind, "
+                    "ResolvedInstructionFields& fields);"
+                )
+                self.assertIn(declaration, source)
+
+            constructed: list[str] = []
+            for shard_index, indices in enumerate(shards):
+                shard_path = root / f"resolved_ir_matrix_wgmma_methods_{shard_index:03d}.gen.cpp"
+                generate_resolved_form_shard_source(
+                    self.context, category="matrix", opcode="wgmma",
+                    shard_index=shard_index, output_path=shard_path,
+                )
+                emitted = shard_path.read_text(encoding="utf-8")
+                self.assertIn("ptx_resolved_ir_resolution_detail.hpp", emitted)
+                builder = emitted.rsplit("namespace generated_detail {\n", 1)[1]
+                self.assertEqual(builder.count("std::unique_ptr<Instruction> wgmma_construct_"), 1)
+                cases = re.findall(r"    case (Wgmma\w+)::kind: \{", builder)
+                self.assertEqual(cases, [names[index] for index in indices])
+                self.assertEqual(builder.count("std::make_unique<Wgmma"), len(indices))
+                self.assertEqual(
+                    builder.count("switch (fields.operand_layout.value)"),
+                    len(indices),
+                )
+                self.assertEqual(
+                    builder.count("std::move(fields.execution_predicate)"),
+                    len(indices),
+                )
+                constructed.extend(cases)
+
+                for index in indices:
+                    variant = entry.resolved.variants[index]
+                    start = builder.index(f"    case {names[index]}::kind: {{")
+                    end = builder.find("    case Wgmma", start + 1)
+                    form_case = builder[start:end if end != -1 else None]
+                    self.assertLess(
+                        form_case.index("std::move(fields.execution_predicate)"),
+                        form_case.index("switch (fields.operand_layout.value)"),
+                    )
+                    self.assertEqual(
+                        re.findall(r"      case (\d+):", form_case),
+                        [str(layout) for layout in range(len(variant.operand_layouts))],
+                    )
+                    for layout_index, layout in enumerate(variant.operand_layouts):
+                        layout_case = form_case.split(f"      case {layout_index}:\n", 1)[1]
+                        next_case = layout_case.find("      case ")
+                        layout_case = layout_case[:next_case if next_case != -1 else None]
+                        assignments = re.findall(
+                            r'resolved_operand<[^>]+>\(fields, "([^"]+)"\);',
+                            layout_case,
+                        )
+                        self.assertEqual(assignments, [field.name for field in layout.fields])
+
+            self.assertEqual(constructed, list(names))
+            self.assertEqual(
+                [constructed[index] for index in (63, 64, 2111, 2112, 2150)],
+                [names[index] for index in (63, 64, 2111, 2112, 2150)],
+            )
+            plan = build_generation_plan(self.context, root)
+            self.assertEqual(
+                tuple(path for path in plan.paths if "wgmma_construct" in path.name),
+                (),
+            )
+            self.assertEqual(
+                sum("wgmma_methods_" in path.name for path in plan.paths),
+                len(shards),
+            )
+
+    def test_unsharded_wgmma_keeps_inline_construction(self) -> None:
+        """Reduced WGMMA snapshots still build exact forms without helpers."""
+
+        original = self.context.entries[0]
+        for count in (1, 64):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as directory:
+                entry = replace(
+                    original,
+                    specification=replace(
+                        original.specification,
+                        variants=original.specification.variants[:count],
+                    ),
+                    resolved=replace(
+                        original.resolved,
+                        variants=original.resolved.variants[:count],
+                    ),
+                )
+                context = GenerationContext(
+                    backend=self.context.backend, entries=(entry,)
+                )
+                self.assertEqual(form_shards(entry), ())
+                output = Path(directory) / "wgmma.gen.cpp"
+                generate_resolved_opcode_source(
+                    context, category="matrix", opcode="wgmma",
+                    output_path=output,
+                )
+                source = output.read_text(encoding="utf-8")
+                resolver = source.split(
+                    "/** Resolve wgmma to one exact final form. */", 1
+                )[1]
+                self.assertEqual(resolver.count("std::make_unique<Wgmma"), count)
+                self.assertNotIn("wgmma_construct_", source)
+                self.assertEqual(source.count("resolve_fields(ast,"), 1)
 
 
 if __name__ == "__main__":

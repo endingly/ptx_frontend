@@ -810,6 +810,12 @@ are compiled into the library. The internal fixed-domain observer is not a
 public all-family visitor template; adding a form to an existing shard does
 not promise zero recompilation elsewhere.
 
+For WGMMA, the stable opcode resolver keeps selection and field resolution in
+their established order, then dispatches each exact kind to a private builder
+in the owning method shard. The builder consumes the borrowed scratch fields
+and returns the same exact final class; no public class or resolver signature
+changes.
+
 ## Three descriptors
 
 One YAML specification generates three static descriptors with distinct roles:

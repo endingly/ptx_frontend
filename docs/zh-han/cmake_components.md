@@ -46,6 +46,12 @@ database = load_packaged_spec_database()
 
 ## 测试 profile
 
+Linux Clang 21 configure preset 为静态归档选择 `/usr/bin/llvm-ar-21` 和
+`/usr/bin/llvm-ranlib-21`。共享 Linux CI setup 通过 `llvm-21` package 安装这些工具。
+本地 preset 用户也需要该 package，或者在 CMake 命令行覆盖 `CMAKE_AR` 和
+`CMAKE_RANLIB`。GCC preset 和不使用这些 preset 的配置继续采用 CMake 的 toolchain
+选择，包括通过 `add_subdirectory` 嵌入的构建。
+
 `BUILD_TESTING=ON` 会构建活跃的 C++ 测试套件，包括
 `resolved_ir_smoke` 和 `test_resolved_ir`。
 GCC 和 Clang 的 Debug/Release preset 都启用该选项。可在独立构建目录中通过

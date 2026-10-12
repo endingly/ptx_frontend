@@ -638,6 +638,10 @@ resolved IR，诊断种类为
 内部固定引用域 observer 不是公开的全家族 visitor 模板；在既有分片中增加形式也不
 承诺其他代码完全无需重新编译。
 
+对于 WGMMA，稳定的逐 opcode resolver 仍按既有顺序执行选择和字段解析，再按精确
+kind 分发到所属方法分片中的私有构造 helper。helper 借用临时字段并返回相同的精确
+final 类；公开类与 resolver 签名均不变。
+
 ## 三份 descriptor
 
 同一 YAML spec 生成三份职责不同的静态 descriptor：

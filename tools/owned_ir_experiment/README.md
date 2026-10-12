@@ -33,11 +33,12 @@ regression. They do not establish a runtime or total-heap improvement. Detailed
 logs and sampler JSON are under `/tmp/ptx-owned-baseline-results/` and
 `/tmp/ptx-owned-experiment-*-build.{json,log}` in this workspace.
 
-## Current owned-only runtime and storage measurement
+## Historical owned-only runtime and storage measurement
 
-Build and install the current owned-IR library from a baseline and candidate
-revision using the same compiler, Release flags, corpus, and iteration count.
-Build this standalone consumer against each installed package:
+The retired harness used matching compiler, Release flags, corpus and iteration
+counts for baseline and candidate installations. Its former commands are retained
+below as evidence only: this directory no longer contains the CMake consumer,
+executable source or `compare.py` needed to run them.
 
 ```sh
 cmake -S tools/owned_ir_experiment -B /tmp/owned-runtime-baseline \
@@ -49,7 +50,7 @@ cmake --build /tmp/owned-runtime-baseline -j2
   corpus/m12/natural_kernel_sm80.ptx 200
 ```
 
-Repeat for the candidate installation. The program parses once, checks that
+The procedure repeated for the candidate installation. The former program parsed once, checks that
 resolution succeeds, then measures resolution plus validation, AST-free
 validation, full module copying, and read-only opcode traversal. It reports
 the instruction slot size, reserved body storage, and the sum of outer typed

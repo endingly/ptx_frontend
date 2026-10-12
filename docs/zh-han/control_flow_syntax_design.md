@@ -114,7 +114,8 @@ CST/AST node，而不是 label 加 instruction。支持四种 signature form：`
 punctuation、`.noreturn`、`.abi_preserve N` 和 `.abi_preserve_control N`；AST 保留相应的
 semantic spelling 与 source range。declaration semantics 会拒绝 return parameter 与 `.noreturn`
 同时出现，并检查 array formal；module scope 会明确拒绝该 grammar。binding 负责 local label；I06
-可以保留其 resolved identity，但 instruction layout 与 ABI use 仍留给后续工作。
+保留其 bound identity；当前 indirect-call layout 消费该 prototype identity，
+并复用公共 call ABI contract。entry point 与边界见 [Resolved IR](resolved_ir_design.md)。
 
 ## function-local `.calltargets` 语法
 

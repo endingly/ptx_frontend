@@ -7,3 +7,7 @@ wait classes, and module validation after the syntax AST is destroyed.
 After installing the project into an isolated prefix, configure this
 directory with `-DCMAKE_PREFIX_PATH=<install-prefix>`, build it, and run
 `tensor_memory_transfer_consumer`.
+
+The consumer also needs `fmt` and `magic_enum` CMake configurations. Make them
+available through the same vcpkg toolchain or add its installed dependency
+prefix to `CMAKE_PREFIX_PATH` alongside the frontend installation.

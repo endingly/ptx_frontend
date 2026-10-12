@@ -163,6 +163,6 @@ checker 在所有 device parameter 上要求 PTX 2.0 / SM 20 baseline，并将 r
 direct `ld.param`/`st.param` 可取址，`mov` 仍拒绝取址。standalone resolution 只保留 spelling。bare function name 绑定为 `ResolvedFunctionRef`，保存
 同一稳定 `SymbolId` 与 `.func/.entry` 类别；kernel function 地址由 checker 要求 PTX 3.1 /
 SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
-后续语义阶段仍需完成：
-
-- state-space compatibility，以及其余 special-register/type form。
+词法绑定记录声明身份和元数据；已建模 form 的指令相关 state-space 与
+special-register/type 兼容由 Resolved IR resolution/checker 检查。剩余工作是尚未建模的
+指令/operand form，而非整体兼容检查阶段尚未实现。

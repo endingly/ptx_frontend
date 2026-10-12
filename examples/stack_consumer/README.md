@@ -8,3 +8,7 @@ cmake -S examples/stack_consumer -B out/stack-consumer \
 cmake --build out/stack-consumer
 out/stack-consumer/stack_consumer
 ```
+
+The consumer also needs `fmt` and `magic_enum` CMake configurations. Make them
+available through the same vcpkg toolchain or add its installed dependency
+prefix to `CMAKE_PREFIX_PATH` alongside the frontend installation.

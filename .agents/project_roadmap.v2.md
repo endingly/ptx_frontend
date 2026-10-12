@@ -417,7 +417,7 @@ family scope，绝不表示整部 PTX ISA。
 | WMMA compatibility | representative slice 进入 1.0 | M15 |
 | Hopper WGMMA | 进入 1.0 | M16 |
 | Blackwell TCGEN05 | 进入 1.0 | M17/M18 |
-| Stack manipulation | 八个 typed source forms 与静态 frontend 检查已实现；运行时栈纪律与执行延后 | [覆盖与边界](../docs/zh-han/stack_manipulation_coverage.md) |
+| Stack manipulation | 八个 typed source forms 与静态 frontend 检查已实现；运行时栈纪律与执行延后 | [覆盖与边界](../docs/zh-han/converage/stack_manipulation_coverage.md) |
 | Video instructions | 当前分支提供 PTX 9.3 全部 23 个 scalar/SIMD2/SIMD4 opcode 的类型化源码与静态检查；算术执行另行负责 | post-1.0 |
 | Misc instructions | `trap` 已完成；`setmaxnreg` 进入 common profile；其他延后 | M9/M12 |
 | Multimem | base identity 可预留；完整 instruction family 延后 | post-1.0 |
@@ -921,9 +921,9 @@ CTA group 和完成方式约束。模块校验从自有绑定检查寄存器元�
 的运行时原始字节仍不解码。固定 PTX 9.3 的规范 tensor 源码模板在当前 target catalog
 中对应 356 个选定身份（load 180、store 18、reduction 128、prefetch 30），
 形成 178 对 base/cache-hint 形式；模块校验还会将地址符号的缓存类型和保证对齐
-与自有声明逐一比对。[前端收口矩阵](../docs/zh-han/tensor_async_closeout.md)
+与自有声明逐一比对。[前端收口矩阵](../docs/zh-han/converage/tensor_async_closeout.md)
 逐项链接固定 PTX 9.3 条款、源码和测试；准确的已支持形式另见
-[tensor async 覆盖](../docs/zh-han/tensor_async_coverage.md)与
+[tensor async 覆盖](../docs/zh-han/converage/tensor_async_coverage.md)与
 [缓存控制](../docs/zh-han/tensor_cache_controls.md)。下表的 ✅ 指已列形式达到
 source lossless、owned typed IR 和 instruction-local target check 的前端出口，
 不证明原始 descriptor 字节、运行时效果或未列 PTX 变体。I06～I10、I18～I21
@@ -1120,12 +1120,12 @@ data-movement shape，而不再创建第二套表示。
 22/22 个 `(family, kind)` 身份、92 个结构化操作数布局、152 个已记录拓扑元组；
 相对保存的 40 个元组基线新增 112 个、移除零个。固定目标、类型化来源、
 持有式引用和绑定、形状／缩放／稀疏／lane 条件及适用的已知值报告见
-[英文全族覆盖与义务表](../docs/us-en/tcgen_mma_family_coverage.md)／
-[中文全族覆盖与义务表](../docs/zh-han/tcgen_mma_family_coverage.md)。
+[英文全族覆盖与义务表](../docs/us-en/converage/tcgen_mma_family_coverage.md)／
+[中文全族覆盖与义务表](../docs/zh-han/converage/tcgen_mma_family_coverage.md)。
 M18-I17～I19 与 C02 的实际完成身份、借用视图和条件义务接口另见
-[英文同步覆盖](../docs/us-en/tcgen_sync_coverage.md)／
-[中文同步覆盖](../docs/zh-han/tcgen_sync_coverage.md)及
-[A collector 条件历史报告](../docs/us-en/tcgen_mma_a_collector_coverage.md)。
+[英文同步覆盖](../docs/us-en/converage/tcgen_sync_coverage.md)／
+[中文同步覆盖](../docs/zh-han/converage/tcgen_sync_coverage.md)及
+[A collector 条件历史报告](../docs/us-en/converage/tcgen_mma_a_collector_coverage.md)。
 
 C03 的可重跑前端正反例包括
 [C++ 稀疏 MX 测试](../submod/resolved_ir/test/test_tcgen_mma_sparse_mx.cpp)、
@@ -1309,12 +1309,12 @@ M19 diagnostics/CI/reproducibility infrastructure
 
 | Family | Post-1.0 方向 |
 | --- | --- |
-| Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；[覆盖与边界](../docs/zh-han/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
-| Fabric | 当前分支提供 PTX 9.3 类型化 CFT handle、`fabric.try_get/put/red/pullred`、`submit`、`wait` 六族与六种 fabric proxy fence 源码及静态前端检查；[覆盖与边界](../docs/zh-han/fabric_coverage.md)。逻辑端点设置、运行时资源状态、提交/完成协议和 GPU 结果仍属后续验证，不由前端推断。 |
-| Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
-| Surface | 当前分支提供 PTX 9.3 `suld/sust/sured/suq` 四族 340 个 typed form，覆盖 1,864 种合法 mnemonic 组合；独立 surface descriptor、opaque 资源与坐标、静态类型/shape/availability 检查；[覆盖与边界](../docs/zh-han/surface_coverage.md)。实际 surface 配置、格式转换、边界行为与运行时访问有效性仍属后续验证。 |
-| Stack | 当前分支提供 `stacksave/stackrestore/alloca` 三族、u32/u64 两宽与省略/显式 alignment，共八个 PTX 9.3 source forms，具备 typed token/local-result、AST-free 静态检查与安装 consumer；[覆盖与边界](../docs/zh-han/stack_manipulation_coverage.md)。运行时栈内存、溢出、token 来源/寿命与跨 CFG 栈纪律仍属后续验证。 |
-| Video | 当前分支提供全部 23 个 opcode、23 个类型化 variant、39 个 operand layout，含 scalar/SIMD2/SIMD4 selector/mask、vmad register-negation、整数来源与 AST-free 检查；[覆盖与边界](../docs/zh-han/video_coverage.md)。GPU 算术、CFG 与执行语义仍属后续验证。 |
+| Multimem | 当前分支提供 `multimem.ld_reduce/st/red/st.async/red.async/cp.async.bulk/cp.reduce.async.bulk` 七族 PTX 9.3 源码与静态前端检查；[覆盖与边界](../docs/zh-han/converage/multimem_coverage.md)。运行时 multimem 映射、跨设备可见性与完成协议仍属后续验证，不由前端推断。 |
+| Fabric | 当前分支提供 PTX 9.3 类型化 CFT handle、`fabric.try_get/put/red/pullred`、`submit`、`wait` 六族与六种 fabric proxy fence 源码及静态前端检查；[覆盖与边界](../docs/zh-han/converage/fabric_coverage.md)。逻辑端点设置、运行时资源状态、提交/完成协议和 GPU 结果仍属后续验证，不由前端推断。 |
+| Texture | 当前分支提供 PTX 9.3 `tex/tld4/txq/istypep` 四族 192 个类型化 source forms，以及 opaque 资源声明、entry 参数、static named members、legacy `.tex`、`mov.u64` 资源 identity 和 AST-free 检查；[覆盖与边界](../docs/zh-han/converage/texture_coverage.md)。实际纹理配置、采样和运行时资源有效性仍属于后续验证。 |
+| Surface | 当前分支提供 PTX 9.3 `suld/sust/sured/suq` 四族 340 个 typed form，覆盖 1,864 种合法 mnemonic 组合；独立 surface descriptor、opaque 资源与坐标、静态类型/shape/availability 检查；[覆盖与边界](../docs/zh-han/converage/surface_coverage.md)。实际 surface 配置、格式转换、边界行为与运行时访问有效性仍属后续验证。 |
+| Stack | 当前分支提供 `stacksave/stackrestore/alloca` 三族、u32/u64 两宽与省略/显式 alignment，共八个 PTX 9.3 source forms，具备 typed token/local-result、AST-free 静态检查与安装 consumer；[覆盖与边界](../docs/zh-han/converage/stack_manipulation_coverage.md)。运行时栈内存、溢出、token 来源/寿命与跨 CFG 栈纪律仍属后续验证。 |
+| Video | 当前分支提供全部 23 个 opcode、23 个类型化 variant、39 个 operand layout，含 scalar/SIMD2/SIMD4 selector/mask、vmad register-negation、整数来源与 AST-free 检查；[覆盖与边界](../docs/zh-han/converage/video_coverage.md)。GPU 算术、CFG 与执行语义仍属后续验证。 |
 | Extended precision | 跨指令 carry-chain analysis 与 execution |
 | Transcendental | rcp/sqrt/rsqrt/sin/cos/lg2/ex2/tanh 完整 cross-product |
 | Legacy/deprecated | deprecated shfl/vote、legacy banks、历史 matrix variant |

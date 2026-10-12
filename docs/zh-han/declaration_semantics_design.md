@@ -112,8 +112,8 @@ symbol；缺失 label 使用 compact-entry range 诊断。分支表是有序的�
 `.callprototype` 拒绝同时出现 return parameter 与 `.noreturn`，对 formal 使用既有
 alignment/array-extent 检查，并要求 array formal 使用 `.param`。duplicate declaration label 仍由
 binding 负责。module resolution 会把有效 prototype 转为与 function 相同的 canonical signature，
-并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking；ABI suffix
-availability 仍留给后续工作。
+并复用已验证的首个 `.calltargets` member signature 进行 indirect-call ABI checking。
+已建模 ABI suffix availability 由 module validation 检查；仍受[当前边界](converage/coverage_status.md)限制。
 
 普通 storage 仅在作为 indirect-call flist 消费时检查 call-table 适用性。module 层复用
 owned sparse storage relocation 以及本 pass 完整的 `FunctionSignature` equality，保留

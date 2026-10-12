@@ -79,6 +79,6 @@ require a separately specified byte-layout scope; this caller-known-facts
 query does **not** satisfy or replace it. Canonical
 [cache-hint/policy operands](tensor_cache_controls.md) are supported on the
 selected tensor forms and remain independent of descriptor facts. See the
-[tensor async coverage](tensor_async_coverage.md) and
-[frontend closeout matrix](tensor_async_closeout.md) for exact forms, evidence,
+[tensor async coverage](converage/tensor_async_coverage.md) and
+[frontend closeout matrix](converage/tensor_async_closeout.md) for exact forms, evidence,
 and remaining obligations.

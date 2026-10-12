@@ -121,6 +121,18 @@ class DifferentialChecks(unittest.TestCase):
         self.assertEqual(len(fuzz), 20)
         self.assertTrue(all(len(bytes.fromhex(case["source_hex"])) <= 4096 for case in fuzz))
 
+    def test_case_selection_records_exclusions(self):
+        """Root and name filters combine explicitly without dropping unreported cases."""
+        cases = [{"name": "valid/instruction", "mode": "instruction"},
+                 {"name": "valid/module", "mode": "module"},
+                 {"name": "malformed/instruction", "mode": "instruction"}]
+        selected, evidence = run.select_cases(cases, "instruction", "^valid/")
+        self.assertEqual(selected, cases[:1])
+        self.assertEqual(evidence, {"mode": "instruction", "case_filter": "^valid/",
+                                   "available_count": 3, "selected_count": 1, "excluded_count": 2})
+        self.assertEqual(run.select_cases(cases, "all", None)[0], cases)
+        self.assertEqual(run.select_cases(cases, "module", "^malformed/")[0], [])
+
 
 if __name__ == "__main__":
     unittest.main()

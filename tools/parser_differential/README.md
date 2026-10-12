@@ -27,6 +27,10 @@ facade continues to exercise whichever backend the public facade selects.
 Without `--generated`, the candidate uses public `PtxCstParser` entries.
 `--candidate-backend OFF` selects a handwritten candidate when that option
 exists. `--candidate-source` selects another live source tree.
+`--mode instruction` or `--mode module` explicitly narrows parser roots;
+`--case-filter REGEX` selects case names. Both filters, the available count,
+selected count and excluded count appear in the manifest/report. An empty
+selection fails. The default compares every case.
 
 Each commit archive is reconstructed below `out/parser-differential` and every
 archived file is checked against its original bytes on reuse. Reference and

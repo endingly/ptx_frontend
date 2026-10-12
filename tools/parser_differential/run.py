@@ -245,6 +245,15 @@ def snapshot(binary: Path, case: dict, *, timeout: float = 10) -> dict:
     return decode_snapshot(result.stdout)
 
 
+def select_cases(cases: list[dict], mode: str, pattern: str | None) -> tuple[list[dict], dict]:
+    """Apply an explicit root/name selection and report every excluded case."""
+    expression = re.compile(pattern) if pattern is not None else None
+    selected = [case for case in cases if (mode == "all" or case["mode"] == mode)
+                and (expression is None or expression.search(case["name"]))]
+    return selected, {"mode": mode, "case_filter": pattern, "available_count": len(cases),
+                      "selected_count": len(selected), "excluded_count": len(cases) - len(selected)}
+
+
 def decode_snapshot(contents: bytes | str) -> dict:
     """Reject duplicate JSON keys so type/field collisions cannot hide identity."""
     def object_pairs(pairs: list[tuple[str, Any]]) -> dict:
@@ -303,6 +312,9 @@ def main() -> int:
     parser.add_argument("--compiler", default="clang++-21")
     parser.add_argument("--seed", type=int, default=20261012)
     parser.add_argument("--fuzz-count", type=int, default=100)
+    parser.add_argument("--mode", choices=["all", "instruction", "module"], default="all",
+                        help="Explicitly select the parser entry roots to compare")
+    parser.add_argument("--case-filter", help="Regular expression selecting case names")
     parser.add_argument("--compare-files", nargs=2, type=Path)
     args = parser.parse_args()
     if args.compare_files:
@@ -327,12 +339,19 @@ def main() -> int:
     left = build(tool, reference, output / "build-reference", prefix, args.compiler, "OFF")
     right = build(tool, candidate, output / "build-candidate", prefix, args.compiler,
                   args.candidate_backend, args.generated)
-    cases = corpus(tool, reference, args.seed, args.fuzz_count)
+    available = corpus(tool, reference, args.seed, args.fuzz_count)
+    try:
+        cases, selection = select_cases(available, args.mode, args.case_filter)
+    except re.error as error:
+        parser.error(f"invalid --case-filter: {error}")
+    if not cases:
+        parser.error("case selection is empty")
     canonical = json.dumps(cases, sort_keys=True).encode()
     manifest = {"schema": 1, "reference": reference_identity, "candidate": candidate_identity,
                 "candidate_backend": args.candidate_backend, "generated": args.generated,
                 "compiler": args.compiler, "prefix": str(prefix), "seed": args.seed,
                 "fuzz_count": args.fuzz_count, "case_count": len(cases),
+                "case_selection": selection,
                 "corpus_sha256": digest(canonical), "canonicalizations": [],
                 "source_inputs": source_inputs,
                 "compiler_version": command([args.compiler, "--version"], capture_output=True,
@@ -354,7 +373,8 @@ def main() -> int:
                 failures.append({"name": case["name"], "difference": mismatch})
         except (subprocess.SubprocessError, ValueError) as error:
             failures.append({"name": case["name"], "error": str(error)})
-    report = {"case_count": len(cases), "failures": failures, "observed_types": sorted(observed_types)}
+    report = {"case_count": len(cases), "case_selection": selection,
+              "failures": failures, "observed_types": sorted(observed_types)}
     if source_inputs != {"reference": input_manifest(reference), "candidate": input_manifest(candidate)}:
         report["failures"].append({"error": "build inputs changed during differential run"})
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")

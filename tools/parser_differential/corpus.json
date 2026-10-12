@@ -1,0 +1,1042 @@
+[
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:34/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, A[idx - (1+2)];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:34/module",
+    "mode": "module",
+    "source": "mov.u64 %rd, A[idx - (1+2)];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:57/instruction",
+    "mode": "instruction",
+    "source": "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map+64, {%r0, -2}];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:57/module",
+    "mode": "module",
+    "source": "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map+64, {%r0, -2}];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:78/instruction",
+    "mode": "instruction",
+    "source": "  // lead\n@!%p add /* type */ .u32 [%rd1 /* op */ + 16], {%r1, -2} /* tail */ ;\n// eof"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:78/module",
+    "mode": "module",
+    "source": "  // lead\n@!%p add /* type */ .u32 [%rd1 /* op */ + 16], {%r1, -2} /* tail */ ;\n// eof"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:109/instruction",
+    "mode": "instruction",
+    "source": "// leading comment\n.version 9.3\n.file 0 \"round_trip.ptx\"\n.section .debug_info { /* raw payload */ .b8 0; };\n.pragma \"module\";\n.entry kernel() .pragma \"header\"; .maxnreg 32 {\n  .pragma \"body\";\n  { add.u32 %r0, %r1, %r2; }\n}\n// trailing comment\n   "
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:109/module",
+    "mode": "module",
+    "source": "// leading comment\n.version 9.3\n.file 0 \"round_trip.ptx\"\n.section .debug_info { /* raw payload */ .b8 0; };\n.pragma \"module\";\n.entry kernel() .pragma \"header\"; .maxnreg 32 {\n  .pragma \"body\";\n  { add.u32 %r0, %r1, %r2; }\n}\n// trailing comment\n   "
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:170/instruction",
+    "mode": "instruction",
+    "source": ".version 9.3\n.target sm_80\n.address_size 64\n.global .u32 bad%name = 1;\n.entry k() {\n  .reg .u32 %r<2>;\n  mov.u32 %r0, %r%tmp;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:170/module",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80\n.address_size 64\n.global .u32 bad%name = 1;\n.entry k() {\n  .reg .u32 %r<2>;\n  mov.u32 %r0, %r%tmp;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:208/instruction",
+    "mode": "instruction",
+    "source": "ld.weak.u32 %r0, [%rd0];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:208/module",
+    "mode": "module",
+    "source": "ld.weak.u32 %r0, [%rd0];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:221/instruction",
+    "mode": "instruction",
+    "source": "mov.b32 [%rd1-4], %r2.x, {%r3, 1};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:221/module",
+    "mode": "module",
+    "source": "mov.b32 [%rd1-4], %r2.x, {%r3, 1};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:249/instruction",
+    "mode": "instruction",
+    "source": "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:249/module",
+    "mode": "module",
+    "source": "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:264/instruction",
+    "mode": "instruction",
+    "source": "@%p call.uni (%result), %callee, (%arg, -4), targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:264/module",
+    "mode": "module",
+    "source": "@%p call.uni (%result), %callee, (%arg, -4), targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:329/instruction",
+    "mode": "instruction",
+    "source": "@%p bra.uni done;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:329/module",
+    "mode": "module",
+    "source": "@%p bra.uni done;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:343/instruction",
+    "mode": "instruction",
+    "source": "brx.idx.uni %r0, targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:343/module",
+    "mode": "module",
+    "source": "brx.idx.uni %r0, targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:387/instruction",
+    "mode": "instruction",
+    "source": "add.u32 %r1, %r2, %r3"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:387/module",
+    "mode": "module",
+    "source": "add.u32 %r1, %r2, %r3"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:416/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  no_args: .callprototype _;\n  inputs: .callprototype _ (.param .u32 _);\n  returns: .callprototype (.reg .u32 result) _;\n  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:416/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  no_args: .callprototype _;\n  inputs: .callprototype _ (.param .u32 _);\n  returns: .callprototype (.reg .u32 result) _;\n  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:474/instruction",
+    "mode": "instruction",
+    "source": "\n.func caller() {\n  one: .calltargets first;\n  many: .calltargets first, second, third;\n  duplicate: .calltargets first, first;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:474/module",
+    "mode": "module",
+    "source": "\n.func caller() {\n  one: .calltargets first;\n  many: .calltargets first, second, third;\n  duplicate: .calltargets first, first;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:529/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  table: .branchtargets L1, N<5>, L1;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:529/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  table: .branchtargets L1, N<5>, L1;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:584/instruction",
+    "mode": "instruction",
+    "source": "add.u32 %r1, %r2, %r3; sub.u32 %r4, %r5, %r6;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:584/module",
+    "mode": "module",
+    "source": "add.u32 %r1, %r2, %r3; sub.u32 %r4, %r5, %r6;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:603/instruction",
+    "mode": "instruction",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:603/module",
+    "mode": "module",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:654/instruction",
+    "mode": "instruction",
+    "source": ".file 0x1U \"source.ptx\"\n.file 1 \"large.ptx\", 0, 18446744073709551615U;\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:654/module",
+    "mode": "module",
+    "source": ".file 0x1U \"source.ptx\"\n.file 1 \"large.ptx\", 0, 18446744073709551615U;\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:699/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info {\nLbegin:\n  .b8 -128, 0, 255\n  .b16 -32768, 65535\n  .b32 -2147483648, 4294967295U\n  .b64 -9223372036854775808, 18446744073709551615U\n  .b32 .debug_abbrev\n  .b64 Lbegin\n  .b32 .debug_str+0x4\n  .b64 Lbegin+12\n  .b32 Lend-Lbegin\n  .b64 Lbegin-Lend\nLend:\n};\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:699/module",
+    "mode": "module",
+    "source": ".section .debug_info {\nLbegin:\n  .b8 -128, 0, 255\n  .b16 -32768, 65535\n  .b32 -2147483648, 4294967295U\n  .b64 -9223372036854775808, 18446744073709551615U\n  .b32 .debug_abbrev\n  .b64 Lbegin\n  .b32 .debug_str+0x4\n  .b64 Lbegin+12\n  .b32 Lend-Lbegin\n  .b64 Lbegin-Lend\nLend:\n};\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:752/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info {\n  .b8 0\n.entry kernel() { add.u32 %r0, %r1, %r2; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:752/module",
+    "mode": "module",
+    "source": ".section .debug_info {\n  .b8 0\n.entry kernel() { add.u32 %r0, %r1, %r2; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:773/instruction",
+    "mode": "instruction",
+    "source": ".pragma \"module\", \"opaque\";\n.entry kernel() .pragma \"nounroll\"; {\n  .pragma \"frequency 32\";\n  {\n    .pragma \"nested\", \"opaque\";\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:773/module",
+    "mode": "module",
+    "source": ".pragma \"module\", \"opaque\";\n.entry kernel() .pragma \"nounroll\"; {\n  .pragma \"frequency 32\";\n  {\n    .pragma \"nested\", \"opaque\";\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:829/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() .pragma \"before\";\n    .maxnreg 32 .maxntid 16, 8, 4 .pragma \"after\";\n    .minnctapersm 2 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:829/module",
+    "mode": "module",
+    "source": ".entry kernel() .pragma \"before\";\n    .maxnreg 32 .maxntid 16, 8, 4 .pragma \"after\";\n    .minnctapersm 2 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:859/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() .reqntid 16, 8 { }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:859/module",
+    "mode": "module",
+    "source": ".entry kernel() .reqntid 16, 8 { }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:873/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel()\n    .reqnctapercluster 2, 3, 1 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:873/module",
+    "mode": "module",
+    "source": ".entry kernel()\n    .reqnctapercluster 2, 3, 1 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:930/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n    add.u32 %r0, %r1, %r2;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:930/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n    add.u32 %r0, %r1, %r2;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:994/instruction",
+    "mode": "instruction",
+    "source": ".func (.param .b32 result) helper(.param .b32 input) { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:994/module",
+    "mode": "module",
+    "source": ".func (.param .b32 result) helper(.param .b32 input) { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1019/instruction",
+    "mode": "instruction",
+    "source": ".extern .func sink(.param .align 8 .b8 blob[], .param .u64 .ptr .global .align 16 ptr) .noreturn;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1019/module",
+    "mode": "module",
+    "source": ".extern .func sink(.param .align 8 .b8 blob[], .param .u64 .ptr .global .align 16 ptr) .noreturn;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1094/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1094/module",
+    "mode": "module",
+    "source": ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1127/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  {\n    outer:\n    { add.u32 %r0, %r1, %r2; }\n  }\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1127/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  {\n    outer:\n    { add.u32 %r0, %r1, %r2; }\n  }\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1156/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { add.u32 %r0, %r1, %r2; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1156/module",
+    "mode": "module",
+    "source": ".entry kernel() { add.u32 %r0, %r1, %r2; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1240/instruction",
+    "mode": "instruction",
+    "source": "/*"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1240/module",
+    "mode": "module",
+    "source": "/*"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1257/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret;\r\n/* first\r\nlast"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1257/module",
+    "mode": "module",
+    "source": ".entry k() { ret;\r\n/* first\r\nlast"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1273/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret; }\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1273/module",
+    "mode": "module",
+    "source": ".entry k() { ret; }\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1291/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret;\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1291/module",
+    "mode": "module",
+    "source": ".entry k() { ret;\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1312/instruction",
+    "mode": "instruction",
+    "source": "` .entry k() { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1312/module",
+    "mode": "module",
+    "source": "` .entry k() { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1325/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  add.u32 %r0, %r1, %r2\n  sub.u32 %r3, %r4, %r5;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1325/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  add.u32 %r0, %r1, %r2\n  sub.u32 %r3, %r4, %r5;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1353/instruction",
+    "mode": "instruction",
+    "source": ".version nope;\n.target;\n.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1353/module",
+    "mode": "module",
+    "source": ".version nope;\n.target;\n.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1386/instruction",
+    "mode": "instruction",
+    "source": ".entry first() {\n  add.u32 %r0, %r1, %r2;\n.version 9.3\n.entry second() { sub.u32 %r3, %r4, %r5; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1386/module",
+    "mode": "module",
+    "source": ".entry first() {\n  add.u32 %r0, %r1, %r2;\n.version 9.3\n.entry second() { sub.u32 %r3, %r4, %r5; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1410/instruction",
+    "mode": "instruction",
+    "source": ".entry lone() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1410/module",
+    "mode": "module",
+    "source": ".entry lone() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1422/instruction",
+    "mode": "instruction",
+    "source": "} .version"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1422/module",
+    "mode": "module",
+    "source": "} .version"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1443/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { { add.u32 %r0, %r1, %r2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1443/module",
+    "mode": "module",
+    "source": ".entry kernel() { { add.u32 %r0, %r1, %r2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1469/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1469/module",
+    "mode": "module",
+    "source": ".entry kernel() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1488/instruction",
+    "mode": "instruction",
+    "source": ".visible .global .align 16 .v4 .f32 values[2][3];\n.entry kernel() {\n  .shared .v2 .u16 tile[8];\n  .local .u32 scratch[19][19];\n  .param .align 8 .b8 argument[12];\n  ret;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1488/module",
+    "mode": "module",
+    "source": ".visible .global .align 16 .v4 .f32 values[2][3];\n.entry kernel() {\n  .shared .v2 .u16 tile[8];\n  .local .u32 scratch[19][19];\n  .param .align 8 .b8 argument[12];\n  ret;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1532/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 table[(1 + 2) << 3] = {1, 2 * 3, WARP_SZ};\n.const .u64 pointer = generic(base) + 8;\n.global .u8 masked = 0xff(base + 4);\n.global .u32 first = 1, second = 2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1532/module",
+    "mode": "module",
+    "source": ".global .u32 table[(1 + 2) << 3] = {1, 2 * 3, WARP_SZ};\n.const .u64 pointer = generic(base) + 8;\n.global .u8 masked = 0xff(base + 4);\n.global .u32 first = 1, second = 2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1597/instruction",
+    "mode": "instruction",
+    "source": ".global .s32 offsets[][2] = {{-1, 0}, {0, -1}};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1597/module",
+    "mode": "module",
+    "source": ".global .s32 offsets[][2] = {{-1, 0}, {0, -1}};"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:101/instruction",
+    "mode": "instruction",
+    "source": "vmad.s32.s32.s32 %r0, - %r1.h0, -%r2, %r3;"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:101/module",
+    "mode": "module",
+    "source": "vmad.s32.s32.s32 %r0, - %r1.h0, -%r2, %r3;"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:258/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:258/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:320/instruction",
+    "mode": "instruction",
+    "source": "\n.func caller() {\n  list: .calltargets first, second, second;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:320/module",
+    "mode": "module",
+    "source": "\n.func caller() {\n  list: .calltargets first, second, second;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:567/instruction",
+    "mode": "instruction",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:567/module",
+    "mode": "module",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:749/instruction",
+    "mode": "instruction",
+    "source": "\n.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:749/module",
+    "mode": "module",
+    "source": "\n.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:772/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:772/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:1176/instruction",
+    "mode": "instruction",
+    "source": "\n.version 9.3\n.global .attribute(.managed, .unified(1, 2)) .u32 managed;\n.alias alias_fn, target;\n.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2\n    .abi_preserve_control 1 .language \"PTX\", 10;\n.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters\n    .language \"cuda c++\" {}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:1176/module",
+    "mode": "module",
+    "source": "\n.version 9.3\n.global .attribute(.managed, .unified(1, 2)) .u32 managed;\n.alias alias_fn, target;\n.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2\n    .abi_preserve_control 1 .language \"PTX\", 10;\n.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters\n    .language \"cuda c++\" {}\n"
+  },
+  {
+    "name": "expression/0/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[42] = /*scalar*/ 42; //eof\n"
+  },
+  {
+    "name": "expression/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (42);"
+  },
+  {
+    "name": "expression/1/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[symbol] = /*scalar*/ symbol; //eof\n"
+  },
+  {
+    "name": "expression/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (symbol);"
+  },
+  {
+    "name": "expression/2/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[-1] = /*scalar*/ -1; //eof\n"
+  },
+  {
+    "name": "expression/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (-1);"
+  },
+  {
+    "name": "expression/3/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[+~!2] = /*scalar*/ +~!2; //eof\n"
+  },
+  {
+    "name": "expression/3/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (+~!2);"
+  },
+  {
+    "name": "expression/4/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[(.s64)-(.u64)(1+2)] = /*scalar*/ (.s64)-(.u64)(1+2); //eof\n"
+  },
+  {
+    "name": "expression/4/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, ((.s64)-(.u64)(1+2));"
+  },
+  {
+    "name": "expression/5/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[generic(symbol)+0xff(3)(4)] = /*scalar*/ generic(symbol)+0xff(3)(4); //eof\n"
+  },
+  {
+    "name": "expression/5/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (generic(symbol)+0xff(3)(4));"
+  },
+  {
+    "name": "expression/6/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1+2*3-4/2 % 2] = /*scalar*/ 1+2*3-4/2 % 2; //eof\n"
+  },
+  {
+    "name": "expression/6/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1+2*3-4/2 % 2);"
+  },
+  {
+    "name": "expression/7/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[8<<1+2>>1] = /*scalar*/ 8<<1+2>>1; //eof\n"
+  },
+  {
+    "name": "expression/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (8<<1+2>>1);"
+  },
+  {
+    "name": "expression/8/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1<2<=3>4>=5==6!=7&8^9|10&&11||12] = /*scalar*/ 1<2<=3>4>=5==6!=7&8^9|10&&11||12; //eof\n"
+  },
+  {
+    "name": "expression/8/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1<2<=3>4>=5==6!=7&8^9|10&&11||12);"
+  },
+  {
+    "name": "expression/9/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1?2:3?4:5] = /*scalar*/ 1?2:3?4:5; //eof\n"
+  },
+  {
+    "name": "expression/9/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1?2:3?4:5);"
+  },
+  {
+    "name": "expression/10/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1?2?3:4:5] = /*scalar*/ 1?2?3:4:5; //eof\n"
+  },
+  {
+    "name": "expression/10/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1?2?3:4:5);"
+  },
+  {
+    "name": "expression/11/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[(1?2:3)+4] = /*scalar*/ (1?2:3)+4; //eof\n"
+  },
+  {
+    "name": "expression/11/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, ((1?2:3)+4);"
+  },
+  {
+    "name": "expression/12/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[0d3ff0000000000000+2.0] = /*scalar*/ 0d3ff0000000000000+2.0; //eof\n"
+  },
+  {
+    "name": "expression/12/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (0d3ff0000000000000+2.0);"
+  },
+  {
+    "name": "malformed-expression/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1+;"
+  },
+  {
+    "name": "malformed-expression/0/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1+;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1+2;"
+  },
+  {
+    "name": "malformed-expression/1/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1+2;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (.u64 1;"
+  },
+  {
+    "name": "malformed-expression/2/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (.u64 1;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/3/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1?2;"
+  },
+  {
+    "name": "malformed-expression/3/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1?2;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/4/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1?2:;"
+  },
+  {
+    "name": "malformed-expression/4/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1?2:;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/5/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1?2:3 bad);"
+  },
+  {
+    "name": "malformed-expression/5/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1?2:3 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/6/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1(1?2:3 bad);"
+  },
+  {
+    "name": "malformed-expression/6/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1(1?2:3 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, ((.u64)1 bad);"
+  },
+  {
+    "name": "malformed-expression/7/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, ((.u64)1 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/8/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, ((.u64 1);"
+  },
+  {
+    "name": "malformed-expression/8/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, ((.u64 1);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/9/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1 `;"
+  },
+  {
+    "name": "malformed-expression/9/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1 `;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/10/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1 $;"
+  },
+  {
+    "name": "malformed-expression/10/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1 $;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/11/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1"
+  },
+  {
+    "name": "malformed-expression/11/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "boundary/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, A[i][j];"
+  },
+  {
+    "name": "boundary/0/module",
+    "mode": "module",
+    "source": "mov.u64 %r, A[i][j];"
+  },
+  {
+    "name": "boundary/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, [A[i]];"
+  },
+  {
+    "name": "boundary/1/module",
+    "mode": "module",
+    "source": "mov.u64 %r, [A[i]];"
+  },
+  {
+    "name": "boundary/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, A[i+j];"
+  },
+  {
+    "name": "boundary/2/module",
+    "mode": "module",
+    "source": "mov.u64 %r, A[i+j];"
+  },
+  {
+    "name": "boundary/3/instruction",
+    "mode": "instruction",
+    "source": "call (), function, ();"
+  },
+  {
+    "name": "boundary/3/module",
+    "mode": "module",
+    "source": "call (), function, ();"
+  },
+  {
+    "name": "boundary/4/instruction",
+    "mode": "instruction",
+    "source": "call %r0, target;"
+  },
+  {
+    "name": "boundary/4/module",
+    "mode": "module",
+    "source": "call %r0, target;"
+  },
+  {
+    "name": "boundary/5/instruction",
+    "mode": "instruction",
+    "source": "bra;"
+  },
+  {
+    "name": "boundary/5/module",
+    "mode": "module",
+    "source": "bra;"
+  },
+  {
+    "name": "boundary/6/instruction",
+    "mode": "instruction",
+    "source": "brx.idx %r;"
+  },
+  {
+    "name": "boundary/6/module",
+    "mode": "module",
+    "source": "brx.idx %r;"
+  },
+  {
+    "name": "boundary/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r, ;"
+  },
+  {
+    "name": "boundary/7/module",
+    "mode": "module",
+    "source": "mov.u32 %r, ;"
+  },
+  {
+    "name": "boundary/8/instruction",
+    "mode": "instruction",
+    "source": ".file 1 \"x\", 2"
+  },
+  {
+    "name": "boundary/8/module",
+    "mode": "module",
+    "source": ".file 1 \"x\", 2"
+  },
+  {
+    "name": "boundary/9/instruction",
+    "mode": "instruction",
+    "source": ".entry k() .unknown 1 {}"
+  },
+  {
+    "name": "boundary/9/module",
+    "mode": "module",
+    "source": ".entry k() .unknown 1 {}"
+  },
+  {
+    "name": "boundary/10/instruction",
+    "mode": "instruction",
+    "source": ".entry k() {.file 1 \"x\"; ret;}"
+  },
+  {
+    "name": "boundary/10/module",
+    "mode": "module",
+    "source": ".entry k() {.file 1 \"x\"; ret;}"
+  },
+  {
+    "name": "boundary/11/instruction",
+    "mode": "instruction",
+    "source": ".func k() .maxnreg 1 {}"
+  },
+  {
+    "name": "boundary/11/module",
+    "mode": "module",
+    "source": ".func k() .maxnreg 1 {}"
+  },
+  {
+    "name": "boundary/12/instruction",
+    "mode": "instruction",
+    "source": ".shared .u32 a=1;"
+  },
+  {
+    "name": "boundary/12/module",
+    "mode": "module",
+    "source": ".shared .u32 a=1;"
+  },
+  {
+    "name": "boundary/13/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 a = {member=1};"
+  },
+  {
+    "name": "boundary/13/module",
+    "mode": "module",
+    "source": ".global .u32 a = {member=1};"
+  },
+  {
+    "name": "boundary/14/instruction",
+    "mode": "instruction",
+    "source": ".entry k() {.loc 1 2 3, function_name label;ret;}"
+  },
+  {
+    "name": "boundary/14/module",
+    "mode": "module",
+    "source": ".entry k() {.loc 1 2 3, function_name label;ret;}"
+  },
+  {
+    "name": "boundary/15/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info { { } .entry survivor() {ret;}"
+  },
+  {
+    "name": "boundary/15/module",
+    "mode": "module",
+    "source": ".section .debug_info { { } .entry survivor() {ret;}"
+  },
+  {
+    "name": "boundary/16/instruction",
+    "mode": "instruction",
+    "source": "/*"
+  },
+  {
+    "name": "boundary/16/module",
+    "mode": "module",
+    "source": "/*"
+  },
+  {
+    "name": "boundary/17/instruction",
+    "mode": "instruction",
+    "source": "\u0000\u00ff\r\n` .entry valid() {ret;}"
+  },
+  {
+    "name": "boundary/17/module",
+    "mode": "module",
+    "source": "\u0000\u00ff\r\n` .entry valid() {ret;}"
+  },
+{
+    "name": "variant/predicate/instruction",
+    "mode": "instruction",
+    "source": "mov.pred %p0, !%p1, !0, !-1;"
+  },
+  {
+    "name": "variant/predicate/module",
+    "mode": "module",
+    "source": "mov.pred %p0, !%p1, !0, !-1;"
+  },
+  {
+    "name": "variant/vector-predicate/instruction",
+    "mode": "instruction",
+    "source": "tex.2d.v4.f32 {%f0,%f1,%f2,%f3}|%p0, [tex,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/vector-predicate/module",
+    "mode": "module",
+    "source": "tex.2d.v4.f32 {%f0,%f1,%f2,%f3}|%p0, [tex,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/fabric/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd0, [endpoint, 64, 8];"
+  },
+  {
+    "name": "variant/fabric/module",
+    "mode": "module",
+    "source": "mov.u64 %rd0, [endpoint, 64, 8];"
+  },
+  {
+    "name": "variant/compound/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd0, [texture,sampler,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/compound/module",
+    "mode": "module",
+    "source": "mov.u64 %rd0, [texture,sampler,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/float-bits/instruction",
+    "mode": "instruction",
+    "source": "mov.b32 %r0, 0f3f800000;"
+  },
+  {
+    "name": "variant/float-bits/module",
+    "mode": "module",
+    "source": "mov.b32 %r0, 0f3f800000;"
+  },
+  {
+    "name": "variant/mixed-operand/instruction",
+    "mode": "instruction",
+    "source": "@!%p0 op.weak %r0.x, -%r1.y, -%r2, A[idx+-1], [symbol+8].unified, {1,(2+3),%r0.x};"
+  },
+  {
+    "name": "variant/mixed-operand/module",
+    "mode": "module",
+    "source": "@!%p0 op.weak %r0.x, -%r1.y, -%r2, A[idx+-1], [symbol+8].unified, {1,(2+3),%r0.x};"
+  },
+  {
+    "name": "variant/cast-initializer/instruction",
+    "mode": "instruction",
+    "source": ".global .u64 x = (.u64)(1+2);"
+  },
+  {
+    "name": "variant/cast-initializer/module",
+    "mode": "module",
+    "source": ".global .u64 x = (.u64)(1+2);"
+  },
+  {
+    "name": "variant/parameters/instruction",
+    "mode": "instruction",
+    "source": ".visible .func (.param .u32 result) f(.param .align 8 .u64 .ptr .global .align 8 arg, .param .b8 array[16]) .noreturn;"
+  },
+  {
+    "name": "variant/parameters/module",
+    "mode": "module",
+    "source": ".visible .func (.param .u32 result) f(.param .align 8 .u64 .ptr .global .align 8 arg, .param .b8 array[16]) .noreturn;"
+  },
+  {
+    "name": "variant/nested-initializers/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 values[][2] = {{1,2},{3,4}}; .global .texref t = {channel_data_type=1, channel_order=2};"
+  },
+  {
+    "name": "variant/nested-initializers/module",
+    "mode": "module",
+    "source": ".global .u32 values[][2] = {{1,2},{3,4}}; .global .texref t = {channel_data_type=1, channel_order=2};"
+  }
+]

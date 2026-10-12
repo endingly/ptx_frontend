@@ -17,3 +17,7 @@
 CUDA 13.3.73 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`：60 个 matrix module 有 39 个预期接受、20 个拒绝和一个已记录的 permissive FP64-FTZ acceptance；四个 focused special-FP64 immediate/container probe 都通过。PTX 1.4 前的 historical omitted-mode form 与 `.target map_f64_to_f32` behavior 仍被排除，因为它们需要 explicit model 之外的 target-profile semantics。
 
 [浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成对账；ADD/SUB 的 contract 见该文档。
+
+已确认缺少的 mapped-FP64 可用条件严格限于 SM10/11/12 加 `map_f64_to_f32`
+的 `div.rn.f64`、`rcp.rn.f64` 和 `sqrt.rn.f64`
+（[#287](https://github.com/endingly/ptx_frontend/issues/287)）；不推断其他 FP64 指令有相同替代条件。

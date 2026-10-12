@@ -2,7 +2,7 @@
 
 本文描述 frontend 已建模的完整 PTX 9.3 `fma` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，
 不表示所有 PTX opcode 或 simulator execution 已受支持。machine-readable instruction
-specification 为 `python/code_gen/resources/ptx_spec/arithmetic.yaml`。
+specification 为 `python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`。
 
 规范依据是 NVIDIA 的 PTX ISA 9.3 archive：[floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma)、
@@ -48,21 +48,21 @@ decimal literal 先按 binary64 求值再转换为 operand type；包括会缩�
 同宽 bit literal 完整保留原有 payload；跨精度转换时，frontend 将 NaN quiet 化并保留
 符号和高位 payload。这是确定性的表示策略，不是 ISA 对 NaN payload 转换的保证。
 
-公开 C++ ID `Fma::RnF32`、`Fma::RnF64` 和 `Fma::RnF16` 继续保留。
+公开 C++ ID `FmaRnF32`、`FmaRnF64` 和 `FmaRnF16` 继续保留。
 `RnF32`、`RnF64` 的三个 source field 现在是 `WithLocs<RegOrImm>`；consumer
 需要区分 register reference 与带类型的 immediate。
 
 ## 验证
 
-[C++ resolution test](../../submod/resolved_ir/test/test_select_variant.cpp)
+[C++ resolution test](../../submod/resolved_ir/test/test_select_variant_fma.cpp)
 验证全部 70 种 canonical modifier combination（包括 half OOB `.sat` 扩展）、非法组合
 及浮点字面量转换边界。
-[Availability test](../../submod/resolved_ir/test/test_ptx_resolved_ir_checker.cpp)
+[Availability test](../../submod/resolved_ir/test/test_select_variant_fma.cpp)
 对 16 个 variant 逐一验证最低 PTX/SM，并分别验证低于各项最低版本时的拒绝行为。
 [Module test](../../submod/resolved_ir/test/test_resolved_module_instruction_types.cpp) 验证声明的
 operand type、exact bit container 以及 mixed form 的每个 operand position。
-[已安装的 C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
-只使用公开安装 API，对全部 16 个 variant 执行 parse、resolve 和 check。
+此前 `test/package_consumer` FMA harness 已不在当前源码树中；本文不声称当前有
+独立 all-FMA 安装检查。
 
 共享 Python 测试通过 `python/tests/code_gen/test_ptx_spec_taxonomy.py` 验证
 PTX section taxonomy，通过 `python/tests/ir/test_resolved_ir.py` 验证生成的

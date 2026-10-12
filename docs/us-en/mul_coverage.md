@@ -3,7 +3,7 @@
 This document states the complete PTX 9.3 `mul` contract modelled by the
 frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it
 does not claim simulator execution or physical-GPU behavior. The canonical,
-machine-readable source is `python/code_gen/resources/ptx_spec/arithmetic.yaml`.
+machine-readable source is `python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`.
 
 The normative sources are NVIDIA's PTX ISA 9.3 archive: [integer MUL
 §9.7.1.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-mul),
@@ -41,18 +41,16 @@ packed forms, and bfloat `.ftz`/`.sat`. Packed forms retain their documented
 exact bit-container widths, so a same-width-looking but wrong container is
 rejected by the checker.
 
-The long-standing public `Mul::RnF32`, `Mul::LoU32`, `Mul::HiU32`,
-`Mul::WideU32`, and `Mul::WideS32` resolved-IR names remain available. This
+The long-standing public `MulRnF32`, `MulLoU32`, `MulHiU32`,
+`MulWideU32`, and `MulWideS32` resolved-IR names remain available. This
 coverage adds forms without creating a separate public support API.
 
 ## Verification sources
 
 [Dedicated C++ MUL tests](../../submod/resolved_ir/test/test_mul_completeness.cpp)
 exercise every family through parsing, resolution, declared-operand checking,
-target minima, and invalid modifier/container cases. The [installed consumer
-MUL test](../../submod/resolved_ir/test/package_consumer/mul_completeness.cpp)
-uses only installed public headers for a new integer semantic form and a
-negative packed-container check. The focused Python database test verifies the
+target minima, and invalid modifier/container cases. The former installed MUL harness is no longer present; current evidence is the
+in-tree suite and Python model tests. The focused Python database test verifies the
 canonical section, variants, modifier domains, availability, and operand
 layouts. These sources define the frontend boundary; they do not verify a
 simulator or hardware execution result.

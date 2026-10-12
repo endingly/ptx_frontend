@@ -2,7 +2,7 @@
 
 This document records the PTX 9.3 bit-operation contract modelled by the
 frontend. The canonical source is
-`python/code_gen/resources/ptx_spec/arithmetic.yaml`; syntax descriptors,
+`python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`; syntax descriptors,
 Resolved IR, and target-aware checking derive from it. This is frontend
 validation, not simulator or physical-GPU execution.
 
@@ -38,11 +38,12 @@ are restricted to this range, so it does not permit out-of-range immediates.
 
 The `bfe.b32` example printed in the archive conflicts with that section's
 explicit `.u32/.u64/.s32/.s64` syntax list and is not accepted. Existing public
-variant names such as `Popc::B32`, `Bfind::ShiftamtU32`, `Bfe::U32`, and
-`Bfi::B32` remain available while the additional forms are generated alongside
+variant names such as `PopcB32`, `BfindShiftamtU32`, `BfeU32`, and
+`BfiB32` remain available while the additional forms are generated alongside
 them.
 
-Focused C++ resolver/checker tests and the [installed consumer
-test](../../submod/resolved_ir/test/package_consumer/bit_operations_completeness.cpp)
-exercise the expanded public forms. They establish parsing, resolution, type,
+Focused [POPC](../../submod/resolved_ir/test/test_select_variant_popc.cpp),
+[BFE](../../submod/resolved_ir/test/test_select_variant_bfe.cpp) and adjacent
+per-opcode resolver/checker tests exercise the expanded public forms. The former
+installed bit-operation harness is no longer present. They establish parsing, resolution, type,
 range, and target contracts only.

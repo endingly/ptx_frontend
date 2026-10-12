@@ -3,7 +3,7 @@
 frontend 已建模 PTX ISA 9.3 §9.7.1 文档列出的全部 161 个 type/mode 组合：`add`、`sub`、
 `mul`、`mad`、`clmad`、`mul24`、`mad24`、`sad`、`div`、`rem`、`abs`、`neg`、`min`、
 `max`、`popc`、`clz`、`bfind`、`fns`、`brev`、`bfe`、`bfi`、`szext`、`bmsk`、`dp4a` 与
-`dp2a`。canonical source 是 `python/code_gen/resources/ptx_spec/arithmetic.yaml`；
+`dp2a`。canonical source 是 `python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`；
 parser descriptor、Resolved IR 和 target-aware checker 都由其生成。
 
 文档中的 `min.s16x2.relu` example 作为 canonical `min.relu.s16x2` 的 modifier-order alias

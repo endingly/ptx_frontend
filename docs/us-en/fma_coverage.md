@@ -4,7 +4,7 @@ This document states the complete PTX 9.3 `fma` contract modelled by the
 frontend. It supplements the [syntax coverage matrix](syntax_coverage.md); it
 is not a claim that every PTX opcode or simulator execution is supported. The
 machine-readable instruction specification is
-`python/code_gen/resources/ptx_spec/arithmetic.yaml`.
+`python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`.
 
 The normative reference is NVIDIA's PTX ISA 9.3 archive: [floating FMA
 §9.7.3.6](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-fma),
@@ -54,21 +54,21 @@ precisions, the frontend quiets NaNs and retains their sign and high payload bit
 this is a deterministic representation policy, not an ISA guarantee of payload
 conversion.
 
-The public C++ IDs `Fma::RnF32`, `Fma::RnF64`, and `Fma::RnF16` remain available.
+The public C++ IDs `FmaRnF32`, `FmaRnF64`, and `FmaRnF16` remain available.
 The three source fields of `RnF32` and `RnF64` now hold `WithLocs<RegOrImm>`;
 consumers must distinguish register references from typed immediates.
 
 ## Verification
 
-[C++ resolution tests](../../submod/resolved_ir/test/test_select_variant.cpp)
+[C++ resolution tests](../../submod/resolved_ir/test/test_select_variant_fma.cpp)
 exercise all 70 canonical modifier combinations (including the half OOB `.sat`
 extension), invalid combinations, and floating-literal conversion boundaries.
-[Availability tests](../../submod/resolved_ir/test/test_ptx_resolved_ir_checker.cpp)
+[Availability tests](../../submod/resolved_ir/test/test_select_variant_fma.cpp)
 check each of the 16 variants at its minimum PTX/SM and independently below each
 minimum. [Module tests](../../submod/resolved_ir/test/test_resolved_module_instruction_types.cpp)
 check declared operand types, exact bit containers, and each mixed operand
-position. The [installed C++ consumer](../../submod/resolved_ir/test/package_consumer/main.cpp)
-parses, resolves, and checks all 16 variants using only public installed APIs.
+position. The former `test/package_consumer` FMA harness is no longer in this
+tree; this reference does not claim a current standalone all-FMA install check.
 
 The shared Python tests check PTX-section taxonomy in
 `python/tests/code_gen/test_ptx_spec_taxonomy.py` and generated Resolved-IR

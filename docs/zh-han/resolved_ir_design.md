@@ -93,6 +93,12 @@ typed numeric source，直到 formal 确定目标 type；释放 AST 后，owned-
 validation 仍重新检查这一转换。CST/AST source identity 保留 operation tree；
 Resolved IR 无需新增通用 expression tree。
 
+## 当前验证边界
+
+下文 entry point 契约描述已建模检查，不表示穷尽 PTX 验证。
+header/target、storage 和 ABI 后续事项见[当前覆盖范围](coverage_status.md)。
+完整源码上下文不等于 validator 完整；运行时行为仍在本层范围之外。
+
 ## 状态与边界
 
 本文描述当前实现的 Resolved PTX IR，而不是一个未来的 CFG、SSA 或后端 IR
@@ -103,7 +109,8 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 ```
 
 Syntax AST 忠实保存源码拼写、modifier 顺序和 `SourceRange`；Resolved IR 则记录已经
-选定的指令 variant、已解析的 operand 值与诊断位置。二者都属于 frontend 的稳定边界。
+选定的指令 semantic form、已解析的 operand 值与诊断位置。二者是独立 frontend 边界；
+公共 API 兼容仍处于 pre-1.0。
 lexical symbol binding 与 module resolution 已接通，execution predicate 会解析为带声明
 身份的值，special register、external symbol 和真正未声明 reference 也已能区分。
 `mov` 的 16/32/64-bit scalar type family 已接入 register、immediate 与 special-register；
@@ -125,13 +132,15 @@ qualifier extension、CFG、SSA 和目标 lowering 仍是后续 pass，不应改
 normal module indirect call 会保留已绑定的 target 与 metadata identity，并通过 metadata-indexed
 canonical signature 复用 direct-call ABI contract，不会创建第二套 indirect-call model。
 
-union 另含 `ResolvedCallTableRef`，其 ID 是真实 storage variable，而非 metadata label。
+operand-level `ResolvedIndirectCallee` `std::variant` 另含 `ResolvedCallTableRef`，
+其 ID 是真实 storage variable，而非 metadata label。
 `ResolvedModule::call_tables` 只拥有被消费的表：scope/owner、declaration provenance、
 有序显式 slot 的 byte offset 与 bound/canonical function ID、精确 initializer 和 target-token
 range，以及完整公共 signature。省略的 sparse tail 不产生 slot。owned validation 由真实
 storage、initializer reference 和 canonical function contract 重建表，关联词法 flist use 与
 prior declaration occurrence，拒绝 missing/extra/stale contract 及一致篡改的 cache field。
-visitor 暴露实际 union branch；不保留借用的 AST 数据，也不证明 runtime pointer membership。
+visitor 暴露 active `ResolvedIndirectCallee` operand alternative；
+不保留借用的 AST 数据，也不证明 runtime pointer membership。
 
 活跃的公共入口是
 `<ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>`，

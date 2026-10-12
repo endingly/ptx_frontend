@@ -1,6 +1,6 @@
 # Floating `mad` coverage
 
-This slice extends the existing `Mad::RnF32` seed through the canonical YAML, typed Resolved IR, and target-aware checker. It covers the explicit-rounding forms in [PTX 9.3 §9.7.3.7](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mad), retains integer and carry `mad` variants and the source opcode, and does not add arithmetic execution.
+This slice extends the existing `MadRnF32` seed through the canonical YAML, typed Resolved IR, and target-aware checker. It covers the explicit-rounding forms in [PTX 9.3 §9.7.3.7](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mad), retains integer and carry `mad` variants and the source opcode, and does not add arithmetic execution.
 
 | Form | Minimum | Contract |
 | --- | --- | --- |

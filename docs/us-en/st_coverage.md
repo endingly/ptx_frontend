@@ -54,11 +54,14 @@ rejected as a read-only store address, including AST-free revalidation. It
 neither allocates unified memory nor weakens normal address-space or alignment
 diagnostics.
 
-## Deliberate boundary
+## Known source-coverage gap
 
-CUDA 13.1 `ptxas` probes at PTX 8.0 / SM 90 reject a cache hint without its policy
-operand. The frontend retains that correlated operand requirement; this is
-compiler evidence, not PTX 9.3 GPU validation.
+The current generated layouts require the final B64 cache-policy operand
+whenever `L2::cache_hint` is written. PTX 9.3 permits omitting that operand for
+LD, LDNC and ST. This is a model coverage gap tracked by
+[#281](https://github.com/endingly/ptx_frontend/issues/281), not an ISA-invalid
+spelling. Earlier CUDA 13.1 PTX 8.0 / SM 90 assembler rejection probes are
+historical compiler evidence and do not override the fixed PTX 9.3 syntax.
 
 This coverage performs source acceptance and target-aware validation only. It
 does not implement memory ordering, cache behavior, unified allocation, or

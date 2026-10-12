@@ -36,3 +36,12 @@ Tensor-map forms have no `.L1`/`.L2` suffix.
 `prefetchu` has only `.L1` and no state-space suffix; a generic address
 mapping to constant, local, or shared data performs no operation according to
 the ISA. The model rejects unsupported level, space, and eviction combinations.
+
+## Known source-coverage gap
+
+The selected provenance restrictions above are current implementation limits.
+PTX 9.3 permits suffix-free `prefetch.tensormap` with known const/kernel-parameter
+addresses and `prefetchu.L1` with known global addresses or documented
+const/local/shared no-op addresses; those known-symbol cases are missing from
+the model. [#283](https://github.com/endingly/ptx_frontend/issues/283) tracks
+them. The older assembler observations do not make these legal ISA cases invalid.

@@ -28,7 +28,7 @@ semantic value 和 target availability，包括 PTX 9.3 / SM 75 的 release+MMIO
 checker 不会按 `st` 分支。Cache operator 与 cache-control hint 的 semantic 限制不同。
 
 Global cache form 覆盖文档规定的 cache operator、L1 eviction priority、L2 eviction
-priority，以及带必需 `b64` cache-policy operand 的 `L2::cache_hint`。L1 eviction 要求
+priority，以及带当前模型要求的 `b64` cache-policy operand 的 `L2::cache_hint`。L1 eviction 要求
 PTX 7.4 / SM 70，cache policy 要求 PTX 7.4 / SM 80，L2 eviction priority 要求 PTX 8.8 /
 SM 100。Vector form 保留 legacy 128-bit layout 和 PTX 8.8 / SM 100 的 256-bit `.v8`
 32-bit、`.v4` 64-bit layout；只有 modern layout 允许 partial store sink。当 effective address
@@ -44,10 +44,13 @@ PTX 9.3 并没有为普通 `st` 定义 `[address].unified` syntax。因此 front
 原有 address-space 或 alignment diagnostic。已知 unified declaration 还是只读 store address，
 包括 AST-free revalidation 时也会拒绝。
 
-## 有意保留的边界
+## 已知源码覆盖缺口
 
-CUDA 13.1 `ptxas` 在 PTX 8.0 / SM 90 的探针拒绝不带 policy operand 的 cache hint，
-因此 frontend 保留两者关联的操作数约束。这仅为编译器证据，不是 PTX 9.3 GPU 验证。
+当前 generated layout 在写出 `L2::cache_hint` 时要求末尾 B64 cache-policy operand。
+PTX 9.3 允许 LD、LDNC 和 ST 省略该 operand。这是模型覆盖缺口
+[#281](https://github.com/endingly/ptx_frontend/issues/281)，不表示该拼写违反 ISA。
+早期 CUDA 13.1、PTX 8.0 / SM 90 汇编器拒绝探针仅是历史编译器证据，
+不能覆盖固定 PTX 9.3 语法。
 
 这里仅处理 source acceptance 和 target-aware validation，不实现 memory ordering、cache
 behavior、unified allocation 或 store execution。专用 C++ ST test、Python model test 与

@@ -1,5 +1,11 @@
 # 核心 opcode 完整性审计
 
+## 当前阅读说明
+
+十一操作范围指本记录的历史 simulator 证据；选定当前模型表还列出 addc/subc root。全 ISA 当前 inventory 与已确认缺少形式
+见[当前覆盖范围](coverage_status.md)。LD/LDNC/ST 写出 `L2::cache_hint` 但省略 policy operand 的形式仍缺失；
+历史后续事项的归属不证明整个族完整。
+
 ## 范围与证据边界
 
 本审计记录 11 个常用 PTX operation name 的状态：`mov`、`add`、`sub`、`mul`、
@@ -11,8 +17,8 @@ variant 集合非空不等于实现了完整 PTX ISA 9.3。
 set](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html)，
 包括 operand、availability、state space、memory ordering 以及独立命名的 instruction
 规则。下表的 database 证据由
-`ptx_frontend.code_gen.database.load_codegen_database()` 从
-`python/code_gen/resources/ptx_spec` 载入；它是派生 syntax descriptor、Resolved IR 和
+`ptx_frontend.spec.database.load_spec_database()` 从
+`python/src/ptx_frontend/spec/resources/ptx_spec` 载入；它是派生 syntax descriptor、Resolved IR 和
 target-aware checker 的唯一输入，并不是第二份 coverage registry。
 
 execution 列有意使用狭窄的历史基线：
@@ -33,7 +39,7 @@ execution 列有意使用狭窄的历史基线：
 
 ## 可复现的 frontend-model 证据
 
-载入 canonical `ptx-instr/v1` database 后共有 71 个 instruction name。下表列出相关项，
+载入 canonical `ptx-instr/v1` database 后在版本 `2bd78d6` 共有 137 个 instruction root。下表列出相关项，
 以便审阅已审计的 model boundary，而不把 YAML 复制成手工维护的 ledger。
 
 | Opcode | YAML variant 数 | 从 canonical database 载入的 variant/layout 边界 |
@@ -46,30 +52,29 @@ execution 列有意使用狭窄的历史基线：
 | `mul` | 23 | [MUL 覆盖](mul_coverage.md) |
 | `setp` | 18 | [SETP 覆盖](setp_coverage.md) |
 | `ld` | 40 | [LD 与 noncoherent load 覆盖](ld_coverage.md) |
-| `st` | 24 | [ST 覆盖](st_coverage.md) |
+| `st` | 33 | 24 ordinary ST、8 async、1 bulk；[ST](st_coverage.md) 与 [bulk async](bulk_async_coverage.md) |
 | `bar` | 11 | CTA sync/arrive/reduction spelling 与 warp sync layout |
 | `bra` | 1 | 带可选 `.uni` 的 direct branch |
 | `exit` | 1 | bare exit |
 | `fma` | 16 | [FMA coverage](fma_coverage.md) 所述完整 frontend FMA contract |
 
 生成器 model 说明这些项为何同时影响三个 frontend stage：
-[syntax descriptor](python_generator_model.md#syntax-model) 接收 variant/layout，而相同的
-normalized model 生成 [Resolved-IR binding](python_generator_model.md#resolved-model)，供
+[syntax descriptor](python_generator_model.md#syntax-模型) 接收 variant/layout，而相同的
+normalized model 生成 [Resolved-IR binding](python_generator_model.md#resolved-模型)，供
 resolution 与 checking 使用。验收仍受每个 variant 的 operand、modifier、availability 与
 negative diagnostic 约束。
 
 ### 复现命令
 
-下列命令使用 repository virtual environment 中已安装的 editable package，是产生上述计数的
-实际命令，而不是臆造的 registry。
+下列命令使用 repository virtual environment 中已安装的 editable package，可复现上文选定的当前计数，不新增第二份 registry。
 
 ```sh
 .venv/bin/python - <<'PY'
 from pathlib import Path
-from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.spec.database import load_spec_database
 
 wanted = {"mov", "add", "addc", "sub", "subc", "mul", "setp", "ld", "st", "bar", "bra", "exit", "fma"}
-database = load_codegen_database(spec_dir=Path("python/code_gen/resources/ptx_spec"))
+database = load_spec_database(spec_dir=Path("python/src/ptx_frontend/spec/resources/ptx_spec"))
 for instruction in database.instructions:
     if instruction.opcode in wanted:
         print(instruction.opcode, len(instruction.variants),

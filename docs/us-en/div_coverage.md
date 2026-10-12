@@ -29,3 +29,8 @@ containers. Historical omitted-mode DIV for PTX 1.0–1.3 and
 target-profile contract outside these explicit forms.
 
 [Explicit reciprocal and square-root forms](unary_float_coverage.md), [floating transcendentals](transcendental_coverage.md), and [floating MIN/MAX](min_max_coverage.md) are now modelled separately. [Floating and mixed ADD/SUB](add_sub_coverage.md) completes the reconciliation; see that document for the ADD/SUB contracts.
+
+The confirmed missing mapped-FP64 availability alternative is narrowly
+`div.rn.f64`, `rcp.rn.f64`, and `sqrt.rn.f64` on SM10/11/12 with
+`map_f64_to_f32` ([#287](https://github.com/endingly/ptx_frontend/issues/287)).
+This does not assert that other FP64 instructions have the same alternative.

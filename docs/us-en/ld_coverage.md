@@ -37,7 +37,7 @@ cache-control hints have distinct semantic restrictions, described below.
 
 Global cache forms cover the documented cache operators, L1 eviction priorities,
 L2 eviction priorities (alone and combined with L1), L2 prefetch sizes, and
-`L2::cache_hint` with its required `b64` cache-policy operand. L1 eviction
+`L2::cache_hint` with its currently required `b64` cache-policy operand. L1 eviction
 requires PTX 7.4 / SM 70; L2 prefetch requires PTX 7.4 / SM 75 (256B requires
 SM 80); cache policy requires PTX 7.4 / SM 80; and L2 eviction priority requires
 PTX 8.8 / SM 100 with a 256-bit `.v8` 32-bit or `.v4` 64-bit vector. Other
@@ -58,7 +58,7 @@ Its base scalar/vector forms require PTX 3.1 / SM 32. L2 eviction is
 modern-vector-only; the other families retain their scalar/vector forms and
 `.b128` gates. It does not silently fall back to coherent `ld.global`.
 Its cache-operator branch is ordered before `.nc` and is intentionally
-disjoint from its L1/L2 eviction branch. Every cache-hint form, including one
+disjoint from its L1/L2 eviction branch. In the current model every cache-hint form, including one
 combined with prefetch, requires a cache-policy operand; prefetch alone does not.
 Ordinary LD accepts canonical L1-before-L2 ordering and the L2-before-L1 alias
 shown in the PTX examples. NC accepts only L1-before-L2 ordering.
@@ -71,11 +71,14 @@ uses owned declaration identity after source and AST release. Conversely,
 `.unified` is rejected for non-unified known declarations and for LD forms whose
 syntax does not admit it.
 
-## Deliberate boundary
+## Known source-coverage gap
 
-CUDA 13.1 `ptxas` probes at PTX 8.0 / SM 90 reject LD and NC cache hints without
-the policy operand. The frontend retains that correlated operand requirement;
-these probes are compiler evidence, not PTX 9.3 GPU validation.
+The current generated layouts require the final B64 cache-policy operand
+whenever `L2::cache_hint` is written. PTX 9.3 permits omitting that operand for
+LD, LDNC and ST. This is a model coverage gap tracked by
+[#281](https://github.com/endingly/ptx_frontend/issues/281), not an ISA-invalid
+spelling. Earlier CUDA 13.1 PTX 8.0 / SM 90 assembler rejection probes are
+historical compiler evidence and do not override the fixed PTX 9.3 syntax.
 
 This is source acceptance and target-aware validation only. It does not allocate
 unified memory, implement ordering, predict cache behavior, or simulate load

@@ -69,3 +69,11 @@ and [`test_multimem_coverage.cpp`](../../submod/resolved_ir/test/test_multimem_c
 [`multimem_consumer`](../../examples/multimem_consumer/main.cpp) exercises
 installed public headers. These tests cover frontend acceptance and source
 lifetime; they do not execute multimem instructions on a GPU.
+
+## Known source-coverage gap
+
+The ISA allows an explicit scope with omitted semantics (default weak) for
+`multimem.ld_reduce` and `multimem.st`, for example
+`multimem.ld_reduce.gpu.add.u32` and `multimem.st.gpu.u32`. The current model
+lacks that qualifier combination; it is tracked by
+[#282](https://github.com/endingly/ptx_frontend/issues/282), not an ISA prohibition.

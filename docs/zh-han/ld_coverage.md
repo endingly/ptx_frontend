@@ -29,7 +29,7 @@ opcode-specific checker branch 表达。Cache operator 与 cache-control hint �
 限制不同，具体见下文。
 
 Global cache form 覆盖文档规定的 cache operator、L1 eviction priority、L2 eviction
-priority、L2 prefetch size，以及带必需 `b64` cache-policy operand 的 `L2::cache_hint`。
+priority、L2 prefetch size，以及带当前模型要求的 `b64` cache-policy operand 的 `L2::cache_hint`。
 L1 eviction 要求 PTX 7.4 / SM 70；L2 prefetch 的 64B/128B 要求 PTX 7.4 / SM 75，
 256B 还要求 SM 80；cache policy 要求 PTX 7.4 / SM 80；L2 eviction priority 要求
 PTX 8.8 / SM 100，且仅允许 256-bit vector。Vector form 保留
@@ -47,7 +47,7 @@ family，包括 `.b128`、cache policy、prefetch size、L1/L2 eviction priority
 global load 保留相同的 global-only modern-vector limit 和 target minimum，不会静默退化为
 coherent `ld.global`；其基础 scalar/vector form 要求 PTX 3.1 / SM 32。
 其 cache-operator branch 在 `.nc` 之前，且与 L1/L2 eviction branch 刻意保持 disjoint；
-每种 cache-hint form（包括与 prefetch 组合）都要求 cache-policy operand，单独 prefetch
+当前模型每种 cache-hint form（包括与 prefetch 组合）都要求 cache-policy operand，单独 prefetch
 不要求该 operand。普通 LD 接受 canonical L1-before-L2 顺序，也接受 PTX 示例中的
 L2-before-L1 alias；NC 只接受 L1-before-L2。
 
@@ -57,10 +57,13 @@ address。该 qualifier 在 CST、Syntax AST、Resolved IR 和 checker
 operand view 中均为 typed payload；validation 在 source/AST release 后使用 owned declaration
 identity。反之，已知 non-unified declaration 及语法不允许的 LD form 都会拒绝 `.unified`。
 
-## 有意保留的边界
+## 已知源码覆盖缺口
 
-CUDA 13.1 `ptxas` 在 PTX 8.0 / SM 90 的探针拒绝不带 policy operand 的 LD/NC cache
-hint，因此 frontend 保留两者关联的操作数约束。这仅为编译器证据，不是 PTX 9.3 GPU 验证。
+当前 generated layout 在写出 `L2::cache_hint` 时要求末尾 B64 cache-policy operand。
+PTX 9.3 允许 LD、LDNC 和 ST 省略该 operand。这是模型覆盖缺口
+[#281](https://github.com/endingly/ptx_frontend/issues/281)，不表示该拼写违反 ISA。
+早期 CUDA 13.1、PTX 8.0 / SM 90 汇编器拒绝探针仅是历史编译器证据，
+不能覆盖固定 PTX 9.3 语法。
 
 这里仅处理 source acceptance 和 target-aware validation，不分配 unified memory、不实现
 ordering、不预测 cache behavior，也不模拟 load execution。专用 C++ LD test、Python model test

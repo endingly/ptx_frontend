@@ -2,7 +2,7 @@
 
 本文记录 frontend 建模的完整 PTX 9.3 `mul` contract。它补充[语法覆盖矩阵](syntax_coverage.md)，
 不表示 simulator execution 或 physical GPU 行为。唯一的 machine-readable source 是
-`python/code_gen/resources/ptx_spec/arithmetic.yaml`。
+`python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`。
 
 规范依据为 NVIDIA PTX ISA 9.3 archive：[integer MUL
 §9.7.1.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#integer-arithmetic-instructions-mul)、
@@ -37,16 +37,14 @@ floating、half 与 bfloat syntax 允许省略 rounding，默认值是 `.rn`。Y
 form 的 `.sat`，以及 bfloat `.ftz/.sat`。packed form 保留文档给出的 exact bit-container
 width，因此即使看似同宽但 container 错误也会被 checker 拒绝。
 
-既有 public Resolved-IR 名称 `Mul::RnF32`、`Mul::LoU32`、`Mul::HiU32`、
-`Mul::WideU32` 与 `Mul::WideS32` 仍可用。本覆盖只增加 form，不建立独立 public
+既有 public Resolved-IR 名称 `MulRnF32`、`MulLoU32`、`MulHiU32`、
+`MulWideU32` 与 `MulWideS32` 仍可用。本覆盖只增加 form，不建立独立 public
 support API。
 
 ## 验证来源
 
 [专用 C++ MUL 测试](../../submod/resolved_ir/test/test_mul_completeness.cpp)
 覆盖所有 family 的 parse、resolve、declared-operand check、target minimum 和非法
-modifier/container。[已安装 consumer MUL 测试](../../submod/resolved_ir/test/package_consumer/mul_completeness.cpp)
-只用 installed public header 验证新的 integer semantic form 与错误 packed container 的
-checker rejection。focused Python database test 验证 canonical section、variant、modifier
+modifier/container。此前 installed MUL harness 已不在当前源码树；当前证据为 in-tree suite 与 Python model test。focused Python database test 验证 canonical section、variant、modifier
 domain、availability 和 operand layout。这些来源仅定义 frontend 边界；不验证 simulator
 或 hardware execution result。

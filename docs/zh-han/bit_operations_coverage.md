@@ -1,7 +1,7 @@
 # 整数位操作覆盖情况
 
 本文记录 frontend 建模的 PTX 9.3 位操作 contract。唯一 canonical source 是
-`python/code_gen/resources/ptx_spec/arithmetic.yaml`；syntax descriptor、Resolved IR 与
+`python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`；syntax descriptor、Resolved IR 与
 target-aware checker 均由它生成。这只定义 frontend validation，不表示 simulator 或
 physical GPU execution。
 
@@ -33,9 +33,9 @@ ISA pseudocode 在说明合法值受此范围限制后才将 control mask 到八
 out-of-range immediate。
 
 archive 中 `bfe.b32` example 与该节明确列出的 `.u32/.u64/.s32/.s64` syntax 冲突，故不接受。
-既有 public variant name，如 `Popc::B32`、`Bfind::ShiftamtU32`、`Bfe::U32` 和 `Bfi::B32`，
+既有 public variant name，如 `PopcB32`、`BfindShiftamtU32`、`BfeU32` 和 `BfiB32`，
 仍保留；新增 form 在其旁生成。
 
-focused C++ resolver/checker test 与 [installed consumer
-test](../../submod/resolved_ir/test/package_consumer/bit_operations_completeness.cpp)
-覆盖扩展后的 public form。它们只验证 parsing、resolution、type、range 与 target contract。
+[POPC](../../submod/resolved_ir/test/test_select_variant_popc.cpp)、
+[BFE](../../submod/resolved_ir/test/test_select_variant_bfe.cpp) 及相邻各 opcode 的
+C++ resolver/checker test 覆盖扩展 public form。此前 installed bit-operation harness 已不在当前源码树。它们只验证 parsing、resolution、type、range 与 target contract。

@@ -5,7 +5,7 @@ The frontend models all 161 documented type/mode combinations in PTX ISA 9.3
 `add`, `sub`, `mul`, `mad`, `clmad`, `mul24`, `mad24`, `sad`, `div`, `rem`,
 `abs`, `neg`, `min`, `max`, `popc`, `clz`, `bfind`, `fns`, `brev`, `bfe`,
 `bfi`, `szext`, `bmsk`, `dp4a`, and `dp2a`. The canonical source is
-`python/code_gen/resources/ptx_spec/arithmetic.yaml`; parser descriptors,
+`python/src/ptx_frontend/spec/resources/ptx_spec/arithmetic.yaml`; parser descriptors,
 Resolved IR, and target-aware checking are generated from it.
 
 The documented `min.s16x2.relu` example is accepted as a modifier-order alias

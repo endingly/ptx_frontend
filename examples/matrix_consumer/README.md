@@ -2,9 +2,11 @@
 
 This small consumer links only the installed `ptx_frontend::resolved_ir` package. It parses a block-scaled warp MMA and WGMMA forms on both sides of a generated 64-form shard boundary, releases each syntax tree, and checks immutable matrix topology through the exact classes' `matrix_descriptor()` method, direct owned operands, and protocol controls.
 
-After installing a Debug build to a fresh prefix, configure and run it with that package and the same vcpkg dependency prefix:
+From the repository root, after installing a Debug build to a fresh prefix,
+set `fresh_prefix` to that absolute installation path, then configure and run it with that package and the same vcpkg dependency prefix:
 
 ```sh
+fresh_prefix=/absolute/path/to/install
 cmake -S examples/matrix_consumer -B /tmp/matrix-consumer-build \
   -Dptx_frontend_DIR="$fresh_prefix/lib/cmake/ptx_frontend" \
   -DCMAKE_PREFIX_PATH="$fresh_prefix;$PWD/out/build/ci-linux-clang-debug/vcpkg_installed/x64-linux"

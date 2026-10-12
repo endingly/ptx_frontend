@@ -1,6 +1,6 @@
 # 浮点 `mad` 覆盖
 
-此切片通过 canonical YAML、typed Resolved IR 与 target-aware checker 扩展既有的 `Mad::RnF32` seed。它覆盖 [PTX 9.3 §9.7.3.7](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mad) 的 explicit-rounding form，保留 integer 与 carry `mad` variant 和 source opcode，也不添加算术 execution。
+此切片通过 canonical YAML、typed Resolved IR 与 target-aware checker 扩展既有的 `MadRnF32` seed。它覆盖 [PTX 9.3 §9.7.3.7](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mad) 的 explicit-rounding form，保留 integer 与 carry `mad` variant 和 source opcode，也不添加算术 execution。
 
 | Form | Minimum | Contract |
 | --- | --- | --- |

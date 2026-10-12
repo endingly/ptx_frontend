@@ -56,3 +56,10 @@ Canonical 清单和负例边界测试见
 [`test_multimem_coverage.cpp`](../../submod/resolved_ir/test/test_multimem_coverage.cpp)。
 [`multimem_consumer`](../../examples/multimem_consumer/main.cpp) 验证安装后的公共头。
 这些测试检验前端接受性与源码生命周期，不在 GPU 上执行 multimem 指令。
+
+## 已知源码覆盖缺口
+
+ISA 允许 `multimem.ld_reduce` 与 `multimem.st` 显式 scope、同时省略 semantics
+（默认 weak），例如 `multimem.ld_reduce.gpu.add.u32` 和 `multimem.st.gpu.u32`。
+当前模型缺少该 qualifier 组合，由 [#282](https://github.com/endingly/ptx_frontend/issues/282)
+跟踪，不表示 ISA 禁止。

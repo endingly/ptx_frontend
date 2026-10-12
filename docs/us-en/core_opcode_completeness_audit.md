@@ -1,5 +1,14 @@
 # Core Opcode Completeness Audit
 
+## Current-reading note
+
+The eleven-operation scope refers to this record's historical simulator evidence;
+the selected current model table also includes addc/subc roots. For the
+ISA-wide current inventory and confirmed missing forms, read
+[current coverage](coverage_status.md). In particular, LD/LDNC/ST forms writing `L2::cache_hint` while omitting its policy operand
+remain missing; historical follow-up ownership does not establish full
+family completeness.
+
 ## Scope and evidence boundary
 
 This audit records the status of eleven commonly used PTX operation names:
@@ -10,8 +19,8 @@ The normative baseline is the archived [PTX ISA 9.3 instruction
 set](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html),
 including its operand, availability, state-space, memory-ordering, and
 separately named instruction rules.  The database evidence below is produced
-by `ptx_frontend.code_gen.database.load_codegen_database()` from
-`python/code_gen/resources/ptx_spec`; it is the single input used to derive
+by `ptx_frontend.spec.database.load_spec_database()` from
+`python/src/ptx_frontend/spec/resources/ptx_spec`; it is the single input used to derive
 the syntax descriptors, Resolved IR, and target-aware checker.  It is not a
 second coverage registry.
 
@@ -39,7 +48,7 @@ For this document:
 
 ## Reproducible frontend-model evidence
 
-Loading the canonical `ptx-instr/v1` database yields 71 instruction names.
+Loading the canonical `ptx-instr/v1` database yields 137 instruction roots at revision `2bd78d6`.
 The relevant entries are listed here to make the audited model boundary
 reviewable without copying YAML into a hand-maintained ledger.
 
@@ -53,7 +62,7 @@ reviewable without copying YAML into a hand-maintained ledger.
 | `mul` | 23 | [MUL coverage](mul_coverage.md) |
 | `setp` | 18 | [SETP coverage](setp_coverage.md) |
 | `ld` | 40 | [LD and noncoherent-load coverage](ld_coverage.md) |
-| `st` | 24 | [ST coverage](st_coverage.md) |
+| `st` | 33 | 24 ordinary ST forms plus 8 async and 1 bulk; [ST](st_coverage.md) and [bulk async](bulk_async_coverage.md) |
 | `bar` | 11 | CTA sync/arrive/reduction spellings and warp sync layouts |
 | `bra` | 1 | direct branch with optional `.uni` |
 | `exit` | 1 | bare exit |
@@ -69,16 +78,15 @@ variant's operands, modifiers, availability, and negative diagnostics.
 ### Reproduction command
 
 This command uses the installed editable package in the repository virtual
-environment; it is the command used for the counts above, rather than an
-invented registry.
+environment; it reproduces the selected current counts above without adding a second registry.
 
 ```sh
 .venv/bin/python - <<'PY'
 from pathlib import Path
-from ptx_frontend.code_gen.database import load_codegen_database
+from ptx_frontend.spec.database import load_spec_database
 
 wanted = {"mov", "add", "addc", "sub", "subc", "mul", "setp", "ld", "st", "bar", "bra", "exit", "fma"}
-database = load_codegen_database(spec_dir=Path("python/code_gen/resources/ptx_spec"))
+database = load_spec_database(spec_dir=Path("python/src/ptx_frontend/spec/resources/ptx_spec"))
 for instruction in database.instructions:
     if instruction.opcode in wanted:
         print(instruction.opcode, len(instruction.variants),

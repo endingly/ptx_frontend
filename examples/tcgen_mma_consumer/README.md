@@ -11,3 +11,7 @@ Configure this directory with the installation prefix in `CMAKE_PREFIX_PATH`,
 build `tcgen_mma_consumer`, and run the binary. This verifies the frontend
 contract and linking across generated sources, without GPU execution or
 runtime descriptor-content proof.
+
+The consumer also needs `fmt` and `magic_enum` CMake configurations. Make them
+available through the same vcpkg toolchain or add its installed dependency
+prefix to `CMAKE_PREFIX_PATH` alongside the frontend installation.

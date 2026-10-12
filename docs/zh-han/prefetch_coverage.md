@@ -31,3 +31,11 @@ tensor-map 形式不带 `.L1`/`.L2`
 后缀。`prefetchu` 只有 `.L1`，且不带状态空间后缀；按照 ISA，
 若 generic 地址映射到 const、local 或 shared 数据，该指令不执行操作。
 模型拒绝未支持的层级、状态空间和 eviction 组合。
+
+## 已知源码覆盖缺口
+
+上文选定的 provenance 限制是当前实现边界。PTX 9.3 允许无状态空间后缀
+`prefetch.tensormap` 的已知 const/kernel-parameter 地址，也允许 `prefetchu.L1`
+的已知 global 地址与文档化 const/local/shared no-op 地址；模型缺少这些
+known-symbol 情形，由 [#283](https://github.com/endingly/ptx_frontend/issues/283) 跟踪。
+较旧汇编器的观察不能将这些合法 ISA 情形判为无效。

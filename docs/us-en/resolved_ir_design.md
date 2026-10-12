@@ -92,6 +92,13 @@ negative/out-of-bounds constants. That compiler rejects direct-minus dynamic
 spelling while accepting plus-negative; the frontend deliberately accepts both.
 These are compiler observations, not GPU execution or runtime width/sign rules.
 
+## Current validation limits
+
+The entry point contracts below describe modeled checks, not exhaustive PTX
+validation. Header/target, storage and ABI follow-ups are recorded in
+[current coverage](coverage_status.md). Complete source context is distinct
+from completeness of the validator; runtime behavior remains outside this layer.
+
 ## Status and scope
 
 This document describes the implemented Resolved PTX IR, not a future CFG,
@@ -102,8 +109,8 @@ PTX source -> Token stream -> Syntax AST -> symbol binding -> Resolved IR -> che
 ```
 
 Syntax AST preserves source spelling, modifier order, and `SourceRange`.
-Resolved IR records the selected instruction variant, resolved operand values,
-and diagnostic locations. Both are stable frontend boundaries. Lexical symbol
+Resolved IR records the selected semantic instruction form, resolved operand values,
+and diagnostic locations. These are distinct frontend boundaries; public API compatibility is still pre-1.0. Lexical symbol
 binding is connected to module resolution, execution predicates resolve to
 declaration-aware values, and special registers, external symbols, and
 genuinely undeclared references are distinct. The 16/32/64-bit scalar `mov`
@@ -132,7 +139,8 @@ module indirect calls preserve the bound target and metadata identities, then
 reuse the direct-call ABI contract through metadata-indexed canonical
 signatures. ABI comparison does not create a second indirect-call model.
 
-The union additionally contains `ResolvedCallTableRef`, whose ID is the actual
+The operand-level `ResolvedIndirectCallee` `std::variant` additionally contains
+`ResolvedCallTableRef`, whose ID is the actual
 storage variable, not a metadata label. `ResolvedModule::call_tables` owns only
 consumed tables, including scope/owner, declaration provenance, ordered explicit
 slots with byte offsets and bound/canonical function IDs, exact initializer and
@@ -140,7 +148,8 @@ target-token ranges, and the full common signature. Sparse omitted tails do not
 create slots. Owned validation reconstructs each contract from real storage,
 initializer references and canonical function contracts, rejoins lexical flist
 uses and prior declaration occurrences, and rejects missing/extra/stale contracts
-or coherent cached-field mutations. Visitors expose the actual union branch.
+or coherent cached-field mutations. Visitors expose the active
+`ResolvedIndirectCallee` operand alternative.
 No borrowed AST data or runtime pointer-membership proof is retained.
 
 The active public entry point is

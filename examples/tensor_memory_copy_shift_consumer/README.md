@@ -7,3 +7,7 @@ cmake -S examples/tensor_memory_copy_shift_consumer -B /tmp/tcgen-copy-consumer 
 cmake --build /tmp/tcgen-copy-consumer --parallel 2
 /tmp/tcgen-copy-consumer/tensor_memory_copy_shift_consumer
 ```
+
+The consumer also needs `fmt` and `magic_enum` CMake configurations. Make them
+available through the same vcpkg toolchain or add its installed dependency
+prefix to `CMAKE_PREFIX_PATH` alongside the frontend installation.

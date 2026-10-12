@@ -12,6 +12,43 @@ The active resolved-IR target is `ptx_frontend::resolved_ir`.
 `ptx_frontend::ptx_frontend` links this target. Its interface uses direct
 semantic-form classes and `std::unique_ptr<Instruction>` ownership.
 
+## Static and shared libraries
+
+`BUILD_SHARED_LIBS` defaults to `OFF`. Set `-DBUILD_SHARED_LIBS=ON` when
+configuring the source build to select shared libraries, or explicitly set
+`-DBUILD_SHARED_LIBS=OFF` for static archives. For an embedded build, set the
+variable before `add_subdirectory(ptx_frontend)`. Use separate build and install
+prefixes for each mode; an installed package contains the selected mode.
+
+The seven compiled components (`base`, `lexer`, `cst`, `syntax`, `binding`,
+`semantic`, and `resolved_ir`) follow this setting. On Linux, shared mode
+produces seven `libptx_frontend_<component>.so` libraries. `common` and the
+`ptx_frontend` umbrella remain interface targets. Target names, component
+selection, and transitive dependencies are identical in both modes.
+
+CMake enables position-independent code for the shared components. Any static
+dependency linked into them, including a static `fmt`, must also have been
+built with position-independent code. The project does not change imported
+dependency build settings. Downstream package discovery still requires `fmt`
+and `magic_enum`.
+
+Installed Linux shared components append `$ORIGIN` to their install runtime
+search paths so sibling libraries remain discoverable when the prefix moves.
+Consumers must make the installed library directory discoverable to their
+runtime loader; linking imported CMake targets normally gives build-tree
+executables the appropriate runtime path. Deployments must also provide any
+shared third-party dependencies through their normal loader configuration.
+Existing Linux Clang CI continues to use the default static mode. Shared mode
+has been verified locally with a full Release build, C++ tests, and independent
+installed consumers after moving the installation to a new prefix.
+
+Shared builds are verified on Linux. Windows shared configuration fails with
+an explicit diagnostic because DLL export/import support has not been audited;
+macOS shared builds are unvalidated. Shared mode adds no stable ABI or SONAME
+versioning guarantee. Rebuild consumers using matching installed headers,
+libraries, and a compatible C++ toolchain when the frontend changes. Existing
+`SameMinorVersion` CMake package-version compatibility remains unchanged.
+
 ## `ptx_spec`
 
 Consumers can request the generic PTX ISA specification with:

@@ -1,5 +1,5 @@
 file(GLOB_RECURSE syntax_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(ptx_frontend_syntax STATIC ${syntax_srcs})
+add_library(ptx_frontend_syntax ${syntax_srcs})
 set_property(TARGET ptx_frontend_syntax PROPERTY EXPORT_NAME syntax)
 add_library(ptx_frontend::syntax ALIAS ptx_frontend_syntax)
 register_headers(ptx_frontend_syntax syntax PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

@@ -153,6 +153,13 @@ cmake --install out/build/ci-linux-gcc-debug
 ```
 
 The installed prefix for this preset is `out/install/ci-linux-gcc-debug`.
+Compiled components are static by default. Configure with
+`-DBUILD_SHARED_LIBS=ON` to build shared components, or
+`-DBUILD_SHARED_LIBS=OFF` to select static components explicitly. Use separate
+build and install directories for the two modes. Linux shared builds install
+seven component libraries; the public component target names stay the same.
+See the [component documentation](docs/us-en/cmake_components.md) for dependency,
+runtime-loading, platform, and ABI requirements.
 `ci-linux-gcc-release` provides the corresponding Release build. The
 `ci-linux-clang-debug` and `ci-linux-clang-release` presets provide Clang 21
 builds with the same test profiles and are used by GitHub Actions. See the

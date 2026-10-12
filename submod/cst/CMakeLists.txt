@@ -1,5 +1,5 @@
 file(GLOB_RECURSE cst_srcs src/*cpp)
-add_library(ptx_frontend_cst STATIC ${cst_srcs})
+add_library(ptx_frontend_cst ${cst_srcs})
 set_property(TARGET ptx_frontend_cst PROPERTY EXPORT_NAME cst)
 add_library(ptx_frontend::cst ALIAS ptx_frontend_cst)
 register_headers(

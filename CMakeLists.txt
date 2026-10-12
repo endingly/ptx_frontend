@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.28.0)
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Select optional manifest dependencies before project() loads the vcpkg toolchain.
+option(BUILD_SHARED_LIBS "Build frontend components as shared libraries" OFF)
 option(PTX_FRONTEND_BUILD_BENCHMARKS "Build frontend performance benchmarks" OFF)
 if(PTX_FRONTEND_BUILD_BENCHMARKS)
     list(APPEND VCPKG_MANIFEST_FEATURES benchmarks)
@@ -9,6 +10,12 @@ if(PTX_FRONTEND_BUILD_BENCHMARKS)
 endif()
 
 project(ptx_frontend VERSION 0.7.0 LANGUAGES C CXX)
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+    message(FATAL_ERROR
+        "Shared frontend libraries are not supported on Windows: "
+        "the public DLL export/import contract has not been audited.")
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
    CMAKE_C_COMPILER_ID STREQUAL "Clang" AND
@@ -47,6 +54,14 @@ if(BUILD_TESTING)
 endif()
 
 add_subdirectory(submod)
+
+if(BUILD_SHARED_LIBS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Keep installed sibling components discoverable after prefix relocation.
+    foreach(component IN ITEMS base lexer cst syntax binding semantic resolved_ir)
+        set_property(TARGET ptx_frontend_${component} APPEND
+            PROPERTY INSTALL_RPATH "$ORIGIN")
+    endforeach()
+endif()
 
 add_library(ptx_frontend INTERFACE)
 add_library(ptx_frontend::ptx_frontend ALIAS ptx_frontend)

@@ -1,5 +1,5 @@
 file(GLOB_RECURSE semantic_srcs CONFIGURE_DEPENDS src/*.cpp)
-add_library(ptx_frontend_semantic STATIC ${semantic_srcs})
+add_library(ptx_frontend_semantic ${semantic_srcs})
 set_property(TARGET ptx_frontend_semantic PROPERTY EXPORT_NAME semantic)
 add_library(ptx_frontend::semantic ALIAS ptx_frontend_semantic)
 register_headers(ptx_frontend_semantic semantic PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")

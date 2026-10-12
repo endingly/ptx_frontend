@@ -65,8 +65,8 @@ void encode(Writer& writer, T value) {
 
 // Declare every concrete overload before recursive container instantiation.
 #define SNAPSHOT_BEGIN(Type) /** Encode all declared public fields. */ \
-  void encode(Writer& writer, const Type& value); \
-  /** Identify an explicitly enumerated public syntax record. */ \
+  void encode(Writer& writer, const Type& value);                      \
+  /** Identify an explicitly enumerated public syntax record. */       \
   void snapshotRecord(const Type*);
 #define SNAPSHOT_FIELD(Name)
 #define SNAPSHOT_END()
@@ -77,9 +77,11 @@ void encode(Writer& writer, T value) {
 
 /** Recognize explicitly enumerated public records and scalar identity types. */
 template <typename T>
-struct IsSnapshotValue : std::bool_constant<
-    std::integral<T> || std::is_enum_v<T> || std::same_as<T, std::string> ||
-    requires(const T* value) { snapshotRecord(value); }> {};
+        struct IsSnapshotValue : std::bool_constant < std::integral<T> ||
+    std::is_enum_v<T> || std::same_as<T, std::string> ||
+    requires(const T* value) {
+  snapshotRecord(value);
+}>{};
 /** Require optional children themselves to have complete snapshot support. */
 template <typename T>
 struct IsSnapshotValue<std::optional<T>> : IsSnapshotValue<T> {};
@@ -96,7 +98,8 @@ struct IsSnapshotValue<std::variant<T...>>
 /** Require result values and diagnostics to have complete snapshot support. */
 template <typename T, typename D>
 struct IsSnapshotValue<ptx_frontend::ResultWithDiagnostics<T, D>>
-    : std::bool_constant<IsSnapshotValue<T>::value && IsSnapshotValue<D>::value> {};
+    : std::bool_constant<IsSnapshotValue<T>::value &&
+                         IsSnapshotValue<D>::value> {};
 /** Supported values are explicit public records, scalars, or their containers. */
 template <typename T>
 concept SnapshotValue = IsSnapshotValue<T>::value;
@@ -121,15 +124,19 @@ void encode(Writer& writer,
 /** Encode optional ownership and explicitly distinguish an absent value. */
 template <SnapshotValue T>
 void encode(Writer& writer, const std::optional<T>& value) {
-  if (value) encode(writer, *value);
-  else writer.out << "null";
+  if (value)
+    encode(writer, *value);
+  else
+    writer.out << "null";
 }
 
 /** Encode exclusively owned recursive syntax without exposing pointer addresses. */
 template <SnapshotValue T>
 void encode(Writer& writer, const std::unique_ptr<T>& value) {
-  if (value) encode(writer, *value);
-  else writer.out << "null";
+  if (value)
+    encode(writer, *value);
+  else
+    writer.out << "null";
 }
 
 /** Encode source-ordered homogeneous public fields. */
@@ -138,7 +145,8 @@ void encode(Writer& writer, const std::vector<T>& values) {
   writer.out << '[';
   bool first = true;
   for (const auto& value : values) {
-    if (!first) writer.out << ',';
+    if (!first)
+      writer.out << ',';
     first = false;
     encode(writer, value);
   }
@@ -159,7 +167,8 @@ void encode(Writer& writer,
             const ptx_frontend::ResultWithDiagnostics<T, D>& value) {
   writer.out << "{\"has_value\":";
   encode(writer, value.has_value());
-#define SNAPSHOT_RESULT_FIELD(Name) writer.out << ",\"" #Name "\":"; \
+#define SNAPSHOT_RESULT_FIELD(Name) \
+  writer.out << ",\"" #Name "\":";  \
   encode(writer, value.Name)
   SNAPSHOT_RESULT_FIELD(value);
   SNAPSHOT_RESULT_FIELD(diagnostics);
@@ -183,11 +192,15 @@ template <typename T>
 void resolvedRange(Writer&, const T&) {}
 
 #define SNAPSHOT_BEGIN(Type) /** Encode all declared public fields. */ \
-  void encode(Writer& writer, const Type& value) { \
+  void encode(Writer& writer, const Type& value) {                     \
     writer.out << "{\"_type\":\"" #Type "\"";
-#define SNAPSHOT_FIELD(Name) writer.out << ",\"" #Name "\":"; \
+#define SNAPSHOT_FIELD(Name)       \
+  writer.out << ",\"" #Name "\":"; \
   encode(writer, value.Name);
-#define SNAPSHOT_END() resolvedRange(writer, value); writer.out << '}'; }
+#define SNAPSHOT_END()          \
+  resolvedRange(writer, value); \
+  writer.out << '}';            \
+  }
 #include "snapshot_fields.inc"
 #undef SNAPSHOT_BEGIN
 #undef SNAPSHOT_FIELD
@@ -206,8 +219,9 @@ int main(int argc, char** argv) {
   const std::string source{std::istreambuf_iterator<char>(std::cin), {}};
   ptx_frontend::PtxLexer lexer(source);
   std::vector<ptx_frontend::PtxToken> tokens;
-  do { tokens.push_back(lexer.next()); }
-  while (tokens.back().kind != ptx_frontend::TokenKind::Eof);
+  do {
+    tokens.push_back(lexer.next());
+  } while (tokens.back().kind != ptx_frontend::TokenKind::Eof);
 
   ptx_frontend::PtxCstParser parser(source);
 #ifdef PTX_SNAPSHOT_GENERATED
@@ -225,15 +239,22 @@ int main(int argc, char** argv) {
   writer.out << ",\"cst\":";
   encode(writer, cst);
   writer.out << ",\"source_text\":";
-  if (cst) encode(writer, cst->sourceText());
-  else writer.out << "null";
+  if (cst)
+    encode(writer, cst->sourceText());
+  else
+    writer.out << "null";
   writer.out << ",\"lowered\":";
-  if (!cst) writer.out << "null";
-  else if (module) encode(writer, ptx_frontend::lowerSyntaxModule(*cst));
-  else encode(writer, ptx_frontend::lowerSyntaxInstruction(*cst));
+  if (!cst)
+    writer.out << "null";
+  else if (module)
+    encode(writer, ptx_frontend::lowerSyntaxModule(*cst));
+  else
+    encode(writer, ptx_frontend::lowerSyntaxInstruction(*cst));
   writer.out << ",\"facade\":";
   ptx_frontend::PtxSyntaxParser facade(source);
-  if (module) encode(writer, facade.parseModule());
-  else encode(writer, facade.parseInstruction());
+  if (module)
+    encode(writer, facade.parseModule());
+  else
+    encode(writer, facade.parseInstruction());
   writer.out << "}\n";
 }

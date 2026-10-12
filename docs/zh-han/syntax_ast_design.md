@@ -14,6 +14,23 @@ symbol address 与仅用于 initializer 的运算保持各自语义。
 加减或更低优先级运算时需加括号。精确 `0f` 单精度
 bit-pattern 仍可作为 literal operand，但不能参与常量表达式。
 
+实验性 CMake 选项 `PTX_FRONTEND_USE_BISON_PARSER` 默认为 `OFF`，开启后使用
+Bison 生成的 C++ backend 解析完整常量表达式语法。既有 `PtxCstParser` 与
+`PtxSyntaxParser` 入口会将声明数组维度、scalar initializer（包括 named member
+和 brace-list element）以及指令数值位置交给该 backend。literal、symbol、括号、
+一元运算、`.s64`/`.u64` cast、postfix initializer call、二元运算和条件表达式
+沿用手写 backend 的 CST node、token range、深度预算与源码保真契约。
+instruction/module grammar、initializer list 和 module recovery 仍由手写代码负责。
+生成 parser 的表达式失败会直接返回该 recovery 边界，不会重试手写表达式 parser。
+
+配置命令为
+`cmake -S . -B out/bison -DPTX_FRONTEND_USE_BISON_PARSER=ON -DBUILD_TESTING=ON`，
+随后运行 `cmake --build out/bison` 和
+`ctest --test-dir out/bison --output-on-failure`，并按环境补充通常的依赖与编译器设置。
+仅开启该选项时需要 Bison 3.8 或更新版本。生成文件保留在 build directory，
+生成 header 和 cursor adapter 均为私有实现，不安装，也不成为已安装 frontend 的
+consumer 依赖。在评估 parity 期间，默认配置继续使用手写表达式 parser。
+
 ## 前端分层
 
 当前前端已经把具体源码表示与供 resolve 使用的语法模型分开：

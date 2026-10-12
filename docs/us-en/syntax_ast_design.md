@@ -36,6 +36,28 @@ parenthesize a base expression containing additive or lower-precedence operators
 Exact `0f` single-precision bit patterns remain valid literal operands, but
 cannot participate in constant expressions.
 
+The experimental `PTX_FRONTEND_USE_BISON_PARSER` CMake option (default `OFF`)
+selects a generated Bison C++ backend for the complete constant-expression
+grammar. With `ON`, the existing `PtxCstParser` and `PtxSyntaxParser` entry
+points use it for declaration dimensions, scalar initializers (including named
+members and brace-list elements), and instruction numeric positions. Literals,
+symbols, parentheses, unary operators, `.s64`/`.u64` casts, postfix initializer
+calls, binary operators, and conditional expressions share the same CST nodes,
+token ranges, depth budget, and source fidelity as the handwritten backend.
+Instruction/module grammar, initializer lists, and module recovery remain
+handwritten. A generated expression failure returns directly to that recovery
+boundary; it never retries with the handwritten expression parser.
+
+Configure with
+`cmake -S . -B out/bison -DPTX_FRONTEND_USE_BISON_PARSER=ON -DBUILD_TESTING=ON`,
+then build and test with `cmake --build out/bison` and
+`ctest --test-dir out/bison --output-on-failure` (using the usual dependency and
+compiler settings for your environment). Bison 3.8 or newer is required only
+when this option is enabled. Generated files stay in the build directory;
+their headers and the cursor adapter are private and are not installed or
+required by consumers of the installed frontend. The default configuration
+continues to use the handwritten expression parser while parity is evaluated.
+
 ## Named array-address syntax
 
 `A[index]` is one unbracketed address expression, distinct from `[A+offset]`.

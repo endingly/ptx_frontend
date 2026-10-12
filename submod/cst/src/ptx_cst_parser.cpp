@@ -4,6 +4,10 @@
 #include <stdexcept>
 #include <utility>
 
+#ifdef PTX_FRONTEND_USE_BISON_PARSER
+#include "ptx_constant_driver.hpp"
+#endif
+
 namespace ptx_frontend::syntax_cst {
 
 const PtxToken& CstFile::token(TokenId id) const {
@@ -129,6 +133,7 @@ bool isVariableStateSpace(TokenKind kind) {
          kind == TokenKind::DotTex;
 }
 
+#ifndef PTX_FRONTEND_USE_BISON_PARSER
 bool isConstantLiteral(TokenKind kind) {
   return isImmediate(kind);
 }
@@ -137,6 +142,7 @@ bool isConstantUnaryOperator(TokenKind kind) {
   return kind == TokenKind::Plus || kind == TokenKind::Minus ||
          kind == TokenKind::Exclamation || kind == TokenKind::Tilde;
 }
+#endif
 
 int constantBinaryPrecedence(TokenKind kind) {
   switch (kind) {
@@ -994,6 +1000,7 @@ PtxCstParser::parseInstructionNode(std::optional<TokenId> supplied_opcode) {
       std::move(operands),  *semicolon, {first, *semicolon + 1}};
 }
 
+#ifndef PTX_FRONTEND_USE_BISON_PARSER
 std::expected<PtxCstParser::ParsedConstantExpression, CstParseDiagnostic>
 PtxCstParser::parseConstantPrimary(std::size_t remaining_depth) {
   using namespace syntax_cst;
@@ -1122,10 +1129,23 @@ PtxCstParser::parseConstantUnary(std::size_t remaining_depth) {
           {operator_token, last}},
       operand->depth + 1};
 }
+#endif
 
 std::expected<PtxCstParser::ParsedConstantExpression, CstParseDiagnostic>
 PtxCstParser::parseConstantExpression(int minimum_precedence,
                                       std::size_t remaining_depth) {
+#ifdef PTX_FRONTEND_USE_BISON_PARSER
+  auto parsed = detail::parseBisonExpression(detail::BisonExpressionDriver{
+      .peek = [this] { return peek(); },
+      .consume = [this] { return consume(); },
+      .token = [this](TokenId id) -> const PtxToken& { return token(id); },
+      .minimum_precedence = minimum_precedence,
+      .remaining_depth = remaining_depth,
+  });
+  if (!parsed)
+    return std::unexpected(std::move(parsed.error()));
+  return ParsedConstantExpression{std::move(parsed->expression), parsed->depth};
+#else
   if (remaining_depth == 0) {
     return std::unexpected(depthLimitExceeded(peek(), "constant expression"));
   }
@@ -1206,6 +1226,7 @@ PtxCstParser::parseConstantExpression(int minimum_precedence,
   }
 
   return left;
+#endif
 }
 
 std::expected<PtxCstParser::ParsedInitializer, CstParseDiagnostic>

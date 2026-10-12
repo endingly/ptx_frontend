@@ -14,6 +14,22 @@ target_link_libraries(
     ptx_frontend::lexer
 )
 
+option(PTX_FRONTEND_USE_BISON_PARSER "Use the experimental Bison constant-expression parser" OFF)
+if(PTX_FRONTEND_USE_BISON_PARSER)
+    find_package(BISON 3.8 REQUIRED)
+    set(cst_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    file(MAKE_DIRECTORY "${cst_generated_dir}")
+    BISON_TARGET(ptx_constant_parser src/ptx_constant_parser.y
+        "${cst_generated_dir}/ptx_constant_parser.cpp"
+        DEFINES_FILE "${cst_generated_dir}/ptx_constant_parser.hpp"
+        COMPILE_FLAGS "--warnings=error")
+    target_sources(ptx_frontend_cst PRIVATE ${BISON_ptx_constant_parser_OUTPUTS}
+        bison/ptx_constant_driver.cpp)
+    target_include_directories(ptx_frontend_cst PRIVATE
+        "${cst_generated_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/bison")
+    target_compile_definitions(ptx_frontend_cst PRIVATE PTX_FRONTEND_USE_BISON_PARSER=1)
+endif()
+
 option(PTX_FRONTEND_BUILD_FUZZERS "Build the Clang lexer/CST fuzz target" OFF)
 if(PTX_FRONTEND_BUILD_FUZZERS)
     if(BUILD_TESTING)

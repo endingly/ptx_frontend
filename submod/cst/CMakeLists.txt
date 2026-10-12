@@ -21,10 +21,9 @@ BISON_TARGET(ptx_generated_parser src/ptx_parser.y
     "${cst_generated_dir}/ptx_parser.cpp"
     DEFINES_FILE "${cst_generated_dir}/ptx_parser.hpp"
     COMPILE_FLAGS "--warnings=error")
-target_sources(ptx_frontend_cst PRIVATE ${BISON_ptx_generated_parser_OUTPUTS}
-    bison/ptx_parser_driver.cpp)
+target_sources(ptx_frontend_cst PRIVATE ${BISON_ptx_generated_parser_OUTPUTS})
 target_include_directories(ptx_frontend_cst PRIVATE
-    "${cst_generated_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/bison")
+    "${cst_generated_dir}" "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 option(PTX_FRONTEND_BUILD_FUZZERS "Build the Clang lexer/CST fuzz target" OFF)
 if(PTX_FRONTEND_BUILD_FUZZERS)
@@ -46,8 +45,7 @@ endif()
 if(BUILD_TESTING)
     file(GLOB_RECURSE test_cst_srcs test/*.cpp)
     add_executable(test_cst ${test_cst_srcs})
-    target_sources(test_cst PRIVATE bison/test_ptx_generated_parser.cpp)
-    target_include_directories(test_cst PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/bison")
+    target_include_directories(test_cst PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_sources(test_cst PRIVATE fuzz/lexer_cst_fuzz.cpp)
     find_package(GTest CONFIG REQUIRED)
     target_link_libraries(test_cst PRIVATE GTest::gtest GTest::gtest_main ptx_frontend::cst)

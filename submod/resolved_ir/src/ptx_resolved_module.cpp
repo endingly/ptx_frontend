@@ -239,7 +239,11 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
         header.invalid_directives.push_back(directive->range);
       TextureMode mode = TextureMode::Unified;
       bool mode_seen = false;
+      /** This programmer option belongs only to the current target directive. */
+      bool map_f64_to_f32 = false;
       for (const auto& target : targets) {
+        if (target == "map_f64_to_f32")
+          map_f64_to_f32 = true;
         if (target != "texmode_unified" && target != "texmode_independent")
           continue;
         if (mode_seen)
@@ -258,6 +262,7 @@ ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
           .range = directive->range,
           .target_options = targets,
           .texture_mode = mode,
+          .map_f64_to_f32 = map_f64_to_f32,
           .target_provenance = targets.empty()
                                    ? SourceConfigurationProvenance::Missing
                                    : SourceConfigurationProvenance::Explicit,

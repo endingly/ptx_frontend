@@ -209,8 +209,17 @@ binding、声明形状/类型规则、operand resolution 与 call ABI/staging �
 每条 `.target` 替换 active source context，未知 target 也会清除此前已识别的 target。
 函数头、嵌套 body declaration 和局部 call prototype 使用所属函数所在的 source region，
 不与 lowering 阶段的 deployment target 选择混用。
-显式 validation catalog 包含不具有现代 capability 的历史 `sm_13` 与 `sm_20`，以一致检查 PTX 6.0
+显式 validation catalog 包含不具有现代 capability 或 family feature 的历史 `sm_10`、
+`sm_11`、`sm_12`、`sm_13` 与 `sm_20`，以一致检查 legacy source context 和 PTX 6.0
 的 `sm_20`/`sm_30` 声明边界；不会因此接受任意数字形式的 target spelling。
+支持范围限于 catalog target，不代表所有历史 GPU profile。
+
+`ResolvedSourceTargetRegion::map_f64_to_f32` 拥有有效 programmer option，仅从该 region
+有序 `target_options` 中的精确 `map_f64_to_f32` spelling 解码。每条 `.target` 都重置
+该 option；即使前一区域启用了它，省略仍表示 false。AST-backed 与 owned validation
+均把它传给 `checker::TargetInfo::map_f64_to_f32`。owned validation 拒绝 Boolean 与
+保留 spelling 之间的矛盾。此 option 独立于硬件 capability，不改变 f64 指令 identity、
+storage 或 operand width。保留此控制本身不增加指令 form，也不降低既有 availability 要求。
 
 `ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
 `SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；

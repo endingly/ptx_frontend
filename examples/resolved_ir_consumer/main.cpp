@@ -1,6 +1,9 @@
 #include <array>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -168,6 +171,57 @@ int main() {
   table_module->functions.back().body.front()->visit_references(table_observer);
   if (table_observer.table != table.symbol_id ||
       !ir::validateModule(*table_module))
+    return 1;
+  constexpr ir::checker::AvailabilityDescriptor map_requirement{
+      .any_of = {{{.minimum_ptx_version = {1, 0},
+                   .has_exact_target = true,
+                   .exact_target_architecture = {10},
+                   .requires_map_f64_to_f32 = true}}},
+      .any_of_count = 1,
+  };
+  ir::checker::TargetInfo legacy_target{
+      .ptx_version = {1, 5},
+      .sm_version = 10,
+      .identity = ptx_frontend::base::parse_target_identity("sm_10"),
+  };
+  if (ir::checker::is_available(map_requirement, legacy_target))
+    return 1;
+  legacy_target.map_f64_to_f32 = true;
+  if (!ir::checker::is_available(map_requirement, legacy_target))
+    return 1;
+  std::optional<ir::ResolvedModule> legacy_module;
+  {
+    const std::string legacy_source = R"ptx(.version 1.5
+.target sm_10, map_f64_to_f32, texmode_unified
+.func first() { ret; }
+.target sm_11
+.func second() { ret; }
+.target sm_12, texmode_unified, map_f64_to_f32
+.func third() { ret; }
+)ptx";
+    ptx_frontend::PtxSyntaxParser legacy_parser{legacy_source};
+    auto legacy_ast = legacy_parser.parseModule();
+    if (!legacy_ast || !legacy_ast.diagnostics.empty())
+      return 1;
+    auto legacy_resolved = ir::resolveAndValidateModule(*legacy_ast);
+    if (!legacy_resolved)
+      return 1;
+    legacy_module.emplace(std::move(*legacy_resolved));
+  }
+  if (legacy_module->header.regions.size() != 4 ||
+      !legacy_module->header.regions[1].map_f64_to_f32 ||
+      legacy_module->header.regions[2].map_f64_to_f32 ||
+      !legacy_module->header.regions[3].map_f64_to_f32 ||
+      legacy_module->header.regions[1].target_options[1] != "map_f64_to_f32" ||
+      legacy_module->header.regions[3].target_options[2] != "map_f64_to_f32" ||
+      !ir::validateModule(*legacy_module))
+    return 1;
+  legacy_module->header.regions[1].map_f64_to_f32 = false;
+  if (ir::validateModule(*legacy_module))
+    return 1;
+  legacy_module->header.regions[1].map_f64_to_f32 = true;
+  legacy_module->header.regions[3].target_options.pop_back();
+  if (ir::validateModule(*legacy_module))
     return 1;
   return 0;
 }

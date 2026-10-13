@@ -86,6 +86,11 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
     std::span<const std::string_view> capabilities;
   };
   const std::array profiles{
+      ExpectedProfile{"sm_10", 10, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_11", 11, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_12", 12, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_13", 13, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_20", 20, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none, none},
@@ -142,6 +147,11 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   }
 
   EXPECT_TRUE(find_target_profile("sm_30")->capabilities.empty());
+  for (const std::string_view target : {"sm_10a", "sm_11f", "sm_12a", "sm_14",
+                                        "sm_32", "sm_35", "sm_60", "sm_62"}) {
+    EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
+    EXPECT_FALSE(find_target_profile(target).has_value()) << target;
+  }
   for (const std::string_view target : {"sm_50a", "sm_52a", "sm_52f", "sm_53"})
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());

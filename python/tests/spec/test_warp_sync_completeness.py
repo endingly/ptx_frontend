@@ -48,9 +48,10 @@ class WarpSyncCompletenessTest(unittest.TestCase):
         self.assertEqual(
             {variant.name for variant in variants},
             {"vote_sync_ballot_b32", "vote_sync_all_pred",
-             "vote_sync_any_pred", "vote_sync_uni_pred"},
+             "vote_sync_any_pred", "vote_sync_uni_pred", "vote_all_pred",
+             "vote_any_pred", "vote_uni_pred", "vote_ballot_b32"},
         )
-        for variant in variants:
+        for variant in variants[:4]:
             self.assertEqual(variant.availability, {"ptx": "6.0", "sm": 30})
             operands = variant.operand_layouts[0].operands
             self.assertEqual(operands[1].kind, OperandKind.PREDICATE_OR_NOT)

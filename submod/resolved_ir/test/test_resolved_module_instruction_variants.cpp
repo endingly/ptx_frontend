@@ -3705,6 +3705,8 @@ TEST(ResolvedModule, ResolvesAndChecksVoteSyncBallotB32Slice) {
   const auto wrong_any = resolveModule(*parsed_module_6);
   ASSERT_FALSE(wrong_any.has_value());
   const auto parsed_module_7 = parseModule(R"ptx(
+.version 6.0
+.target sm_80
 .entry kernel() { .reg .b32 %b0; .reg .pred %p0; vote.ballot.b32 %b0, %p0; }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_7);
@@ -3776,7 +3778,7 @@ TEST(ResolvedModule, PreservesVoteSyncModesAndSourceNegation) {
            "vote.sync.uni.pred %p1, %p0; }",
            ".entry kernel() { .reg .pred %p<2>; "
            "vote.sync.all.pred !%p1, %p0, 0xffffffff; }",
-           ".entry kernel() { .reg .pred %p<2>; "
+           ".version 6.0 .target sm_80 .entry kernel() { .reg .pred %p<2>; "
            "vote.uni.pred %p1, %p0; }",
        }) {
     const auto invalid_ast = parseModule(source);

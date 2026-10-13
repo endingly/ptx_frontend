@@ -1,5 +1,6 @@
 """Closed PTX 9.3 source and static operand inventory for multimem forms."""
 
+from dataclasses import replace
 import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
@@ -107,10 +108,37 @@ class MultimemContractTests(unittest.TestCase):
                 self.assertEqual(scope.default, "none")
             elif variant.name.endswith("_weak"):
                 self.assertIs(semantics.presence, ModifierPresence.OPTIONAL)
-                self.assertIsNone(scope)
+                self.assertEqual(semantics.default, "omitted")
+                self.assertEqual([value.value for value in semantics.values], ["weak"])
+                self.assertIs(scope.presence, ModifierPresence.OPTIONAL)
+                self.assertEqual(scope.default, "none")
+                self.assertEqual([value.value for value in scope.values],
+                                 ["cta", "cluster", "gpu", "sys"])
+                names = [field.name for field in variant.modifiers]
+                self.assertEqual(names.index("scope"), names.index("semantics") + 1)
             else:
                 self.assertIs(semantics.presence, ModifierPresence.REQUIRED)
                 self.assertIs(scope.presence, ModifierPresence.REQUIRED)
+
+    def test_every_weak_variant_preserves_the_ordered_operand_and_target_contract(self) -> None:
+        """Enumerate all weak cohorts and compare every other field with its strong peer."""
+
+        variants = {variant.name: variant for variant in self.variants}
+        weak = [variant for variant in self.variants
+                if self._family(variant) in {"ld_reduce", "st"}
+                and variant.name.endswith("_weak")]
+        self.assertEqual(sum(self._family(variant) == "ld_reduce" for variant in weak), 42)
+        self.assertEqual(sum(self._family(variant) == "st" for variant in weak), 7)
+        for variant in weak:
+            with self.subTest(variant=variant.name):
+                ordered = variants[variant.name.removesuffix("weak") + "ordered"]
+                self.assertEqual(
+                    replace(variant, name=ordered.name, modifiers=ordered.modifiers), ordered)
+                self.assertEqual(
+                    tuple(field for field in variant.modifiers
+                          if field.name not in {"semantics", "scope"}),
+                    tuple(field for field in ordered.modifiers
+                          if field.name not in {"semantics", "scope"}))
 
     def test_float_vector_width_and_accumulation_intersection(self) -> None:
         """Each encoded type/vector/acc combination must belong to every PTX table."""

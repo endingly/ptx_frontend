@@ -3,7 +3,7 @@
 import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
-from ptx_frontend.spec.model import ModifierKind, ModifierPresence
+from ptx_frontend.spec.model import ModifierKind, ModifierPresence, OperandKind
 
 
 
@@ -14,6 +14,59 @@ class LdStCompletenessTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the source-tree instruction database once for these checks."""
         cls.database = get_packaged_spec_database()
+
+    def test_every_cache_hint_variant_has_equivalent_policy_layouts(self) -> None:
+        """Inventory the complete hint partition without changing its other gates."""
+        expected = {
+            "ld_global_l1_l2_cache_hint_prefetch_vector",
+            "ld_l2_evict_cache_hint_vector",
+            "ld_global_l1_cache_hint_prefetch_scalar",
+            "ld_global_l1_cache_hint_prefetch_vector",
+            "ld_l1_cache_hint_scalar", "ld_l1_cache_hint_vector",
+            "ld_global_u32_l2_cache_hint", "ld_global_l2_cache_hint_vector",
+            "ld_l2_cache_hint_scalar", "ld_l2_cache_hint_vector",
+            "ld_global_nc_l2_evict_cache_hint_vector",
+            "ld_global_nc_l1_cache_hint_scalar",
+            "ld_global_nc_l1_cache_hint_prefetch_legacy_vector",
+            "ld_global_nc_cache_hint_scalar", "ld_global_nc_cache_hint_vector",
+            "st_global_l1_l2_cache_hint_vector", "st_l2_evict_cache_hint_vector",
+            "st_global_l1_cache_hint_scalar", "st_global_l1_cache_hint_vector",
+            "st_l1_cache_hint_scalar", "st_l1_cache_hint_vector",
+            "st_global_u32_l2_cache_hint", "st_global_l2_cache_hint_vector",
+            "st_l2_cache_hint_scalar", "st_l2_cache_hint_vector",
+        }
+        variants = {
+            variant.name: variant
+            for instruction in self.database.instructions
+            if instruction.opcode in {"ld", "st"}
+            for variant in instruction.variants
+            if any(modifier.name == "cache_hint" for modifier in variant.modifiers)
+        }
+        self.assertEqual(set(variants), expected)
+        for name, variant in variants.items():
+            with self.subTest(variant=name):
+                hint = next(modifier for modifier in variant.modifiers
+                            if modifier.name == "cache_hint")
+                self.assertIs(hint.presence, ModifierPresence.FIXED)
+                self.assertIs(hint.value, True)
+                self.assertEqual(hint.token, ".L2::cache_hint")
+                policy, hint_only = variant.operand_layouts
+                self.assertEqual((policy.name, hint_only.name),
+                                 ("default", "without_policy"))
+                self.assertEqual(policy.operands[:-1], hint_only.operands)
+                self.assertEqual(policy.kind, hint_only.kind)
+                self.assertEqual(policy.availability, hint_only.availability)
+                self.assertEqual(policy.forbidden_modifiers,
+                                 hint_only.forbidden_modifiers)
+                self.assertEqual(len(hint_only.operands), 2)
+                final = policy.operands[-1]
+                self.assertEqual(final.name, "cache_policy")
+                self.assertIs(final.kind, OperandKind.REGISTER)
+                self.assertEqual(final.type_expression.scalar_type, "b64")
+                modern = variant.memory_vector is not None and variant.memory_vector.require_modern
+                self.assertEqual(variant.availability,
+                                 {"ptx": "8.8", "sm": 100} if modern
+                                 else {"ptx": "7.4", "sm": 80})
 
     def test_ldu_type_and_vector_matrix(self) -> None:
         """Keep the documented uniform-load forms within 128 vector bits."""

@@ -530,6 +530,17 @@ modifier-value availability。源码省略 cache 时，Resolved IR 保存
 生效；IR 保留 `Unspecified`，是为了不把“源码未写”伪装成“显式写了默认值”，也避免它触发
 cache value availability 检查。
 
+普通 coherent `ld`、`ld.global.nc` 与 `st` 的 `.L2::cache_hint` 可以带或省略
+末尾的 64-bit register `cache_policy`；未写 hint 却提供 policy 仍非法。现有 exact
+form class 与 `InstructionKind` identity 保持不变：原有 policy-present `default`
+layout 仍为 index 0，新增 `without_policy` 为 index 1。生成的 public
+`cache_policy` member 现在是 `std::optional<WithLocs<ResolvedRegisterRef>>`，
+consumer 通过 `cache_policy->value` 访问已提供的 policy。两种 layout 的固定
+`cache_hint` field 都保持 true，并保留相同的 payload、address、modifier、PTX
+version 与 target 限制，包括 modern-vector gate。
+`examples/memory_cache_hint_consumer` 的 installed example 在 source text 与
+AST 销毁后验证 scalar/vector coherent load、noncoherent load 与 store 的两种 layout。
+
 memory consistency 采用生成的 cross-modifier descriptor，而不是把每种 qualifier
 组合展开成 `ld/st` variant。`MemoryConsistency::Omitted`（空 `locs`）与显式
 `.weak` 保持不同；`.volatile/.relaxed/.acquire/.release` 保留 modifier location。

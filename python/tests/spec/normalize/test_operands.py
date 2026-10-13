@@ -6,7 +6,7 @@ helper layout. JSON-schema validation and generated C++ belong in other suites.
 """
 
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from itertools import product
 from typing import Any
 import unittest
@@ -18,6 +18,7 @@ from ptx_frontend.spec.model import (
     OperandImmediateConversionPolicy,
     OperandAccess,
     OperandKind,
+    OperandLayoutSpec,
     OperandParameterConstraint,
     OperandRegisterWidthPolicy,
     OperandSpec,
@@ -30,6 +31,7 @@ from ptx_frontend.spec.model import (
     OperandRole,
 )
 from ptx_frontend.spec.normalize.operands import normalize_operand
+from ptx_frontend.spec.normalize.validation import _validate_modifier_state_space_expressions
 
 
 def _operand(kind: str = "reg", **fields: Any) -> dict[str, Any]:
@@ -767,8 +769,38 @@ class OperandNormalizationTests(unittest.TestCase):
                         **fields,
                     ),
                     ValueError,
-                    "operand 'x': parameter constraint requires a state_space modifier expression",
+                    "operand 'x': parameter constraint requires a state_space modifier expression or an entry_only param domain",
                 )
+
+    def test_entry_only_requires_boolean_input_and_parameter_domain(self) -> None:
+        """Static parameter constraints admit only explicitly opted-in entry inputs."""
+        parameter = {"direction": "input", "function_availability": {}, "entry_only": True}
+        operand = normalize_operand(_operand("addr", state_space=["global", "param"],
+                                             parameter=parameter))
+        self.assertEqual(operand.parameter_constraint,
+                         OperandParameterConstraint("input", {}, True))
+        for value in (1, 0, "true", None, []):
+            with self.subTest(value=value), self.assertRaisesRegex(TypeError, "Boolean"):
+                normalize_operand(_operand("addr", state_space="param",
+                                            parameter=dict(parameter, entry_only=value)))
+        for domain in (None, ["global"], ["generic"], ["param::entry"]):
+            with self.subTest(domain=domain), self.assertRaises(ValueError):
+                normalize_operand(_operand("addr", state_space=domain, parameter=parameter))
+        with self.assertRaisesRegex(ValueError, "input direction"):
+            normalize_operand(_operand("addr", state_space="param",
+                                        parameter=dict(parameter, direction="return")))
+        with self.assertRaisesRegex(ValueError, "entry_only param domain"):
+            normalize_operand(_operand("addr", state_space="param",
+                                        parameter=dict(parameter, entry_only=False)))
+        _validate_modifier_state_space_expressions((), (OperandLayoutSpec("plain", (operand,)),))
+        for constraint, spaces in (
+            (OperandParameterConstraint("input", {}, False), operand.state_space_values),
+            (operand.parameter_constraint, (OperandStateSpaceValue("generic"),)),
+        ):
+            with self.subTest(constraint=constraint, spaces=spaces):
+                detached = replace(operand, parameter_constraint=constraint, state_space_values=spaces)
+                with self.assertRaisesRegex(ValueError, "entry_only param domain"):
+                    _validate_modifier_state_space_expressions((), (OperandLayoutSpec("plain", (detached,)),))
 
     def test_address_parser_errors_propagate(self) -> None:
         cases = (

@@ -1359,12 +1359,19 @@ $defs:
                   uniqueItems: true
                   items:
                     $ref: "#/$defs/schema_identifier"
+                map_f64_to_f32:
+                  description: >
+                    Require the exact source target option map_f64_to_f32,
+                    independently of hardware capabilities and operand widths.
+                  type: boolean
+                  const: true
               anyOf:
                 - required: [ptx]
                 - required: [sm]
                 - required: [target]
                 - required: [family]
                 - required: [capabilities]
+                - required: [map_f64_to_f32]
 
   semantic_rule:
     description: >

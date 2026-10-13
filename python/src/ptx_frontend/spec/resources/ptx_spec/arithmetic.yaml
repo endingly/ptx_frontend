@@ -1299,7 +1299,12 @@ instructions:
           - {ptx: "div.rn.ftz.f32 %f0, %f1, 1.0;", valid: true}
 
       - name: div_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
           - {name: approx, kind: flag, presence: absent}
@@ -1384,7 +1389,12 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples: [{ptx: "rcp.rz.ftz.f32 %f0, 1.0;", valid: true}]
       - name: rcp_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: approx, kind: flag, presence: absent}
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
@@ -1439,7 +1449,12 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples: [{ptx: "sqrt.rz.ftz.f32 %f0, 1.0;", valid: true}]
       - name: sqrt_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: approx, kind: flag, presence: absent}
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}

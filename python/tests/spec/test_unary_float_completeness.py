@@ -56,7 +56,11 @@ class UnaryFloatCompletenessTests(unittest.TestCase):
             self.assertEqual(dict(variants[f"{opcode}_approx_f32"].availability), {"ptx": "1.4", "sm": 0})
             self.assertEqual(dict(variants[f"{opcode}_rn_f32"].availability), {"ptx": "2.0", "sm": 20})
             self.assertEqual(dict(variants[f"{opcode}_directed_f32"].availability), {"ptx": "2.0", "sm": 20})
-            self.assertEqual(dict(variants[f"{opcode}_rn_f64"].availability), {"ptx": "1.4", "sm": 13})
+            self.assertEqual(dict(variants[f"{opcode}_rn_f64"].availability), {"any_of": [
+                {"ptx": "1.4", "sm": 13},
+                *({"ptx": "1.4", "target": f"sm_{sm}", "map_f64_to_f32": True}
+                  for sm in (10, 11, 12)),
+            ]})
             self.assertEqual(dict(variants[f"{opcode}_directed_f64"].availability), {"ptx": "2.0", "sm": 20})
         self.assertEqual(
             dict(self.instructions["rcp"]["rcp_approx_ftz_f64"].availability), {"ptx": "2.1", "sm": 20}

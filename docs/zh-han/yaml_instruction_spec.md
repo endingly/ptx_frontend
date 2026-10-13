@@ -547,6 +547,20 @@ Python 测试。
 已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
 family（9.0）。指令契约见[杂项指令覆盖范围](converage/miscellaneous_coverage.md)。
 
+`any_of` clause 可以用 `map_f64_to_f32: true` 要求 source programmer option，例如
+`{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`。它与 PTX、exact target（含 flavor）、
+SM、family 和 capability 一起构成 AND-term。出现时必须为 Boolean true；false、数字或
+字符串替代值，以及放在 legacy availability object 中均无效。省略表示不增加 option 要求。
+emitter 设置 `checker::AvailabilityClause::requires_map_f64_to_f32`；公共 availability
+逻辑检查默认值为 false 的 `checker::TargetInfo::map_f64_to_f32`。该 source control 不是
+硬件 capability，绝不改变 resolved operand 的 type 或 width。
+
+canonical `div_rn_f64`、`rcp_rn_f64` 与 `sqrt_rn_f64` variant 各使用四个 clause：
+原有 PTX 1.4 / SM 13 下限，加上同时要求此 option 和 PTX 1.4 的精确 generic
+`sm_10`、`sm_11`、`sm_12` 候选。syntax identity、显式 `.rn`、f64 type 与 64-bit
+operand 均不变。此 option 不为其他 f64、directed rounding、approximate reciprocal
+或 f32 form 增加候选。
+
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
 只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，
 resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML

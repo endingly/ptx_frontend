@@ -1,12 +1,82 @@
 #include <array>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+/** Check actual mapped forms and strict owned revalidation through installed APIs. */
+bool checkInstalledMappedF64() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const auto target : {"sm_10", "sm_11", "sm_12"}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source = ".version 1.4\n.target " +
+                                 std::string(target) + R"ptx(, map_f64_to_f32
+.func f() { .reg .f64 %d<3>; .reg .b64 %rd;
+  div.rn.f64 %rd, %d1, 1.0;
+  rcp.rn.f64 %d0, %rd;
+  sqrt.rn.f64 %d0, %d1;
+}
+)ptx";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    if (!ir::validateModule(*owned))
+      return false;
+    const auto& body = owned->functions.front().body;
+    const auto* div = dynamic_cast<const ir::DivRnF64*>(body[0].get());
+    const auto* rcp = dynamic_cast<const ir::RcpRnF64*>(body[1].get());
+    const auto* sqrt = dynamic_cast<const ir::SqrtRnF64*>(body[2].get());
+    if (!div || !rcp || !sqrt || ir::DivRnF64::type != ir::ScalarType::F64 ||
+        ir::RcpRnF64::type != ir::ScalarType::F64 ||
+        ir::SqrtRnF64::type != ir::ScalarType::F64 ||
+        div->dst.value.declared_type != ir::ScalarType::B64 ||
+        std::get<ir::ResolvedImmediate>(div->src2.value).type !=
+            ir::ScalarType::F64)
+      return false;
+    ir::checker::Context context{
+        .target = {
+            .ptx_version = {1, 4},
+            .sm_version = static_cast<unsigned>(std::stoi(target + 3)),
+            .identity = ptx_frontend::base::parse_target_identity(target),
+            .map_f64_to_f32 = true}};
+    for (const auto& instruction : body) {
+      if (!instruction->check(context))
+        return false;
+      context.target.map_f64_to_f32 = false;
+      if (instruction->check(context))
+        return false;
+      context.target.map_f64_to_f32 = true;
+    }
+    auto& region = owned->header.regions[1];
+    region.map_f64_to_f32 = false;
+    if (ir::validateModule(*owned))
+      return false;
+    region.map_f64_to_f32 = true;
+    region.target_options.back() = "map_f64_to_f32x";
+    if (ir::validateModule(*owned))
+      return false;
+    region.target_options.back() = "map_f64_to_f32";
+    if (!ir::validateModule(*owned))
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledMappedF64())
+    return 1;
   namespace ir = ptx_frontend::resolved_ir;
   ptx_frontend::PtxSyntaxParser parser("add.u32 %r0, %r1, 7;");
   auto ast = parser.parseInstruction();
@@ -168,6 +238,57 @@ int main() {
   table_module->functions.back().body.front()->visit_references(table_observer);
   if (table_observer.table != table.symbol_id ||
       !ir::validateModule(*table_module))
+    return 1;
+  constexpr ir::checker::AvailabilityDescriptor map_requirement{
+      .any_of = {{{.minimum_ptx_version = {1, 0},
+                   .has_exact_target = true,
+                   .exact_target_architecture = {10},
+                   .requires_map_f64_to_f32 = true}}},
+      .any_of_count = 1,
+  };
+  ir::checker::TargetInfo legacy_target{
+      .ptx_version = {1, 5},
+      .sm_version = 10,
+      .identity = ptx_frontend::base::parse_target_identity("sm_10"),
+  };
+  if (ir::checker::is_available(map_requirement, legacy_target))
+    return 1;
+  legacy_target.map_f64_to_f32 = true;
+  if (!ir::checker::is_available(map_requirement, legacy_target))
+    return 1;
+  std::optional<ir::ResolvedModule> legacy_module;
+  {
+    const std::string legacy_source = R"ptx(.version 1.5
+.target sm_10, map_f64_to_f32, texmode_unified
+.func first() { ret; }
+.target sm_11
+.func second() { ret; }
+.target sm_12, texmode_unified, map_f64_to_f32
+.func third() { ret; }
+)ptx";
+    ptx_frontend::PtxSyntaxParser legacy_parser{legacy_source};
+    auto legacy_ast = legacy_parser.parseModule();
+    if (!legacy_ast || !legacy_ast.diagnostics.empty())
+      return 1;
+    auto legacy_resolved = ir::resolveAndValidateModule(*legacy_ast);
+    if (!legacy_resolved)
+      return 1;
+    legacy_module.emplace(std::move(*legacy_resolved));
+  }
+  if (legacy_module->header.regions.size() != 4 ||
+      !legacy_module->header.regions[1].map_f64_to_f32 ||
+      legacy_module->header.regions[2].map_f64_to_f32 ||
+      !legacy_module->header.regions[3].map_f64_to_f32 ||
+      legacy_module->header.regions[1].target_options[1] != "map_f64_to_f32" ||
+      legacy_module->header.regions[3].target_options[2] != "map_f64_to_f32" ||
+      !ir::validateModule(*legacy_module))
+    return 1;
+  legacy_module->header.regions[1].map_f64_to_f32 = false;
+  if (ir::validateModule(*legacy_module))
+    return 1;
+  legacy_module->header.regions[1].map_f64_to_f32 = true;
+  legacy_module->header.regions[3].target_options.pop_back();
+  if (ir::validateModule(*legacy_module))
     return 1;
   return 0;
 }

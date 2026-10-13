@@ -25,6 +25,8 @@ def emit_availability(availability: Mapping[str, object]) -> str:
     emitted = []
     for clause in clauses:
         assert isinstance(clause, dict)
+        if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
+            raise ValueError("availability map_f64_to_f32 must be Boolean true")
         minimum_ptx = _parse_ptx_version(clause.get("ptx", "0.0"))
         target = clause.get("target")
         number, flavor = (
@@ -45,6 +47,7 @@ def emit_availability(availability: Mapping[str, object]) -> str:
                       .required_family = "{family}",
                       .capabilities = {{{{{capability_values}}}}},
                       .capability_count = {len(capabilities)},
+                      .requires_map_f64_to_f32 = {str(clause.get("map_f64_to_f32", False)).lower()},
                   }}""")
     return f'''{{
                   .any_of = {{{{

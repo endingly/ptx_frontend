@@ -555,6 +555,12 @@ emitter 设置 `checker::AvailabilityClause::requires_map_f64_to_f32`；公共 a
 逻辑检查默认值为 false 的 `checker::TargetInfo::map_f64_to_f32`。该 source control 不是
 硬件 capability，绝不改变 resolved operand 的 type 或 width。
 
+canonical `div_rn_f64`、`rcp_rn_f64` 与 `sqrt_rn_f64` variant 各使用四个 clause：
+原有 PTX 1.4 / SM 13 下限，加上同时要求此 option 和 PTX 1.4 的精确 generic
+`sm_10`、`sm_11`、`sm_12` 候选。syntax identity、显式 `.rn`、f64 type 与 64-bit
+operand 均不变。此 option 不为其他 f64、directed rounding、approximate reciprocal
+或 f32 form 增加候选。
+
 `operand_layouts` 中的 `availability` 与 variant availability 是累积关系，而不是覆盖关系：
 只有选中的 layout 会增加自己的 PTX、SM 或 family 要求。若多个 layout 都能匹配同一语法，
 resolver 只会选择唯一的、语法 shape 严格更具体的 layout；相同或不可比较的候选是 YAML

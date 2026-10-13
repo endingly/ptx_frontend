@@ -250,8 +250,11 @@ after a region that enabled it. Both AST-backed and owned validation pass it to
 `checker::TargetInfo::map_f64_to_f32`. Owned validation rejects contradictions
 between the Boolean and retained spellings. This option is separate from hardware
 capabilities and does not change f64 instruction identity, storage, or operand
-widths. Retaining this control does not itself add instruction forms or lower
-their existing availability requirements.
+widths. At PTX 1.4 or later, `div.rn.f64`, `rcp.rn.f64`, and `sqrt.rn.f64` accept
+exact generic `sm_10`, `sm_11`, or `sm_12` only with this option; their existing
+`sm_13` and later availability remains available without it. Other f64 forms,
+directed rounding, and f32 forms keep their own gates. This frontend preserves
+and validates the source option; it performs no lowering or emulation.
 
 `ResolvedFunction::declaration_scope` identifies a declaration occurrence:
 a prototype and definition may share a `SymbolId` but have different scopes.

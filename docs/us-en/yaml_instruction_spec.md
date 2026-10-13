@@ -641,6 +641,12 @@ availability evaluation checks `checker::TargetInfo::map_f64_to_f32`, whose
 default is false. This source control is not a hardware capability and never
 changes the type or width of a resolved operand.
 
+The canonical `div_rn_f64`, `rcp_rn_f64`, and `sqrt_rn_f64` variants each use four
+clauses: the original PTX 1.4 / SM 13 minimum, plus exact generic `sm_10`, `sm_11`,
+and `sm_12` alternatives requiring this option and PTX 1.4. Their syntax identity,
+explicit `.rn`, f64 type, and 64-bit operands are unchanged. This option adds no
+alternative to other f64, directed-rounding, approximate reciprocal, or f32 forms.
+
 `operand_layouts[].availability` accumulates with variant availability; it
 does not override it, and only the selected layout contributes its constraint.
 When more than one layout matches the same syntax, the resolver accepts only a

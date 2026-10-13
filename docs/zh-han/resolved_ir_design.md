@@ -219,7 +219,10 @@ binding、声明形状/类型规则、operand resolution 与 call ABI/staging �
 该 option；即使前一区域启用了它，省略仍表示 false。AST-backed 与 owned validation
 均把它传给 `checker::TargetInfo::map_f64_to_f32`。owned validation 拒绝 Boolean 与
 保留 spelling 之间的矛盾。此 option 独立于硬件 capability，不改变 f64 指令 identity、
-storage 或 operand width。保留此控制本身不增加指令 form，也不降低既有 availability 要求。
+storage 或 operand width。PTX 1.4 起，`div.rn.f64`、`rcp.rn.f64` 与 `sqrt.rn.f64`
+仅在启用此 option 时接受精确 generic `sm_10`、`sm_11` 或 `sm_12`；既有 `sm_13`
+及更高 target 的 availability 无需此 option。其他 f64 form、directed rounding 与
+f32 form 保持各自的 gate。前端保存并验证 source option，不执行 lowering 或 emulation。
 
 `ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
 `SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；

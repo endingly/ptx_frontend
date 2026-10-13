@@ -8,8 +8,75 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+/** Check actual mapped forms and strict owned revalidation through installed APIs. */
+bool checkInstalledMappedF64() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const auto target : {"sm_10", "sm_11", "sm_12"}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source = ".version 1.4\n.target " +
+                                 std::string(target) + R"ptx(, map_f64_to_f32
+.func f() { .reg .f64 %d<3>; .reg .b64 %rd;
+  div.rn.f64 %rd, %d1, 1.0;
+  rcp.rn.f64 %d0, %rd;
+  sqrt.rn.f64 %d0, %d1;
+}
+)ptx";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    if (!ir::validateModule(*owned))
+      return false;
+    const auto& body = owned->functions.front().body;
+    const auto* div = dynamic_cast<const ir::DivRnF64*>(body[0].get());
+    const auto* rcp = dynamic_cast<const ir::RcpRnF64*>(body[1].get());
+    const auto* sqrt = dynamic_cast<const ir::SqrtRnF64*>(body[2].get());
+    if (!div || !rcp || !sqrt || ir::DivRnF64::type != ir::ScalarType::F64 ||
+        ir::RcpRnF64::type != ir::ScalarType::F64 ||
+        ir::SqrtRnF64::type != ir::ScalarType::F64 ||
+        div->dst.value.declared_type != ir::ScalarType::B64 ||
+        std::get<ir::ResolvedImmediate>(div->src2.value).type !=
+            ir::ScalarType::F64)
+      return false;
+    ir::checker::Context context{
+        .target = {
+            .ptx_version = {1, 4},
+            .sm_version = static_cast<unsigned>(std::stoi(target + 3)),
+            .identity = ptx_frontend::base::parse_target_identity(target),
+            .map_f64_to_f32 = true}};
+    for (const auto& instruction : body) {
+      if (!instruction->check(context))
+        return false;
+      context.target.map_f64_to_f32 = false;
+      if (instruction->check(context))
+        return false;
+      context.target.map_f64_to_f32 = true;
+    }
+    auto& region = owned->header.regions[1];
+    region.map_f64_to_f32 = false;
+    if (ir::validateModule(*owned))
+      return false;
+    region.map_f64_to_f32 = true;
+    region.target_options.back() = "map_f64_to_f32x";
+    if (ir::validateModule(*owned))
+      return false;
+    region.target_options.back() = "map_f64_to_f32";
+    if (!ir::validateModule(*owned))
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledMappedF64())
+    return 1;
   namespace ir = ptx_frontend::resolved_ir;
   ptx_frontend::PtxSyntaxParser parser("add.u32 %r0, %r1, 7;");
   auto ast = parser.parseInstruction();

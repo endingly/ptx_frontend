@@ -1,13 +1,15 @@
-"""Regression coverage for the explicit floating-point MAD cohorts."""
+"""Regression coverage for distinct implicit and explicit floating MAD forms."""
 
 import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import ModifierPresence, OperandKind, OperandRegisterWidthPolicy
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.code_gen.emit.availability import emit_availability
 
 
 class MadCompletenessTests(unittest.TestCase):
-    """Keep explicit floating MAD distinct from integer and legacy forms."""
+    """Keep floating source rounding distinct from integer and carry forms."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -19,6 +21,41 @@ class MadCompletenessTests(unittest.TestCase):
             if item.opcode == "mad"
         )
         cls.variants = {variant.name: variant for variant in instruction.variants}
+        cls.resolved = from_instruction_spec(instruction)
+
+    def test_implicit_rounding_has_exact_legacy_targets_and_no_rounding_field(self) -> None:
+        """Preserve omission as absence through canonical and resolved identities."""
+        variant = self.variants["mad_implicit_f32"]
+        expected = {"any_of": [{"ptx": "1.0", "target": f"sm_{sm}"}
+                               for sm in (10, 11, 12, 13)]}
+        self.assertEqual(variant.availability, expected)
+        modifiers = {modifier.name: modifier for modifier in variant.modifiers}
+        self.assertIs(modifiers["rounding"].presence, ModifierPresence.ABSENT)
+        self.assertIsNone(modifiers["rounding"].value)
+        self.assertEqual(modifiers["type"].value, "f32")
+        for name in ("ftz", "sat"):
+            self.assertIs(modifiers[name].presence, ModifierPresence.OPTIONAL)
+            self.assertIs(modifiers[name].default, False)
+        resolved = next(item for item in self.resolved.variants
+                        if item.variant_id == "mad_implicit_f32")
+        self.assertEqual(resolved.cpp_name, "ImplicitF32")
+        self.assertEqual(dict(resolved.availability), expected)
+        self.assertEqual([field.source_name for field in resolved.modifier_fields],
+                         ["ftz", "sat", "type"])
+        emitted = emit_availability(dict(resolved.availability))
+        self.assertIn(".any_of_count = 4", emitted)
+        self.assertEqual(emitted.count(".minimum_ptx_version = {1, 0}"), 4)
+        self.assertEqual(emitted.count(".has_exact_target = true"), 4)
+        for sm in (10, 11, 12, 13):
+            self.assertIn(f".exact_target_architecture = {{{sm}}}", emitted)
+
+    def test_implicit_form_reuses_explicit_fp32_ternary_operand_contract(self) -> None:
+        """Keep all four type/width/shape policies identical to explicit FP32 MAD."""
+        implicit = self.variants["mad_implicit_f32"]
+        explicit = self.variants["mad_rn_f32"]
+        self.assertEqual(implicit.operand_layouts, explicit.operand_layouts)
+        self.assertEqual(len(implicit.operand_layouts), 1)
+        self.assertEqual(len(implicit.operand_layouts[0].operands), 4)
 
     def test_models_all_explicit_rounding_and_preserves_integer_variants(self) -> None:
         """Require two FP cohorts while retaining the existing integer and carry forms."""

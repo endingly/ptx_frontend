@@ -8,6 +8,44 @@
 namespace ptx_frontend::detail {
 namespace {
 
+/** Private function handles must not determine the largest semantic slot. */
+TEST(GeneratedPtxParser, CompactModuleItemTransfersExclusiveFunctionOwnership) {
+  static_assert(sizeof(ModuleItemValue) <= sizeof(syntax_cst::CstOperand));
+  static_assert(sizeof(FunctionValue) == sizeof(void*));
+
+  // The same owner moves through function symbols and the module-item variant.
+  auto function = std::make_unique<syntax_cst::CstFunction>();
+  function->name = 3;
+  function->token_range = {1, 8};
+  function->body.emplace_back(syntax_cst::CstInstruction{});
+  const auto* identity = function.get();
+  ModuleItemValue item = std::move(function);
+  EXPECT_FALSE(function);
+  EXPECT_EQ(std::get<FunctionValue>(item).get(), identity);
+
+  // Materialization moves the payload into public storage, without any borrow.
+  const auto materialized = materializeModuleItem(std::move(item));
+  const auto& result = std::get<syntax_cst::CstFunction>(materialized);
+  EXPECT_EQ(result.name, 3u);
+  EXPECT_EQ(result.token_range.first, 1u);
+  EXPECT_EQ(result.token_range.last, 8u);
+  ASSERT_EQ(result.body.size(), 1u);
+  EXPECT_TRUE(
+      std::holds_alternative<syntax_cst::CstInstruction>(result.body[0]));
+}
+
+/** Public nonfunction items retain their value representation and token ranges. */
+TEST(GeneratedPtxParser, CompactModuleItemPreservesNonfunctionAlternatives) {
+  syntax_cst::CstModuleDirective directive;
+  directive.keyword = 4;
+  directive.token_range = {4, 7};
+  const auto materialized = materializeModuleItem(ModuleItemValue{directive});
+  const auto& result = std::get<syntax_cst::CstModuleDirective>(materialized);
+  EXPECT_EQ(result.keyword, 4u);
+  EXPECT_EQ(result.token_range.first, 4u);
+  EXPECT_EQ(result.token_range.last, 7u);
+}
+
 /** Compare the exact recovery contract, including absent and zero-width spans. */
 void expectRecoveryIdentity(const syntax_cst::CstRecoveryNode& actual,
                             const syntax_cst::CstRecoveryNode& expected) {

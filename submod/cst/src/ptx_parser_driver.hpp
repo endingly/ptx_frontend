@@ -15,6 +15,25 @@ namespace ptx_frontend::detail {
 /** Select the generated parser root without changing original source tokens. */
 enum class EntryMode { Instruction, Module };
 
+/**
+ * Exclusive function under construction, shared only by moving between symbols.
+ * Completed function symbols are nonnull; the generated uninitialized symbol
+ * starts empty. No pointer survives materialization into the public module CST.
+ */
+using FunctionValue = std::unique_ptr<syntax_cst::CstFunction>;
+
+/**
+ * Private module-item value that retains the function's existing owner rather
+ * than embedding its large payload or allocating a second wrapper.
+ */
+using ModuleItemValue = std::variant<
+    syntax_cst::CstModuleDirective, syntax_cst::CstSectionDirective,
+    syntax_cst::CstPragma, syntax_cst::CstVariableDeclaration,
+    syntax_cst::CstAliasDirective, FunctionValue, syntax_cst::CstRecoveryNode>;
+
+/** Move one completed private item into independently owned public CST storage. */
+syntax_cst::CstModuleItem materializeModuleItem(ModuleItemValue&& item);
+
 /** One bounded expression built exclusively by generated productions. */
 struct ParsedExpression {
   /** Owns children; token identities refer to the driver's eventual CstFile. */

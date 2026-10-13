@@ -58,9 +58,9 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::CstNamedArrayIndex> named_index
 %type <syntax_cst::CstModule> module
 %type <std::vector<syntax_cst::CstModuleItem>> module_items
-%type <syntax_cst::CstFunction> function
+%type <FunctionValue> function
 %type <std::vector<syntax_cst::CstFunctionBodyItem>> body
-%type <syntax_cst::CstModuleItem> module_item
+%type <ModuleItemValue> module_item
 %type <syntax_cst::CstFunctionBodyItem> body_item
 %type <syntax_cst::CstVariableDeclaration> declaration declaration_head declarators
 %type <syntax_cst::CstVariableDeclarator> declarator declarator_head
@@ -82,14 +82,14 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::TokenId> address_size file_index file_timestamp file_size
 %type <syntax_cst::CstFunctionParameterList> parameter_list parameters parameters_nonempty
 %type <std::optional<syntax_cst::CstFunctionParameterList>> optional_parameters
-%type <syntax_cst::CstFunction> entry_head func_head function_header function_open
+%type <FunctionValue> entry_head func_head function_header function_open
 %type <std::optional<syntax_cst::TokenId>> noreturn blocks_clusters
 %type <std::optional<syntax_cst::CstCallPrototypeAbiSuffix>> abi_preserve abi_control
 %type <std::optional<syntax_cst::CstLanguageDirective>> optional_language
 %type <syntax_cst::CstLanguageDirective> language
 %type <syntax_cst::CstPragma> pragma
 %type <syntax_cst::CstKernelResourceDirective> resource
-%type <syntax_cst::CstFunction> entry_clauses
+%type <FunctionValue> entry_clauses
 %type <syntax_cst::CstModuleDirective> module_directive
 %type <syntax_cst::CstAliasDirective> alias
 %type <BodyClose> body_close
@@ -360,7 +360,7 @@ module: module_items {
 module_items:
   %empty { driver.itemBoundary(); }
 | module_items module_item {
-    $1.push_back(std::move($2)); $$=std::move($1); driver.itemBoundary();
+    $1.push_back(materializeModuleItem(std::move($2))); $$=std::move($1); driver.itemBoundary();
   }
 | module_items error {
     auto nodes=driver.synchronize(false);
@@ -578,36 +578,36 @@ abi_control: %empty { $$=std::nullopt; } | ABI_CONTROL decimal { $$=CstCallProto
 blocks_clusters: %empty { $$=std::nullopt; } | BLOCKS_CLUSTERS { $$=$1; };
 optional_language: %empty { $$=std::nullopt; } | language { $$=std::move($1); };
 entry_head: ENTRY identifier optional_parameters entry_clauses blocks_clusters optional_language {
-  $$=std::move($4); $$.directive=$1; $$.name=$2; $$.parameters=std::move($3);
-  $$.blocks_are_clusters=$5; $$.language=std::move($6); $$.token_range.first=$1;
+  $$=std::move($4); $$->directive=$1; $$->name=$2; $$->parameters=std::move($3);
+  $$->blocks_are_clusters=$5; $$->language=std::move($6); $$->token_range.first=$1;
 };
 func_head: DOT_FUNC optional_attributes optional_parameters identifier optional_parameters noreturn abi_preserve abi_control optional_language {
-  $$={}; $$.directive=$1; $$.attributes=std::move($2); $$.return_parameters=std::move($3);
-  $$.name=$4; $$.parameters=std::move($5); $$.noreturn_directive=$6;
-  $$.abi_preserve=std::move($7); $$.abi_preserve_control=std::move($8); $$.language=std::move($9);
-  $$.token_range.first=$1;
+  $$=std::make_unique<CstFunction>(); $$->directive=$1; $$->attributes=std::move($2); $$->return_parameters=std::move($3);
+  $$->name=$4; $$->parameters=std::move($5); $$->noreturn_directive=$6;
+  $$->abi_preserve=std::move($7); $$->abi_preserve_control=std::move($8); $$->language=std::move($9);
+  $$->token_range.first=$1;
 };
 entry_clauses:
-  %empty { $$={}; }
-| entry_clauses pragma { $1.pragmas.push_back(std::move($2)); $$=std::move($1); }
-| entry_clauses resource { $1.resources.push_back(std::move($2)); $$=std::move($1); };
+  %empty { $$=std::make_unique<CstFunction>(); }
+| entry_clauses pragma { $1->pragmas.push_back(std::move($2)); $$=std::move($1); }
+| entry_clauses resource { $1->resources.push_back(std::move($2)); $$=std::move($1); };
 function_header:
-  qualifiers entry_head { $$=std::move($2); $$.qualifiers=std::move($1); if(!$$.qualifiers.empty()) $$.token_range.first=$$.qualifiers.front(); }
-| qualifiers func_head { $$=std::move($2); $$.qualifiers=std::move($1); if(!$$.qualifiers.empty()) $$.token_range.first=$$.qualifiers.front(); };
+  qualifiers entry_head { $$=std::move($2); $$->qualifiers=std::move($1); if(!$$->qualifiers.empty()) $$->token_range.first=$$->qualifiers.front(); }
+| qualifiers func_head { $$=std::move($2); $$->qualifiers=std::move($1); if(!$$->qualifiers.empty()) $$->token_range.first=$$->qualifiers.front(); };
 function_open: function_header LBRACE {
-  $$=std::move($1); $$.left_brace=$2; $$.header_tokens=driver.tokenSpan($$.token_range.first,$2);
+  $$=std::move($1); $$->left_brace=$2; $$->header_tokens=driver.tokenSpan($$->token_range.first,$2);
   driver.markShifted($2);
 };
-body_guard: %empty { $$=driver.openBody(*$<CstFunction>0.left_brace,false); };
+body_guard: %empty { $$=driver.openBody(*$<FunctionValue>0->left_brace,false); };
 function:
   function_header SEMI {
-    if(driver.token($1.directive).kind==TokenKind::DotEntry) driver.fail($2,"an entry function must have a body");
-    $$=std::move($1); $$.terminator=$2; $$.header_tokens=driver.tokenSpan($$.token_range.first,$2);
-    $$.token_range.last=$2+1; driver.markShifted($2);
+    if(driver.token($1->directive).kind==TokenKind::DotEntry) driver.fail($2,"an entry function must have a body");
+    $$=std::move($1); $$->terminator=$2; $$->header_tokens=driver.tokenSpan($$->token_range.first,$2);
+    $$->token_range.last=$2+1; driver.markShifted($2);
   }
 | function_open body_guard body body_close {
-  $$=std::move($1); $$.body=std::move($3); $$.right_brace=$4.first; $$.token_range.last=$4.second;
-  if(!$4.first) $$.body.push_back(driver.inserted(TokenKind::RBrace,$4.second));
+  $$=std::move($1); $$->body=std::move($3); $$->right_brace=$4.first; $$->token_range.last=$4.second;
+  if(!$4.first) $$->body.push_back(driver.inserted(TokenKind::RBrace,$4.second));
   $2.reset();
 };
 block_open: LBRACE { $$=driver.openBody($1,true); };

@@ -2,10 +2,28 @@
 #include "ptx_parser.hpp"
 
 #include <algorithm>
+#include <concepts>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace ptx_frontend::detail {
+
+syntax_cst::CstModuleItem materializeModuleItem(ModuleItemValue&& item) {
+  return std::visit(
+      []<typename T>(T&& node) -> syntax_cst::CstModuleItem
+        requires(std::same_as<std::remove_cvref_t<T>, FunctionValue> ||
+                 std::constructible_from<syntax_cst::CstModuleItem, T &&>)
+      {
+        if constexpr (std::is_same_v<std::decay_t<decltype(node)>,
+                                     FunctionValue>) {
+          return std::move(*node);
+        } else {
+          return std::move(node);
+        }
+      },
+      std::move(item));
+}
 
 namespace {
 /** Classify the original narrower boundary that ends an unterminated body. */

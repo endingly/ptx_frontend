@@ -794,12 +794,17 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         generic_address = generic_tensormap.operand_layouts[0].bindings[0]
         self.assertEqual(
             [space.value for space in generic_address.allowed_address_state_spaces],
-            ["global", "shared"],
+            ["global", "shared", "const", "param"],
         )
-        self.assertIsNone(generic_address.parameter_constraint)
+        self.assertEqual(generic_address.parameter_constraint.direction, "input")
+        self.assertTrue(generic_address.parameter_constraint.entry_only)
+        self.assertIsNone(generic_address.state_space_modifier_field_id)
+        source = _emit_operand_binding_descriptor(generic_address, "arities", "spaces", BACKEND)
+        self.assertIn(".entry_only = true", source)
         param = variants["ParamTensormap"].operand_layouts[0].bindings[0]
         self.assertEqual(param.state_space_modifier_field_id, "state_space")
         self.assertEqual(param.parameter_constraint.direction, "input")
+        self.assertFalse(param.parameter_constraint.entry_only)
 
     def test_prefetchu_l1_model(self) -> None:
         database = self.database
@@ -821,7 +826,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertEqual(
             [state_space.value for state_space in variant.operand_layouts[0]
              .bindings[0].allowed_address_state_spaces],
-            ["generic"],
+            ["global", "const", "local", "shared"],
         )
 
     def test_createpolicy_topologies(self) -> None:

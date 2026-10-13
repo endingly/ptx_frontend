@@ -19,14 +19,13 @@ multimem、Fabric/CFT、texture、surface、stack 和 video 均有明确源码�
 
 ## 已确认源码模型缺口
 
-[Issue #280](https://github.com/endingly/ptx_frontend/issues/280)按固定手册跟踪以下七组。
+[Issue #280](https://github.com/endingly/ptx_frontend/issues/280)按固定手册跟踪以下剩余组。
 它们是当前模型缺少的合法 ISA 情形，不是新接纳形式：
 
 | 缺口 | 当前边界 | 后续事项 |
 | --- | --- | --- |
 | LD/LDNC/ST cache hint | 当前 `L2::cache_hint` 要求末尾 policy operand，ISA 允许省略。 | [#281](https://github.com/endingly/ptx_frontend/issues/281) |
 | Multimem 默认语义与显式 scope | `ld_reduce`/`st` 显式 scope 但省略 semantics（默认 weak）的形式缺失。 | [#282](https://github.com/endingly/ptx_frontend/issues/282) |
-| Generic prefetch 来源 | 无状态空间后缀 `prefetch.tensormap` 的已知 const/kernel-param，以及 `prefetchu.L1` 的已知 global 或文档化 const/local/shared no-op 地址缺失。 | [#283](https://github.com/endingly/ptx_frontend/issues/283) |
 | Legacy MAD | `sm_1x` 上隐式 rounding 的 `mad.f32` 缺失。 | [#284](https://github.com/endingly/ptx_frontend/issues/284) |
 | Legacy vote | 未同步 `vote` 缺失；同步形式有独立契约。 | [#285](https://github.com/endingly/ptx_frontend/issues/285) |
 | Legacy shuffle | 未同步 `shfl` 缺失；同步形式有独立契约。 | [#286](https://github.com/endingly/ptx_frontend/issues/286) |

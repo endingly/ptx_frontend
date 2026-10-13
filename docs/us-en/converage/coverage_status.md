@@ -24,14 +24,13 @@ references and tests for the exact accepted boundary.
 ## Confirmed source-model gaps
 
 [Issue #280](https://github.com/endingly/ptx_frontend/issues/280) tracks these
-seven groups against the fixed manual. They are legal ISA cases missing from
+remaining groups against the fixed manual. They are legal ISA cases missing from
 the current model, not newly accepted forms:
 
 | Gap | Current boundary | Follow-up |
 | --- | --- | --- |
 | LD/LDNC/ST cache hint | `L2::cache_hint` currently requires a final policy operand; the ISA permits omission. | [#281](https://github.com/endingly/ptx_frontend/issues/281) |
 | Multimem scope with default semantics | `ld_reduce`/`st` with explicit scope but omitted semantics (default weak) is missing. | [#282](https://github.com/endingly/ptx_frontend/issues/282) |
-| Generic prefetch provenance | Suffix-free `prefetch.tensormap` with known const/kernel-param and `prefetchu.L1` with known global or documented const/local/shared no-op addresses are missing. | [#283](https://github.com/endingly/ptx_frontend/issues/283) |
 | Legacy MAD | Implicit-rounding `mad.f32` on `sm_1x` is missing. | [#284](https://github.com/endingly/ptx_frontend/issues/284) |
 | Legacy vote | Unsynchronized `vote` is missing; synchronized forms have a separate contract. | [#285](https://github.com/endingly/ptx_frontend/issues/285) |
 | Legacy shuffle | Unsynchronized `shfl` is missing; synchronized forms have a separate contract. | [#286](https://github.com/endingly/ptx_frontend/issues/286) |

@@ -327,7 +327,7 @@ constraint:
     function_availability: {ptx: "2.0", sm: 20}
 ```
 
-`parameter` is valid only on `kind: addr`. It must accompany a state-space
+`parameter` is valid only on `kind: addr`. It normally accompanies a state-space
 modifier expression whose active modifier permits (or is fixed to) `param`;
 the normalizer rejects a detached or ineffective constraint. The resolved
 descriptor stores a typed input/return direction and availability. When the
@@ -339,6 +339,15 @@ baseline but requires PTX 2.0 / SM 20 in a device function, while the store
 return constraint requires that target in every context. Unknown identity is
 not assigned a direction, and a known non-`.param` symbol is handled only by
 the ordinary exact state-space mismatch.
+
+Alternatively, `parameter.entry_only: true` with `direction: input` may
+accompany a static state-space allowlist containing `param`. The checker applies
+this constraint to a known parameter address even without a state-space modifier,
+requiring both input direction and entry-function provenance. The Boolean
+defaults to false, preserving existing explicit `.param` consumers; non-Boolean
+values, return direction with entry-only, and detached static constraints are
+rejected. Suffix-free `prefetch.tensormap` uses this narrow contract. Unknown
+standalone or register address provenance remains unknown and accepted.
 
 A scalar string or list defines a static effective-address allowlist. List
 items may be plain state-space strings or `value`/`availability` objects:

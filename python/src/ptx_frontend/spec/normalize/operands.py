@@ -656,10 +656,17 @@ def _normalize_address_options(raw: dict[str, Any]) -> _AddressOptions:
             f"operand {raw['name']!r}: address constraints are only valid for "
             "kind 'addr' or 'cluster_address'"
         )
-    if parameter_constraint is not None and state_space_expression is None:
+    if (
+        parameter_constraint is not None
+        and state_space_expression is None
+        and not (
+            parameter_constraint.entry_only
+            and any(value.value == "param" for value in state_space_values)
+        )
+    ):
         raise ValueError(
             f"operand {raw['name']!r}: parameter constraint requires a "
-            "state_space modifier expression"
+            "state_space modifier expression or an entry_only param domain"
         )
 
     return _AddressOptions(

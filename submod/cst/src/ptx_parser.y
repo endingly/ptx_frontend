@@ -110,6 +110,8 @@ using namespace ptx_frontend::syntax_cst;
 %type <syntax_cst::CstBranchTargets> branch_targets branch_target_values
 %type <syntax_cst::CstBranchTargetEntry> branch_target
 %type <std::vector<syntax_cst::TokenId>> target_values raw_payload section_payload raw_group
+%type <std::vector<syntax_cst::TokenId>> target_directive_values
+%type <syntax_cst::TokenId> target_architecture target_option
 %type <syntax_cst::CstSectionDirective> section
 %type <ParsedExpression> expression numeric_expression operand_expression unary numeric_unary operand_unary postfix numeric_postfix atom numeric_atom cast_expression
 %type <PtxParserDriver::Guard> paren_guard call_guard cast_guard cast_close_guard
@@ -742,7 +744,7 @@ module_directive:
     $$={$1,{$2},{},$3,{$1,$3.value_or($2)+1}}; driver.markShifted($$.token_range.last-1);
   }
 | DOT_ADDRESS_SIZE address_size optional_semi { $$={$1,{$2},{},$3,{$1,$3.value_or($2)+1}}; driver.markShifted($$.token_range.last-1); }
-| DOT_TARGET target_values optional_semi {
+| DOT_TARGET target_directive_values optional_semi {
   const auto last=$3.value_or($2.back()); std::vector<TokenId> commas;
   for(std::size_t i=1;i<$2.size();++i) commas.push_back($2[i]-1);
   $$={$1,std::move($2),std::move(commas),$3,{$1,last+1}}; driver.markShifted(last);
@@ -753,6 +755,11 @@ alias: ALIAS identifier COMMA identifier SEMI { $$={$1,$2,$3,$4,$5,{$1,$5+1}}; d
 target_values:
   identifier { $$={$1}; }
 | target_values COMMA identifier { $1.push_back($3); $$=std::move($1); };
+target_architecture: identifier { $$=driver.targetDirectiveItem($1,true); };
+target_option: identifier { $$=driver.targetDirectiveItem($1,false); };
+target_directive_values:
+  target_architecture { $$={$1}; }
+| target_directive_values COMMA target_option { $1.push_back($3); $$=std::move($1); };
 loc_file: LITERAL { $$=driver.literal($1,"source file index",true,false); driver.markShifted($1); };
 loc_line: LITERAL { $$=driver.literal($1,"source line number"); driver.markShifted($1); };
 loc_column: LITERAL { $$=driver.literal($1,"source column position"); driver.markShifted($1); };

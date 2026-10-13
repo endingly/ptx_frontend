@@ -8,6 +8,95 @@
 namespace ptx_frontend::detail {
 namespace {
 
+/** Target classification preserves written items, commas, and owned source bytes. */
+TEST(GeneratedPtxParser, ClassifiesTargetDirectiveItemsAtTheirPositions) {
+  for (const auto architecture : {"sm_80", "sm_999", "compute_80", "sm_90a"}) {
+    const std::string source = std::string{"/*header*/ .target "} +
+                               architecture +
+                               ", texmode_unified, texmode_independent, debug, "
+                               "map_f64_to_f32; //EOF\n";
+    const auto parsed = PtxCstParser(source).parseModule();
+    ASSERT_TRUE(parsed.has_value());
+    ASSERT_TRUE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed->sourceText(), source);
+    const auto& directive = std::get<syntax_cst::CstModuleDirective>(
+        parsed->module()->items.front());
+    ASSERT_EQ(directive.arguments.size(), 5u);
+    ASSERT_EQ(directive.separators.size(), 4u);
+    EXPECT_EQ(parsed->token(directive.arguments.front()).text, architecture);
+    EXPECT_EQ(directive.token_range.first, directive.keyword);
+    ASSERT_TRUE(directive.terminator.has_value());
+    EXPECT_EQ(directive.token_range.last, *directive.terminator + 1);
+    for (std::size_t i = 0; i < directive.separators.size(); ++i) {
+      EXPECT_EQ(parsed->token(directive.separators[i]).kind, TokenKind::Comma);
+      EXPECT_EQ(directive.separators[i] + 1, directive.arguments[i + 1]);
+    }
+  }
+}
+
+/** Rejected consumed items recover at their successor without losing neighbors. */
+TEST(GeneratedPtxParser, RecoversRejectedTargetItemsBeforeAdjacentDirectives) {
+  for (const auto target : {"bogus", "debug", "sm_80, bogus", "sm_80, sm_90"}) {
+    for (const auto suffix : {"\n", ";\n", ", debug\n"}) {
+      const std::string source =
+          ".version 9.3\n.target " + std::string{target} + suffix +
+          ".address_size 64\n.entry survivor() { ret; } //EOF\n";
+      SCOPED_TRACE(source);
+      PtxCstParser parser(source);
+      const auto parsed = parser.parseModule();
+      ASSERT_TRUE(parsed.has_value());
+      ASSERT_EQ(parsed.diagnostics.size(), 1u);
+      const auto offending = std::string_view{target}.find_last_of(' ');
+      const auto spelling = std::string_view{target}.substr(
+          offending == std::string_view::npos ? 0 : offending + 1);
+      const auto column = 9 + std::string_view{target}.find(spelling);
+      EXPECT_EQ(
+          parsed.diagnostics.front().range,
+          (SourceRange{{2, static_cast<int32_t>(column)},
+                       {2, static_cast<int32_t>(column + spelling.size())}}));
+      EXPECT_EQ(parsed.diagnostics.front().message,
+                std::string_view{target}.find(',') == std::string_view::npos
+                    ? "expected target architecture spelling"
+                    : "expected modeled target option");
+      EXPECT_FALSE(parsed.diagnostics.front().expected_kind.has_value());
+      EXPECT_EQ(parsed->sourceText(), source);
+      ASSERT_EQ(parsed->tokens.back().kind, TokenKind::Eof);
+      const auto& items = parsed->module()->items;
+      ASSERT_GE(items.size(), 4u);
+      const auto& address =
+          std::get<syntax_cst::CstModuleDirective>(items[items.size() - 2]);
+      EXPECT_EQ(parsed->token(address.keyword).kind, TokenKind::DotAddressSize);
+      const auto& survivor = std::get<syntax_cst::CstFunction>(items.back());
+      EXPECT_EQ(parsed->token(survivor.name).text, "survivor");
+      EXPECT_EQ(survivor.body.size(), 1u);
+      const auto exhausted = parser.parseModule();
+      ASSERT_FALSE(exhausted.has_value());
+      ASSERT_EQ(exhausted.diagnostics.size(), 1u);
+      EXPECT_EQ(exhausted.diagnostics.front().range,
+                parsed->tokens.back().range);
+    }
+  }
+}
+
+/** Function-target lists accept names that are invalid in a module target header. */
+TEST(GeneratedPtxParser,
+     TargetDirectiveClassificationDoesNotAffectCallTargets) {
+  constexpr std::string_view source =
+      ".func f() { list: .calltargets bogus, debug, sm_80; ret; }";
+  const auto parsed = PtxCstParser(source).parseModule();
+  ASSERT_TRUE(parsed.has_value());
+  ASSERT_TRUE(parsed.diagnostics.empty());
+  EXPECT_EQ(parsed->sourceText(), source);
+  const auto& function =
+      std::get<syntax_cst::CstFunction>(parsed->module()->items.front());
+  const auto& targets =
+      std::get<syntax_cst::CstCallTargets>(function.body.front());
+  ASSERT_EQ(targets.targets.size(), 3u);
+  EXPECT_EQ(parsed->token(targets.targets[0]).text, "bogus");
+  EXPECT_EQ(parsed->token(targets.targets[1]).text, "debug");
+  EXPECT_EQ(parsed->token(targets.targets[2]).text, "sm_80");
+}
+
 /** Private function handles must not determine the largest semantic slot. */
 TEST(GeneratedPtxParser, CompactModuleItemTransfersExclusiveFunctionOwnership) {
   static_assert(sizeof(ModuleItemValue) <= sizeof(syntax_cst::CstOperand));

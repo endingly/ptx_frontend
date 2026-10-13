@@ -1224,5 +1224,116 @@
 {"name": "expanded-regression/directive-literal/5", "mode": "module", "source": ".file 1.2 \"f\" .entry good(){ret;}"},
 {"name": "expanded-regression/directive-literal/6", "mode": "module", "source": ".file 0 \"f\", 1.2, 3 .entry good(){ret;}"},
 {"name": "expanded-regression/directive-literal/7", "mode": "module", "source": ".file 0 \"f\", 1, 1.2 .entry good(){ret;}"},
-{"name": "expanded-regression/directive-literal/8", "mode": "module", "source": ".address_size 1.2 .entry good(){ret;}"}
+{"name": "expanded-regression/directive-literal/8", "mode": "module", "source": ".address_size 1.2 .entry good(){ret;}"},
+  {
+    "name": "target-classification/rejected-0-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus",
+    "provenance": "Accepted target syntax and consumed-identifier recovery from handwritten reference 7bb3db20e49c18e3963a066902b12ce84f7d37a4."
+  },
+  {
+    "name": "target-classification/rejected-0-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus;"
+  },
+  {
+    "name": "target-classification/rejected-0-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-0-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-1-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug"
+  },
+  {
+    "name": "target-classification/rejected-1-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug;"
+  },
+  {
+    "name": "target-classification/rejected-1-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-1-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-2-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus"
+  },
+  {
+    "name": "target-classification/rejected-2-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus;"
+  },
+  {
+    "name": "target-classification/rejected-2-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-2-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-3-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90"
+  },
+  {
+    "name": "target-classification/rejected-3-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90;"
+  },
+  {
+    "name": "target-classification/rejected-3-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-3-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/valid-options",
+    "mode": "module",
+    "source": ".target sm_80, texmode_unified, texmode_independent, debug, map_f64_to_f32;"
+  },
+  {
+    "name": "target-classification/unknown-architecture",
+    "mode": "module",
+    "source": ".target sm_999"
+  },
+  {
+    "name": "target-classification/compute-architecture",
+    "mode": "module",
+    "source": ".target compute_80"
+  },
+  {
+    "name": "target-classification/calltargets-unrestricted",
+    "mode": "module",
+    "source": ".func f(){ list: .calltargets bogus, debug, sm_80; ret; }"
+  },
+  {
+    "name": "target-classification/missing-architecture",
+    "mode": "module",
+    "source": ".target\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/missing-option",
+    "mode": "module",
+    "source": ".target sm_80,\n.entry survivor(){ret;}"
+  }
 ]

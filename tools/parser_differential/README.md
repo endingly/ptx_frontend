@@ -5,6 +5,20 @@ pre-migration handwritten parser at
 `2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4` as the reference. It never links
 the reference parser into production or supplies a production fallback.
 
+The strict target-directive adaptation uses the accepted handwritten fixes as
+an explicit newer oracle, retaining every existing corpus case and adding
+`target-classification/` fixtures for rejected consumed identifiers, adjacent
+directives, punctuation, unknown architecture spellings, and unrestricted
+function call-target names:
+
+```sh
+.venv/bin/python tools/parser_differential/run.py \
+  --reference 7bb3db20e49c18e3963a066902b12ce84f7d37a4
+```
+
+The default reference remains the original migration baseline; its permissive
+target-directive behavior intentionally differs from the strict classifier.
+
 From the repository root, reproduce the initial expression-backend comparison:
 
 ```sh

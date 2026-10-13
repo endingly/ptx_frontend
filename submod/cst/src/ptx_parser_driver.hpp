@@ -207,6 +207,8 @@ class PtxParserDriver {
   /** Validate a literal at a grammar-defined integer/decimal-only position. */
   TokenId literal(TokenId id, std::string_view name, bool integer = false,
                   bool expected_decimal = true) const;
+  /** Validate one consumed architecture or option at its directive position. */
+  TokenId targetDirectiveItem(TokenId id, bool architecture);
   /** Install one grammar-owned body frame before fetching its first item. */
   BodyGuard openBody(TokenId brace, bool nested);
   /** Restore body frame/depth state during ordinary or error destruction. */

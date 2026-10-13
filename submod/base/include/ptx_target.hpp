@@ -34,6 +34,19 @@ struct TargetProfile {
   std::span<const std::string_view> capabilities;
 };
 
+/** Lexical role of one item in a source `.target` directive. */
+enum class TargetDirectiveItemKind : uint8_t {
+  Invalid,
+  Architecture,
+  TextureMode,
+  Debug,
+  MapF64ToF32,
+};
+
+/** Classify source syntax without implying a cataloged validation profile. */
+[[nodiscard]] TargetDirectiveItemKind classify_target_directive_item(
+    std::string_view spelling);
+
 /** Parse one PTX target spelling without consulting the supported-target catalog. */
 [[nodiscard]] std::optional<TargetIdentity> parse_target_identity(
     std::string_view spelling);

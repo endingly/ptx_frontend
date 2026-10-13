@@ -121,6 +121,23 @@ std::optional<TargetProfile> find_target_profile(std::string_view spelling) {
   return std::nullopt;
 }
 
+TargetDirectiveItemKind classify_target_directive_item(
+    std::string_view spelling) {
+  if (spelling == "texmode_unified" || spelling == "texmode_independent")
+    return TargetDirectiveItemKind::TextureMode;
+  if (spelling == "debug")
+    return TargetDirectiveItemKind::Debug;
+  if (spelling == "map_f64_to_f32")
+    return TargetDirectiveItemKind::MapF64ToF32;
+  if (parse_target_identity(spelling))
+    return TargetDirectiveItemKind::Architecture;
+  if (spelling.starts_with("compute_") &&
+      parse_target_identity(std::string{"sm_"} +
+                            std::string{spelling.substr(8)}))
+    return TargetDirectiveItemKind::Architecture;
+  return TargetDirectiveItemKind::Invalid;
+}
+
 bool target_has_capability(const TargetProfile& profile,
                            std::string_view capability) noexcept {
   for (const std::string_view candidate : profile.capabilities) {

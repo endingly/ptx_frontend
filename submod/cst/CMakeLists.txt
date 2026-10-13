@@ -12,6 +12,7 @@ target_link_libraries(
     ptx_frontend_cst
     PUBLIC
     ptx_frontend::lexer
+    ptx_frontend::base
 )
 
 find_package(BISON 3.8 REQUIRED)

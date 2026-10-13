@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <ptx_frontend/base/ptx_target.hpp>
+
 namespace ptx_frontend::detail {
 
 syntax_cst::CstModuleItem materializeModuleItem(ModuleItemValue&& item) {
@@ -65,6 +67,22 @@ PtxParserDriver::TokenId PtxParserDriver::literal(TokenId id,
   if (kind != TokenKind::Decimal && !(integer && kind == TokenKind::Hex))
     fail(id, "expected " + std::string(name),
          expected_decimal ? std::optional{TokenKind::Decimal} : std::nullopt);
+  return id;
+}
+
+PtxParserDriver::TokenId PtxParserDriver::targetDirectiveItem(
+    TokenId id, bool architecture) {
+  // Classification follows consumption, so recovery begins after this item
+  // even when Bison has already fetched its successor as lookahead.
+  markShifted(id);
+  const auto kind = base::classify_target_directive_item(token(id).text);
+  if (architecture) {
+    if (kind != base::TargetDirectiveItemKind::Architecture)
+      fail(id, "expected target architecture spelling");
+  } else if (kind == base::TargetDirectiveItemKind::Invalid ||
+             kind == base::TargetDirectiveItemKind::Architecture) {
+    fail(id, "expected modeled target option");
+  }
   return id;
 }
 

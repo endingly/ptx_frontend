@@ -8,6 +8,63 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+/** Detect whether an installed form exposes a programmer rounding member. */
+template <typename T>
+concept HasInstalledRounding =
+    requires(T instruction) { instruction.rounding; };
+static_assert(!HasInstalledRounding<ptx_frontend::resolved_ir::MadImplicitF32>);
+
+/** Exercise every implicit MAD target/flag combination using the installed form. */
+bool checkInstalledImplicitMad() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const auto target : {"sm_10", "sm_11", "sm_12", "sm_13"}) {
+    for (const auto flags : {"", ".ftz", ".sat", ".ftz.sat"}) {
+      std::optional<ir::ResolvedModule> owned;
+      {
+        const auto source = ".version 1.0\n.target " + std::string(target) +
+                            "\n.func f() { .reg .f32 %f<4>; .reg .b32 %r; mad" +
+                            std::string(flags) + ".f32 %r, %f1, 1.0, %f3; }\n";
+        ptx_frontend::PtxSyntaxParser parser{source};
+        const auto ast = parser.parseModule();
+        if (!ast || !ast.diagnostics.empty())
+          return false;
+        auto resolved = ir::resolveAndValidateModule(*ast);
+        if (!resolved || !ir::validateModule(*ast, *resolved))
+          return false;
+        owned.emplace(std::move(*resolved));
+      }
+      if (!ir::validateModule(*owned))
+        return false;
+      const auto& function = owned->functions.front();
+      const auto* mad =
+          dynamic_cast<const ir::MadImplicitF32*>(function.body[0].get());
+      if (!mad || function.instruction_opcodes.front() != "mad" ||
+          ir::MadImplicitF32::type != ir::ScalarType::F32 ||
+          mad->dst.value.declared_type != ir::ScalarType::B32 ||
+          std::get<ir::ResolvedImmediate>(mad->src2.value).type !=
+              ir::ScalarType::F32 ||
+          mad->ftz.value != (std::string_view(flags).find(".ftz") !=
+                             std::string_view::npos) ||
+          mad->saturate.value !=
+              (std::string_view(flags).find(".sat") != std::string_view::npos))
+        return false;
+      ir::checker::Context context{
+          .target = {
+              .ptx_version = {1, 0},
+              .sm_version = static_cast<unsigned>(std::stoi(target + 3)),
+              .identity = ptx_frontend::base::parse_target_identity(target)}};
+      if (!mad->check(context))
+        return false;
+      context.target.sm_version = 20;
+      context.target.identity =
+          ptx_frontend::base::parse_target_identity("sm_20");
+      if (mad->check(context))
+        return false;
+    }
+  }
+  return true;
+}
+
 /** Check actual mapped forms and strict owned revalidation through installed APIs. */
 bool checkInstalledMappedF64() {
   namespace ir = ptx_frontend::resolved_ir;
@@ -75,6 +132,8 @@ bool checkInstalledMappedF64() {
 
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledImplicitMad())
+    return 1;
   if (!checkInstalledMappedF64())
     return 1;
   namespace ir = ptx_frontend::resolved_ir;

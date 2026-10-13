@@ -5,9 +5,32 @@
 #include <string_view>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_module.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_ast.hpp>
 
 namespace ptx_frontend::resolved_ir::detail {
+
+/** Own typed top-level traversal events without deriving order from coordinates. */
+inline std::vector<ResolvedHeaderEvent> module_header_order(
+    const syntax_ast::AstModule& module) {
+  std::vector<ResolvedHeaderEvent> events;
+  events.reserve(module.items.size());
+  for (const auto& item : module.items) {
+    const auto kind =
+        std::holds_alternative<syntax_ast::AstVersionDirective>(item)
+            ? ResolvedHeaderEventKind::Version
+        : std::holds_alternative<syntax_ast::AstTargetDirective>(item)
+            ? ResolvedHeaderEventKind::Target
+        : std::holds_alternative<syntax_ast::AstAddressSizeDirective>(item)
+            ? ResolvedHeaderEventKind::AddressSize
+            : ResolvedHeaderEventKind::Other;
+    events.push_back(
+        {.kind = kind,
+         .range =
+             std::visit([](const auto& value) { return value.range; }, item)});
+  }
+  return events;
+}
 
 /** Parse the module-wide version used by resolution and validation. */
 inline std::optional<checker::PtxVersion> module_version(

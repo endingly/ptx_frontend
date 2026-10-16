@@ -1676,6 +1676,13 @@ void check_owned_header_order(const ResolvedModule& module,
     append_model_mismatch(
         diagnostics, module.range,
         "Owned header traversal disagrees with directive provenance.");
+  // The first region precedes all target directives and has no target of its own.
+  for (const auto& region : header.regions | std::views::drop(1))
+    if (region.target_provenance != SourceConfigurationProvenance::Explicit ||
+        region.target_options.empty())
+      append_model_mismatch(
+          diagnostics, region.range,
+          "Owned target directive region lacks explicit architecture context.");
 }
 
 /** Validate each target item's lexical category at its source position. */
@@ -1949,6 +1956,16 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
                      checker::CheckDiagnostics& diagnostics) {
   const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
     for (const auto& parameter : parameters) {
+      if ((parameter.alignment &&
+           !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
+          (parameter.array_extent &&
+           !std::holds_alternative<uint64_t>(*parameter.array_extent)) ||
+          (parameter.pointer_alignment &&
+           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)) ||
+          (!parameter.is_array && parameter.array_extent))
+        append_model_mismatch(diagnostics, range,
+                              "Resolved function signature has invalid "
+                              "normalized numeric fields.");
       const bool valid_opaque =
           parameter.opaque_kind && entry_inputs &&
           parameter.scalar_type == base::ScalarType::Invalid &&

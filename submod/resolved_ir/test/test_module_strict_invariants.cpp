@@ -91,6 +91,41 @@ TEST(ModuleStrictInvariants, HeaderOrderIsStrictOnlyAndSurvivesAstDestruction) {
   EXPECT_FALSE(validateModule(*header_only));
 }
 
+/** Retained target events require explicit regions, excluding the implicit initial region. */
+TEST(ModuleStrictInvariants, TargetEventsRequireExplicitOwnedArchitecture) {
+  auto ast =
+      parse_strict_fixture(".version 9.3\n.target sm_80\n.target sm_90\n");
+  ASSERT_TRUE(ast);
+  const auto baseline = resolveModuleOnly(*ast);
+  ASSERT_TRUE(baseline);
+  ASSERT_EQ(baseline->header.regions.size(), 3u);
+  EXPECT_TRUE(baseline->header.regions.front().target_options.empty());
+  EXPECT_EQ(baseline->header.regions.front().target_provenance,
+            SourceConfigurationProvenance::Missing);
+  EXPECT_TRUE(validateModule(*baseline));
+  EXPECT_TRUE(validateModule(*ast, *baseline));
+  for (size_t index = 1; index < baseline->header.regions.size(); ++index) {
+    auto mutated = *baseline;
+    mutated.header.regions[index].target_options.clear();
+    mutated.header.regions[index].target_provenance =
+        SourceConfigurationProvenance::Missing;
+    expect_model_rejection(validateModule(mutated));
+    EXPECT_TRUE(
+        validateModule(mutated, ModuleValidationPolicy::AvailableContext));
+    // Source-taking validation deliberately uses the supplied source configuration.
+    EXPECT_TRUE(validateModule(*ast, mutated));
+  }
+  auto header_only = resolve_owned_fixture(".version 9.3\n.target sm_80\n");
+  ASSERT_TRUE(header_only);
+  header_only->header.regions.back().target_options.clear();
+  header_only->header.regions.back().target_provenance =
+      SourceConfigurationProvenance::Missing;
+  expect_model_rejection(validateModule(*header_only));
+  auto replacement = parse_strict_fixture(".version 9.3\n.target sm_90\n");
+  ASSERT_TRUE(replacement);
+  EXPECT_TRUE(validateModule(*replacement, *header_only));
+}
+
 /** Every target item has a position-specific role at parser and owned boundaries. */
 TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
   for (const auto target :
@@ -251,6 +286,50 @@ TEST(ModuleStrictInvariants, FormalScopesAndMixedKindsRetainTheirAbi) {
       uint64_t{3};
   mutated.functions[2].parameter_declarations[1].pointer->pointed_alignment = 3;
   expect_model_rejection(validateModule(mutated));
+}
+
+/** Invalid numeric alternatives must not collapse to absent opaque ABI fields. */
+TEST(ModuleStrictInvariants, OpaqueNormalizedFieldsFailBothValidators) {
+  for (const auto parameter :
+       {".param .texref texture", ".param .align 8 .texref texture[2]"}) {
+    SCOPED_TRACE(parameter);
+    const std::string source =
+        std::string{".version 9.3\n.target sm_80\n.entry kernel("} + parameter +
+        ") { ret; }\n";
+    const auto ast = parse_strict_fixture(source);
+    ASSERT_TRUE(ast);
+    const auto baseline = resolveModuleOnly(*ast);
+    ASSERT_TRUE(baseline);
+    EXPECT_TRUE(validateModule(*ast, *baseline));
+    EXPECT_TRUE(validateModule(*baseline));
+    const std::function<void(declaration_semantics::FunctionParameterContract&)>
+        mutations[] = {
+            [](auto& formal) {
+              formal.alignment =
+                  declaration_semantics::InvalidStructuralKey{"bad"};
+            },
+            [](auto& formal) {
+              formal.array_extent =
+                  declaration_semantics::InvalidStructuralKey{"bad"};
+            },
+            [](auto& formal) {
+              formal.is_array = false;
+              formal.array_extent = uint64_t{2};
+            },
+            [](auto& formal) {
+              formal.pointer_alignment =
+                  declaration_semantics::InvalidStructuralKey{"bad"};
+            },
+        };
+    for (const auto& mutate : mutations) {
+      auto module = resolveModuleOnly(*ast);
+      ASSERT_TRUE(module);
+      ASSERT_TRUE(validateModule(*module));
+      mutate(module->functions.front().contract.signature.parameters.front());
+      expect_model_rejection(validateModule(*ast, *module));
+      expect_model_rejection(validateModule(*module));
+    }
+  }
 }
 
 /** Signature-only scalar mutations fail with and without source AST ownership. */

@@ -14,6 +14,21 @@ symbol address 与仅用于 initializer 的运算保持各自语义。
 加减或更低优先级运算时需加括号。精确 `0f` 单精度
 bit-pattern 仍可作为 literal operand，但不能参与常量表达式。
 
+## 生成式 parser
+
+受支持的源码语法统一由 Bison 生成的 C++ parser 处理，既有 `PtxCstParser` 与
+`PtxSyntaxParser` 入口不变。私有 owning driver 把既有 lexer stream 直接交给 grammar，
+并构造既有 CST。生成式 production 负责 instruction/operand shape、constant expression、
+declaration/initializer、module/function 结构及 error recovery；不保留手写 grammar fallback
+或实验性 backend 开关。受支持语法及后续语义边界仍以本文为准；替换 parser 并不表示完整
+PTX ISA 支持，也不作性能保证。instruction legality、binding、resolution 和 target check
+仍由既有后续层负责。
+
+从源码构建时，除 Flex 和通常的编译器/依赖外，还需要 Bison 3.8 或更新版本；使用
+[README](../../README.md#build-and-install) 中的常规构建配置。生成文件保留在 build directory；
+生成 header 与 owning driver 都是私有实现，不安装，也不成为已安装 frontend 的 consumer
+依赖。consumer 使用已安装 CMake package 配置或编译时不需要 Bison。
+
 ## 前端分层
 
 当前前端已经把具体源码表示与供 resolve 使用的语法模型分开：
@@ -81,6 +96,18 @@ if (cst)
   assert(cst->sourceText() == source);
 ```
 
+`PtxCstParser` 在构造时复制源码并持有单个 lexical stream，既不能复制也不能移动。
+构造后调用方可释放或修改输入；返回的 `CstFile` 拥有 token，在 parser 销毁后仍有效。
+入口不会从源码开头重新解析。没有 value 的失败会把 parser 留在逻辑上尚未消费的位置，
+后续入口可从该位置继续，但不保证得到合法 root。后续成功结果仍拥有完整的已缓存源码
+前缀，而 root range 可以从前缀之后开始。
+
+返回 value（包括附带 diagnostic 的 recovered module）会移交 token buffer，并使该 CST
+parser instance 耗尽。之后调用 `parseInstruction()` 会安全地返回没有 value、消息为
+`expected instruction opcode` 的 diagnostic；调用 `parseModule()` 则返回没有 value、消息为
+`expected module item` 的 diagnostic，二者都使用原 EOF range。这修正了移交后因 stale token
+导致异常的旧行为。若需重新解析完整源码，应构造另一个 parser。
+
 `parseInstruction()` 只接受一条完整 instruction fragment，`parseModule()` 则要求
 module root。outermost module scope 的 `.file` 只接受
 `file_index "filename"` 或 `file_index "filename", timestamp, file_size`；
@@ -120,8 +147,8 @@ GTest seed smoke。尚未加入 ASan/UBSan 或 CI matrix。它必须单独 confi
 （`PtxCstParser::maxConstantTreeDepth`）。literal 或 symbol 深度为 1；unary、cast、
 括号、call、binary、conditional 或花括号列表节点的深度为最深子节点加 1，
 scalar-initializer 包装不另计一层。这是 frontend 资源限制，不是 PTX 语言限制；
-浅层列表可包含超过 128 个元素。递归解析在下降前检查剩余深度，循环构造的 binary
-和 postfix 节点在添加父节点前检查树高。超限输入产生带源码位置的 parse diagnostic，
+浅层列表可包含超过 128 个元素。grammar action 在构造嵌套树前检查剩余深度，并在添加
+binary/postfix 父节点前检查树高。超限输入产生带源码位置的 parse diagnostic，
 并按正常无损恢复流程处理，使部分树清理以及后续 lowering、检查和析构的深度有界。
 该源码 parser 保证不涵盖调用方手工构造的任意深度 CST/AST。
 
@@ -144,6 +171,8 @@ auto module = lowerSyntaxModule(module_cst);
 
 `PtxSyntaxParser` 继续作为便利 facade；`parseInstruction()` 与 `parseModule()` 分别为
 fragment client 与 module client 执行 source→CST→AST，并按顺序映射 CST/lowering diagnostic。
+与持有 stream 的 CST parser 不同，该 facade 拥有 source string，每次入口调用都会创建新的
+CST parser。它仍可复制和移动；重复调用会各自独立解析完整的 owned source。
 
 `AstFile` 采用相同的 root 区分方式，`AstModule` 则为 module directive 与 function
 提供 typed container。`AstFunction` 当前包含 function 类别、qualifier、名称，以及由

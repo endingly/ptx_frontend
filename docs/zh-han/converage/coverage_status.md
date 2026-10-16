@@ -37,12 +37,12 @@ WGMMA shape 疑问与 WMMA f64 歧义没有被本审计提升为已确认 missin
 
 ## 验证与运行时边界
 
-parse/resolve/check 流水线验证已建模源码形式。header/target、storage 和 ABI
-revalidation 仍有已知后续事项 [#275](https://github.com/endingly/ptx_frontend/issues/275)
-及 [#276](https://github.com/endingly/ptx_frontend/issues/276),
-[#277](https://github.com/endingly/ptx_frontend/issues/277),
-[#278](https://github.com/endingly/ptx_frontend/issues/278),
-[#279](https://github.com/endingly/ptx_frontend/issues/279)。
+parse/resolve/check 流水线验证已建模源码形式。两个 module validation overload
+都会重新检查严格初始 header 顺序、target item 分类、scalar storage occurrence/layout
+一致性和 function signature/declaration ABI 一致性，包括 AST 销毁后的 owned 路径。
+具体边界见 [module validation contract](../resolved_ir_design.md)、
+[storage metadata](../storage_declarations.md) 和
+[parameter metadata](../parameter_declarations.md)。
 `resolveAndValidateModule` 要求完整源码上下文，不表示穷尽 PTX 验证。
 
 调用方已知 descriptor、scale 和 sparsity fact 是条件性断言。TCGEN05 K96

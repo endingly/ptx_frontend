@@ -78,6 +78,15 @@ enum、vector width、有序 array extent、声明字节数、有效 alignment�
 Consumer 按 `ParameterDeclarationRole::EntryInput` 筛选即可按源码顺序检查 entry header
 input；其他 role 不是 launch slot。
 
+两个 `validateModule` overload 都按各 function 的 `declaration_scope`，将有序 return
+与 input signature 同 binding formal 比较。Scalar `.param` formal 必须匹配对应
+declaration record 的 role、identity、type、shape、有效 alignment、checked byte extent
+与 pointer property。`.reg` formal 关联 binding type 和 alignment，不进入 parameter
+table。Opaque entry input 保留独立的 name-only record 和完整 input signature 中的位置。
+Body-local record 单独检查，不能变为 formal。兼容 prototype 和 definition 共享 function
+identity，但各自拥有 declaration scope。因此，即使已销毁源码和 AST，仅将 signature
+中的 `.u32` 改为 `.f64` 也会检查失败。
+
 原有 `ResolvedFunction::entry_parameters` 成员与 `ResolvedEntryParameter` 类型已删除。
 这是破坏性的 C++ API 变更，consumer 需要迁移并重新构建，不能只重命名成员。使用
 `scalar_type` 代替旧 type string，使用非 optional 的有效 `alignment`，并以

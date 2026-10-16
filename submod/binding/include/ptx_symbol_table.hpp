@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -219,6 +220,14 @@ class SymbolTable {
   /** Rejoin a retained storage extent to an actual variable declaration occurrence. */
   [[nodiscard]] bool hasVariableDeclaration(SymbolId symbol,
                                             SourceRange range) const noexcept;
+
+  /**
+   * Borrow source-ordered occurrences of a stable declaration identity.
+   * The span remains valid until this table is assigned, moved, or destroyed;
+   * an unknown identity returns an empty span.
+   */
+  [[nodiscard]] std::span<const SymbolDeclarationOccurrence>
+  declarationOccurrences(SymbolId symbol) const noexcept;
 
  private:
   friend struct SymbolTableBuilder;

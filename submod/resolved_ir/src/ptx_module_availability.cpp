@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <charconv>
 #include <concepts>
 #include <limits>
@@ -505,13 +506,14 @@ void check_texture_instruction_payload(const Instruction& instruction,
     if (independent &&
         !std::holds_alternative<ResolvedOpaqueSymbolRef>(resource.value))
       mismatch("Independent query requires a direct resource symbol.");
-    if (std::holds_alternative<ResolvedRegisterRef>(resource.value))
+    if (std::holds_alternative<ResolvedRegisterRef>(resource.value)) {
       if (descriptor->indirect_availability)
         append_requirement(diagnostics, *descriptor->indirect_availability,
                            target, range, "indirect texture query");
       else
         mismatch(
             "Texture query lacks an indirect resource availability contract.");
+    }
   } else if (!descriptor->tested_kind) {
     mismatch("Texture-family descriptor has no operation identity.");
   }
@@ -1621,6 +1623,90 @@ bool valid_provenance(SourceConfigurationProvenance provenance) {
   return false;
 }
 
+/** Require the initial source header without constraining later target regions. */
+void check_header_order(std::span<const ResolvedHeaderEvent> events,
+                        SourceRange range,
+                        checker::CheckDiagnostics& diagnostics) {
+  if (events.size() < 2 || events[0].kind != ResolvedHeaderEventKind::Version ||
+      events[1].kind != ResolvedHeaderEventKind::Target) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::MissingValidationContext,
+        .range = range,
+        .message = "Complete validation requires initial .version then .target "
+                   "directives.",
+    });
+  }
+  for (size_t index = 0; index < events.size(); ++index) {
+    const auto& event = events[index];
+    if ((event.kind == ResolvedHeaderEventKind::Version && index != 0) ||
+        (event.kind == ResolvedHeaderEventKind::AddressSize && index != 2) ||
+        (event.kind != ResolvedHeaderEventKind::Version &&
+         event.kind != ResolvedHeaderEventKind::Target &&
+         event.kind != ResolvedHeaderEventKind::AddressSize &&
+         event.kind != ResolvedHeaderEventKind::Other))
+      append_model_mismatch(diagnostics, event.range,
+                            "Source header directive is out of order or has an "
+                            "invalid category.");
+  }
+}
+
+/** Rejoin retained traversal events with the effective header configuration. */
+void check_owned_header_order(const ResolvedModule& module,
+                              checker::CheckDiagnostics& diagnostics) {
+  const auto& header = module.header;
+  check_header_order(header.source_order, module.range, diagnostics);
+  const auto count = [&](ResolvedHeaderEventKind kind) {
+    return std::ranges::count(header.source_order, kind,
+                              &ResolvedHeaderEvent::kind);
+  };
+  if (header.regions.empty())
+    return;
+  const auto& initial = header.regions.front();
+  if (count(ResolvedHeaderEventKind::Target) !=
+          static_cast<std::ptrdiff_t>(header.regions.size() - 1) ||
+      count(ResolvedHeaderEventKind::Version) !=
+          (initial.version_provenance == SourceConfigurationProvenance::Explicit
+               ? 1
+               : 0) ||
+      count(ResolvedHeaderEventKind::AddressSize) !=
+          (initial.address_size_provenance ==
+                   SourceConfigurationProvenance::Explicit
+               ? 1
+               : 0))
+    append_model_mismatch(
+        diagnostics, module.range,
+        "Owned header traversal disagrees with directive provenance.");
+  // The first region precedes all target directives and has no target of its own.
+  for (const auto& region : header.regions | std::views::drop(1))
+    if (region.target_provenance != SourceConfigurationProvenance::Explicit ||
+        region.target_options.empty())
+      append_model_mismatch(
+          diagnostics, region.range,
+          "Owned target directive region lacks explicit architecture context.");
+}
+
+/** Validate each target item's lexical category at its source position. */
+template <typename Items>
+  requires std::ranges::input_range<Items> &&
+           std::convertible_to<std::ranges::range_reference_t<Items>,
+                               std::string_view>
+void check_target_items(const Items& items, SourceRange range,
+                        checker::CheckDiagnostics& diagnostics) {
+  size_t index = 0;
+  for (const std::string_view item : items) {
+    const auto kind = base::classify_target_directive_item(item);
+    if (kind == base::TargetDirectiveItemKind::Invalid ||
+        ((index == 0) != (kind == base::TargetDirectiveItemKind::Architecture)))
+      append_model_mismatch(
+          diagnostics, range,
+          "Target item category disagrees with its directive position.");
+    ++index;
+  }
+  if (index == 0)
+    append_model_mismatch(diagnostics, range,
+                          "Target directive has no architecture item.");
+}
+
 /** Validate header payload/provenance consistency under public IR mutation. */
 void check_header_region(const ResolvedSourceTargetRegion& region,
                          SourceRange range,
@@ -1669,6 +1755,8 @@ void check_header_region(const ResolvedSourceTargetRegion& region,
         "Resolved source header defaulted an address size other than 32 bits.");
   }
   size_t mode_count = 0;
+  if (!region.target_options.empty())
+    check_target_items(region.target_options, range, diagnostics);
   for (const auto& option : region.target_options) {
     if (option == "texmode_unified" || option == "texmode_independent") {
       ++mode_count;
@@ -1868,6 +1956,16 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
                      checker::CheckDiagnostics& diagnostics) {
   const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
     for (const auto& parameter : parameters) {
+      if ((parameter.alignment &&
+           !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
+          (parameter.array_extent &&
+           !std::holds_alternative<uint64_t>(*parameter.array_extent)) ||
+          (parameter.pointer_alignment &&
+           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)) ||
+          (!parameter.is_array && parameter.array_extent))
+        append_model_mismatch(diagnostics, range,
+                              "Resolved function signature has invalid "
+                              "normalized numeric fields.");
       const bool valid_opaque =
           parameter.opaque_kind && entry_inputs &&
           parameter.scalar_type == base::ScalarType::Invalid &&
@@ -1963,7 +2061,11 @@ void check_opaque_entry_parameters(const ResolvedModule& module,
           record.is_array != contract->is_array ||
           record.array_extent != declaration_semantics::contract_constant(
                                      contract->array_extent))) ||
-        record.explicit_alignment != symbol->address_alignment) {
+        record.explicit_alignment != symbol->address_alignment ||
+        (record.explicit_alignment &&
+         !std::has_single_bit(*record.explicit_alignment)) ||
+        (record.is_array ? !record.array_extent || *record.array_extent == 0
+                         : record.array_extent.has_value())) {
       append_model_mismatch(diagnostics, record.range,
                             "Opaque entry input identity or kind disagrees "
                             "with its declaration.");
@@ -2007,6 +2109,362 @@ bool opaque_field_for_kind(OpaqueStaticField field, StorageOpaqueType kind) {
       return false;
   }
   return false;
+}
+
+/** Recover the storage subset of a bound declaration state space. */
+std::optional<StorageSpace> bound_storage_space(const binding::Symbol& symbol) {
+  if (!symbol.state_space)
+    return std::nullopt;
+  switch (*symbol.state_space) {
+    case base::DeclarationStateSpace::Global:
+      return StorageSpace::Global;
+    case base::DeclarationStateSpace::Constant:
+      return StorageSpace::Constant;
+    case base::DeclarationStateSpace::Shared:
+      return StorageSpace::Shared;
+    case base::DeclarationStateSpace::Local:
+      return StorageSpace::Local;
+    case base::DeclarationStateSpace::Register:
+    case base::DeclarationStateSpace::Parameter:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+/** Recover the enclosing function from lexical scopes rather than symbol spelling. */
+std::optional<binding::SymbolId> storage_owner(const ResolvedModule& module,
+                                               binding::ScopeId scope) {
+  while (scope.value < module.symbols.scopes().size()) {
+    const auto& current = module.symbols.scope(scope);
+    if (current.kind == binding::ScopeKind::Function)
+      return current.owner;
+    if (!current.parent)
+      break;
+    scope = *current.parent;
+  }
+  return std::nullopt;
+}
+
+/** Check positive shape and bounded products, distinguishing unsized from zero bytes. */
+bool checked_declaration_extent(
+    ScalarType type, uint32_t lanes,
+    std::span<const std::optional<uint64_t>> extents, bool allow_unsized,
+    std::optional<uint64_t>& result) {
+  result.reset();
+  if (!base::find_scalar_type_metadata(type) ||
+      (lanes != 1 && lanes != 2 && lanes != 4))
+    return false;
+  uint64_t bytes = base::scalar_size_of(type) * lanes;
+  if (bytes == 0 || bytes > 16)
+    return false;
+  bool unsized = false;
+  for (size_t axis = 0; axis < extents.size(); ++axis) {
+    if (!extents[axis]) {
+      if (!allow_unsized || axis != 0)
+        return false;
+      unsized = true;
+    } else {
+      const uint64_t count = *extents[axis];
+      if (count == 0 || bytes > std::numeric_limits<uint64_t>::max() / count)
+        return false;
+      bytes *= count;
+    }
+  }
+  if (!unsized)
+    result = bytes;
+  return true;
+}
+
+/** Check typed entry-pointer attributes without inventing an address or ABI slot. */
+bool valid_parameter_pointer(const ResolvedParameterDeclaration& record) {
+  if (!record.pointer)
+    return true;
+  using call_argument_compatibility::PointedStateSpace;
+  const auto& pointer = *record.pointer;
+  if (record.role != ParameterDeclarationRole::EntryInput ||
+      !record.array_extents.empty() ||
+      (record.scalar_type != ScalarType::U32 &&
+       record.scalar_type != ScalarType::U64) ||
+      !std::has_single_bit(pointer.pointed_alignment))
+    return false;
+  if (!pointer.pointed_state_space)
+    return true;
+  switch (*pointer.pointed_state_space) {
+    case PointedStateSpace::Local:
+    case PointedStateSpace::Shared:
+    case PointedStateSpace::Global:
+    case PointedStateSpace::Constant:
+      return true;
+    case PointedStateSpace::Invalid:
+      return false;
+  }
+  return false;
+}
+
+/** Rejoin each signature list with the formals in its own declaration scope. */
+void check_function_parameters(const ResolvedModule& module,
+                               const ResolvedFunction& function,
+                               checker::CheckDiagnostics& diagnostics) {
+  using call_argument_compatibility::CallArgumentStateSpace;
+  if (module.symbols.functionScope(function.range) !=
+      function.declaration_scope)
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Function declaration scope disagrees with its bound occurrence.");
+  std::vector<const binding::Symbol*> returns;
+  std::vector<const binding::Symbol*> inputs;
+  std::unordered_map<uint32_t, const ResolvedParameterDeclaration*> records;
+  for (const auto& record : function.parameter_declarations) {
+    if (!records.try_emplace(record.symbol_id.value, &record).second)
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Owned parameter declaration identity is duplicated.");
+    const auto* symbol = owned_symbol(module, record.symbol_id);
+    const auto role =
+        symbol ? expected_parameter_role(*symbol, function) : std::nullopt;
+    const auto* type = symbol && symbol->type
+                           ? base::find_scalar_type_metadata(*symbol->type)
+                           : nullptr;
+    std::optional<uint64_t> extent;
+    const bool unsized = role == ParameterDeclarationRole::DeviceInput &&
+                         record.scalar_type == ScalarType::B8 &&
+                         record.array_extents.size() == 1;
+    if (!symbol ||
+        symbol->state_space != base::DeclarationStateSpace::Parameter ||
+        symbol->scope != record.scope_id ||
+        !is_function_owned_scope(module, record.scope_id,
+                                 function.declaration_scope) ||
+        record.role != role.value_or(ParameterDeclarationRole::BodyLocal) ||
+        (!role && symbol->kind != binding::SymbolKind::CallParameter) ||
+        !type || type->type != record.scalar_type ||
+        record.vector_width != symbol->vector_width.value_or(1) ||
+        record.alignment != symbol->address_alignment ||
+        !std::has_single_bit(record.alignment) ||
+        !checked_declaration_extent(record.scalar_type, record.vector_width,
+                                    record.array_extents, unsized, extent) ||
+        record.byte_extent != extent ||
+        (role &&
+         (record.scope_id != function.declaration_scope ||
+          record.vector_width != 1 || record.array_extents.size() > 1)) ||
+        !valid_parameter_pointer(record))
+      append_model_mismatch(diagnostics, function.range,
+                            "Owned parameter role, identity, shape, or layout "
+                            "disagrees with binding.");
+  }
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (!is_function_owned_scope(module, symbol.scope,
+                                 function.declaration_scope))
+      continue;
+    if (symbol.scope == function.declaration_scope) {
+      if (symbol.kind == binding::SymbolKind::ReturnParameter)
+        returns.push_back(&symbol);
+      else if (symbol.kind == binding::SymbolKind::InputParameter)
+        inputs.push_back(&symbol);
+    }
+    if (symbol.state_space == base::DeclarationStateSpace::Parameter &&
+        (symbol.kind == binding::SymbolKind::CallParameter ||
+         symbol.kind == binding::SymbolKind::ReturnParameter ||
+         symbol.kind == binding::SymbolKind::InputParameter) &&
+        symbol.type && !base::opaque_resource_kind(*symbol.type) &&
+        !records.contains(symbol.id.value))
+      append_model_mismatch(
+          diagnostics, symbol.declaration_range,
+          "Bound scalar parameter has no owned declaration record.");
+  }
+  const auto check_list = [&](const std::vector<declaration_semantics::
+                                                    FunctionParameterContract>&
+                                  formals,
+                              const std::vector<const binding::Symbol*>& bound,
+                              ParameterDeclarationRole role) {
+    std::vector<binding::SymbolId> expected_records;
+    if (formals.size() != bound.size())
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Signature formal count disagrees with its declaration scope.");
+    for (size_t index = 0; index < std::min(formals.size(), bound.size());
+         ++index) {
+      const auto& formal = formals[index];
+      const auto& symbol = *bound[index];
+      const auto bound_opaque =
+          symbol.type ? base::opaque_resource_kind(*symbol.type) : std::nullopt;
+      const auto* bound_type =
+          symbol.type ? base::find_scalar_type_metadata(*symbol.type) : nullptr;
+      const auto expected_state =
+          symbol.state_space == base::DeclarationStateSpace::Register
+              ? CallArgumentStateSpace::Register
+          : symbol.state_space == base::DeclarationStateSpace::Parameter
+              ? CallArgumentStateSpace::Parameter
+              : CallArgumentStateSpace::Invalid;
+      if (formal.state_space != expected_state ||
+          formal.opaque_kind != bound_opaque ||
+          (!bound_opaque &&
+           (!bound_type || bound_type->type != formal.scalar_type)))
+        append_model_mismatch(
+            diagnostics, symbol.declaration_range,
+            "Signature formal type or state space disagrees with binding.");
+      if (bound_opaque)
+        continue;
+      const auto properties =
+          declaration_semantics::call_argument_properties(formal);
+      if (properties.state_space == CallArgumentStateSpace::Invalid ||
+          declaration_semantics::contract_constant(formal.alignment) !=
+              symbol.address_alignment ||
+          (!formal.is_array && formal.array_extent) ||
+          (!formal.is_pointer &&
+           (formal.pointed_state_space || formal.pointer_alignment)) ||
+          (formal.is_array && !properties.array_size &&
+           (role != ParameterDeclarationRole::DeviceInput ||
+            formal.scalar_type != ScalarType::B8 ||
+            index + 1 != formals.size())))
+        append_model_mismatch(
+            diagnostics, symbol.declaration_range,
+            "Signature formal has inconsistent normalized ABI fields.");
+      if (expected_state == CallArgumentStateSpace::Register) {
+        if (formal.is_array || formal.is_pointer ||
+            records.contains(symbol.id.value))
+          append_model_mismatch(
+              diagnostics, symbol.declaration_range,
+              "Register formal carries parameter storage or pointer shape.");
+        continue;
+      }
+      expected_records.push_back(symbol.id);
+      const auto found = records.find(symbol.id.value);
+      if (found == records.end())
+        continue;
+      const auto& record = *found->second;
+      const bool array = !record.array_extents.empty();
+      if (record.role != role || record.scalar_type != formal.scalar_type ||
+          record.alignment != properties.array_alignment ||
+          array != formal.is_array || record.array_extents.size() > 1 ||
+          (array && record.array_extents.front() != properties.array_size) ||
+          record.pointer != properties.pointer)
+        append_model_mismatch(
+            diagnostics, symbol.declaration_range,
+            "Signature formal disagrees with its owned parameter declaration.");
+    }
+    std::vector<binding::SymbolId> actual_records;
+    for (const auto& record : function.parameter_declarations)
+      if (record.role == role)
+        actual_records.push_back(record.symbol_id);
+    if (actual_records != expected_records)
+      append_model_mismatch(diagnostics, function.range,
+                            "Owned formal parameter sequence disagrees with "
+                            "the signature order.");
+  };
+  check_list(function.contract.signature.return_parameters, returns,
+             ParameterDeclarationRole::DeviceReturn);
+  check_list(function.contract.signature.parameters, inputs,
+             function.is_entry ? ParameterDeclarationRole::EntryInput
+                               : ParameterDeclarationRole::DeviceInput);
+}
+
+/** Rejoin every storage occurrence and validate scalar allocation inputs. */
+void check_storage_declarations(const ResolvedModule& module,
+                                checker::CheckDiagnostics& diagnostics) {
+  std::unordered_map<uint32_t, std::vector<const ResolvedStorageDeclaration*>>
+      records;
+  for (const auto& declaration : module.storage_declarations)
+    records[declaration.symbol_id.value].push_back(&declaration);
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind != binding::SymbolKind::Variable ||
+        !bound_storage_space(symbol))
+      continue;
+    const auto found = records.find(symbol.id.value);
+    const auto occurrences = module.symbols.declarationOccurrences(symbol.id);
+    size_t expected = 0;
+    for (const auto& occurrence : occurrences) {
+      if (!occurrence.variable_declaration_range)
+        continue;
+      ++expected;
+      const auto count =
+          found == records.end()
+              ? 0
+              : std::ranges::count_if(found->second, [&](const auto* record) {
+                  return record->range ==
+                         *occurrence.variable_declaration_range;
+                });
+      if (count != 1)
+        append_model_mismatch(
+            diagnostics, *occurrence.variable_declaration_range,
+            "Storage declaration occurrence is missing or duplicated.");
+    }
+    if (found != records.end() && found->second.size() != expected)
+      append_model_mismatch(
+          diagnostics, symbol.declaration_range,
+          "Owned storage list contains an unmatched declaration occurrence.");
+  }
+  for (const auto& declaration : module.storage_declarations) {
+    const auto* symbol = owned_symbol(module, declaration.symbol_id);
+    const auto expected_space =
+        symbol ? bound_storage_space(*symbol) : std::nullopt;
+    if (!symbol || symbol->kind != binding::SymbolKind::Variable ||
+        !expected_space || declaration.space != *expected_space ||
+        declaration.scope_id != symbol->scope ||
+        declaration.owner_function != storage_owner(module, symbol->scope) ||
+        declaration.linkage != symbol->linkage ||
+        declaration.parameterized_count != symbol->parameterized_count ||
+        !module.symbols.hasVariableDeclaration(declaration.symbol_id,
+                                               declaration.range)) {
+      append_model_mismatch(diagnostics, declaration.range,
+                            "Storage declaration disagrees with its bound "
+                            "identity or occurrence.");
+      continue;
+    }
+    const bool external =
+        declaration.linkage == binding::SymbolLinkage::External;
+    if (declaration.declaration_kind !=
+        (external ? StorageDeclarationKind::External
+                  : StorageDeclarationKind::Definition))
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Storage declaration kind disagrees with its linkage.");
+    const auto* scalar = std::get_if<ScalarType>(&declaration.element_type);
+    if (!scalar)
+      continue;
+    const auto* bound_type =
+        symbol->type ? base::find_scalar_type_metadata(*symbol->type) : nullptr;
+    std::optional<uint64_t> extent;
+    const bool valid_extent =
+        checked_declaration_extent(*scalar, declaration.vector_width,
+                                   declaration.array_extents, external, extent);
+    const uint64_t natural_alignment =
+        valid_extent ? base::scalar_size_of(*scalar) * declaration.vector_width
+                     : 0;
+    const bool dynamic_shared = external &&
+                                declaration.space == StorageSpace::Shared &&
+                                !declaration.array_extents.empty() &&
+                                !declaration.array_extents.front();
+    if (!bound_type || bound_type->type != *scalar ||
+        declaration.vector_width != symbol->vector_width.value_or(1) ||
+        !valid_extent || declaration.byte_extent != extent ||
+        !declaration.alignment ||
+        !std::has_single_bit(*declaration.alignment) ||
+        declaration.alignment != symbol->address_alignment ||
+        declaration.alignment !=
+            declaration.explicit_alignment.value_or(natural_alignment) ||
+        declaration.is_dynamic_shared != dynamic_shared ||
+        (declaration.parameterized_count &&
+         *declaration.parameterized_count == 0))
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Scalar storage type, shape, extent, or alignment is inconsistent.");
+    const bool valid_initialization =
+        external ? declaration.initialization ==
+                           StorageInitializationKind::External &&
+                       declaration.initializer.empty()
+        : (declaration.space == StorageSpace::Global ||
+           declaration.space == StorageSpace::Constant)
+            ? (declaration.initialization == StorageInitializationKind::Zero ||
+               declaration.initialization ==
+                   StorageInitializationKind::Explicit)
+            : declaration.initialization ==
+                      StorageInitializationKind::Uninitialized &&
+                  declaration.initializer.empty();
+    if (!valid_initialization)
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Scalar storage initialization disagrees with its declaration kind.");
+  }
 }
 
 /** Validate owned opaque declarations without consulting the source AST. */
@@ -2800,6 +3258,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   }
   if (module.header.regions.empty())
     invalid(module.range, "Resolved module has no owned source configuration.");
+  if (policy == ModuleValidationPolicy::RequireCompleteContext)
+    check_owned_header_order(module, diagnostics);
   for (const auto& region : module.header.regions) {
     check_header_region(region, region.range, diagnostics);
     if (!region.target_options.empty()) {
@@ -2827,6 +3287,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, diagnostics);
   check_call_tables(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
@@ -2873,6 +3334,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
               "Resolved function has an invalid declaration scope.");
     }
     check_signature(function.contract.signature, function.range, diagnostics);
+    check_function_parameters(module, function, diagnostics);
     const auto entry_version =
         function.source_region &&
                 *function.source_region < module.header.regions.size()
@@ -2986,12 +3448,28 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  if (policy == ModuleValidationPolicy::RequireCompleteContext)
+    check_header_order(detail::module_header_order(ast), ast.range,
+                       diagnostics);
+  check_storage_declarations(module, diagnostics);
+  check_opaque_storage(module, diagnostics);
+  for (const auto& function : module.functions) {
+    check_signature(function.contract.signature, function.range, diagnostics);
+    check_function_parameters(module, function, diagnostics);
+    check_function_contract_integrity(function, diagnostics);
+    check_opaque_entry_parameters(module, function, version, diagnostics);
+  }
   /** Replacement source selects one texturing mode for every target region. */
   std::optional<TextureMode> explicit_texture_mode;
   for (const auto& item : ast.items) {
     const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item);
     if (!target)
       continue;
+    check_target_items(
+        target->targets | std::views::transform([](const auto& item) {
+          return std::string_view{item.text};
+        }),
+        target->range, diagnostics);
     bool seen_in_target = false;
     for (const auto& option : target->targets) {
       if (option.text != "texmode_unified" &&

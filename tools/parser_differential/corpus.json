@@ -1,0 +1,1339 @@
+[
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:34/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, A[idx - (1+2)];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:34/module",
+    "mode": "module",
+    "source": "mov.u64 %rd, A[idx - (1+2)];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:57/instruction",
+    "mode": "instruction",
+    "source": "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map+64, {%r0, -2}];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:57/module",
+    "mode": "module",
+    "source": "cp.async.bulk.prefetch.tensor.2d.L2.global [tensor_map+64, {%r0, -2}];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:78/instruction",
+    "mode": "instruction",
+    "source": "  // lead\n@!%p add /* type */ .u32 [%rd1 /* op */ + 16], {%r1, -2} /* tail */ ;\n// eof"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:78/module",
+    "mode": "module",
+    "source": "  // lead\n@!%p add /* type */ .u32 [%rd1 /* op */ + 16], {%r1, -2} /* tail */ ;\n// eof"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:109/instruction",
+    "mode": "instruction",
+    "source": "// leading comment\n.version 9.3\n.file 0 \"round_trip.ptx\"\n.section .debug_info { /* raw payload */ .b8 0; };\n.pragma \"module\";\n.entry kernel() .pragma \"header\"; .maxnreg 32 {\n  .pragma \"body\";\n  { add.u32 %r0, %r1, %r2; }\n}\n// trailing comment\n   "
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:109/module",
+    "mode": "module",
+    "source": "// leading comment\n.version 9.3\n.file 0 \"round_trip.ptx\"\n.section .debug_info { /* raw payload */ .b8 0; };\n.pragma \"module\";\n.entry kernel() .pragma \"header\"; .maxnreg 32 {\n  .pragma \"body\";\n  { add.u32 %r0, %r1, %r2; }\n}\n// trailing comment\n   "
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:170/instruction",
+    "mode": "instruction",
+    "source": ".version 9.3\n.target sm_80\n.address_size 64\n.global .u32 bad%name = 1;\n.entry k() {\n  .reg .u32 %r<2>;\n  mov.u32 %r0, %r%tmp;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:170/module",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80\n.address_size 64\n.global .u32 bad%name = 1;\n.entry k() {\n  .reg .u32 %r<2>;\n  mov.u32 %r0, %r%tmp;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:208/instruction",
+    "mode": "instruction",
+    "source": "ld.weak.u32 %r0, [%rd0];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:208/module",
+    "mode": "module",
+    "source": "ld.weak.u32 %r0, [%rd0];"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:221/instruction",
+    "mode": "instruction",
+    "source": "mov.b32 [%rd1-4], %r2.x, {%r3, 1};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:221/module",
+    "mode": "module",
+    "source": "mov.b32 [%rd1-4], %r2.x, {%r3, 1};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:249/instruction",
+    "mode": "instruction",
+    "source": "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:249/module",
+    "mode": "module",
+    "source": "shfl.sync.idx.b32 %b0|%p0, %b1, 0, 31, 0xffffffff;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:264/instruction",
+    "mode": "instruction",
+    "source": "@%p call.uni (%result), %callee, (%arg, -4), targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:264/module",
+    "mode": "module",
+    "source": "@%p call.uni (%result), %callee, (%arg, -4), targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:329/instruction",
+    "mode": "instruction",
+    "source": "@%p bra.uni done;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:329/module",
+    "mode": "module",
+    "source": "@%p bra.uni done;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:343/instruction",
+    "mode": "instruction",
+    "source": "brx.idx.uni %r0, targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:343/module",
+    "mode": "module",
+    "source": "brx.idx.uni %r0, targets;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:387/instruction",
+    "mode": "instruction",
+    "source": "add.u32 %r1, %r2, %r3"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:387/module",
+    "mode": "module",
+    "source": "add.u32 %r1, %r2, %r3"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:416/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  no_args: .callprototype _;\n  inputs: .callprototype _ (.param .u32 _);\n  returns: .callprototype (.reg .u32 result) _;\n  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:416/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  no_args: .callprototype _;\n  inputs: .callprototype _ (.param .u32 _);\n  returns: .callprototype (.reg .u32 result) _;\n  full: .callprototype (.param .u32 result) _ (.param .b8 arg[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:474/instruction",
+    "mode": "instruction",
+    "source": "\n.func caller() {\n  one: .calltargets first;\n  many: .calltargets first, second, third;\n  duplicate: .calltargets first, first;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:474/module",
+    "mode": "module",
+    "source": "\n.func caller() {\n  one: .calltargets first;\n  many: .calltargets first, second, third;\n  duplicate: .calltargets first, first;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:529/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  table: .branchtargets L1, N<5>, L1;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:529/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  table: .branchtargets L1, N<5>, L1;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:584/instruction",
+    "mode": "instruction",
+    "source": "add.u32 %r1, %r2, %r3; sub.u32 %r4, %r5, %r6;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:584/module",
+    "mode": "module",
+    "source": "add.u32 %r1, %r2, %r3; sub.u32 %r4, %r5, %r6;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:603/instruction",
+    "mode": "instruction",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:603/module",
+    "mode": "module",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n  ret;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:654/instruction",
+    "mode": "instruction",
+    "source": ".file 0x1U \"source.ptx\"\n.file 1 \"large.ptx\", 0, 18446744073709551615U;\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:654/module",
+    "mode": "module",
+    "source": ".file 0x1U \"source.ptx\"\n.file 1 \"large.ptx\", 0, 18446744073709551615U;\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:699/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info {\nLbegin:\n  .b8 -128, 0, 255\n  .b16 -32768, 65535\n  .b32 -2147483648, 4294967295U\n  .b64 -9223372036854775808, 18446744073709551615U\n  .b32 .debug_abbrev\n  .b64 Lbegin\n  .b32 .debug_str+0x4\n  .b64 Lbegin+12\n  .b32 Lend-Lbegin\n  .b64 Lbegin-Lend\nLend:\n};\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:699/module",
+    "mode": "module",
+    "source": ".section .debug_info {\nLbegin:\n  .b8 -128, 0, 255\n  .b16 -32768, 65535\n  .b32 -2147483648, 4294967295U\n  .b64 -9223372036854775808, 18446744073709551615U\n  .b32 .debug_abbrev\n  .b64 Lbegin\n  .b32 .debug_str+0x4\n  .b64 Lbegin+12\n  .b32 Lend-Lbegin\n  .b64 Lbegin-Lend\nLend:\n};\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:752/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info {\n  .b8 0\n.entry kernel() { add.u32 %r0, %r1, %r2; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:752/module",
+    "mode": "module",
+    "source": ".section .debug_info {\n  .b8 0\n.entry kernel() { add.u32 %r0, %r1, %r2; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:773/instruction",
+    "mode": "instruction",
+    "source": ".pragma \"module\", \"opaque\";\n.entry kernel() .pragma \"nounroll\"; {\n  .pragma \"frequency 32\";\n  {\n    .pragma \"nested\", \"opaque\";\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:773/module",
+    "mode": "module",
+    "source": ".pragma \"module\", \"opaque\";\n.entry kernel() .pragma \"nounroll\"; {\n  .pragma \"frequency 32\";\n  {\n    .pragma \"nested\", \"opaque\";\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:829/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() .pragma \"before\";\n    .maxnreg 32 .maxntid 16, 8, 4 .pragma \"after\";\n    .minnctapersm 2 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:829/module",
+    "mode": "module",
+    "source": ".entry kernel() .pragma \"before\";\n    .maxnreg 32 .maxntid 16, 8, 4 .pragma \"after\";\n    .minnctapersm 2 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:859/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() .reqntid 16, 8 { }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:859/module",
+    "mode": "module",
+    "source": ".entry kernel() .reqntid 16, 8 { }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:873/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel()\n    .reqnctapercluster 2, 3, 1 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:873/module",
+    "mode": "module",
+    "source": ".entry kernel()\n    .reqnctapercluster 2, 3, 1 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:930/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n    add.u32 %r0, %r1, %r2;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:930/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 9 3, function_name info_string0, inlined_at 1 21 3\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n    add.u32 %r0, %r1, %r2;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:994/instruction",
+    "mode": "instruction",
+    "source": ".func (.param .b32 result) helper(.param .b32 input) { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:994/module",
+    "mode": "module",
+    "source": ".func (.param .b32 result) helper(.param .b32 input) { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1019/instruction",
+    "mode": "instruction",
+    "source": ".extern .func sink(.param .align 8 .b8 blob[], .param .u64 .ptr .global .align 16 ptr) .noreturn;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1019/module",
+    "mode": "module",
+    "source": ".extern .func sink(.param .align 8 .b8 blob[], .param .u64 .ptr .global .align 16 ptr) .noreturn;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1094/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1094/module",
+    "mode": "module",
+    "source": ".entry kernel() { .reg .align 16 .u32 %r<3>, %tmp; loop: ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1127/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  {\n    outer:\n    { add.u32 %r0, %r1, %r2; }\n  }\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1127/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  {\n    outer:\n    { add.u32 %r0, %r1, %r2; }\n  }\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1156/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { add.u32 %r0, %r1, %r2; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1156/module",
+    "mode": "module",
+    "source": ".entry kernel() { add.u32 %r0, %r1, %r2; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1240/instruction",
+    "mode": "instruction",
+    "source": "/*"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1240/module",
+    "mode": "module",
+    "source": "/*"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1257/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret;\r\n/* first\r\nlast"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1257/module",
+    "mode": "module",
+    "source": ".entry k() { ret;\r\n/* first\r\nlast"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1273/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret; }\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1273/module",
+    "mode": "module",
+    "source": ".entry k() { ret; }\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1291/instruction",
+    "mode": "instruction",
+    "source": ".entry k() { ret;\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1291/module",
+    "mode": "module",
+    "source": ".entry k() { ret;\n /* tail"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1312/instruction",
+    "mode": "instruction",
+    "source": "` .entry k() { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1312/module",
+    "mode": "module",
+    "source": "` .entry k() { ret; }"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1325/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  add.u32 %r0, %r1, %r2\n  sub.u32 %r3, %r4, %r5;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1325/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  add.u32 %r0, %r1, %r2\n  sub.u32 %r3, %r4, %r5;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1353/instruction",
+    "mode": "instruction",
+    "source": ".version nope;\n.target;\n.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1353/module",
+    "mode": "module",
+    "source": ".version nope;\n.target;\n.entry kernel() { { add.u32 %r0, %r1, %r2 sub.u32 %r3, %r4, %r5; } }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1386/instruction",
+    "mode": "instruction",
+    "source": ".entry first() {\n  add.u32 %r0, %r1, %r2;\n.version 9.3\n.entry second() { sub.u32 %r3, %r4, %r5; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1386/module",
+    "mode": "module",
+    "source": ".entry first() {\n  add.u32 %r0, %r1, %r2;\n.version 9.3\n.entry second() { sub.u32 %r3, %r4, %r5; }\n"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1410/instruction",
+    "mode": "instruction",
+    "source": ".entry lone() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1410/module",
+    "mode": "module",
+    "source": ".entry lone() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1422/instruction",
+    "mode": "instruction",
+    "source": "} .version"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1422/module",
+    "mode": "module",
+    "source": "} .version"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1443/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() { { add.u32 %r0, %r1, %r2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1443/module",
+    "mode": "module",
+    "source": ".entry kernel() { { add.u32 %r0, %r1, %r2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1469/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1469/module",
+    "mode": "module",
+    "source": ".entry kernel() {"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1488/instruction",
+    "mode": "instruction",
+    "source": ".visible .global .align 16 .v4 .f32 values[2][3];\n.entry kernel() {\n  .shared .v2 .u16 tile[8];\n  .local .u32 scratch[19][19];\n  .param .align 8 .b8 argument[12];\n  ret;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1488/module",
+    "mode": "module",
+    "source": ".visible .global .align 16 .v4 .f32 values[2][3];\n.entry kernel() {\n  .shared .v2 .u16 tile[8];\n  .local .u32 scratch[19][19];\n  .param .align 8 .b8 argument[12];\n  ret;\n}"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1532/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 table[(1 + 2) << 3] = {1, 2 * 3, WARP_SZ};\n.const .u64 pointer = generic(base) + 8;\n.global .u8 masked = 0xff(base + 4);\n.global .u32 first = 1, second = 2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1532/module",
+    "mode": "module",
+    "source": ".global .u32 table[(1 + 2) << 3] = {1, 2 * 3, WARP_SZ};\n.const .u64 pointer = generic(base) + 8;\n.global .u8 masked = 0xff(base + 4);\n.global .u32 first = 1, second = 2;"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1597/instruction",
+    "mode": "instruction",
+    "source": ".global .s32 offsets[][2] = {{-1, 0}, {0, -1}};"
+  },
+  {
+    "name": "regression/test_ptx_cst_parser.cpp:1597/module",
+    "mode": "module",
+    "source": ".global .s32 offsets[][2] = {{-1, 0}, {0, -1}};"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:101/instruction",
+    "mode": "instruction",
+    "source": "vmad.s32.s32.s32 %r0, - %r1.h0, -%r2, %r3;"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:101/module",
+    "mode": "module",
+    "source": "vmad.s32.s32.s32 %r0, - %r1.h0, -%r2, %r3;"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:258/instruction",
+    "mode": "instruction",
+    "source": "\n.func dispatch() {\n  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:258/module",
+    "mode": "module",
+    "source": "\n.func dispatch() {\n  prototype: .callprototype (.param .u32 result) _ (.reg .u32 arg, .param .b8 bytes[12]) .noreturn .abi_preserve 10 .abi_preserve_control 2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:320/instruction",
+    "mode": "instruction",
+    "source": "\n.func caller() {\n  list: .calltargets first, second, second;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:320/module",
+    "mode": "module",
+    "source": "\n.func caller() {\n  list: .calltargets first, second, second;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:567/instruction",
+    "mode": "instruction",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:567/module",
+    "mode": "module",
+    "source": ".version 8.0\n.target sm_80, debug\n.address_size 64\n.visible .entry kernel() {\n  add.u32 %r0, %r1, %r2;\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:749/instruction",
+    "mode": "instruction",
+    "source": "\n.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:749/module",
+    "mode": "module",
+    "source": "\n.entry kernel() .reqnctapercluster 2, 3 .explicitcluster .maxclusterrank 8 { }\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:772/instruction",
+    "mode": "instruction",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:772/module",
+    "mode": "module",
+    "source": ".entry kernel() {\n  .loc 0x2U 4237 0\n  {\n    .loc 1 15 3, function_name .debug_str+16, inlined_at 0x1U 10 5;\n  }\n}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:1176/instruction",
+    "mode": "instruction",
+    "source": "\n.version 9.3\n.global .attribute(.managed, .unified(1, 2)) .u32 managed;\n.alias alias_fn, target;\n.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2\n    .abi_preserve_control 1 .language \"PTX\", 10;\n.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters\n    .language \"cuda c++\" {}\n"
+  },
+  {
+    "name": "regression/test_ptx_syntax_ast_parser.cpp:1176/module",
+    "mode": "module",
+    "source": "\n.version 9.3\n.global .attribute(.managed, .unified(1, 2)) .u32 managed;\n.alias alias_fn, target;\n.func .attribute(.unified(3, 4)) target() .noreturn .abi_preserve 2\n    .abi_preserve_control 1 .language \"PTX\", 10;\n.entry kernel() .reqntid 1 .reqnctapercluster 1 .blocksareclusters\n    .language \"cuda c++\" {}\n"
+  },
+  {
+    "name": "expression/0/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[42] = /*scalar*/ 42; //eof\n"
+  },
+  {
+    "name": "expression/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (42);"
+  },
+  {
+    "name": "expression/1/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[symbol] = /*scalar*/ symbol; //eof\n"
+  },
+  {
+    "name": "expression/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (symbol);"
+  },
+  {
+    "name": "expression/2/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[-1] = /*scalar*/ -1; //eof\n"
+  },
+  {
+    "name": "expression/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (-1);"
+  },
+  {
+    "name": "expression/3/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[+~!2] = /*scalar*/ +~!2; //eof\n"
+  },
+  {
+    "name": "expression/3/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (+~!2);"
+  },
+  {
+    "name": "expression/4/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[(.s64)-(.u64)(1+2)] = /*scalar*/ (.s64)-(.u64)(1+2); //eof\n"
+  },
+  {
+    "name": "expression/4/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, ((.s64)-(.u64)(1+2));"
+  },
+  {
+    "name": "expression/5/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[generic(symbol)+0xff(3)(4)] = /*scalar*/ generic(symbol)+0xff(3)(4); //eof\n"
+  },
+  {
+    "name": "expression/5/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (generic(symbol)+0xff(3)(4));"
+  },
+  {
+    "name": "expression/6/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1+2*3-4/2 % 2] = /*scalar*/ 1+2*3-4/2 % 2; //eof\n"
+  },
+  {
+    "name": "expression/6/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1+2*3-4/2 % 2);"
+  },
+  {
+    "name": "expression/7/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[8<<1+2>>1] = /*scalar*/ 8<<1+2>>1; //eof\n"
+  },
+  {
+    "name": "expression/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (8<<1+2>>1);"
+  },
+  {
+    "name": "expression/8/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1<2<=3>4>=5==6!=7&8^9|10&&11||12] = /*scalar*/ 1<2<=3>4>=5==6!=7&8^9|10&&11||12; //eof\n"
+  },
+  {
+    "name": "expression/8/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1<2<=3>4>=5==6!=7&8^9|10&&11||12);"
+  },
+  {
+    "name": "expression/9/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1?2:3?4:5] = /*scalar*/ 1?2:3?4:5; //eof\n"
+  },
+  {
+    "name": "expression/9/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1?2:3?4:5);"
+  },
+  {
+    "name": "expression/10/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[1?2?3:4:5] = /*scalar*/ 1?2?3:4:5; //eof\n"
+  },
+  {
+    "name": "expression/10/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (1?2?3:4:5);"
+  },
+  {
+    "name": "expression/11/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[(1?2:3)+4] = /*scalar*/ (1?2:3)+4; //eof\n"
+  },
+  {
+    "name": "expression/11/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, ((1?2:3)+4);"
+  },
+  {
+    "name": "expression/12/module",
+    "mode": "module",
+    "source": "/*before*/ .global .u64 value[0d3ff0000000000000+2.0] = /*scalar*/ 0d3ff0000000000000+2.0; //eof\n"
+  },
+  {
+    "name": "expression/12/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd, (0d3ff0000000000000+2.0);"
+  },
+  {
+    "name": "malformed-expression/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1+;"
+  },
+  {
+    "name": "malformed-expression/0/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1+;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1+2;"
+  },
+  {
+    "name": "malformed-expression/1/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1+2;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (.u64 1;"
+  },
+  {
+    "name": "malformed-expression/2/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (.u64 1;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/3/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1?2;"
+  },
+  {
+    "name": "malformed-expression/3/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1?2;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/4/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1?2:;"
+  },
+  {
+    "name": "malformed-expression/4/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1?2:;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/5/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1?2:3 bad);"
+  },
+  {
+    "name": "malformed-expression/5/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1?2:3 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/6/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1(1?2:3 bad);"
+  },
+  {
+    "name": "malformed-expression/6/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1(1?2:3 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, ((.u64)1 bad);"
+  },
+  {
+    "name": "malformed-expression/7/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, ((.u64)1 bad);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/8/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, ((.u64 1);"
+  },
+  {
+    "name": "malformed-expression/8/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, ((.u64 1);\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/9/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1 `;"
+  },
+  {
+    "name": "malformed-expression/9/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1 `;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/10/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, (1 $;"
+  },
+  {
+    "name": "malformed-expression/10/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, (1 $;\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "malformed-expression/11/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r0, 1"
+  },
+  {
+    "name": "malformed-expression/11/module",
+    "mode": "module",
+    "source": ".entry first() {\nmov.u32 %r0, 1\nmov.u32 %r1, 7;\n}\n.entry second() { ret; } //tail\n"
+  },
+  {
+    "name": "boundary/0/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, A[i][j];"
+  },
+  {
+    "name": "boundary/0/module",
+    "mode": "module",
+    "source": "mov.u64 %r, A[i][j];"
+  },
+  {
+    "name": "boundary/1/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, [A[i]];"
+  },
+  {
+    "name": "boundary/1/module",
+    "mode": "module",
+    "source": "mov.u64 %r, [A[i]];"
+  },
+  {
+    "name": "boundary/2/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %r, A[i+j];"
+  },
+  {
+    "name": "boundary/2/module",
+    "mode": "module",
+    "source": "mov.u64 %r, A[i+j];"
+  },
+  {
+    "name": "boundary/3/instruction",
+    "mode": "instruction",
+    "source": "call (), function, ();"
+  },
+  {
+    "name": "boundary/3/module",
+    "mode": "module",
+    "source": "call (), function, ();"
+  },
+  {
+    "name": "boundary/4/instruction",
+    "mode": "instruction",
+    "source": "call %r0, target;"
+  },
+  {
+    "name": "boundary/4/module",
+    "mode": "module",
+    "source": "call %r0, target;"
+  },
+  {
+    "name": "boundary/5/instruction",
+    "mode": "instruction",
+    "source": "bra;"
+  },
+  {
+    "name": "boundary/5/module",
+    "mode": "module",
+    "source": "bra;"
+  },
+  {
+    "name": "boundary/6/instruction",
+    "mode": "instruction",
+    "source": "brx.idx %r;"
+  },
+  {
+    "name": "boundary/6/module",
+    "mode": "module",
+    "source": "brx.idx %r;"
+  },
+  {
+    "name": "boundary/7/instruction",
+    "mode": "instruction",
+    "source": "mov.u32 %r, ;"
+  },
+  {
+    "name": "boundary/7/module",
+    "mode": "module",
+    "source": "mov.u32 %r, ;"
+  },
+  {
+    "name": "boundary/8/instruction",
+    "mode": "instruction",
+    "source": ".file 1 \"x\", 2"
+  },
+  {
+    "name": "boundary/8/module",
+    "mode": "module",
+    "source": ".file 1 \"x\", 2"
+  },
+  {
+    "name": "boundary/9/instruction",
+    "mode": "instruction",
+    "source": ".entry k() .unknown 1 {}"
+  },
+  {
+    "name": "boundary/9/module",
+    "mode": "module",
+    "source": ".entry k() .unknown 1 {}"
+  },
+  {
+    "name": "boundary/10/instruction",
+    "mode": "instruction",
+    "source": ".entry k() {.file 1 \"x\"; ret;}"
+  },
+  {
+    "name": "boundary/10/module",
+    "mode": "module",
+    "source": ".entry k() {.file 1 \"x\"; ret;}"
+  },
+  {
+    "name": "boundary/11/instruction",
+    "mode": "instruction",
+    "source": ".func k() .maxnreg 1 {}"
+  },
+  {
+    "name": "boundary/11/module",
+    "mode": "module",
+    "source": ".func k() .maxnreg 1 {}"
+  },
+  {
+    "name": "boundary/12/instruction",
+    "mode": "instruction",
+    "source": ".shared .u32 a=1;"
+  },
+  {
+    "name": "boundary/12/module",
+    "mode": "module",
+    "source": ".shared .u32 a=1;"
+  },
+  {
+    "name": "boundary/13/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 a = {member=1};"
+  },
+  {
+    "name": "boundary/13/module",
+    "mode": "module",
+    "source": ".global .u32 a = {member=1};"
+  },
+  {
+    "name": "boundary/14/instruction",
+    "mode": "instruction",
+    "source": ".entry k() {.loc 1 2 3, function_name label;ret;}"
+  },
+  {
+    "name": "boundary/14/module",
+    "mode": "module",
+    "source": ".entry k() {.loc 1 2 3, function_name label;ret;}"
+  },
+  {
+    "name": "boundary/15/instruction",
+    "mode": "instruction",
+    "source": ".section .debug_info { { } .entry survivor() {ret;}"
+  },
+  {
+    "name": "boundary/15/module",
+    "mode": "module",
+    "source": ".section .debug_info { { } .entry survivor() {ret;}"
+  },
+  {
+    "name": "boundary/16/instruction",
+    "mode": "instruction",
+    "source": "/*"
+  },
+  {
+    "name": "boundary/16/module",
+    "mode": "module",
+    "source": "/*"
+  },
+  {
+    "name": "boundary/17/instruction",
+    "mode": "instruction",
+    "source": "\u0000\u00ff\r\n` .entry valid() {ret;}"
+  },
+  {
+    "name": "boundary/17/module",
+    "mode": "module",
+    "source": "\u0000\u00ff\r\n` .entry valid() {ret;}"
+  },
+{
+    "name": "variant/predicate/instruction",
+    "mode": "instruction",
+    "source": "mov.pred %p0, !%p1, !0, !-1;"
+  },
+  {
+    "name": "variant/predicate/module",
+    "mode": "module",
+    "source": "mov.pred %p0, !%p1, !0, !-1;"
+  },
+  {
+    "name": "variant/vector-predicate/instruction",
+    "mode": "instruction",
+    "source": "tex.2d.v4.f32 {%f0,%f1,%f2,%f3}|%p0, [tex,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/vector-predicate/module",
+    "mode": "module",
+    "source": "tex.2d.v4.f32 {%f0,%f1,%f2,%f3}|%p0, [tex,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/fabric/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd0, [endpoint, 64, 8];"
+  },
+  {
+    "name": "variant/fabric/module",
+    "mode": "module",
+    "source": "mov.u64 %rd0, [endpoint, 64, 8];"
+  },
+  {
+    "name": "variant/compound/instruction",
+    "mode": "instruction",
+    "source": "mov.u64 %rd0, [texture,sampler,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/compound/module",
+    "mode": "module",
+    "source": "mov.u64 %rd0, [texture,sampler,{%r0,%r1}];"
+  },
+  {
+    "name": "variant/float-bits/instruction",
+    "mode": "instruction",
+    "source": "mov.b32 %r0, 0f3f800000;"
+  },
+  {
+    "name": "variant/float-bits/module",
+    "mode": "module",
+    "source": "mov.b32 %r0, 0f3f800000;"
+  },
+  {
+    "name": "variant/mixed-operand/instruction",
+    "mode": "instruction",
+    "source": "@!%p0 op.weak %r0.x, -%r1.y, -%r2, A[idx+-1], [symbol+8].unified, {1,(2+3),%r0.x};"
+  },
+  {
+    "name": "variant/mixed-operand/module",
+    "mode": "module",
+    "source": "@!%p0 op.weak %r0.x, -%r1.y, -%r2, A[idx+-1], [symbol+8].unified, {1,(2+3),%r0.x};"
+  },
+  {
+    "name": "variant/cast-initializer/instruction",
+    "mode": "instruction",
+    "source": ".global .u64 x = (.u64)(1+2);"
+  },
+  {
+    "name": "variant/cast-initializer/module",
+    "mode": "module",
+    "source": ".global .u64 x = (.u64)(1+2);"
+  },
+  {
+    "name": "variant/parameters/instruction",
+    "mode": "instruction",
+    "source": ".visible .func (.param .u32 result) f(.param .align 8 .u64 .ptr .global .align 8 arg, .param .b8 array[16]) .noreturn;"
+  },
+  {
+    "name": "variant/parameters/module",
+    "mode": "module",
+    "source": ".visible .func (.param .u32 result) f(.param .align 8 .u64 .ptr .global .align 8 arg, .param .b8 array[16]) .noreturn;"
+  },
+  {
+    "name": "variant/nested-initializers/instruction",
+    "mode": "instruction",
+    "source": ".global .u32 values[][2] = {{1,2},{3,4}}; .global .texref t = {channel_data_type=1, channel_order=2};"
+  },
+  {
+    "name": "variant/nested-initializers/module",
+    "mode": "module",
+    "source": ".global .u32 values[][2] = {{1,2},{3,4}}; .global .texref t = {channel_data_type=1, channel_order=2};"
+  },
+  {"name":"generated-malformed-operand/00","mode":"instruction","source":"call;","provenance":"ce29d74:submod/cst/bison/test_ptx_generated_parser.cpp:PreservesMalformedOperandDiagnostics"},
+  {"name":"generated-malformed-operand/01","mode":"instruction","source":"call ();"},
+  {"name":"generated-malformed-operand/02","mode":"instruction","source":"call (r,x), t, ();"},
+  {"name":"generated-malformed-operand/03","mode":"instruction","source":"call (r) t, ();"},
+  {"name":"generated-malformed-operand/04","mode":"instruction","source":"call (r), t;"},
+  {"name":"generated-malformed-operand/05","mode":"instruction","source":"call (r), t, set;"},
+  {"name":"generated-malformed-operand/06","mode":"instruction","source":"call t, (1,);"},
+  {"name":"generated-malformed-operand/07","mode":"instruction","source":"call t, (,);"},
+  {"name":"generated-malformed-operand/08","mode":"instruction","source":"call t, (r x);"},
+  {"name":"generated-malformed-operand/09","mode":"instruction","source":"call t, (r),;"},
+  {"name":"generated-malformed-operand/10","mode":"instruction","source":"bra a,b;"},
+  {"name":"generated-malformed-operand/11","mode":"instruction","source":"brx.idx;"},
+  {"name":"generated-malformed-operand/12","mode":"instruction","source":"brx.idx r,;"},
+  {"name":"generated-malformed-operand/13","mode":"instruction","source":"brx.idx r,s,t;"},
+  {"name":"generated-malformed-operand/14","mode":"instruction","source":"foo {};"},
+  {"name":"generated-malformed-operand/15","mode":"instruction","source":"foo {r,};"},
+  {"name":"generated-malformed-operand/16","mode":"instruction","source":"foo {r x};"},
+  {"name":"generated-malformed-operand/17","mode":"instruction","source":"foo [a;"},
+  {"name":"generated-malformed-operand/18","mode":"instruction","source":"foo [a,];"},
+  {"name":"generated-malformed-operand/19","mode":"instruction","source":"foo !1.0;"},
+  {"name":"generated-malformed-operand/20","mode":"instruction","source":"foo !;"},
+  {"name":"generated-malformed-operand/21","mode":"instruction","source":"foo -;"},
+  {"name":"generated-malformed-operand/22","mode":"instruction","source":"foo r|;"},
+  {"name":"generated-malformed-operand/23","mode":"instruction","source":"foo -r.;"},
+  {"name":"frozen-negative/call-return-arity","mode":"instruction","source":"call (%r0, %r1), helper, ();","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/cst/test/test_ptx_cst_parser.cpp:RejectsMalformedCallAndBranchLayouts"},
+  {"name":"frozen-negative/call-missing-inputs","mode":"instruction","source":"call (%r0), helper;"},
+  {"name":"frozen-negative/call-trailing-comma","mode":"instruction","source":"call helper, (%r0,);"},
+  {"name":"frozen-negative/branch-extra-target","mode":"instruction","source":"bra first, second;"},
+  {"name":"frozen-negative/indexed-extra-target","mode":"instruction","source":"brx.idx %r0, targets, extra;"},
+  {"name":"frozen-negative/prototype-return-arity","mode":"module","source":".func f() { p: .callprototype (.reg .u32 a, .reg .u32 b) _; }","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/cst/test/test_ptx_cst_parser.cpp:RejectsMalformedAndNonlocalCallPrototypeGrammar"},
+  {"name":"frozen-negative/prototype-sink","mode":"module","source":".func f() { p: .callprototype value; }"},
+  {"name":"frozen-negative/prototype-no-label","mode":"module","source":".func f() { .callprototype _; }"},
+  {"name":"frozen-negative/prototype-module","mode":"module","source":"outside: .callprototype _;"},
+  {"name":"frozen-negative/calltargets-empty","mode":"module","source":".func f() { list: .calltargets; }","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/cst/test/test_ptx_cst_parser.cpp:RejectsMalformedAndNonlocalCallTargetsGrammar"},
+  {"name":"frozen-negative/calltargets-comma","mode":"module","source":".func f() { list: .calltargets first,; }"},
+  {"name":"frozen-negative/calltargets-no-label","mode":"module","source":".func f() { .calltargets first; }"},
+  {"name":"frozen-negative/calltargets-module","mode":"module","source":"outside: .calltargets first;"},
+  {"name":"frozen-negative/branchtargets-empty","mode":"module","source":".func f() { table: .branchtargets; }","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/cst/test/test_ptx_cst_parser.cpp:RejectsMalformedAndNonlocalBranchTargetsGrammar"},
+  {"name":"frozen-negative/branchtargets-comma","mode":"module","source":".func f() { table: .branchtargets L1,; }"},
+  {"name":"frozen-negative/branchtargets-count","mode":"module","source":".func f() { table: .branchtargets N<>; }"},
+  {"name":"frozen-negative/branchtargets-close","mode":"module","source":".func f() { table: .branchtargets N<5; }"},
+  {"name":"frozen-negative/branchtargets-no-label","mode":"module","source":".func f() { .branchtargets L1; }"},
+  {"name":"frozen-negative/branchtargets-module","mode":"module","source":"outside: .branchtargets L1;"},
+  {"name":"frozen-negative/initializer-reg","mode":"module","source":".reg .u32 value = 1;","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/cst/test/test_ptx_cst_parser.cpp:RejectsInitializersInUnsupportedDeclarations"},
+  {"name":"frozen-negative/initializer-extern","mode":"module","source":".extern .global .u32 value = 1;"},
+  {"name":"frozen-negative/parameterized-array","mode":"module","source":".global .u32 values<2>[4];"},
+  {"name":"frozen-negative/parameterized-initializer","mode":"module","source":".reg .u32 values<2> = 1;"},
+  {"name":"frozen-negative/attribute-managed-arity","mode":"module","source":".global .attribute(.managed(1, 2)) .u32 x;","provenance":"2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4:submod/syntax/test/test_ptx_syntax_ast_parser.cpp:RejectsMalformedM11DeclarationSyntax"},
+  {"name":"frozen-negative/attribute-unified-arity","mode":"module","source":".global .attribute(.unified(1)) .u32 x;"},
+  {"name":"frozen-negative/entry-noreturn","mode":"module","source":".entry kernel() .noreturn {}"},
+  {"name":"frozen-negative/abi-count","mode":"module","source":".func f() .abi_preserve;"},
+  {"name":"recovery/completed-directive-before-unsupported","mode":"module","source":".target sm_80 .unknown 64; .entry survivor(){ret;}","provenance":"Minimized deterministic fuzz/20261012/65: completed predecessor must reduce before unsupported lookahead"},
+  {"name":"recovery/completed-label-before-unsupported","mode":"module","source":".func f(){label: .unknown value; ret;}","provenance":"Minimized deterministic fuzz/20261012/7: label is retained before an unsupported body item"},
+  {"name":"recovery/completed-version-before-unsupported","mode":"module","source":".version 9.3 .unknown 0;","provenance":"Minimized deterministic fuzz/20261012/79"},
+  {"name":"recovery/empty-body-before-visible-entry","mode":"module","source":".entry a(){ .visible .entry b(){ret;}"},
+  {"name":"recovery/nested-before-entry","mode":"module","source":".entry a(){ { { ret; .entry b(){ret;}"},
+  {"name":"recovery/nested-before-module-directive","mode":"module","source":".entry a(){ { { ret; .version 9.3 .entry b(){ret;}"},
+  {"name":"recovery/nested-before-eof","mode":"module","source":".entry a(){ { { ret;"},
+  {"name":"recovery/empty-nested-before-eof","mode":"module","source":".entry a(){ { {"},
+  {"name":"recovery/body-valid-neighbors","mode":"module","source":".entry a(){ld.weak.global.u32 %r,[address]; .reg .u32 %s; .pragma \"body\"; .loc 1 2 3; {ret;} ret;}"},
+  {"name":"recovery/missing-semicolon-before-entry","mode":"module","source":".entry a(){mov.u32 %r,1 .entry b(){ret;}"},
+  {"name":"recovery/missing-semicolon-before-body-declaration","mode":"module","source":".entry a(){mov.u32 %r,1 .reg .u32 %s; ret;}"},
+  {"name":"recovery/raw-section-boundaries","mode":"module","source":".section .debug_info { { .entry .global .pragma } .b8 0; } .entry a(){ret;}"},
+  {"name":"supported-boundary/parameter-vector","mode":"module","source":".func f(.param .v2 .u32 p);","provenance":"Explicit malformed boundaries of the fixed reference grammar; no additional PTX features"},
+  {"name":"supported-boundary/parameter-state","mode":"module","source":".func f(.global .u32 p);"},
+  {"name":"supported-boundary/parameter-type","mode":"module","source":".func f(.param p);"},
+  {"name":"supported-boundary/parameter-name","mode":"module","source":".func f(.param .u32);"},
+  {"name":"supported-boundary/parameter-align","mode":"module","source":".func f(.param .align bad .u32 p);"},
+  {"name":"supported-boundary/parameter-pointer-state","mode":"module","source":".func f(.param .u64 .ptr .reg p);"},
+  {"name":"supported-boundary/parameter-pointer-repeat","mode":"module","source":".func f(.param .u64 .ptr .ptr p);"},
+  {"name":"supported-boundary/parameter-pointer-align","mode":"module","source":".func f(.param .u64 .ptr .align bad p);"},
+  {"name":"supported-boundary/parameter-multidimensional","mode":"module","source":".func f(.param .u32 p[2][3]);"},
+  {"name":"supported-boundary/parameter-trailing-comma","mode":"module","source":".func f(.param .u32 p,);"},
+  {"name":"supported-boundary/parameterized-count","mode":"module","source":".reg .u32 r<>;"},
+  {"name":"supported-boundary/parameterized-close","mode":"module","source":".reg .u32 r<2;"},
+  {"name":"supported-boundary/variable-align","mode":"module","source":".global .align bad .u32 x;"},
+  {"name":"supported-boundary/variable-name","mode":"module","source":".global .u32;"},
+  {"name":"supported-boundary/attribute-unknown","mode":"module","source":".global .attribute(.unknown) .u32 x;"},
+  {"name":"supported-boundary/attribute-empty","mode":"module","source":".global .attribute() .u32 x;"},
+  {"name":"supported-boundary/resource-missing","mode":"module","source":".entry k() .maxnreg {}"},
+  {"name":"supported-boundary/resource-one-value","mode":"module","source":".entry k() .maxnreg 1,2 {}"},
+  {"name":"supported-boundary/resource-four-values","mode":"module","source":".entry k() .maxntid 1,2,3,4 {}"},
+  {"name":"supported-boundary/resource-trailing-comma","mode":"module","source":".entry k() .maxntid 1, {}"},
+  {"name":"supported-boundary/resource-explicit-value","mode":"module","source":".entry k() .explicitcluster 1 {}"},
+  {"name":"supported-boundary/resource-body","mode":"module","source":".entry k(){.maxnreg 1;ret;}"},
+  {"name":"supported-boundary/pragma-string","mode":"module","source":".pragma 1;"},
+  {"name":"supported-boundary/pragma-comma","mode":"module","source":".pragma \"a\",;"},
+  {"name":"supported-boundary/pragma-semicolon","mode":"module","source":".pragma \"a\" .entry k(){ret;}"},
+  {"name":"supported-boundary/alias-comma","mode":"module","source":".alias a b;"},
+  {"name":"supported-boundary/file-name","mode":"module","source":".file 1 bad;"},
+  {"name":"supported-boundary/loc-line","mode":"module","source":".entry k(){.loc 1 bad 3;ret;}"},
+  {"name":"supported-boundary/language-value","mode":"module","source":".func f() .language bad;"},
+  {"name":"supported-boundary/section-opening","mode":"module","source":".section .debug_info bad; .entry k(){ret;}"},
+  {"name":"supported-boundary/entry-leading-parameter-comma","mode":"module","source":".entry k(, .param .u32 x) { ret; }","provenance":"Independent review regression: nullable list recursion must not admit a leading comma"},
+  {"name":"supported-boundary/func-leading-return-comma","mode":"module","source":".func (, .reg .u32 r) f();"},
+  {"name":"supported-boundary/func-leading-input-comma","mode":"module","source":".func f(, .param .u32 x);"},
+  {"name":"supported-boundary/prototype-leading-return-comma","mode":"module","source":".func f(){ p: .callprototype (, .reg .u32 r) _; ret; }"},
+  {"name":"supported-boundary/prototype-leading-input-comma","mode":"module","source":".func f(){ p: .callprototype _ (, .param .u32 x); ret; }"},
+  {"name":"supported-boundary/loc-function-keyword","mode":"module","source":".entry k(){.loc 1 2 3, bogus f, inlined_at 1 2 3; ret;}","provenance":"Independent review: prefix validation must stop at the offending member/keyword"},
+  {"name":"supported-boundary/loc-inline-keyword","mode":"module","source":".entry k(){.loc 1 2 3, function_name f, bogus 1 2 3; ret;}"},
+  {"name":"supported-boundary/loc-label","mode":"module","source":".entry k(){.loc 1 2 3, function_name 1, inlined_at 1 2 3; ret;}"},
+  {"name":"supported-boundary/loc-offset","mode":"module","source":".entry k(){.loc 1 2 3, function_name f+1.0, inlined_at 1 2 3; ret;}"},
+  {"name":"supported-boundary/loc-inline-column","mode":"module","source":".entry k(){.loc 1 2 3, function_name f, inlined_at 1 2 -1; ret;}"},
+  {"name":"supported-boundary/loc-column","mode":"module","source":".entry k(){.loc 1 2; ret;}"},
+  {"name":"supported-boundary/loc-inline-file","mode":"module","source":".entry k(){.loc 1 2 3, function_name f, inlined_at; ret;}"},
+  {"name":"supported-boundary/attribute-unknown-payload","mode":"module","source":".global .attribute(.unknown(1,2)) .u32 x; .entry good(){ret;}"},
+  {"name":"supported-boundary/attribute-extra-value","mode":"module","source":".global .attribute(.unified(1,2,3)) .u32 x; .entry good(){ret;}"},
+  {"name":"supported-boundary/calltargets-missing-semicolon","mode":"module","source":".entry k(){t: .calltargets f .reg .u32 r; ret;}"},
+  {"name":"supported-boundary/branchtargets-missing-semicolon","mode":"module","source":".entry k(){t: .branchtargets a .reg .u32 r; ret;}"},
+  {"name":"supported-boundary/prototype-abi-count","mode":"module","source":".entry k(){p: .callprototype _ .abi_preserve; ret;}"},
+{"name": "expanded-regression/fuzz/20261013/61", "mode": "module", "source_hex": "2e76657273696f6e20392e7b330a2e74617267657420736d5f38300a2e61616464726573735f73697a652036340a2e676c6f62616c202e753332206164256e616d65203d20313b0a2e656e747279206b2829207b0a20202e726567202e75322025723c323e3b0a20206d6f762e753332202572302c20257225746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/305", "mode": "module", "source_hex": "2e76657273696f6e2039330a2e74617267657420736d5f38300a2e616464726573735f73697a6520340a2e676c6f62616c202e75333220626164256e616d65203d20313b0a2e656e747279206b2829207b0a20202e726567202e7533322025723c323e3b0a20206d6f762e753332202572302c25722572746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/313", "mode": "module", "source_hex": "300a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e7061616d202e6238206172675b31325d29202e6e6f726575726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20322b3b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/438", "mode": "instruction", "source_hex": "765b2e140977df"},
+{"name": "expanded-regression/fuzz/20261013/444", "mode": "instruction", "source_hex": "7079675becd5a467"},
+{"name": "expanded-regression/fuzz/20261013/454", "mode": "instruction", "source_hex": "6164645b2e753332202572312c20253f72322c202533"},
+{"name": "expanded-regression/fuzz/20261013/478", "mode": "instruction", "source_hex": "6f762e677536342072642c20415b69096478202d28312b32295d3b"},
+{"name": "expanded-regression/fuzz/20261013/553", "mode": "module", "source_hex": "2e76657273696f6e2039330a2e74617267657420736d5f38300a2e616464726573735f73697a652036340a2e676c6f62616c202e75333220626164256e616d65203d20313b0a2e656e747279206b2829207b0a20202e726567202e7533322025723c323e3b0a20206d6f762e753332202572302c20257225746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/593", "mode": "module", "source_hex": "0a2e66756e632064697370617463326828207b0a2020746100626c653a202e627261636874617267657473204c312c204e3c353e2c204c313b0a0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/617", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f74797020282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e753220726573756c7429205f20282e3a706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f70727b657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/634", "mode": "instruction", "source_hex": "6c66642e7765616b2e753332202572302c205b250d64305d"},
+{"name": "expanded-regression/fuzz/20261013/659", "mode": "module", "source_hex": "0a322e66756e63202b64697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f3b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a2020756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/713", "mode": "module", "source_hex": "0a2e66756e635d2063616c6c65722829207b0a20206f6e653a202e63616c6c746172676574732066697273743b0a20206d616e793a202e63616c6c74617267657473203166697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a202e63616c6c746172676574732066697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/725", "mode": "module", "source_hex": "0a2e66756e632c2064697370617463682829207b0a20207461626c653a202e6272616e63687461726765667473204c312c204e3c353e2d204c313b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/776", "mode": "instruction", "source_hex": "6d6f762e756c34202572642c2041315b69647820662d2028312b32295d"},
+{"name": "expanded-regression/fuzz/20261013/919", "mode": "module", "source_hex": "2e76657273696f6e20392e72330a2e74617267657420736d5f38300a2e6e616464726573735f73697a652036340a2e676c6f62616c202e753332206264256e616d65203d20313b0a2e656e747279206b2829207b0a20202e726567202e7533322025723c323e3b0a20206d6f762e753332202572302c20257225746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/931", "mode": "module", "source_hex": "2e76657273696f6e20392e330a2e74617267657420736d5f38300a2e616464726573735f73697a6520360a2e676c6f62616c202e753332206261256e616d65203d20313b0a2e656e747279206b28207b0a20202e726567202e7533322025723c323e3b0a20206d6f762e753332202572302c20257225746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/991", "mode": "module", "source_hex": "2f2f206c656164696e6720636f6d6d656e740a2e76657273696f6e20392e330a2e66696c6520302022726f756e645f747269702e707478220a2e73656374696f6e20282e64656275675f696e666f207b202f2a20726177207061796c6f6164202a2f202e623820303b207d3b0a2e707261676d6120226d6f64756c65223b0a2e656e747279206b65726e656c2829202e707261676d612022686561646572223b202e6d61786e726567203332207b0a20202e707261676d612022626f6479223b0a20207b206164642e7533322072302c202572312c202572323b207d0a7d0a2f2f207472616c696e6720636f6d6d656e740a202020"},
+{"name": "expanded-regression/fuzz/20261013/1001", "mode": "module", "source_hex": "0a2e66756e6320646973706163682829207b0a202074616c65202e6272616e636874617267657473204c65312c204e3c353e2c204c313b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/1009", "mode": "module", "source_hex": "2f2f206c656164696e6720636f6d6d656e740a2e76657273696f6e20392e330a2e66696c652065302022726f756e645f747269702e707478220a2e73656374696e202e64656275675f696e666f207b202f2a20726177207061796c6f6164202a2f202e623820303b203b0a2e707261676d6120226d6f64756c65223b0a2e656e747279206b65726e656c2829202e09707261676d612022686561646572223b202e6d61786e726567203332207b0a20202e707261676d612022626479223b0a20207b206164642e753332202572302c202572312c202572323b207d0a7d0a2f2f20747261696c696e6720636f6d6d656e740a202020"},
+{"name": "expanded-regression/fuzz/20261013/1457", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e75330a32205f293b0a202072657475727b6e733a202e63616c206c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f747970657f20282e706172616d202e75333220726573756c7429205f20282e7061726d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/1915", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065203b0a2020696e707574733a202e63616c6c70726f746f7479706e65205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a20282066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e753332726573756c29205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/1987", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a62202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e753332207273756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/2719", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e70ff7574733a202e63616c6c70726f746f74797065205f20282e70336172616d202e753332205f293b0a20207265747572733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d"},
+{"name": "expanded-regression/fuzz/20261013/2786", "mode": "instruction", "source_hex": "632e6173796e632e62756c6b70726566657463682e74656e736f722e32642e4c322e676c6f62616c205b0a74656e736f725f6d61702b36342c31207b2572302c202d327d5d3b"},
+{"name": "expanded-regression/fuzz/20261013/2807", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f74797065202e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f70726573657276652030202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/2843", "mode": "module", "source_hex": "2f2f206c656164696e6720636f6d6d656e740a2e76657273696f6e20392e330a2e66696c6520302022726f756e645f747269702e707478222c0a2e73656374696f6e202e64656275675f696e666f207b202f2a20726177207061796c6f6164202a2f202e623820303b207d3b0a2e707261676d6120226d6f64756c65223b0a2e656e747279206b65726e656c2829202e707261676d612022686561646572223b202e6d61786e726567203332207b0a20202e707261676d612022626f6479223b0a20207b206164642e753332202572302c202572312c202572323b207d0a7d0a2f2f20747261696c696e6720636f6d6d656e740a202020"},
+{"name": "expanded-regression/fuzz/20261013/2899", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c706f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e75333220635f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a2e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e623820617220675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/3034", "mode": "instruction", "source_hex": "4025706320616c6c2e756e69202825726573756c7429622c202563616c206c65652c2028256172672c202d34292c2062746172676574733b"},
+{"name": "expanded-regression/fuzz/20261013/3281", "mode": "module", "source_hex": "0a2e66756e632063616c6c652829207b0a20206f6e65202e63616c6c746172676574732066697273743b0a20206d20616e793a202e63616c6c746172676574732066697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a202e63616c6c746172676574732066697273742c2066697273743b0a327d0a"},
+{"name": "expanded-regression/fuzz/20261013/3371", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f74666f747970652020282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f74797065282e726567202e753332207265756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e623820617220675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/3665", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c202e63616c6c70726f746f7479706520282e706172616d202e752f333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e20ff2e6162695f707265736572766520203130202e6162695f70726573657276655f6f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/3901", "mode": "module", "source_hex": "0a2e66756e632063616c6c65722829207b0a206f6e65202e63616c6c746172676574732066697273743b0a20206d616e793a202e63616c6c746172676574732066697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a202e63616c6c746172676574732066697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/3967", "mode": "module", "source_hex": "2f2f206c656164696e67203b636f6d6d656e740a2e76657273696f6e20392e20330a2e66696c652074302022726f756e645f747269702e707478220a2e73656374696f6e202e64656275675f696e666f207b202f2a20726177207061796c6f6164202a2f202e623820303b207d3b0a2e707261676d6120226d6f64756c65223b0a2e656e747279206b65726e656c29202e707261676d612022686561646572223b202e6d61786e726567203332207b0a20202e707261676d612022626f6479223b0a20207b206164642e753332202572302c202572312c202572323b207d0a207d0a2f2f20747261696c696e6720636f6d6d656e740a202020"},
+{"name": "expanded-regression/fuzz/20261013/4163", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20207461626c65202e6272616e636874617267657473204c316e2c204e3c353e2c204c313b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/4478", "mode": "instruction", "source_hex": "6d6f762e623332205b2572642d342c5d2c20253072322e782c20397b2572332c20317d3b00"},
+{"name": "expanded-regression/fuzz/20261013/4765", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f202e706172616d202e753332205f293b0a202072657475726e73202e63616c6c70726f746f7479706520282e726567202e333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/5003", "mode": "module", "source_hex": "2e76657273696f6e20392e330a2e74617267657420736d5f38300a2e616464726573735f73697a65206736340a2e676c6f62616c202e75333220626164256e616d65203d20313b0a2e656e747279206b2829200a20202e72652067202e7533322025723c323e3b650a20206d6f2e753332202572302c20257225746d703b0a20207265743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/5015", "mode": "module", "source_hex": "0a2e66756e632063616c65722829207b0a20206f6e653a202e63616c6c746172676574732066697273743b0a20206d616e793a20722e63616c6c746172676574732066697273742c207365636f6e642c2074686972640a20206475706c696374653a202e63616c206c746172676574732066697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/5438", "mode": "instruction", "source_hex": "20202f2f206c6561640a4021257020616464202f2a2074797065202a2f202e753332205b25726431202f2a206f7020742a2f202b2031362c207b2572312c202d327d202f2a207461696c202a2f203b0a2f2f206566"},
+{"name": "expanded-regression/fuzz/20261013/5843", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e70617261202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f707265736572655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6157", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20207461626c65202e6272616e636874617267657473204c312c204e3c353e2c204c313b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6209", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c726f7474797065205f3b0a2020696e70757473202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c706f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6244", "mode": "instruction", "source_hex": "20202f2f206c6561640a4021257020616464202f2a2074797065202a2f202e753332205b25726431202f2a206f70202a2f202b2031362c207b2572312c202d327d202f2a207461696c202a2f203b0a2f2f20656f66"},
+{"name": "expanded-regression/fuzz/20261013/6292", "mode": "instruction", "source_hex": "20202f2f206c6561640a4021257020616464202f2a2074797065202a2f202e753332205b25726431202f2a206f70202a2f202b2031362c207b2572312c202d327d20202f2a207461696c202a2f203b2f2f20656f66"},
+{"name": "expanded-regression/fuzz/20261013/6334", "mode": "instruction", "source_hex": "63702e6173796e632e62756c6b2e70726566657463682e74656e736f722e32642e4c322e676f62616c205b74656e736f725f6d61702b3634382c20007b2572302c202d327d5d6c3b"},
+{"name": "expanded-regression/fuzz/20261013/6415", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b2020726574756e733a202e63616c6c70726f746f74797065206e282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c74292020282e706172616d202e6238206172675b313229202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6451", "mode": "module", "source_hex": "0a2e66756e632063616c6c65722829207b0a20206f6e653a202e63616c6c746172676574732066697273743b0a20206d616e793a6c202e63616c6c746172676574732066697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a202e63616c6c746172676574732066697273742c20667273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6545", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e75333220293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e7533322072657372756c7429203b0a202066756c6c3a202e6361616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f2a6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6707", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20207461626c65202e6272616e636874617267657473204c312c204e3c353e2c204c313b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/6784", "mode": "instruction", "source_hex": "63702e6173796e632e62756c6b2e70726566657463682e74656e736f722e32642e4c322e676c6f62616c205b74656e736f725f6d61702b36342c207b2572302c202d327d3b"},
+{"name": "expanded-regression/fuzz/20261013/6899", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a2e63616c6c70726f746f74797065205f3b0a2020696e707574733a2e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e753332207265732e756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/7943", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f747970652d205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e7061616d202e753332205f293b0a202072657475726e733a202e63616c5b6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e62382072675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/8098", "mode": "instruction", "source_hex": "6164647533322572312c2025322c202b2572"},
+{"name": "expanded-regression/fuzz/20261013/8287", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a202a206e6f5f617267733a202e636c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f09746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e62382061ff72675b31325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f7072657365797276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/8342", "mode": "instruction", "source_hex": "63702e6173796e632e62756c6b2e70726566657463682e6e74656e736f722e32642e4c322e676c6f62616c205b74656e736f725f6d2c61702b36342c207b2572302c202d327d5d3b"},
+{"name": "expanded-regression/fuzz/20261013/8431", "mode": "module", "source_hex": "0a2e66756e632063616c6c65722829207b0a20206f6e653a202e63616c6c746172676574732066697273743b0a20206d616e79202e63616c6c746172676574732066697273742c207365636f6e642074686972643b0a20206475706c69636174653a202e63616c6c7461726765747320697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/8594", "mode": "instruction", "source_hex": "63702e6173796e632e62756c6b2e70726566657463682e74656e736f72312e32642e4c322e676c6f62616c205b742c656e736f3a725f6d61702b36342c207b2572302c202d327d5d3b"},
+{"name": "expanded-regression/fuzz/20261013/8599", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c705d72296f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f74797065202a282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29202e6e72657475726e202e6162695f7072657365727665203130202e6162695fff70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/8756", "mode": "instruction", "source_hex": "20202f2f206c6561640a40212570206164640a202f2a20747970652a2f202e753332205b25726431202f2a206f70202a2f202b2031362c207b2572312c2d327d202f2a207461696c202a2f203b0a2f2f20656f66"},
+{"name": "expanded-regression/fuzz/20261013/8921", "mode": "module", "source_hex": "0a2e66756e632063616c6c65722829207b0a20206f6e653a74202e63616c6c746172676574732066697273743b0a20206d616e793a202e63616c6c746172676574732066697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a202e63616c6c746172676574732066697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/9185", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f6172673a202e63616c6c70726f746f74797065205f3b0a20206e707574733a202e63616c6c70726f746f74797065202e5f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d292e6e6f7265747572206e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/9197", "mode": "module", "source_hex": "0a2e66756e632063616c6c65722829207b0a20206f6e653a2b202e6763616c6c746172676574732066697273743b0a20206d616e793a202e63616c6c746172676574732066697273742c207365636f6e642c2074686972643b0a20206475706c69636174653a79202e63616c6c746172676574732066697273742c2066697273743b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261013/9821", "mode": "module", "source_hex": "0a2e66756e6320646973707b617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e7574733a202e63616c6c70726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429203b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b31325d29206e6f72657475726e202e6162695f72657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261014/1289", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e707574733a202e63616c6c7470726f746f74797065205f20282e706172616d202e753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a2020666c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b316e325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261014/2495", "mode": "module", "source_hex": "0a2e66756e632064697370617463682829207b0a20206e6f5f617267733a202e63616c6c70726f746f74797065205f3b0a2020696e7075743a202e63616c6c70726f746f74797065205f20282e706172616d20753332205f293b0a202072657475726e733a202e63616c6c70726f746f7479706520282e726567202e75333220726573756c7429205f3b0a202066756c6c3a202e63616c6c70726f746f7479706520282e706172616d202e75333220726573756c7429205f20282e706172616d202e6238206172675b3167325d29202e6e6f72657475726e202e6162695f7072657365727665203130202e6162695f70726573657276655f636f6e74726f6c20323b0a7d0a"},
+{"name": "expanded-regression/fuzz/20261014/6431", "mode": "module", "source_hex": "2f2f206c656164696e6720636f6d6d656e740a2e657273696f6e20392e332e66696c6520302022726f756e645f747269702e707478220a2e73656374696f6e202e64656275675f696e666f207b202f2a20726177207061796c6f6164202a2f202e623820303b207d3b0a2e707261676d6120226d6f64756c65223b0a2e656e747279206b65726e656c2829202e707261676d612022686561646572223b202e6d61786e726567202c3332207b0a20202e707f7261676d612022626f6479223b0a20207b206164642e753332202572302c202572312c202572323b207d0a7d0a2f2f20747261696c696e20636f6d6d656e740a202020"},
+{"name": "expanded-regression/directive-literal/0", "mode": "module", "source": ".file nope \"f\" .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/1", "mode": "module", "source": ".file 0 nope .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/2", "mode": "module", "source": ".file 0 \"f\", nope .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/3", "mode": "module", "source": ".file 0 \"f\", 12 nope .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/4", "mode": "module", "source": ".file 0 \"f\", 12, nope .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/5", "mode": "module", "source": ".file 1.2 \"f\" .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/6", "mode": "module", "source": ".file 0 \"f\", 1.2, 3 .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/7", "mode": "module", "source": ".file 0 \"f\", 1, 1.2 .entry good(){ret;}"},
+{"name": "expanded-regression/directive-literal/8", "mode": "module", "source": ".address_size 1.2 .entry good(){ret;}"},
+  {
+    "name": "target-classification/rejected-0-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus",
+    "provenance": "Accepted target syntax and consumed-identifier recovery from handwritten reference 7bb3db20e49c18e3963a066902b12ce84f7d37a4."
+  },
+  {
+    "name": "target-classification/rejected-0-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus;"
+  },
+  {
+    "name": "target-classification/rejected-0-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-0-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target bogus, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-1-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug"
+  },
+  {
+    "name": "target-classification/rejected-1-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug;"
+  },
+  {
+    "name": "target-classification/rejected-1-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-1-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target debug, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-2-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus"
+  },
+  {
+    "name": "target-classification/rejected-2-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus;"
+  },
+  {
+    "name": "target-classification/rejected-2-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-2-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, bogus, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-3-0",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90"
+  },
+  {
+    "name": "target-classification/rejected-3-1",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90;"
+  },
+  {
+    "name": "target-classification/rejected-3-2",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/rejected-3-3",
+    "mode": "module",
+    "source": ".version 9.3\n.target sm_80, sm_90, debug\n.address_size 64\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/valid-options",
+    "mode": "module",
+    "source": ".target sm_80, texmode_unified, texmode_independent, debug, map_f64_to_f32;"
+  },
+  {
+    "name": "target-classification/unknown-architecture",
+    "mode": "module",
+    "source": ".target sm_999"
+  },
+  {
+    "name": "target-classification/compute-architecture",
+    "mode": "module",
+    "source": ".target compute_80"
+  },
+  {
+    "name": "target-classification/calltargets-unrestricted",
+    "mode": "module",
+    "source": ".func f(){ list: .calltargets bogus, debug, sm_80; ret; }"
+  },
+  {
+    "name": "target-classification/missing-architecture",
+    "mode": "module",
+    "source": ".target\n.entry survivor(){ret;}"
+  },
+  {
+    "name": "target-classification/missing-option",
+    "mode": "module",
+    "source": ".target sm_80,\n.entry survivor(){ret;}"
+  }
+]

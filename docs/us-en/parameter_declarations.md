@@ -91,6 +91,17 @@ same-name body declarations have distinct identities. This is the sole owned
 parameter declaration table. Consumers select `ParameterDeclarationRole::EntryInput`
 to inspect entry header inputs in source order; other roles are not launch slots.
 
+Both `validateModule` overloads compare the ordered return and input signatures
+with binding formals in each function's `declaration_scope`. Scalar `.param`
+formals must match the corresponding declaration record's role, identity, type,
+shape, effective alignment, checked byte extent, and pointer properties. `.reg`
+formals rejoin their binding type and alignment without entering the parameter
+table. Opaque entry inputs keep their separate name-only records and their
+positions in the full input signature. Body-local records are validated separately
+and cannot become formals. Compatible prototypes and definitions share function
+identity but retain independent declaration scopes. Signature-only type mutations,
+including `.u32` to `.f64`, therefore fail even after source and AST destruction.
+
 The former `ResolvedFunction::entry_parameters` member and `ResolvedEntryParameter`
 type have been removed. This is a breaking C++ API change: consumers must migrate
 and rebuild, not merely rename the member. Use `scalar_type` instead of the old

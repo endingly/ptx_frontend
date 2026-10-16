@@ -18,7 +18,7 @@ reference documents maintained with the source.
 
 The reproducible local path uses CMake presets, Ninja, GCC/G++ or Clang, and the vcpkg
 manifest. Install CMake 3.28 or newer, Ninja, a C++23 compiler,
-Python 3.14 or newer, and Flex;
+Python 3.14 or newer, Flex, and Bison 3.8 or newer;
 initialize vcpkg and export its location before configuring.
 
 ```sh
@@ -33,6 +33,15 @@ cmake --install out/build/ci-linux-gcc-debug
 ```
 
 The installed prefix for this preset is `out/install/ci-linux-gcc-debug`.
+
+The supported source grammar is parsed by a generated Bison C++ parser using
+the existing lexer and lossless CST. Generated parser files stay private to the
+build; installed-library consumers do not need Bison or its generated headers.
+See the [parser design](docs/us-en/syntax_ast_design.md#generated-parser) and its
+[简体中文版本](docs/zh-han/syntax_ast_design.md#生成式-parser) for grammar scope,
+recovery, and parser ownership/reuse contracts. This does not expand PTX ISA
+coverage or imply a parser-performance guarantee.
+
 Compiled components are static by default. Configure with
 `-DBUILD_SHARED_LIBS=ON` to build shared components, or
 `-DBUILD_SHARED_LIBS=OFF` to select static components explicitly. Use separate

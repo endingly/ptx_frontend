@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
@@ -198,6 +199,105 @@ TEST(ModuleStrictInvariants,
   auto empty = *module;
   empty.storage_declarations.clear();
   expect_model_rejection(validateModule(empty));
+}
+
+/** One bound extern identity must retain the same ordered shape at every occurrence. */
+TEST(ModuleStrictInvariants,
+     ExternStorageOccurrencesRequireMatchingArrayShape) {
+  for (const auto shape : {"[2][3]", "[][2]"}) {
+    SCOPED_TRACE(shape);
+    const std::string declaration =
+        std::string{".extern .global .u32 data"} + shape + ";\n";
+    const std::string source =
+        ".version 9.3\n.target sm_80\n" + declaration + declaration;
+    const auto ast = parse_strict_fixture(source);
+    ASSERT_TRUE(ast);
+    const auto baseline = resolveModuleOnly(*ast);
+    ASSERT_TRUE(baseline);
+    ASSERT_EQ(baseline->storage_declarations.size(), 2u);
+    ASSERT_EQ(baseline->storage_declarations[0].symbol_id,
+              baseline->storage_declarations[1].symbol_id);
+    ASSERT_TRUE(validateModule(*ast, *baseline));
+    ASSERT_TRUE(validateModule(*baseline));
+    const std::function<void(ResolvedStorageDeclaration&)> mutations[] = {
+        [](auto& declaration) {
+          declaration.array_extents =
+              declaration.array_extents.front()
+                  ? std::vector<std::optional<uint64_t>>{3, 2}
+                  : std::vector<std::optional<uint64_t>>{std::nullopt, 3};
+        },
+        [](auto& declaration) {
+          declaration.array_extents =
+              declaration.array_extents.front()
+                  ? std::vector<std::optional<uint64_t>>{6}
+                  : std::vector<std::optional<uint64_t>>{std::nullopt, 1, 2};
+        },
+        [](auto& declaration) {
+          if (declaration.array_extents.front()) {
+            declaration.array_extents.front().reset();
+            declaration.byte_extent.reset();
+          } else {
+            declaration.array_extents.front() = 3;
+            declaration.byte_extent = 24;
+          }
+        },
+    };
+    for (const auto& mutate : mutations) {
+      for (size_t index = 0; index < baseline->storage_declarations.size();
+           ++index) {
+        SCOPED_TRACE(index);
+        auto module = *baseline;
+        mutate(module.storage_declarations[index]);
+        for (const auto policy :
+             {ModuleValidationPolicy::RequireCompleteContext,
+              ModuleValidationPolicy::AvailableContext}) {
+          expect_model_rejection(validateModule(*ast, module, policy));
+          expect_model_rejection(validateModule(module, policy));
+        }
+      }
+    }
+  }
+  const auto incompatible = parse_strict_fixture(
+      ".version 9.3\n.target sm_80\n.extern .global .u32 data[2][3];\n"
+      ".extern .global .u32 data[3][2];\n");
+  ASSERT_TRUE(incompatible);
+  EXPECT_FALSE(resolveModuleOnly(*incompatible));
+}
+
+/** Compatible extern occurrences retain alignment spelling, unsizedness, and scope. */
+TEST(ModuleStrictInvariants, CompatibleExternStorageShapesRemainValid) {
+  const auto ast = parse_strict_fixture(R"ptx(
+.version 9.3
+.target sm_80
+.extern .global .u32 data[2][3];
+.extern .global .align 4 .u32 data[2][3];
+.extern .global .u32 unsized[][2];
+.extern .global .u32 unsized[][2];
+.extern .shared .b8 dynamic[];
+.extern .shared .b8 dynamic[];
+.entry kernel() {
+  .local .u32 data[3][2];
+  { .local .u32 data[6]; }
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast);
+  const auto module = resolveModuleOnly(*ast);
+  ASSERT_TRUE(module);
+  ASSERT_EQ(module->storage_declarations.size(), 8u);
+  EXPECT_EQ(module->storage_declarations[0].symbol_id,
+            module->storage_declarations[1].symbol_id);
+  EXPECT_NE(module->storage_declarations[0].explicit_alignment,
+            module->storage_declarations[1].explicit_alignment);
+  EXPECT_NE(module->storage_declarations[0].symbol_id,
+            module->storage_declarations[6].symbol_id);
+  EXPECT_NE(module->storage_declarations[6].symbol_id,
+            module->storage_declarations[7].symbol_id);
+  for (const auto policy : {ModuleValidationPolicy::RequireCompleteContext,
+                            ModuleValidationPolicy::AvailableContext}) {
+    EXPECT_TRUE(validateModule(*ast, *module, policy));
+    EXPECT_TRUE(validateModule(*module, policy));
+  }
 }
 
 /** Scalar storage mutations cannot produce a false complete-context certificate. */

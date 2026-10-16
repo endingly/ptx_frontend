@@ -2392,6 +2392,20 @@ void check_storage_declarations(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, symbol.declaration_range,
           "Owned storage list contains an unmatched declaration occurrence.");
+    if (found != records.end()) {
+      // Compare normalized shapes, preserving occurrence-specific alignment spelling.
+      const ResolvedStorageDeclaration* first_scalar = nullptr;
+      for (const auto* record : found->second) {
+        if (!std::holds_alternative<ScalarType>(record->element_type))
+          continue;
+        if (!first_scalar)
+          first_scalar = record;
+        else if (record->array_extents != first_scalar->array_extents)
+          append_model_mismatch(diagnostics, record->range,
+                                "Scalar storage redeclarations disagree on "
+                                "normalized array shape.");
+      }
+    }
   }
   for (const auto& declaration : module.storage_declarations) {
     const auto* symbol = owned_symbol(module, declaration.symbol_id);

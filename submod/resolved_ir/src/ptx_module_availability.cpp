@@ -2481,12 +2481,10 @@ void check_storage_declarations(const ResolvedModule& module,
   }
 }
 
-/** Validate owned opaque declarations without consulting the source AST. */
+/** Validate owned opaque declarations under the caller-selected source version. */
 void check_opaque_storage(const ResolvedModule& module,
+                          std::optional<checker::PtxVersion> version,
                           checker::CheckDiagnostics& diagnostics) {
-  const auto version = module.header.regions.empty()
-                           ? std::optional<checker::PtxVersion>{}
-                           : module.header.regions.front().version;
   for (const auto& symbol : module.symbols.symbols()) {
     if (symbol.scope != module.symbols.moduleScope() ||
         symbol.kind != binding::SymbolKind::Variable || !symbol.type ||
@@ -3302,7 +3300,10 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
   check_storage_declarations(module, diagnostics);
-  check_opaque_storage(module, diagnostics);
+  const auto storage_version = module.header.regions.empty()
+                                   ? std::optional<checker::PtxVersion>{}
+                                   : module.header.regions.front().version;
+  check_opaque_storage(module, storage_version, diagnostics);
   check_call_tables(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
@@ -3466,7 +3467,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     check_header_order(detail::module_header_order(ast), ast.range,
                        diagnostics);
   check_storage_declarations(module, diagnostics);
-  check_opaque_storage(module, diagnostics);
+  check_opaque_storage(module, version, diagnostics);
   for (const auto& function : module.functions) {
     check_signature(function.contract.signature, function.range, diagnostics);
     check_function_parameters(module, function, diagnostics);

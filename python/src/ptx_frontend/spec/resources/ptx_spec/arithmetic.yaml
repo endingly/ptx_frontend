@@ -1239,8 +1239,8 @@ instructions:
 
   - opcode: mad
     section: "9.7.3.7"
-    doc: "Explicit-rounding single- and double-precision multiply-add."
-    syntax: "mad.rnd{.ftz}{.sat}.f32 | mad.rnd.f64 dst, src1, src2, src3"
+    doc: "Implicit legacy single-precision and explicit-rounding floating multiply-add."
+    syntax: "mad{.ftz}{.sat}.f32 | mad.rnd{.ftz}{.sat}.f32 | mad.rnd.f64 dst, src1, src2, src3"
     operands: $ternary_arith
     variants:
       - name: mad_rn_f32
@@ -1280,6 +1280,22 @@ instructions:
         examples:
           - {ptx: "mad.rp.f64 %d0, %d1, %d2, 1.0;", valid: true}
 
+      - name: mad_implicit_f32
+        availability:
+          any_of:
+            - {ptx: "1.0", target: sm_10}
+            - {ptx: "1.0", target: sm_11}
+            - {ptx: "1.0", target: sm_12}
+            - {ptx: "1.0", target: sm_13}
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
+          - {name: sat, kind: flag, presence: optional, default: false, token: .sat}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+        examples:
+          - {ptx: "mad.f32 %f0, %f1, %f2, %f3;", valid: true}
+          - {ptx: "mad.ftz.sat.f32 %f0, %f1, 1.0, %f3;", valid: true}
+
   - opcode: div
     section: "9.7.3.8"
     doc: "Explicit approximate, full-range, and rounded single- and double-precision division."
@@ -1299,7 +1315,12 @@ instructions:
           - {ptx: "div.rn.ftz.f32 %f0, %f1, 1.0;", valid: true}
 
       - name: div_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
           - {name: approx, kind: flag, presence: absent}
@@ -1384,7 +1405,12 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples: [{ptx: "rcp.rz.ftz.f32 %f0, 1.0;", valid: true}]
       - name: rcp_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: approx, kind: flag, presence: absent}
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}
@@ -1439,7 +1465,12 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
         examples: [{ptx: "sqrt.rz.ftz.f32 %f0, 1.0;", valid: true}]
       - name: sqrt_rn_f64
-        availability: {ptx: "1.4", sm: 13}
+        availability:
+          any_of:
+            - {ptx: "1.4", sm: 13}
+            - {ptx: "1.4", target: sm_10, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_11, map_f64_to_f32: true}
+            - {ptx: "1.4", target: sm_12, map_f64_to_f32: true}
         modifiers:
           - {name: approx, kind: flag, presence: absent}
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: fixed, value: rn}

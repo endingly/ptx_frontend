@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -281,6 +282,64 @@ TEST(ResolvedIrChecker, EvaluatesBoundedAvailabilityDnf) {
   ASSERT_EQ(rejected.error().size(), 1u);
   EXPECT_EQ(rejected.error().front().kind,
             CheckDiagnosticKind::UnsupportedAvailability);
+}
+
+/** The programmer option is conjunctive and cannot substitute exact identity. */
+TEST(ResolvedIrChecker, EvaluatesMapOptionWithExactLegacyTargets) {
+  constexpr AvailabilityDescriptor availability{
+      .any_of = {{{.minimum_ptx_version = {1, 4},
+                   .minimum_sm_version = 10,
+                   .has_exact_target = true,
+                   .exact_target_architecture = {10},
+                   .requires_map_f64_to_f32 = true}}},
+      .any_of_count = 1,
+  };
+  TargetInfo target{.ptx_version = {1, 4},
+                    .sm_version = 10,
+                    .identity = base::parse_target_identity("sm_10"),
+                    .map_f64_to_f32 = true};
+  EXPECT_TRUE(is_available(availability, target));
+  target.map_f64_to_f32 = false;
+  EXPECT_FALSE(is_available(availability, target));
+  target.map_f64_to_f32 = true;
+  target.identity.reset();
+  EXPECT_FALSE(is_available(availability, target));
+  for (const auto spelling : {"sm_10a", "sm_10f", "sm_11", "sm_13"}) {
+    target.identity = base::parse_target_identity(spelling);
+    EXPECT_FALSE(is_available(availability, target)) << spelling;
+  }
+  target.identity = base::parse_target_identity("sm_10");
+  target.ptx_version = {1, 3};
+  EXPECT_FALSE(is_available(availability, target));
+  target.ptx_version = {1, 4};
+  target.sm_version = 9;
+  EXPECT_FALSE(is_available(availability, target));
+  target.sm_version = 10;
+  auto no_option_requirement = availability;
+  no_option_requirement.any_of[0].requires_map_f64_to_f32 = false;
+  target.map_f64_to_f32 = false;
+  EXPECT_TRUE(is_available(no_option_requirement, target));
+  for (const auto number : {10u, 11u, 12u}) {
+    auto exact_requirement = availability;
+    exact_requirement.any_of[0].exact_target_architecture = {number};
+    target.sm_version = number;
+    target.identity = base::TargetIdentity{
+        {number}, base::TargetFlavor::Generic, "sm_" + std::to_string(number)};
+    target.map_f64_to_f32 = true;
+    EXPECT_TRUE(is_available(exact_requirement, target));
+    target.map_f64_to_f32 = false;
+    EXPECT_FALSE(is_available(exact_requirement, target));
+  }
+  target.sm_version = 10;
+  constexpr AvailabilityDescriptor legacy{.minimum_ptx_version = {1, 4},
+                                          .minimum_sm_version = 13};
+  EXPECT_FALSE(is_available(legacy, target));
+  target.map_f64_to_f32 = true;
+  EXPECT_FALSE(is_available(legacy, target));
+  target.sm_version = 13;
+  EXPECT_TRUE(is_available(legacy, target));
+  EXPECT_FALSE(AvailabilityClause{}.requires_map_f64_to_f32);
+  EXPECT_FALSE(TargetInfo{}.map_f64_to_f32);
 }
 
 TEST(ResolvedIrChecker, RejectsDnfAtEveryAvailabilityCheckerEntrypoint) {

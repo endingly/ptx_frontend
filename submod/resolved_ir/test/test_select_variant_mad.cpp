@@ -72,7 +72,8 @@ TEST(ResolveMad, SelectsIntegerAndExplicitFloatingVariants) {
 TEST(ResolveMad, RejectsIllegalModifiers) {
   for (const auto source :
        {"mad.u32 %r0, %r1, %r2, %r3;", "mad.lo.sat.s32 %r0, %r1, %r2, %r3;",
-        "mad.f32 %f0, %f1, %f2, %f3;", "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
+        "mad.ftz.rn.f32 %f0, %f1, %f2, %f3;",
+        "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
         "mad.rn.sat.f64 %d0, %d1, %d2, %d3;",
         "mad.lo.cc.s16 %r0, %r1, %r2, %r3;"}) {
     const auto selected =

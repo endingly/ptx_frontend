@@ -827,22 +827,26 @@ operand_patterns:
     - {name: src, kind: reg, role: src, access: read, type: u32, register_width: equal_or_wider}
 
   shfl_sync_with_predicate:
-    - name: dst
+    - &shfl_paired_destination
+      name: dst
       kind: shfl_dest
       role: dst
       access: write
       type: b32
-    - name: src
+    - &shfl_source
+      name: src
       kind: reg
       role: src
       access: read
       type: b32
-    - name: lane
+    - &shfl_lane
+      name: lane
       kind: reg_or_imm
       role: src
       access: read
       type: u32
-    - name: clamp
+    - &shfl_clamp
+      name: clamp
       kind: reg_or_imm
       role: src
       access: read
@@ -854,7 +858,8 @@ operand_patterns:
       type: u32
 
   shfl_sync_without_predicate:
-    - name: dst
+    - &shfl_bare_destination
+      name: dst
       kind: reg
       role: dst
       access: write
@@ -880,6 +885,18 @@ operand_patterns:
       role: src
       access: read
       type: u32
+
+  shfl_with_predicate:
+    - *shfl_paired_destination
+    - *shfl_source
+    - *shfl_lane
+    - *shfl_clamp
+
+  shfl_without_predicate:
+    - *shfl_bare_destination
+    - *shfl_source
+    - *shfl_lane
+    - *shfl_clamp
 
   ld_vector:
     - name: dst
@@ -3910,8 +3927,8 @@ instructions:
 
   - opcode: shfl
     section: "9.7.9.6"
-    doc: "Synchronized b32 shuffle with optional predicate output."
-    syntax: "shfl.sync.{up|down|bfly|idx}.b32 dst[|predicate], src, lane, clamp, membermask"
+    doc: "Synchronized and legacy b32 shuffle with optional predicate output."
+    syntax: "shfl.sync.{up|down|bfly|idx}.b32 dst[|predicate], src, lane, clamp, membermask; shfl.{up|down|bfly|idx}.b32 dst[|predicate], src, lane, clamp"
     variants:
       - name: shfl_sync_idx_b32
         availability: {ptx: "6.0", sm: 30}
@@ -3976,6 +3993,56 @@ instructions:
         examples:
           - ptx: "shfl.sync.bfly.b32 %b0, %b1, 1, 31, 0xffffffff;"
             valid: true
+
+      - name: shfl_up_b32
+        availability: &shfl_legacy_availability
+          any_of:
+            - {ptx: "3.0", target: sm_30}
+            - {ptx: "3.0", target: sm_50}
+            - {ptx: "3.0", target: sm_52}
+        modifiers:
+          - {name: sync, kind: flag, presence: absent, token: .sync}
+          - {name: up, kind: flag, presence: fixed, value: true, token: .up}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operand_layouts: &shfl_legacy_layouts
+          - {name: without_predicate, operands: $shfl_without_predicate}
+          - {name: with_predicate, operands: $shfl_with_predicate}
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - {ptx: "shfl.up.b32 %b0, %b1, 1, 31;", valid: true}
+
+      - name: shfl_down_b32
+        availability: *shfl_legacy_availability
+        modifiers:
+          - {name: sync, kind: flag, presence: absent, token: .sync}
+          - {name: down, kind: flag, presence: fixed, value: true, token: .down}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operand_layouts: *shfl_legacy_layouts
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - {ptx: "shfl.down.b32 %b0|%p0, %b1, 1, 31;", valid: true}
+
+      - name: shfl_bfly_b32
+        availability: *shfl_legacy_availability
+        modifiers:
+          - {name: sync, kind: flag, presence: absent, token: .sync}
+          - {name: bfly, kind: flag, presence: fixed, value: true, token: .bfly}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operand_layouts: *shfl_legacy_layouts
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - {ptx: "shfl.bfly.b32 %b0, %b1, 1, 31;", valid: true}
+
+      - name: shfl_idx_b32
+        availability: *shfl_legacy_availability
+        modifiers:
+          - {name: sync, kind: flag, presence: absent, token: .sync}
+          - {name: idx, kind: flag, presence: fixed, value: true, token: .idx}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operand_layouts: *shfl_legacy_layouts
+        rule: parallel_sync_and_communication.shfl
+        examples:
+          - {ptx: "shfl.idx.b32 %b0|%p0, %b1, 0, 31;", valid: true}
 
   - opcode: prefetch
     section: "9.7.9.16"

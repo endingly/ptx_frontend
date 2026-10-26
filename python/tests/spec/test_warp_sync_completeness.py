@@ -21,7 +21,8 @@ class WarpSyncCompletenessTest(unittest.TestCase):
 
     def test_shuffle_modes_and_destination_layouts(self) -> None:
         """Expose all four modes with bare and paired destinations."""
-        variants = self.instructions["shfl"].variants
+        variants = tuple(variant for variant in self.instructions["shfl"].variants
+                         if variant.name.startswith("shfl_sync_"))
         self.assertEqual(
             {variant.name for variant in variants},
             {f"shfl_sync_{mode}_b32" for mode in ("up", "down", "bfly", "idx")},
@@ -48,9 +49,10 @@ class WarpSyncCompletenessTest(unittest.TestCase):
         self.assertEqual(
             {variant.name for variant in variants},
             {"vote_sync_ballot_b32", "vote_sync_all_pred",
-             "vote_sync_any_pred", "vote_sync_uni_pred"},
+             "vote_sync_any_pred", "vote_sync_uni_pred", "vote_all_pred",
+             "vote_any_pred", "vote_uni_pred", "vote_ballot_b32"},
         )
-        for variant in variants:
+        for variant in variants[:4]:
             self.assertEqual(variant.availability, {"ptx": "6.0", "sm": 30})
             operands = variant.operand_layouts[0].operands
             self.assertEqual(operands[1].kind, OperandKind.PREDICATE_OR_NOT)

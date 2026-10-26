@@ -745,6 +745,7 @@ bool is_available(const AvailabilityDescriptor& availability,
       const AvailabilityClause& clause = availability.any_of[index];
       if (target.ptx_version < clause.minimum_ptx_version ||
           target.sm_version < clause.minimum_sm_version ||
+          (clause.requires_map_f64_to_f32 && !target.map_f64_to_f32) ||
           (clause.has_exact_target &&
            (!target.identity ||
             target.identity->architecture != clause.exact_target_architecture ||

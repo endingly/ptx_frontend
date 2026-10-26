@@ -424,6 +424,7 @@ def _emit_operand_binding_descriptor(
               .parameter_constraint = {{
                   .direction = {cpp_value(CppDomain.PARAMETER_DIRECTIONS, binding.parameter_constraint.direction, backend=backend)},
                   .function_availability = {emit_availability(availability)},
+                  .entry_only = {str(binding.parameter_constraint.entry_only).lower()},
               }},"""
     expected_tensor_mode = (
         "\n              .expected_tensor_mode = TensorAccessMode::"

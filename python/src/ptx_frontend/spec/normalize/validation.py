@@ -49,10 +49,17 @@ def _validate_modifier_state_space_expressions(
     for layout in layouts:
         for operand in layout.operands:
             expression = operand.state_space_expression
-            if operand.parameter_constraint is not None and expression is None:
+            if (
+                operand.parameter_constraint is not None
+                and expression is None
+                and not (
+                    operand.parameter_constraint.entry_only
+                    and any(value.value == "param" for value in operand.state_space_values)
+                )
+            ):
                 raise ValueError(
                     f"operand {operand.name!r}: parameter constraint requires a "
-                    "state-space modifier expression"
+                    "state-space modifier expression or an entry_only param domain"
                 )
             if expression is None:
                 continue

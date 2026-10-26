@@ -741,9 +741,12 @@ struct AddressStateSpaceDescriptor {
   MemoryStateSpace state_space = MemoryStateSpace::Invalid;
   AvailabilityDescriptor availability;
 };
+/** Direction and contextual constraints on a known parameter address. */
 struct ParameterAddressConstraint {
   ParameterDirection direction = ParameterDirection::None;
   AvailabilityDescriptor function_availability;
+  /** Require entry-input provenance; false preserves other parameter consumers. */
+  bool entry_only = false;
 };
 /** Address-space policy selected by an immutable generated operand binding. */
 enum class AddressSymbolResolutionPolicy : uint8_t {

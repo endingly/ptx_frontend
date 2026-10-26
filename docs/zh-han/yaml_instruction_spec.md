@@ -285,7 +285,7 @@ explicit `.param` address 可增加窄化的方向与 function-context constrain
     function_availability: {ptx: "2.0", sm: 20}
 ```
 
-`parameter` 只能用于 `kind: addr`，并且必须伴随 state-space modifier expression；该 active
+`parameter` 只能用于 `kind: addr`，通常伴随 state-space modifier expression；该 active
 modifier 必须允许 `param`（或 fixed 为 `param`），normalizer 会拒绝脱离 `.param`、因而不会
 生效的 constraint。resolved descriptor 保存 typed input/return direction 与 availability。
 runtime 选择 `.param` 后，公共 checker 优先拒绝已知的错误 parameter direction；否则在
@@ -294,6 +294,13 @@ constraint 期望 return 或 address 已知属于 device function 时应用 func
 device function 中要求 PTX 2.0 / SM 20；store 的 return constraint 在所有 context 都要求
 该 target。未知 identity 不猜测 direction；已知非 `.param` symbol 只由原有 exact
 state-space mismatch 处理。
+
+也可为包含 `param` 的静态 state-space allowlist 设置 `parameter.entry_only: true`
+和 `direction: input`。即使没有 state-space modifier，checker 也会对已知参数地址
+应用该约束，同时要求 input direction 和 entry-function provenance。该 Boolean 默认为
+false，保留既有显式 `.param` consumer 的行为；非 Boolean 值、entry-only 加 return
+direction，以及脱离有效空间域的静态约束均被拒绝。无状态空间后缀的
+`prefetch.tensormap` 使用此窄契约。未知 standalone 或寄存器地址来源仍保持未知并可接受。
 
 scalar string 或 list 可定义静态 effective-address allowlist。list item 可以是普通
 state-space string，也可以是带 `value`/`availability` 的 object：

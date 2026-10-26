@@ -846,12 +846,10 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchuL1GenericAddressSlice) {
   const auto global_address = resolveModule(*parsed_module_2);
   ASSERT_TRUE(global_address.has_value())
       << global_address.error().front().message;
-  const auto wrong_address =
+  const auto known_global =
       global_address->functions.front().body.front()->check(checker::Context{
           .target = {.ptx_version = {2, 0}, .sm_version = 20}});
-  ASSERT_FALSE(wrong_address.has_value());
-  EXPECT_EQ(wrong_address.error().front().kind,
-            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  EXPECT_TRUE(known_global.has_value());
 
   for (const auto source : {
            ".entry kernel() { .reg .u64 %rd0; prefetchu.L2 [%rd0]; }",

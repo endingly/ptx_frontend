@@ -148,13 +148,15 @@ def _normalize_operand_state_space_values(
 def _normalize_operand_parameter_constraint(
     raw_parameter: object,
 ) -> OperandParameterConstraint | None:
-    """Normalize the narrow direction rule for explicit .param addresses."""
+    """Normalize direction and optional entry-input provenance for .param."""
 
     if raw_parameter is None:
         return None
     if not isinstance(raw_parameter, dict):
         raise TypeError("operand parameter constraint must be an object")
-    if set(raw_parameter) != {"direction", "function_availability"}:
+    if not {"direction", "function_availability"} <= set(raw_parameter) or (
+        set(raw_parameter) - {"direction", "function_availability", "entry_only"}
+    ):
         raise ValueError(
             "operand parameter constraint must contain direction and "
             "function_availability"
@@ -162,10 +164,16 @@ def _normalize_operand_parameter_constraint(
     direction = raw_parameter["direction"]
     if direction not in {"input", "return"}:
         raise ValueError(f"unsupported parameter direction {direction!r}")
+    entry_only = raw_parameter.get("entry_only", False)
+    if not isinstance(entry_only, bool):
+        raise TypeError("parameter entry_only must be a Boolean")
+    if entry_only and direction != "input":
+        raise ValueError("parameter entry_only requires input direction")
     availability = raw_parameter["function_availability"]
     if not isinstance(availability, dict):
         raise TypeError("parameter function_availability must be an object")
     return OperandParameterConstraint(
         direction=direction,
         function_availability=normalize_availability(availability),
+        entry_only=entry_only,
     )

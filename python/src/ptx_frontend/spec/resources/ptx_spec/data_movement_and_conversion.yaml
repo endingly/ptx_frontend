@@ -18541,6 +18541,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18662,6 +18672,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18785,6 +18805,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18908,6 +18938,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19027,6 +19067,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19146,6 +19196,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19672,6 +19732,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19791,6 +19861,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19998,6 +20078,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20144,6 +20234,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20370,6 +20470,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20573,6 +20683,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20719,6 +20839,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20945,6 +21075,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21148,6 +21288,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21294,6 +21444,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21520,6 +21680,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21629,6 +21799,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21820,6 +22000,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22061,6 +22251,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22376,6 +22576,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22548,6 +22758,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22880,6 +23100,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23193,6 +23423,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23365,6 +23605,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23697,6 +23947,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24010,6 +24270,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24182,6 +24452,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24514,6 +24794,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24899,6 +25189,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25298,6 +25598,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25470,6 +25780,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25886,6 +26206,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26283,6 +26613,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26455,6 +26795,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26871,6 +27221,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27268,6 +27628,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27440,6 +27810,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27856,6 +28236,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28325,6 +28715,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28634,6 +29034,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28802,6 +29212,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29134,6 +29554,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29443,6 +29873,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29611,6 +30051,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29943,6 +30393,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30252,6 +30712,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30420,6 +30890,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30752,6 +31232,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces

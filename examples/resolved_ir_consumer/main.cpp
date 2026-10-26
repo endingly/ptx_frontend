@@ -328,8 +328,73 @@ bool checkInstalledMappedF64() {
   return true;
 }
 
+/** Validate independent source-option and entry-parameter metadata together. */
+bool checkInstalledCombinedSourceStates() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const bool mapped : {false, true}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source = std::string{".version 9.3\n.target sm_90"} +
+                                 (mapped ? ", map_f64_to_f32" : "") + R"ptx(
+.address_size 64
+.global .u32 memory;
+.entry kernel(.param .u32 input_map) {
+  .reg .u32 %r;
+  ld.global.L2::cache_hint.u32 %r, [memory];
+  multimem.ld_reduce.gpu.add.u32 %r, [memory];
+  prefetch.tensormap [input_map];
+}
+)ptx";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    const auto strict = [&] {
+      return ir::validateModule(
+          *owned, ir::ModuleValidationPolicy::RequireCompleteContext);
+    };
+    auto& region = owned->header.regions.back();
+    const auto& body = owned->functions.front().body;
+    const auto& load =
+        dynamic_cast<const ir::LdGlobalU32L2CacheHint&>(*body[0]);
+    const auto& reduction =
+        dynamic_cast<const ir::MultimemLdReduceIntegerAddScalarDefaultWeak&>(
+            *body[1]);
+    if (!strict() || region.map_f64_to_f32 != mapped || load.cache_policy ||
+        reduction.semantics.value != ir::MemoryConsistency::Omitted ||
+        !reduction.semantics.locs.empty() ||
+        reduction.scope.value != ir::MemoryScope::Gpu ||
+        reduction.scope.locs.empty())
+      return false;
+    region.map_f64_to_f32 = !mapped;
+    if (strict())
+      return false;
+    region.map_f64_to_f32 = mapped;
+    auto& hint = dynamic_cast<ir::PrefetchGenericTensormap&>(*body[2]);
+    auto& parameter = std::get<ir::ResolvedSymbolRef>(hint.address.value.base);
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Device;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Device;
+    if (strict())
+      return false;
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Entry;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Entry;
+    if (!strict())
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledCombinedSourceStates())
+    return 1;
   if (!checkInstalledLegacyShuffle())
     return 1;
   if (!checkInstalledLegacyVote())

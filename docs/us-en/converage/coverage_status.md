@@ -1,35 +1,39 @@
-# Current coverage and evidence boundaries
+# Historical coverage baseline and evidence boundaries
 
 The technical entry point is the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki).
 The [reference index](../index.md) preserves detailed design and instruction-family
-contracts alongside source. This reconciliation describes revision
-`2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4`; documentation changes do not extend
-implementation coverage.
+contracts alongside source. This page preserves the historical reconciliation at
+revision `2bd78d605f7fc545c11b77f42e9cd5bc7fe376a4`. The inventory counts and
+six-gap table below describe that snapshot. For the current implementation
+boundary, consult the detailed family references, public contracts and tests;
+documentation changes do not extend implementation coverage.
 
-## ISA scope
+## Historical ISA inventory
 
 The fixed normative baseline is [CUDA 13.3 / PTX ISA 9.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html).
-The source-model audit of all 14 instruction YAML files found 137 modeled opcode
-roots and 5,275 variants: all 136 official reserved roots appear, plus `fabric`.
+The source-model audit at that revision, covering all 14 instruction YAML files,
+found 137 modeled opcode roots and 5,275 variants: all 136 official reserved
+roots appear, plus `fabric`.
 These counts establish inventory presence only. They do not prove every legal
 modifier, operand layout, provenance case, availability profile, or runtime
 behavior.
 
-Current models go beyond the historical seed slices: scalar arithmetic,
+At that revision, models extended beyond the earlier seed slices: scalar arithmetic,
 conversion, memory and synchronization, warp matrix/WMMA and WGMMA, TMA,
 Tensor Memory/TCGEN05 dense/sparse/WS MMA, multimem, Fabric/CFT, texture,
-surface, stack and video have explicit source contracts. Consult their family
+surface, stack and video had explicit source contracts. Consult their family
 references and tests for the exact accepted boundary.
 
-## Confirmed source-model gaps
+## Source-model gaps recorded at the baseline
 
-[Issue #280](https://github.com/endingly/ptx_frontend/issues/280) tracks these
-remaining groups against the fixed manual. They are legal ISA cases missing from
-the current model, not newly accepted forms:
+[Issue #280](https://github.com/endingly/ptx_frontend/issues/280) tracks the groups
+recorded below against the fixed manual. This historical table records legal ISA
+cases missing from the pinned snapshot; current support is defined by the
+detailed family contracts and tests, and issue merge status is separate.
 
-| Gap | Current boundary | Follow-up |
+| Baseline gap | Boundary at the pinned revision | Tracking issue |
 | --- | --- | --- |
-| LD/LDNC/ST cache hint | `L2::cache_hint` currently requires a final policy operand; the ISA permits omission. | [#281](https://github.com/endingly/ptx_frontend/issues/281) |
+| LD/LDNC/ST cache hint | At the baseline, `L2::cache_hint` requires a final policy operand; the ISA permits omission. | [#281](https://github.com/endingly/ptx_frontend/issues/281) |
 | Multimem scope with default semantics | `ld_reduce`/`st` with explicit scope but omitted semantics (default weak) is missing. | [#282](https://github.com/endingly/ptx_frontend/issues/282) |
 | Legacy MAD | Implicit-rounding `mad.f32` on `sm_1x` is missing. | [#284](https://github.com/endingly/ptx_frontend/issues/284) |
 | Legacy vote | Unsynchronized `vote` is missing; synchronized forms have a separate contract. | [#285](https://github.com/endingly/ptx_frontend/issues/285) |

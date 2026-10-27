@@ -9,6 +9,12 @@ It is a frontend, not an assembler, code generator, or GPU executor. It does
 not claim complete PTX ISA coverage; consult the coverage documents for the
 supported surface and its exclusions.
 
+Ordinary `multimem.ld_reduce` and `multimem.st` accept optional
+`.cta/.cluster/.gpu/.sys` scope with omitted semantics or explicit `.weak`,
+preserving source omission in the public IR. See the
+[multimem contract](docs/us-en/converage/multimem_coverage.md)
+([简体中文](docs/zh-han/converage/multimem_coverage.md)) for ordering and target limits.
+
 Technical guides, architecture, coverage boundaries, and contribution details
 live in the [GitHub Wiki](https://github.com/endingly/ptx_frontend/wiki).
 The Wiki links the detailed [English](docs/us-en/) and [简体中文](docs/zh-han/)

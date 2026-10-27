@@ -95,8 +95,8 @@ These are compiler observations, not GPU execution or runtime width/sign rules.
 ## Current validation limits
 
 The entry point contracts below describe modeled checks, not exhaustive PTX
-validation. Header/target, storage and ABI follow-ups are recorded in
-[current coverage](converage/coverage_status.md). Complete source context is distinct
+validation. Header/target, storage and ABI checks and their remaining boundaries
+are recorded in [current coverage](converage/coverage_status.md). Complete source context is distinct
 from completeness of the validator; runtime behavior remains outside this layer.
 
 ## Status and scope
@@ -240,6 +240,28 @@ source region. This is separate from choosing a deployment target for lowering.
 The explicit validation catalog includes historical `sm_13` and `sm_20` with no modern
 capabilities, allowing the PTX 6.0 `sm_20`/`sm_30` declaration boundary to be
 checked consistently; arbitrary numeric target spellings remain unrecognized.
+
+`RequireCompleteContext` also requires an initial `.version`, then `.target`,
+then optional `.address_size`, before other module items. A version or address
+size cannot appear later; subsequent `.target` directives still open valid source
+regions. Header-only modules use the same rule, and an empty module lacks complete
+context. `ResolvedModuleHeader::source_order` owns typed traversal events so this
+check remains possible after source and AST destruction. Missing or inconsistent
+order metadata cannot certify complete context. `AvailableContext` and
+`resolveModuleOnly()` preserve fragment and out-of-order-header compatibility.
+The AST overload checks the supplied AST's order when validating a replacement
+source configuration.
+
+Every `.target` item is classified: its first item must be an architecture
+spelling, and later items may be `texmode_unified`, `texmode_independent`, `debug`,
+or `map_f64_to_f32`. Unknown options and additional architecture items are
+rejected during parsing and by both validators. Lexically valid unrecognized
+targets, including `compute_` spellings, remain parseable and produce
+`UnknownTarget` at validation; the profile catalog does not expand. Texture-mode
+selection is checked for repetition and module conflicts. `debug` and
+`map_f64_to_f32` are retained options; this contract adds neither DWARF checks nor
+floating-point instruction conversion. These source forms follow the archived
+[PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target).
 
 `ResolvedFunction::declaration_scope` identifies a declaration occurrence:
 a prototype and definition may share a `SymbolId` but have different scopes.
@@ -672,6 +694,20 @@ provenance metadata, not a claim that PTX lacks an effective hardware default:
 the ISA still makes omitted `ld` behave as `.ca` and omitted `st` behave as
 `.wb`, while the IR preserves `Unspecified` so omitted source does not masquerade
 as an explicit modifier and does not trigger cache-value availability checks.
+
+For ordinary coherent `ld`, `ld.global.nc`, and `st`, `.L2::cache_hint` may
+appear with or without a trailing 64-bit register `cache_policy`. A policy
+without the hint remains invalid. The existing exact form classes and
+`InstructionKind` identities are unchanged: their original policy-present
+`default` layout remains index 0, and `without_policy` selects index 1.
+The generated public `cache_policy` member is now
+`std::optional<WithLocs<ResolvedRegisterRef>>`; consumers access a present
+policy through `cache_policy->value`. The fixed `cache_hint` field remains
+true for both layouts. Both retain the same payload, address, modifier,
+PTX-version, and target restrictions, including modern-vector gates.
+The installed example in `examples/memory_cache_hint_consumer` exercises both
+layouts for scalar/vector coherent loads, noncoherent loads, and stores after
+source text and AST destruction.
 
 Memory consistency is a generated cross-modifier descriptor, not a Cartesian
 set of `ld/st` variants. `MemoryConsistency::Omitted` (empty `locs`) remains

@@ -19,6 +19,15 @@ register 与 call parameter 不进入存储列表。
 symbol identity，但保留各自的声明记录。既有 linkage 与 multiple-definition 检查保持有效；
 external declaration 后出现同名 plain definition 会被拒绝。
 
+两个 `validateModule` overload 都把每条记录重新关联到 binding declaration occurrence，
+并要求 storage list 完整，包括兼容 extern 的每次声明。
+`SymbolTable::declarationOccurrences()` 以只读 span 暴露这些 owned occurrence。
+Validation 检查 lexical owner、state space、linkage、declaration kind、scalar type、
+vector width、正数 array shape、checked byte extent、alignment 和 parameterized count。
+External 未定长首维必须没有 byte extent；dynamic-shared 标志须与 external shared
+声明一致。销毁 AST 后，清空列表或改为零字节、非法 alignment、无关 identity 仍会被拒绝。
+Owned shape 检查内部一致性；binding 不保存第二份 array dimension，也不重建源码文本。
+
 | 字段 | 契约 |
 | --- | --- |
 | `element_type`、`vector_width` | typed scalar 或明确的 opaque object；vector lane 与 array dimension 分开 |

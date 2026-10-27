@@ -1,3 +1,4 @@
+#include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 
 #include <algorithm>
@@ -192,7 +193,7 @@ PtxCstParser::TokenId PtxCstParser::peek() {
 
 /** Preserve a true second token for initializer-name disambiguation. */
 PtxCstParser::TokenId PtxCstParser::peekNext() {
-  peek();
+  (void)peek();
   if (!buffered_next_) {
     tokens_.push_back(lexer_.consume());
     buffered_next_ = static_cast<TokenId>(tokens_.size() - 1);
@@ -2218,12 +2219,22 @@ PtxCstParser::parseModuleDirective() {
       auto target = expect(TokenKind::Ident, "target architecture");
       if (!target)
         return std::unexpected(target.error());
+      if (base::classify_target_directive_item(token(*target).text) !=
+          base::TargetDirectiveItemKind::Architecture)
+        return std::unexpected(CstParseDiagnostic{
+            token(*target).range, "expected target architecture spelling"});
       arguments.push_back(*target);
       while (token(peek()).kind == TokenKind::Comma) {
         separators.push_back(consume());
         auto option = expect(TokenKind::Ident, "target option");
         if (!option)
           return std::unexpected(option.error());
+        const auto kind =
+            base::classify_target_directive_item(token(*option).text);
+        if (kind == base::TargetDirectiveItemKind::Invalid ||
+            kind == base::TargetDirectiveItemKind::Architecture)
+          return std::unexpected(CstParseDiagnostic{
+              token(*option).range, "expected modeled target option"});
         arguments.push_back(*option);
       }
       break;

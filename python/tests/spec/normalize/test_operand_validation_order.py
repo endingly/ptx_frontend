@@ -243,7 +243,7 @@ _CASES = (
         "operand 'x': address constraints are only valid for kind 'addr' or 'cluster_address'",
         {"kind": "addr"},
         ValueError,
-        "operand 'x': parameter constraint requires a state_space modifier expression",
+        "operand 'x': parameter constraint requires a state_space modifier expression or an entry_only param domain",
     ),
 )
 

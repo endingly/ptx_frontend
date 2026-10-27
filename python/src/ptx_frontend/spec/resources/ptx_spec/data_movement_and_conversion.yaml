@@ -536,7 +536,11 @@ operand_patterns:
       access: read
       # A known shared address is a no-op; unknown registers retain their
       # runtime provenance without claiming a cache effect.
-      state_space: [global, shared]
+      state_space: [global, shared, const, param]
+      parameter:
+        direction: input
+        function_availability: {ptx: "8.0", sm: 90}
+        entry_only: true
 
   prefetch_param_tensormap:
     - name: address
@@ -554,7 +558,7 @@ operand_patterns:
       kind: addr
       role: addr
       access: read
-      state_space: [generic]
+      state_space: [global, const, local, shared]
 
   createpolicy_fractional_with_fraction:
     - &createpolicy_dst

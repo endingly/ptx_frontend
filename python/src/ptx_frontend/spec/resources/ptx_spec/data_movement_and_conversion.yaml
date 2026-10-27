@@ -536,7 +536,11 @@ operand_patterns:
       access: read
       # A known shared address is a no-op; unknown registers retain their
       # runtime provenance without claiming a cache effect.
-      state_space: [global, shared]
+      state_space: [global, shared, const, param]
+      parameter:
+        direction: input
+        function_availability: {ptx: "8.0", sm: 90}
+        entry_only: true
 
   prefetch_param_tensormap:
     - name: address
@@ -554,7 +558,7 @@ operand_patterns:
       kind: addr
       role: addr
       access: read
-      state_space: [generic]
+      state_space: [global, const, local, shared]
 
   createpolicy_fractional_with_fraction:
     - &createpolicy_dst
@@ -3329,7 +3333,9 @@ instructions:
           - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, cache_hint, prefetch_size, vector, type]
           - [state_space, semantics, scope, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
           - [semantics, scope, state_space, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: &ld_explicit_vector_cache_policy_global_layouts
+          - {name: default, operands: $ld_explicit_vector_cache_policy_global}
+          - {name: without_policy, operands: $ld_explicit_vector_global}
         rule: data_movement.ld_explicit
         constraints: [*ld_global_consistency, *ld_vector_alignment, *ld_global_modern_vector]
 
@@ -3348,7 +3354,9 @@ instructions:
           - *memory_type_modifier
         modifier_order_aliases:
           - [semantics, scope, l2_eviction_priority, l1_eviction_priority, cache_hint, prefetch_size, vector, type]
-        operands: $ld_vector_cache_policy
+        operand_layouts: &ld_vector_cache_policy_layouts
+          - {name: default, operands: $ld_vector_cache_policy}
+          - {name: without_policy, operands: $ld_vector_global}
         rule: data_movement.ld_generic
         constraints: [*ld_generic_consistency, *ld_vector_alignment, *ld_generic_modern_vector]
 
@@ -3411,7 +3419,9 @@ instructions:
         modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, eviction_priority, cache_hint, prefetch_size, type]
-        operands: $ld_explicit_scalar_cache_policy
+        operand_layouts: &ld_explicit_scalar_cache_policy_layouts
+          - {name: default, operands: $ld_explicit_scalar_cache_policy}
+          - {name: without_policy, operands: $ld_explicit_scalar_global}
         rule: data_movement.ld_explicit
         constraints: [*ld_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -3422,7 +3432,7 @@ instructions:
         modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, eviction_priority, cache_hint, prefetch_size, vector, type]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: *ld_explicit_vector_cache_policy_global_layouts
         rule: data_movement.ld_explicit
         constraints:
           - *ld_global_consistency
@@ -3434,7 +3444,9 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
-        operands: $ld_scalar_cache_policy
+        operand_layouts: &ld_scalar_cache_policy_layouts
+          - {name: default, operands: $ld_scalar_cache_policy}
+          - {name: without_policy, operands: $ld_scalar_global}
         rule: data_movement.ld_generic
         constraints: [*ld_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -3443,7 +3455,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*ld_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
-        operands: $ld_vector_cache_policy
+        operand_layouts: *ld_vector_cache_policy_layouts
         rule: data_movement.ld_generic
         constraints:
           - *ld_generic_consistency
@@ -3464,7 +3476,7 @@ instructions:
           - *memory_type_modifier
         modifier_order_aliases:
           - [semantics, scope, state_space, cache, cache_hint, prefetch_size, type]
-        operands: $ld_explicit_scalar_cache_policy
+        operand_layouts: *ld_explicit_scalar_cache_policy_layouts
         rule: data_movement.ld_explicit
         constraints:
           - &ld_global_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
@@ -3477,7 +3489,7 @@ instructions:
         modifiers: [*global_state, *ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, cache, cache_hint, prefetch_size, vector, type]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: *ld_explicit_vector_cache_policy_global_layouts
         rule: data_movement.ld_explicit
         constraints:
           - *ld_global_cached_consistency
@@ -3489,7 +3501,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_type_modifier]
-        operands: $ld_scalar_cache_policy
+        operand_layouts: *ld_scalar_cache_policy_layouts
         rule: data_movement.ld_generic
         constraints:
           - &ld_generic_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type}
@@ -3500,7 +3512,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*ld_ordered_semantics, *memory_scope, *ld_cache_optional, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
-        operands: $ld_vector_cache_policy
+        operand_layouts: *ld_vector_cache_policy_layouts
         rule: data_movement.ld_generic
         constraints:
           - *ld_generic_cached_consistency
@@ -3734,7 +3746,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "8.8", sm: 100}
         modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_optional, *l2_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: *ld_explicit_vector_cache_policy_global_layouts
         rule: data_movement.ld_explicit
         constraints: [*ld_vector_alignment, *ld_global_modern_vector]
 
@@ -3760,7 +3772,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *cache_hint, *prefetch_optional, *memory_type_modifier]
-        operands: $ld_explicit_scalar_cache_policy
+        operand_layouts: *ld_explicit_scalar_cache_policy_layouts
         rule: data_movement.ld_explicit
         constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -3768,7 +3780,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*global_state, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *l1_required, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: *ld_explicit_vector_cache_policy_global_layouts
         rule: data_movement.ld_explicit
         constraints:
           - *ld_vector_alignment
@@ -3784,7 +3796,7 @@ instructions:
           - *cache_hint
           - *prefetch_optional
           - *memory_type_modifier
-        operands: $ld_explicit_scalar_cache_policy
+        operand_layouts: *ld_explicit_scalar_cache_policy_layouts
         rule: data_movement.ld_explicit
         constraints: [{kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -3792,7 +3804,7 @@ instructions:
         unified_address_access: read
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*global_state, *ld_nc_cache_optional, {name: nc, kind: flag, presence: fixed, value: true, token: .nc}, *cache_hint, *prefetch_optional, *memory_vector_modifier, *memory_type_modifier]
-        operands: $ld_explicit_vector_cache_policy_global
+        operand_layouts: *ld_explicit_vector_cache_policy_global_layouts
         rule: data_movement.ld_explicit
         constraints:
           - *ld_vector_alignment
@@ -17757,7 +17769,9 @@ instructions:
         modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_optional, *l2_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, l1_eviction_priority, l2_eviction_priority, cache_hint, vector, type]
-        operands: $st_explicit_vector_cache_policy_global
+        operand_layouts: &st_explicit_vector_cache_policy_global_layouts
+          - {name: default, operands: $st_explicit_vector_cache_policy_global}
+          - {name: without_policy, operands: $st_explicit_vector_global}
         rule: data_movement.st_explicit
         constraints: [*st_global_consistency, *st_vector_alignment, *st_global_modern_vector]
 
@@ -17765,7 +17779,9 @@ instructions:
         unified_address_access: write
         availability: {ptx: "8.8", sm: 100}
         modifiers: [*st_ordered_semantics, *memory_scope, *l1_optional, *l2_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
-        operands: $st_vector_cache_policy_global
+        operand_layouts: &st_vector_cache_policy_global_layouts
+          - {name: default, operands: $st_vector_cache_policy_global}
+          - {name: without_policy, operands: $st_vector_global}
         rule: data_movement.st_generic
         constraints: [*st_generic_consistency, *st_vector_alignment, *st_generic_modern_vector]
 
@@ -17817,7 +17833,9 @@ instructions:
         modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, eviction_priority, cache_hint, type]
-        operands: $st_explicit_scalar_cache_policy
+        operand_layouts: &st_explicit_scalar_cache_policy_layouts
+          - {name: default, operands: $st_explicit_scalar_cache_policy}
+          - {name: without_policy, operands: $st_explicit_scalar_global}
         rule: data_movement.st_explicit
         constraints: [*st_global_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -17827,7 +17845,7 @@ instructions:
         modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, eviction_priority, cache_hint, vector, type]
-        operands: $st_explicit_vector_cache_policy_global
+        operand_layouts: *st_explicit_vector_cache_policy_global_layouts
         rule: data_movement.st_explicit
         constraints:
           - *st_global_consistency
@@ -17838,7 +17856,9 @@ instructions:
         unified_address_access: write
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_type_modifier]
-        operands: $st_scalar_cache_policy_global
+        operand_layouts: &st_scalar_cache_policy_global_layouts
+          - {name: default, operands: $st_scalar_cache_policy_global}
+          - {name: without_policy, operands: $st_scalar_global}
         rule: data_movement.st_generic
         constraints: [*st_generic_consistency, {kind: address_alignment, address_operand: address, type_modifier: type}]
 
@@ -17846,7 +17866,7 @@ instructions:
         unified_address_access: write
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*st_ordered_semantics, *memory_scope, *l1_required, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
-        operands: $st_vector_cache_policy_global
+        operand_layouts: *st_vector_cache_policy_global_layouts
         rule: data_movement.st_generic
         constraints:
           - *st_generic_consistency
@@ -17865,7 +17885,7 @@ instructions:
           - *memory_type_modifier
         modifier_order_aliases:
           - [semantics, scope, state_space, cache, cache_hint, type]
-        operands: $st_explicit_scalar_cache_policy
+        operand_layouts: *st_explicit_scalar_cache_policy_layouts
         rule: data_movement.st_explicit
         constraints:
           - &st_global_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type, state_space_modifier: state_space}
@@ -17877,7 +17897,7 @@ instructions:
         modifiers: [*global_state, *st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
         modifier_order_aliases:
           - [semantics, scope, state_space, cache, cache_hint, vector, type]
-        operands: $st_explicit_vector_cache_policy_global
+        operand_layouts: *st_explicit_vector_cache_policy_global_layouts
         rule: data_movement.st_explicit
         constraints:
           - *st_global_cached_consistency
@@ -17888,7 +17908,7 @@ instructions:
         unified_address_access: write
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_type_modifier]
-        operands: $st_scalar_cache_policy_global
+        operand_layouts: *st_scalar_cache_policy_global_layouts
         rule: data_movement.st_generic
         constraints:
           - &st_generic_cached_consistency {kind: memory_consistency, semantics_modifier: semantics, scope_modifier: scope, cache_modifier: cache, address_operand: address, type_modifier: type}
@@ -17898,7 +17918,7 @@ instructions:
         unified_address_access: write
         availability: {ptx: "7.4", sm: 80}
         modifiers: [*st_ordered_semantics, *memory_scope, *st_cache_optional, *cache_hint, *memory_vector_modifier, *memory_type_modifier]
-        operands: $st_vector_cache_policy_global
+        operand_layouts: *st_vector_cache_policy_global_layouts
         rule: data_movement.st_generic
         constraints:
           - *st_generic_cached_consistency
@@ -18592,6 +18612,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18713,6 +18743,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18836,6 +18876,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -18959,6 +19009,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19078,6 +19138,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19197,6 +19267,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19723,6 +19803,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -19842,6 +19932,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20049,6 +20149,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20195,6 +20305,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20421,6 +20541,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20624,6 +20754,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20770,6 +20910,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -20996,6 +21146,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21199,6 +21359,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21345,6 +21515,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21571,6 +21751,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21680,6 +21870,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -21871,6 +22071,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22112,6 +22322,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22427,6 +22647,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22599,6 +22829,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -22931,6 +23171,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23244,6 +23494,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23416,6 +23676,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -23748,6 +24018,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24061,6 +24341,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24233,6 +24523,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24565,6 +24865,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -24950,6 +25260,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25349,6 +25669,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25521,6 +25851,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -25937,6 +26277,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26334,6 +26684,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26506,6 +26866,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -26922,6 +27292,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27319,6 +27699,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27491,6 +27881,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -27907,6 +28307,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28376,6 +28786,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28685,6 +29105,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -28853,6 +29283,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29185,6 +29625,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29494,6 +29944,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29662,6 +30122,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -29994,6 +30464,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30303,6 +30783,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30471,6 +30961,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces
@@ -30803,6 +31303,16 @@ instructions:
         values:
         - weak
         default: omitted
+      - name: scope
+        kind: scope
+        domain: memory_scopes
+        presence: optional
+        default: none
+        values:
+        - cta
+        - cluster
+        - gpu
+        - sys
       - name: state_space
         kind: state_space
         domain: memory_state_spaces

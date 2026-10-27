@@ -12,6 +12,7 @@ target_link_libraries(
     ptx_frontend_cst
     PUBLIC
     ptx_frontend::lexer
+    ptx_frontend::base
 )
 
 option(PTX_FRONTEND_BUILD_FUZZERS "Build the Clang lexer/CST fuzz target" OFF)

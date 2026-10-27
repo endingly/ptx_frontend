@@ -140,11 +140,8 @@ TEST(StCompleteness, ResolvesCacheControlFamilies) {
            "st.global.L2::evict_last.L1::evict_first.v8.u32 [%rd0], "
            "{%r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7};",
            "st.global.u32 [%rd0], %r0, %rd1;",
-           "st.global.L2::cache_hint.u32 [%rd0], %r0;",
            "st.volatile.global.L1::evict_first.u32 [%rd0], %r0;",
            "st.volatile.global.L2::cache_hint.u32 [%rd0], %r0, %rd1;",
-           "st.release.gpu.global.L1::evict_last.L2::cache_hint.u32 "
-           "[%rd0], %r0;",
        }) {
     SCOPED_TRACE(source);
     expect_store_rejected(source, target);

@@ -10,13 +10,23 @@ or symbol does **not** prove that the runtime address is a multimem mapping.
 
 | Source family | Checked operands and suffixes | PTX / target floor | Completion |
 | --- | --- | --- | --- |
-| `multimem.ld_reduce` | Register destination, global/generic multimem address; weak omission or explicit `.weak`, or `.relaxed/.acquire` with a scope; integer/float operation, type, vector, and optional accumulation precision according to the ISA tables | 8.1 / SM 90; `.acc::f32` 8.2; FP8 and `.acc::f16` 8.6 on the listed architecture families | None |
-| `multimem.st` | Global/generic multimem destination and scalar or register-vector source; weak omission or explicit `.weak`, or `.relaxed/.release` with a scope | 8.1 / SM 90; FP8 8.6 on the listed families | None |
+| `multimem.ld_reduce` | Register destination, global/generic multimem address; omitted semantics or explicit `.weak` with optional scope, or `.relaxed/.acquire` with required scope; integer/float operation, type, vector, and optional accumulation precision according to the ISA tables | 8.1 / SM 90; `.acc::f32` 8.2; FP8 and `.acc::f16` 8.6 on the listed architecture families | None |
+| `multimem.st` | Global/generic multimem destination and scalar or register-vector source; omitted semantics or explicit `.weak` with optional scope, or `.relaxed/.release` with required scope | 8.1 / SM 90; FP8 8.6 on the listed families | None |
 | `multimem.red` | Global/generic multimem destination and scalar or register-vector source; `.relaxed/.release` and `.cta/.cluster/.gpu/.sys` are independently optional | 8.1 / SM 90 | None |
 | `multimem.st.async` | Scalar source, mandatory `.release.{gpu,sys}`, optional `.global`; `b/u/s8–64`, `f32/f64` | 9.3 / SM 100 | None |
 | `multimem.red.async` | Scalar source, mandatory `.release.{gpu,sys}`, optional `.global`, `.add.{u32,s32,u64}` | 9.3 / SM 100 | None |
 | `multimem.cp.async.bulk` | `.global.shared::cta.bulk_group` only; 32-bit byte size, optional 16-bit `.cp_mask` operand; default weak, explicit `.weak` or `.relaxed.scope...b128` | 9.1 / SM 90; mask SM 100; explicit ordering 9.3 on SM 90a, SM 100f/110f family targets | Bulk group |
 | `multimem.cp.reduce.async.bulk` | Same direction and byte-size contract; operation/type table including required `.noftz` for half/bfloat add; optional paired `.relaxed.scope` | 9.1 / SM 90; explicit ordering 9.3 | Bulk group |
+
+For ordinary `ld_reduce` and `st`, scope is optional with omitted semantics
+(effective weak) or explicit `.weak`, and accepts `.cta/.cluster/.gpu/.sys`.
+It follows semantics and precedes state space, operation, and type; for example,
+`multimem.ld_reduce.gpu.add.u32` and `multimem.st.weak.sys.u32` are accepted.
+Every weak/default public form exposes `WithLocs<MemoryScope> scope`. Omitted
+semantics remains `MemoryConsistency::Omitted`, and omitted scope remains
+`MemoryScope::None`, both without source ranges. Explicit `.weak` and scope
+retain their values and source ranges. Strong ordering still requires an
+explicit scope; the `red`, release-async, and bulk-family defaults are separate.
 
 The ordinary integer reduction table restricts `add` to `u32/u64/s32`,
 `min/max` to `u32/u64/s32/s64`, and `and/or/xor` to `b32/b64`.
@@ -69,11 +79,3 @@ and [`test_multimem_coverage.cpp`](../../../submod/resolved_ir/test/test_multime
 [`multimem_consumer`](../../../examples/multimem_consumer/main.cpp) exercises
 installed public headers. These tests cover frontend acceptance and source
 lifetime; they do not execute multimem instructions on a GPU.
-
-## Known source-coverage gap
-
-The ISA allows an explicit scope with omitted semantics (default weak) for
-`multimem.ld_reduce` and `multimem.st`, for example
-`multimem.ld_reduce.gpu.add.u32` and `multimem.st.gpu.u32`. The current model
-lacks that qualifier combination; it is tracked by
-[#282](https://github.com/endingly/ptx_frontend/issues/282), not an ISA prohibition.

@@ -90,8 +90,6 @@ TEST(Multimem, SourceExclusionsAndTables) {
            "multimem.ld_reduce.min.f32 %f0, [mm];",
            "multimem.ld_reduce.add.acc::f16.f32 %f0, [mm];",
            "multimem.st.v8.f64 [mm], {%f0,%f1,%f2,%f3,%f4,%f5,%f6,%f7};",
-           "multimem.st.weak.gpu.b32 [mm], %b0;",
-           "multimem.ld_reduce.gpu.add.u32 %u0, [mm];",
            "multimem.ld_reduce.relaxed.add.u32 %u0, [mm];",
            "multimem.red.async.release.gpu.add.s64 [%addr], %u64;",
            "multimem.st.async.relaxed.gpu.u32 [%addr], %u0;",
@@ -277,6 +275,159 @@ TEST(Multimem, RedQualifierProvenance) {
   EXPECT_TRUE(semantics_only.scope.locs.empty());
   EXPECT_EQ(semantics_only.semantics.value, MemoryConsistency::Release);
   EXPECT_FALSE(semantics_only.semantics.locs.empty());
+}
+
+/** Every ordinary scope works with omitted, weak, and supported strong ordering. */
+TEST(Multimem, OrdinaryScopeAndSemanticsMatrix) {
+  for (std::string_view scope : {"cta", "cluster", "gpu", "sys"}) {
+    for (std::string_view semantics : {"", "weak.", "relaxed.", "acquire."}) {
+      const auto prefix =
+          "multimem.ld_reduce." + std::string(semantics) + std::string(scope);
+      SCOPED_TRACE(prefix);
+      EXPECT_TRUE(
+          accepts_multimem(multimem_source(prefix + ".add.u32 %u0, [mm];")));
+      EXPECT_TRUE(
+          accepts_multimem(multimem_source(prefix + ".and.b64 %u64, [mm];")));
+      EXPECT_TRUE(accepts_multimem(multimem_source(
+          prefix + ".global.add.acc::f32.v2.f16x2 {%b0,%b1}, [mm+16];")));
+      EXPECT_TRUE(accepts_multimem(multimem_source(
+          prefix +
+          ".max.acc::f16.v8.e4m3 {%b0,%b1,%b2,%b3,%b4,%b5,%b6,%b7}, [mm];")));
+    }
+    for (std::string_view semantics : {"", "weak.", "relaxed.", "release."}) {
+      const auto prefix =
+          "multimem.st." + std::string(semantics) + std::string(scope);
+      SCOPED_TRACE(prefix);
+      EXPECT_TRUE(
+          accepts_multimem(multimem_source(prefix + ".u32 [mm], %u0;")));
+      EXPECT_TRUE(accepts_multimem(multimem_source(prefix + ".f64 [mm], %d;")));
+      EXPECT_TRUE(accepts_multimem(multimem_source(
+          prefix + ".global.v4.f32 [mm+16], {%f0,%f1,%f2,%f3};")));
+      EXPECT_TRUE(accepts_multimem(multimem_source(
+          prefix + ".v8.e5m2 [mm], {%b0,%b1,%b2,%b3,%b4,%b5,%b6,%b7};")));
+    }
+  }
+}
+
+/** Source omission and explicit ranges survive source and syntax destruction. */
+TEST(Multimem, OrdinaryWeakQualifierProvenanceAfterAstDeath) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto source = multimem_source(R"ptx(
+  multimem.ld_reduce.add.u32 %u0, [mm];
+  multimem.ld_reduce.weak.add.u32 %u0, [mm];
+  multimem.ld_reduce.gpu.add.u32 %u0, [mm];
+  multimem.ld_reduce.weak.gpu.add.u32 %u0, [mm];
+  multimem.st.u32 [mm], %u0;
+  multimem.st.weak.u32 [mm], %u0;
+  multimem.st.gpu.u32 [mm], %u0;
+  multimem.st.weak.gpu.u32 [mm], %u0;
+)ptx");
+    auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto result = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(result.has_value()) << result.error().front().message;
+    owned.emplace(std::move(*result));
+  }
+  ASSERT_TRUE(owned);
+  ASSERT_TRUE(validateModule(*owned));
+  const auto& body = owned->functions.front().body;
+  for (std::size_t i = 0; i < 8; ++i) {
+    SCOPED_TRACE(i);
+    const WithLocs<MemoryConsistency>* semantics = nullptr;
+    const WithLocs<MemoryScope>* scope = nullptr;
+    if (i < 4) {
+      const auto* form =
+          dynamic_cast<const MultimemLdReduceIntegerAddScalarDefaultWeak*>(
+              body[i].get());
+      ASSERT_NE(form, nullptr);
+      semantics = &form->semantics;
+      scope = &form->scope;
+    } else {
+      const auto* form =
+          dynamic_cast<const MultimemStIntegerNoneScalarDefaultWeak*>(
+              body[i].get());
+      ASSERT_NE(form, nullptr);
+      semantics = &form->semantics;
+      scope = &form->scope;
+    }
+    const bool written_weak = i % 2 == 1;
+    const bool written_scope = i % 4 >= 2;
+    EXPECT_EQ(semantics->value, written_weak ? MemoryConsistency::Weak
+                                             : MemoryConsistency::Omitted);
+    EXPECT_EQ(semantics->locs.size(), written_weak ? 1u : 0u);
+    EXPECT_EQ(scope->value,
+              written_scope ? MemoryScope::Gpu : MemoryScope::None);
+    EXPECT_EQ(scope->locs.size(), written_scope ? 1u : 0u);
+    if (written_weak && written_scope) {
+      EXPECT_EQ(semantics->locs.front().start.line,
+                scope->locs.front().start.line);
+      EXPECT_LT(semantics->locs.front().start.column,
+                scope->locs.front().start.column);
+    }
+  }
+  auto* form =
+      dynamic_cast<MultimemStIntegerNoneScalarDefaultWeak*>(body[6].get());
+  ASSERT_NE(form, nullptr);
+  form->scope.value = static_cast<MemoryScope>(255);
+  EXPECT_FALSE(validateModule(*owned));
+  form->scope.value = MemoryScope::Gpu;
+  form->semantics.value = MemoryConsistency::Release;
+  EXPECT_FALSE(validateModule(*owned));
+}
+
+/** Optional ordinary scope does not loosen order, operands, or neighboring families. */
+TEST(Multimem, OrdinaryScopeNegativeBoundaries) {
+  for (std::string_view candidate : {
+           "multimem.ld_reduce.acquire.add.u32 %u0, [mm];",
+           "multimem.st.release.u32 [mm], %u0;",
+           "multimem.st.relaxed.u32 [mm], %u0;",
+           "multimem.ld_reduce.weak.warp.add.u32 %u0, [mm];",
+           "multimem.st.warp.u32 [mm], %u0;",
+           "multimem.ld_reduce.gpu.weak.add.u32 %u0, [mm];",
+           "multimem.st.gpu.weak.u32 [mm], %u0;",
+           "multimem.ld_reduce.global.gpu.add.u32 %u0, [mm];",
+           "multimem.st.global.gpu.u32 [mm], %u0;",
+           "multimem.ld_reduce.release.gpu.add.u32 %u0, [mm];",
+           "multimem.st.acquire.gpu.u32 [mm], %u0;",
+           "multimem.st.weak.gpu.sys.u32 [mm], %u0;",
+           "multimem.ld_reduce.gpu.add.s64 %u64, [mm];",
+           "multimem.ld_reduce.gpu.min.f32 %f0, [mm];",
+           "multimem.ld_reduce.gpu.add.u32 %u0, [sh];",
+           "multimem.st.gpu.u32 [local_value], %u0;",
+           "multimem.st.gpu.u32 [mm+2147483648], %u0;",
+           "multimem.st.gpu.u32 [mm+2], %u0;",
+           "multimem.st.gpu.u64 [mm], %u0;",
+           "multimem.st.gpu.v2.f32 [mm], {%f0};",
+           "multimem.st.weak.gpu.v4.f32 [mm+4], {%f0,%f1,%f2,%f3};",
+           "multimem.ld_reduce.gpu.add.v2.f32 {%f0,%f1}, [mm+4];",
+           "multimem.st.gpu.v8.f64 [mm], {%f0,%f1,%f2,%f3,%f4,%f5,%f6,%f7};",
+           "multimem.red.weak.gpu.add.u32 [mm], %u0;",
+           "multimem.st.async.gpu.u32 [%addr], %u0;",
+           "multimem.red.async.gpu.add.u32 [%addr], %u0;",
+           "multimem.cp.async.bulk.gpu.global.shared::cta.bulk_group [mm], "
+           "[sh], 16;",
+           "multimem.cp.reduce.async.bulk.gpu.global.shared::cta.bulk_group."
+           "add.u32 [mm], [sh], 16;",
+       }) {
+    SCOPED_TRACE(candidate);
+    EXPECT_FALSE(accepts_multimem(multimem_source(candidate)));
+  }
+  for (std::string_view candidate : {
+           "multimem.ld_reduce.gpu.add.u32 %u0, [mm];",
+           "multimem.ld_reduce.weak.cta.add.u32 %u0, [mm];",
+           "multimem.st.gpu.u32 [mm], %u0;",
+           "multimem.st.weak.sys.u32 [mm], %u0;",
+       }) {
+    SCOPED_TRACE(candidate);
+    EXPECT_TRUE(accepts_multimem(multimem_source(candidate, "sm_90", "8.1")));
+    EXPECT_FALSE(accepts_multimem(multimem_source(candidate, "sm_90", "8.0")));
+    EXPECT_FALSE(accepts_multimem(multimem_source(candidate, "sm_80", "8.1")));
+  }
+  EXPECT_FALSE(accepts_multimem(multimem_source(
+      "multimem.ld_reduce.gpu.add.acc::f32.f16x2 %b0, [mm];", "sm_90", "8.1")));
+  EXPECT_FALSE(accepts_multimem(
+      multimem_source("multimem.st.gpu.e4m3x4 [mm], %b0;", "sm_90")));
 }
 
 /** A vector address uses the total byte width even after typed IR mutation. */

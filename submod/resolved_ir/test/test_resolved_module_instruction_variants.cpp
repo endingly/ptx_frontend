@@ -486,8 +486,10 @@ TEST(ResolvedModule, ResolvesAndChecksM10CacheHintEvictionSlice) {
       dynamic_cast<const StGlobalU32L2CacheHint&>(*body[5]);
   EXPECT_TRUE(load_hint.cache_hint);
   EXPECT_TRUE(store_hint.cache_hint);
-  EXPECT_EQ(load_hint.cache_policy.value.declared_type, ScalarType::U64);
-  EXPECT_EQ(store_hint.cache_policy.value.declared_type, ScalarType::U64);
+  ASSERT_TRUE(load_hint.cache_policy);
+  ASSERT_TRUE(store_hint.cache_policy);
+  EXPECT_EQ(load_hint.cache_policy->value.declared_type, ScalarType::U64);
+  EXPECT_EQ(store_hint.cache_policy->value.declared_type, ScalarType::U64);
 
   const checker::Context l1_target{
       .target = {.ptx_version = {7, 4}, .sm_version = 70},
@@ -622,8 +624,13 @@ TEST(ResolvedModule, RejectsM10CacheHintPolicyWithoutU64Register) {
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
-  const auto missing_policy = resolveModule(*parsed_module_2);
-  ASSERT_FALSE(missing_policy.has_value());
+  const auto hint_only = resolveModule(*parsed_module_2);
+  ASSERT_TRUE(hint_only.has_value()) << hint_only.error().front().message;
+  const auto& load = dynamic_cast<const LdGlobalU32L2CacheHint&>(
+      *hint_only->functions.front().body.front());
+  EXPECT_FALSE(load.cache_policy);
+  EXPECT_TRUE(load.check(
+      checker::Context{.target = {.ptx_version = {7, 4}, .sm_version = 80}}));
 }
 
 TEST(ResolvedModule, ResolvesAndChecksLduGlobalScalar) {
@@ -839,12 +846,10 @@ TEST(ResolvedModule, ResolvesAndChecksPrefetchuL1GenericAddressSlice) {
   const auto global_address = resolveModule(*parsed_module_2);
   ASSERT_TRUE(global_address.has_value())
       << global_address.error().front().message;
-  const auto wrong_address =
+  const auto known_global =
       global_address->functions.front().body.front()->check(checker::Context{
           .target = {.ptx_version = {2, 0}, .sm_version = 20}});
-  ASSERT_FALSE(wrong_address.has_value());
-  EXPECT_EQ(wrong_address.error().front().kind,
-            checker::CheckDiagnosticKind::AddressStateSpaceMismatch);
+  EXPECT_TRUE(known_global.has_value());
 
   for (const auto source : {
            ".entry kernel() { .reg .u64 %rd0; prefetchu.L2 [%rd0]; }",

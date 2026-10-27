@@ -23,6 +23,18 @@ external declarations share a symbol identity but retain separate occurrences.
 Existing linkage and multiple-definition checks still apply; an extern
 declaration followed by a same-named plain definition is rejected.
 
+Both `validateModule` overloads rejoin every record to its bound declaration
+occurrence and require the storage list to be complete, including each compatible
+extern occurrence. `SymbolTable::declarationOccurrences()` exposes a read-only
+span of these owned occurrences. Validation checks lexical ownership, state space,
+linkage, declaration kind, scalar type, vector width, positive array shape,
+checked byte extent, alignment, and parameterized count. An unsized external first
+dimension has absent byte extent; the dynamic-shared flag must agree with its
+external shared declaration. Clearing the list or changing a record to zero bytes,
+invalid alignment, or an unrelated identity is rejected after AST destruction.
+The owned shape is checked for internal consistency; binding does not retain a
+second copy of array dimensions or reconstruct source text.
+
 | Field | Contract |
 | --- | --- |
 | `element_type`, `vector_width` | Typed scalar or explicitly opaque object; vector lanes are separate from array dimensions |

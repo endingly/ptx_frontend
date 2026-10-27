@@ -740,10 +740,11 @@ class OperandStateSpaceValue:
 
 @dataclass(frozen=True)
 class OperandParameterConstraint:
-    """Direction and function-specific availability for a .param address."""
+    """Direction, entry-only provenance and availability for a .param address."""
 
     direction: str
     function_availability: dict[str, Any] = field(default_factory=dict)
+    entry_only: bool = False
 
 
 @dataclass(frozen=True)

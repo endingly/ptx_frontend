@@ -1279,7 +1279,7 @@ $defs:
 
   parameter_address_constraint:
     description: >
-      Direction and enclosing-function availability for an explicit .param
+      Direction, entry-input provenance and enclosing-function availability for a .param
       address operand.
     type: object
     additionalProperties: false
@@ -1294,6 +1294,10 @@ $defs:
           - return
       function_availability:
         $ref: "#/$defs/availability"
+      entry_only:
+        description: Require a known parameter to be an entry input.
+        type: boolean
+        default: false
 
   # ---------------------------------------------------------------------------
   # Availability and semantic validation hooks

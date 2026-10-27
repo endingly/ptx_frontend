@@ -5,8 +5,10 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 /** Verify installed legacy forms have no synthesized synchronization controls. */
@@ -326,8 +328,73 @@ bool checkInstalledMappedF64() {
   return true;
 }
 
+/** Validate independent source-option and entry-parameter metadata together. */
+bool checkInstalledCombinedSourceStates() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const bool mapped : {false, true}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source = std::string{".version 9.3\n.target sm_90"} +
+                                 (mapped ? ", map_f64_to_f32" : "") + R"ptx(
+.address_size 64
+.global .u32 memory;
+.entry kernel(.param .u32 input_map) {
+  .reg .u32 %r;
+  ld.global.L2::cache_hint.u32 %r, [memory];
+  multimem.ld_reduce.gpu.add.u32 %r, [memory];
+  prefetch.tensormap [input_map];
+}
+)ptx";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    const auto strict = [&] {
+      return ir::validateModule(
+          *owned, ir::ModuleValidationPolicy::RequireCompleteContext);
+    };
+    auto& region = owned->header.regions.back();
+    const auto& body = owned->functions.front().body;
+    const auto& load =
+        dynamic_cast<const ir::LdGlobalU32L2CacheHint&>(*body[0]);
+    const auto& reduction =
+        dynamic_cast<const ir::MultimemLdReduceIntegerAddScalarDefaultWeak&>(
+            *body[1]);
+    if (!strict() || region.map_f64_to_f32 != mapped || load.cache_policy ||
+        reduction.semantics.value != ir::MemoryConsistency::Omitted ||
+        !reduction.semantics.locs.empty() ||
+        reduction.scope.value != ir::MemoryScope::Gpu ||
+        reduction.scope.locs.empty())
+      return false;
+    region.map_f64_to_f32 = !mapped;
+    if (strict())
+      return false;
+    region.map_f64_to_f32 = mapped;
+    auto& hint = dynamic_cast<ir::PrefetchGenericTensormap&>(*body[2]);
+    auto& parameter = std::get<ir::ResolvedSymbolRef>(hint.address.value.base);
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Device;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Device;
+    if (strict())
+      return false;
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Entry;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Entry;
+    if (!strict())
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledCombinedSourceStates())
+    return 1;
   if (!checkInstalledLegacyShuffle())
     return 1;
   if (!checkInstalledLegacyVote())
@@ -548,6 +615,79 @@ int main() {
   legacy_module->header.regions[1].map_f64_to_f32 = true;
   legacy_module->header.regions[3].target_options.pop_back();
   if (ir::validateModule(*legacy_module))
+    return 1;
+
+  const ir::checker::ParameterAddressConstraint entry_constraint{
+      .direction = ir::ParameterDirection::Input, .entry_only = true};
+  if (!entry_constraint.entry_only ||
+      ir::checker::ParameterAddressConstraint{}.entry_only)
+    return 1;
+  const auto& tensor_binding = ir::prefetch_resolved_descriptor()
+                                   .variants.back()
+                                   .operand_layouts.front()
+                                   .bindings.front();
+  if (!tensor_binding.parameter_constraint.entry_only ||
+      tensor_binding.parameter_constraint.direction !=
+          entry_constraint.direction ||
+      tensor_binding.allowed_address_state_spaces.size() != 4)
+    return 1;
+  std::optional<ir::ResolvedModule> prefetch_module;
+  {
+    const std::string prefetch_source = R"ptx(
+.version 8.0
+.target sm_90
+.address_size 64
+.global .u32 global_map;
+.const .u32 constant_map;
+.entry kernel(.param .u32 input_map) {
+  .local .u32 local_map;
+  .shared .u32 shared_map;
+  .reg .u64 %rd;
+  prefetch.tensormap [constant_map];
+  prefetch.tensormap [input_map];
+  prefetch.tensormap [shared_map];
+  prefetchu.L1 [global_map];
+  prefetchu.L1 [constant_map];
+  prefetchu.L1 [local_map];
+  prefetchu.L1 [shared_map];
+  prefetchu.L1 [%rd];
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser prefetch_parser(prefetch_source);
+    const auto prefetch_ast = prefetch_parser.parseModule();
+    if (!prefetch_ast || !prefetch_ast.diagnostics.empty())
+      return 1;
+    auto resolved = ir::resolveAndValidateModule(*prefetch_ast);
+    if (!resolved)
+      return 1;
+    prefetch_module.emplace(std::move(*resolved));
+  }
+  const auto strict_prefetch = [&] {
+    return ir::validateModule(
+        *prefetch_module, ir::ModuleValidationPolicy::RequireCompleteContext);
+  };
+  if (!strict_prefetch())
+    return 1;
+  auto& input_hint = dynamic_cast<ir::PrefetchGenericTensormap&>(
+      *prefetch_module->functions.front().body[1]);
+  auto& input = std::get<ir::ResolvedSymbolRef>(input_hint.address.value.base);
+  if (!input.symbol_id ||
+      input.symbol_id != prefetch_module->functions.front()
+                             .parameter_declarations.front()
+                             .symbol_id ||
+      input.address_state_space !=
+          ptx_frontend::base::DeclarationStateSpace::Parameter ||
+      input.enclosing_function_kind != ir::EnclosingFunctionKind::Entry)
+    return 1;
+  input.enclosing_function_kind = ir::EnclosingFunctionKind::Device;
+  input_hint.address.value.enclosing_function_kind =
+      ir::EnclosingFunctionKind::Device;
+  if (strict_prefetch())
+    return 1;
+  input.enclosing_function_kind = ir::EnclosingFunctionKind::Entry;
+  input_hint.address.value.enclosing_function_kind =
+      ir::EnclosingFunctionKind::Entry;
+  if (!strict_prefetch())
     return 1;
   return 0;
 }

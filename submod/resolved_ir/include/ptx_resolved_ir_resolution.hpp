@@ -42,6 +42,8 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
  *
  * Source structure must match; a replacement version/target is allowed and its
  * declaration rules are rechecked. Instruction diagnostics use owned IR ranges.
+ * Complete context requires initial .version, .target, optional .address_size
+ * in that order; later .target directives may select new source regions.
  * Guarantees cover only the modeled instruction/declaration subset.
  */
 checker::CheckResult validateModule(
@@ -49,7 +51,11 @@ checker::CheckResult validateModule(
     ModuleValidationPolicy policy =
         ModuleValidationPolicy::RequireCompleteContext);
 
-/** Validate owned semantic invariants without reparsing or traversing an AST. */
+/**
+ * Validate owned semantic invariants without reparsing or traversing an AST.
+ * Storage occurrences and formal ABI fields must agree with retained binding
+ * identities; complete context also requires retained initial-header order.
+ */
 checker::CheckResult validateModule(
     const ResolvedModule& module,
     ModuleValidationPolicy policy =

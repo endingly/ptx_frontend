@@ -31,6 +31,8 @@ struct ResolvedSourceTargetRegion {
   std::vector<std::string> target_options;
   /** Effective source texturing mode; omission selects unified mode. */
   TextureMode texture_mode = TextureMode::Unified;
+  /** Owned option decoded from this region only; omission resets it to false. */
+  bool map_f64_to_f32 = false;
   /** Effective PTX address width; an omitted directive owns the default 32 bits. */
   std::optional<uint32_t> address_size_bits;
   /** Provenance of the effective version, target, and address-width values. */

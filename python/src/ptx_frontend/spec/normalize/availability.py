@@ -69,10 +69,14 @@ def normalize_availability(raw: object) -> dict[str, Any]:
         if not isinstance(clause, dict):
             raise TypeError("availability any_of clauses must be objects")
         if (
-            set(clause) - {"ptx", "sm", "target", "family", "capabilities"}
+            set(clause) - {
+                "ptx", "sm", "target", "family", "capabilities", "map_f64_to_f32"
+            }
             or not clause
         ):
             raise ValueError("availability any_of clause has invalid fields")
+        if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
+            raise ValueError("availability map_f64_to_f32 must be Boolean true")
         if "sm" in clause:
             validate_availability_sm_version(clause["sm"])
         if "target" in clause:

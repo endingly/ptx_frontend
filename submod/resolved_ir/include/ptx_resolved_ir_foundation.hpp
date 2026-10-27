@@ -723,6 +723,8 @@ struct AvailabilityClause {
   /** Borrowed capability names; only the first ``capability_count`` are live. */
   std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
   uint8_t capability_count = 0;
+  /** Require the source region's explicit map_f64_to_f32 programmer option. */
+  bool requires_map_f64_to_f32 = false;
 };
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
@@ -1004,6 +1006,8 @@ struct TargetInfo {
   std::span<const std::string_view> enabled_family_features{};
   std::optional<base::TargetIdentity> identity;
   std::span<const std::string_view> capabilities{};
+  /** Effective source option, independent of hardware capabilities and widths. */
+  bool map_f64_to_f32 = false;
 };
 /** Variant-local index of one modifier slot in generated descriptor order. */
 struct ModifierSlotTag {

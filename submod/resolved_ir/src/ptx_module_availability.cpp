@@ -1755,13 +1755,21 @@ void check_header_region(const ResolvedSourceTargetRegion& region,
         "Resolved source header defaulted an address size other than 32 bits.");
   }
   size_t mode_count = 0;
+  /** Reconstruct the expected typed option from retained exact source spellings. */
+  bool map_f64_to_f32 = false;
   if (!region.target_options.empty())
     check_target_items(region.target_options, range, diagnostics);
   for (const auto& option : region.target_options) {
+    if (option == "map_f64_to_f32")
+      map_f64_to_f32 = true;
     if (option == "texmode_unified" || option == "texmode_independent") {
       ++mode_count;
     }
   }
+  if (region.map_f64_to_f32 != map_f64_to_f32)
+    append_model_mismatch(
+        diagnostics, range,
+        "Resolved target region map_f64_to_f32 contradicts retained options.");
   if (mode_count > 1)
     append_model_mismatch(
         diagnostics, range,
@@ -3209,6 +3217,7 @@ std::optional<checker::TargetInfo> owned_target_context(
       .enabled_family_features = profile->enabled_family_features,
       .identity = profile->identity,
       .capabilities = profile->capabilities,
+      .map_f64_to_f32 = region.map_f64_to_f32,
   };
 }
 
@@ -3576,6 +3585,11 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
             .enabled_family_features = profile->enabled_family_features,
             .identity = profile->identity,
             .capabilities = profile->capabilities,
+            .map_f64_to_f32 = std::ranges::any_of(target->targets,
+                                                  [](const auto& option) {
+                                                    return option.text ==
+                                                           "map_f64_to_f32";
+                                                  }),
         };
       }
     } else if (const auto* variable =

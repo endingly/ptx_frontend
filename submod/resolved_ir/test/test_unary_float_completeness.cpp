@@ -209,14 +209,21 @@ TEST(UnaryFloatCompleteness, ChecksIndependentAvailability) {
     const auto ptx_failure =
         check_at({.ptx_version = item.older_ptx, .sm_version = item.sm});
     ASSERT_FALSE(ptx_failure.has_value());
+    const bool has_option_alternatives =
+        (*resolved)->instruction_kind() == RcpRnF64::kind ||
+        (*resolved)->instruction_kind() == SqrtRnF64::kind;
     EXPECT_EQ(ptx_failure.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+              has_option_alternatives
+                  ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                  : checker::CheckDiagnosticKind::UnsupportedPtxVersion);
     if (item.sm != 0) {
       const auto sm_failure =
           check_at({.ptx_version = item.ptx, .sm_version = item.older_sm});
       ASSERT_FALSE(sm_failure.has_value());
       EXPECT_EQ(sm_failure.error().front().kind,
-                checker::CheckDiagnosticKind::UnsupportedSmVersion);
+                has_option_alternatives
+                    ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                    : checker::CheckDiagnosticKind::UnsupportedSmVersion);
     }
   }
 }

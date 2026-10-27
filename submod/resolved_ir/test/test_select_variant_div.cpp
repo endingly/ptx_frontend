@@ -125,13 +125,13 @@ TEST(ResolvedIrChecker, ChecksGeneratedDivRnF64Availability) {
                             .instruction_range = ast->range});
   ASSERT_FALSE(old_ptx.has_value());
   EXPECT_EQ(old_ptx.error().front().kind,
-            CheckDiagnosticKind::UnsupportedPtxVersion);
+            CheckDiagnosticKind::UnsupportedAvailability);
   const auto old_sm =
       (*div)->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 12},
                             .instruction_range = ast->range});
   ASSERT_FALSE(old_sm.has_value());
   EXPECT_EQ(old_sm.error().front().kind,
-            CheckDiagnosticKind::UnsupportedSmVersion);
+            CheckDiagnosticKind::UnsupportedAvailability);
   EXPECT_TRUE(
       (*div)
           ->check(Context{.target = {.ptx_version = {1, 4}, .sm_version = 13},

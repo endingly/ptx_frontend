@@ -237,9 +237,24 @@ Each `.target` replaces the active source context, including clearing a previous
 recognized target when the new spelling is unknown. Function headers, nested
 body declarations, and local call prototypes use their containing function's
 source region. This is separate from choosing a deployment target for lowering.
-The explicit validation catalog includes historical `sm_13` and `sm_20` with no modern
-capabilities, allowing the PTX 6.0 `sm_20`/`sm_30` declaration boundary to be
+The explicit validation catalog includes historical `sm_10`, `sm_11`, `sm_12`,
+`sm_13`, and `sm_20` with no modern capabilities or family features, allowing
+legacy source contexts and the PTX 6.0 `sm_20`/`sm_30` declaration boundary to be
 checked consistently; arbitrary numeric target spellings remain unrecognized.
+Support is limited to catalog targets, rather than every historical GPU profile.
+
+`ResolvedSourceTargetRegion::map_f64_to_f32` owns the effective programmer option
+decoded only from the exact `map_f64_to_f32` spelling in that region's ordered
+`target_options`. Every `.target` resets the option; omission means false even
+after a region that enabled it. Both AST-backed and owned validation pass it to
+`checker::TargetInfo::map_f64_to_f32`. Owned validation rejects contradictions
+between the Boolean and retained spellings. This option is separate from hardware
+capabilities and does not change f64 instruction identity, storage, or operand
+widths. At PTX 1.4 or later, `div.rn.f64`, `rcp.rn.f64`, and `sqrt.rn.f64` accept
+exact generic `sm_10`, `sm_11`, or `sm_12` only with this option; their existing
+`sm_13` and later availability remains available without it. Other f64 forms,
+directed rounding, and f32 forms keep their own gates. This frontend preserves
+and validates the source option; it performs no lowering or emulation.
 
 `RequireCompleteContext` also requires an initial `.version`, then `.target`,
 then optional `.address_size`, before other module items. A version or address

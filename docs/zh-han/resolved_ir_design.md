@@ -209,8 +209,20 @@ binding、声明形状/类型规则、operand resolution 与 call ABI/staging �
 每条 `.target` 替换 active source context，未知 target 也会清除此前已识别的 target。
 函数头、嵌套 body declaration 和局部 call prototype 使用所属函数所在的 source region，
 不与 lowering 阶段的 deployment target 选择混用。
-显式 validation catalog 包含不具有现代 capability 的历史 `sm_13` 与 `sm_20`，以一致检查 PTX 6.0
+显式 validation catalog 包含不具有现代 capability 或 family feature 的历史 `sm_10`、
+`sm_11`、`sm_12`、`sm_13` 与 `sm_20`，以一致检查 legacy source context 和 PTX 6.0
 的 `sm_20`/`sm_30` 声明边界；不会因此接受任意数字形式的 target spelling。
+支持范围限于 catalog target，不代表所有历史 GPU profile。
+
+`ResolvedSourceTargetRegion::map_f64_to_f32` 拥有有效 programmer option，仅从该 region
+有序 `target_options` 中的精确 `map_f64_to_f32` spelling 解码。每条 `.target` 都重置
+该 option；即使前一区域启用了它，省略仍表示 false。AST-backed 与 owned validation
+均把它传给 `checker::TargetInfo::map_f64_to_f32`。owned validation 拒绝 Boolean 与
+保留 spelling 之间的矛盾。此 option 独立于硬件 capability，不改变 f64 指令 identity、
+storage 或 operand width。PTX 1.4 起，`div.rn.f64`、`rcp.rn.f64` 与 `sqrt.rn.f64`
+仅在启用此 option 时接受精确 generic `sm_10`、`sm_11` 或 `sm_12`；既有 `sm_13`
+及更高 target 的 availability 无需此 option。其他 f64 form、directed rounding 与
+f32 form 保持各自的 gate。前端保存并验证 source option，不执行 lowering 或 emulation。
 
 `RequireCompleteContext` 还要求模块起始依次为 `.version`、`.target` 和可选
 `.address_size`，之后才能出现其他 module item。Version 或 address size 不得晚置；

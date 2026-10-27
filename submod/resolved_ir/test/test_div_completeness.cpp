@@ -142,14 +142,20 @@ TEST(DivCompleteness, ChecksIndependentExplicitAvailability) {
     const auto ptx_failure = check_at({.ptx_version = *availability.older_ptx,
                                        .sm_version = availability.minimum_sm});
     ASSERT_FALSE(ptx_failure.has_value());
+    const bool has_option_alternatives =
+        (*resolved)->instruction_kind() == DivRnF64::kind;
     EXPECT_EQ(ptx_failure.error().front().kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+              has_option_alternatives
+                  ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                  : checker::CheckDiagnosticKind::UnsupportedPtxVersion);
     if (availability.minimum_sm != 0) {
       const auto sm_failure = check_at({.ptx_version = availability.minimum_ptx,
                                         .sm_version = availability.older_sm});
       ASSERT_FALSE(sm_failure.has_value());
       EXPECT_EQ(sm_failure.error().front().kind,
-                checker::CheckDiagnosticKind::UnsupportedSmVersion);
+                has_option_alternatives
+                    ? checker::CheckDiagnosticKind::UnsupportedAvailability
+                    : checker::CheckDiagnosticKind::UnsupportedSmVersion);
     }
   }
 }

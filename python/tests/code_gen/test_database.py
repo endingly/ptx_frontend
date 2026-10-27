@@ -599,6 +599,47 @@ class CodegenDatabaseMergeTests(unittest.TestCase):
 
 
 class AvailabilityNormalizationTests(unittest.TestCase):
+    def test_map_option_schema_normalizer_and_emitter_agree(self) -> None:
+        """Keep the narrow source option an AND-term with a strict true value."""
+        schema = load_yaml(SCHEMA)
+        validator = Draft202012Validator({
+            "$schema": schema["$schema"],
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/availability",
+        })
+        for availability in (
+            {"any_of": [{"map_f64_to_f32": True}]},
+            {"any_of": [
+                {"ptx": "1.0", "sm": 10, "target": "sm_10",
+                 "map_f64_to_f32": True},
+                {"ptx": "1.0", "sm": 13},
+            ]},
+        ):
+            self.assertEqual(list(validator.iter_errors(availability)), [])
+            self.assertEqual(normalize_availability(availability), availability)
+            source = emit_availability(normalize_availability(availability))
+            self.assertEqual(source.count(".requires_map_f64_to_f32 = true"), 1)
+        self.assertIn(".requires_map_f64_to_f32 = false",
+                      emit_availability({"any_of": [{"sm": 13}]}))
+        self.assertNotIn("requires_map_f64_to_f32",
+                         emit_availability({"ptx": "1.0", "sm": 13}))
+        for value in (False, 0, 1, "true", "map_f64_to_f32", None, [], {}):
+            availability = {"any_of": [{"target": "sm_10", "map_f64_to_f32": value}]}
+            with self.subTest(value=value):
+                self.assertTrue(list(validator.iter_errors(availability)))
+                with self.assertRaisesRegex(ValueError, "Boolean true"):
+                    normalize_availability(availability)
+                with self.assertRaisesRegex(ValueError, "Boolean true"):
+                    emit_availability(availability)
+        for availability in (
+            {"sm": 10, "map_f64_to_f32": True},
+            {"any_of": [{"map_f64_to_f32": True, "unexpected": True}]},
+            {"any_of": [{"requires_map_f64_to_f32": True}]},
+        ):
+            self.assertTrue(list(validator.iter_errors(availability)))
+            with self.assertRaises(ValueError):
+                normalize_availability(availability)
+
     def test_vector_sink_payload_requires_an_enabled_sink(self) -> None:
         operand = normalize_operand({
             "name": "dst",

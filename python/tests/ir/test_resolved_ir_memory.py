@@ -2202,7 +2202,8 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertEqual(resolved.cpp_name, "Vote")
         self.assertEqual(
             [variant.cpp_name for variant in resolved.variants],
-            ["SyncBallotB32", "SyncAllPred", "SyncAnyPred", "SyncUniPred"],
+            ["SyncBallotB32", "SyncAllPred", "SyncAnyPred", "SyncUniPred",
+             "AllPred", "AnyPred", "UniPred", "BallotB32"],
         )
         variant = resolved.variants[0]
         self.assertEqual(dict(variant.availability), {"ptx": "6.0", "sm": 30})
@@ -2221,7 +2222,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             variant.operand_layouts[0].bindings[0].register_width_policy,
             ResolvedRegisterWidthPolicy.SAME_WIDTH,
         )
-        for predicate_vote in resolved.variants[1:]:
+        for predicate_vote in resolved.variants[1:4]:
             self.assertEqual(
                 dict(predicate_vote.availability), {"ptx": "6.0", "sm": 30}
             )
@@ -2434,7 +2435,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 len(indices) for entry in context.entries
                 for indices in form_shards(entry)
             ),
-            5276,
+            5280,
         )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",

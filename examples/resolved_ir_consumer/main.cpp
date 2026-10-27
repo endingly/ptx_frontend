@@ -10,6 +10,98 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
+/** Verify installed legacy forms have no synthesized synchronization controls. */
+template <typename T>
+concept InstalledMaskFreeVote = !requires(T instruction) {
+  instruction.sync;
+} && !requires(T instruction) { instruction.membermask; };
+static_assert(InstalledMaskFreeVote<ptx_frontend::resolved_ir::VoteAllPred> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::VoteAnyPred> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::VoteUniPred> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::VoteBallotB32>);
+
+/** Exercise all installed legacy vote modes and complements across their catalog. */
+bool checkInstalledLegacyVote() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const auto sm : {12u, 13u, 20u, 30u, 50u, 52u}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      std::string source =
+          ".version 1.2\n.target sm_" + std::to_string(sm) + R"ptx(
+.func f() { .reg .pred %p<2>; .reg .b32 %b;
+ vote.all.pred %p1, %p0; vote.all.pred %p1, !%p0;
+ vote.any.pred %p1, %p0; vote.any.pred %p1, !%p0;
+ vote.uni.pred %p1, %p0; vote.uni.pred %p1, !%p0;
+)ptx";
+      if (sm >= 20)
+        source += "vote.ballot.b32 %b, %p0; vote.ballot.b32 %b, !%p0;\n";
+      source += "}\n";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    if (!ir::validateModule(*owned))
+      return false;
+    const auto& body = owned->functions.front().body;
+    if (body.size() != (sm >= 20 ? 8u : 6u))
+      return false;
+    for (size_t index = 0; index < body.size(); ++index) {
+      const ir::ResolvedPredicate* predicate = nullptr;
+      if (index < 2) {
+        const auto* vote =
+            dynamic_cast<const ir::VoteAllPred*>(body[index].get());
+        if (!vote || !ir::VoteAllPred::all ||
+            ir::VoteAllPred::type != ir::ScalarType::Pred)
+          return false;
+        predicate = &vote->predicate.value;
+      } else if (index < 4) {
+        const auto* vote =
+            dynamic_cast<const ir::VoteAnyPred*>(body[index].get());
+        if (!vote || !ir::VoteAnyPred::any ||
+            ir::VoteAnyPred::type != ir::ScalarType::Pred)
+          return false;
+        predicate = &vote->predicate.value;
+      } else if (index < 6) {
+        const auto* vote =
+            dynamic_cast<const ir::VoteUniPred*>(body[index].get());
+        if (!vote || !ir::VoteUniPred::uni ||
+            ir::VoteUniPred::type != ir::ScalarType::Pred)
+          return false;
+        predicate = &vote->predicate.value;
+      } else {
+        const auto* vote =
+            dynamic_cast<const ir::VoteBallotB32*>(body[index].get());
+        if (!vote || !ir::VoteBallotB32::ballot ||
+            ir::VoteBallotB32::type != ir::ScalarType::B32 ||
+            vote->dst.value.declared_type != ir::ScalarType::B32)
+          return false;
+        predicate = &vote->predicate.value;
+      }
+      if (predicate->negated != (index % 2 == 1) ||
+          predicate->register_ref.declared_type != ir::ScalarType::Pred)
+        return false;
+      ir::checker::Context context{
+          .target = {.ptx_version = {1, 2},
+                     .sm_version = sm,
+                     .identity = ptx_frontend::base::parse_target_identity(
+                         "sm_" + std::to_string(sm))}};
+      if (!body[index]->check(context))
+        return false;
+      context.target.sm_version = 70;
+      context.target.identity =
+          ptx_frontend::base::parse_target_identity("sm_70");
+      if (body[index]->check(context))
+        return false;
+    }
+  }
+  return true;
+}
+
 /** Detect whether an installed form exposes a programmer rounding member. */
 template <typename T>
 concept HasInstalledRounding =
@@ -134,6 +226,8 @@ bool checkInstalledMappedF64() {
 
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledLegacyVote())
+    return 1;
   if (!checkInstalledImplicitMad())
     return 1;
   if (!checkInstalledMappedF64())

@@ -409,13 +409,15 @@ operand_patterns:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global], address_base: register}
     - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}
   vote_sync_ballot:
-    - name: dst
+    - &vote_ballot_destination
+      name: dst
       kind: reg
       role: dst
       access: write
       type: b32
       register_width: same_width
-    - name: predicate
+    - &vote_source_predicate
+      name: predicate
       kind: pred_or_not
       role: predicate
       access: read
@@ -427,7 +429,8 @@ operand_patterns:
       type: u32
 
   vote_sync_predicate:
-    - name: dst
+    - &vote_predicate_destination
+      name: dst
       kind: pred
       role: dst
       access: write
@@ -442,6 +445,13 @@ operand_patterns:
       role: src
       access: read
       type: u32
+
+  vote_ballot:
+    - *vote_ballot_destination
+    - *vote_source_predicate
+  vote_predicate:
+    - *vote_predicate_destination
+    - *vote_source_predicate
 
   match_sync_without_predicate:
     - name: dst
@@ -4116,8 +4126,8 @@ instructions:
 
   - opcode: vote
     section: "9.7.14.10"
-    doc: "Synchronized warp vote with optional source-predicate negation."
-    syntax: "vote.sync.{all|any|uni}.pred dst, {!}predicate, membermask | vote.sync.ballot.b32 dst, {!}predicate, membermask"
+    doc: "Distinct synchronized and legacy warp votes with source-predicate negation."
+    syntax: "vote.sync.{all|any|uni}.pred dst, {!}predicate, membermask | vote.sync.ballot.b32 dst, {!}predicate, membermask | vote.{all|any|uni}.pred dst, {!}predicate | vote.ballot.b32 dst, {!}predicate"
 
     variants:
       - name: vote_sync_ballot_b32
@@ -4182,6 +4192,62 @@ instructions:
         examples:
           - ptx: "vote.sync.uni.pred %p1, !%p0, 0xffffffff;"
             valid: true
+
+      - name: vote_all_pred
+        availability: &vote_legacy_predicate_availability
+          any_of:
+            - {ptx: "1.2", target: sm_12}
+            - {ptx: "1.2", target: sm_13}
+            - {ptx: "1.2", target: sm_20}
+            - {ptx: "1.2", target: sm_30}
+            - {ptx: "1.2", target: sm_50}
+            - {ptx: "1.2", target: sm_52}
+        modifiers:
+          - {name: sync, kind: flag, presence: absent}
+          - {name: all, kind: flag, presence: fixed, value: true, token: .all}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - {ptx: "vote.all.pred %p1, !%p0;", valid: true}
+
+      - name: vote_any_pred
+        availability: *vote_legacy_predicate_availability
+        modifiers:
+          - {name: sync, kind: flag, presence: absent}
+          - {name: any, kind: flag, presence: fixed, value: true, token: .any}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - {ptx: "vote.any.pred %p1, %p0;", valid: true}
+
+      - name: vote_uni_pred
+        availability: *vote_legacy_predicate_availability
+        modifiers:
+          - {name: sync, kind: flag, presence: absent}
+          - {name: uni, kind: flag, presence: fixed, value: true, token: .uni}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: pred}
+        operands: $vote_predicate
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - {ptx: "vote.uni.pred %p1, !%p0;", valid: true}
+
+      - name: vote_ballot_b32
+        availability:
+          any_of:
+            - {ptx: "1.2", target: sm_20}
+            - {ptx: "1.2", target: sm_30}
+            - {ptx: "1.2", target: sm_50}
+            - {ptx: "1.2", target: sm_52}
+        modifiers:
+          - {name: sync, kind: flag, presence: absent}
+          - {name: ballot, kind: flag, presence: fixed, value: true, token: .ballot}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
+        operands: $vote_ballot
+        rule: parallel_sync_and_communication.vote
+        examples:
+          - {ptx: "vote.ballot.b32 %b0, !%p0;", valid: true}
 
   - opcode: match
     section: "9.7.14.11"

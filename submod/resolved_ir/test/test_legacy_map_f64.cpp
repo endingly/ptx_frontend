@@ -57,10 +57,13 @@ TEST(LegacyMapF64, ChecksEachOperationAndSourceOptionBoundary) {
       expectModuleAvailability(mappedModule(operation, target), false);
       expectModuleAvailability(
           mappedModule(operation, target, ", map_f64_to_f32", "1.3"), false);
-      for (const auto option :
-           {", map_f64_to_f32x", ", map_f64_to_f32_extra", ", MAP_f64_to_f32"})
-        expectModuleAvailability(mappedModule(operation, target, option),
-                                 false);
+      for (const auto option : {", map_f64_to_f32x", ", map_f64_to_f32_extra",
+                                ", MAP_f64_to_f32"}) {
+        const auto invalid_source = mappedModule(operation, target, option);
+        PtxSyntaxParser invalid_parser{invalid_source};
+        const auto invalid_ast = invalid_parser.parseModule();
+        EXPECT_FALSE(invalid_ast && invalid_ast.diagnostics.empty());
+      }
     }
     for (const auto target : {"sm_13", "sm_80"}) {
       expectModuleAvailability(mappedModule(operation, target), true);

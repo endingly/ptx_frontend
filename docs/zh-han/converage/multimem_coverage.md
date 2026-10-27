@@ -8,13 +8,22 @@
 
 | 源码族 | 检查的操作数与后缀 | PTX / 目标下限 | 完成机制 |
 | --- | --- | --- | --- |
-| `multimem.ld_reduce` | 寄存器目标、全局/泛型 multimem 地址；省略或显式 `.weak`，或带 scope 的 `.relaxed/.acquire`；整数/浮点操作、类型、向量和可选累加精度受规范表约束 | 8.1 / SM 90；`.acc::f32` 为 8.2；FP8 和 `.acc::f16` 为 8.6 且限列出的架构族 | 无 |
-| `multimem.st` | 全局/泛型 multimem 目标和标量或寄存器向量源；省略或显式 `.weak`，或带 scope 的 `.relaxed/.release` | 8.1 / SM 90；FP8 为 8.6 且限列出的架构族 | 无 |
+| `multimem.ld_reduce` | 寄存器目标、全局/泛型 multimem 地址；省略 semantics 或显式 `.weak` 时 scope 可选，`.relaxed/.acquire` 时 scope 必需；整数/浮点操作、类型、向量和可选累加精度受规范表约束 | 8.1 / SM 90；`.acc::f32` 为 8.2；FP8 和 `.acc::f16` 为 8.6 且限列出的架构族 | 无 |
+| `multimem.st` | 全局/泛型 multimem 目标和标量或寄存器向量源；省略 semantics 或显式 `.weak` 时 scope 可选，`.relaxed/.release` 时 scope 必需 | 8.1 / SM 90；FP8 为 8.6 且限列出的架构族 | 无 |
 | `multimem.red` | 全局/泛型 multimem 目标和标量或寄存器向量源；`.relaxed/.release` 与 `.cta/.cluster/.gpu/.sys` 分别可省略 | 8.1 / SM 90 | 无 |
 | `multimem.st.async` | 标量源，必须有 `.release.{gpu,sys}`，可选 `.global`；类型为 `b/u/s8–64`、`f32/f64` | 9.3 / SM 100 | 无 |
 | `multimem.red.async` | 标量源，必须有 `.release.{gpu,sys}`，可选 `.global`，只支持 `.add.{u32,s32,u64}` | 9.3 / SM 100 | 无 |
 | `multimem.cp.async.bulk` | 仅 `.global.shared::cta.bulk_group`；32 位字节数，可选 16 位 `.cp_mask` 操作数；默认 weak，显式 `.weak` 或 `.relaxed.scope...b128` | 9.1 / SM 90；mask 需 SM 100；显式排序需 9.3 及 SM 90a、SM 100f/110f 架构族 | Bulk group |
 | `multimem.cp.reduce.async.bulk` | 相同方向和字节数合同；操作/类型规范表，包括半精度/bfloat add 必须带 `.noftz`；可选成对的 `.relaxed.scope` | 9.1 / SM 90；显式排序需 9.3 | Bulk group |
+
+普通 `ld_reduce` 与 `st` 在省略 semantics（有效语义为 weak）或显式 `.weak` 时，
+可选 `.cta/.cluster/.gpu/.sys` scope。Scope 位于 semantics 之后、state space、
+operation 和 type 之前；例如接受 `multimem.ld_reduce.gpu.add.u32` 与
+`multimem.st.weak.sys.u32`。每个 weak/default 公共 form 都暴露
+`WithLocs<MemoryScope> scope`。省略 semantics 仍表示为 `MemoryConsistency::Omitted`，
+省略 scope 仍表示为 `MemoryScope::None`，两者均无源码范围；显式 `.weak` 与 scope
+保留其值和源码范围。强排序仍要求显式 scope；`red`、release-async 与 bulk 族的
+默认规则相互独立。
 
 普通整数 reduction 表将 `add` 限于 `u32/u64/s32`，`min/max` 限于
 `u32/u64/s32/s64`，`and/or/xor` 限于 `b32/b64`。浮点 `multimem.red`
@@ -56,10 +65,3 @@ Canonical 清单和负例边界测试见
 [`test_multimem_coverage.cpp`](../../../submod/resolved_ir/test/test_multimem_coverage.cpp)。
 [`multimem_consumer`](../../../examples/multimem_consumer/main.cpp) 验证安装后的公共头。
 这些测试检验前端接受性与源码生命周期，不在 GPU 上执行 multimem 指令。
-
-## 已知源码覆盖缺口
-
-ISA 允许 `multimem.ld_reduce` 与 `multimem.st` 显式 scope、同时省略 semantics
-（默认 weak），例如 `multimem.ld_reduce.gpu.add.u32` 和 `multimem.st.gpu.u32`。
-当前模型缺少该 qualifier 组合，由 [#282](https://github.com/endingly/ptx_frontend/issues/282)
-跟踪，不表示 ISA 禁止。

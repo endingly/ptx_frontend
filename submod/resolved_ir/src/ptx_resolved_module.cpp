@@ -205,6 +205,7 @@ bool has_implicit_resource_dimensions(ResolvedKernelResourceKind kind) {
 /** Own ordered source configuration regions rather than collapsing target history. */
 ResolvedModuleHeader resolve_module_header(const syntax_ast::AstModule& ast) {
   ResolvedModuleHeader header;
+  header.source_order = detail::module_header_order(ast);
   std::optional<checker::PtxVersion> version;
   /** PTX specifies a 32-bit address-size default independent of the host. */
   std::optional<uint32_t> address_size{32};

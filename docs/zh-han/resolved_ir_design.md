@@ -96,7 +96,7 @@ Resolved IR 无需新增通用 expression tree。
 ## 当前验证边界
 
 下文 entry point 契约描述已建模检查，不表示穷尽 PTX 验证。
-header/target、storage 和 ABI 后续事项见[当前覆盖范围](converage/coverage_status.md)。
+header/target、storage 和 ABI 检查及其保留边界见[当前覆盖范围](converage/coverage_status.md)。
 完整源码上下文不等于 validator 完整；运行时行为仍在本层范围之外。
 
 ## 状态与边界
@@ -211,6 +211,22 @@ binding、声明形状/类型规则、operand resolution 与 call ABI/staging �
 不与 lowering 阶段的 deployment target 选择混用。
 显式 validation catalog 包含不具有现代 capability 的历史 `sm_13` 与 `sm_20`，以一致检查 PTX 6.0
 的 `sm_20`/`sm_30` 声明边界；不会因此接受任意数字形式的 target spelling。
+
+`RequireCompleteContext` 还要求模块起始依次为 `.version`、`.target` 和可选
+`.address_size`，之后才能出现其他 module item。Version 或 address size 不得晚置；
+后续 `.target` 仍可开启合法的 source region。只有 header 的模块同样检查，空模块则
+缺少完整上下文。`ResolvedModuleHeader::source_order` 保存 typed traversal event，
+因此销毁源码和 AST 后仍可检查；缺失或不一致的顺序 metadata 不能证明完整上下文。
+`AvailableContext` 与 `resolveModuleOnly()` 保留 fragment 和乱序 header 的兼容行为。
+AST overload 在替换 source configuration 时检查传入 AST 的顺序。
+
+`.target` 的每一项均分类：首项必须为 architecture spelling，后续仅允许
+`texmode_unified`、`texmode_independent`、`debug`、`map_f64_to_f32`。Parser 和两个
+validator 都拒绝未知 option 或额外 architecture 项。词法合法但未识别的 target
+（包括 `compute_` spelling）仍可解析，在 validation 阶段产生 `UnknownTarget`；
+profile catalog 不扩展。Texture mode 继续检查重复与模块级冲突；`debug` 和
+`map_f64_to_f32` 仅保留为已知 option，此契约不增加 DWARF 检查或浮点指令转换。
+源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
 
 `ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
 `SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；

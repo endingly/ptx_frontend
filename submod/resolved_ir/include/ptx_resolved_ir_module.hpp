@@ -39,12 +39,30 @@ struct ResolvedSourceTargetRegion {
   SourceConfigurationProvenance address_size_provenance{};
 };
 
+/** Typed top-level source event needed to validate the initial header order. */
+enum class ResolvedHeaderEventKind : uint8_t {
+  Version,
+  Target,
+  AddressSize,
+  Other,
+};
+
+/** One top-level item in source traversal order, independent of AST lifetime. */
+struct ResolvedHeaderEvent {
+  /** Header directive category, or an intervening ordinary module item. */
+  ResolvedHeaderEventKind kind{};
+  /** Complete source item range for order diagnostics. */
+  SourceRange range;
+};
+
 /** Owned normalized source configuration retained independently of the AST. */
 struct ResolvedModuleHeader {
   /** Ordered effective configurations; functions retain an index into this list. */
   std::vector<ResolvedSourceTargetRegion> regions;
   /** Source directives with invalid, duplicate, or conflicting forms. */
   std::vector<SourceRange> invalid_directives;
+  /** Complete top-level traversal sequence; empty also represents empty source. */
+  std::vector<ResolvedHeaderEvent> source_order;
 };
 
 /** Enumerates the supported source-level launch resource contracts. */

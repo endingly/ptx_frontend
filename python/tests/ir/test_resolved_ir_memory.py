@@ -2249,7 +2249,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
 
         self.assertEqual(resolved.cpp_name, "Shfl")
         self.assertEqual(
-            [variant.cpp_name for variant in resolved.variants],
+            [variant.cpp_name for variant in resolved.variants[:4]],
             ["SyncIdxB32", "SyncUpB32", "SyncDownB32", "SyncBflyB32"],
         )
         variant = resolved.variants[0]
@@ -2280,7 +2280,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             field_cpp_type(variant.operand_layouts[0].fields[0]),
             "WithLocs<ResolvedRegisterRef>",
         )
-        for mode in resolved.variants:
+        for mode in resolved.variants[:4]:
             self.assertEqual(dict(mode.availability), {"ptx": "6.0", "sm": 30})
             self.assertEqual(
                 [layout.cpp_name for layout in mode.operand_layouts],
@@ -2435,7 +2435,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 len(indices) for entry in context.entries
                 for indices in form_shards(entry)
             ),
-            5280,
+            5284,
         )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",

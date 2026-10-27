@@ -21,7 +21,8 @@ class WarpSyncCompletenessTest(unittest.TestCase):
 
     def test_shuffle_modes_and_destination_layouts(self) -> None:
         """Expose all four modes with bare and paired destinations."""
-        variants = self.instructions["shfl"].variants
+        variants = tuple(variant for variant in self.instructions["shfl"].variants
+                         if variant.name.startswith("shfl_sync_"))
         self.assertEqual(
             {variant.name for variant in variants},
             {f"shfl_sync_{mode}_b32" for mode in ("up", "down", "bfly", "idx")},

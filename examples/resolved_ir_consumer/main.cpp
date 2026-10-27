@@ -1,4 +1,5 @@
 #include <array>
+#include <concepts>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -96,6 +97,109 @@ bool checkInstalledLegacyVote() {
       context.target.identity =
           ptx_frontend::base::parse_target_identity("sm_70");
       if (body[index]->check(context))
+        return false;
+    }
+  }
+  return true;
+}
+
+static_assert(InstalledMaskFreeVote<ptx_frontend::resolved_ir::ShflUpB32> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::ShflDownB32> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::ShflBflyB32> &&
+              InstalledMaskFreeVote<ptx_frontend::resolved_ir::ShflIdxB32>);
+
+/** Exercise both installed shuffle layouts and b/c controls after AST destruction. */
+bool checkInstalledLegacyShuffle() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const auto target : {"sm_30", "sm_50", "sm_52"}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      std::string source =
+          ".version 3.0\n.target " + std::string(target) +
+          "\n.func f() { .reg .b32 %b<2>; .reg .pred %p; .reg .u32 %u<2>;\n";
+      for (const auto mode : {"up", "down", "bfly", "idx"}) {
+        source += "shfl." + std::string(mode) + ".b32 %b0, %b1, 1, 31;\n";
+        source += "shfl." + std::string(mode) + ".b32 %b0|%p, %b1, %u0, %u1;\n";
+      }
+      source += "}\n";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    if (!ir::validateModule(*owned))
+      return false;
+    const auto& body = owned->functions.front().body;
+    if (body.size() != 8)
+      return false;
+    for (size_t index = 0; index < body.size(); ++index) {
+      const bool paired = index % 2 == 1;
+      /** Inspect only one of the four installed legacy concrete forms. */
+      const auto inspect = [&]<typename T>(const T* form)
+        requires(std::same_as<T, ir::ShflUpB32> ||
+                 std::same_as<T, ir::ShflDownB32> ||
+                 std::same_as<T, ir::ShflBflyB32> ||
+                 std::same_as<T, ir::ShflIdxB32>)
+      {
+        if (!form || T::type != ir::ScalarType::B32 ||
+            form->dst_register.has_value() == paired ||
+            form->dst_shfl_destination.has_value() != paired ||
+            form->src.value.spelling != "%b1" || !form->src.value.symbol_id ||
+            form->src.locs.empty())
+          return false;
+        if (paired) {
+          const auto& destination = *form->dst_shfl_destination;
+          if (!destination.value.data || !destination.value.predicate ||
+              destination.value.data->value.spelling != "%b0" ||
+              destination.value.predicate->value.register_ref.spelling !=
+                  "%p" ||
+              destination.value.predicate->value.register_ref.declared_type !=
+                  ir::ScalarType::Pred ||
+              destination.locs.empty())
+            return false;
+        } else if (form->dst_register->value.spelling != "%b0" ||
+                   form->dst_register->value.declared_type !=
+                       ir::ScalarType::B32 ||
+                   form->dst_register->locs.empty()) {
+          return false;
+        }
+        return std::holds_alternative<ir::ResolvedRegisterRef>(
+                   form->lane.value) == paired &&
+               std::holds_alternative<ir::ResolvedRegisterRef>(
+                   form->clamp.value) == paired &&
+               !form->lane.locs.empty() && !form->clamp.locs.empty();
+      };
+      bool valid = false;
+      switch (index / 2) {
+        case 0:
+          valid =
+              inspect(dynamic_cast<const ir::ShflUpB32*>(body[index].get()));
+          break;
+        case 1:
+          valid =
+              inspect(dynamic_cast<const ir::ShflDownB32*>(body[index].get()));
+          break;
+        case 2:
+          valid =
+              inspect(dynamic_cast<const ir::ShflBflyB32*>(body[index].get()));
+          break;
+        case 3:
+          valid =
+              inspect(dynamic_cast<const ir::ShflIdxB32*>(body[index].get()));
+          break;
+      }
+      if (!valid)
+        return false;
+      const ir::checker::Context modern{
+          .target = {
+              .ptx_version = {9, 3},
+              .sm_version = 70,
+              .identity = ptx_frontend::base::parse_target_identity("sm_70")}};
+      if (body[index]->check(modern))
         return false;
     }
   }
@@ -224,8 +328,75 @@ bool checkInstalledMappedF64() {
   return true;
 }
 
+/** Validate independent source-option and entry-parameter metadata together. */
+bool checkInstalledCombinedSourceStates() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const bool mapped : {false, true}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source = std::string{".version 9.3\n.target sm_90"} +
+                                 (mapped ? ", map_f64_to_f32" : "") + R"ptx(
+.address_size 64
+.global .u32 memory;
+.entry kernel(.param .u32 input_map) {
+  .reg .u32 %r;
+  ld.global.L2::cache_hint.u32 %r, [memory];
+  multimem.ld_reduce.gpu.add.u32 %r, [memory];
+  prefetch.tensormap [input_map];
+}
+)ptx";
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto resolved = ir::resolveAndValidateModule(*ast);
+      if (!resolved || !ir::validateModule(*ast, *resolved))
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    const auto strict = [&] {
+      return ir::validateModule(
+          *owned, ir::ModuleValidationPolicy::RequireCompleteContext);
+    };
+    auto& region = owned->header.regions.back();
+    const auto& body = owned->functions.front().body;
+    const auto& load =
+        dynamic_cast<const ir::LdGlobalU32L2CacheHint&>(*body[0]);
+    const auto& reduction =
+        dynamic_cast<const ir::MultimemLdReduceIntegerAddScalarDefaultWeak&>(
+            *body[1]);
+    if (!strict() || region.map_f64_to_f32 != mapped || load.cache_policy ||
+        reduction.semantics.value != ir::MemoryConsistency::Omitted ||
+        !reduction.semantics.locs.empty() ||
+        reduction.scope.value != ir::MemoryScope::Gpu ||
+        reduction.scope.locs.empty())
+      return false;
+    region.map_f64_to_f32 = !mapped;
+    if (strict())
+      return false;
+    region.map_f64_to_f32 = mapped;
+    auto& hint = dynamic_cast<ir::PrefetchGenericTensormap&>(*body[2]);
+    auto& parameter = std::get<ir::ResolvedSymbolRef>(hint.address.value.base);
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Device;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Device;
+    if (strict())
+      return false;
+    parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Entry;
+    hint.address.value.enclosing_function_kind =
+        ir::EnclosingFunctionKind::Entry;
+    if (!strict())
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledCombinedSourceStates())
+    return 1;
+  if (!checkInstalledLegacyShuffle())
+    return 1;
   if (!checkInstalledLegacyVote())
     return 1;
   if (!checkInstalledImplicitMad())

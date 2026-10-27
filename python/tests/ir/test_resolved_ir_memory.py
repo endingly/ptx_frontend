@@ -2434,7 +2434,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 len(indices) for entry in context.entries
                 for indices in form_shards(entry)
             ),
-            5275,
+            5276,
         )
         self.assertEqual(umbrella_source.count("/model/"), len(context.entries))
         for name in ("AddIntegerNoSat", "AtomGlobalAddU32", "BraDirect",

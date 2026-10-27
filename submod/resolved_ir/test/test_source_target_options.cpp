@@ -78,7 +78,7 @@ TEST(SourceTargetOptions, OwnsExactMapOptionAndResetsAcrossRegions) {
 .func first() { ret; }
 .target sm_11
 .func second() { ret; }
-.target sm_12, map_f64_to_f32_extra, MAP_f64_to_f32, map_f64_to_f32x
+.target sm_12, debug
 .func third() { ret; }
 .target sm_12, texmode_unified, map_f64_to_f32
 .func fourth() { ret; }
@@ -117,6 +117,37 @@ TEST(SourceTargetOptions, OwnsExactMapOptionAndResetsAcrossRegions) {
   EXPECT_EQ(owned->functions[1].source_target, "sm_11");
 }
 
+/** Near spellings fail strict target categories and cannot create owned option state. */
+TEST(SourceTargetOptions, RejectsNearSpellingsAtSourceAndOwnedBoundaries) {
+  for (const auto option :
+       {"map_f64_to_f32x", "map_f64_to_f32_extra", "MAP_f64_to_f32"}) {
+    SCOPED_TRACE(option);
+    const std::string source = std::string{".version 1.5\n.target sm_10, "} +
+                               option + "\n.func f() { ret; }\n";
+    PtxSyntaxParser invalid_parser{source};
+    const auto invalid_ast = invalid_parser.parseModule();
+    EXPECT_FALSE(invalid_ast && invalid_ast.diagnostics.empty());
+    PtxSyntaxParser valid_parser{
+        ".version 1.5\n.target sm_10, debug\n.func f() { ret; }\n"};
+    const auto valid_ast = valid_parser.parseModule();
+    ASSERT_TRUE(valid_ast && valid_ast.diagnostics.empty());
+    auto owned = resolveAndValidateModule(*valid_ast);
+    ASSERT_TRUE(owned);
+    auto& region = owned->header.regions[1];
+    region.target_options.back() = option;
+    for (const bool enabled : {false, true}) {
+      region.map_f64_to_f32 = enabled;
+      const auto checked = validateModule(*owned);
+      ASSERT_FALSE(checked);
+      EXPECT_TRUE(
+          std::ranges::any_of(checked.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::ModuleSourceMismatch;
+          }));
+    }
+  }
+}
+
 /** A replacement AST supplies its own effective option rather than the old header. */
 TEST(SourceTargetOptions, AstValidationUsesReplacementSourceOption) {
   PtxSyntaxParser original{R"ptx(.version 1.5
@@ -124,7 +155,7 @@ TEST(SourceTargetOptions, AstValidationUsesReplacementSourceOption) {
 .func f() { ret; }
 )ptx"};
   PtxSyntaxParser replacement{R"ptx(.version 1.5
-.target sm_10, map_f64_to_f32x
+.target sm_10, debug
 .func f() { ret; }
 )ptx"};
   auto ast = original.parseModule();

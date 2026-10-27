@@ -4,6 +4,7 @@
 #include <iostream>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -135,6 +136,45 @@ bool validate_owned(const ir::ResolvedModule& module, std::string_view label) {
     return false;
   }
   return true;
+}
+
+/** Exercise strict public invariants with source and parser ownership released. */
+bool check_strict_owned_invariants() {
+  auto module = parse_owned(std::string{R"ptx(
+.version 9.3
+.target sm_80, debug, map_f64_to_f32
+.address_size 64
+.extern .global .u32 external_data[2];
+.extern .global .u32 external_data[2];
+.func device(.param .u32 value, .reg .u64 regvalue) { ret; }
+)ptx"},
+                            "strict owned fixture");
+  if (!module || !validate_owned(*module, "strict owned fixture"))
+    return false;
+  auto mutated = *module;
+  mutated.storage_declarations.front().byte_extent = 0;
+  if (!expect(!ir::validateModule(mutated), "zero storage extent is rejected"))
+    return false;
+  mutated = *module;
+  mutated.storage_declarations.erase(mutated.storage_declarations.begin());
+  if (!expect(!ir::validateModule(mutated),
+              "each extern occurrence is required"))
+    return false;
+  mutated = *module;
+  mutated.functions.front().contract.signature.parameters.front().scalar_type =
+      ir::ScalarType::F64;
+  if (!expect(!ir::validateModule(mutated),
+              "signature-only type change is rejected"))
+    return false;
+  mutated = *module;
+  mutated.header.source_order.clear();
+  if (!expect(!ir::validateModule(mutated),
+              "strict header order metadata is required"))
+    return false;
+  mutated = *module;
+  mutated.header.regions.back().target_options.emplace_back("bogus");
+  return expect(!ir::validateModule(mutated),
+                "unknown target option is rejected");
 }
 
 /** Check the register carrier and semantic role of one owned coordinate lane. */
@@ -497,6 +537,8 @@ int main() {
               "data"))
     return 23;
 
+  if (!check_strict_owned_invariants())
+    return 24;
   std::cout << "installed PTX texture consumer passed\n";
   return 0;
 }

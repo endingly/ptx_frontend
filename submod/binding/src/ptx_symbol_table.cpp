@@ -393,6 +393,13 @@ std::optional<bool> SymbolTable::hasPriorDeclaration(
   return unknown_occurrence_order ? std::nullopt : std::optional{false};
 }
 
+std::span<const SymbolDeclarationOccurrence>
+SymbolTable::declarationOccurrences(SymbolId symbol) const noexcept {
+  if (symbol.value >= declaration_occurrences_.size())
+    return {};
+  return declaration_occurrences_[symbol.value];
+}
+
 bool SymbolTable::hasVariableDeclaration(SymbolId symbol,
                                          SourceRange range) const noexcept {
   if (symbol.value >= declaration_occurrences_.size())

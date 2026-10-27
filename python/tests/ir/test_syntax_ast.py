@@ -1016,6 +1016,17 @@ class SyntaxAstDescriptorBuildTest(unittest.TestCase):
         }
         self.assertIsNotNone(normalize_parameter(fixed_modifier).parameter_constraint) # pyright: ignore[reportArgumentType]
 
+        entry_parameter = {"direction": "input", "function_availability": {"sm": 90},
+                           "entry_only": True}
+        static_operand = normalize_parameter(required_modifier, state_space=["global", "param"],
+                                             parameter=entry_parameter)
+        self.assertTrue(static_operand.parameter_constraint.entry_only)
+        self.assertIsNone(static_operand.state_space_expression)
+        for domain in (None, ["global"], ["generic"]):
+            with self.subTest(domain=domain), self.assertRaises(ValueError):
+                normalize_parameter(required_modifier, state_space=domain,
+                                    parameter=entry_parameter)
+
         with self.assertRaisesRegex(ValueError, "address constraints.*kind 'addr'"):
             normalize_parameter(required_modifier, kind="reg")
         with self.assertRaisesRegex(ValueError, "requires a state_space modifier"):

@@ -43,13 +43,13 @@ not promoted to confirmed missing-operation claims by this audit.
 
 ## Validation and runtime limits
 
-The parse/resolve/check pipeline validates modeled source forms. Header/target,
-storage and ABI revalidation still have known follow-ups
-[#275](https://github.com/endingly/ptx_frontend/issues/275) and
-[#276](https://github.com/endingly/ptx_frontend/issues/276),
-[#277](https://github.com/endingly/ptx_frontend/issues/277),
-[#278](https://github.com/endingly/ptx_frontend/issues/278),
-[#279](https://github.com/endingly/ptx_frontend/issues/279).
+The parse/resolve/check pipeline validates modeled source forms. Strict initial
+header order, target-item categories, scalar storage occurrence/layout
+consistency, and function signature/declaration ABI consistency are revalidated
+by both module validation overloads, including the owned path after AST release.
+See the [module validation contract](../resolved_ir_design.md),
+[storage metadata](../storage_declarations.md), and
+[parameter metadata](../parameter_declarations.md) for their precise boundaries.
 Complete source context is required by `resolveAndValidateModule`; this is not
 an assertion of exhaustive PTX validation.
 

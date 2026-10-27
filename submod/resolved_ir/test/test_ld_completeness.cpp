@@ -181,13 +181,8 @@ TEST(LdCompleteness, ResolvesCachePrefetchAndNoncoherentFamilies) {
            "{%rd0, %rd1, %rd2, %rd3}, [%rd4];",
            "ld.relaxed.gpu.global.ca.u32 %r0, [%rd0];",
            "ld.global.u32 %r0, [%rd0], %rd1;",
-           "ld.global.L2::cache_hint.u32 %r0, [%rd0];",
-           "ld.global.nc.L2::cache_hint.v2.u32 {%r0, %r1}, [%rd0];",
-           "ld.global.L2::cache_hint.L2::64B.u32 %r0, [%rd0];",
            "ld.volatile.global.L1::evict_first.u32 %r0, [%rd0];",
            "ld.volatile.global.L2::cache_hint.u32 %r0, [%rd0], %rd1;",
-           "ld.acquire.sys.global.L1::evict_last.L2::cache_hint.u32 "
-           "%r0, [%rd0];",
        }) {
     SCOPED_TRACE(source);
     expect_load_rejected(source, target);

@@ -695,6 +695,20 @@ the ISA still makes omitted `ld` behave as `.ca` and omitted `st` behave as
 `.wb`, while the IR preserves `Unspecified` so omitted source does not masquerade
 as an explicit modifier and does not trigger cache-value availability checks.
 
+For ordinary coherent `ld`, `ld.global.nc`, and `st`, `.L2::cache_hint` may
+appear with or without a trailing 64-bit register `cache_policy`. A policy
+without the hint remains invalid. The existing exact form classes and
+`InstructionKind` identities are unchanged: their original policy-present
+`default` layout remains index 0, and `without_policy` selects index 1.
+The generated public `cache_policy` member is now
+`std::optional<WithLocs<ResolvedRegisterRef>>`; consumers access a present
+policy through `cache_policy->value`. The fixed `cache_hint` field remains
+true for both layouts. Both retain the same payload, address, modifier,
+PTX-version, and target restrictions, including modern-vector gates.
+The installed example in `examples/memory_cache_hint_consumer` exercises both
+layouts for scalar/vector coherent loads, noncoherent loads, and stores after
+source text and AST destruction.
+
 Memory consistency is a generated cross-modifier descriptor, not a Cartesian
 set of `ld/st` variants. `MemoryConsistency::Omitted` (empty `locs`) remains
 distinct from explicit `.weak`; `.volatile`, `.relaxed`, `.acquire`, and

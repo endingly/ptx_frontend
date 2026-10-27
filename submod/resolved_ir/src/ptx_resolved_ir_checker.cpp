@@ -496,9 +496,23 @@ void append_parameter_address_diagnostics(
   // A known non-parameter base belongs to the exact state-space diagnostic;
   // do not infer parameter identity from the selected modifier alone.
   if (constraint.direction == ParameterDirection::None ||
-      selected_state_space != MemoryStateSpace::Parameter ||
+      selected_state_space.value_or(operand.address_state_space.value_or(
+          MemoryStateSpace::Invalid)) != MemoryStateSpace::Parameter ||
       (operand.address_state_space &&
        *operand.address_state_space != MemoryStateSpace::Parameter)) {
+    return;
+  }
+
+  if (constraint.entry_only &&
+      (operand.parameter_direction != ParameterDirection::Input ||
+       operand.enclosing_function_kind != EnclosingFunctionKind::Entry)) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ParameterDirectionMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Address operand '{}' requires an entry input parameter address.",
+            descriptor.target_field_id),
+    });
     return;
   }
 

@@ -314,10 +314,11 @@ class ResolvedAddressStateSpace:
 
 @dataclass(frozen=True)
 class ResolvedParameterAddressConstraint:
-    """Descriptor-ready direction and function availability for .param."""
+    """Descriptor-ready direction, entry provenance and availability for .param."""
 
     direction: str
     function_availability: tuple[tuple[str, Any], ...]
+    entry_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -2194,6 +2195,7 @@ def _resolve_parameter_address_constraint(
     return ResolvedParameterAddressConstraint(
         direction=constraint.direction,
         function_availability=tuple(constraint.function_availability.items()),
+        entry_only=constraint.entry_only,
     )
 
 

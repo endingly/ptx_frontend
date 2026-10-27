@@ -14,28 +14,23 @@
 | `prefetch.global.L1/L2 [a]` | 显式 global | PTX 2.0 / SM 20 |
 | `prefetch.local.L1/L2 [a]` | 显式 local | PTX 2.0 / SM 20 |
 | `prefetch.global.L2::evict_last/evict_normal [a]` | 显式 global | PTX 7.4 / SM 80 |
-| `prefetch.tensormap [a]` | generic 地址；接受已知 global 存储但不保证 cache 效果，已知 shared 存储为无操作 | PTX 8.0 / SM 90 |
+| `prefetch.tensormap [a]` | generic 地址；接受已知 global、const、kernel entry-input 参数存储，已知 shared 存储为无操作 | PTX 8.0 / SM 90 |
 | `prefetch.const.tensormap [a]` | 显式 const tensor map | PTX 8.0 / SM 90 |
 | `prefetch.param.tensormap [a]` | 显式输入参数 tensor map | PTX 8.0 / SM 90 |
-| `prefetchu.L1 [a]` | 指向 uniform cache 的 generic 地址 | PTX 2.0 / SM 20 |
+| `prefetchu.L1 [a]` | 指向 uniform cache 的 generic 地址；接受已知 global，const/local/shared 为无操作 | PTX 2.0 / SM 20 |
 
 已知的地址来源必须匹配显式 `.global`、`.local`、`.const` 或 `.param`
 后缀。不带状态空间后缀的 `.tensormap` 形式接受 generic 地址寄存器或直接
-命名的 global 或 shared 符号；已知 shared 地址为无操作。直接 const/param
-符号使用相应显式形式，已知 local 符号仍不符合选定存储契约。前端无法证明寄存器的运行时
-地址来源。ISA 只对 const/param tensor map 承诺预取缓存效果；模型不推断
+命名的 global、const、shared 或 kernel entry-input 参数符号；已知 shared 地址为无操作。
+该 generic tensor-map 形式拒绝 device input、device return、function-local call 参数，
+以及已知 local 地址和显式 `.shared.tensormap`。前端保留具体状态空间、绑定的符号身份与
+源码范围，不将声明重标为 generic，也不证明寄存器的运行时地址来源。
+ISA 只对 const/param tensor map 承诺预取缓存效果；模型不推断
 generic 地址也有此效果。`ptxas` 13.3.73 接受不带状态空间后缀形式中的
-直接 global/local/shared 符号，拒绝直接 const/param 符号；前端按已文档化
-存储契约限制已知 local 来源，并保留文档化的 shared 无操作行为。
+直接 global/local/shared 符号，拒绝直接 const/param 符号；这些旧汇编器观察不能覆盖
+这里实现的文档化 ISA 契约。
 tensor-map 形式不带 `.L1`/`.L2`
 后缀。`prefetchu` 只有 `.L1`，且不带状态空间后缀；按照 ISA，
 若 generic 地址映射到 const、local 或 shared 数据，该指令不执行操作。
-模型拒绝未支持的层级、状态空间和 eviction 组合。
-
-## 已知源码覆盖缺口
-
-上文选定的 provenance 限制是当前实现边界。PTX 9.3 允许无状态空间后缀
-`prefetch.tensormap` 的已知 const/kernel-parameter 地址，也允许 `prefetchu.L1`
-的已知 global 地址与文档化 const/local/shared no-op 地址；模型缺少这些
-known-symbol 情形，由 [#283](https://github.com/endingly/ptx_frontend/issues/283) 跟踪。
-较旧汇编器的观察不能将这些合法 ISA 情形判为无效。
+`prefetchu.L1` 拒绝已知参数地址。模型拒绝未支持的层级、状态空间和 eviction 组合。
+未知寄存器来源仍保持未知；`Generic` 不能作为已知状态空间的通配符。

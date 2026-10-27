@@ -35,6 +35,8 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
+from ptx_frontend.code_gen.resolved_layout import operand_slots
+from ptx_frontend.ir.syntax_ast import from_InstructionSpec
 from ptx_frontend.code_gen.emit.resolved_model import (
     form_shards,
     generate_resolved_base_header,
@@ -140,6 +142,59 @@ def build_test_generation_context(database):
 class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
     """Check memory operations and generated resolved-IR contracts."""
 
+    def test_ld_st_cache_hint_layouts_preserve_public_form_and_bindings(self) -> None:
+        """Lower both source states into one form with only policy optional."""
+        count = 0
+        for spec in self.database.instructions:
+            if spec.opcode not in {"ld", "st"}:
+                continue
+            syntax = from_InstructionSpec(spec)
+            resolved = from_instruction_spec(spec)
+            for source, syntax_variant, variant in zip(
+                spec.variants, syntax.variants, resolved.variants, strict=True
+            ):
+                if not any(modifier.name == "cache_hint" for modifier in source.modifiers):
+                    continue
+                count += 1
+                with self.subTest(variant=source.name):
+                    self.assertEqual(variant.variant_id, source.name)
+                    policy, hint_only = variant.operand_layouts
+                    self.assertEqual(policy.fields[:-1], hint_only.fields)
+                    self.assertEqual(policy.bindings[:-1], hint_only.bindings)
+                    self.assertEqual([len(layout.slots) for layout in syntax_variant.operand_layouts],
+                                     [3, 2])
+                    slots = operand_slots(variant, BACKEND)
+                    self.assertEqual([slot.member_name for slot in slots if slot.optional],
+                                     ["cache_policy"])
+                    self.assertEqual(slots[-1].layout_indices, (0,))
+                    self.assertEqual(field_cpp_type(slots[-1].field),
+                                     "WithLocs<ResolvedRegisterRef>")
+        self.assertEqual(count, 25)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            context = build_test_generation_context(self.database)
+            for opcode in ("ld", "st"):
+                generate_resolved_opcode_header(
+                    context, category="data_movement", opcode=opcode,
+                    output_path=path / f"{opcode}.hpp",
+                )
+            generate_resolved_descriptor_source(
+                context, category="data_movement", output_path=path / "binding.cpp",
+            )
+            generate_resolved_checker_descriptor_source(
+                context, category="data_movement", output_path=path / "checker.cpp",
+            )
+            model = "\n".join((path / f"{opcode}.hpp").read_text() for opcode in ("ld", "st"))
+            bindings = (path / "binding.cpp").read_text()
+            checks = (path / "checker.cpp").read_text()
+        self.assertEqual(model.count("std::optional<WithLocs<ResolvedRegisterRef>> cache_policy;"), 25)
+        self.assertIn("class LdGlobalU32L2CacheHint final", model)
+        self.assertIn("class StGlobalU32L2CacheHint final", model)
+        for name in ("ld_global_u32_l2_cache_hint", "st_global_u32_l2_cache_hint"):
+            self.assertIn(f"{name}_operand_layout_1_bindings", bindings)
+        self.assertIn('.layout_name = "without_policy"', checks)
+
     def test_ld_and_st_scalar_model_constraints(self) -> None:
         database = self.database
         ld = next(
@@ -208,7 +263,8 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [(field.name, field_cpp_type(field)) for field in cache_hint_variant.fields],
+            [(field.name, field_cpp_type(field)) for field in
+             (*cache_hint_variant.modifier_fields, *cache_hint_variant.operand_layouts[0].fields)],
             [
                 ("state_space", "MemoryStateSpace"),
                 ("semantics", "WithLocs<MemoryConsistency>"),
@@ -794,12 +850,17 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         generic_address = generic_tensormap.operand_layouts[0].bindings[0]
         self.assertEqual(
             [space.value for space in generic_address.allowed_address_state_spaces],
-            ["global", "shared"],
+            ["global", "shared", "const", "param"],
         )
-        self.assertIsNone(generic_address.parameter_constraint)
+        self.assertEqual(generic_address.parameter_constraint.direction, "input")
+        self.assertTrue(generic_address.parameter_constraint.entry_only)
+        self.assertIsNone(generic_address.state_space_modifier_field_id)
+        source = _emit_operand_binding_descriptor(generic_address, "arities", "spaces", BACKEND)
+        self.assertIn(".entry_only = true", source)
         param = variants["ParamTensormap"].operand_layouts[0].bindings[0]
         self.assertEqual(param.state_space_modifier_field_id, "state_space")
         self.assertEqual(param.parameter_constraint.direction, "input")
+        self.assertFalse(param.parameter_constraint.entry_only)
 
     def test_prefetchu_l1_model(self) -> None:
         database = self.database
@@ -821,7 +882,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertEqual(
             [state_space.value for state_space in variant.operand_layouts[0]
              .bindings[0].allowed_address_state_spaces],
-            ["generic"],
+            ["global", "const", "local", "shared"],
         )
 
     def test_createpolicy_topologies(self) -> None:

@@ -52,8 +52,8 @@ done1:
 /** Equivalent handoff fixture whose declarations all have a source target. */
 constexpr std::string_view k_complete_context_module_fixture = R"ptx(
 .version 9.3
-.address_size 64
 .target sm_80
+.address_size 64
 .func callee(.reg .u32 value) { ret; }
 .func callee_alias(.reg .u32 value);
 .target sm_90a

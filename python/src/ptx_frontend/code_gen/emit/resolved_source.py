@@ -19,10 +19,12 @@ from ptx_frontend.code_gen.emit.resolved_descriptors import (
 )
 from ptx_frontend.code_gen.emit.syntax_descriptors import (
     _emit_instruction_descriptor_storage as emit_syntax_storage,
+    _cpp_string,
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
     INCLUDE_ROOT, form_name, form_shards, method_name,
 )
+from ptx_frontend.code_gen.emit.selection_index import modifier_candidate_rows
 from ptx_frontend.code_gen.resolved_layout import operand_slot_for_field, operand_slots
 from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type
@@ -612,15 +614,79 @@ def _emit_wgmma_construction_declarations(entry) -> str:
     return f"namespace generated_detail {{\n{declarations}\n}}\n\n"
 
 
-def _emit_resolve(entry, backend) -> str:
-    """Resolve descriptor names once, then dispatch typed form/layout indices."""
+def _emit_resolve(entry, backend, context) -> str:
+    """Emit conservative selection and dispatch directly through typed static catalogs."""
 
     prefix = entry.specification.opcode.replace(".", "_")
-    identity_map = "\n".join(
-        f'    if (*selected == "{variant.cpp_name}") '
-        f'return {form_name(entry, variant)}::kind;'
+    syntax = from_InstructionSpec(entry.specification)
+    if len(syntax.variants) != len(entry.resolved.variants) or any(
+        syntax_variant.variant_id != variant.variant_id
+        for syntax_variant, variant in zip(syntax.variants, entry.resolved.variants, strict=True)
+    ):
+        raise ValueError("selection syntax/resolved catalog order mismatch")
+    rows = modifier_candidate_rows(syntax)
+    word_count = (len(syntax.variants) + 63) // 64
+    row_entries = ",\n".join(
+        f'    ::ptx_frontend::resolved_ir::detail::ModifierCandidateRow{{{_cpp_string(spelling)}, {str(known).lower()}}}'
+        for spelling, known, _ in rows
+    )
+    words = ",\n".join(
+        f"    0x{(mask >> (word * 64)) & ((1 << 64) - 1):016x}ULL"
+        for _, _, mask in rows for word in range(word_count)
+    )
+    ordinals = ",\n".join(
+        f"    {variant.cpp_name}" for variant in entry.resolved.variants
+    )
+    kinds = ",\n".join(
+        f"    {form_name(entry, variant)}::kind" for variant in entry.resolved.variants
+    )
+    identity_checks = "\n".join(
+        f"static_assert(static_cast<uint32_t>({form_name(entry, variant)}::kind) == "
+        f"{context.identities.form_value(entry, variant)}u);"
         for variant in entry.resolved.variants
     )
+    selection_storage = f"""namespace {{
+/** Canonical opcode-local ordinals, independent of public kind encoding. */
+enum class SelectedFormOrdinal : uint16_t {{
+{ordinals}
+}};
+/** Selection borrows immutable catalogs with process lifetime. */
+struct SelectedForm {{
+  /** Canonical opcode-local form identity. */
+  SelectedFormOrdinal ordinal;
+  /** Public identity from the context-validated form table. */
+  InstructionKind kind;
+  /** Borrowed immutable descriptors; both catalogs have process lifetime. */
+  const check_end::SyntaxVariantDescriptor& syntax;
+  const check_end::ResolvedVariantDescriptor& resolved;
+}};
+{identity_checks}
+constexpr std::array<InstructionKind, {len(syntax.variants)}> selected_kinds = {{{{
+{kinds}
+}}}};
+constexpr std::array<::ptx_frontend::resolved_ir::detail::ModifierCandidateRow, {len(rows)}> candidate_rows = {{{{
+{row_entries}
+}}}};
+constexpr std::array<uint64_t, {len(rows) * word_count}> candidate_words = {{{{
+{words}
+}}}};
+constexpr ::ptx_frontend::resolved_ir::detail::ModifierCandidatePlan candidate_plan{{candidate_rows, candidate_words}};
+/** Select and retain direct static descriptor references for construction. */
+std::expected<SelectedForm, ResolveDiagnostic> select_form(
+    const syntax_ast::AstInstruction& ast) {{
+  const auto& syntax = {prefix}_syntax_descriptor();
+  std::array<uint64_t, {word_count}> candidates;
+  const auto selected = ::ptx_frontend::resolved_ir::detail::select_indexed_variant(ast, syntax, candidate_plan, candidates);
+  if (!selected) return std::unexpected(selected.error());
+  assert(syntax.variants.size() == selected_kinds.size());
+  const auto& resolved = {prefix}_resolved_descriptor();
+  assert(resolved.variants.size() == selected_kinds.size());
+  return SelectedForm{{static_cast<SelectedFormOrdinal>(*selected),
+      selected_kinds[*selected], syntax.variants[*selected], resolved.variants[*selected]}};
+}}
+}}  // namespace
+
+"""
     if entry.specification.opcode == "wgmma" and form_shards(entry):
         cases = "\n".join(
             f"    case {form_name(entry, entry.resolved.variants[index])}::kind: "
@@ -636,23 +702,20 @@ def _emit_resolve(entry, backend) -> str:
         f"    case {form_name(entry, variant)}::kind: return {_named_array_policy(entry, variant)};"
         for variant in entry.resolved.variants
     )
-    return f"""/** Resolve {entry.resolved.opcode} to one exact final form. */
+    return selection_storage + f"""/** Resolve {entry.resolved.opcode} to one exact final form. */
 std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{entry.cpp_name}(
     const syntax_ast::AstInstruction& ast, const ResolveContext* context) {{
-  const auto selected = select_variant_name(ast, {prefix}_syntax_descriptor());
+  const auto selected = select_form(ast);
   if (!selected) return std::unexpected(selected.error());
-  const auto kind = [&]() -> InstructionKind {{
-{identity_map}
-    throw ResolveException("Unknown {entry.cpp_name} descriptor identity.");
-  }}();
+  const auto kind = selected->kind;
   const auto named_array_policy = [&]() {{
     switch (kind) {{
 {named_policies}
       default: return NamedArrayAddressPolicy::Reject;
     }}
   }}();
-  auto fields = resolve_fields(ast, {prefix}_syntax_descriptor(),
-      {prefix}_resolved_descriptor(), *selected, context, named_array_policy);
+  auto fields = ::ptx_frontend::resolved_ir::detail::resolve_selected_fields(ast, selected->syntax,
+      selected->resolved, context, named_array_policy);
   if (!fields) return std::unexpected(fields.error());
   switch (kind) {{
 {cases}
@@ -691,7 +754,7 @@ def generate_resolved_opcode_source(
     resolver = (
         _emit_wgmma_construction_declarations(entry)
         if opcode == "wgmma" and shards else ""
-    ) + _emit_resolve(entry, backend)
+    ) + _emit_resolve(entry, backend, context)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor_getters = (
         _emit_sharded_descriptor_getters(entry, len(shards)) if shards else f"""
@@ -717,6 +780,7 @@ const checker::InstructionDescriptor& {prefix}_checker_descriptor() noexcept {{
 #include <utility>
 #include <{INCLUDE_ROOT}/model/{category}/{opcode}.gen.hpp>
 #include <{INCLUDE_ROOT}/ptx_resolved_ir_resolution_detail.hpp>
+#include "ptx_resolved_ir_selection_private.hpp"
 
 namespace ptx_frontend::resolved_ir {{
 

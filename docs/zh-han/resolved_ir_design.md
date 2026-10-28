@@ -477,13 +477,13 @@ predicate register 和整数常量及其取反形式；MOV 的 `pred_or_sreg` �
 special register。两种 shape 都不接收浮点常量。standalone resolution 仍接受无需声明
 上下文的 numbered predicate register。
 
-`Mov::Scalar` 负责 scalar 动态 type modifier：`.b16/.u16/.s16`、
+`MovScalar` 负责 scalar 动态 type modifier：`.b16/.u16/.s16`、
 `.b32/.u32/.s32/.f32` 与 `.b64/.u64/.s64/.f64`，并保留既有的
-`.b16/.b32/.b64` pack/unpack layout。`Mov::B128PackUnpack` 是具有 fixed `.b128` 的独立生成
+`.b16/.b32/.b64` pack/unpack layout。`MovB128PackUnpack` 是具有 fixed `.b128` 的独立生成
 public variant，只用于 vector pack/unpack。`ResolvedRegisterVector` 保存 2/4 个可选
 `ResolvedRegisterRef`，空元素表示 destination-only `_` sink。resolver 与 checker 都要求
 bit-size instruction type、vector 总位宽等于 instruction 位宽，并拒绝 source sink、全 sink
-destination 与 sub-byte element。`Mov::B128PackUnpack` 携带 PTX 8.3 / SM 70 availability。
+destination 与 sub-byte element。`MovB128PackUnpack` 携带 PTX 8.3 / SM 70 availability。
 
 `ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
 device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /
@@ -590,6 +590,168 @@ address 不猜方向，但已知 device-function provenance 仍触发 load 门�
 unknown context 不触发。该上下文规则不会修改 `ResolvedSymbolRef::address_availability`，后者
 继续描述 `mov` 等 address-value 语义。
 
+## 如何阅读生成的 C++ 代码
+
+先跟踪一条指令，例如 `mov.u32 %r0, %r1;`。它的 **opcode** 是 `mov`，
+选中的**语义形式（semantic form）**是 `Scalar`，最终用 `MovScalar` 类表示。
+当前 MOV 的另外三个形式是 `MovB128PackUnpack`、`MovV4U32` 和 `MovPred`。
+一个形式内部还可以有多个**操作数布局（operand layout）**，例如 `MovScalar`
+支持 scalar 和 pack/unpack 排列，由选中的布局决定哪些操作数字段有值。
+`mov.u32` 和 `mov.f32` 都可以是 `MovScalar`，类型差异保存在动态 `type` 字段中，
+不是每一种 modifier spelling 都生成一个类。
+
+阅读时，先把三种东西分开：最终 IR 对象拥有这一条指令的值与源码位置；静态数组
+是所有指令共享的只读规则与索引；选择结果和字段 scratch 只在一次 resolve 中暂存
+中间结果。下文的调用流程是 C++ 的解析、转换和检查流程，不是在执行 PTX 指令。
+
+你最终保留的是 final 类对象。`MovScalar` 拥有 resolved `type`、选中布局的操作数值
+及其 `WithLocs` 位置，也保留继承的执行谓词等状态。生成的 `instruction_kind()`
+返回精确形式 identity，`clone()` 复制拥有的数据，`check()` 通过 checker descriptor
+检查对象，`visit_references()` 在调用期间把引用借给 observer。`kind`、`opcode`
+及形式特有的 `static constexpr` 常量属于共享事实，不会为每条指令复制一份元数据。
+opcode identity、opcode 内的 form ordinal、公开 `InstructionKind` 和 form 内的
+`operand_layout` tag 属于不同编号域。例如 Scalar 的局部 ordinal 是 0，
+`MovScalar::kind` 是其公开形式 identity；layout tag 为 0 则表示该形式的第一个
+layout，不能用来表示 MOV 的第 0 个形式。
+
+### 先找到一个 opcode 的文件
+
+下表用 `G` 表示 `<build>/submod/resolved_ir/generated`，用 `P` 表示
+`G/public/ptx_frontend/resolved_ir`。这些是构建产物；修改时应追溯生成器或其输入，
+不要直接改生成文件。
+
+| `G` 或 `P` 下的文件 | 阅读目的 |
+| --- | --- |
+| `P/identity/data_movement/mov.gen.hpp` | MOV opcode/form 的强类型 identity 常量，不包含具体类。 |
+| `P/ptx_instruction_base.gen.hpp` | 共享的生成 `Instruction` 基类接口及 identity 声明。手写 `ptx_instruction_base.hpp` 是它的 include wrapper。 |
+| `P/model/data_movement/mov.gen.hpp` | 公开 final 类的成员和操作、descriptor getter、MOV resolver 声明。大 family 还会生成 `*_forms_NNN.gen.hpp` 声明分片。 |
+| `P/ptx_resolved_ir.gen.hpp` | 包含各 opcode model 头的总入口。 |
+| `P/ptx_instruction_catalogue.gen.hpp` | 包含具名 `Opcode`/`InstructionKind` enumerator 的总 identity catalogue，不包含全部具体形式类。 |
+| `G/private/resolved_ir_data_movement_mov.gen.cpp` | MOV descriptor storage、方法定义、私有选择表和 `resolveMov`。下文主要沿这个文件阅读。 |
+| `G/private/resolved_ir_matrix_wgmma_{descriptors,methods}_NNN.gen.cpp` | 大 family 的 descriptor/method 分片；WGMMA 构造 helper 也在 method 分片中。 |
+| `G/private/resolved_ir_dispatch.gen.cpp` | 全局 opcode 分发和 `resolveInstruction` 入口。 |
+
+生成文件会使用共享的手写类型和算法。`WithLocs`、resolved 值载体、`ResolvedModule`
+来自手写 foundation/module 层；descriptor 类型，以及 `ModifierCandidateRow`、
+`ModifierCandidatePlan`、`select_indexed_variant`、`resolve_selected_fields` 也都是
+手写定义。生成器为它们提供具体的 storage、数组和调用。`Instruction` 本身是由
+生成器发射的共享基类，不能因为它和手写类型一起出现，就把所有支撑类型都归为
+生成类型。辅助 domain 查询代码见相关 family 文档，跟踪一条 MOV 暂不需要展开它们。
+
+### 把 storage 看作共享元数据
+
+MOV 源文件开头附近的三个 storage struct 分别组织三类事实：
+
+| 生成的 storage 与 getter | 回答的问题 |
+| --- | --- |
+| `MovDescriptorStorage` → `mov_syntax_descriptor()` | 哪些 modifier slot/spelling、操作数形状和 layout 可以表达这个形式？ |
+| `MovResolvedDescriptorStorage` → `mov_resolved_descriptor()` | modifier/operand 经哪些 binding 填入哪些 resolved field，值种类是什么？ |
+| `MovCheckerDescriptorStorage` → `mov_checker_descriptor()` | 选中对象还需要满足哪些 availability、类型兼容性及其他合法性约束？ |
+
+其中 `variants` 按 canonical form 顺序排列；modifier、layout、binding、constraint
+数组描述各形式的规则。descriptor 中的 `std::span` 借用静态生命周期的数组，getter
+返回稳定的 catalogue 引用。这些数组描述整个 family 的指令，不保存当前这一条指令
+的值。运行时读取的是已经编译的 C++ 元数据，不是在运行 YAML 解释器。更详细的边界
+见后面的[三份 descriptor](#三份-descriptor)。
+
+### 读懂私有选择表
+
+opcode 源文件后面的 selection block 用于先排除不可能的形式，再做精确匹配。
+`SelectedFormOrdinal` 给当前 opcode 的零起始 canonical 位置命名；`selected_kinds`
+把每个位置映射到对应 final 类的强类型 `kind`。旁边的 `static_assert` 校验这些
+identity 与生成上下文一致，公开 kind 不是由局部 ordinal 强转或算术推导出来的。
+
+`candidate_rows` 按 `spelling` 排序。每行的 `known` 只表示旧的全 opcode spelling
+检查是否认识它，包含 canonical `Absent` slot 提到的 spelling；它**不表示**该形式
+或该源码位置接受这个 spelling。候选成员关系保存在 `candidate_words` 中：如果有
+`F` 个形式，每行占连续的 `W = ceil(F / 64)` 个 64-bit word。第 `r` 行从 `r * W`
+开始，形式 `j` 对应 word `r * W + j / 64` 的 bit `j % 64`。只要该形式的 canonical
+或 alias 中某个非 absent slot 能消费这个 spelling，该 bit 就会置位。这个并集
+故意忽略书写顺序、出现次数及 required slot 是否齐全。`candidate_plan` 是这两个
+静态数组的 view，不是另一份拥有数据的表。
+
+当前 MOV 快照的 ordinal 为 `0 = Scalar`、`1 = B128PackUnpack`、`2 = V4U32`、
+`3 = Pred`，因此 `W = 1`。其中几行可以合起来看：
+
+| Spelling | `known` | Mask，最右侧为 bit 0 | 剩余的形式候选 |
+| --- | --- | --- | --- |
+| `.u32` | `true` | `0x5` = `0101` | Scalar、V4U32 |
+| `.v4` | `true` | `0x4` = `0100` | V4U32 |
+| `.pred` | `true` | `0x8` = `1000` | Pred |
+| `.b128` | `true` | `0x2` = `0010` | B128PackUnpack |
+
+为方便阅读，上表把 row 和 mask 放在一起；实际 C++ 分为 rows 和 words 两个数组。
+`.v4.u32` 的交集是 `0x4 & 0x5 = 0x4`，只表示剩下一个候选，不表示合法性检查完成。
+`.u32.v4` 得到相同交集，也不会因此合法：原有 exact matcher 仍检查书写顺序、
+required/optional/absent slot、重复及声明的 order alias。全部 known-spelling 检查
+先于匹配完成；失败或歧义时回退到完整的通用 selector，保留原诊断及源码范围。
+没有 modifier 时，初始候选是全部形式。多个精确 modifier match 仍按原来的 arity、
+再 shape 顺序消歧；只有一个 modifier match 时，即使操作数有错，也交给字段解析
+继续诊断。
+
+WGMMA 只是同一结构的规模扩大：当前快照有 2,151 个形式、166 行 spelling，
+`W = 34`，共 5,644 个 word。零起始的第 9 行是 `.fence`，mask 中包含 canonical
+form bit 2,148。这些数字只是当前快照示例，会随 spec 改变，不能当作 ABI 依赖。
+物理分片不会让全 opcode ordinal 重新从零编号。WGMMA getter 按 canonical 顺序
+组装静态连续 catalogue rows；选择表和薄 resolver 仍在
+`resolved_ir_matrix_wgmma.gen.cpp` 中，最后构造时才调用 method 分片中的对应
+`wgmma_construct_NNN` helper。
+
+### 沿一条指令跟踪运行流程
+
+对开头的 scalar 示例，可以按下面的顺序读调用：
+
+```text
+mov.u32 %r0, %r1; 的 AST
+  -> resolveInstruction -> 全局 resolve_instruction 按 opcode 分发
+  -> resolveMov
+  -> select_form
+       栈上 candidates 数组 + 静态 candidate_plan 排除不可能的形式
+       select_indexed_variant 调用原 exact matcher 和原消歧规则
+       选择错误交回完整通用 selector
+  -> SelectedForm { ordinal, kind, syntax 引用, resolved 引用 }
+  -> resolve_selected_fields
+       结合 ResolveContext（含 texture mode）选 layout
+       再次绑定 winner 的 modifier，填充既有的字符串键 field maps
+  -> 构造 MovScalar，把 resolved 值及位置填入成员
+  -> 后续通过 check(...) 使用 checker
+```
+
+对这一条 `.u32` 源码，mask 先留下 Scalar 和 V4U32；精确匹配发现缺少 required
+vector modifier（`.v2` 或 `.v4`），排除 V4U32，因此 `SelectedForm` 引用 Scalar。两个 identifier 选中其 `scalar`
+layout（当前 layout tag 为 0）。字段解析把 `.u32` 转成 `ScalarType::U32`，沿
+`dst`/`src` binding 解析 `%r0`/`%r1` 并保留位置。构造代码填充
+`MovScalar::type`、`dst_register`、`src_mov_source`，仅供 pack/unpack 使用的成员
+保持未设置。通过 `std::unique_ptr<Instruction>` 返回的是这个对象，选择表和
+scratch map 都不是返回的 IR。
+
+`select_form` 创建按 opcode 大小确定的栈上 `candidates` scratch 数组，返回
+`SelectedForm`。其中 `ordinal` 是局部形式位置，`kind` 是公开强类型 identity，
+`syntax` 和 `resolved` 引用该形式的静态 catalogue row。这个临时对象不携带最终
+操作数 payload，不是返回给调用者的 IR。`resolveMov` 等 `resolve{Opcode}` 函数
+负责把选择、共享字段解析和 final 类构造串起来。`resolve_selected_fields` 返回临时的
+`ResolvedInstructionFields`，其中 modifier/operand 的 `ResolvedFieldMap` 保留既有
+字符串键 scratch 表示，直到构造时把值填入最终对象的强类型成员。公开
+`select_variant_name` 继续作为调用者自定义 descriptor 的通用兼容入口；生成的
+resolver 显式传入私有 plan，才会使用索引路径。
+
+`resolveInstruction` 本身不等于 target-aware module validation。声明绑定、模块级
+义务及 checker 调用由本文其他部分说明的外围 module 流程负责。上面各步的详细
+错误与 ownership 规则见后面的 [Resolution 协议](#resolution-协议)。
+
+要追溯生成来源，先看
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/emit/selection_index.py)
+如何导出 spelling mask，以及
+[`resolved_source.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_source.py)
+的 `_emit_resolve` 如何发射选择表 storage、`SelectedForm` 和 resolver 调用。
+[`resolved_model.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_model.py)
+发射公开 model/identity 接口，
+[`resolved_dispatch.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_dispatch.py)
+发射全局分发。共享手写实现则在
+[`ptx_resolved_ir_modifiers.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir_modifiers.cpp)、
+[`ptx_resolved_ir_selection_private.hpp`](../../submod/resolved_ir/src/ptx_resolved_ir_selection_private.hpp)
+及 [`ptx_resolved_ir.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir.cpp)。
+
 ## 按 opcode 生成的结构
 
 每个语义形式生成一个继承 `Instruction` 的 final 类。每个 opcode 的窄生成头
@@ -660,7 +822,7 @@ resolved IR，诊断种类为
    候选 variant 内把 spelling 绑定到有序 slot。required/fixed slot 可以通过位置
    消除共享 spelling 的歧义；database 会拒绝涉及 optional slot 的重复 spelling。
    重复占用一个 slot 会被诊断。
-2. `select_variant_name` 只依据上述 form-local 绑定选择唯一语义形式。`absent`、
+2. Form selection 只依据上述 form-local 绑定选择唯一语义形式。`absent`、
    `optional`、`required/fixed` 都按 slot、允许值和规范或显式别名顺序匹配。
    顺序别名不产生新的语义 variant，也不改变 field 绑定。
 3. 在选定 variant 内按 AST operand shape 与 arity 选择唯一 `OperandLayout`。
@@ -673,8 +835,15 @@ resolved IR，诊断种类为
 零个匹配 variant/layout 是用户诊断；多个匹配 layout 或 descriptor 与生成结构无法
 对应是生成器/descriptor bug，使用 `ResolveException` 区分于 `ResolveDiagnostic`。
 
-`select_variant_name` 是非模板 descriptor matcher；resolver 边界只将所选名字映射
-一次到强类型形式索引，后续构造使用强类型 dispatch。按 YAML
+生成的 opcode resolver 使用私有的有序 spelling 索引对 form bitset 做保守交集，
+随后按 canonical form 顺序调用既有的精确有序 binder。已知 spelling 仍包含 canonical
+`absent` slot；alias 仅扩充可消费的候选。所有未知 spelling 检查先于绑定完成；选择失败
+回退到通用 `select_variant_name`，保留诊断及其优先级。成功结果保留 opcode 内的强类型
+ordinal、由 GenerationContext 校验的 `InstructionKind` 和静态 syntax/resolved descriptor
+直接引用。`resolve_fields` 仍重新绑定 winner，并结合 resolution context 选择 layout。
+索引表与薄调用保留在各 opcode 原有的 `.gen.cpp` 中，WGMMA 构造分片保持独立。
+通用 `select_variant_name` 继续支持调用者自定义 descriptor。
+按 YAML
 `codegen_category` 生成的稳定逐 opcode 聚合头包含 final 类定义及 resolver 声明；
 只需 model 的调用者可使用生成的 base 头。
 `ptx_resolved_ir.gen.hpp` 包含全部逐 opcode 聚合头。形式数量超过 64 的 opcode
@@ -768,7 +937,7 @@ instruction 约束仍不属于当前 ABI。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
-metadata、由生成的 `Mov::Scalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
+metadata、由生成的 `MovScalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
 所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 

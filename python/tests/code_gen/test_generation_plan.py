@@ -493,12 +493,11 @@ class GenerationPlanTests(unittest.TestCase):
             entry for entry in context.entries
             if entry.specification.opcode == "cp"
         )
-        resolver = _emit_resolve(cp, self.backend)
+        resolver = _emit_resolve(cp, self.backend, context)
         self.assertGreater(len(cp.resolved.variants), 128)
         for variant in cp.resolved.variants:
             self.assertIn(
-                f'if (*selected == "{variant.cpp_name}") '
-                f'return {cp.cpp_name}{variant.cpp_name}::kind;',
+                f'{cp.cpp_name}{variant.cpp_name}::kind',
                 resolver,
             )
 

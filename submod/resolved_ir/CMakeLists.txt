@@ -78,7 +78,8 @@ if(BUILD_TESTING)
     target_compile_options(test_resolved_ir PRIVATE
         $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:Clang>>:-gline-tables-only>)
     target_include_directories(test_resolved_ir PRIVATE
-        "${resolved_generated_private}")
+        "${resolved_generated_private}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
     add_dependencies(test_resolved_ir tensor_map_known_facts_test_fixtures)
     gtest_discover_tests(test_resolved_ir)
 endif()

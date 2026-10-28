@@ -11,3 +11,11 @@ target_link_libraries(frontend_symbol_table_scaling PRIVATE
     ptx_frontend::resolved_ir benchmark::benchmark)
 target_compile_definitions(frontend_symbol_table_scaling PRIVATE
     PTX_BENCHMARK_CORPUS_PATH="${PTX_BENCHMARK_CORPUS_FILE}")
+
+add_executable(frontend_resolver_selection resolver_selection.cpp)
+target_compile_features(frontend_resolver_selection PRIVATE cxx_std_23)
+target_include_directories(frontend_resolver_selection PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../test")
+target_link_libraries(frontend_resolver_selection PRIVATE
+    ptx_frontend::resolved_ir benchmark::benchmark)

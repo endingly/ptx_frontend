@@ -3,6 +3,7 @@
 #include <string_view>
 #include "ptx_resolved_ir_layout.hpp"
 #include "ptx_resolved_ir_private.hpp"
+#include "ptx_resolved_ir_selection_private.hpp"
 
 namespace ptx_frontend::resolved_ir::check_end {
 
@@ -61,6 +62,17 @@ std::expected<ResolvedInstructionFields, ResolveDiagnostic> resolve_fields(
   const ResolvedVariantDescriptor& resolved_variant =
       detail::find_resolved_variant_descriptor(resolved_instruction,
                                                variant_name);
+  return detail::resolve_selected_fields(ast, syntax_variant, resolved_variant,
+                                         context, named_array_policy);
+}
+
+std::expected<ResolvedInstructionFields, ResolveDiagnostic>
+detail::resolve_selected_fields(
+    const syntax_ast::AstInstruction& ast,
+    const check_end::SyntaxVariantDescriptor& syntax_variant,
+    const check_end::ResolvedVariantDescriptor& resolved_variant,
+    const ResolveContext* context, NamedArrayAddressPolicy named_array_policy) {
+  const auto variant_name = syntax_variant.variant_name;
   const auto selected_layout = detail::select_operand_layout(
       syntax_variant, ast,
       context ? context->texture_mode : TextureMode::Unified);

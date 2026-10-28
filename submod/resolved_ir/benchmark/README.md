@@ -36,3 +36,23 @@ Binding and direct lookup cases are also retained from the historical driver.
 Each selected case validates its output, and a validation error gives the
 executable a nonzero exit status. Retain Google Benchmark JSON and the exact
 build and host metadata when comparing revisions.
+
+`frontend_resolver_selection` measures the unchanged general selector, the private
+indexed selector, and `resolveInstruction` for MOV, WGMMA fence, and WGMMA MMA.
+Parse and index construction happen before timing; scratch is reused by the
+selector microbenchmark. Generated resolvers instead use opcode-sized stack
+arrays. Resolution includes construction and result destruction on every
+iteration. The benchmark verifies each selected identity and reports full form
+count, conservative candidate count, and index row/mask bytes (excluding shared
+spelling literals).
+
+```sh
+cmake --build BUILD_DIR --target frontend_resolver_selection -j6
+BUILD_DIR/submod/resolved_ir/benchmark/frontend_resolver_selection \
+  --benchmark_min_time=0.2s --benchmark_repetitions=5
+```
+
+For comparisons, use separate immutable baseline/candidate source and build
+directories with the same compiler and flags; serialize builds and timed runs.
+The baseline supports general selection and resolution; indexed measurements
+require the candidate's private implementation.

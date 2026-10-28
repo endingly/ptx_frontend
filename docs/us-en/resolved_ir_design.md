@@ -602,16 +602,16 @@ predicate special registers. Neither shape admits floating constants.
 Standalone resolution continues to accept numbered predicate registers without
 declaration context.
 
-`Mov::Scalar` owns the scalar dynamic type modifier
+`MovScalar` owns the scalar dynamic type modifier
 `.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`, including
 the established `.b16/.b32/.b64` pack and unpack layouts.
-`Mov::B128PackUnpack` is a distinct generated public variant with fixed
+`MovB128PackUnpack` is a distinct generated public variant with fixed
 `.b128` for vector pack/unpack only. `ResolvedRegisterVector` stores two or
 four optional `ResolvedRegisterRef` elements; an empty element is the
 destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
 least one real destination register, and no sub-byte element.
-`Mov::B128PackUnpack` carries PTX 8.3 / SM 70 availability.
+`MovB128PackUnpack` carries PTX 8.3 / SM 70 availability.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the
@@ -753,6 +753,198 @@ the load constraint; an unknown standalone load context does not. This
 contextual rule does not change `ResolvedSymbolRef::address_availability`,
 which continues to describe address-value semantics such as `mov`.
 
+## Reading the generated C++ code
+
+Start with one instruction, such as `mov.u32 %r0, %r1;`. Its **opcode** is
+`mov`; its selected **semantic form** is `Scalar`, represented by the final
+class `MovScalar`. The other current MOV forms are `MovB128PackUnpack`,
+`MovV4U32`, and `MovPred`. A form can still have several **operand layouts**:
+`MovScalar`, for example, supports scalar and pack/unpack arrangements. The
+layout determines which operand members are populated. Opcode identity, form
+identity, and the form-local `operand_layout` tag belong to different numbering
+domains; none is an interchangeable array index.
+
+`mov.u32` and `mov.f32` can both be `MovScalar`: their types are values in the
+dynamic `type` field, not a separate class for every modifier spelling.
+
+Keep three things separate while reading: the final IR object owns this
+instruction's values and locations; static arrays hold shared read-only rules
+and indexes; selection results and field scratch hold intermediate state for
+one resolve call. The call flow below describes C++ parsing, conversion, and
+checking, not execution of the PTX instruction.
+
+The result you keep is a final-class object. `MovScalar` owns its resolved
+`type`, selected operand values, and their `WithLocs` source locations, together
+with inherited state such as the execution predicate. Its generated
+`instruction_kind()` returns the exact form identity, `clone()` copies the
+owned object, `check()` checks it through the checker descriptors, and
+`visit_references()` lends its references to an observer for that call.
+`static constexpr` members such as `kind`, `opcode`, and form-specific constants
+are shared facts, not a separate copy of metadata in every instruction.
+Opcode identity, the opcode-local form ordinal, public `InstructionKind`, and
+the form-local layout tag are separate domains. Scalar's local ordinal is 0,
+while `MovScalar::kind` is its public form identity; a layout tag of 0 names
+the first layout within that form, not the first form of MOV.
+
+### Find the files for one opcode
+
+In the following map, `G` means `<build>/submod/resolved_ir/generated`, and
+`P` means `G/public/ptx_frontend/resolved_ir`. These are build outputs; edit the
+generator or its inputs rather than editing the generated files.
+
+| File under `G` or `P` | What to read it for |
+| --- | --- |
+| `P/identity/data_movement/mov.gen.hpp` | Typed MOV opcode/form identity constants, without the concrete classes. |
+| `P/ptx_instruction_base.gen.hpp` | Shared generated `Instruction` base interface and identity declarations. The handwritten `ptx_instruction_base.hpp` is its include wrapper. |
+| `P/model/data_movement/mov.gen.hpp` | Public final-class members and operations, descriptor getters, and MOV resolver declarations. Large families also have `*_forms_NNN.gen.hpp` declaration shards. |
+| `P/ptx_resolved_ir.gen.hpp` | Broad model umbrella that includes the opcode model headers. |
+| `P/ptx_instruction_catalogue.gen.hpp` | Broad identity catalogue, including named `Opcode`/`InstructionKind` enumerators; it does not contain all concrete form classes. |
+| `G/private/resolved_ir_data_movement_mov.gen.cpp` | MOV descriptor storage, method definitions, private selection tables, and `resolveMov`. This is the main file to follow below. |
+| `G/private/resolved_ir_matrix_wgmma_{descriptors,methods}_NNN.gen.cpp` | Large-family descriptor/method shards. WGMMA construction helpers also live in its method shards. |
+| `G/private/resolved_ir_dispatch.gen.cpp` | Global opcode dispatch and the `resolveInstruction` entry points. |
+
+Generated files use shared handwritten types and algorithms. `WithLocs`, the
+resolved value carriers, and `ResolvedModule` come from the handwritten
+foundation/module layers. The descriptor types are handwritten too, as are
+`ModifierCandidateRow`, `ModifierCandidatePlan`, `select_indexed_variant`, and
+`resolve_selected_fields`. The generator supplies their concrete storage,
+arrays, and calls. `Instruction` is a shared base emitted by the generator;
+its presence beside handwritten types does not make every supporting type
+generated. Auxiliary domain lookup code is explained in the relevant family
+documentation; it is not necessary to trace one MOV resolution.
+
+### Read storage as shared metadata
+
+Near the beginning of MOV's source, three storage structs organize the facts:
+
+| Generated storage and getter | Question answered |
+| --- | --- |
+| `MovDescriptorStorage` → `mov_syntax_descriptor()` | Which modifier slots/spellings and operand shapes/layouts can express this form? |
+| `MovResolvedDescriptorStorage` → `mov_resolved_descriptor()` | Which resolved fields and value kinds receive those modifiers/operands, and through which bindings? |
+| `MovCheckerDescriptorStorage` → `mov_checker_descriptor()` | Which availability, type-compatibility, and other legality constraints must the selected object satisfy? |
+
+Within them, `variants` follows canonical form order; the modifier, layout,
+binding, and constraint arrays describe those forms. Descriptor `std::span`
+fields view static-lifetime arrays, and getters return stable references to
+those catalogs. These arrays describe all instructions of the family; they
+are not the values of the current instruction. Runtime code reads compiled
+C++ metadata rather than running a YAML interpreter. The later
+[three-descriptor section](#three-descriptors) details their contract boundaries.
+
+### Decode the private selection tables
+
+The selection block near the end of the opcode source is an inexpensive way to
+exclude impossible forms before exact matching. Its `SelectedFormOrdinal` enum
+names the zero-based canonical positions for this opcode. `selected_kinds`
+maps each position to the corresponding final class's typed `kind`; the nearby
+`static_assert`s check those identities against the generator context. Public
+kind values are not obtained by treating the local ordinal as a kind.
+
+`candidate_rows` is sorted by `spelling`. A row's `known` flag only records
+whether the legacy whole-opcode spelling check recognizes it, including
+spellings mentioned in canonical `Absent` slots. It does **not** say that the
+spelling is accepted in this form or source position. Candidate membership
+instead comes from `candidate_words`: for `F` forms, each row occupies
+`W = ceil(F / 64)` consecutive 64-bit words. Row `r` starts at `r * W`; form
+`j` uses word `r * W + j / 64`, bit `j % 64`. The bit is set if that form can
+consume the spelling in a non-absent canonical or alias slot. This union
+intentionally forgets order, multiplicity, and required-slot completeness.
+`candidate_plan` is a view of the two static arrays, not another owned table.
+
+For the current MOV snapshot, the ordinals are `0 = Scalar`,
+`1 = B128PackUnpack`, `2 = V4U32`, and `3 = Pred`, so `W = 1`. Some rows are:
+
+| Spelling | `known` | Mask, with bit 0 on the right | Remaining form candidates |
+| --- | --- | --- | --- |
+| `.u32` | `true` | `0x5` = `0101` | Scalar, V4U32 |
+| `.v4` | `true` | `0x4` = `0100` | V4U32 |
+| `.pred` | `true` | `0x8` = `1000` | Pred |
+| `.b128` | `true` | `0x2` = `0010` | B128PackUnpack |
+
+This table joins a row with its mask for readability; the actual C++ arrays
+store rows and words separately. For `.v4.u32`, intersection yields
+`0x4 & 0x5 = 0x4`. That leaves one candidate, not a completed validity check.
+`.u32.v4` produces the same intersection, but does not become legal: the exact
+matcher still checks written order, required/optional/absent slots, repetitions,
+and declared order aliases. All known-spelling checks happen before matching;
+failure or ambiguity falls back to the full general selector for its original
+diagnostic and source range. With no modifiers, all forms start as candidates.
+When several exact modifier matches remain, the existing arity-then-shape
+disambiguation applies; a single modifier match proceeds to field resolution
+even if its operands are malformed.
+
+WGMMA uses the same scheme at a larger scale: the current snapshot has 2,151
+forms, 166 spelling rows, `W = 34`, and 5,644 words. Its zero-based row 9 is
+`.fence`, whose mask contains canonical form bit 2,148. These numbers are
+snapshot examples and may change with the specification; they are not an ABI
+to depend on. Physical shards do not restart the full-opcode ordinal. WGMMA's
+getters assemble static contiguous catalog rows in canonical order, while its
+selection tables and thin resolver remain in `resolved_ir_matrix_wgmma.gen.cpp`.
+The final construction call goes to the appropriate `wgmma_construct_NNN`
+helper in a method shard.
+
+### Follow one runtime resolution
+
+For the scalar example, read the calls in this order:
+
+```text
+AST for mov.u32 %r0, %r1;
+  -> resolveInstruction -> global resolve_instruction opcode dispatch
+  -> resolveMov
+  -> select_form
+       stack candidates array + static candidate_plan exclude impossible forms
+       select_indexed_variant runs the original exact matcher/disambiguation
+       selection errors use the full general selector
+  -> SelectedForm { ordinal, kind, syntax reference, resolved reference }
+  -> resolve_selected_fields
+       choose the layout using ResolveContext (including texture mode)
+       bind the winning modifiers again; populate existing string-keyed field maps
+  -> construct MovScalar and populate its resolved values/locations
+  -> later checker use through check(...)
+```
+
+For this `.u32` source, the mask first leaves Scalar and V4U32; exact matching
+rejects V4U32 because its required vector modifier (`.v2` or `.v4`) is missing,
+so `SelectedForm` refers to Scalar.
+The two identifiers select its `scalar` layout (current layout tag 0).
+Field resolution converts `.u32` to `ScalarType::U32` and resolves `%r0`/`%r1`
+through the `dst`/`src` bindings, retaining their locations. Construction fills
+`MovScalar::type`, `dst_register`, and `src_mov_source`; the pack/unpack-only
+members remain disengaged. That object, not the selection table or scratch
+maps, is the value returned through `std::unique_ptr<Instruction>`.
+
+`select_form` creates the opcode-sized stack `candidates` scratch array and
+returns `SelectedForm`. Its `ordinal` identifies the local form; `kind` is its
+public typed identity; `syntax` and `resolved` borrow that form's static
+catalog rows. This temporary object carries no final operand payload and is
+not the IR object returned to the caller. `resolve{Opcode}` functions such as
+`resolveMov` connect selection, shared field resolution, and final-class
+construction. `resolve_selected_fields` returns temporary
+`ResolvedInstructionFields`, whose modifier/operand `ResolvedFieldMap`s keep
+the existing string-keyed scratch representation until construction populates
+the final object's typed members. The public `select_variant_name` remains the
+general compatibility path for caller-provided descriptors; the generated
+resolver explicitly passes its private plan to use indexed selection.
+
+`resolveInstruction` alone is not target-aware module validation. Declaration
+binding, module-wide obligations, and checker calls belong to the surrounding
+module pipeline described elsewhere in this document. The
+[resolution protocol](#resolution-protocol) gives the detailed error and
+ownership rules for the steps above.
+
+To trace a generated block back to its source, start with
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/emit/selection_index.py)
+for spelling masks, and `_emit_resolve` in
+[`resolved_source.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_source.py)
+for selection storage, `SelectedForm`, and resolver calls.
+[`resolved_model.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_model.py)
+emits public model/identity surfaces, while
+[`resolved_dispatch.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_dispatch.py)
+emits global dispatch. The shared handwritten implementation is in
+[`ptx_resolved_ir_modifiers.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir_modifiers.cpp),
+[`ptx_resolved_ir_selection_private.hpp`](../../submod/resolved_ir/src/ptx_resolved_ir_selection_private.hpp),
+and [`ptx_resolved_ir.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir.cpp).
+
 ## Opcode-generated structures
 
 Every semantic form generates one final class derived from `Instruction`. An
@@ -773,7 +965,7 @@ public:
 The optional `execution_predicate` and virtual operations are inherited from
 `Instruction`.
 
-A fixed modifier is not mutable per-instance state. In the merged `Add::Sat`,
+A fixed modifier is not mutable per-instance state. In the merged `AddSat`,
 `.sat` is fixed while the type is an allowed value with its own availability,
 so it generates:
 
@@ -834,7 +1026,7 @@ implementation. Shared logic performs these steps:
    candidate variant. Required/fixed slots may share a spelling when their
    positions disambiguate it; repeated optional spellings are rejected by the
    database. Reusing one slot is a user diagnostic.
-2. `select_variant_name` selects exactly one semantic form from those form-local
+2. Form selection chooses exactly one semantic form from those form-local
    bindings. `absent`, `optional`, and `required/fixed` match by slot and
    allowed value in canonical or explicitly declared alias order. Order aliases
    do not create new semantic variants or change field bindings.
@@ -853,9 +1045,18 @@ No matching variant/layout is a user diagnostic. Multiple matching layouts, or
 a mismatch between descriptors and generated structures, is a generator bug and
 uses `ResolveException`, distinct from `ResolveDiagnostic`.
 
-`select_variant_name` is the non-template descriptor matcher. At the resolver
-boundary its selected name maps once to a typed form index; subsequent
-construction uses typed dispatch. Generated final class definitions and
+`select_variant_name` remains the general non-template descriptor matcher for
+caller-supplied descriptors. Generated opcode resolvers use a private sorted
+spelling index to conservatively intersect form bitsets, then run the same exact
+ordered binder in canonical form order. Known spellings include canonical
+`absent` slots; aliases contribute consuming candidates. All unknown-spelling
+checks finish before binding, and selection failure returns to the general
+matcher for unchanged diagnostic priority. Successful selection retains an
+opcode-local typed ordinal, a context-validated `InstructionKind`, and direct
+static syntax/resolved descriptor references. `resolve_fields` still binds the
+winner again and selects its layout using the resolution context. Index tables
+and thin calls stay in each opcode's existing `.gen.cpp`; WGMMA construction
+shards remain separate. Generated final class definitions and
 resolver declarations use a stable per-opcode aggregate header under the YAML
 `codegen_category`; callers with only model needs can use the generated base
 header. The aggregate `ptx_resolved_ir.gen.hpp` includes all opcode
@@ -971,7 +1172,7 @@ Implementation entry points are
 
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
-by module resolution. Scalar `.b128` is rejected by the generated `Mov::Scalar`
+by module resolution. Scalar `.b128` is rejected by the generated `MovScalar`
 type domain; declaration-type availability for wider `.b128` registers remains
 outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are

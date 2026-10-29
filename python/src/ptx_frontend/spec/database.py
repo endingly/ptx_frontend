@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
+from math import isfinite
 from threading import Lock
 from typing import Any, TypeVar
 
@@ -17,6 +18,7 @@ from .model import (
 )
 from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
+from jsonschema_rs import Draft202012Validator as NativeDraft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
 from .synatax_shapes import OPERAND_SYNTAX_SHAPES, operand_syntax_shapes
@@ -93,107 +95,88 @@ def load_codegen_database_with_category_inputs(
 
 
 @cache
-def _instruction_schema_validator() -> Draft202012Validator:
-    """Load the ISA schema once for a database-loading process."""
+def _instruction_schema_validator() -> NativeDraft202012Validator:
+    """Compile the fixed packaged ISA schema once without network or formats."""
 
-    schema = load_yaml(PTX_INSTRUCTION_SCHEMA)
-    return Draft202012Validator(_prepare_instruction_schema(schema))
+    return NativeDraft202012Validator(
+        load_yaml(PTX_INSTRUCTION_SCHEMA), validate_formats=False, offline=True
+    )
 
 
 @cache
 def _original_instruction_schema_validator() -> Draft202012Validator:
-    """Load the unmodified schema only when native diagnostics are needed."""
+    """Load the original Python validator for compatibility and diagnostics."""
 
     return Draft202012Validator(load_yaml(PTX_INSTRUCTION_SCHEMA))
 
 
-def _prepare_instruction_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Resolve the packaged schema's simple local references before validation.
+# A zero marks any list item; dict keys must be exact strings. Only these
+# canonical unconstrained string leaves are exempt from regex newline parity.
+_NATIVE_MULTILINE_TEXT_PATHS = frozenset({
+    ("instructions", 0, "doc"),
+    ("instructions", 0, "syntax"),
+    ("instructions", 0, "variants", 0, "description"),
+    ("instructions", 0, "variants", 0, "syntax"),
+    ("instructions", 0, "variants", 0, "doc"),
+})
 
-    Shared targets belong only to the private validator schema. Unsupported
-    reference or scope constructs retain the original validator behavior by
-    falling back to the unmodified schema, including for recursive definitions.
+
+def _native_schema_compatible(
+    value: Any, depth: int = 0, _path: tuple[str | int, ...] = ()
+) -> bool:
+    """Limit native validation to compatible inputs for the current ISA schema.
+
+    The native engine treats tuples as arrays and nonfinite numbers differently.
+    Its end anchor also differs from Python's before a final newline. Allow
+    newlines only at five unconstrained instruction/variant text string leaves;
+    descendants of malformed containers receive no exemption. Restrict integers
+    to the exact binary64 range, and bound traversal so deep or cyclic YAML
+    values reach the original validator without exhausting this guard.
+    Canonical regex, numeric, or text-field changes need renewed parity checks.
     """
 
-    prepared: dict[int, Any] = {}
-    visited: set[int] = set()
-    active: set[int] = set()
-    definitions = schema.get("$defs", {})
-    if not isinstance(definitions, dict):
-        return schema
-
-    def target(value: dict[str, Any]) -> Any:
-        """Find an exact local definition without URI or pointer rewriting."""
-
-        reference = value["$ref"]
-        if not isinstance(reference, str) or not reference.startswith("#/$defs/"):
-            raise ValueError("unsupported schema reference")
-        name = reference.removeprefix("#/$defs/")
-        if any(character in name for character in "/~%#") or name not in definitions:
-            raise ValueError("unsupported schema reference target")
-        return definitions[name]
-
-    def preflight(value: Any, *, root: bool = False) -> None:
-        """Check all subtrees and reference edges before changing any schema."""
-
-        if not isinstance(value, (dict, list)):
-            return
-        identity = id(value)
-        if identity in active:
-            raise ValueError("recursive schema")
-        if identity in visited:
-            return
-        active.add(identity)
-        if isinstance(value, dict):
-            if any(key in value for key in (
-                "$anchor", "$dynamicAnchor", "$dynamicRef",
-                "$recursiveAnchor", "$recursiveRef",
-            )) or (not root and "$id" in value):
-                raise ValueError("scoped schema")
-            if "$ref" in value:
-                preflight(target(value))
-            for item in value.values():
-                preflight(item)
-        else:
-            for item in value:
-                preflight(item)
-        active.remove(identity)
-        visited.add(identity)
-
-    def prepare(value: Any) -> Any:
-        """Copy containers in order, preserving ref siblings as standard schemas."""
-
-        if not isinstance(value, (dict, list)):
-            return value
-        identity = id(value)
-        if identity not in prepared:
-            if isinstance(value, list):
-                result = [prepare(item) for item in value]
-            elif "$ref" in value:
-                result = prepare(target(value)) if len(value) == 1 else value
-            else:
-                result = {key: prepare(item) for key, item in value.items()}
-            prepared[identity] = result
-        return prepared[identity]
-
-    try:
-        preflight(schema, root=True)
-    except ValueError:
-        return schema
-    return prepare(schema)
+    if depth > 64:
+        return False
+    kind = type(value)
+    if kind is dict:
+        return all(
+            type(key) is str
+            and "\n" not in key
+            and _native_schema_compatible(item, depth + 1, _path + (key,))
+            for key, item in value.items()
+        )
+    if kind is list:
+        return all(
+            _native_schema_compatible(item, depth + 1, _path + (0,))
+            for item in value
+        )
+    if kind is str:
+        return "\n" not in value or _path in _NATIVE_MULTILINE_TEXT_PATHS
+    if kind is int:
+        return -(2**53 - 1) <= value <= 2**53 - 1
+    if kind is float:
+        return isfinite(value)
+    return value is None or kind is bool
 
 
 def _validate_instruction_schema(path: Traversable, spec: dict[str, Any]) -> None:
-    """Reject a malformed ISA spec before semantic normalization begins."""
+    """Validate compatible inputs natively and retain original Python behavior."""
 
-    if next(_instruction_schema_validator().iter_errors(spec), None) is None:
-        return
+    if _native_schema_compatible(spec):
+        validator = _instruction_schema_validator()
+        try:
+            if validator.is_valid(spec):
+                return
+        except ValueError:
+            # Unsupported native input conversion keeps Python's acceptance.
+            pass
 
-    # Alternative-match messages can embed schemas; retain their original refs.
     errors = sorted(
         _original_instruction_schema_validator().iter_errors(spec),
         key=lambda error: list(error.path),
     )
+    if not errors:
+        return
     error = errors[0]
     location = ".".join(str(piece) for piece in error.path) or "<root>"
     raise ValueError(f"{path}:{location}: {error.message}")

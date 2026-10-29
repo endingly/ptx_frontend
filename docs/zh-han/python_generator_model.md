@@ -162,9 +162,15 @@ Python 决定 form 顺序、field mapping、检查、binding 共享及分片；�
 Descriptor 分片 builder 仅转换所选的 canonical syntax variant。
 Checker builder 每次构建 storage 时只准备一次 backend member 的中性值表达式；
 复用范围限于本次调用，每次构建都会读取传入的 backend。
-私有 ISA schema validator 只解析一次简单、无环的本地引用。
-遇到不支持的引用作用域时保留原 schema；无效输入使用原 schema 生成诊断，
-保持诊断路径与消息不变。
+私有 ISA schema validator 缓存 `jsonschema-rs` 对未修改的打包 schema 的
+Draft 2020-12 编译结果，关闭 format 检查和网络读取。兼容性检查限制遍历深度，
+仅接收内建 JSON 值、字符串键、有限浮点数、±(2^53−1) 范围内的整数，
+键与字符串均不得包含换行，但精确位于 instruction 的 `doc`/`syntax` 和 variant 的
+`description`/`syntax`/`doc` 字符串字段除外。这五处结构位置的 schema 只有字符串类型
+约束；格式错误的嵌套值不会继承该例外。其他值和原生引擎拒绝的输入交给 Python
+`jsonschema`；其接受结果、错误路径与消息保持权威。该检查针对当前 canonical 正则、
+数值与文本字段约束，修改这些约束时须重新验证两种引擎的一致性。依赖限制在 0.60.x，受支持的平台
+使用原生 wheel；从源码构建该依赖需要 Rust。
 
 CMake 通过递归的 `CONFIGURE_DEPENDS` 发现同时追踪 Python 源码与 `.j2` 资源，
 并沿用输入成员清单，因此修改或新增模板都会使正常 codegen edge 失效。

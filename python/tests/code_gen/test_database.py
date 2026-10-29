@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from datetime import date
+from math import inf, nextafter
 from pathlib import Path
 from threading import Barrier, Event
 import tempfile
@@ -16,6 +18,7 @@ from ptx_frontend.code_gen.database import (
     load_codegen_database,
 )
 from ptx_frontend.code_gen.load_yaml import load_yaml
+from ptx_frontend.spec.resources import packaged_spec_dir
 from ptx_frontend.code_gen.emit.availability import emit_availability
 from ptx_frontend.code_gen.normalize import normalize_availability, normalize_operand
 
@@ -63,86 +66,303 @@ def _spec(
     }
 
 
-class InstructionSchemaPreparationTests(unittest.TestCase):
-    """Prepared schemas retain validation decisions and public diagnostics."""
+class InstructionSchemaValidationTests(unittest.TestCase):
+    """Native success and Python fallback retain the canonical schema contract."""
 
-    def test_packaged_schema_preserves_valid_and_malformed_diagnostics(self) -> None:
-        """Malformed nested fields retain the loader's selected path/message."""
+    def test_all_packaged_specs_match_original_validation(self) -> None:
+        """Every packaged input is accepted by both engines and the loader."""
 
-        schema = load_yaml(SCHEMA)
-        original = deepcopy(schema)
-        prepared = spec_database._prepare_instruction_schema(schema)
-        self.assertIsNot(prepared, schema)
-        self.assertEqual(schema, original)
+        original = Draft202012Validator(load_yaml(SCHEMA))
+        for path in spec_database.discover_spec_files(packaged_spec_dir()):
+            with self.subTest(path=path):
+                spec = load_yaml(path)
+                self.assertTrue(original.is_valid(spec))
+                self.assertTrue(spec_database._instruction_schema_validator().is_valid(spec))
+                self.assertTrue(spec_database._native_schema_compatible(spec))
+                with patch.object(spec_database, "_original_instruction_schema_validator",
+                                  side_effect=AssertionError("unexpected Python pass")):
+                    spec_database._validate_instruction_schema(path, spec)
+        with patch.object(spec_database, "_original_instruction_schema_validator",
+                          side_effect=AssertionError("unexpected Python pass")):
+            database = load_codegen_database(spec_dir=packaged_spec_dir())
+        self.assertTrue(database.instructions)
+
+    def test_malformed_inputs_preserve_original_paths_and_messages(self) -> None:
+        """Nested failures and alternative messages come from the original schema."""
+
+        original = Draft202012Validator(load_yaml(SCHEMA))
         valid = _spec(category="arithmetic", codegen_category="arithmetic",
                       variant_name="add_u32", type_value="u32")
-        cases = [valid, {}, {**valid, "category": ""}, {**valid, "unexpected": True}]
-        for replacement in ([], {"unknown": True}, 123):
+        cases = [{}, {**valid, "category": ""}, {**valid, "unexpected": True}]
+        for replacement in ([], {"unknown": True}, 123, None, False, "unknown"):
             malformed = deepcopy(valid)
             malformed["instructions"][0]["variants"][0]["modifiers"][0]["value"] = replacement
             cases.append(malformed)
         for instance in cases:
             with self.subTest(instance=instance):
-                before = sorted(Draft202012Validator(schema).iter_errors(instance),
-                                key=lambda error: list(error.path))
-                after = sorted(Draft202012Validator(prepared).iter_errors(instance),
-                               key=lambda error: list(error.path))
-                self.assertEqual([(list(error.path), error.message) for error in after],
-                                 [(list(error.path), error.message) for error in before])
-        self.assertTrue(Draft202012Validator(prepared).is_valid(valid))
+                errors = sorted(original.iter_errors(instance), key=lambda error: list(error.path))
+                if not errors:
+                    spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                    continue
+                error = errors[0]
+                location = ".".join(map(str, error.path)) or "<root>"
+                with self.assertRaises(ValueError) as raised:
+                    spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                self.assertEqual(str(raised.exception), f"case.yaml:{location}: {error.message}")
 
-    def test_alternative_failures_and_reference_siblings_keep_diagnostics(self) -> None:
-        """Both alternatives and ref siblings retain their standard behavior."""
+    def test_multiline_text_schema_contract_has_no_indirect_constraints(self) -> None:
+        """Changes affecting the five newline exceptions require renewed evidence."""
 
-        schema = {"$defs": {"number": {"type": "integer"}}, "type": "object",
-                  "properties": {
-                      "choice": {"oneOf": [{"$ref": "#/$defs/number"}, {"type": "boolean"}]},
-                      "other": {"anyOf": [{"$ref": "#/$defs/number"}, {"type": "null"}]},
-                      "bounded": {"$ref": "#/$defs/number", "minimum": 3},
-                  }}
-        prepared = spec_database._prepare_instruction_schema(schema)
-        self.assertIsNot(prepared, schema)
-        instance = {"choice": [], "other": "bad", "bounded": 1}
-        before = list(Draft202012Validator(schema).iter_errors(instance))
-        after = list(Draft202012Validator(prepared).iter_errors(instance))
-        self.assertEqual([error.validator for error in after], ["oneOf", "anyOf", "minimum"])
-        self.assertEqual([(list(error.path), error.message) for error in after],
-                         [(list(error.path), error.message) for error in before])
+        schema = load_yaml(SCHEMA)
+        annotations = {"description", "title", "examples", "$comment"}
+        self.assertEqual(set(schema) - annotations,
+                         {"$schema", "$id", "$defs", "type", "additionalProperties",
+                          "required", "properties"})
+        self.assertEqual(schema["properties"]["instructions"], {
+            "description": "Instruction specifications in this file.",
+            "type": "array", "minItems": 1,
+            "items": {"$ref": "#/$defs/instruction"},
+        })
+        for name, fields in (("instruction", ("doc", "syntax")),
+                             ("variant", ("description", "syntax", "doc"))):
+            container = schema["$defs"][name]
+            with self.subTest(container=name):
+                self.assertEqual(set(container) - annotations,
+                                 {"type", "additionalProperties", "required", "properties"})
+                self.assertEqual(container["type"], "object")
+                for field in fields:
+                    leaf = container["properties"][field]
+                    self.assertEqual({key: value for key, value in leaf.items()
+                                      if key not in annotations}, {"type": "string"})
+        self.assertEqual(schema["$defs"]["instruction"]["properties"]["variants"], {
+            "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/variant"},
+        })
 
-    def test_unsupported_scope_and_cycles_fall_back_to_original_schema(self) -> None:
-        """Unsupported constructs keep the standard resolver and schema object."""
+    def test_newlines_are_native_only_at_exact_text_string_leaves(self) -> None:
+        """Both trailing and embedded newlines stay literal at approved paths."""
 
-        for definition in (
-            {"$ref": "#/$defs/value"}, {"$ref": "https://example.com/other"},
-            {"$id": "nested", "type": "integer"}, {"$dynamicRef": "#value"},
-            {"$anchor": "value", "type": "integer"},
-        ):
-            schema = {"$defs": {"value": definition}, "$ref": "#/$defs/value"}
-            with self.subTest(definition=definition):
-                self.assertIs(spec_database._prepare_instruction_schema(schema), schema)
+        valid = _spec(category="arithmetic", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        instruction = valid["instructions"][0]
+        variant = instruction["variants"][0]
+        for container, fields in ((instruction, ("doc", "syntax")),
+                                  (variant, ("description", "syntax", "doc"))):
+            for field in fields:
+                container[field] = "first line\nsecond line\n"
+        before = deepcopy(valid)
+        self.assertTrue(spec_database._native_schema_compatible(valid))
+        with patch.object(spec_database, "_original_instruction_schema_validator",
+                          side_effect=AssertionError("unexpected Python pass")):
+            spec_database._validate_instruction_schema(Path("valid.yaml"), valid)
+        self.assertEqual(valid, before)
 
-    def test_loader_uses_native_diagnostics_for_multiple_matching_alternatives(self) -> None:
-        """oneOf messages retain original references when several branches match."""
+    def test_text_names_at_other_paths_and_nested_values_keep_fallback(self) -> None:
+        """A matching key name or malformed container cannot inherit text status."""
 
-        schema = {"$defs": {"value": {"type": "integer"}},
-                  "oneOf": [{"$ref": "#/$defs/value"}, {"type": "number"}]}
+        cases = [
+            {"doc": "text\n"}, {"syntax": "text\n"},
+            {"instructions": {"0": {"doc": "text\n"}}},
+            {"instructions": [{"variants": {"0": {"doc": "text\n"}}}]},
+            {"instructions": [{"notes": "text\n"}]},
+            {"instructions": [{"modifiers": [{"doc": "text\n"}]}]},
+            {"instructions": [{"doc": {"syntax": "text\n"}}]},
+            {"instructions": [{"syntax": ["text\n"]}]},
+            {"instructions": [{"variants": [{"description": {"doc": "text\n"}}]}]},
+            {"instructions": [{"doc\n": "text"}]},
+        ]
+        for instance in cases:
+            with self.subTest(instance=instance):
+                self.assertFalse(spec_database._native_schema_compatible(instance))
+
+    def test_malformed_text_types_preserve_original_diagnostics(self) -> None:
+        """Native rejection or guarded nesting still reports Python's exact error."""
+
+        original = Draft202012Validator(load_yaml(SCHEMA))
+        for at_variant, fields in ((False, ("doc", "syntax")),
+                                   (True, ("description", "syntax", "doc"))):
+            for field in fields:
+                for value in (None, 123, False, ["text\n"], {"doc": "text\n"}):
+                    instance = _spec(category="arithmetic", codegen_category="arithmetic",
+                                     variant_name="add_u32", type_value="u32")
+                    container = instance["instructions"][0]
+                    if at_variant:
+                        container = container["variants"][0]
+                    container[field] = value
+                    with self.subTest(at_variant=at_variant, field=field, value=value):
+                        error = sorted(original.iter_errors(instance),
+                                       key=lambda item: list(item.path))[0]
+                        location = ".".join(map(str, error.path)) or "<root>"
+                        with self.assertRaises(ValueError) as raised:
+                            spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                        self.assertEqual(str(raised.exception),
+                                         f"case.yaml:{location}: {error.message}")
+
+    def test_regex_newline_oneof_false_positive_remains_guarded(self) -> None:
+        """A native-only success from a different oneOf count cannot be admitted."""
+
+        schema = {"oneOf": [{"type": "string", "pattern": "^word$"},
+                            {"type": "string"}]}
         original = Draft202012Validator(schema)
-        prepared = Draft202012Validator(spec_database._prepare_instruction_schema(schema))
-        expected = next(original.iter_errors(1)).message
-        self.assertNotEqual(next(prepared.iter_errors(1)).message, expected)
-        with patch.object(spec_database, "_instruction_schema_validator", return_value=prepared), \
-             patch.object(spec_database, "_original_instruction_schema_validator", return_value=original):
+        native = spec_database.NativeDraft202012Validator(
+            schema, validate_formats=False, offline=True)
+        self.assertFalse(original.is_valid("word\n"))
+        self.assertTrue(native.is_valid("word\n"))
+        with patch.object(spec_database, "_instruction_schema_validator",
+                          side_effect=AssertionError("unexpected native pass")), \
+             patch.object(spec_database, "_original_instruction_schema_validator",
+                          return_value=original):
             with self.assertRaises(ValueError) as raised:
-                spec_database._validate_instruction_schema(Path("case.yaml"), 1)
-        self.assertEqual(str(raised.exception), f"case.yaml:<root>: {expected}")
+                spec_database._validate_instruction_schema(Path("case.yaml"), "word\n")
+        self.assertEqual(str(raised.exception),
+                         "case.yaml:<root>: " + next(original.iter_errors("word\n")).message)
 
-    def test_successful_validation_does_not_load_the_native_diagnostic_validator(self) -> None:
-        """Valid inputs complete through the prepared schema in one pass."""
+    def test_native_guard_rejects_incompatible_values_and_subclasses(self) -> None:
+        """Conversion, regex, and numeric differences use the Python validator."""
+
+        class CustomInt(int):
+            """An integer subclass outside the exact builtin input boundary."""
+
+        for value in ((1,), {1, 2}, date(2020, 1, 1), {1: "value"},
+                      {"key\n": "value"}, "value\n", 2**53, -(2**53),
+                      float("nan"), float("inf"), float("-inf"), CustomInt(1)):
+            with self.subTest(value=value):
+                self.assertFalse(spec_database._native_schema_compatible(value))
+        self.assertTrue(spec_database._native_schema_compatible(
+            {"values": [None, True, False, -(2**53 - 1), 2**53 - 1, 1.5, "value"]}))
+
+    def test_guard_bounds_deep_and_cyclic_yaml(self) -> None:
+        """The compatibility traversal terminates before Python validation."""
+
+        deep: Any = "leaf"
+        for _ in range(66):
+            deep = [deep]
+        cycle: list[Any] = []
+        cycle.append(cycle)
+        self.assertFalse(spec_database._native_schema_compatible(deep))
+        self.assertFalse(spec_database._native_schema_compatible(cycle))
+
+    def test_ineligible_values_bypass_native_validation(self) -> None:
+        """A newline accepted by Python's end anchor keeps its old behavior."""
+
+        valid = _spec(category="arithmetic\n", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        with patch.object(spec_database, "_instruction_schema_validator",
+                          side_effect=AssertionError("unexpected native validation")):
+            spec_database._validate_instruction_schema(Path("valid.yaml"), valid)
+
+    def test_native_false_and_conversion_failure_use_python_acceptance(self) -> None:
+        """A native rejection never rejects an input accepted by Python."""
+
+        valid = _spec(category="arithmetic", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        for outcome in (False, ValueError("unsupported conversion")):
+            with self.subTest(outcome=outcome), patch.object(
+                spec_database, "_instruction_schema_validator"
+            ) as native:
+                if isinstance(outcome, Exception):
+                    native.return_value.is_valid.side_effect = outcome
+                else:
+                    native.return_value.is_valid.return_value = outcome
+                spec_database._validate_instruction_schema(Path("valid.yaml"), valid)
+
+    def test_programming_errors_are_not_hidden(self) -> None:
+        """Only native conversion ValueError triggers the compatibility fallback."""
+
+        with patch.object(spec_database, "_instruction_schema_validator") as native:
+            native.return_value.is_valid.side_effect = RuntimeError("bug")
+            with self.assertRaisesRegex(RuntimeError, "bug"):
+                spec_database._validate_instruction_schema(Path("case.yaml"), {})
+
+    def test_native_constructor_errors_are_not_conversion_failures(self) -> None:
+        """A schema compilation failure remains visible to the caller."""
+
+        with patch.object(spec_database, "_instruction_schema_validator",
+                          side_effect=ValueError("invalid schema")):
+            with self.assertRaisesRegex(ValueError, "invalid schema"):
+                spec_database._validate_instruction_schema(Path("case.yaml"), {})
+
+    def test_deep_cyclic_and_surrogate_values_preserve_loader_behavior(self) -> None:
+        """Fallback retains early type errors and non-UTF8 Python strings."""
+
+        valid = _spec(category="arithmetic", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        deep: Any = "leaf"
+        for _ in range(66):
+            deep = [deep]
+        cycle: list[Any] = []
+        cycle.append(cycle)
+        original = Draft202012Validator(load_yaml(SCHEMA))
+        for value in (deep, cycle, "\ud800"):
+            instance = {**valid, "doc": value}
+            errors = sorted(original.iter_errors(instance), key=lambda error: list(error.path))
+            with self.subTest(value_type=type(value)):
+                if not errors:
+                    spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                else:
+                    error = errors[0]
+                    location = ".".join(map(str, error.path)) or "<root>"
+                    with self.assertRaises(ValueError) as raised:
+                        spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                    self.assertEqual(str(raised.exception), f"case.yaml:{location}: {error.message}")
+
+    def test_numeric_boolean_and_finite_float_boundaries_match_python(self) -> None:
+        """Native numeric equality and current u64 bounds retain Python results."""
+
+        schema = load_yaml(SCHEMA)
+        immediate = schema["$defs"]["constraint"]["properties"]["maximum"]
+        shapes = [immediate, {"enum": [0, 1, 2, 4]}, {"const": True}]
+        values = [False, True, 0, 1, 1.0, 1.5, 2**53 - 1, 2**53, 2**53 + 1,
+                  2**64 - 1, 2**64, float(2**64 - 1),
+                  nextafter(float(2**64 - 1), -inf),
+                  nextafter(float(2**64 - 1), inf)]
+        for shape in shapes:
+            native = spec_database.NativeDraft202012Validator(
+                shape, validate_formats=False, offline=True)
+            original = Draft202012Validator(shape)
+            for value in values:
+                with self.subTest(shape=shape, value=value):
+                    self.assertEqual(native.is_valid(value), original.is_valid(value))
+
+    def test_oneof_zero_one_and_multiple_matches_and_reference_siblings(self) -> None:
+        """Boolean, integer, and scoped-reference alternatives keep native parity."""
+
+        schemas = [
+            {"oneOf": [{"type": "integer"}, {"type": "boolean"}]},
+            {"oneOf": [{"type": "integer"}, {"type": "number"}]},
+            {"$defs": {"value": {"type": "integer"}}, "type": "object",
+             "properties": {"choice": {"oneOf": [
+                 {"$ref": "#/$defs/value", "minimum": 2}, {"type": "boolean"}]}}},
+            {"$defs": {"value": {"$id": "value", "type": "integer"}},
+             "oneOf": [{"$ref": "value"}, {"type": "boolean"}]},
+        ]
+        for schema in schemas:
+            native = spec_database.NativeDraft202012Validator(
+                schema, validate_formats=False, offline=True)
+            original = Draft202012Validator(schema)
+            for instance in (None, True, False, 0, 1, 2, 2.0, "value", {},
+                             {"choice": 1}, {"choice": 2}, {"choice": True}):
+                with self.subTest(schema=schema, instance=instance):
+                    self.assertEqual(native.is_valid(instance), original.is_valid(instance))
+                    with patch.object(spec_database, "_instruction_schema_validator", return_value=native), \
+                         patch.object(spec_database, "_original_instruction_schema_validator", return_value=original):
+                        errors = sorted(original.iter_errors(instance), key=lambda error: list(error.path))
+                        if not errors:
+                            spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                        else:
+                            error = errors[0]
+                            location = ".".join(map(str, error.path)) or "<root>"
+                            with self.assertRaises(ValueError) as raised:
+                                spec_database._validate_instruction_schema(Path("case.yaml"), instance)
+                            self.assertEqual(str(raised.exception),
+                                             f"case.yaml:{location}: {error.message}")
+
+    def test_successful_native_validation_does_not_load_python_validator(self) -> None:
+        """Eligible valid inputs finish without a second schema pass."""
 
         valid = _spec(category="arithmetic", codegen_category="arithmetic",
                       variant_name="add_u32", type_value="u32")
         with patch.object(spec_database, "_original_instruction_schema_validator",
-                          side_effect=AssertionError("unexpected diagnostic pass")):
+                          side_effect=AssertionError("unexpected Python pass")):
             spec_database._validate_instruction_schema(Path("valid.yaml"), valid)
 
 

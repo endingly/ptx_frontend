@@ -188,9 +188,18 @@ wheel packages, and installed-wheel smoke checks render from outside the checkou
 Descriptor shard builders translate only their selected canonical syntax variants.
 Checker builders prepare neutral backend member expressions once per storage build;
 that reuse stays local to the invocation and observes the supplied backend each time.
-The private ISA schema validator resolves simple acyclic local references once.
-Unsupported reference scopes retain the original schema, and invalid inputs use
-the original schema for diagnostics, preserving their paths and messages.
+The private ISA schema validator caches `jsonschema-rs` Draft 2020-12 compilation
+of the unchanged packaged schema, with format checking and network retrieval
+disabled. A bounded compatibility guard admits builtin JSON values with string
+keys, finite floats, integers within ±(2^53−1), and no newline characters in
+keys or strings except the exact instruction `doc`/`syntax` and variant
+`description`/`syntax`/`doc` string fields. Those five structural locations have
+unconstrained string schemas; malformed nested values do not inherit the exception.
+Other values and native rejections use Python `jsonschema`; its acceptance, error
+paths, and messages remain authoritative. The guard is specific to the current
+canonical regex, numeric, and text-field constraints, so changes to those
+constraints require renewed parity checks. The bounded 0.60.x dependency
+uses native wheels on supported platforms; building it from source requires Rust.
 
 CMake tracks both Python sources and `.j2` resources with recursive
 `CONFIGURE_DEPENDS` discovery and the existing input membership manifest, so

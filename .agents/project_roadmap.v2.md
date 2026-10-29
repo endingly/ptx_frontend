@@ -757,6 +757,12 @@ artifact 与门禁均已退役；下表保留历史完成语境，不要求重�
   `sm_120f`，`sm_121` 为无，`sm_121f`/`sm_121a` 为 `sm_120f`+`sm_121f`。此集合不由数值或
   suffix 推导，也不表示当前未建模的 PTX-to-physical-GPU translation compatibility；numeric
   target/SM 受 `uint32_t` 范围约束。
+- generic catalog 显式包含 `sm_32/35/37/53/60/61/62/86/87/88`（各自为完整
+  `sm_<number>` spelling），均无 enabled family feature；`sm_32/35/37` 无已建模 capability，
+  `sm_53/60/61/62` 具有 `graph_exec`，`sm_86/87/88` 具有 `reserved_smem` 与 `graph_exec`。
+  精确 `targets` 集合与 singular `target` 在 YAML 中互斥，保留六 clause DNF 上限；
+  `test_ptx_target_identity.cpp`、`test_resolved_module_target_checking.cpp` 与 legacy
+  vote/shfl 测试覆盖实际 catalog、PTX 9.3 模块和 AST 销毁后的 owned validation。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
   contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
 - synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；spec 内容变更通过

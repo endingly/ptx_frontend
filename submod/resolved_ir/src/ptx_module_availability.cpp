@@ -51,8 +51,8 @@ checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
   result.any_of[0] = checker::AvailabilityClause{
       .minimum_ptx_version = minimum_ptx,
       .minimum_sm_version = minimum_sm,
-      .capabilities = {capability},
       .capability_count = 1,
+      .capabilities = {capability},
   };
   result.any_of_count = 1;
   return result;

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from ptx_frontend.spec.normalize.availability import validate_availability_targets
+
 from ptx_frontend.spec.normalize import (
     parse_availability_target,
     validate_availability_family,
@@ -26,6 +28,7 @@ class AvailabilityClauseModel:
     flavor: str = "Generic"
     capabilities: tuple[str, ...] = ()
     map_f64_to_f32: str = "false"
+    targets: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,9 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
         if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
         major, minor = _parse_ptx_version(clause.get("ptx", "0.0"))
+        targets = validate_availability_targets(clause["targets"]) if "targets" in clause else ()
+        if targets and "target" in clause:
+            raise ValueError("availability target and targets are mutually exclusive")
         target = clause.get("target")
         number, flavor = parse_availability_target(target) if target is not None else (0, "Generic")
         family = validate_availability_family(clause["family"]) if "family" in clause else ""
@@ -63,7 +69,7 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
             major, minor, validate_availability_sm_version(clause.get("sm", 0)),
             family,
             str(target is not None).lower(), number, flavor, tuple(capabilities),
-            str(clause.get("map_f64_to_f32", False)).lower(),
+            str(clause.get("map_f64_to_f32", False)).lower(), targets,
         ))
     return AvailabilityModel(None, tuple(models))
 

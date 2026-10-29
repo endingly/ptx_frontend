@@ -17,16 +17,16 @@ namespace {
 /** Synthetic availability gate without changing any canonical instruction form. */
 constexpr checker::AvailabilityDescriptor kMapAvailability{
     .any_of = {{{.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {10},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true},
                 {.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {11},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true},
                 {.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {12},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true}}},
     .any_of_count = 3,
 };

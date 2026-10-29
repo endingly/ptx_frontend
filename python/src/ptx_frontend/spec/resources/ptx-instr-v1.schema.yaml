@@ -1351,6 +1351,14 @@ $defs:
                 target:
                   type: string
                   pattern: "^sm_[1-9][0-9]*(a|f)?$"
+                targets:
+                  description: Exact architecture/flavor alternatives within this clause.
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    pattern: "^sm_[1-9][0-9]*(a|f)?$"
                 family:
                   description: >
                     Minimum family-specific source feature target required from
@@ -1369,10 +1377,13 @@ $defs:
                     independently of hardware capabilities and operand widths.
                   type: boolean
                   const: true
+              not:
+                required: [target, targets]
               anyOf:
                 - required: [ptx]
                 - required: [sm]
                 - required: [target]
+                - required: [targets]
                 - required: [family]
                 - required: [capabilities]
                 - required: [map_f64_to_f32]

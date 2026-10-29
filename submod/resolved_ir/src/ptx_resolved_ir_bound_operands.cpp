@@ -3740,8 +3740,8 @@ checker::AvailabilityDescriptor special_register_availability(
   availability.any_of[0] = checker::AvailabilityClause{
       .minimum_ptx_version = {info.minimum_ptx_major, info.minimum_ptx_minor},
       .minimum_sm_version = info.minimum_sm,
-      .capabilities = {info.required_capability},
       .capability_count = 1,
+      .capabilities = {info.required_capability},
   };
   availability.any_of_count = 1;
   return availability;

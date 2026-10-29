@@ -554,6 +554,22 @@ Python 测试。
 已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
 family（9.0）。指令契约见[杂项指令覆盖范围](converage/miscellaneous_coverage.md)。
 
+`any_of` clause 可以用 `targets: [sm_32, sm_35, sm_37]` 表达精确的
+architecture/flavor 成员集合。`targets` 必须是非空、无重复的 canonical
+`sm_<uint32>[a|f]` spelling 列表，与 `target` 互斥。成员检查要求显式 target identity，
+并与 PTX、SM、family、capability 和 source option 要求取 AND；不推导相邻架构或其他
+flavor。生成的 `AvailabilityTarget` 数组具有进程生命周期，由
+`AvailabilityClause::exact_targets` 借用。DNF 上限仍为六个 clause；target 列表没有
+固定 descriptor 容量。手工 consumer 同时设置 singular 与 set 字段时必须同时满足两者。
+scalar 成员顺序已调整以维持 descriptor 大小，consumer 必须一起重新构建。
+
+显式 generic catalog 包含 `sm_32`、`sm_35`、`sm_37`、`sm_53`、`sm_60`、`sm_61`、
+`sm_62`、`sm_86`、`sm_87` 与 `sm_88`，均无 enabled family feature。前三者无已建模
+capability；`sm_53` 与 `sm_60`–`sm_62` 具有 `graph_exec`；`sm_86`–`sm_88` 具有
+`reserved_smem` 与 `graph_exec`。suffix 变体和未列架构仍不支持。此显式
+[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+contract 与模块内指令的 PTX version 检查相互独立。
+
 `any_of` clause 可以用 `map_f64_to_f32: true` 要求 source programmer option，例如
 `{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`。它与 PTX、exact target（含 flavor）、
 SM、family 和 capability 一起构成 AND-term。出现时必须为 Boolean true；false、数字或

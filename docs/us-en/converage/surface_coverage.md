@@ -19,7 +19,7 @@ The generic [vector rule](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-t
 
 Byte loads/stores start at PTX 1.5. Cache selection and clamp/zero require PTX 2.0 / sm20; byte 3d/array access requires PTX 3.0 / sm20. Formatted stores and reductions start at PTX 2.0 / sm20, including `sust.p.3d`. All indirect resources require PTX 3.1 / sm20. 64-bit min/max reductions require PTX 8.1 / sm50. Query floors are PTX 1.5 for dimensions, 2.1 for channel properties, 4.1 for array_size, and 4.2 for memory_layout; direct queries have no additional SM floor.
 
-The explicit generic `sm_50` target profile has empty enabled-family and capability domains. Complete-module fixtures cover all 64-bit min/max forms at PTX 8.1 / sm50 and reject PTX 8.0 / sm50 and PTX 8.1 / sm30; this profile does not imply modern target capabilities.
+The explicit generic `sm_50` target profile has no enabled-family features and has the `graph_exec` capability. Complete-module fixtures cover all 64-bit min/max forms at PTX 8.1 / sm50 and reject PTX 8.0 / sm50 and PTX 8.1 / sm30; this profile does not imply modern target capabilities.
 
 The ISA Syntax takes precedence over inconsistent examples: the `sured.p.min.u32` example does not extend the formatted reduction type matrix, and surface array examples that omit the required boundary modifier do not authorize that omission. CUDA 13.3.73 `ptxas` rejects those spellings. Its parser also rejects a tested bare `[surface,0]` coordinate even though the documented 1d scalar coordinate rule and generic scalar constants permit it; the frontend retains that spelling alongside `[surface,{0}]`.
 

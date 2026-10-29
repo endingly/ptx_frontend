@@ -22,11 +22,11 @@ const SourceRange kInstructionRange{{4, 3}, {4, 17}};
 /** Availability rule deliberately rejected by the fixture target. */
 constexpr AvailabilityDescriptor kRejectedDnfAvailability{
     .any_of = {{
-        {.has_exact_target = true,
-         .exact_target_architecture = {100},
+        {.exact_target_architecture = {100},
          .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
-         .capabilities = {"tensor"},
-         .capability_count = 1},
+         .has_exact_target = true,
+         .capability_count = 1,
+         .capabilities = {"tensor"}},
     }},
     .any_of_count = 1,
 };
@@ -179,39 +179,39 @@ TEST(ResolvedIrChecker,
 
   constexpr AvailabilityDescriptor exact_sm100a{
       .any_of = {{
-          {.has_exact_target = true,
-           .exact_target_architecture = {100},
-           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+          {.exact_target_architecture = {100},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
+           .has_exact_target = true},
       }},
       .any_of_count = 1,
   };
   constexpr AvailabilityDescriptor exact_sm103{
       .any_of = {{
-          {.has_exact_target = true,
-           .exact_target_architecture = {103},
-           .exact_target_flavor = base::TargetFlavor::Generic},
+          {.exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::Generic,
+           .has_exact_target = true},
       }},
       .any_of_count = 1,
   };
   constexpr AvailabilityDescriptor exact_sm103f{
       .any_of = {{
-          {.has_exact_target = true,
-           .exact_target_architecture = {103},
-           .exact_target_flavor = base::TargetFlavor::FamilySpecific},
+          {.exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::FamilySpecific,
+           .has_exact_target = true},
       }},
       .any_of_count = 1,
   };
   constexpr AvailabilityDescriptor exact_sm103a{
       .any_of = {{
-          {.has_exact_target = true,
-           .exact_target_architecture = {103},
-           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific},
+          {.exact_target_architecture = {103},
+           .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
+           .has_exact_target = true},
       }},
       .any_of_count = 1,
   };
   constexpr AvailabilityDescriptor cluster_capability{
       .any_of = {{
-          {.capabilities = {"cluster"}, .capability_count = 1},
+          {.capability_count = 1, .capabilities = {"cluster"}},
       }},
       .any_of_count = 1,
   };
@@ -234,11 +234,11 @@ TEST(ResolvedIrChecker, EvaluatesBoundedAvailabilityDnf) {
       .any_of = {{
           {.minimum_ptx_version = {9, 0},
            .minimum_sm_version = 100,
-           .has_exact_target = true,
            .exact_target_architecture = {100},
            .exact_target_flavor = base::TargetFlavor::ArchitectureSpecific,
-           .capabilities = {"tensor", "cluster"},
-           .capability_count = 2},
+           .has_exact_target = true,
+           .capability_count = 2,
+           .capabilities = {"tensor", "cluster"}},
           {.minimum_ptx_version = {9, 2}, .minimum_sm_version = 120},
       }},
       .any_of_count = 2,
@@ -289,8 +289,8 @@ TEST(ResolvedIrChecker, EvaluatesMapOptionWithExactLegacyTargets) {
   constexpr AvailabilityDescriptor availability{
       .any_of = {{{.minimum_ptx_version = {1, 4},
                    .minimum_sm_version = 10,
-                   .has_exact_target = true,
                    .exact_target_architecture = {10},
+                   .has_exact_target = true,
                    .requires_map_f64_to_f32 = true}}},
       .any_of_count = 1,
   };
@@ -1635,4 +1635,66 @@ TEST(ResolvedIrChecker, ChecksGeneratedModernMemoryVectorCrossRules) {
 }
 
 }  // namespace
+}  // namespace ptx_frontend::resolved_ir::checker
+
+namespace ptx_frontend::resolved_ir::checker {
+/** Exact alternatives retain flavors and conjunctive guards without catalog lookup. */
+TEST(ResolvedIrChecker, EvaluatesExactTargetSetsAndConjunctiveRequirements) {
+  constexpr auto& targets = kAvailabilityTargets<
+      AvailabilityTarget{{32}, base::TargetFlavor::Generic},
+      AvailabilityTarget{{90}, base::TargetFlavor::ArchitectureSpecific},
+      AvailabilityTarget{{100}, base::TargetFlavor::FamilySpecific}>;
+  constexpr AvailabilityDescriptor requirement{
+      .any_of = {{{.minimum_ptx_version = {9, 0},
+                   .minimum_sm_version = 30,
+                   .capability_count = 1,
+                   .requires_map_f64_to_f32 = true,
+                   .required_family = "sm_100f",
+                   .capabilities = {"cluster"},
+                   .exact_targets = targets}}},
+      .any_of_count = 1};
+  constexpr std::array<std::string_view, 1> capabilities{"cluster"};
+  constexpr std::array<std::string_view, 1> families{"sm_100f"};
+  TargetInfo target{.ptx_version = {9, 0},
+                    .sm_version = 100,
+                    .enabled_family_features = families,
+                    .capabilities = capabilities,
+                    .map_f64_to_f32 = true};
+  for (const auto spelling : {"sm_32", "sm_90a", "sm_100f"}) {
+    target.identity = base::parse_target_identity(spelling);
+    EXPECT_TRUE(is_available(requirement, target)) << spelling;
+  }
+  for (const auto spelling : {"sm_31", "sm_33", "sm_32a", "sm_32f", "sm_90",
+                              "sm_90f", "sm_100", "sm_100a", "sm_123"}) {
+    target.identity = base::parse_target_identity(spelling);
+    EXPECT_FALSE(is_available(requirement, target)) << spelling;
+  }
+  target.identity.reset();
+  EXPECT_FALSE(is_available(requirement, target));
+  target.identity = base::parse_target_identity("sm_32");
+  auto changed = target;
+  changed.ptx_version = {8, 8};
+  EXPECT_FALSE(is_available(requirement, changed));
+  changed = target;
+  changed.sm_version = 29;
+  EXPECT_FALSE(is_available(requirement, changed));
+  changed = target;
+  changed.capabilities = {};
+  EXPECT_FALSE(is_available(requirement, changed));
+  changed = target;
+  changed.enabled_family_features = {};
+  EXPECT_FALSE(is_available(requirement, changed));
+  changed = target;
+  changed.map_f64_to_f32 = false;
+  EXPECT_FALSE(is_available(requirement, changed));
+  auto singular = requirement;
+  singular.any_of[0].has_exact_target = true;
+  singular.any_of[0].exact_target_architecture = {32};
+  EXPECT_TRUE(is_available(singular, target));
+  target.identity = base::parse_target_identity("sm_90a");
+  EXPECT_FALSE(is_available(singular, target));
+  singular.any_of[0].exact_target_architecture = {33};
+  target.identity = base::parse_target_identity("sm_33");
+  EXPECT_FALSE(is_available(singular, target));
+}
 }  // namespace ptx_frontend::resolved_ir::checker

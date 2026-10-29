@@ -1,6 +1,6 @@
 # 栈操作覆盖
 
-canonical catalogue 实现 PTX ISA 9.3 [§9.7.18 Stack Manipulation Instructions](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#stack-manipulation-instructions) 的 `stacksave`、`stackrestore`、`alloca`，均支持 `.u32` 和 `.u64`。分配具有省略与显式 `immAlign` 两种 layout，共八个源码形式。所有形式要求 PTX 7.3、`sm_52`，支持 entry/device 函数及两种模块地址宽度。target registry 显式包含 generic `sm_50` 与 `sm_52`，不赋予额外 capability 或 family feature，使模块验证能够区分栈指令门槛与未知 target。
+canonical catalogue 实现 PTX ISA 9.3 [§9.7.18 Stack Manipulation Instructions](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#stack-manipulation-instructions) 的 `stacksave`、`stackrestore`、`alloca`，均支持 `.u32` 和 `.u64`。分配具有省略与显式 `immAlign` 两种 layout，共八个源码形式。所有形式要求 PTX 7.3、`sm_52`，支持 entry/device 函数及两种模块地址宽度。target registry 显式包含 generic `sm_50` 与 `sm_52`，赋予 `graph_exec`，但无 enabled family feature，使模块验证能够区分栈指令门槛与未知 target。
 
 `StackInstructionDescriptor` 公开不可变的操作、位宽和八字节默认最小对齐。`ResolvedStackToken` 拥有 register reference 和函数上下文，表示运行时不透明的栈位置。`ResolvedLocalAllocationResult` 拥有相同上下文及 local 地址空间角色。两者接受与指令同宽的标量 integer/bit register，均不冒充通用地址表达式。AST 销毁后，模块验证仍会将 wrapper 上下文及嵌套 register binding 与所属函数交叉检查。无上下文的 standalone fragment 保持未知函数上下文，不能替代完整绑定的模块。显式 partial `ResolveContext` 可以保留已绑定 register，同时省略所属函数 scope。individual checker 核验 function-kind/scope pair 的内部一致性，但没有 symbol table，不能认证 binding identity；完整模块检查补足该证明，并拒绝 partial 或未绑定 payload。
 

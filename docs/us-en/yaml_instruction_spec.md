@@ -639,6 +639,25 @@ permit one through six clauses. `setmaxnreg` uses all six: exact `sm_90a`
 and `sm_120f` families (8.8), and enabled `sm_110f` family (9.0). See
 [miscellaneous coverage](converage/miscellaneous_coverage.md) for the instruction contract.
 
+An `any_of` clause may use `targets: [sm_32, sm_35, sm_37]` for an exact
+architecture/flavor membership set. `targets` must be a nonempty list of unique
+canonical `sm_<uint32>[a|f]` spellings and is mutually exclusive with `target`.
+Membership requires an explicit target identity and is conjunctive with PTX, SM,
+family, capabilities, and source-option requirements; it never infers neighboring
+architectures or flavors. Generated `AvailabilityTarget` arrays have process
+lifetime and are borrowed by `AvailabilityClause::exact_targets`. The DNF limit
+remains six clauses; the target list has no fixed descriptor capacity. Manual
+consumers supplying both singular and set fields must satisfy both. Scalar member
+ordering changed to retain descriptor size; consumers must rebuild together.
+
+The explicit generic catalog includes `sm_32`, `sm_35`, `sm_37`, `sm_53`, `sm_60`,
+`sm_61`, `sm_62`, `sm_86`, `sm_87`, and `sm_88`, with no enabled family features.
+The first three have no modeled capabilities; `sm_53` and `sm_60`–`sm_62` have
+`graph_exec`; `sm_86`–`sm_88` have `reserved_smem` and `graph_exec`. Suffix variants
+and unlisted architectures remain unsupported. This is the explicit
+[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+contract, independent of the module's PTX instruction-version checks.
+
 An `any_of` clause may require the source programmer option with
 `map_f64_to_f32: true`, for example
 `{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`. This is an AND-term alongside

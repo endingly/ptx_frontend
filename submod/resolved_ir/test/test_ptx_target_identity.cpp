@@ -93,9 +93,20 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
       ExpectedProfile{"sm_13", 13, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_20", 20, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_32", 32, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_35", 35, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_37", 37, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none,
                       graph_capabilities},
       ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_53", 53, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_60", 60, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_61", 61, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_62", 62, TargetFlavor::Generic, none,
                       graph_capabilities},
       ExpectedProfile{"sm_70", 70, TargetFlavor::Generic, none,
                       graph_capabilities},
@@ -104,6 +115,12 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
       ExpectedProfile{"sm_75", 75, TargetFlavor::Generic, none,
                       graph_capabilities},
       ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_86", 86, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_87", 87, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_88", 88, TargetFlavor::Generic, none,
                       sm80_capabilities},
       ExpectedProfile{"sm_89", 89, TargetFlavor::Generic, none,
                       sm80_capabilities},
@@ -158,11 +175,11 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
 
   EXPECT_TRUE(find_target_profile("sm_30")->capabilities.empty());
   for (const std::string_view target : {"sm_10a", "sm_11f", "sm_12a", "sm_14",
-                                        "sm_32", "sm_35", "sm_60", "sm_62"}) {
+                                        "sm_31", "sm_34", "sm_59", "sm_63"}) {
     EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   }
-  for (const std::string_view target : {"sm_50a", "sm_52a", "sm_52f", "sm_53"})
+  for (const std::string_view target : {"sm_50a", "sm_52a", "sm_52f", "sm_53a"})
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());

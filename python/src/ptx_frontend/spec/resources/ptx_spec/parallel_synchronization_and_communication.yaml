@@ -4196,12 +4196,8 @@ instructions:
       - name: vote_all_pred
         availability: &vote_legacy_predicate_availability
           any_of:
-            - {ptx: "1.2", target: sm_12}
-            - {ptx: "1.2", target: sm_13}
-            - {ptx: "1.2", target: sm_20}
-            - {ptx: "1.2", target: sm_30}
-            - {ptx: "1.2", target: sm_50}
-            - {ptx: "1.2", target: sm_52}
+            - ptx: "1.2"
+              targets: [sm_12, sm_13, sm_20, sm_30, sm_32, sm_35, sm_37, sm_50, sm_52, sm_53, sm_60, sm_61, sm_62]
         modifiers:
           - {name: sync, kind: flag, presence: absent}
           - {name: all, kind: flag, presence: fixed, value: true, token: .all}
@@ -4236,10 +4232,8 @@ instructions:
       - name: vote_ballot_b32
         availability:
           any_of:
-            - {ptx: "1.2", target: sm_20}
-            - {ptx: "1.2", target: sm_30}
-            - {ptx: "1.2", target: sm_50}
-            - {ptx: "1.2", target: sm_52}
+            - ptx: "1.2"
+              targets: [sm_20, sm_30, sm_32, sm_35, sm_37, sm_50, sm_52, sm_53, sm_60, sm_61, sm_62]
         modifiers:
           - {name: sync, kind: flag, presence: absent}
           - {name: ballot, kind: flag, presence: fixed, value: true, token: .ballot}

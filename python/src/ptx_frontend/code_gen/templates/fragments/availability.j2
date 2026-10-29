@@ -8,13 +8,16 @@
                       {% for clause in model.clauses %}checker::AvailabilityClause{
                       .minimum_ptx_version = { {{- clause.ptx_major }}, {{ clause.ptx_minor }}},
                       .minimum_sm_version = {{ clause.sm }},
-                      .has_exact_target = {{ clause.has_exact_target }},
                       .exact_target_architecture = { {{- clause.architecture }}},
                       .exact_target_flavor = base::TargetFlavor::{{ clause.flavor }},
-                      .required_family = "{{ clause.family }}",
-                      .capabilities = { {{- '{' }}{% for value in clause.capabilities %}"{{ value }}"{% if not loop.last %}, {% endif %}{% endfor %}}},
+                      .has_exact_target = {{ clause.has_exact_target }},
                       .capability_count = {{ clause.capabilities|length }},
                       .requires_map_f64_to_f32 = {{ clause.map_f64_to_f32 }},
+                      .required_family = "{{ clause.family }}",
+                      .capabilities = { {{- '{' }}{% for value in clause.capabilities %}"{{ value }}"{% if not loop.last %}, {% endif %}{% endfor %}}},
+                      {% if clause.targets %}.exact_targets = checker::kAvailabilityTargets<
+                          {% for architecture, flavor in clause.targets %}checker::AvailabilityTarget{ { {{- architecture }}}, base::TargetFlavor::{{ flavor }} }{% if not loop.last %}, {% endif %}{% endfor %}>,
+                      {% endif %}
                   }{% if not loop.last %},
                       {% endif %}{% endfor %}
                   }},

@@ -20,22 +20,22 @@ class LegacyVoteTests(unittest.TestCase):
         cls.resolved = {item.variant_id: item for item in from_instruction_spec(cls.instruction).variants}
 
     def test_exact_four_variant_inventory_and_complete_availability_domains(self) -> None:
-        """Retain all six predicate clauses and all four ballot clauses through emission."""
+        """Retain complete predicate and ballot exact target sets through emission."""
         expected_names = {"vote_all_pred", "vote_any_pred", "vote_uni_pred", "vote_ballot_b32"}
         self.assertEqual({name for name in self.variants if not name.startswith("vote_sync_")},
                          expected_names)
         for name in expected_names:
             with self.subTest(variant=name):
-                targets = (20, 30, 50, 52) if "ballot" in name else (12, 13, 20, 30, 50, 52)
-                expected = {"any_of": [{"ptx": "1.2", "target": f"sm_{sm}"} for sm in targets]}
+                targets = (20, 30, 32, 35, 37, 50, 52, 53, 60, 61, 62) if "ballot" in name else (12, 13, 20, 30, 32, 35, 37, 50, 52, 53, 60, 61, 62)
+                expected = {"any_of": [{"ptx": "1.2", "targets": [f"sm_{sm}" for sm in targets]}]}
                 self.assertEqual(self.variants[name].availability, expected)
                 self.assertEqual(dict(self.resolved[name].availability), expected)
                 emitted = emit_availability(expected)
-                self.assertIn(f".any_of_count = {len(targets)}", emitted)
-                self.assertEqual(emitted.count(".minimum_ptx_version = {1, 2}"), len(targets))
-                self.assertEqual(emitted.count(".has_exact_target = true"), len(targets))
+                self.assertIn(".any_of_count = 1", emitted)
+                self.assertEqual(emitted.count(".minimum_ptx_version = {1, 2}"), 1)
+                self.assertIn(".exact_targets = checker::kAvailabilityTargets<", emitted)
                 for sm in targets:
-                    self.assertIn(f".exact_target_architecture = {{{sm}}}", emitted)
+                    self.assertIn(f"AvailabilityTarget{{ {{{sm}}}, base::TargetFlavor::Generic }}", emitted)
 
     def test_mask_absence_and_predicate_contract_match_synchronized_forms(self) -> None:
         """Reuse typed destinations and complemented source without synthesizing sync or mask."""

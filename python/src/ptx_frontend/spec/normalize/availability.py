@@ -70,7 +70,7 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise TypeError("availability any_of clauses must be objects")
         if (
             set(clause) - {
-                "ptx", "sm", "target", "family", "capabilities", "map_f64_to_f32"
+                "ptx", "sm", "target", "targets", "family", "capabilities", "map_f64_to_f32"
             }
             or not clause
         ):
@@ -79,6 +79,10 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
         if "sm" in clause:
             validate_availability_sm_version(clause["sm"])
+        if "targets" in clause:
+            validate_availability_targets(clause["targets"])
+            if "target" in clause:
+                raise ValueError("availability target and targets are mutually exclusive")
         if "target" in clause:
             parse_availability_target(clause["target"])
         if "family" in clause:
@@ -96,3 +100,14 @@ def normalize_availability(raw: object) -> dict[str, Any]:
                 )
         normalized.append(dict(clause))
     return {"any_of": normalized}
+
+
+def validate_availability_targets(value: object) -> tuple[tuple[int, str], ...]:
+    """Validate a nonempty exact target set without widening its identity domain."""
+
+    if not isinstance(value, list) or not value:
+        raise ValueError("availability targets must be a nonempty unique target list")
+    targets = tuple(parse_availability_target(item) for item in value)
+    if len(targets) != len(set(targets)):
+        raise ValueError("availability targets must be a nonempty unique target list")
+    return targets

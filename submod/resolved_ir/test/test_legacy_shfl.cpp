@@ -114,7 +114,8 @@ void expectShuffleAvailability(const std::string& source, bool available) {
 /** Every mode/layout/control/target combination retains identity after AST destruction. */
 TEST(LegacyShuffle, OwnsEveryModeLayoutControlAndTarget) {
   for (const auto& item : kLegacyShuffles)
-    for (const auto target : {"sm_30", "sm_50", "sm_52"})
+    for (const auto target : {"sm_30", "sm_32", "sm_35", "sm_37", "sm_50",
+                              "sm_52", "sm_53", "sm_60", "sm_61", "sm_62"})
       for (const bool paired : {false, true})
         for (const bool register_lane : {false, true})
           for (const bool register_clamp : {false, true}) {
@@ -124,7 +125,7 @@ TEST(LegacyShuffle, OwnsEveryModeLayoutControlAndTarget) {
             SCOPED_TRACE(target);
             std::optional<ResolvedModule> owned;
             {
-              const auto source = legacyShuffleModule(operation, target);
+              const auto source = legacyShuffleModule(operation, target, "9.3");
               PtxSyntaxParser parser{source};
               const auto ast = parser.parseModule();
               ASSERT_TRUE(ast);
@@ -218,7 +219,7 @@ TEST(LegacyShuffle, RequiresExactIdentityFlavorAndPtxFloor) {
       const auto resolved = resolveModuleOnly(*ast);
       ASSERT_TRUE(resolved);
       const auto& instruction = *resolved->functions.front().body.front();
-      for (const auto sm : {30u, 50u, 52u}) {
+      for (const auto sm : {30u, 32u, 35u, 37u, 50u, 52u, 53u, 60u, 61u, 62u}) {
         const auto spelling = "sm_" + std::to_string(sm);
         checker::TargetInfo target{
             .ptx_version = {3, 0},
@@ -254,7 +255,7 @@ TEST(LegacyShuffle, RejectsTargetsOutsideExactDomain) {
                                   false);
       expectShuffleAvailability(legacyShuffleModule(operation, "sm_52", "2.3"),
                                 false);
-      const auto source = legacyShuffleModule(operation, "sm_60");
+      const auto source = legacyShuffleModule(operation, "sm_63");
       PtxSyntaxParser parser{source};
       const auto ast = parser.parseModule();
       ASSERT_TRUE(ast);

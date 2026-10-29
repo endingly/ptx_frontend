@@ -754,6 +754,13 @@ bool is_available(const AvailabilityDescriptor& availability,
            !has_enabled_family_feature(target.enabled_family_features,
                                        clause.required_family)))
         continue;
+      if (!clause.exact_targets.empty() &&
+          (!target.identity ||
+           std::ranges::find(clause.exact_targets,
+                             AvailabilityTarget{target.identity->architecture,
+                                                target.identity->flavor}) ==
+               clause.exact_targets.end()))
+        continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
            ++capability) {

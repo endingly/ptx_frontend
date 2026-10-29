@@ -155,7 +155,8 @@ bool sparse_mx_target_match(const std::array<SparseMxTargetGate, N>& gates,
     if (gate.kind != facts.source_kind ||
         *facts.ptx_version < gate.minimum_ptx)
       continue;
-    if (gate.exact && facts.target->source_spelling == gate.feature)
+    const auto exact = base::parse_target_identity(gate.feature);
+    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact))
       return true;
     if (!gate.exact &&
         std::find(profile.enabled_family_features.begin(),
@@ -191,7 +192,11 @@ void check_sparse_mx_shared(bool is_a, bool transpose,
                             TcgenSharedWord word, TcgenSharedContext context,
                             const TcgenSparseMxKnownFacts& facts,
                             TcgenSparseMxOperationalReport& report) {
-  if (context.target && facts.target && *context.target != *facts.target)
+  const auto context_profile = context.target
+      ? base::find_target_profile(context.target->source_spelling) : std::nullopt;
+  if (context.target &&
+      (!context_profile || context_profile->identity != *context.target ||
+       (facts.target && !base::same_target_identity(*context.target, *facts.target))))
     report.violations.push_back(TcgenSparseMxViolation::InvalidContext);
   if (context.ptx_version && facts.ptx_version &&
       *context.ptx_version != *facts.ptx_version)

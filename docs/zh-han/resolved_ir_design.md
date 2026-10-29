@@ -235,8 +235,13 @@ AST overload 在替换 source configuration 时检查传入 AST 的顺序。
 `.target` 的每一项均分类：首项必须为 architecture spelling，后续仅允许
 `texmode_unified`、`texmode_independent`、`debug`、`map_f64_to_f32`。Parser 和两个
 validator 都拒绝未知 option 或额外 architecture 项。词法合法但未识别的 target
-（包括 `compute_` spelling）仍可解析，在 validation 阶段产生 `UnknownTarget`；
-profile catalog 不扩展。Texture mode 继续检查重复与模块级冲突；`debug` 和
+仍可解析，在 validation 阶段产生 `UnknownTarget`。每个显式 catalog 中的
+`sm_<number>[a|f]` profile 都接受 `compute_<number>[a|f]` 同义形式，architecture、
+flavor、enabled family feature 和 capability 相同。词法解析及 owned source region
+保留实际书写的 prefix；语义 availability 和显式 checker target 比较使用 architecture
+与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
+一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_101a`、
+`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；`debug` 和
 `map_f64_to_f32` 仅保留为已知 option，此契约不增加 DWARF 检查或浮点指令转换。
 源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
 

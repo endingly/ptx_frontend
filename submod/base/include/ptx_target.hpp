@@ -26,6 +26,10 @@ struct TargetIdentity {
   bool operator==(const TargetIdentity&) const = default;
 };
 
+/** Compare architecture and flavor while ignoring retained source spelling. */
+[[nodiscard]] bool same_target_identity(const TargetIdentity& left,
+                                        const TargetIdentity& right) noexcept;
+
 /** One explicitly supported validation target, enabled family feature levels,
  * and capabilities. */
 struct TargetProfile {
@@ -47,7 +51,7 @@ enum class TargetDirectiveItemKind : uint8_t {
 [[nodiscard]] TargetDirectiveItemKind classify_target_directive_item(
     std::string_view spelling);
 
-/** Parse one PTX target spelling without consulting the supported-target catalog. */
+/** Parse an sm_ or compute_ target, retaining spelling without catalog lookup. */
 [[nodiscard]] std::optional<TargetIdentity> parse_target_identity(
     std::string_view spelling);
 

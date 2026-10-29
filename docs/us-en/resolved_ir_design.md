@@ -271,8 +271,15 @@ Every `.target` item is classified: its first item must be an architecture
 spelling, and later items may be `texmode_unified`, `texmode_independent`, `debug`,
 or `map_f64_to_f32`. Unknown options and additional architecture items are
 rejected during parsing and by both validators. Lexically valid unrecognized
-targets, including `compute_` spellings, remain parseable and produce
-`UnknownTarget` at validation; the profile catalog does not expand. Texture-mode
+targets remain parseable and produce `UnknownTarget` at validation. For every
+explicitly cataloged `sm_<number>[a|f]` profile, `compute_<number>[a|f]` is a
+synonym with the same architecture, flavor, enabled family features and
+capabilities. Both lexical parsing and owned source regions preserve the written
+prefix; semantic availability and explicit checker-target comparisons use
+architecture and flavor. `TargetIdentity::operator==` still compares retained
+source spelling as well, so source-provenance consistency checks remain exact.
+Unknown numbers and unsupported flavors, including `compute_101a` and
+`compute_101f`, do not acquire catalog profiles. Texture-mode
 selection is checked for repetition and module conflicts. `debug` and
 `map_f64_to_f32` are retained options; this contract adds neither DWARF checks nor
 floating-point instruction conversion. These source forms follow the archived

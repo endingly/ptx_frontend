@@ -147,7 +147,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
     mutated.header.regions.back().target_options.emplace_back(option);
     expect_model_rejection(validateModule(mutated));
   }
-  for (const auto target : {"sm_999", "compute_80"}) {
+  for (const auto target : {"sm_999", "compute_999"}) {
     auto unknown = resolve_owned_fixture(std::string{".version 9.3\n.target "} +
                                          target + "\n");
     ASSERT_TRUE(unknown);

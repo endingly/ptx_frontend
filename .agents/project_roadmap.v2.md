@@ -763,6 +763,11 @@ artifact 与门禁均已退役；下表保留历史完成语境，不要求重�
   精确 `targets` 集合与 singular `target` 在 YAML 中互斥，保留六 clause DNF 上限；
   `test_ptx_target_identity.cpp`、`test_resolved_module_target_checking.cpp` 与 legacy
   vote/shfl 测试覆盖实际 catalog、PTX 9.3 模块和 AST 销毁后的 owned validation。
+- 每个显式 `sm_<number>[a|f]` catalog profile 接受对应 `compute_` 同义 spelling；
+  typed architecture/flavor、capability 和 enabled family feature 保持相同，source/owned
+  provenance 保留原 spelling。词法合法未知 number 或未支持 flavor 仍为 `UnknownTarget`；
+  exact availability 与 TCGEN/tensor 的 typed target 比较不依赖 prefix，完整 provenance
+  equality 不变。`test_target_synonyms.cpp` 覆盖 strict source 与 AST 销毁后的 owned 路径。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
   contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
 - synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；spec 内容变更通过

@@ -156,7 +156,8 @@ bool accepts_ws_target(const TcgenWsKnownFacts& facts) {
   for (const auto& gate : kWsTargets) {
     if (gate.kind != facts.source_kind ||
         *facts.ptx_version < gate.minimum_ptx) continue;
-    if (gate.exact && facts.target->source_spelling == gate.feature) return true;
+    const auto exact = base::parse_target_identity(gate.feature);
+    if (gate.exact && exact && base::same_target_identity(*facts.target, *exact)) return true;
     if (!gate.exact && std::find(profile->enabled_family_features.begin(),
                                 profile->enabled_family_features.end(),
                                 gate.feature) !=
@@ -199,7 +200,11 @@ void check_ws_shared(bool is_a, TcgenSharedWord word,
                      const TcgenInstructionFields& decoded,
                      const TcgenWsKnownFacts& facts,
                      TcgenWsOperationalReport& report) {
-  if (context.target && facts.target && *context.target != *facts.target)
+  const auto context_profile = context.target
+      ? base::find_target_profile(context.target->source_spelling) : std::nullopt;
+  if (context.target &&
+      (!context_profile || context_profile->identity != *context.target ||
+       (facts.target && !base::same_target_identity(*context.target, *facts.target))))
     report.violations.push_back(TcgenWsViolation::InvalidContext);
   if (context.ptx_version && facts.ptx_version &&
       *context.ptx_version != *facts.ptx_version)

@@ -16,6 +16,7 @@ from ptx_frontend.ir.resolved_ir import (
     ResolvedInstruction,
     ResolvedModifierBinding,
     ResolvedOperandAccess,
+    ResolvedOperandBinding,
     ResolvedOperandLayout,
     ResolvedOperandRole,
     ResolvedOperandShape,
@@ -98,15 +99,37 @@ namespace generated_detail {{
 def _emit_resolved_descriptor_storage(
     instruction: ResolvedInstruction, backend: CodegenUnit
 ) -> str:
+    """Emit instruction-local storage, sharing complete equal operand binding groups."""
+
     storage_name = f"{instruction.cpp_name}ResolvedDescriptorStorage"
+    # Native tuple/dataclass equality includes nested availability and future fields.
+    groups: list[tuple[tuple[ResolvedOperandBinding, ...], str]] = []
+    variant_binding_names: list[tuple[str, ...]] = []
+    for variant in instruction.variants:
+        names: list[str] = []
+        for index, layout in enumerate(variant.operand_layouts):
+            prefix = next((name for bindings, name in groups
+                           if bindings == layout.bindings), None)
+            if prefix is None:
+                prefix = f"{to_file_stem(variant.variant_id)}_operand_layout_{index}"
+                groups.append((layout.bindings, prefix))
+            names.append(f"{prefix}_bindings")
+        variant_binding_names.append(tuple(names))
+    binding_storage = "\n\n".join(
+        _emit_operand_binding_storage(prefix, bindings, backend)
+        for bindings, prefix in groups
+    )
     variant_storage = "\n\n".join(
-        _emit_resolved_variant_storage(variant, backend) for variant in instruction.variants
+        _emit_resolved_variant_storage(variant, backend, names)
+        for variant, names in zip(instruction.variants, variant_binding_names, strict=True)
     )
     variants = ",\n".join(
         _emit_resolved_variant_descriptor(variant, backend) for variant in instruction.variants
     )
 
     return f"""struct {storage_name} {{
+{binding_storage}
+
 {variant_storage}
 
   static constexpr std::array<check_end::ResolvedVariantDescriptor, {len(instruction.variants)}>
@@ -135,7 +158,11 @@ const check_end::ResolvedInstructionDescriptor&
 }}"""
 
 
-def _emit_resolved_variant_storage(variant: ResolvedVariant, backend: CodegenUnit) -> str:
+def _emit_resolved_variant_storage(
+    variant: ResolvedVariant, backend: CodegenUnit, binding_names: tuple[str, ...]
+) -> str:
+    """Emit independent form/layout fields referring to pre-emitted binding groups."""
+
     name = to_file_stem(variant.variant_id)
     fields = ",\n".join(
         _emit_resolved_field_descriptor(field, backend) for field in variant.modifier_fields
@@ -151,7 +178,7 @@ def _emit_resolved_variant_storage(variant: ResolvedVariant, backend: CodegenUni
     operand_layouts = ",\n".join(f"""check_end::ResolvedOperandLayoutDescriptor{{
               .layout_id = "{layout.layout_id}",
               .fields = {name}_operand_layout_{index}_fields,
-              .bindings = {name}_operand_layout_{index}_bindings,
+              .bindings = {binding_names[index]},
           }}""" for index, layout in enumerate(variant.operand_layouts))
 
     return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(variant.modifier_fields)}>
@@ -212,45 +239,57 @@ def _emit_modifier_default_descriptor(
 
 
 def _emit_operand_layout_storage(
-    variant_name: str,
-    layout_index: int,
+    variant_name: str, layout_index: int,
     layout: ResolvedOperandLayout, backend: CodegenUnit
 ) -> str:
+    """Emit layout-local fields without registering or emitting binding storage."""
+
     fields = ",\n".join(
         _emit_resolved_field_descriptor(field, backend) for field in layout.fields
     )
+    return f"""  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
+      {variant_name}_operand_layout_{layout_index}_fields = {{
+{fields}
+      }};"""
+
+
+def _emit_operand_binding_storage(
+    name: str, bindings: tuple[ResolvedOperandBinding, ...], backend: CodegenUnit
+) -> str:
+    """Emit one complete binding array and all static arrays its spans borrow."""
+
     vector_arities = "\n\n".join(
         f"""  static constexpr std::array<uint8_t, {len(binding.allowed_vector_arities)}>
-      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities = {{{{
+      {name}_binding_{binding_index}_vector_arities = {{{{
 {_emit_vector_arities(binding.allowed_vector_arities)}
       }}}};"""
-        for binding_index, binding in enumerate(layout.bindings)
+        for binding_index, binding in enumerate(bindings)
         if binding.allowed_vector_arities
     )
     register_type_domains = "\n\n".join(
         f"""  static constexpr std::array<base::ScalarType, {len(binding.allowed_vector_register_types)}>
-      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_register_types = {{{{
+      {name}_binding_{binding_index}_register_types = {{{{
 {', '.join(cpp_value(CppDomain.SCALAR_TYPES, value, backend=backend) for value in binding.allowed_vector_register_types)}
       }}}};"""
-        for binding_index, binding in enumerate(layout.bindings)
+        for binding_index, binding in enumerate(bindings)
         if binding.allowed_vector_register_types
     )
     address_state_spaces = "\n\n".join(
         f"""  static constexpr std::array<checker::AddressStateSpaceDescriptor, {len(binding.allowed_address_state_spaces)}>
-      {variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces = {{{{
+      {name}_binding_{binding_index}_address_state_spaces = {{{{
 {_emit_address_state_spaces(binding.allowed_address_state_spaces, backend)}
       }}}};"""
-        for binding_index, binding in enumerate(layout.bindings)
+        for binding_index, binding in enumerate(bindings)
         if binding.allowed_address_state_spaces
     )
-    bindings = ",\n".join(
+    descriptors = ",\n".join(
         _emit_operand_binding_descriptor(
             binding,
-            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_vector_arities",
-            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_address_state_spaces", backend,
-            f"{variant_name}_operand_layout_{layout_index}_binding_{binding_index}_register_types",
+            f"{name}_binding_{binding_index}_vector_arities",
+            f"{name}_binding_{binding_index}_address_state_spaces", backend,
+            f"{name}_binding_{binding_index}_register_types",
         )
-        for binding_index, binding in enumerate(layout.bindings)
+        for binding_index, binding in enumerate(bindings)
     )
     return f"""{vector_arities}
 
@@ -258,14 +297,9 @@ def _emit_operand_layout_storage(
 
 {address_state_spaces}
 
-  static constexpr std::array<check_end::ResolvedFieldDescriptor, {len(layout.fields)}>
-      {variant_name}_operand_layout_{layout_index}_fields = {{
-{fields}
-      }};
-
-  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {len(layout.bindings)}>
-      {variant_name}_operand_layout_{layout_index}_bindings = {{
-{bindings}
+  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {len(bindings)}>
+      {name}_bindings = {{
+{descriptors}
       }};"""
 
 

@@ -831,6 +831,14 @@ are not the values of the current instruction. Runtime code reads compiled
 C++ metadata rather than running a YAML interpreter. The later
 [three-descriptor section](#three-descriptors) details their contract boundaries.
 
+Within one emitted resolved storage block, complete equal operand-binding
+sequences share one static array and its arrays of vector arities, register
+types, and address spaces. The generator collects these groups first and emits their storage
+before the independent form/layout fields and references. Sharing stays within
+that block, including a single shard when sharded. Each form/layout keeps its
+own identity, fields, and checker/diagnostic associations; equal binding-array
+pointers do not identify equal semantic forms.
+
 ### Decode the private selection tables
 
 The selection block near the end of the opcode source is an inexpensive way to

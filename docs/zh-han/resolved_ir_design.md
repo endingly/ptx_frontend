@@ -654,6 +654,12 @@ MOV 源文件开头附近的三个 storage struct 分别组织三类事实：
 的值。运行时读取的是已经编译的 C++ 元数据，不是在运行 YAML 解释器。更详细的边界
 见后面的[三份 descriptor](#三份-descriptor)。
 
+同一个生成的 resolved storage block 内，完整相等的 operand-binding 序列共享一个
+静态数组，以及配套的 vector-arity、register-type、address-space 数组。生成器先收集
+这些组并统一输出存储，再输出各 form/layout 独立的 fields 和引用；共享只在该 block
+内生效，分片时也不会跨 shard。各 form/layout 的 identity、字段和 checker/诊断关联
+仍独立，binding 数组指针相同不代表语义形式相同。
+
 ### 读懂私有选择表
 
 opcode 源文件后面的 selection block 用于先排除不可能的形式，再做精确匹配。

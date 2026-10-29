@@ -942,8 +942,10 @@ ownership rules for the steps above.
 
 To trace a generated block back to its source, start with
 [`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
-for spelling masks, and `_emit_resolve` in
-[`resolved_source.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_source.py)
+for spelling masks,
+[`render_models/resolved_source.py`](../../python/src/ptx_frontend/code_gen/render_models/resolved_source.py)
+for typed selection and construction facts, and
+[`templates/resolved/resolve.j2`](../../python/src/ptx_frontend/code_gen/templates/resolved/resolve.j2)
 for selection storage, `SelectedForm`, and resolver calls.
 [`resolved_model.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_model.py)
 emits public model/identity surfaces, while
@@ -954,9 +956,10 @@ emits global dispatch. The shared handwritten implementation is in
 and [`ptx_resolved_ir.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir.cpp).
 
 [`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
-owns final-form checker rendering, ordered layout/family/cross-rule checks, and
-the named-array address policy shared with resolver rendering. `resolved_source`
-assembles source files and renders resolvers, construction, and reference visits.
+adapts final-form checker rendering to typed check models and fixed macros;
+its pure builder owns ordered layout/family/cross-rule checks and the named-array
+address policy shared with resolver preparation. `resolved_source` composes nested
+source models for fixed resolver, construction, descriptor and reference-visit templates.
 Checker views receive the final class qualifier and payload member expression
 directly; callers guard optional payloads before use, while diagnostic field IDs
 continue to come from metadata.

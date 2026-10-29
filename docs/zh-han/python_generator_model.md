@@ -144,6 +144,31 @@ policy。binding 构造自身会拒绝 resolved C++ name 与 source-derived type
 包括 direct 构造和 `dataclasses.replace`。它只验证冻结 snapshot，而不声称能预测所有
 rendering 或 filesystem 失败。
 
+全部 C++ 输出使用
+[`render_models/`](../../python/src/ptx_frontend/code_gen/render_models/) 中的具体 typed dataclass，
+以及 [`templates/`](../../python/src/ptx_frontend/code_gen/templates/) 中固定的包内模板。
+Builder 从准备好的模型投影输出事实，不导入 emitter、CLI 或 rendering。
+Python 决定 form 顺序、field mapping、检查、binding 共享及分片；模板负责 C++
+声明、aggregate、函数与控制流，通过静态 macro 组合嵌套的 descriptor/check/view 模型。
+`emit/` 入口构造模型、渲染固定模板，并沿用已有计划中的产物路径与写入策略。
+
+[`rendering.py`](../../python/src/ptx_frontend/code_gen/rendering.py) 使用 Jinja2
+`PackageLoader`，不依赖当前工作目录。共享 environment 启用 `StrictUndefined`、
+禁用 HTML escaping，保留字面的 LF 空白与末尾换行，不裁剪 block 空白。
+缓存仅保存编译后的模板；模型和每次调用的 context 在并发 writer 间相互独立。
+缺失模板或模型属性会明确报错。纯 C++ literal helper 保留已有的各类转义契约。
+模板同时进入 sdist 与 wheel，安装后的 wheel smoke 在源码树外验证实际渲染。
+
+Descriptor 分片 builder 仅转换所选的 canonical syntax variant。
+Checker builder 每次构建 storage 时只准备一次 backend member 的中性值表达式；
+复用范围限于本次调用，每次构建都会读取传入的 backend。
+私有 ISA schema validator 只解析一次简单、无环的本地引用。
+遇到不支持的引用作用域时保留原 schema；无效输入使用原 schema 生成诊断，
+保持诊断路径与消息不变。
+
+CMake 通过递归的 `CONFIGURE_DEPENDS` 发现同时追踪 Python 源码与 `.j2` 资源，
+并沿用输入成员清单，因此修改或新增模板都会使正常 codegen edge 失效。
+
 内部准备 helper 直接位于 `code_gen` 下：
 [`artifact_layout.py`](../../python/src/ptx_frontend/code_gen/artifact_layout.py)
 负责生成 include root，以及 planning 与 emission 共用的 canonical 64-form 分片；
@@ -155,9 +180,9 @@ artifact plan 或 CLI。Emitter 渲染其结果，plan 直接读取 layout 决�
 reference payload type 仍与按 value kind 定义的 reference policy 分开。
 
 [`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
-负责 final-form checker 渲染、有序的 layout/family/cross-rule 检查，以及与 resolver
-渲染共用的 named-array address policy。`resolved_source` 组装源文件并渲染 resolver、
-构造与 reference visit。Checker view 直接接收最终类限定名及 payload member 表达式；
+将 final-form checker 渲染适配到 typed check model 与固定 macro。纯 builder
+负责有序的 layout/family/cross-rule 检查及与 resolver 准备共用的 named-array address policy。
+`resolved_source` 组合嵌套 source model，由固定模板表达 resolver、构造、descriptor 与 reference visit。Checker view 直接接收最终类限定名及 payload member 表达式；
 caller 在使用前保护 optional payload，诊断 field ID 仍来自 metadata。
 
 | 输出 | emitter | 内容 |
@@ -200,7 +225,7 @@ opcode/form 编号都会使生成失败。Category 前缀固定；插入 opcode 
 一个聚合构建命令在同一 Python 进程中生成发生变化的 category 及所需共享产物；
 该进程只加载一次 backend、归一化 instruction model、context 和 plan。配置阶段的
 描述命令是独立进程。各 category 的完成戳追踪贡献它的规格文件及输入成员清单；
-共享产物追踪全部规格文件。schema、backend mapping 和 generator 源码会使全部
+共享产物追踪全部规格文件。schema、backend mapping、generator Python 源码与 `.j2` 模板资源会使全部
 category 失效。CMake 重新配置可检测输入的新增和移除。Ninja 可根据缺失的产物或
 完成戳触发修复，Makefile target 则在接受干净的完成戳前检查这些文件。batch
 在写入前删除所选完成戳，因此即使后来失败时已经修复缺失文件，下次仍会重试。

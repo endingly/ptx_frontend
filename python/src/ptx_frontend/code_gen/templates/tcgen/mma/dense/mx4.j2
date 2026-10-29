@@ -1,0 +1,249 @@
+{% import 'tcgen/mma/dense_common.j2' as common %}{% macro algorithm(model) %}  const auto decoded = decode_tcgen_instruction(facts.instruction);
+  if (decoded.sparse) report.violations.push_back({{ model.cpp_prefix }}Violation::DenseSparse);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::Dense);
+  const uint16_t expected_k = decoded.k_choice_code ? 96 : 64;
+  const {{ model.cpp_prefix }}ShapeRow* shape = nullptr;
+  for (const auto& row : {{ model.shape_array }}) {
+    if (row.group == facts.group &&
+        {{ model.snake }}_row_contains(row, decoded.m, decoded.n, expected_k)) {
+      shape = &row;
+      break;
+    }
+  }
+  if (!shape) report.violations.push_back({{ model.cpp_prefix }}Violation::Shape);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::Shape);
+  if (decoded.a_type && decoded.b_type) {
+    const auto input_allowed = [](MatrixElementType type) {
+      return type == MatrixElementType::E2M1;
+    };
+    if (!input_allowed(*decoded.a_type))
+      report.violations.push_back({{ model.cpp_prefix }}Violation::AType);
+    if (!input_allowed(*decoded.b_type))
+      report.violations.push_back({{ model.cpp_prefix }}Violation::BType);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::Types);
+  }
+  const auto low = [](std::optional<MatrixElementType> type) {
+    return type && (*type == MatrixElementType::E2M3 ||
+                    *type == MatrixElementType::E3M2 ||
+                    *type == MatrixElementType::E2M1);
+  };
+  if (!facts.a_in_tmem && decoded.transpose_a && low(decoded.a_type))
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::ATransposeLayoutRule);
+  if (decoded.transpose_b && low(decoded.b_type))
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::BTransposeLayoutRule);
+  if (decoded.transpose_b && decoded.b_type &&
+      (*decoded.b_type == MatrixElementType::E4M3 ||
+       *decoded.b_type == MatrixElementType::E5M2)) {
+    const bool allowed_n = facts.group == TcgenCtaGroup::One
+        ? decoded.n >= 16 && decoded.n <= 256 && decoded.n % 16 == 0
+        : decoded.n >= 32 && decoded.n <= 256 && decoded.n % 32 == 0;
+    if (!allowed_n)
+      report.violations.push_back({{ model.cpp_prefix }}Violation::BTransposeN);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::BTransposeN);
+  }
+  if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
+      facts.scale_selector != TcgenScaleVectorSize::Vec2X &&
+      facts.scale_selector != TcgenScaleVectorSize::Block32)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::ScaleSelector);
+  if (decoded.scale_type != MatrixScaleType::UE8M0)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::ScaleType);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::ScaleType);
+  const auto effective = facts.scale_selector == TcgenScaleVectorSize::Absent
+      ? TcgenScaleVectorSize::Block32 : facts.scale_selector;
+  // The prescribed container is known; caller claims do not prove live bytes.
+  const auto required_packing = [](std::optional<MatrixElementType> type,
+                                   bool shared)
+      -> std::optional<TcgenMxInputPacking> {
+    if (!type || *type != MatrixElementType::E2M1) return std::nullopt;
+    return shared ? TcgenMxInputPacking::SharedPairedFourBit
+                  : TcgenMxInputPacking::TmemPairedFourBit;
+  };
+  report.required_a_packing = required_packing(decoded.a_type, !facts.a_in_tmem);
+  report.required_b_packing = required_packing(decoded.b_type, true);
+  const auto check_packing = [&report](
+      std::optional<TcgenMxInputPacking> required,
+      std::optional<TcgenMxInputPacking> supplied, bool type_known, bool is_a) {
+    if (supplied && *supplied != TcgenMxInputPacking::TmemEightBitContainer &&
+        *supplied != TcgenMxInputPacking::SharedPaddedFourBit &&
+        *supplied != TcgenMxInputPacking::SharedPaddedSixBit &&
+        *supplied != TcgenMxInputPacking::TmemPairedFourBit &&
+        *supplied != TcgenMxInputPacking::SharedPairedFourBit) {
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::APackingFact
+                                       : {{ model.cpp_prefix }}Violation::BPackingFact);
+      return;
+    }
+    if (required) {
+      if (!supplied)
+        report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::APackingFact
+                                      : {{ model.cpp_prefix }}Obligation::BPackingFact);
+      else if (*supplied != *required)
+        report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::APackingFact
+                                         : {{ model.cpp_prefix }}Violation::BPackingFact);
+      report.missing.push_back(is_a
+          ? {{ model.cpp_prefix }}Obligation::ALivePackingContents
+          : {{ model.cpp_prefix }}Obligation::BLivePackingContents);
+    } else if (supplied && type_known) {
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::APackingFact
+                                       : {{ model.cpp_prefix }}Violation::BPackingFact);
+    }
+  };
+  check_packing(report.required_a_packing, facts.a_packing,
+                decoded.a_type.has_value(), true);
+  check_packing(report.required_b_packing, facts.b_packing,
+                decoded.b_type.has_value(), false);
+  if (effective == TcgenScaleVectorSize::Vec2X && expected_k == 96) {
+    report.scale_a_factor_count = 2;
+    report.scale_b_factor_count = 2;
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::ScaleALayoutRule);
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::ScaleBLayoutRule);
+  }
+  for (const auto& row : kMxScaleLayouts) {
+    if (row.kind != TcgenMmaKind::{{ model.kind }} || row.sparse || row.k != expected_k ||
+        row.selector != effective) continue;
+    const bool is_a = row.role == MatrixFragmentRole::A;
+    const auto id = is_a ? decoded.scale_a_code : decoded.scale_b_code;
+    const bool allowed_id = std::find(row.valid_ids.begin(),
+        row.valid_ids.begin() + row.valid_id_count, id) !=
+        row.valid_ids.begin() + row.valid_id_count;
+    if (!allowed_id)
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ScaleAId
+                                       : {{ model.cpp_prefix }}Violation::ScaleBId);
+    const auto& known = is_a ? facts.scale_a_facts : facts.scale_b_facts;
+    if (is_a) { report.scale_a_layout = row;
+      report.scale_a_factor_count = row.factor_count; }
+    else { report.scale_b_layout = row;
+      report.scale_b_factor_count = row.factor_count; }
+    if (!known) {
+      report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::ScaleALayout
+                                    : {{ model.cpp_prefix }}Obligation::ScaleBLayout);
+    } else {
+      if (known->layout_id && *known->layout_id != row.layout_id)
+        report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ScaleALayout
+                                         : {{ model.cpp_prefix }}Violation::ScaleBLayout);
+      if (known->subcolumn_alignment_bytes &&
+          (*known->subcolumn_alignment_bytes < row.subcolumn_alignment_bytes ||
+           (*known->subcolumn_alignment_bytes &
+            (*known->subcolumn_alignment_bytes - 1)) != 0 ||
+           *known->subcolumn_alignment_bytes % row.subcolumn_alignment_bytes != 0 ||
+           (row.id_alignment_policy ==
+                TcgenScaleIdAlignmentPolicy::ByteSlotOffset &&
+            id % *known->subcolumn_alignment_bytes != 0)))
+        report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ScaleAAlignment
+                                         : {{ model.cpp_prefix }}Violation::ScaleBAlignment);
+      if (!known->layout_id || !known->subcolumn_alignment_bytes)
+        report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::ScaleALayout
+                                      : {{ model.cpp_prefix }}Obligation::ScaleBLayout);
+    }
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ScaleA
+                                  : {{ model.cpp_prefix }}Checked::ScaleB);
+  }
+{% endmacro %}{% macro source(model) %}{{ common.storage(model) }}{{ common.query_preamble(model) }}{{ common.unscaled_target_storage(model) }}{{ common.mx4_target_accept(model) }}{{ common.low_bit_shared_operand(model) }}{{ common.operation_start(model) }}{{ algorithm(model) }}{{ common.typed_shared_placement(model) }}{{ common.datapath(model) }}{{ common.extended_k_operation_finish(model) }}{% endmacro %}{% macro header(model) %}
+namespace ptx_frontend::resolved_ir {
+/** One closed Table 42 dense low-bit shape row. */
+struct {{ model.cpp_prefix }}ShapeRow {
+  /** Source-selected group identity. */
+  TcgenCtaGroup group;
+  /** Output type from caller-known instruction bits. */
+  MatrixElementType d_type;
+  /** Closed M values in rows. */
+  std::array<uint16_t, 2> m_values;
+  /** First valid N value in columns. */
+  uint16_t n_first;
+  /** Valid N cadence in columns. */
+  uint16_t n_step;
+  /** Last valid N value in columns. */
+  uint16_t n_last;
+  /** Implicit K dimension in elements. */
+  uint16_t k;
+};
+/** One non-WS low-bit path selected by group and M. */
+struct {{ model.cpp_prefix }}PathRow {
+  /** Source-selected group. */
+  TcgenCtaGroup group;
+  /** M dimension in rows. */
+  uint16_t m;
+  /** Selected A, B, D, or F datapath. */
+  char layout;
+  /** Whether known A/D lane halves must agree. */
+  bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
+};
+/** Borrow immutable Table 42 dense low-bit rows. */
+[[nodiscard]] std::span<const {{ model.cpp_prefix }}ShapeRow>
+{{ model.snake }}_shape_rows() noexcept;
+/** Borrow immutable non-WS datapath rows. */
+[[nodiscard]] std::span<const {{ model.cpp_prefix }}PathRow>
+{{ model.snake }}_path_rows() noexcept;
+/** Test Table 42 row membership without asserting live descriptor contents. */
+[[nodiscard]] bool {{ model.snake }}_row_contains(
+    const {{ model.cpp_prefix }}ShapeRow& row, uint16_t m, uint16_t n,
+    uint16_t k) noexcept;
+}  // namespace ptx_frontend::resolved_ir
+
+#include <optional>
+#include <vector>
+#include <ptx_frontend/resolved_ir/tcgen_descriptor_domains.gen.hpp>
+
+namespace ptx_frontend::resolved_ir {
+/** One independently completed dense mxf4 operational check. */
+enum class {{ model.cpp_prefix }}Checked : uint8_t {
+  InstructionFields, ASharedFields, BSharedFields, Dense, Shape, Types,
+  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, Datapath, HalfAlignment, Target, ScaleType, ScaleA, ScaleB
+};
+/** A violation proved by supplied known values, not by an opaque register. */
+enum class {{ model.cpp_prefix }}Violation : uint8_t {
+  Kind, Group, DenseSparse, Shape, AType, BType, APlacementFacts,
+  AMajor, BMajor, ASwizzle, BSwizzle, BTransposeN, ALaneHalf, DLaneHalf,
+  HalfAlignment, Target, InvalidContext, ScaleSelector, ScaleType, ScaleAId, ScaleBId, ScaleALayout, ScaleBLayout, ScaleAAlignment, ScaleBAlignment, APackingFact, BPackingFact
+};
+/** A missing fact or unresolved rule that prevents a stronger conclusion. */
+enum class {{ model.cpp_prefix }}Obligation : uint8_t {
+  ASharedWord, BSharedWord, AMajor, BMajor, ATransposeLayoutRule, BTransposeLayoutRule,
+  ALaneHalf, DLaneHalf, Target, ScaleALayout, ScaleBLayout, ScaleALayoutRule, ScaleBLayoutRule, APackingFact, BPackingFact, ALivePackingContents, BLivePackingContents
+};
+/** Caller-supplied known words and context, independent of MMA source registers. */
+struct {{ model.cpp_prefix }}KnownFacts {
+  /** Group selected by the source qualifier. */
+  TcgenCtaGroup group;
+  /** Whether A is a Tensor Memory address rather than a shared descriptor. */
+  bool a_in_tmem;
+  /** Written selector; Absent preserves an omitted source suffix. */
+  TcgenScaleVectorSize scale_selector;
+  /** Independently known instruction bits and explicit kind. */
+  TcgenInstructionWord instruction;
+  /** Optional caller-known A scale layout facts. */
+  std::optional<TcgenMxScaleRoleFacts> scale_a_facts;
+  /** Optional caller-known B scale layout facts. */
+  std::optional<TcgenMxScaleRoleFacts> scale_b_facts;
+  /** Claimed A low-bit container rule, if independently known. */
+  std::optional<TcgenMxInputPacking> a_packing;
+  /** Claimed B low-bit container rule, if independently known. */
+  std::optional<TcgenMxInputPacking> b_packing;
+{{ common.known_word_fields(model) }}};
+/** Defined-field results plus individually checked, violated, and missing facts. */
+struct {{ model.cpp_prefix }}OperationalReport {
+{{ common.report_fields(model) }}  /** Data-path layout selected from known group and M, if supported. */
+  std::optional<char> path_layout;
+  /** Selected scale A row when the selector is valid. */
+  std::optional<TcgenMxScaleLayoutRow> scale_a_layout;
+  /** Selected scale B row when the selector is valid. */
+  std::optional<TcgenMxScaleLayoutRow> scale_b_layout;
+  /** Required A low-bit container rule, when applicable. */
+  std::optional<TcgenMxInputPacking> required_a_packing;
+  /** Required B low-bit container rule, when applicable. */
+  std::optional<TcgenMxInputPacking> required_b_packing;
+  /** Table 59 A factor count even if physical placement remains open. */
+  std::optional<uint8_t> scale_a_factor_count;
+  /** Table 59 B factor count even if physical placement remains open. */
+  std::optional<uint8_t> scale_b_factor_count;
+{{ common.supplied_facts_ok(model) }}};
+/** Validate independent known words against dense non-WS f16 operational rules.
+ *  Caller-supplied words are never authenticated against source registers.
+ */
+[[nodiscard]] {{ model.cpp_prefix }}OperationalReport check_{{ model.snake }}_known_operation(
+    const {{ model.cpp_prefix }}KnownFacts& facts);
+}  // namespace ptx_frontend::resolved_ir
+{% endmacro %}

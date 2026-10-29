@@ -1,6 +1,6 @@
 """Focused contracts for discovery provenance and descriptor-shard generation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import argparse
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,8 +10,10 @@ from unittest.mock import patch
 
 from ptx_frontend.code_gen import cli
 from ptx_frontend.code_gen.emit import resolved_source
+from ptx_frontend.code_gen.render_models import resolved_source as source_models
 from ptx_frontend.code_gen.plan import GeneratedArtifact, GenerationPlan
 from ptx_frontend.spec import database as spec_database
+from ptx_frontend.spec.model import InstructionSpec
 
 
 @dataclass(frozen=True)
@@ -78,8 +80,8 @@ instructions:
             )
 
     def test_descriptor_shard_lowers_syntax_once(self) -> None:
-        specification = SimpleNamespace(
-            codegen_category="arithmetic", opcode="add"
+        specification = InstructionSpec(
+            codegen_category="arithmetic", opcode="add", variants=("v0", "v1", "v2")
         )
         entry = SimpleNamespace(
             specification=specification,
@@ -87,19 +89,20 @@ instructions:
             cpp_name="Add",
         )
         context = SimpleNamespace(entries=(entry,), backend=object())
-        syntax = _Variants(("s0", "s1", "s2"))
+        syntax = _Variants(("s0", "s2"))
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "descriptor.gen.cpp"
             with (
-                patch.object(resolved_source, "form_shards", return_value=((0, 2),)),
+                patch.object(source_models, "form_shards", return_value=((0, 2),)),
                 patch.object(
-                    resolved_source, "from_InstructionSpec", return_value=syntax
+                    source_models, "from_InstructionSpec", return_value=syntax
                 ) as lower,
                 patch.object(
-                    resolved_source, "emit_syntax_storage", return_value=""
+                    source_models, "build_syntax_descriptor_storage", return_value=syntax
                 ) as emit_syntax,
-                patch.object(resolved_source, "emit_resolved_storage", return_value=""),
-                patch.object(resolved_source, "emit_checker_storage", return_value=""),
+                patch.object(source_models, "build_resolved_descriptor_storage", return_value=None),
+                patch.object(source_models, "build_checker_descriptor_storage", return_value=None),
+                patch.object(resolved_source, "render_template", return_value="") as render,
             ):
                 resolved_source.generate_resolved_descriptor_shard_source(
                     context,
@@ -109,8 +112,10 @@ instructions:
                     output_path=output,
                 )
 
-            lower.assert_called_once_with(specification)
+            lower.assert_called_once_with(replace(specification, variants=("v0", "v2")))
             self.assertEqual(emit_syntax.call_args.args[0].variants, ("s0", "s2"))
+            render.assert_called_once()
+            self.assertIs(render.call_args.args[1].syntax_storage, syntax)
             self.assertTrue(output.is_file())
 
     def test_failed_global_generation_preserves_previous_manifest_and_files(self) -> None:

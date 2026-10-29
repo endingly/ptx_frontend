@@ -46,6 +46,7 @@ function(ptx_configure_resolved_ir_codegen output_sources output_private output_
     file(GLOB_RECURSE resolved_codegen_python CONFIGURE_DEPENDS
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/base/*.py"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/*.py"
+        "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/code_gen/templates/*.j2"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/ir/*.py"
         "${PROJECT_SOURCE_DIR}/python/src/ptx_frontend/spec/*.py")
     set(resolved_codegen_python_membership

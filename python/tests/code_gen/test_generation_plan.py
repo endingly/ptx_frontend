@@ -835,7 +835,13 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertFalse(any(name.endswith("resolved_model") for name in source_imports))
         for imports in (model_imports, source_imports):
             self.assertIn("ptx_frontend.code_gen.artifact_layout", imports)
+            self.assertIn("ptx_frontend.code_gen.rendering", imports)
+        for builder_name in ("resolved_header.py", "resolved_source.py"):
+            imports = imported_modules("../render_models/" + builder_name)
             self.assertIn("ptx_frontend.code_gen.cpp_names", imports)
+            self.assertFalse(any(name.startswith("ptx_frontend.code_gen.emit") for name in imports))
+            self.assertNotIn("ptx_frontend.code_gen.rendering", imports)
+            self.assertNotIn("ptx_frontend.code_gen.cli", imports)
         self.assertFalse(any(name.endswith("resolved_source") for name in dispatch_imports))
         self.assertFalse(any(name.endswith("category_source") for name in dispatch_imports))
 

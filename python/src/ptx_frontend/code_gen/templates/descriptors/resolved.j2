@@ -1,0 +1,132 @@
+{% from 'fragments/availability.j2' import availability %}{% from 'fragments/matrix.j2' import matrix_descriptor %}{% macro field(model) %}          check_end::ResolvedFieldDescriptor{
+              .field_id = "{{ model.field_id }}",
+              .value_kind = {{ model.value_kind }},
+          }{% endmacro %}{% macro type_expression(model) %}check_end::TypeExpressionDescriptor{
+                  .kind = {{ model.kind }},
+                  .fixed_scalar_type = {{ model.fixed_scalar_type }},
+                  .modifier_field_id = {{ model.modifier_field_id }},
+              }{% endmacro %}{% macro modifier_default(model) %}{% if model is none %}check_end::ResolvedModifierDefaultDescriptor{}{% else %}check_end::ResolvedModifierDefaultDescriptor{
+                  .kind = {{ model.kind }},
+                  .{{ model.member }} = {{ model.value }},
+              }{% endif %}{% endmacro %}{% macro modifier_binding(model) %}          check_end::ResolvedModifierBindingDescriptor{
+              .source_kind_id = "{{ model.source_kind_id }}",
+              .target_field_id = "{{ model.target_field_id }}",
+              .default_value = {{ modifier_default(model.default) }},
+          }{% endmacro %}{% macro members(model) %}{% for member in model %}
+              .{{ member.name }} = {{ member.expression }},{% endfor %}{% endmacro %}{% macro parameter(model) %}{
+                  .direction = {{ model.direction }},
+                  .function_availability = {{ availability(model.availability) }},
+                  .entry_only = {{ model.entry_only }},
+              }{% endmacro %}{% macro video(model) %}checker::VideoOperandDescriptor{
+                  .lanes = VideoLanes::{{ model.lanes }},
+                  .operation = VideoOperation::{{ model.operation }},
+                  .position = VideoOperandPosition::{{ model.position }},
+                  .selector = VideoSelectorPolicy::{{ model.selector }},
+                  .type_use = VideoOperandTypeUse::{{ model.type_use }},
+                  .type_field_id = "{{ model.type_field_id }}",
+                  .sat_field_id = "{{ model.sat_field_id }}",
+                  .po_field_id = "{{ model.po_field_id }}",
+                  .allow_immediate = {{ model.allow_immediate }},
+                  .allow_negate = {{ model.allow_negate }},
+              }{% endmacro %}{% macro operand_binding(model) %}          check_end::ResolvedOperandBindingDescriptor{
+              .target_field_id = "{{ model.target_field_id }}",
+              .type_expression = {{ type_expression(model.type_expression) }},
+              .register_width_policy = {{ model.register_width_policy }},
+              .role = {{ model.role }},
+              .access = {{ model.access }},
+              .allowed_shapes = {{ model.allowed_shapes }},{{ members(model.vector_members) }}{% if model.signed_vector_range is not none %}
+              .vector_signed_immediate_range = checker::SignedVectorImmediateRange{ {{- model.signed_vector_range[0] }}, {{ model.signed_vector_range[1] }}},{% endif %}{{ members(model.sink_members) }}{% if model.sink_availability is not none %}
+              .sink_availability = {{ availability(model.sink_availability) }},{% endif %}{{ members(model.symbol_members) }}
+              .preserve_parameter_address_space = {{ model.preserve_parameter_address_space }},{{ members(model.address_members) }}{% if model.parameter_constraint is not none %}
+              .parameter_constraint = {{ parameter(model.parameter_constraint) }},{% endif %}{{ members(model.topology_members) }}
+              .immediate_conversion_policy = {{ model.immediate_conversion_policy }},{% if model.video is not none %}
+              .video = {{ video(model.video) }},{% endif %}
+          }{% endmacro %}{% macro address_space(model) %}          checker::AddressStateSpaceDescriptor{
+              .state_space = {{ model.state_space }},
+              .availability = {{ availability(model.availability) }},
+          }{% endmacro %}{% macro binding_storage(model) %}{% for name, values in model.vector_arities %}  static constexpr std::array<uint8_t, {{ values|length }}>
+      {{ name }} = { {{- '{' }}
+{% for value in values %}          {{ value }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for name, values in model.register_types %}  static constexpr std::array<base::ScalarType, {{ values|length }}>
+      {{ name }} = { {{- '{' }}
+{{ values|join(', ') }}
+      }};{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for name, values in model.address_spaces %}  static constexpr std::array<checker::AddressStateSpaceDescriptor, {{ values|length }}>
+      {{ name }} = { {{- '{' }}
+{% for value in values %}{{ address_space(value) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+  static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, {{ model.bindings|length }}>
+      {{ model.name }}_bindings = {
+{% for binding in model.bindings %}{{ operand_binding(binding) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro layout_fields(model) %}  static constexpr std::array<check_end::ResolvedFieldDescriptor, {{ model.fields|length }}>
+      {{ model.fields_name }} = {
+{% for item in model.fields %}{{ field(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro variant_storage(model) %}  static constexpr std::array<check_end::ResolvedFieldDescriptor, {{ model.fields|length }}>
+      {{ model.name }}_fields = {
+{% for item in model.fields %}{{ field(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };
+
+  static constexpr std::array<check_end::ResolvedModifierBindingDescriptor, {{ model.modifier_bindings|length }}>
+      {{ model.name }}_modifier_bindings = {
+{% for item in model.modifier_bindings %}{{ modifier_binding(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };
+
+{% for layout in model.layouts %}{{ layout_fields(layout) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+  static constexpr std::array<check_end::ResolvedOperandLayoutDescriptor, {{ model.layouts|length }}>
+      {{ model.name }}_operand_layouts = {
+{% for layout in model.layouts %}check_end::ResolvedOperandLayoutDescriptor{
+              .layout_id = "{{ layout.layout_id }}",
+              .fields = {{ layout.fields_name }},
+              .bindings = {{ layout.binding_name }},
+          }{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro variant_descriptor(model) %}          check_end::ResolvedVariantDescriptor{
+              .variant_name = "{{ model.variant_name }}",
+              .condition_code_effect = {{ model.condition_code_effect }},
+              .fields = {{ model.name }}_fields,
+              .modifier_bindings = {{ model.name }}_modifier_bindings,
+              .operand_layouts = {{ model.name }}_operand_layouts,
+              {% if model.matrix is not none %}.matrix = {{ matrix_descriptor(model.matrix) }},{% endif %}
+          }{% endmacro %}{% macro storage(model) %}struct {{ model.storage_name }} {
+{% for item in model.binding_groups %}{{ binding_storage(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants %}{{ variant_storage(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+  static constexpr std::array<check_end::ResolvedVariantDescriptor, {{ model.variants|length }}>
+      variants = {
+{% for item in model.variants %}{{ variant_descriptor(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };
+
+  static constexpr check_end::ResolvedInstructionDescriptor descriptor{
+      .opcode_name = "{{ model.opcode }}",
+      .variants = variants,
+  };
+};
+{% endmacro %}{% macro getter(model) %}const check_end::ResolvedInstructionDescriptor&
+{{ model.cpp_name }}::get_resolved_descriptor() noexcept {
+  return generated_detail::{{ model.storage_name }}::descriptor;
+}{% endmacro %}{% if model is defined %}{{ storage(model) }}{% endif %}

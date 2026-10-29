@@ -1,0 +1,3 @@
+{% import "resolved/methods.j2" as methods %}{% for method in model.methods %}{{ methods.methods(method) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}

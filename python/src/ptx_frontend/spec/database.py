@@ -96,19 +96,104 @@ def load_codegen_database_with_category_inputs(
 def _instruction_schema_validator() -> Draft202012Validator:
     """Load the ISA schema once for a database-loading process."""
 
+    schema = load_yaml(PTX_INSTRUCTION_SCHEMA)
+    return Draft202012Validator(_prepare_instruction_schema(schema))
+
+
+@cache
+def _original_instruction_schema_validator() -> Draft202012Validator:
+    """Load the unmodified schema only when native diagnostics are needed."""
+
     return Draft202012Validator(load_yaml(PTX_INSTRUCTION_SCHEMA))
+
+
+def _prepare_instruction_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Resolve the packaged schema's simple local references before validation.
+
+    Shared targets belong only to the private validator schema. Unsupported
+    reference or scope constructs retain the original validator behavior by
+    falling back to the unmodified schema, including for recursive definitions.
+    """
+
+    prepared: dict[int, Any] = {}
+    visited: set[int] = set()
+    active: set[int] = set()
+    definitions = schema.get("$defs", {})
+    if not isinstance(definitions, dict):
+        return schema
+
+    def target(value: dict[str, Any]) -> Any:
+        """Find an exact local definition without URI or pointer rewriting."""
+
+        reference = value["$ref"]
+        if not isinstance(reference, str) or not reference.startswith("#/$defs/"):
+            raise ValueError("unsupported schema reference")
+        name = reference.removeprefix("#/$defs/")
+        if any(character in name for character in "/~%#") or name not in definitions:
+            raise ValueError("unsupported schema reference target")
+        return definitions[name]
+
+    def preflight(value: Any, *, root: bool = False) -> None:
+        """Check all subtrees and reference edges before changing any schema."""
+
+        if not isinstance(value, (dict, list)):
+            return
+        identity = id(value)
+        if identity in active:
+            raise ValueError("recursive schema")
+        if identity in visited:
+            return
+        active.add(identity)
+        if isinstance(value, dict):
+            if any(key in value for key in (
+                "$anchor", "$dynamicAnchor", "$dynamicRef",
+                "$recursiveAnchor", "$recursiveRef",
+            )) or (not root and "$id" in value):
+                raise ValueError("scoped schema")
+            if "$ref" in value:
+                preflight(target(value))
+            for item in value.values():
+                preflight(item)
+        else:
+            for item in value:
+                preflight(item)
+        active.remove(identity)
+        visited.add(identity)
+
+    def prepare(value: Any) -> Any:
+        """Copy containers in order, preserving ref siblings as standard schemas."""
+
+        if not isinstance(value, (dict, list)):
+            return value
+        identity = id(value)
+        if identity not in prepared:
+            if isinstance(value, list):
+                result = [prepare(item) for item in value]
+            elif "$ref" in value:
+                result = prepare(target(value)) if len(value) == 1 else value
+            else:
+                result = {key: prepare(item) for key, item in value.items()}
+            prepared[identity] = result
+        return prepared[identity]
+
+    try:
+        preflight(schema, root=True)
+    except ValueError:
+        return schema
+    return prepare(schema)
 
 
 def _validate_instruction_schema(path: Traversable, spec: dict[str, Any]) -> None:
     """Reject a malformed ISA spec before semantic normalization begins."""
 
-    errors = sorted(
-        _instruction_schema_validator().iter_errors(spec),
-        key=lambda error: list(error.path),
-    )
-    if not errors:
+    if next(_instruction_schema_validator().iter_errors(spec), None) is None:
         return
 
+    # Alternative-match messages can embed schemas; retain their original refs.
+    errors = sorted(
+        _original_instruction_schema_validator().iter_errors(spec),
+        key=lambda error: list(error.path),
+    )
     error = errors[0]
     location = ".".join(str(piece) for piece in error.path) or "<root>"
     raise ValueError(f"{path}:{location}: {error.message}")

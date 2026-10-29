@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 from threading import Barrier, Event
 import tempfile
@@ -60,6 +61,89 @@ def _spec(
             }
         ],
     }
+
+
+class InstructionSchemaPreparationTests(unittest.TestCase):
+    """Prepared schemas retain validation decisions and public diagnostics."""
+
+    def test_packaged_schema_preserves_valid_and_malformed_diagnostics(self) -> None:
+        """Malformed nested fields retain the loader's selected path/message."""
+
+        schema = load_yaml(SCHEMA)
+        original = deepcopy(schema)
+        prepared = spec_database._prepare_instruction_schema(schema)
+        self.assertIsNot(prepared, schema)
+        self.assertEqual(schema, original)
+        valid = _spec(category="arithmetic", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        cases = [valid, {}, {**valid, "category": ""}, {**valid, "unexpected": True}]
+        for replacement in ([], {"unknown": True}, 123):
+            malformed = deepcopy(valid)
+            malformed["instructions"][0]["variants"][0]["modifiers"][0]["value"] = replacement
+            cases.append(malformed)
+        for instance in cases:
+            with self.subTest(instance=instance):
+                before = sorted(Draft202012Validator(schema).iter_errors(instance),
+                                key=lambda error: list(error.path))
+                after = sorted(Draft202012Validator(prepared).iter_errors(instance),
+                               key=lambda error: list(error.path))
+                self.assertEqual([(list(error.path), error.message) for error in after],
+                                 [(list(error.path), error.message) for error in before])
+        self.assertTrue(Draft202012Validator(prepared).is_valid(valid))
+
+    def test_alternative_failures_and_reference_siblings_keep_diagnostics(self) -> None:
+        """Both alternatives and ref siblings retain their standard behavior."""
+
+        schema = {"$defs": {"number": {"type": "integer"}}, "type": "object",
+                  "properties": {
+                      "choice": {"oneOf": [{"$ref": "#/$defs/number"}, {"type": "boolean"}]},
+                      "other": {"anyOf": [{"$ref": "#/$defs/number"}, {"type": "null"}]},
+                      "bounded": {"$ref": "#/$defs/number", "minimum": 3},
+                  }}
+        prepared = spec_database._prepare_instruction_schema(schema)
+        self.assertIsNot(prepared, schema)
+        instance = {"choice": [], "other": "bad", "bounded": 1}
+        before = list(Draft202012Validator(schema).iter_errors(instance))
+        after = list(Draft202012Validator(prepared).iter_errors(instance))
+        self.assertEqual([error.validator for error in after], ["oneOf", "anyOf", "minimum"])
+        self.assertEqual([(list(error.path), error.message) for error in after],
+                         [(list(error.path), error.message) for error in before])
+
+    def test_unsupported_scope_and_cycles_fall_back_to_original_schema(self) -> None:
+        """Unsupported constructs keep the standard resolver and schema object."""
+
+        for definition in (
+            {"$ref": "#/$defs/value"}, {"$ref": "https://example.com/other"},
+            {"$id": "nested", "type": "integer"}, {"$dynamicRef": "#value"},
+            {"$anchor": "value", "type": "integer"},
+        ):
+            schema = {"$defs": {"value": definition}, "$ref": "#/$defs/value"}
+            with self.subTest(definition=definition):
+                self.assertIs(spec_database._prepare_instruction_schema(schema), schema)
+
+    def test_loader_uses_native_diagnostics_for_multiple_matching_alternatives(self) -> None:
+        """oneOf messages retain original references when several branches match."""
+
+        schema = {"$defs": {"value": {"type": "integer"}},
+                  "oneOf": [{"$ref": "#/$defs/value"}, {"type": "number"}]}
+        original = Draft202012Validator(schema)
+        prepared = Draft202012Validator(spec_database._prepare_instruction_schema(schema))
+        expected = next(original.iter_errors(1)).message
+        self.assertNotEqual(next(prepared.iter_errors(1)).message, expected)
+        with patch.object(spec_database, "_instruction_schema_validator", return_value=prepared), \
+             patch.object(spec_database, "_original_instruction_schema_validator", return_value=original):
+            with self.assertRaises(ValueError) as raised:
+                spec_database._validate_instruction_schema(Path("case.yaml"), 1)
+        self.assertEqual(str(raised.exception), f"case.yaml:<root>: {expected}")
+
+    def test_successful_validation_does_not_load_the_native_diagnostic_validator(self) -> None:
+        """Valid inputs complete through the prepared schema in one pass."""
+
+        valid = _spec(category="arithmetic", codegen_category="arithmetic",
+                      variant_name="add_u32", type_value="u32")
+        with patch.object(spec_database, "_original_instruction_schema_validator",
+                          side_effect=AssertionError("unexpected diagnostic pass")):
+            spec_database._validate_instruction_schema(Path("valid.yaml"), valid)
 
 
 class CodegenDatabaseMergeTests(unittest.TestCase):

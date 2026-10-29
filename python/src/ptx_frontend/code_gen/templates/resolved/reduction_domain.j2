@@ -1,0 +1,26 @@
+{% macro domain(model) %}/** Encoded tiled tensor-reduction operation; descriptor contents remain opaque. */
+enum class TensorReductionOp : uint8_t {
+{% for row in model.rows %}  {{ row.name }},{% if not loop.last %}
+{% endif %}{% endfor %}
+};
+
+/** Whether an operation permits a descriptor element type if that type is known.
+ * This does not inspect or validate a tensor-map descriptor instance.
+ */
+constexpr bool tensor_reduction_accepts_element_type(
+    TensorReductionOp operation, base::ScalarType element_type) noexcept {
+  switch (operation) {
+{% for row in model.rows %}    case TensorReductionOp::{{ row.name }}:
+      switch (element_type) {
+{% for type in row.types %}        case base::ScalarType::{{ type }}:{% if not loop.last %}
+{% endif %}{% endfor %}
+          return true;
+        default:
+          return false;
+      }{% if not loop.last %}
+{% endif %}{% endfor %}
+    default:
+      return false;
+  }
+}
+{% endmacro %}

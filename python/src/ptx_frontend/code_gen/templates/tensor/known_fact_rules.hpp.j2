@@ -1,0 +1,44 @@
+// Generated from the focused tensor-map known-facts catalog.
+#pragma once
+#include <array>
+#include <cstdint>
+#include <string_view>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
+namespace ptx_frontend::resolved_ir {
+/** One finite caller-fact relation; not a whole-descriptor verdict. */
+enum class TensorMapFactRule : uint8_t {
+{% for row in model.rules %}  {{ row.name }} = {{ row.value }},{% if not loop.last %}
+{% endif %}{% endfor %}
+};
+/** Catalog row with exact source and required fact-name bitset. */
+struct TensorMapFactRuleDescriptor {
+  TensorMapFactRule rule;
+  std::string_view title;
+  std::string_view source_section;
+  uint64_t input_mask;
+};
+/** One dependency name and its stable bit in this generated table. */
+struct TensorMapFactInputDescriptor {
+  std::string_view name;
+  uint64_t bit;
+};
+inline constexpr std::array<TensorMapFactInputDescriptor, {{ model.inputs | length }}> tensor_map_fact_inputs{{ '{{' }}
+{% for row in model.inputs %}    { {{- row.name_literal }}, UINT64_C({{ row.bit }})},{% if not loop.last %}
+{% endif %}{% endfor %}
+}};
+inline constexpr std::array<TensorMapFactRuleDescriptor, {{ model.rules | length }}> tensor_map_fact_rules{{ '{{' }}
+{% for row in model.rules %}    {TensorMapFactRule::{{ row.name }}, {{ row.title_literal }}, {{ row.source_literal }}, UINT64_C({{ row.input_mask }})},{% if not loop.last %}
+{% endif %}{% endfor %}
+}};
+/** Emitted from the accepted tensor_im2col_info_contract, not a second policy. */
+struct TensorKnownInfoBounds {
+  TensorAccessMode mode;
+  uint8_t rank;
+  uint8_t arity;
+  std::array<uint16_t, 3> maxima;
+};
+inline constexpr std::array<TensorKnownInfoBounds, 9> tensor_known_info_bounds{{ '{{' }}
+{% for row in model.bounds %}    {TensorAccessMode::{{ row.mode }}, {{ row.rank }}, {{ row.arity }}, {{ '{' }}{{ row.maxima | join(', ') }}}},{% if not loop.last %}
+{% endif %}{% endfor %}
+}};
+}  // namespace ptx_frontend::resolved_ir

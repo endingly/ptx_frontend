@@ -339,12 +339,36 @@ def check_packaged_backend_model() -> None:
     assert backend.domains[CppDomain.SCALAR_TYPES.value].values
 
 
+def check_installed_template_rendering() -> None:
+    """Render installed nested templates with the current directory outside source."""
+    from ptx_frontend.code_gen.context import build_generation_context
+    from ptx_frontend.code_gen.render_models.resolved_header import build_base_header
+    from ptx_frontend.code_gen.render_models.resolved_source import build_opcode_source
+    from ptx_frontend.code_gen.rendering import render_template
+
+    resources = files("ptx_frontend.code_gen").joinpath("templates")
+    assert resources.joinpath("resolved/opcode.cpp.j2").is_file()
+    assert resources.joinpath("resolved/base.hpp.j2").is_file()
+    backend = load_cpp_backend(packaged_backend_spec())
+    context = build_generation_context(get_packaged_spec_database(), backend)
+    base = render_template("resolved/base.hpp.j2", build_base_header(context))
+    assert "class Instruction" in base and base.endswith("\n")
+    entry = next(item for item in context.entries if item.specification.opcode == "add")
+    model = build_opcode_source(context, category=entry.specification.codegen_category, opcode="add")
+    source = render_template("resolved/opcode.cpp.j2", model)
+    assert "resolveAdd(" in source
+    assert "AddDescriptorStorage" in source
+    assert "::visit_references(" in source
+    assert "::check(" in source
+
+
 def main() -> None:
     check_distribution_metadata()
     check_packaged_resources()
     check_module_layout()
     check_packaged_spec_model()
     check_packaged_backend_model()
+    check_installed_template_rendering()
 
 
 if __name__ == "__main__":

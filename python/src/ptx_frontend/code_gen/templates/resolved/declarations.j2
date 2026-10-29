@@ -1,0 +1,49 @@
+{% import "resolved/contracts.j2" as contracts %}{% macro field(model) %}{% if model.optional %}  /** Layout-specific owned {{ model.source_name }}; engaged exactly for layouts that bind it. */
+  std::optional<{{ model.cpp_type }}> {{ model.name }};{% elif model.constant is not none %}  /** Semantic constant implied by this form. */
+  inline static constexpr {{ model.cpp_type }} {{ model.name }} = {{ model.constant }};{% else %}  /** Owned resolved {{ model.source_name }} value and source locations. */
+  {{ model.cpp_type }} {{ model.name }};{% endif %}{% endmacro %}{% macro entrypoints(model) %}/** Return static-lifetime syntax selection metadata for {{ model.opcode }}. */
+const check_end::SyntaxInstructionDescriptor& {{ model.prefix }}_syntax_descriptor() noexcept;
+/** Return static-lifetime resolved field metadata for {{ model.opcode }}. */
+const check_end::ResolvedInstructionDescriptor& {{ model.prefix }}_resolved_descriptor() noexcept;
+/** Return static-lifetime legality metadata for {{ model.opcode }}. */
+const checker::InstructionDescriptor& {{ model.prefix }}_checker_descriptor() noexcept;
+/** Resolve one {{ model.opcode }} syntax instruction to its exact final form. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{{ model.cpp_name }}(
+    const syntax_ast::AstInstruction&, const ResolveContext* = nullptr);{% endmacro %}{% macro definition(model) %}/** Exact {{ model.opcode }} {{ model.variant_name }} form; operands are direct typed members. */
+class {{ model.name }} final : public Instruction {
+ public:
+  /** Fixed opcode family without per-instance storage. */
+  static constexpr Opcode opcode = {{ model.namespace }}::opcode;
+  /** Fixed semantic identity without per-instance storage. */
+  static constexpr InstructionKind kind =
+      {{ model.namespace }}::{{ model.name }};
+  /** Implicit CC.CF effect under the execution predicate. */
+  inline static constexpr ConditionCodeEffect condition_code_effect =
+      {{ model.condition_code }};
+  /** Instruction-local asynchronous completion identity. */
+  inline static constexpr base::AsyncCompletionKind completion_kind =
+      base::AsyncCompletionKind::{{ model.completion }};
+  /** Programmer-expressed WGMMA action; sequence obligations remain external. */
+  inline static constexpr base::WgmmaProtocolAction wgmma_protocol_action =
+      base::WgmmaProtocolAction::{{ model.wgmma_action }};
+{{ contracts.contract(model.contract) }}
+{% if model.fabric is not none %}{{ contracts.fabric(model.fabric) }}{% endif %}
+  /** Selected layout identity and resolution provenance. */
+  ResolvedOperandLayoutTag operand_layout;
+{% if model.atomic %}  /** Written atomic address suffix and source provenance. */
+  WithLocs<AtomicAddressQualifier> address_qualifier;
+{% endif %}{% for member in model.modifiers %}{{ field(member) }}{% if not loop.last %}
+{% endif %}{% endfor %}
+{% for member in model.operands %}{{ field(member) }}{% if not loop.last %}
+{% endif %}{% endfor %}
+  /** Construct a mutable resolved form before fields are populated. */
+  {{ model.name }}() = default;
+  /** Return the exact semantic identity. */
+  InstructionKind instruction_kind() const noexcept override;
+  /** Deep-copy all common and concrete owned state. */
+  std::unique_ptr<Instruction> clone() const override;
+  /** Check this form and its selected operand layout. */
+  checker::CheckResult check(const checker::Context&) const override;
+  /** Borrow references synchronously in predicate-first order. */
+  void visit_references(detail::IReferenceObserver&) const override;
+};{% endmacro %}

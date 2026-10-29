@@ -1,0 +1,2 @@
+{% from 'descriptors/resolved.j2' import address_space %}{% for item in model.entries %}{{ address_space(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}

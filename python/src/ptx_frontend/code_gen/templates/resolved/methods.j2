@@ -1,0 +1,10 @@
+{% import "resolved/checks.j2" as checks %}{% import "resolved/visit.j2" as visits %}{% macro methods(model) -%}/** Return {{ model.name }}'s exact semantic identity. */
+InstructionKind {{ model.name }}::instruction_kind() const noexcept {
+  return kind;
+}
+/** Deep-copy the owned {{ model.name }} record. */
+std::unique_ptr<Instruction> {{ model.name }}::clone() const {
+  return std::make_unique<{{ model.name }}>(*this);
+}
+{{ checks.check(model.check) }}
+{{ visits.visit(model.visit) }}{%- endmacro %}

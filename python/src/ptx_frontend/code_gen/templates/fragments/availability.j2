@@ -1,0 +1,23 @@
+{% macro availability(model) -%}
+{% if model.minimum is not none %}{
+                  .minimum_ptx_version = { {{- model.minimum.ptx_major }}, {{ model.minimum.ptx_minor }}},
+                  .minimum_sm_version = {{ model.minimum.sm }},
+                  .required_family = "{{ model.minimum.family }}",
+              }{% else %}{
+                  .any_of = { {{- '{' }}
+                      {% for clause in model.clauses %}checker::AvailabilityClause{
+                      .minimum_ptx_version = { {{- clause.ptx_major }}, {{ clause.ptx_minor }}},
+                      .minimum_sm_version = {{ clause.sm }},
+                      .has_exact_target = {{ clause.has_exact_target }},
+                      .exact_target_architecture = { {{- clause.architecture }}},
+                      .exact_target_flavor = base::TargetFlavor::{{ clause.flavor }},
+                      .required_family = "{{ clause.family }}",
+                      .capabilities = { {{- '{' }}{% for value in clause.capabilities %}"{{ value }}"{% if not loop.last %}, {% endif %}{% endfor %}}},
+                      .capability_count = {{ clause.capabilities|length }},
+                      .requires_map_f64_to_f32 = {{ clause.map_f64_to_f32 }},
+                  }{% if not loop.last %},
+                      {% endif %}{% endfor %}
+                  }},
+                  .any_of_count = {{ model.clauses|length }},
+              }{% endif %}
+{%- endmacro %}{% if model is defined %}{{ availability(model) }}{% endif %}

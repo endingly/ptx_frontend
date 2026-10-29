@@ -1,0 +1,140 @@
+{% import "fragments/availability.j2" as availability %}{% import "fragments/matrix.j2" as matrix %}{% macro fabric(model) %}  /** Static CFT endpoint, completion, reporting and shared-access contract. */
+  inline static constexpr FabricInstructionDescriptor fabric_contract{
+      .operation = FabricOperation::{{ model.operation }},
+      .endpoint = FabricEndpointKind::{{ model.endpoint }},
+      .shared_access = FabricSharedAccess::{{ model.shared_access }},
+      .completion = base::AsyncCompletionKind::{{ model.completion }},
+      .counted = {{ model.counted }},
+      .reports_fabric = {{ model.reports }},
+      .required_mbarrier_layout = {{ model.layout }},
+  };
+{% endmacro %}{% macro surface(model) %}  /** Canonical gate for a scalar register-carried surface resource. */
+  inline static constexpr checker::AvailabilityDescriptor indirect_gate{{ availability.availability(model.gate) }};
+  /** Immutable exact-form surface semantics, independent of texture mode. */
+  inline static constexpr SurfaceInstructionDescriptor surface_contract{
+      .geometry = {{ model.geometry }},
+      .addressing = {{ model.addressing }},
+      .boundary = {{ model.boundary }},
+      .operation = {{ model.operation }},
+      .query = {{ model.query }},
+      .vector_arity = {{ model.vector_arity }},
+      .indirect_availability = &indirect_gate,
+  };
+  /** Borrow immutable exact-form surface semantics. */
+  const SurfaceInstructionDescriptor* surface_descriptor() const noexcept override {
+    return &surface_contract;
+  }
+  /** Read the current mutable data type without consulting source syntax. */
+  SurfaceSelectedTypes surface_selected_types() const noexcept override {
+    return {.data_type = dtype.value};
+  }
+{% endmacro %}{% macro stack(model) %}  /** Static stack operation and minimum default alignment in bytes. */
+  inline static constexpr StackInstructionDescriptor stack_contract{
+      .operation = StackOperation::{{ model.operation }}, .width = {{ model.width }},
+      .default_alignment = {{ model.default_alignment }},
+  };
+  /** Borrow the exact form's immutable stack contract. */
+  const StackInstructionDescriptor* stack_descriptor() const noexcept override {
+    return &stack_contract;
+  }
+{% endmacro %}{% macro texture(model) %}  /** Immutable PTX texture-family semantics of this exact form. */
+{% if model.indirect_gate is not none %}  /** Minimum source and target for a register-carried opaque resource. */
+  inline static constexpr checker::AvailabilityDescriptor indirect_gate{{ availability.availability(model.indirect_gate) }};
+{% endif %}
+  inline static constexpr TextureInstructionDescriptor texture_contract{
+      .geometry = {{ model.geometry }},
+      .mipmap = TextureMipmapMode::{{ model.mipmap }},
+      .component = {{ model.component }},
+      .query = {{ model.query }},
+      .tested_kind = {{ model.tested }},
+      .result_arity = {{ model.result_arity }},
+      .allows_residency = {{ model.allows_residency }},
+      .allows_offset = {{ model.allows_offset }},
+      .allows_compare = {{ model.allows_compare }},
+      .query_level = {{ model.query_level }},
+      .indirect_availability = {{ '&indirect_gate' if model.indirect_gate is not none else 'nullptr' }},
+  };
+  /** Borrow this form's static topology for read-only consumers. */
+  const TextureInstructionDescriptor* texture_descriptor() const noexcept override {
+    return &texture_contract;
+  }
+{% if model.selected_types %}  /** Return current source-selected type modifiers for AST-free checks. */
+  TextureSelectedTypes texture_selected_types() const noexcept override {
+    return {.result_type = dtype.value, .coordinate_type = ctype.value};
+  }
+{% endif %}
+{% if model.residency_layouts is not none %}  /** Return predicate presence required by the selected source layout. */
+  bool texture_layout_requires_residency() const noexcept override {
+    switch (operand_layout.value) {
+{% for required in model.residency_layouts %}      case {{ loop.index0 }}: return {{ required }};{% if not loop.last %}
+{% endif %}{% endfor %}
+      default: return false;
+    }
+  }
+{% endif %}
+{% endmacro %}{% macro cta_group(model) %}{% if model.mode == 'absent' %}  /** This tensor form has no CTA-group routing role. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const noexcept {
+    return std::nullopt;
+  }{% elif model.mode == 'default' %}  /** Omitted spelling defaults to group one on this tensor load. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {
+    return TensorCtaGroupRole{.spelled = std::nullopt,
+                               .effective = TensorCtaGroup::One,
+                               .routing = TensorCtaSignalRouting::{{ model.one }}};
+  }{% else %}  /** Copy written group and mbarrier-routing role after source checks. */
+  std::optional<TensorCtaGroupRole> tensor_cta_group_role() const {
+    if (cta_group.locs.empty() ||
+        (cta_group.value != TensorCtaGroup::One &&
+         cta_group.value != TensorCtaGroup::Two)) return std::nullopt;
+    return TensorCtaGroupRole{.spelled = cta_group,
+                               .effective = cta_group.value,
+                               .routing = cta_group.value == TensorCtaGroup::One
+                                   ? TensorCtaSignalRouting::{{ model.one }}
+                                   : TensorCtaSignalRouting::{{ model.two }}};
+  }{% endif %}{% endmacro %}{% macro replacement(model) %}  /** Closed identity of this encoded tensor-map field. */
+  inline static constexpr TensorMapReplaceField replacement_field =
+      TensorMapReplaceField::{{ model.field }};
+  /** Copy an opaque descriptor reference when source locations are present. */
+  std::optional<ResolvedTensorMapRef> tensor_map_ref() const {
+    if (tensor_map.locs.empty()) return std::nullopt;
+    return ResolvedTensorMapRef{tensor_map.value, tensor_map.locs.front()};
+  }
+{% if model.value_type is not none %}  /** Decode the original code after owned-value consistency checks. */
+  std::optional<{{ model.value_type }}> encoded_value() const noexcept {
+    return project_tensor_map_encoded_value<{{ model.value_type }}>(
+        replacement_field, new_val.value);
+  }{% endif %}{% endmacro %}{% macro allocation(model) %}  /** Canonical allocation-management action. */
+  inline static constexpr TcgenAllocationAction allocation_action = TcgenAllocationAction::{{ model.action }};
+  /** Local permit obligation/effect; no CFG state is inferred. */
+  inline static constexpr TcgenAllocationPermitEffect permit_effect = TcgenAllocationPermitEffect::{{ model.effect }};{% endmacro %}{% macro commit(model) %}  /** Written qualifier; barrier access uses generic proxy. */
+  inline static constexpr TcgenCommitAddressSpelling address_spelling = TcgenCommitAddressSpelling::{{ model.spelling }};
+  /** Whether a mask selects peer-CTA barriers. */
+  inline static constexpr bool multicast = {{ model.multicast }};
+  /** Cluster-scoped arrive-on count. */
+  inline static constexpr uint8_t arrive_count = 1;
+  /** Mbarrier signal scope. */
+  inline static constexpr base::MemoryScope signal_scope = base::MemoryScope::Cluster;
+  /** Barrier access uses the generic proxy. */
+  inline static constexpr bool generic_proxy_access = true;{% endmacro %}{% macro fence(model) %}  /** Specialized ordering direction; not a completion promise. */
+  inline static constexpr TcgenFenceDirection direction = TcgenFenceDirection::{{ model }};{% endmacro %}{% macro copy(model) %}  /** Canonical shape/multicast rows in static storage. */
+  inline static constexpr TcgenCopyShapePair copy_pairs[] = {
+{% for pair in model.pairs %}      {TcgenDataMovementShape::{{ pair.shape }}, TcgenCopyMulticast::{{ pair.multicast }}}{% if not loop.last %},
+{% endif %}{% endfor %}
+  };
+  /** Destination/source format masks in field order. */
+  inline static constexpr uint8_t copy_format_masks[] = {{ '{' }}{{ model.masks | join(", ") }}};
+  /** Opaque Table 43 source role, without bit decoding. */
+  inline static constexpr bool has_tcgen_copy_descriptor = true;{% endmacro %}{% macro copy_view(model) %}  /** Borrow a validated opaque descriptor role from the owned copy. */
+  std::optional<TcgenCopyDescriptorView> descriptor_view() const noexcept {
+    return tcgen_copy_descriptor_view(s_desc.value);
+  }{% endmacro %}{% macro contract(model) %}{% set separator = joiner("\n") %}{% if model.reduction is not none %}{{ separator() }}  /** Closed tiled tensor-reduction operation. */
+  inline static constexpr TensorReductionOp tensor_reduction_op = TensorReductionOp::{{ model.reduction }};{% endif %}{% if model.cta_group is not none %}{{ separator() }}{{ cta_group(model.cta_group) }}{% endif %}{% if model.replacement is not none %}{{ separator() }}{{ replacement(model.replacement) }}{% endif %}{% if model.matrix is not none %}{{ separator() }}  /** Canonical topology independent of mutable operand state. */
+  inline static constexpr MatrixInstructionDescriptor matrix_topology =
+      {{ matrix.matrix_descriptor(model.matrix) }};
+  /** Borrow the immutable topology of this exact final form. */
+  const MatrixInstructionDescriptor* matrix_descriptor() const noexcept {
+    return &matrix_topology;
+  }{% endif %}{% if model.surface is not none %}{{ separator() }}{{ surface(model.surface) }}{% endif %}{% if model.video_lanes is not none %}{{ separator() }}  /** Immutable packed-lane topology for typed selector queries. */
+  inline static constexpr VideoLanes video_lanes = VideoLanes::{{ model.video_lanes }};
+  /** Closed arithmetic operation category of this video form. */
+  inline static constexpr VideoOperation video_operation = VideoOperation::{{ model.video_operation }};{% endif %}{% if model.texture is not none %}{{ separator() }}{{ texture(model.texture) }}{% endif %}{% if model.stack is not none %}{{ separator() }}{{ stack(model.stack) }}{% endif %}{% if model.allocation is not none %}{{ separator() }}{{ allocation(model.allocation) }}{% endif %}{% if model.commit is not none %}{{ separator() }}{{ commit(model.commit) }}{% endif %}{% if model.fence is not none %}{{ separator() }}{{ fence(model.fence) }}{% endif %}{% if model.copy is not none %}{{ separator() }}{{ copy(model.copy) }}
+{{ copy_view(model.copy) }}{% endif %}{% endmacro %}

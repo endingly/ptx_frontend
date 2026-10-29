@@ -1,0 +1,1 @@
+{% with model = model.query %}{% include "tensor/known_fact_query.cpp.j2" %}{% endwith %}{% with model = model.adapter %}{% include "tensor/known_fact_selected_adapter.cpp.j2" %}{% endwith %}

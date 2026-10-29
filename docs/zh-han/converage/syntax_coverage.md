@@ -97,7 +97,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.callprototype` | D | T | T | Y | Y / I | C / I | 拥有 normalized signature 与已支持 ABI metadata。AST-free validation 会 recheck identity、scope 与 signature，不检查 prototype ABI/`.noreturn` availability；indirect-call availability 仍由 consumer 决定。 |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；indirect-call availability 仍由 consumer 决定 |
 | Call-table flist array | D | T | T | Y | Y / I | C / I | 已初始化 scalar u32/u64 一维 global/const array；拥有真实 storage identity、sparse 显式 function slot、完整公共 signature、lexical order 与 AST-free storage/function 关联。允许重复/隐式 zero tail；不证明 runtime pointer membership。 |
-| `.common` | G | R | — | — | — | — | 未建模 declaration directive |
+| `.common` | D | E | E | Y | Y | C / V | 普通 module-scope global definition 的独立 Common linkage；PTX 5.0 / SM 20，沿用 initializer/layout，AST-free eligibility 与有序 target 检查；无跨 object linker |
 | `.const` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.entry` | D | E | E | Y | Y | C | 既有 function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | entry-only、零参数、PTX 7.8 modeled availability；target launch feasibility deferred |

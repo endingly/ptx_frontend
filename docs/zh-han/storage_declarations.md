@@ -19,6 +19,18 @@ register 与 call parameter 不进入存储列表。
 symbol identity，但保留各自的声明记录。既有 linkage 与 multiple-definition 检查保持有效；
 external declaration 后出现同名 plain definition 会被拒绝。
 
+`.common` 在普通 module-scope `.global` definition 上保留为独立的
+`SymbolLinkage::Common`（PTX 5.0、SM 20 及以上）。Scalar、vector、array 与
+parameterized declaration 沿用既有 storage layout 规则。省略 initializer 保留 `Zero`；
+显式零、非零与 sparse initializer 保留 `Explicit`。拒绝 function、opaque object、
+其他 state space 和冲突 linkage qualifier；同一 module 的重复 definition 仍是错误。
+两个 validation overload 检查 eligibility 以及所选 version/target context；AST-free
+validation 通过有序 source target event 重新关联 declaration。
+[PTX 9.3 `.common` 规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#linking-directives-common)
+在跨 object file 时选择最大的 definition，并只允许一个 object file 初始化该变量，且该
+object 必须提供最大的 definition。这些跨 object 规则由 downstream linker 负责；frontend
+不选择或合并 object。
+
 两个 `validateModule` overload 都把每条记录重新关联到 binding declaration occurrence，
 并要求 storage list 完整，包括兼容 extern 的每次声明。
 `SymbolTable::declarationOccurrences()` 以只读 span 暴露这些 owned occurrence。

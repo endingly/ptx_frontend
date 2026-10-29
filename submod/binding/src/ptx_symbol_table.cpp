@@ -206,6 +206,8 @@ SymbolLinkage linkageFromSpelling(std::string_view spelling) {
     return SymbolLinkage::Visible;
   if (spelling == ".weak")
     return SymbolLinkage::Weak;
+  if (spelling == ".common")
+    return SymbolLinkage::Common;
   return SymbolLinkage::None;
 }
 

@@ -89,6 +89,7 @@ enum class TokenKind : uint16_t {
   DotExtern,
   DotVisible,
   DotWeak,
+  DotCommon,
 
   // Function / entry directives
   DotEntry,

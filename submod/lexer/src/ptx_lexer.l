@@ -190,6 +190,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".extern"               { TOK(DotExtern); }
 ".visible"              { TOK(DotVisible); }
 ".weak"                 { TOK(DotWeak); }
+".common"               { TOK(DotCommon); }
 
 ".entry"                { TOK(DotEntry); }
 ".func"                 { TOK(DotFunc); }

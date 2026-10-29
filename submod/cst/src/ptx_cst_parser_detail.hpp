@@ -132,7 +132,7 @@ inline CstParseResult parseFailure(CstParseDiagnostic diagnostic) {
 /** Recognize linkage prefixes shared by functions and declarations. */
 inline bool isFunctionQualifier(TokenKind kind) {
   return kind == TokenKind::DotExtern || kind == TokenKind::DotVisible ||
-         kind == TokenKind::DotWeak;
+         kind == TokenKind::DotWeak || kind == TokenKind::DotCommon;
 }
 
 /** Recognize variable-declaration state-space prefixes. */

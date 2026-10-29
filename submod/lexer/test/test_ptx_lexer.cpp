@@ -364,9 +364,9 @@ TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
 }
 
 TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
-  auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak");
+  auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak .common");
 
-  ASSERT_EQ(toks.size(), 6u);
+  ASSERT_EQ(toks.size(), 7u);
 
   expect_token(toks[0], TokenKind::DotVisible, ".visible");
   expect_token(toks[1], TokenKind::DotEntry, ".entry");
@@ -374,6 +374,7 @@ TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   expect_token(toks[3], TokenKind::DotFunc, ".func");
   expect_token(toks[4], TokenKind::DotExtern, ".extern");
   expect_token(toks[5], TokenKind::DotWeak, ".weak");
+  expect_token(toks[6], TokenKind::DotCommon, ".common");
 }
 
 TEST(PtxLexerNew, CallPrototypeIsAControlFlowMetadataToken) {

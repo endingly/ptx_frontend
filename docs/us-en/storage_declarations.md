@@ -23,6 +23,19 @@ external declarations share a symbol identity but retain separate occurrences.
 Existing linkage and multiple-definition checks still apply; an extern
 declaration followed by a same-named plain definition is rejected.
 
+`.common` is retained as distinct `SymbolLinkage::Common` on ordinary module-scope
+`.global` definitions (PTX 5.0, SM 20 or later). Scalar, vector, array, and
+parameterized declarations use the existing storage layout rules. Omitted
+initializers retain `Zero`; explicit zero, nonzero, and sparse initializers retain
+`Explicit`. Functions, opaque objects, other state spaces, and conflicting linkage
+qualifiers are rejected. Same-module repeated definitions remain errors.
+Both validation overloads check eligibility and their selected version/target
+context; AST-free validation rejoins declarations to ordered source target events.
+The [PTX 9.3 `.common` rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#linking-directives-common)
+select the largest definition across object files and allow only one object file
+to initialize it, which must also provide the largest definition. These cross-object
+rules belong to a downstream linker; the frontend does not select or merge objects.
+
 Both `validateModule` overloads rejoin every record to its bound declaration
 occurrence and require the storage list to be complete, including each compatible
 extern occurrence. `SymbolTable::declarationOccurrences()` exposes a read-only

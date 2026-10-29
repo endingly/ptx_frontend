@@ -106,7 +106,7 @@ hardware behavior. `—` = no support at that stage.
 | `.callprototype` | D | T | T | Y | Y / I | C / I | Owns normalized signature and supported ABI metadata. AST-free validation rechecks its identity, scope, and signature, not prototype ABI/`.noreturn` availability; indirect-call availability remains consumer-driven. |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; indirect-call availability remains consumer-driven |
 | Call-table flist arrays | D | T | T | Y | Y / I | C / I | Initialized scalar u32/u64 one-dimensional global/const arrays; owned real-storage identity, sparse explicit function slots, common full signature, lexical order and AST-free storage/function rejoin. Duplicates/implicit zero tails allowed; no runtime pointer-membership proof. |
-| `.common` | G | R | — | — | — | — | Unmodeled declaration directive |
+| `.common` | D | E | E | Y | Y | C / V | Distinct Common linkage on ordinary module-scope global definitions; PTX 5.0 / SM 20, ordinary initializers/layout, AST-free eligibility and ordered target checks; no cross-object linker |
 | `.const` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | Entry-only, zero arguments, PTX 7.8 modeled availability; target launch feasibility deferred |

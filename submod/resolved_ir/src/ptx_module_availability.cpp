@@ -2382,6 +2382,19 @@ void check_storage_declarations(const ResolvedModule& module,
   for (const auto& declaration : module.storage_declarations)
     records[declaration.symbol_id.value].push_back(&declaration);
   for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.linkage == binding::SymbolLinkage::Common) {
+      const auto* type =
+          symbol.type ? base::find_scalar_type_metadata(*symbol.type) : nullptr;
+      if (symbol.kind != binding::SymbolKind::Variable ||
+          symbol.scope != module.symbols.moduleScope() ||
+          symbol.state_space != base::DeclarationStateSpace::Global || !type ||
+          type->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          type->kind == base::ScalarKind::Pred)
+        append_model_mismatch(diagnostics, symbol.declaration_range,
+                              ".common requires an ordinary module-scope "
+                              "global variable.");
+    }
     if (symbol.kind != binding::SymbolKind::Variable ||
         !bound_storage_space(symbol))
       continue;
@@ -2449,6 +2462,13 @@ void check_storage_declarations(const ResolvedModule& module,
           diagnostics, declaration.range,
           "Storage declaration kind disagrees with its linkage.");
     const auto* scalar = std::get_if<ScalarType>(&declaration.element_type);
+    if (declaration.linkage == binding::SymbolLinkage::Common &&
+        (!scalar || declaration.legacy_texture ||
+         declaration.scope_id != module.symbols.moduleScope() ||
+         declaration.space != StorageSpace::Global))
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          ".common cannot qualify opaque or nonglobal storage.");
     if (!scalar)
       continue;
     const auto* bound_type =
@@ -2494,6 +2514,57 @@ void check_storage_declarations(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, declaration.range,
           "Scalar storage initialization disagrees with its declaration kind.");
+  }
+}
+
+/** Rejoin common declarators with ordered source events for AST-free availability. */
+void check_common_availability(const ResolvedModule& module,
+                               checker::CheckDiagnostics& diagnostics) {
+  for (const auto& declaration : module.storage_declarations) {
+    if (declaration.linkage != binding::SymbolLinkage::Common)
+      continue;
+    size_t active_region = 0;
+    size_t matches = 0;
+    for (const auto& event : module.header.source_order) {
+      if (event.kind == ResolvedHeaderEventKind::Target) {
+        ++active_region;
+        continue;
+      }
+      const auto position = [](SourcePos value) {
+        return std::pair{value.line, value.column};
+      };
+      if (event.kind != ResolvedHeaderEventKind::Other ||
+          position(event.range.start) > position(declaration.range.start) ||
+          position(event.range.end) < position(declaration.range.end))
+        continue;
+      ++matches;
+      if (active_region >= module.header.regions.size()) {
+        append_model_mismatch(diagnostics, declaration.range,
+                              "Common storage has no matching source region.");
+        continue;
+      }
+      const auto& region = module.header.regions[active_region];
+      if (region.version && *region.version < checker::PtxVersion{5, 0})
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = declaration.range,
+            .message = ".common requires PTX ISA >= 5.0.",
+        });
+      const auto profile =
+          region.target_options.empty()
+              ? std::nullopt
+              : base::find_target_profile(region.target_options.front());
+      if (profile && profile->identity.architecture.number < 20)
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = declaration.range,
+            .message = ".common requires target sm_20 or higher.",
+        });
+    }
+    if (matches != 1)
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Common storage must match one module source event.");
   }
 }
 
@@ -3317,6 +3388,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
   check_storage_declarations(module, diagnostics);
+  check_common_availability(module, diagnostics);
   const auto storage_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
@@ -3547,6 +3619,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         diagnostic.kind ==
             DeclarationKind::UnsupportedKernelResourcePtxVersion ||
         diagnostic.kind == DeclarationKind::UnsupportedDirectivePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedDirectiveTarget ||
         diagnostic.kind == DeclarationKind::UnsupportedParameterDeclaration;
     diagnostics.push_back({
         .kind = availability

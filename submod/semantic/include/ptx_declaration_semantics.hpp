@@ -105,6 +105,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnsupportedRegisterDeclarationType,
   /** A `.reg` declaration uses a predicate or vector shape PTX does not allow. */
   InvalidRegisterDeclarationShape,
+  /** A declaration directive is unavailable for its known source target. */
+  UnsupportedDirectiveTarget,
 };
 
 struct DeclarationDiagnostic {

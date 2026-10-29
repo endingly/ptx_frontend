@@ -30,7 +30,9 @@ function scope，每个 nested `AstBlock` 则有按 source range 识别的 child
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
-`SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function symbol 通过 `owned_scope` 指向其
+`SymbolLinkage` 直接记录 `.extern/.visible/.weak/.common`。`Common` 与 `Weak`、
+`Visible` 保持不同，表示普通 module-scope global definition；binding 不选择跨 object
+的 definition。Function symbol 通过 `owned_scope` 指向其
 function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 每个 function scope 同时拥有该次声明的 `SourceRange`。`functionScope(range)` 返回唯一

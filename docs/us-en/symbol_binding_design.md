@@ -34,7 +34,9 @@ range-identified child block scope. The initial pass collects:
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
 parameter; a function symbol also records its `.func`/`.entry` classification.
-`SymbolLinkage` directly records `.extern`, `.visible`, or `.weak`.
+`SymbolLinkage` directly records `.extern`, `.visible`, `.weak`, or `.common`.
+`Common` remains distinct from `Weak` and `Visible`; it denotes an ordinary
+module-scope global definition, with no cross-object selection in binding.
 A function symbol points to its function scope through `owned_scope`. When a
 prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.

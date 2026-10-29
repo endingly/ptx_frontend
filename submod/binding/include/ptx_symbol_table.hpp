@@ -57,6 +57,8 @@ enum class SymbolLinkage : uint8_t {
   External,
   Visible,
   Weak,
+  /** Mergeable global definition; object-file selection belongs to the linker. */
+  Common,
 };
 
 enum class ReferenceKind : uint8_t {

@@ -72,6 +72,35 @@ bool hasDeclarationKind(const std::vector<ResolveDiagnostic>& diagnostics,
   });
 }
 
+/** Common linkage preserves ordinary global initialization and inferred shape. */
+TEST(ResolvedStorageDeclarations, RetainsCommonGlobalDefinitions) {
+  const auto resolved = resolveSource(R"ptx(
+.version 5.0
+.target sm_20
+.address_size 64
+.common .global .u32 implicit_zero;
+.common .global .u32 explicit_zero = 0;
+.common .global .align 16 .v4 .u32 lanes = {1, 2};
+.common .global .u16 inferred[] = {3, 4, 5};
+.common .global .u64 slots<2>;
+)ptx");
+  ASSERT_TRUE(resolved.has_value());
+  ASSERT_EQ(resolved->storage_metadata.size(), 5u);
+  const auto& implicit_zero = storageNamed(*resolved, "implicit_zero");
+  EXPECT_EQ(implicit_zero.linkage, binding::SymbolLinkage::Common);
+  EXPECT_EQ(implicit_zero.declaration_kind, StorageDeclarationKind::Definition);
+  EXPECT_EQ(implicit_zero.initialization, StorageInitializationKind::Zero);
+  const auto& explicit_zero = storageNamed(*resolved, "explicit_zero");
+  EXPECT_EQ(explicit_zero.initialization, StorageInitializationKind::Explicit);
+  const auto& lanes = storageNamed(*resolved, "lanes");
+  EXPECT_EQ(lanes.vector_width, 4u);
+  EXPECT_EQ(lanes.byte_extent, 16u);
+  ASSERT_EQ(lanes.initializer.size(), 2u);
+  EXPECT_EQ(std::get<StorageConstant>(lanes.initializer[1].value).bits, 2u);
+  EXPECT_EQ(storageNamed(*resolved, "inferred").byte_extent, 6u);
+  EXPECT_EQ(storageNamed(*resolved, "slots").parameterized_count, 2u);
+}
+
 /** Leading-zero integer constants retain their octal value through storage lowering. */
 TEST(ResolvedStorageDeclarations, OctalInitializerAndExtent) {
   auto resolved = resolveSource(R"ptx(

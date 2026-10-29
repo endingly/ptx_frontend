@@ -457,6 +457,8 @@ binding::SymbolLinkage declaration_linkage(
       return binding::SymbolLinkage::Visible;
     if (qualifier.text == ".weak")
       return binding::SymbolLinkage::Weak;
+    if (qualifier.text == ".common")
+      return binding::SymbolLinkage::Common;
   }
   return binding::SymbolLinkage::None;
 }

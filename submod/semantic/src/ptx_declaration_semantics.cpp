@@ -633,6 +633,8 @@ binding::SymbolLinkage declarationLinkage(
       return binding::SymbolLinkage::Visible;
     if (qualifier.text == ".weak")
       return binding::SymbolLinkage::Weak;
+    if (qualifier.text == ".common")
+      return binding::SymbolLinkage::Common;
   }
   return binding::SymbolLinkage::None;
 }
@@ -867,6 +869,7 @@ class Checker {
     checkControlFlowMetadata(module_version, function_targets);
     checkKernelResources(module);
     checkM11Directives(module);
+    checkCommonLinkage(module);
     for (const auto& item : module.items) {
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
@@ -1290,6 +1293,54 @@ class Checker {
       if (!unsignedIntegerLiteral(value.text)) {
         reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
       }
+    }
+  }
+
+  /** Validate module-only common definitions without applying object-linker rules. */
+  void checkCommonLinkage(const syntax_ast::AstModule& module) {
+    const auto version = modulePtxVersion(module);
+    std::optional<uint32_t> active_sm;
+    for (const auto& item : module.items) {
+      if (const auto* target =
+              std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+        active_sm = targetSmVersion(*target);
+      } else if (const auto* declaration =
+                     std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        checkCommonVariable(*declaration, version, active_sm, true);
+      } else if (const auto* function =
+                     std::get_if<syntax_ast::AstFunction>(&item)) {
+        for (const auto& qualifier : function->qualifiers) {
+          if (qualifier.text == ".common")
+            diagnose(DeclarationDiagnosticKind::InvalidLinkage, qualifier.range,
+                     ".common cannot qualify a function.");
+        }
+      }
+    }
+  }
+
+  /** Check common placement and availability while retaining ordinary storage rules. */
+  void checkCommonVariable(
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> version, std::optional<uint32_t> sm,
+      bool module_scope) {
+    for (const auto& qualifier : declaration.qualifiers) {
+      if (qualifier.text != ".common")
+        continue;
+      const auto* type = base::find_scalar_type_metadata(declaration.type.text);
+      if (!module_scope ||
+          declaration.state_space != syntax_ast::AstStateSpace::Global ||
+          declaration.legacy_texture || !type ||
+          type->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          type->kind == base::ScalarKind::Pred) {
+        diagnose(DeclarationDiagnosticKind::InvalidLinkage, qualifier.range,
+                 ".common requires a module-scope .global variable with a "
+                 "fundamental storage type.");
+      }
+      requirePtx(version, {5, 0}, qualifier.range, ".common");
+      if (sm && *sm < 20)
+        diagnose(DeclarationDiagnosticKind::UnsupportedDirectiveTarget,
+                 qualifier.range, ".common requires target sm_20 or higher.");
     }
   }
 
@@ -1980,6 +2031,7 @@ class Checker {
               std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration, module_version);
+        checkCommonVariable(*declaration, module_version, module_sm, false);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           checkBodyParameterDeclaration(*declaration, module_version,
                                         module_sm);

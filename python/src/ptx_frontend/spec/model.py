@@ -563,6 +563,8 @@ class OperandKind(_SemanticToken):
     SHFL_DESTINATION = "shfl_dest"
     PREDICATE_PAIR = "pred_pair"
     PREDICATE_PAIR_OR_SINK = "pred_pair_or_sink"
+    CVT_SCALAR_SOURCE = "cvt_scalar_src"
+    CVT_REGISTER_SOURCE = "cvt_register_src"
     MOV_SCALAR_SOURCE = "mov_scalar_src"
     MOV_VECTOR_SOURCE = "mov_vector_src"
     CP_ASYNC_SOURCE_CONTROL = "cp_async_source_control"

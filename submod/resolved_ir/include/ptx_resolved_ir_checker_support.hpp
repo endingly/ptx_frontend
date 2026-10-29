@@ -64,6 +64,10 @@ struct Context {
   TargetInfo target;
   SourceRange instruction_range;
 };
+/** Project a conversion input after checking its intrinsic identity and component. */
+OperandView project_cvt_source(std::string_view field_id,
+                               const WithLocs<ResolvedCvtSource>& operand);
+
 /** Borrow ordinary lane identities or distinct hardware metadata for vector MOV. */
 OperandView project_mov_vector_source(
     std::string_view field_id,

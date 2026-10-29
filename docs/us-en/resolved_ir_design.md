@@ -1207,3 +1207,18 @@ covered here.
 ## Owned video operands
 
 `ResolvedVideoOperand` owns a located `RegOrImm`, an optional located `VideoSelector` variant, a written register-negation Boolean and optional minus range. Identifier locations remain separate from the enclosing selector/negation range for binding diagnostics. Source arrays preserve written high-to-low digit order and index concatenated A+B carriers. `video_default_selector` and `video_effective_selector` expose defaults without inventing written provenance. Generated forms expose static `video_lanes`/`video_operation`. `video_mad_interpretation` derives product/input-C/final signs independently of written dtype; numeric negative constants never become register-negation controls. Public helpers are in `<ptx_frontend/resolved_ir/ptx_video.hpp>`. Checker operand views borrow owned Video payloads only for synchronous checking; module reference traversal uses the inner carrier's identifier locations.
+
+
+## Conversion special-register sources
+
+Ordinary `cvt` (PTX 9.3 section 9.7.9.22) owns `ResolvedCvtSource`, a
+register/immediate/special-register union. Scalar read positions retain their
+original immediate admission; destinations, vector register sources and
+`cvt.pack` keep their existing contracts. Symbol and address values are excluded.
+The checker validates intrinsic identity, indexed-family bounds and component
+selection before consuming metadata. Presentation spelling does not determine
+semantics. Special sources follow the operand's register-width policy, including
+integer chops for wider declarations, while integer/float incompatibility remains.
+CVT declares the same historical 16-bit thread/grid-component and 16/32-bit
+grid-ID read compatibilities as MOV, using source use-width. Intrinsic identity
+and current metadata remain unchanged; contextual availability applies per check.

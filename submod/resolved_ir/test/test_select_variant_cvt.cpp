@@ -22,6 +22,16 @@ syntax_ast::AstInstruction parse_instruction(std::string_view source) {
   return std::move(*ast);
 }
 
+/** Scalar and component special registers are legal conversion sources. */
+TEST(ResolveCvt, ResolvesSpecialRegisterSources) {
+  for (const auto source :
+       {"cvt.u64.u32 %rd0, %laneid;", "cvt.u64.u32 %rd0, %tid.x;"}) {
+    SCOPED_TRACE(source);
+    const auto resolved = resolveCvt(parse_instruction(source));
+    EXPECT_TRUE(resolved.has_value()) << resolved.error().message;
+  }
+}
+
 TEST(ResolveCvt, SelectsFrozenS32U32Variant) {
   const auto ast = parse_instruction("cvt.s32.u32 %s0, %r0;");
   const auto resolved = resolveCvt(ast);

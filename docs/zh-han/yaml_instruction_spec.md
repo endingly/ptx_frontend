@@ -356,8 +356,9 @@ operand 也可使用该 policy，并逐元素检查。resolved operand descripto
 runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source，以及 legacy
 `.v2/.v4` memory vector element 使用 `equal_or_wider`：声明 register size 必须大于等于
 instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
-float 要求 exact type/size，integer/float 不兼容。immediate 与 special-register check 仍为
-same-width。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
+float 要求 exact type/size，integer/float 不兼容。immediate check 仍为 same-width。仅转换指令使用的 `cvt_scalar_src` 与
+`cvt_register_src` 接受标量 special register 或已选择的硬件向量分量；前者还接受 immediate。
+其 special-register check 应用声明的 width policy；普通 `reg_or_imm` domain 保持原有边界。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
 8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
 selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
 `.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见

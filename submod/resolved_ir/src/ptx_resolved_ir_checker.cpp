@@ -901,6 +901,70 @@ void append_matrix_operand_diagnostics(const MatrixInstructionDescriptor*,
                                        std::span<const OperandView>,
                                        const Context&, CheckDiagnostics&);
 
+/** Project scalar conversion carriers without consulting presentation spellings. */
+OperandView project_cvt_source(std::string_view field_id,
+                               const WithLocs<ResolvedCvtSource>& operand) {
+  OperandView view{.field_id = field_id, .locations = operand.locs};
+  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&operand.value)) {
+    view.actual_shape = OperandShape::Register;
+    view.register_type = reg->declared_type;
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width ||
+        (reg->symbol_id &&
+         (!reg->declared_type ||
+          !base::find_scalar_type_metadata(*reg->declared_type))) ||
+        reg->declared_type == ScalarType::Pred ||
+        !valid_register_component(*reg))
+      view.register_type = ScalarType::Invalid;
+    view.register_symbol_id = reg->symbol_id;
+    view.register_class = reg->register_class;
+    view.register_vector_width = reg->vector_width;
+    view.register_ref = reg;
+  } else if (const auto* immediate =
+                 std::get_if<ResolvedImmediate>(&operand.value)) {
+    view.actual_shape = OperandShape::Immediate;
+    view.immediate_type = immediate->type;
+    view.immediate_bits = immediate->bits;
+    view.immediate_is_negative = immediate->is_negative;
+    view.integer_source_bits = immediate->integer_source_bits;
+  } else {
+    const auto& special = std::get<ResolvedSpecialRegisterRef>(operand.value);
+    view.actual_shape = OperandShape::SpecialRegister;
+    view.special_register_type = ScalarType::Invalid;
+    using base::SpecialRegisterKind;
+    const auto id = special.id;
+    bool valid_index = id.index == 0;
+    switch (id.kind) {
+      case SpecialRegisterKind::PerformanceMonitor:
+      case SpecialRegisterKind::PerformanceMonitor64:
+        valid_index = id.index < 8;
+        break;
+      case SpecialRegisterKind::Environment:
+        valid_index = id.index < 32;
+        break;
+      case SpecialRegisterKind::ReservedSmemOffset:
+        valid_index = id.index < 2;
+        break;
+      default:
+        break;
+    }
+    if (!valid_index || id.kind <= SpecialRegisterKind::Invalid ||
+        id.kind > SpecialRegisterKind::ReservedSmemOffset)
+      return view;
+    const auto metadata = base::metadata(id);
+    if (metadata.element_type == ScalarType::Invalid ||
+        metadata.element_type == ScalarType::Pred ||
+        (metadata.vector_width == 4) != special.component.has_value() ||
+        (special.component && *special.component > base::VectorComponent::Z))
+      return view;
+    view.special_register_type = metadata.element_type;
+    view.special_register_id = id;
+    view.value_availability = special_register_availability(metadata);
+    view.value_name = special.spelling;
+  }
+  return view;
+}
+
 /** Project vector MOV payloads while retaining real borrowed lane carriers. */
 OperandView project_mov_vector_source(
     std::string_view field_id,
@@ -1943,7 +2007,8 @@ CheckResult check_operands(
       });
     } else if (operand->special_register_type &&
                !scalar_types_compatible(*operand->special_register_type,
-                                        expected_type)) {
+                                        expected_type,
+                                        descriptor.register_width_policy)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),

@@ -1529,6 +1529,41 @@ std::expected<WithLocs<RegOrImm>, ResolveDiagnostic> resolve_reg_or_imm(
   });
 }
 
+/** Resolve conversion inputs without admitting symbol or address carriers. */
+std::expected<WithLocs<ResolvedCvtSource>, ResolveDiagnostic>
+resolve_cvt_source(const syntax_ast::AstOperand& operand, ScalarType type,
+                   checker::OperandShape allowed_shapes,
+                   const ResolveContext* context) {
+  bool special = false;
+  if (const auto* id = std::get_if<syntax_ast::AstIdentifierRef>(&operand))
+    special = binding::isSpecialRegister(id->syntax.text);
+  else if (const auto* member =
+               std::get_if<syntax_ast::AstVectorMember>(&operand))
+    special = binding::isSpecialRegister(member->base.syntax.text);
+  if (special) {
+    auto value = resolve_special_register(operand);
+    if (!value)
+      return std::unexpected(value.error());
+    WithLocs<ResolvedCvtSource> result{
+        ResolvedCvtSource{std::move(value->value)}};
+    result.locs = std::move(value->locs);
+    return result;
+  }
+  if (is_numeric_operand(operand) &&
+      !allows_shape(allowed_shapes, checker::OperandShape::Immediate))
+    return std::unexpected(ResolveDiagnostic{
+        .range = syntax_ast::sourceRange(operand),
+        .message = "This conversion source requires a register."});
+  auto ordinary = resolve_reg_or_imm(operand, type, context);
+  if (!ordinary)
+    return std::unexpected(ordinary.error());
+  WithLocs<ResolvedCvtSource> result{std::visit(
+      [](auto&& value) -> ResolvedCvtSource { return std::move(value); },
+      ordinary->value)};
+  result.locs = std::move(ordinary->locs);
+  return result;
+}
+
 std::expected<ScalarType, ResolveDiagnostic> type_for_operand(
     const ResolvedOperandBindingDescriptor& binding,
     const ResolvedInstructionFields& fields, const SourceRange& range);
@@ -3265,6 +3300,17 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         return std::unexpected(value.error());
       return ResolvedFieldValue{WithLocs<ResolvedImmediate>{
           std::move(*value), syntax_ast::sourceRange(operand)}};
+    }
+    case ResolvedValueKind::CvtSource: {
+      const auto type =
+          type_for_operand(binding, fields, syntax_ast::sourceRange(operand));
+      if (!type)
+        return std::unexpected(type.error());
+      auto value =
+          resolve_cvt_source(operand, *type, binding.allowed_shapes, context);
+      if (!value)
+        return std::unexpected(value.error());
+      return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::RegOrImm: {
       const auto type =

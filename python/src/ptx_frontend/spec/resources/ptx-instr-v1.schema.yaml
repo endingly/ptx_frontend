@@ -696,6 +696,8 @@ $defs:
       - shfl_dest
       - pred_pair
       - pred_pair_or_sink
+      - cvt_scalar_src
+      - cvt_register_src
       - mov_scalar_src
       - mov_vector_src
       - cp_async_source_control

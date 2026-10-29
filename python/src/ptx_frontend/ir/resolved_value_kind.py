@@ -42,6 +42,7 @@ class ResolvedValueKind(Enum):
     IMMEDIATE = "Immediate"
     REG_OR_IMM = "RegOrImm"
     REGISTER_OR_SINK = "RegisterOrSink"
+    CVT_SOURCE = "CvtSource"
     MOV_SOURCE = "MovSource"
     MOV_VECTOR_SOURCE = "MovVectorSource"
     CP_ASYNC_SOURCE_CONTROL = "CpAsyncSourceControl"

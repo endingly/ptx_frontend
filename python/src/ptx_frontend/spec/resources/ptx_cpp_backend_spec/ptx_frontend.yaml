@@ -428,6 +428,7 @@ domains:
       ShflDestination: ResolvedShflSyncDestination
       PredicatePair: ResolvedPredicatePair
       PredicatePairOrSink: ResolvedPredicatePairOrSink
+      CvtSource: ResolvedCvtSource
       MovSource: ResolvedMovSource
       MovVectorSource: ResolvedMovVectorSource
       CpAsyncSourceControl: ResolvedCpAsyncSourceControl
@@ -553,6 +554,7 @@ domains:
       ShflDestination: check_end::ResolvedValueKind::ShflDestination
       PredicatePair: check_end::ResolvedValueKind::PredicatePair
       PredicatePairOrSink: check_end::ResolvedValueKind::PredicatePairOrSink
+      CvtSource: check_end::ResolvedValueKind::CvtSource
       MovSource: check_end::ResolvedValueKind::MovSource
       MovVectorSource: check_end::ResolvedValueKind::MovVectorSource
       CpAsyncSourceControl: check_end::ResolvedValueKind::CpAsyncSourceControl

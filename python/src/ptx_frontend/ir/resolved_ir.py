@@ -157,6 +157,8 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.SHFL_DESTINATION: ResolvedValueKind.SHFL_DESTINATION,
     OperandKind.PREDICATE_PAIR: ResolvedValueKind.PREDICATE_PAIR,
     OperandKind.PREDICATE_PAIR_OR_SINK: ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+    OperandKind.CVT_SCALAR_SOURCE: ResolvedValueKind.CVT_SOURCE,
+    OperandKind.CVT_REGISTER_SOURCE: ResolvedValueKind.CVT_SOURCE,
     OperandKind.MOV_SCALAR_SOURCE: ResolvedValueKind.MOV_SOURCE,
     OperandKind.MOV_VECTOR_SOURCE: ResolvedValueKind.MOV_VECTOR_SOURCE,
     OperandKind.CP_ASYNC_SOURCE_CONTROL: ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL,
@@ -600,6 +602,8 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.SHFL_DESTINATION: (ResolvedOperandShape.SHFL_DESTINATION,),
     OperandKind.PREDICATE_PAIR: (ResolvedOperandShape.PREDICATE_PAIR,),
     OperandKind.PREDICATE_PAIR_OR_SINK: (ResolvedOperandShape.PREDICATE_PAIR,),
+    OperandKind.CVT_SCALAR_SOURCE: (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE, ResolvedOperandShape.SPECIAL_REGISTER),
+    OperandKind.CVT_REGISTER_SOURCE: (ResolvedOperandShape.REGISTER, ResolvedOperandShape.SPECIAL_REGISTER),
     OperandKind.MOV_SCALAR_SOURCE: (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,

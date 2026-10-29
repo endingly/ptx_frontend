@@ -414,7 +414,10 @@ stores the policy; no runtime Resolved IR field is generated. Current scalar
 elements use `equal_or_wider`: the declared register size must be at least the
 instruction size, after which either-side bit types and signed/unsigned integer
 pairs are compatible, floats require exact type/size, and integer/float pairs
-remain incompatible. Immediate and special-register checks stay same-width. The
+remain incompatible. Immediate checks stay same-width. Conversion-only `cvt_scalar_src` and
+`cvt_register_src` carriers admit scalar special registers and selected hardware
+components; the former also admits immediates. Their special-register checks
+apply the declared width policy. Ordinary `reg_or_imm` keeps its existing domain. The
 current scalar `ld/st` domains do include `.b128`, with modifier-value
 availability at PTX 8.3 / SM 70; `.sys` with `.b128` additionally requires PTX
 8.4. An exact `.b128` declaration therefore satisfies a selected `.b128` memory

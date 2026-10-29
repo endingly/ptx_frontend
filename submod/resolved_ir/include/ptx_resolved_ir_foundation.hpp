@@ -2308,6 +2308,9 @@ struct ResolvedPredicatePairOrSink {
   std::optional<ResolvedPredicate> second;
   bool operator==(const ResolvedPredicatePairOrSink&) const = default;
 };
+/** Scalar conversion input; intrinsic registers retain target-independent identity. */
+using ResolvedCvtSource = std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                                       ResolvedSpecialRegisterRef>;
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
                  ResolvedSpecialRegisterRef, ResolvedFunctionRef,

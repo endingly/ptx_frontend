@@ -552,6 +552,8 @@ def _normalize_register_width(
     if register_width_policy is OperandRegisterWidthPolicy.EQUAL_OR_WIDER:
         if raw["kind"] not in {
             OperandKind.REGISTER,
+            OperandKind.CVT_SCALAR_SOURCE,
+            OperandKind.CVT_REGISTER_SOURCE,
             OperandKind.REGISTER_OR_IMMEDIATE,
             OperandKind.REGISTER_VECTOR,
             OperandKind.VALUE_VECTOR,

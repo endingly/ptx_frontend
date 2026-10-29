@@ -963,3 +963,15 @@ memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 ## Owned Video 操作数
 
 `ResolvedVideoOperand` 拥有带位置的 `RegOrImm`、可选带位置的 `VideoSelector` variant、书写的寄存器取负 Boolean 及可选 minus range。Identifier 位置与外层 selector/negation range 分离，用于绑定诊断。Source 数组保留书写的高到低 digit 顺序，索引连接后的 A+B carrier。`video_default_selector` 和 `video_effective_selector` 提供默认值，不虚构书写来源。生成 form 公开静态 `video_lanes`/`video_operation`。`video_mad_interpretation` 独立于书写 dtype 推导 product/input-C/final 符号；负数常量不变成寄存器取负控制。公开 helper 位于 `<ptx_frontend/resolved_ir/ptx_video.hpp>`。Checker operand view 仅在同步检查期间借用 owned Video payload；模块引用遍历使用内部 carrier 的 identifier 位置。
+
+
+## 转换指令的 special-register source
+
+普通 `cvt`（PTX 9.3 第 9.7.9.22 节）拥有 `ResolvedCvtSource`，仅包含
+register、immediate 与 special-register。标量读取位置保留原有的 immediate 接受范围；
+destination、向量 register source 与 `cvt.pack` 保持原有契约，不接受 symbol/address value。
+checker 在读取 metadata 前验证 intrinsic identity、索引族边界与 component 选择；
+展示用 spelling 不决定语义。special source 应用 operand 的 register-width policy，
+包括较宽整数声明的截取，integer/float 不兼容规则仍然生效。CVT 按 source 使用宽度
+声明与 MOV 相同的历史 16-bit thread/grid component 与 16/32-bit grid-ID 读取兼容性；
+intrinsic identity 与当前 metadata 保持不变，有效类型与 availability 仅作用于当前检查。

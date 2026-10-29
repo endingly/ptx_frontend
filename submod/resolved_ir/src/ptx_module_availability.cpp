@@ -612,6 +612,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedMbarrierStateToken> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, RegOrImm> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedCvtSource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedVideoOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedShflSyncDestination> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePair> ||
@@ -713,7 +714,8 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, ResolvedVideoOperand>) {
     collect_operand_references(value.value.value, value.value.locs, fallback,
                                uses, address_resolution_policy);
-  } else if constexpr (std::same_as<Value, RegOrImm>) {
+  } else if constexpr ((std::same_as<Value, RegOrImm> ||
+                        std::same_as<Value, ResolvedCvtSource>)) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
   } else if constexpr (std::same_as<Value, ResolvedCpAsyncSourceControl>) {
@@ -1009,6 +1011,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       const ResolvedMbarrierStateToken& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect ordinary register identities retained by a conversion input. */
+  void cvt_source(const ResolvedCvtSource& value,
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedMovSource. */

@@ -1,0 +1,5 @@
+{% macro table(model) %}inline constexpr std::array<PtxSuffixEntry<{{ model.cpp_type }}>, {{ model.entries|length }}>
+    {{ model.name }} = { {{- '{' }}
+{% for suffix, value in model.entries %}        {"{{ suffix }}", {{ value }}}{% if not loop.last %},
+{% endif %}{% endfor %}
+    }};{% endmacro %}{% if model is defined %}{{ table(model) }}{% endif %}

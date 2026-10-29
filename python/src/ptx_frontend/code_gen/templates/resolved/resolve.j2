@@ -1,0 +1,76 @@
+{% import "resolved/construction.j2" as construction %}{% macro declarations(model) %}{% if model.helpers %}namespace generated_detail {
+{% for helper in model.helpers %}/** Construct one exact form from borrowed WGMMA scratch fields. */
+std::unique_ptr<Instruction> {{ helper }}(InstructionKind kind, ResolvedInstructionFields& fields);{% if not loop.last %}
+{% endif %}{% endfor %}
+}
+
+{% endif %}{% endmacro %}{% macro selection_and_resolve(model) %}namespace {
+/** Canonical opcode-local ordinals, independent of public kind encoding. */
+enum class SelectedFormOrdinal : uint16_t {
+{% for form in model.forms %}    {{ form.ordinal }}{% if not loop.last %},
+{% endif %}{% endfor %}
+};
+/** Selection borrows immutable catalogs with process lifetime. */
+struct SelectedForm {
+  /** Canonical opcode-local form identity. */
+  SelectedFormOrdinal ordinal;
+  /** Public identity from the context-validated form table. */
+  InstructionKind kind;
+  /** Borrowed immutable descriptors; both catalogs have process lifetime. */
+  const check_end::SyntaxVariantDescriptor& syntax;
+  const check_end::ResolvedVariantDescriptor& resolved;
+};
+{% for form in model.forms %}static_assert(static_cast<uint32_t>({{ form.name }}::kind) == {{ form.identity }}u);{% if not loop.last %}
+{% endif %}{% endfor %}
+constexpr std::array<InstructionKind, {{ model.forms | length }}> selected_kinds = {{ '{{' }}
+{% for form in model.forms %}    {{ form.name }}::kind{% if not loop.last %},
+{% endif %}{% endfor %}
+{{ '}}' }};
+constexpr std::array<::ptx_frontend::resolved_ir::detail::ModifierCandidateRow, {{ model.rows | length }}> candidate_rows = {{ '{{' }}
+{% for row in model.rows %}    ::ptx_frontend::resolved_ir::detail::ModifierCandidateRow{{ '{' }}{{ row.spelling }}, {{ row.known }}}{% if not loop.last %},
+{% endif %}{% endfor %}
+{{ '}}' }};
+constexpr std::array<uint64_t, {{ model.words | length }}> candidate_words = {{ '{{' }}
+{% for word in model.words %}    {{ word }}{% if not loop.last %},
+{% endif %}{% endfor %}
+{{ '}}' }};
+constexpr ::ptx_frontend::resolved_ir::detail::ModifierCandidatePlan candidate_plan{candidate_rows, candidate_words};
+/** Select and retain direct static descriptor references for construction. */
+std::expected<SelectedForm, ResolveDiagnostic> select_form(
+    const syntax_ast::AstInstruction& ast) {
+  const auto& syntax = {{ model.prefix }}_syntax_descriptor();
+  std::array<uint64_t, {{ model.word_count }}> candidates;
+  const auto selected = ::ptx_frontend::resolved_ir::detail::select_indexed_variant(ast, syntax, candidate_plan, candidates);
+  if (!selected) return std::unexpected(selected.error());
+  assert(syntax.variants.size() == selected_kinds.size());
+  const auto& resolved = {{ model.prefix }}_resolved_descriptor();
+  assert(resolved.variants.size() == selected_kinds.size());
+  return SelectedForm{static_cast<SelectedFormOrdinal>(*selected),
+      selected_kinds[*selected], syntax.variants[*selected], resolved.variants[*selected]};
+}
+}  // namespace
+
+/** Resolve {{ model.opcode }} to one exact final form. */
+std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic> resolve{{ model.cpp_name }}(
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context) {
+  const auto selected = select_form(ast);
+  if (!selected) return std::unexpected(selected.error());
+  const auto kind = selected->kind;
+  const auto named_array_policy = [&]() {
+    switch (kind) {
+{% for form in model.forms %}    case {{ form.name }}::kind: return {{ form.named_array_policy }};{% if not loop.last %}
+{% endif %}{% endfor %}
+      default: return NamedArrayAddressPolicy::Reject;
+    }
+  }();
+  auto fields = ::ptx_frontend::resolved_ir::detail::resolve_selected_fields(ast, selected->syntax,
+      selected->resolved, context, named_array_policy);
+  if (!fields) return std::unexpected(fields.error());
+  switch (kind) {
+{% if model.construction is not none %}{{ construction.cases(model.construction) }}{% else %}{% for form in model.forms %}    case {{ form.name }}::kind: return generated_detail::{{ form.helper }}(kind, *fields);{% if not loop.last %}
+{% endif %}{% endfor %}{% endif %}
+    default:
+      break;
+  }
+  throw ResolveException("Unknown {{ model.cpp_name }} descriptor identity.");
+}{% endmacro %}{% macro resolve(model) %}{{ declarations(model) }}{{ selection_and_resolve(model) }}{% endmacro %}

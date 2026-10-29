@@ -24,6 +24,8 @@ class LoadYamlTests(unittest.TestCase):
             *resources.joinpath("ptx_spec").iterdir(),
         )
         for path in paths:
+            if not path.is_file():
+                continue
             with self.subTest(path=path.name):
                 expected = yaml.safe_load(path.read_text(encoding="utf-8"))
                 self.assertEqual(load_yaml(path), expected)

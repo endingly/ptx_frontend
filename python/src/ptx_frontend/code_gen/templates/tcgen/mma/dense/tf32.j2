@@ -1,0 +1,110 @@
+{% import 'tcgen/mma/dense_common.j2' as common %}{% macro algorithm(model) %}  const auto decoded = decode_tcgen_instruction(facts.instruction);
+  if (decoded.sparse) report.violations.push_back({{ model.cpp_prefix }}Violation::DenseSparse);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::Dense);
+  const {{ model.cpp_prefix }}ShapeRow* shape = nullptr;
+  for (const auto& row : {{ model.shape_array }}) {
+    if (row.group == facts.group && decoded.d_type &&
+        row.d_type == *decoded.d_type &&
+        {{ model.snake }}_row_contains(row, decoded.m, decoded.n, 8)) {
+      shape = &row;
+      break;
+    }
+  }
+  if (!shape) report.violations.push_back({{ model.cpp_prefix }}Violation::Shape);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::Shape);
+  if (decoded.d_type && decoded.a_type && decoded.b_type) {
+    if (*decoded.d_type != MatrixElementType::F32 ||
+        *decoded.a_type != MatrixElementType::TF32)
+      report.violations.push_back({{ model.cpp_prefix }}Violation::AType);
+    if (*decoded.d_type != MatrixElementType::F32 ||
+        *decoded.b_type != MatrixElementType::TF32)
+      report.violations.push_back({{ model.cpp_prefix }}Violation::BType);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::Types);
+  }
+{% endmacro %}{% macro source(model) %}{{ common.storage(model) }}{{ common.query_preamble(model) }}{{ common.scaled_target_storage(model) }}{{ common.scaled_target_accept(model) }}{{ common.tf32_shared_operand(model) }}{{ common.operation_start(model) }}{{ algorithm(model) }}{{ common.shared_placement(model) }}{{ common.datapath(model) }}{{ common.operation_finish(model) }}{% endmacro %}{% macro header(model) %}
+namespace ptx_frontend::resolved_ir {
+/** One known Table 42 dense {{ model.description_kind }} shape with implicit K8. */
+struct {{ model.cpp_prefix }}ShapeRow {
+  /** Number of CTAs in the typed group. */
+  TcgenCtaGroup group;
+  /** Output type from the known instruction word. */
+  MatrixElementType d_type;
+  /** Legal M dimensions in rows. */
+  std::array<uint16_t, 2> m_values;
+  /** First legal N dimension in columns. */
+  uint16_t n_first;
+  /** Legal N stride in columns. */
+  uint16_t n_step;
+  /** Last legal N dimension in columns. */
+  uint16_t n_last;
+  /** Implicit K dimension in elements. */
+  uint16_t k;
+};
+/** One dense {{ model.description_kind }} Tensor Memory datapath selected by group and M. */
+struct {{ model.cpp_prefix }}PathRow {
+  /** Written CTA group. */
+  TcgenCtaGroup group;
+  /** Written M dimension in rows. */
+  uint16_t m;
+  /** Selected layout identity. */
+  char layout;
+  /** Whether known A/D lane halves must agree. */
+  bool half_path;
+  /** Allowed lane-half offsets in units of Tensor Memory lanes. */
+  std::array<uint8_t, 2> allowed_lane_halves;
+  /** Number of valid entries in allowed_lane_halves. */
+  uint8_t allowed_lane_count;
+};
+/** Borrow immutable generated {{ model.description_kind }} Table 42 shape rows. */
+[[nodiscard]] std::span<const {{ model.cpp_prefix }}ShapeRow> {{ model.snake }}_shape_rows() noexcept;
+/** Borrow immutable generated {{ model.description_kind }} datapath rows. */
+[[nodiscard]] std::span<const {{ model.cpp_prefix }}PathRow> {{ model.snake }}_path_rows() noexcept;
+/** Check known dimensions without authenticating source words. */
+[[nodiscard]] bool {{ model.snake }}_row_contains(const {{ model.cpp_prefix }}ShapeRow& row,
+                                           uint16_t m, uint16_t n,
+                                           uint16_t k) noexcept;
+}  // namespace ptx_frontend::resolved_ir
+
+#include <optional>
+#include <vector>
+#include <ptx_frontend/resolved_ir/tcgen_descriptor_domains.gen.hpp>
+
+namespace ptx_frontend::resolved_ir {
+/** One independently completed dense {{ model.description_kind }} operational check. */
+enum class {{ model.cpp_prefix }}Checked : uint8_t {
+  InstructionFields, ASharedFields, BSharedFields, Dense, Shape, Types,
+  AMajor, BMajor, ASwizzle, BSwizzle, Datapath, HalfAlignment, Target
+};
+/** A violation proved by supplied known values, not by an opaque register. */
+enum class {{ model.cpp_prefix }}Violation : uint8_t {
+  Kind, Group, DenseSparse, Shape, AType, BType, APlacementFacts,
+  AMajor, BMajor, ASwizzle, BSwizzle, ALaneHalf, DLaneHalf,
+  HalfAlignment, Target, InvalidContext
+};
+/** A missing fact or unresolved rule that prevents a stronger conclusion. */
+enum class {{ model.cpp_prefix }}Obligation : uint8_t {
+  ASharedWord, BSharedWord, AMajor, BMajor, ALaneHalf, DLaneHalf, Target
+};
+/** Caller-supplied known words and context, independent of MMA source registers. */
+struct {{ model.cpp_prefix }}KnownFacts {
+  /** Group selected by the source qualifier. */
+  TcgenCtaGroup group;
+  /** Whether A is a Tensor Memory address rather than a shared descriptor. */
+  bool a_in_tmem;
+  /** Whether the optional D scaling immediate is present. */
+  bool scaled_d;
+  /** Independently known instruction bits and explicit kind. */
+  TcgenInstructionWord instruction;
+{{ common.known_word_fields(model) }}};
+/** Defined-field results plus individually checked, violated, and missing facts. */
+struct {{ model.cpp_prefix }}OperationalReport {
+{{ common.report_fields(model) }}  /** Data-path layout selected from known group and M, if supported. */
+  std::optional<char> path_layout;
+{{ common.supplied_facts_ok(model) }}};
+/** Validate independent known words against dense non-WS f16 operational rules.
+ *  Caller-supplied words are never authenticated against source registers.
+ */
+[[nodiscard]] {{ model.cpp_prefix }}OperationalReport check_{{ model.snake }}_known_operation(
+    const {{ model.cpp_prefix }}KnownFacts& facts);
+}  // namespace ptx_frontend::resolved_ir
+{% endmacro %}

@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
+from math import isfinite
 from threading import Lock
 from typing import Any, TypeVar
 
@@ -17,6 +18,7 @@ from .model import (
 )
 from .normalize import normalize_instruction_spec
 from jsonschema import Draft202012Validator
+from jsonschema_rs import Draft202012Validator as NativeDraft202012Validator
 from importlib.resources.abc import Traversable
 from .resources import packaged_spec_dir, packaged_spec_schema
 from .synatax_shapes import OPERAND_SYNTAX_SHAPES, operand_syntax_shapes
@@ -93,22 +95,88 @@ def load_codegen_database_with_category_inputs(
 
 
 @cache
-def _instruction_schema_validator() -> Draft202012Validator:
-    """Load the ISA schema once for a database-loading process."""
+def _instruction_schema_validator() -> NativeDraft202012Validator:
+    """Compile the fixed packaged ISA schema once without network or formats."""
+
+    return NativeDraft202012Validator(
+        load_yaml(PTX_INSTRUCTION_SCHEMA), validate_formats=False, offline=True
+    )
+
+
+@cache
+def _original_instruction_schema_validator() -> Draft202012Validator:
+    """Load the original Python validator for compatibility and diagnostics."""
 
     return Draft202012Validator(load_yaml(PTX_INSTRUCTION_SCHEMA))
 
 
+# A zero marks any list item; dict keys must be exact strings. Only these
+# canonical unconstrained string leaves are exempt from regex newline parity.
+_NATIVE_MULTILINE_TEXT_PATHS = frozenset({
+    ("instructions", 0, "doc"),
+    ("instructions", 0, "syntax"),
+    ("instructions", 0, "variants", 0, "description"),
+    ("instructions", 0, "variants", 0, "syntax"),
+    ("instructions", 0, "variants", 0, "doc"),
+})
+
+
+def _native_schema_compatible(
+    value: Any, depth: int = 0, _path: tuple[str | int, ...] = ()
+) -> bool:
+    """Limit native validation to compatible inputs for the current ISA schema.
+
+    The native engine treats tuples as arrays and nonfinite numbers differently.
+    Its end anchor also differs from Python's before a final newline. Allow
+    newlines only at five unconstrained instruction/variant text string leaves;
+    descendants of malformed containers receive no exemption. Restrict integers
+    to the exact binary64 range, and bound traversal so deep or cyclic YAML
+    values reach the original validator without exhausting this guard.
+    Canonical regex, numeric, or text-field changes need renewed parity checks.
+    """
+
+    if depth > 64:
+        return False
+    kind = type(value)
+    if kind is dict:
+        return all(
+            type(key) is str
+            and "\n" not in key
+            and _native_schema_compatible(item, depth + 1, _path + (key,))
+            for key, item in value.items()
+        )
+    if kind is list:
+        return all(
+            _native_schema_compatible(item, depth + 1, _path + (0,))
+            for item in value
+        )
+    if kind is str:
+        return "\n" not in value or _path in _NATIVE_MULTILINE_TEXT_PATHS
+    if kind is int:
+        return -(2**53 - 1) <= value <= 2**53 - 1
+    if kind is float:
+        return isfinite(value)
+    return value is None or kind is bool
+
+
 def _validate_instruction_schema(path: Traversable, spec: dict[str, Any]) -> None:
-    """Reject a malformed ISA spec before semantic normalization begins."""
+    """Validate compatible inputs natively and retain original Python behavior."""
+
+    if _native_schema_compatible(spec):
+        validator = _instruction_schema_validator()
+        try:
+            if validator.is_valid(spec):
+                return
+        except ValueError:
+            # Unsupported native input conversion keeps Python's acceptance.
+            pass
 
     errors = sorted(
-        _instruction_schema_validator().iter_errors(spec),
+        _original_instruction_schema_validator().iter_errors(spec),
         key=lambda error: list(error.path),
     )
     if not errors:
         return
-
     error = errors[0]
     location = ".".join(str(piece) for piece in error.path) or "<root>"
     raise ValueError(f"{path}:{location}: {error.message}")

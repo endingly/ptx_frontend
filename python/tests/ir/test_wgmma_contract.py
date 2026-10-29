@@ -9,7 +9,7 @@ import unittest
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.context import GenerationContext, build_generation_context
-from ptx_frontend.code_gen.emit.resolved_model import form_shards
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_source import (
     generate_resolved_form_shard_source,
     generate_resolved_opcode_source,
@@ -209,8 +209,8 @@ class WgmmaContractTests(unittest.TestCase):
                  for shard_index, indices in enumerate(shards) for index in indices],
             )
             self.assertEqual(source.count("std::make_unique<Wgmma"), 0)
-            self.assertEqual(source.count("resolve_fields(ast,"), 1)
-            self.assertEqual(source.count("select_variant_name(ast,"), 1)
+            self.assertEqual(source.count("resolve_selected_fields(ast,"), 1)
+            self.assertEqual(source.count("select_indexed_variant(ast,"), 1)
             for shard_index in range(len(shards)):
                 declaration = (
                     f"wgmma_construct_{shard_index:03d}(InstructionKind kind, "
@@ -312,7 +312,7 @@ class WgmmaContractTests(unittest.TestCase):
                 )[1]
                 self.assertEqual(resolver.count("std::make_unique<Wgmma"), count)
                 self.assertNotIn("wgmma_construct_", source)
-                self.assertEqual(source.count("resolve_fields(ast,"), 1)
+                self.assertEqual(source.count("resolve_selected_fields(ast,"), 1)
 
 
 if __name__ == "__main__":

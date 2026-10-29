@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include <ptx_frontend/cst/ptx_cst.hpp>
@@ -36,6 +37,30 @@ class PtxCstParser {
  private:
   using TokenId = syntax_cst::TokenId;
 
+  /** Nesting budget for lexical blocks, independent of expression trees. */
+  struct BlockDepth {
+    /** Number of nested braces below the function body; the function is zero. */
+    std::size_t value{};
+  };
+  /** Selects the diagnostic spelling at a missing body terminator. */
+  enum class BodyContext { Function, NestedBlock };
+  /** A body whose closing brace has been consumed. */
+  struct ClosedBody {
+    /** Real consumed delimiter in the parser-owned token buffer. */
+    TokenId right_brace;
+  };
+  /** A body ending before a boundary token, which remains unconsumed. */
+  struct MissingClosingBrace {
+    /** Unconsumed boundary token; its start anchors the zero-width insertion. */
+    TokenId anchor;
+  };
+  /** Exhaustive body termination states, with no optional-payload ambiguity. */
+  using BodyOutcome = std::variant<ClosedBody, MissingClosingBrace>;
+  /** Parse body items after the opening brace; append each recovery only once. */
+  BodyOutcome parseBody(std::vector<syntax_cst::CstFunctionBodyItem>& body,
+                        CstParseDiagnostics& diagnostics, BlockDepth depth,
+                        BodyContext context);
+
   enum class RecoveryStop {
     Semicolon,
     RightBrace,
@@ -55,19 +80,33 @@ class PtxCstParser {
     RecoveryStop stop{};
   };
 
+  /** Allowed height including the current root; siblings receive copies. */
+  struct RemainingTreeDepth {
+    /** Maximum allowed height including this root; zero forbids a tree. */
+    std::size_t value;
+  };
+  /** Actual structural height; scalar initializer wrappers add no level. */
+  struct TreeHeight {
+    /** Constructed node height; a leaf is one and an empty accumulator is zero. */
+    std::size_t value{};
+  };
+
   /** A parsed expression together with its private structural tree height. */
   struct ParsedConstantExpression {
     syntax_cst::CstConstantExpression expression;
     /** Leaf expressions have height one; each expression wrapper adds one. */
-    std::size_t depth{};
+    TreeHeight height{};
   };
 
   /** A parsed initializer together with its private structural tree height. */
   struct ParsedInitializer {
     syntax_cst::CstInitializer initializer;
     /** Scalar initializer wrappers add no height; initializer lists add one. */
-    std::size_t depth{};
+    TreeHeight height{};
   };
+
+  /** Numeric entry grammar: address bases stop before additive operators. */
+  enum class ExpressionBoundary { Full, AboveAdditive };
 
   [[nodiscard]] TokenId peek();
   /** Read one token beyond the current lookahead without consuming either. */
@@ -82,7 +121,7 @@ class PtxCstParser {
   [[nodiscard]] bool atNumericStart();
   /** Parse a numeric leaf while preserving the legacy single-literal shape. */
   std::expected<syntax_cst::CstNumericOperand, CstParseDiagnostic>
-  parseNumericOperand(int minimum_precedence = 0);
+  parseNumericOperand(ExpressionBoundary boundary = ExpressionBoundary::Full);
   [[nodiscard]] RecoveryResult recover(TokenId first,
                                        const CstParseDiagnostic& diagnostic,
                                        RecoveryContext context);
@@ -91,14 +130,31 @@ class PtxCstParser {
                                                     std::string_view name);
   std::expected<TokenId, CstParseDiagnostic> expectIntegerLiteral(
       std::string_view name);
-  std::expected<syntax_cst::CstImmediate, CstParseDiagnostic> parseImmediate(
-      bool allow_sign = true);
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseOperand();
+  /** Parse the predicted operand form from its unconsumed prefix. */
+  std::expected<syntax_cst::CstNegatedRegisterOperand, CstParseDiagnostic>
+  parseNegatedRegisterOperand();
+  /** Parse the predicted operand form from its unconsumed prefix. */
+  std::expected<syntax_cst::CstPredicateOperand, CstParseDiagnostic>
+  parsePredicateOperand();
+  /** Parse the predicted operand form from its unconsumed prefix. */
+  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+  parseVectorOperand();
+  /** Parse the predicted operand form from its unconsumed prefix. */
+  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+  parseNumericSourceOperand();
+  /** Parse the predicted operand form from its unconsumed prefix. */
+  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+  parseIdentifierOperand();
+
+  /** Parse after consuming `[`, including its closing `]` and optional suffix. */
   std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
   parseBracketedAddress(TokenId open);
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic> parseVectorPack(
+  /** Parse after consuming `{`; consume `}` and retain both in a half-open range. */
+  std::expected<syntax_cst::CstVectorPack, CstParseDiagnostic> parseVectorPack(
       TokenId open);
-  std::expected<syntax_cst::CstOperand, CstParseDiagnostic>
+  /** Parse an unconsumed `(` through `)` using the selected parameter grammar. */
+  std::expected<syntax_cst::CstCallParameterList, CstParseDiagnostic>
   parseCallParameterList(syntax_cst::CstCallParameterListKind kind);
   std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
   parseCallOperands();
@@ -107,18 +163,23 @@ class PtxCstParser {
   std::expected<std::vector<syntax_cst::CstOperandElement>, CstParseDiagnostic>
   parseIndexedBranchOperands();
   std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
-  parseInstructionNode(std::optional<TokenId> opcode = std::nullopt);
+  parseInstructionNode();
+  /** Parse the tail after the opcode and optional predicate have been consumed. */
+  std::expected<syntax_cst::CstInstruction, CstParseDiagnostic>
+  parseInstructionAfterHead(
+      TokenId opcode,
+      std::optional<syntax_cst::CstPredicate> predicate = std::nullopt);
   std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantExpression(int minimum_precedence, std::size_t remaining_depth);
+  parseConstantExpression(int minimum_precedence,
+                          RemainingTreeDepth remaining_depth);
   std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantUnary(std::size_t remaining_depth);
+  parseConstantUnary(RemainingTreeDepth remaining_depth);
   std::expected<ParsedConstantExpression, CstParseDiagnostic>
-  parseConstantPrimary(std::size_t remaining_depth);
+  parseConstantPrimary(RemainingTreeDepth remaining_depth);
   std::expected<ParsedInitializer, CstParseDiagnostic> parseInitializer(
-      std::size_t remaining_depth);
+      RemainingTreeDepth remaining_depth);
   std::expected<syntax_cst::CstVariableDeclaration, CstParseDiagnostic>
-  parseVariableDeclaration(std::vector<TokenId> qualifiers = {},
-                           std::optional<TokenId> first_token = std::nullopt);
+  parseVariableDeclaration(std::vector<TokenId> qualifiers = {});
   std::expected<syntax_cst::CstAttributeList, CstParseDiagnostic>
   parseAttributeList();
   std::expected<syntax_cst::CstFunctionParameter, CstParseDiagnostic>
@@ -142,16 +203,15 @@ class PtxCstParser {
   parseAliasDirective();
   std::expected<syntax_cst::CstFunctionBodyItem, CstParseDiagnostic>
   parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
-                        std::size_t block_depth = 0);
+                        BlockDepth block_depth);
   std::expected<syntax_cst::CstBlock, CstParseDiagnostic> parseBlock(
-      CstParseDiagnostics& diagnostics, std::size_t block_depth);
+      CstParseDiagnostics& diagnostics, BlockDepth block_depth);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
   parseSectionDirective();
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(
-      std::vector<TokenId> qualifiers, TokenId first_token,
-      CstParseDiagnostics& diagnostics);
+      std::vector<TokenId> qualifiers, CstParseDiagnostics& diagnostics);
 
   PtxLexer lexer_;
   std::vector<PtxToken> tokens_;

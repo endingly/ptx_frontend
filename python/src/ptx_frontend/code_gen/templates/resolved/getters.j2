@@ -1,0 +1,42 @@
+{% macro getters(model) -%}{% if model.shard_indices %}namespace generated_detail {
+{% for domain in model.domains %}{% for index in model.shard_indices %}std::span<const {{ domain.type_name }}> {{ model.prefix }}_{{ domain.name }}_variants_{{ index }}() noexcept;{% if not loop.last %}
+{% endif %}{% endfor %}{% if not loop.last %}
+{% endif %}{% endfor %}
+}
+
+{% for domain in model.domains %}/** Return one stable contiguous {{ domain.name }} catalog in canonical form order. */
+const {{ domain.root_type }}& {{ model.prefix }}_{{ domain.name }}_descriptor() noexcept {
+  static_assert(std::is_trivially_copyable_v<{{ domain.type_name }}>);
+  static const std::array<{{ domain.type_name }}, {{ model.count }}> variants = []() noexcept {
+    std::array<{{ domain.type_name }}, {{ model.count }}> ordered{};
+    size_t next = 0;
+    for (auto shard : std::array<std::span<const {{ domain.type_name }}>, {{ model.shard_indices | length }}>{{ '{{' }}
+{% for index in model.shard_indices %}        generated_detail::{{ model.prefix }}_{{ domain.name }}_variants_{{ index }}(){% if not loop.last %},
+{% endif %}{% endfor %}
+    {{ '}}' }}) {
+      for (const auto& row : shard) {
+        assert(next < ordered.size());
+        ordered[next++] = row;
+      }
+    }
+    assert(next == ordered.size());
+    return ordered;
+  }();
+  static const {{ domain.root_type }} descriptor{
+      .{{ domain.opcode_member }} = "{{ model.opcode }}", .variants = variants};
+  return descriptor;
+}{% if not loop.last %}
+
+{% endif %}{% endfor %}{% else %}
+/** Return static-lifetime syntax selection metadata for {{ model.opcode }}. */
+const check_end::SyntaxInstructionDescriptor& {{ model.prefix }}_syntax_descriptor() noexcept {
+  return {{ model.cpp_name }}DescriptorStorage::descriptor;
+}
+/** Return static-lifetime resolved field metadata for {{ model.opcode }}. */
+const check_end::ResolvedInstructionDescriptor& {{ model.prefix }}_resolved_descriptor() noexcept {
+  return generated_detail::{{ model.cpp_name }}ResolvedDescriptorStorage::descriptor;
+}
+/** Return static-lifetime checker metadata for {{ model.opcode }}. */
+const checker::InstructionDescriptor& {{ model.prefix }}_checker_descriptor() noexcept {
+  return generated_detail::{{ model.cpp_name }}CheckerDescriptorStorage::descriptor;
+}{% endif %}{%- endmacro %}

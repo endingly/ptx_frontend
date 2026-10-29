@@ -1,0 +1,1 @@
+{% import "resolved/operand_views.j2" as views -%}{{ views.operand_view(model) if model.structure.startswith("operand_view_") else views.modifier_value_view(model) if model.structure == "modifier_value_view" else views.modifier_view(model) }}

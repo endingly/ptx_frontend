@@ -166,6 +166,66 @@ from its source-derived type name, including direct construction and
 `dataclasses.replace`. This validates the frozen snapshot, not every possible
 rendering or filesystem failure.
 
+All C++ output uses concrete typed dataclasses in
+[`render_models/`](../../python/src/ptx_frontend/code_gen/render_models/) and fixed
+package templates in [`templates/`](../../python/src/ptx_frontend/code_gen/templates/).
+Builders project output facts from prepared models; they do not import emitters,
+the CLI, or rendering. Python chooses form order, field mappings, checks, binding
+sharing, and shards. Templates own C++ declarations, aggregates, functions, and
+control flow, composing nested descriptor/check/view models through static macros.
+The `emit/` entry points build these models, render fixed template names, and use
+the existing planned artifact paths and write policy.
+
+[`rendering.py`](../../python/src/ptx_frontend/code_gen/rendering.py) loads templates
+with Jinja2 `PackageLoader`, independently of the working directory. Its shared
+environment uses `StrictUndefined`, disables HTML escaping, preserves literal LF
+whitespace and terminal newlines, and leaves block trimming disabled. Only compiled
+templates are cached; models and per-call contexts are independent across writers.
+Missing templates or model attributes fail explicitly. Pure C++ literal helpers
+preserve each established escaping contract. Templates ship in both sdist and
+wheel packages, and installed-wheel smoke checks render from outside the checkout.
+
+Descriptor shard builders translate only their selected canonical syntax variants.
+Checker builders prepare neutral backend member expressions once per storage build;
+that reuse stays local to the invocation and observes the supplied backend each time.
+The private ISA schema validator caches `jsonschema-rs` Draft 2020-12 compilation
+of the unchanged packaged schema, with format checking and network retrieval
+disabled. A bounded compatibility guard admits builtin JSON values with string
+keys, finite floats, integers within ±(2^53−1), and no newline characters in
+keys or strings except the exact instruction `doc`/`syntax` and variant
+`description`/`syntax`/`doc` string fields. Those five structural locations have
+unconstrained string schemas; malformed nested values do not inherit the exception.
+Other values and native rejections use Python `jsonschema`; its acceptance, error
+paths, and messages remain authoritative. The guard is specific to the current
+canonical regex, numeric, and text-field constraints, so changes to those
+constraints require renewed parity checks. The bounded 0.60.x dependency
+uses native wheels on supported platforms; building it from source requires Rust.
+
+CMake tracks both Python sources and `.j2` resources with recursive
+`CONFIGURE_DEPENDS` discovery and the existing input membership manifest, so
+modifying or adding a template invalidates the normal codegen edge.
+
+Internal preparation helpers live directly under `code_gen`:
+[`artifact_layout.py`](../../python/src/ptx_frontend/code_gen/artifact_layout.py)
+owns the generated include root and canonical 64-form shard partition shared by
+planning and emission;
+[`cpp_names.py`](../../python/src/ptx_frontend/code_gen/cpp_names.py) owns final
+form names and the ordered C++ reference-observer callback surface; and
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
+derives conservative modifier candidate masks from syntax metadata. These
+helpers do not depend on emitters, the artifact plan, or the CLI. Emitters render
+their results, and the plan consumes layout decisions directly. The ordered C++
+reference payload types remain separate from the value-kind reference policy.
+
+[`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
+adapts final-form checker rendering to typed check models and fixed macros.
+Its pure builder owns ordered layout/family/cross-rule checks and the named-array
+address policy shared with resolver preparation. `resolved_source` composes nested
+source models for fixed resolver, construction, descriptor and reference-visit templates.
+Checker views receive the final class qualifier and payload member expression
+directly; callers guard optional payloads before use, while diagnostic field IDs
+continue to come from metadata.
+
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, opaque identity enum declarations, and observer contract |
@@ -213,7 +273,7 @@ single Python batch for changed categories and required shared outputs. That
 batch loads the backend, normalized instruction model, context, and plan once.
 The configure-time description is a separate process. Category completion
 stamps track contributing spec files and input membership; shared outputs
-track all specs. Schemas, backend mapping, and generator sources invalidate
+track all specs. Schemas, backend mapping, generator Python sources, and `.j2` template resources invalidate
 every category. CMake reconfiguration detects added and removed inputs.
 Missing generated byproducts or completion markers trigger repair under Ninja;
 a Makefile target checks for them before accepting a clean stamp. The batch

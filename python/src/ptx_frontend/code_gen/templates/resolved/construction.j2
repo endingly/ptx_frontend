@@ -1,0 +1,28 @@
+{% macro cases(model) -%}{% for case in model.cases %}    case {{ case.name }}::kind: {
+    auto value = std::make_unique<{{ case.name }}>();
+    value->execution_predicate = std::move({{ model.field_access }}execution_predicate);
+    value->operand_layout = {{ model.field_access }}operand_layout;
+{% if model.atomic %}      value->address_qualifier = atomic_address_qualifier_from_ast(ast);
+{% endif %}{% for field in case.modifiers %}      value->{{ field.member }} = resolved_modifier<{{ field.cpp_type }}>({{ model.field_argument }}, "{{ field.source_name }}");{% if not loop.last %}
+{% endif %}{% endfor %}
+    switch ({{ model.field_access }}operand_layout.value) {
+{% for layout in case.layouts %}      case {{ layout.index }}:
+        // Operands: {{ layout.operand_names }}
+{% for field in layout.assignments %}        value->{{ field.member }} = resolved_operand<{{ field.cpp_type }}>({{ model.field_argument }}, "{{ field.source_name }}");{% if not loop.last %}
+{% endif %}{% endfor %}
+        return value;{% if not loop.last %}
+{% endif %}{% endfor %}
+      default:
+        throw ResolveException("Unknown {{ case.name }} operand layout.");
+    }
+    }{% if not loop.last %}
+{% endif %}{% endfor %}{%- endmacro %}
+{% macro helper(model) -%}/** Construct an exact WGMMA form owned by this physical methods shard. */
+std::unique_ptr<Instruction> {{ model.name }}(
+    InstructionKind kind, ResolvedInstructionFields& fields) {
+  switch (kind) {
+{{ cases(model.construction) }}
+    default:
+      throw ResolveException("Unknown {{ model.cpp_name }} descriptor identity.");
+  }
+}{%- endmacro %}

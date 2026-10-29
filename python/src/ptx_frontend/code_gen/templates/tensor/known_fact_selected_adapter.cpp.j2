@@ -1,0 +1,182 @@
+
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+
+#include <variant>
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+
+/** Closed normalized selected-form metadata; never parsed from variant names. */
+struct TensorKnownSelectedMeta {
+  bool is_tensor;
+  TensorKnownFactDirection direction;
+  TensorAccessMode mode;
+  TensorRank rank;
+  std::optional<TensorKnownFactDestination> destination;
+  bool group_applicable;
+};
+
+/** One row per exact Cp form in the checker's descriptor order. */
+inline constexpr std::array<TensorKnownSelectedMeta, {{ model.rows | length }}>
+    tensor_known_selected_meta{{ '{{' }}
+{% for row in model.rows %}    {{ '{' }}{{ 'true' if row.is_tensor else 'false' }}, TensorKnownFactDirection::{{ row.direction }}, TensorAccessMode::{{ row.mode }}, {{ row.rank_expression }}, {{ row.destination_expression }}, {{ 'true' if row.group_applicable else 'false' }}},{% if not loop.last %}
+{% endif %}{% endfor %}
+    }};
+
+}  // namespace
+
+/** Copy selected tensor facts while every borrowed checker view is in scope. */
+TensorKnownSelectedProjection project_tensor_known_access_context(
+    const Instruction& instruction, const checker::Context& checker_context) {
+  TensorKnownSelectedProjection result;
+  const size_t index = [&]() noexcept -> size_t {
+    switch (instruction.instruction_kind()) {
+{% for row in model.projections %}    case {{ row.name }}::kind: return {{ row.index }};{% if not loop.last %}
+{% endif %}{% endfor %}
+      default: return tensor_known_selected_meta.size();
+    }
+  }();
+  if (index == tensor_known_selected_meta.size()) return result;
+  const auto descriptors = cp_checker_descriptor().variants;
+  if (index >= tensor_known_selected_meta.size() || index >= descriptors.size()) {
+    result.diagnostics.emplace_back("selected Cp variant lacks canonical descriptor");
+    return result;
+  }
+  const auto& meta = tensor_known_selected_meta[index];
+  if (!meta.is_tensor) return result;
+  const auto& descriptor = descriptors[index];
+  TensorKnownAccessContext access;
+  access.direction = meta.direction;
+  access.mode = meta.mode;
+  access.rank = meta.rank;
+  access.destination = meta.destination;
+  access.target_identity = checker_context.target.identity;
+  bool copied = false;
+  size_t selected_layout = 0;
+  const auto copy_tensor = [&](const ResolvedTensorOperand& tensor,
+                               const ResolvedTensorIm2colInfo* info) {
+    copied = true;
+    if (tensor.rank != meta.rank || tensor.mode != meta.mode) {
+      result.diagnostics.emplace_back("selected tensor rank/mode disagrees with normalized variant");
+      return;
+    }
+    const size_t expected_coordinates =
+        meta.mode == TensorAccessMode::TileGather4 ||
+                meta.mode == TensorAccessMode::TileScatter4
+            ? 5 : static_cast<size_t>(meta.rank);
+    if (tensor.coordinates.elements.size() != expected_coordinates ||
+        expected_coordinates > access.coordinates.size()) {
+      result.diagnostics.emplace_back("selected tensor coordinate arity is malformed");
+      return;
+    }
+    access.coordinate_arity = expected_coordinates;
+    for (size_t i = 0; i < expected_coordinates; ++i) {
+      if ((meta.mode == TensorAccessMode::TileGather4 ||
+           meta.mode == TensorAccessMode::TileScatter4) &&
+          !tensor_gather_scatter_coordinate_role(tensor, i)) {
+        result.diagnostics.emplace_back("selected gather/scatter coordinate role is malformed");
+        return;
+      }
+      const auto* immediate = std::get_if<ResolvedImmediate>(
+          &tensor.coordinates.elements[i]);
+      if (!immediate) continue;
+      if (immediate->type != ScalarType::S32) {
+        result.diagnostics.emplace_back("selected coordinate lacks S32 use type");
+        return;
+      }
+      if (immediate->bits > uint64_t{0xffffffff} ||
+          (immediate->integer_source_bits &&
+           immediate->bits !=
+               (*immediate->integer_source_bits & uint64_t{0xffffffff}))) {
+        result.diagnostics.emplace_back("selected coordinate source/use bits disagree");
+        return;
+      }
+      const uint32_t bits = static_cast<uint32_t>(immediate->bits);
+      const int64_t converted = bits & UINT32_C(0x80000000)
+          ? static_cast<int64_t>(bits) - INT64_C(4294967296)
+          : static_cast<int64_t>(bits);
+      access.coordinates[i].value = converted;
+      access.coordinates[i].source_bits = immediate->integer_source_bits;
+    }
+    if (!info) return;
+    access.info_known = true;
+    if (info->elements.size() > access.info.size()) {
+      result.diagnostics.emplace_back("selected im2col information arity exceeds bound");
+      return;
+    }
+    access.info_arity = info->elements.size();
+    for (size_t i = 0; i < access.info_arity; ++i) {
+      if (!tensor_im2col_info_role(tensor, *info, i)) {
+        result.diagnostics.emplace_back("selected im2col information role is malformed");
+        return;
+      }
+      const auto* immediate = std::get_if<ResolvedImmediate>(&info->elements[i]);
+      if (!immediate) continue;
+      if (immediate->type != ScalarType::U16) {
+        result.diagnostics.emplace_back("selected im2col information lacks U16 use type");
+        return;
+      }
+      if (immediate->bits > uint64_t{0xffff} ||
+          (immediate->integer_source_bits &&
+           immediate->bits !=
+               (*immediate->integer_source_bits & uint64_t{0xffff}))) {
+        result.diagnostics.emplace_back("selected information source/use bits disagree");
+        return;
+      }
+      const uint16_t bits = static_cast<uint16_t>(immediate->bits);
+      access.info[i].value = bits;
+      access.info[i].source_bits = immediate->integer_source_bits;
+    }
+  };
+  switch (instruction.instruction_kind()) {
+{% for row in model.projections %}    case {{ row.name }}::kind: {
+      const auto* selected = dynamic_cast<const {{ row.name }}*>(&instruction);
+      if (!selected) {
+        result.diagnostics.emplace_back("selected tensor kind/class disagree");
+        break;
+      }
+      selected_layout = selected->operand_layout.value;
+      if (selected_layout >= descriptor.operand_layouts.size()) {
+        result.diagnostics.emplace_back("selected tensor operand-layout tag is out of range");
+        break;
+      }
+      switch (selected->operand_layout.value) {
+{% for layout in row.layouts %}    case {{ layout.index }}: {
+{% if layout.guards %}      if ({% for guard in layout.guards %}{{ guard }}{% if not loop.last %} ||
+          {% endif %}{% endfor %}) {
+        result.diagnostics.emplace_back("selected tensor layout tag/storage disagree");
+        break;
+      }
+{% endif %}      copy_tensor({{ layout.tensor_expression }}.value, {{ layout.info_expression }});
+      break;
+    }{% if not loop.last %}
+{% endif %}{% endfor %}
+        default:
+          result.diagnostics.emplace_back("selected tensor operand-layout tag is out of range");
+      }
+      {% if row.reduction %}access.reduction_op = {{ row.name }}::tensor_reduction_op;{% endif %}
+      {% if row.group_applicable %}const auto role = selected->tensor_cta_group_role();
+    if (!role) result.diagnostics.emplace_back("selected tensor CTA-group role is malformed");
+    else access.group = role->effective;{% endif %}
+      break;
+    }{% if not loop.last %}
+{% endif %}{% endfor %}
+    default:
+      result.diagnostics.emplace_back("selected tensor kind/class disagree");
+      break;
+  }
+  if (!copied) result.diagnostics.emplace_back("selected tensor operand storage is absent");
+  if (!result.diagnostics.empty()) return result;
+  access.selected_variant_available =
+      checker::check_availability(descriptor, checker_context).has_value();
+  access.selected_value_available =
+      checker::check_operand_layout_availability(
+          descriptor, selected_layout, checker_context).has_value() &&
+      checker::check_modifier_value_availability(
+          descriptor.modifier_value_availabilities,
+          std::span<const checker::ModifierValueView>{}, checker_context).has_value();
+  result.access = std::move(access);
+  return result;
+}
+
+}  // namespace ptx_frontend::resolved_ir

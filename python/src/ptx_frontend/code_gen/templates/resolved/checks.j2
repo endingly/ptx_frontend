@@ -1,0 +1,206 @@
+{% import "resolved/operand_views.j2" as views -%}
+{% macro fragment(model) -%}
+{% if model is none %}{% elif model.structure == "append_result" %}  if (!{{ model.expression }}) {
+    diagnostics.insert(diagnostics.end(), {{ model.expression }}.error().begin(),
+                       {{ model.expression }}.error().end());
+  }{% elif model.structure == "presence_guard" %}  if ({{ model.condition | join(" ||\n      ") }}) {
+    diagnostics.push_back(checker::CheckDiagnostic{
+        .kind = checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch,
+        .range = context.instruction_range,
+        .message = "Resolved operand-layout tag and direct fields disagree.",
+    });
+    return std::unexpected(std::move(diagnostics));
+  }{% elif model.structure == "check_layout" %}    case {{ model.layout_index }}: {
+      const auto availability_check = checker::check_operand_layout_availability(
+          {{ model.checker_variant }}, {{ model.layout_index }}, context);
+{{ fragment(model.availability_check_result) }}
+      const auto layout_modifier_check = checker::check_operand_layout_modifiers(
+          {{ model.checker_variant }}, {{ model.layout_index }}, modifier_values, context);
+{{ fragment(model.layout_modifier_check_result) }}
+{{ fragment(model.guard) }}
+{% for item in model.named_check or () %}{{ fragment(item) }}{% if not loop.last %}
+{% endif %}{% endfor %}
+      const std::array<checker::OperandView, {{ model.operand_count }}> operands = {{ "{{" }}
+{% for item in model.views or () %}{{ views.operand_view(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};
+      const auto operand_check = checker::check_operands(
+          {{ model.descriptor }}.variants[{{ model.variant_index }}].operand_layouts[{{ model.layout_index }}].bindings,
+          fields, operands, {{ model.checker_variant }}.operand_type_compatibilities,
+          context, {{ model.matrix }});
+{{ fragment(model.operand_check_result) }}
+{{ fragment(model.mma_check) }}
+{% for item in model.tensor_checks or () %}{{ fragment(item) }}{% if not loop.last %}{% endif %}{% endfor %}
+{{ fragment(model.texture_check) }}
+{{ fragment(model.surface_check) }}
+{{ fragment(model.stack_check) }}
+{% for item in model.cross_checks or () %}{{ fragment(item) }}{% if not loop.last %}{% endif %}{% endfor %}
+      break;
+    }{% elif model.structure == "named_array_check" %}      if (const auto* address = {{ model.pointer }};
+          address && !valid_named_array_address(*address, {{ model.policy }}, context.instruction_range)) {
+        diagnostics.push_back(checker::CheckDiagnostic{
+            .kind = checker::CheckDiagnosticKind::RuleViolation,
+            .range = context.instruction_range,
+            .message = "Invalid or unsupported owned named-array address payload.",
+        });
+      }{% elif model.structure == "surface_check" %}      const auto surface_payload_check = {{ model.expression }};
+{{ fragment(model.surface_payload_check_result) }}{% elif model.structure == "stack_check" %}      const auto stack_payload_check = checker::check_stack_static_payload(
+          {{ model.form_cpp_name }}::stack_contract,
+          {{ model.stack_token }},
+          {{ model.allocation_result }},
+          {{ model.size_operand }}, {{ model.align }}, context);
+{{ fragment(model.stack_payload_check_result) }}{% elif model.structure == "texture_payload_check" %}      const auto texture_payload_check = checker::check_texture_static_payload(
+          {{ model.name }}::texture_contract, selected.texture_selected_types(),
+          {{ model.access_member }}.value, {{ model.result_member }}.value,
+          {{ model.residency_required }}, context);
+{{ fragment(model.texture_payload_check_result) }}{% elif model.structure == "texture_query_check" %}      const auto texture_query_check = checker::check_texture_query_static_payload(
+          {{ model.name }}::texture_contract, {{ model.resource_member }}.value, context);
+{{ fragment(model.texture_query_check_result) }}{% elif model.structure == "named_rule_check" %}      const auto {{ model.label }} = {{ model.expression }};
+{{ fragment(model.named_check_result) }}
+{% elif model.structure == "mma_source_check" %}      const auto mma_source_check = check_tcgen_mma_sources(
+          selected.cta_group, {{ model.d_member }}, {{ model.address }}, {{ model.shared }},
+          {{ model.b_member }}, {{ model.idesc_member }}, {{ model.mask }},
+          {{ model.enable_input_d_member }}, {{ model.scale }}, {{ model.selector }},
+          {{ model.scale_a }}, {{ model.scale_b }}, {{ model.ashift }}, {{ model.collector }}, {{ model.metadata }},
+          {{ model.zero_column }}, {{ model.ws }}, {{ model.sparse }},
+          context);
+{{ fragment(model.mma_source_check_result) }}{% elif model.structure == "check" %}/** Check the {{ model.name }} final form in existing diagnostic order. */
+checker::CheckResult {{ model.name }}::check(const checker::Context& context) const {
+  const auto& selected = *this;
+  checker::CheckDiagnostics diagnostics;
+  const auto predicate_check = checker::check_execution_predicate(
+      execution_predicate, context);
+{{ fragment(model.predicate_check_result) }}
+  const std::array<checker::FieldView, {{ model.modifier_count }}> fields = {{ "{{" }}
+{% for item in model.field_views or () %}{{ views.modifier_view(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+  }};
+  const std::array<checker::ModifierValueView, {{ model.modifier_count }}> modifier_values = {{ "{{" }}
+{% for item in model.modifier_views or () %}{{ views.modifier_value_view(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+  }};
+  const auto common_check = checker::check_common({{ model.descriptor }},
+      "{{ model.variant_name }}", context);
+{{ fragment(model.common_check_result) }}
+  const auto domain_check = checker::check_modifier_value_domain(
+      {{ model.descriptor }}.variants[{{ model.variant_index }}].modifier_value_domains,
+      modifier_values, context);
+{{ fragment(model.domain_check_result) }}
+  const auto modifier_availability_check = checker::check_modifier_value_availability(
+      {{ model.descriptor }}.variants[{{ model.variant_index }}].modifier_value_availabilities,
+      modifier_values, context);
+{{ fragment(model.modifier_availability_check_result) }}
+{{ fragment(model.group_check) }}
+{{ fragment(model.hint_check) }}
+  const auto layout_check = checker::check_operand_layout_tag(
+      "{{ model.variant_name }}", operand_layout.value,
+      {{ model.layout_count }}, context);
+{{ fragment(model.layout_check_result) }}
+  if (layout_check) {
+    switch (operand_layout.value) {
+{% for item in model.layout_cases or () %}{{ fragment(item) }}{% if not loop.last %}
+{% endif %}{% endfor %}
+    default:
+      break;
+    }
+  }
+  if (diagnostics.empty()) return {};
+  return std::unexpected(std::move(diagnostics));
+}{% elif model.structure == "unified_address_check" %}            const auto unified_address_check = check_unified_address_suffix(
+                {{ model.checker_variant_expr }}, fields, operands, context);
+            if (!unified_address_check) {
+              diagnostics.insert(diagnostics.end(), unified_address_check.error().begin(),
+                                 unified_address_check.error().end());
+            }
+{% elif model.structure == "atomic_qualifier_check" %}            const auto atomic_check = check_atomic_qualifiers(
+                {{ model.checker_variant_expr }}.atomic_address_qualifier,
+                {{ model.address_qualifier_expr }}, fields, operands, context);
+            if (!atomic_check) {
+              diagnostics.insert(diagnostics.end(), atomic_check.error().begin(),
+                                 atomic_check.error().end());
+            }
+{% elif model.structure == "memory_consistency_check" %}            const auto consistency_check = check_memory_consistency(
+                {{ model.checker_variant_expr }}.memory_consistency, fields, operands, context);
+            if (!consistency_check) {
+              diagnostics.insert(diagnostics.end(), consistency_check.error().begin(),
+                                 consistency_check.error().end());
+            }
+{% elif model.structure == "memory_vector_check" %}            const auto memory_vector_check = check_memory_vector(
+                {{ model.checker_variant_expr }}.memory_vector, fields, operands, context);
+            if (!memory_vector_check) {
+              diagnostics.insert(diagnostics.end(), memory_vector_check.error().begin(),
+                                 memory_vector_check.error().end());
+            }
+{% elif model.structure == "address_alignment_loop" %}            for (const auto& alignment : {{ model.checker_variant_expr }}.address_alignments) {
+              const auto alignment_check = check_address_alignment(
+                  alignment, fields, operands, context);
+              if (!alignment_check) {
+                diagnostics.insert(diagnostics.end(), alignment_check.error().begin(),
+                                   alignment_check.error().end());
+              }
+            }
+{% elif model.structure == "immediate_value_check" %}            const auto immediate_value_check = check_immediate_value(
+                {{ model.checker_variant_expr }}.immediate_value, operands, context);
+            if (!immediate_value_check) {
+              diagnostics.insert(diagnostics.end(), immediate_value_check.error().begin(),
+                                 immediate_value_check.error().end());
+            }
+{% elif model.structure == "immediate_range_loop" %}            for (const auto& immediate_range : {{ model.checker_variant_expr }}.immediate_ranges) {
+              const auto immediate_range_check = check_immediate_range(
+                  immediate_range, operands, context);
+              if (!immediate_range_check) {
+                diagnostics.insert(diagnostics.end(), immediate_range_check.error().begin(),
+                                   immediate_range_check.error().end());
+              }
+            }
+{% elif model.structure == "immediate_multiple_check" %}            const auto immediate_multiple_of_check = check_immediate_multiple_of(
+                {{ model.checker_variant_expr }}.immediate_multiple_of, operands, context);
+            if (!immediate_multiple_of_check) {
+              diagnostics.insert(diagnostics.end(), immediate_multiple_of_check.error().begin(),
+                                 immediate_multiple_of_check.error().end());
+            }
+{% elif model.structure == "tensor_store_coordinate_loop" %}            for (const auto& operand : operands) {
+              if (operand.actual_shape != OperandShape::TensorOperand)
+                continue;
+              const auto coordinate_check =
+                  check_tensor_store_coordinates(operand, context);
+              if (!coordinate_check) {
+                diagnostics.insert(diagnostics.end(),
+                                   coordinate_check.error().begin(),
+                                   coordinate_check.error().end());
+              }
+            }
+{% elif model.structure == "cvt_rule_check" %}            const auto cvt_rule_check = check_cvt_rule(
+                modifier_values, operands, context);
+            if (!cvt_rule_check) {
+              diagnostics.insert(diagnostics.end(), cvt_rule_check.error().begin(),
+                                 cvt_rule_check.error().end());
+            }
+{% elif model.structure == "create_policy_rule_check" %}            const auto createpolicy_rule_check = check_createpolicy_rule(
+                operands, context);
+            if (!createpolicy_rule_check) {
+              diagnostics.insert(diagnostics.end(), createpolicy_rule_check.error().begin(),
+                                 createpolicy_rule_check.error().end());
+            }
+{% elif model.structure == "bulk_size_width_check" %}            const auto size_width_check = check_st_bulk_size_width(
+                operands, context);
+            if (!size_width_check) {
+              diagnostics.insert(diagnostics.end(), size_width_check.error().begin(),
+                                 size_width_check.error().end());
+            }
+{% elif model.structure == "cp_async_rule_check" %}            const auto cp_async_rule_check = check_cp_async_rule(
+                fields, operands, context);
+            if (!cp_async_rule_check) {
+              diagnostics.insert(diagnostics.end(), cp_async_rule_check.error().begin(),
+                                 cp_async_rule_check.error().end());
+            }
+{% elif model.structure == "async_release_check" %}            const auto async_release_check = check_red_async_release_qualifiers(
+                fields, context);
+            if (!async_release_check) {
+              diagnostics.insert(diagnostics.end(), async_release_check.error().begin(),
+                                 async_release_check.error().end());
+            }
+{% elif model.structure == "tensor_info_bounds" %}      const std::array<uint16_t, {{ model.bounds | length }}> info_maximum_values = { {{- model.bounds | join(", ") -}} };
+{% endif -%}
+{% endmacro %}
+{% macro check(model) -%}{{ fragment(model) }}{% endmacro %}

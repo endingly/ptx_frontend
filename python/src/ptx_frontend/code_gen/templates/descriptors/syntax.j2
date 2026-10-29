@@ -1,0 +1,73 @@
+{% macro modifier(model) %}          check_end::SyntaxModifierDescriptor{
+              .allowed_values = {{ model.allowed_values }},
+              .presence = {{ model.presence }},
+              .kind_id = {{ model.kind_id }},
+          }{% endmacro %}{% macro modifier_array(model) %}  inline static constexpr std::array<check_end::SyntaxModifierDescriptor, {{ model.modifiers|length }}>
+      {{ model.name }} = {
+{% for item in model.modifiers %}{{ modifier(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro allowed_values(model) %}  inline static constexpr std::array<std::string_view, {{ model.values|length }}>
+      {{ model.name }} = {
+          {{ model.values|join(', ') }},
+      };{% endmacro %}{% macro slot(model) %}          check_end::SyntaxOperandSlotDescriptor{
+              .allowed_shapes = {{ model.allowed_shapes }},
+              .presence = {{ model.presence }},
+{% if model.type_tag is not none %}
+              .type_tag = {{ model.type_tag }},{% endif %}{% if model.minimum_elements is not none %}
+              .minimum_elements = {{ model.minimum_elements }},
+              .maximum_elements = {{ model.maximum_elements }},{% endif %}{% if model.element_shapes is not none %}
+              .allowed_element_shapes = {{ model.element_shapes }},{% endif %}{% if model.texture_unbracketed %}
+              .texture_unbracketed = true,{% endif %}
+          }{% endmacro %}{% macro slot_array(model) %}  inline static constexpr std::array<check_end::SyntaxOperandSlotDescriptor, {{ model.slots|length }}>
+      {{ model.slots_name }} = {
+{% for item in model.slots %}{{ slot(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro layout_array(model) %}  inline static constexpr std::array<check_end::SyntaxOperandLayoutDescriptor, {{ model.layouts|length }}>
+      {{ model.name }}_operand_layouts = {
+{% for layout in model.layouts %}          check_end::SyntaxOperandLayoutDescriptor{
+              .layout_id = {{ layout.layout_id }},
+              .kind = {{ layout.kind }},
+              .slots = {{ layout.slots_name }},
+          }{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro modifier_aliases(model) %}{% for alias in model.aliases %}{{ modifier_array(alias) }}
+
+{% endfor %}  inline static constexpr std::array<check_end::SyntaxModifierOrderDescriptor, {{ model.aliases|length }}>
+      {{ model.name }}_modifier_order_aliases = {
+{% for alias in model.aliases %}          check_end::SyntaxModifierOrderDescriptor{.modifiers = {{ alias.name }}}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro variant_storage(model) %}{% for values in model.allowed_values %}{{ allowed_values(values) }}
+
+{% endfor %}{{ modifier_array(model.modifiers) }}{% if model.aliases %}
+
+{{ modifier_aliases(model) }}{% endif %}{% if model.layouts %}
+
+{% for layout in model.layouts %}{{ slot_array(layout) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}{% endif %}
+
+{{ layout_array(model) }}{% endmacro %}{% macro variant_descriptor(model) %}          check_end::SyntaxVariantDescriptor{
+              .variant_name = {{ model.variant_name }},
+              .modifiers = {{ model.name }}_modifiers,
+              .operand_layouts = {{ model.name }}_operand_layouts,
+              .modifier_order_aliases = {{ model.alias_reference }},
+          }{% endmacro %}{% macro storage(model) %}struct {{ model.storage_name }} {
+{% for variant in model.variants %}{{ variant_storage(variant) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+  inline static constexpr std::array<check_end::SyntaxVariantDescriptor, {{ model.variants|length }}>
+      variants = {
+{% for variant in model.variants %}{{ variant_descriptor(variant) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };
+
+  inline static constexpr check_end::SyntaxInstructionDescriptor descriptor{
+      .Opcode_name = {{ model.opcode }},
+      .variants = variants,
+  };
+};
+{% endmacro %}{% macro getter(model) %}const check_end::SyntaxInstructionDescriptor&
+{{ model.cpp_name }}::get_syntax_descriptor() noexcept {
+  return {{ model.storage_name }}::descriptor;
+}{% endmacro %}{% if model is defined %}{{ storage(model) }}{% endif %}

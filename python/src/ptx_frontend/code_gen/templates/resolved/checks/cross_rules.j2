@@ -1,0 +1,1 @@
+{% import "resolved/checks.j2" as checks -%}{% for row in model.rows %}{{ checks.fragment(row) }}{% endfor %}

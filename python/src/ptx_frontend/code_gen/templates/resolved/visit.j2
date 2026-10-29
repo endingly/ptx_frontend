@@ -1,0 +1,18 @@
+{% macro visit(model) -%}/** Borrow {{ model.name }}'s predicate and selected operands in descriptor order. */
+void {{ model.name }}::visit_references(
+    ::ptx_frontend::resolved_ir::detail::IReferenceObserver& observer) const {
+  if (execution_predicate)
+    observer.predicate(execution_predicate->value, execution_predicate->locs,
+        checker::AddressSymbolResolutionPolicy::PreserveDeclarationSpace);
+  switch (operand_layout.value) {
+{% for layout in model.layouts %}    case {{ layout.index }}: {
+{% if layout.validity %}      if (!({{ layout.validity | join(' &&\n            ') }})) return;
+{% endif %}{% for callback in layout.callbacks %}      observer.{{ callback.method }}({{ callback.member }}.value, {{ callback.member }}.locs, {{ callback.policy }});{% if not loop.last %}
+{% endif %}{% endfor %}
+      return;
+    }{% if not loop.last %}
+{% endif %}{% endfor %}
+    default:
+      return;
+  }
+}{%- endmacro %}

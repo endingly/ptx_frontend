@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.context import GenerationContext
 from ptx_frontend.code_gen.emit.resolved_dispatch import (
     generate_resolved_dispatch_source,
 )
 from ptx_frontend.code_gen.emit.resolved_model import (
-    form_shards,
     generate_resolved_base_header,
     generate_resolved_form_shard_header,
     generate_resolved_identity_catalogue_header,

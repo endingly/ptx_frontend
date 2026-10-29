@@ -1,0 +1,478 @@
+{% import 'tcgen/mma/rows.j2' as rows %}{% macro storage(model) %}
+namespace ptx_frontend::resolved_ir {{ '{' }}
+namespace {{ '{' }}
+constexpr std::array<{{ model.cpp_prefix }}ShapeRow, {{ model.shapes | length }}> {{ model.shape_array }} = {{ '{' }}{{ '{' }}
+{% for row in model.shapes %}{{ rows.dense_shape(row, model.cpp_prefix + 'ShapeRow') }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+constexpr std::array<{{ model.cpp_prefix }}PathRow, {{ model.paths | length }}> {{ model.path_array }} = {{ '{' }}{{ '{' }}
+{% for row in model.paths %}{{ rows.path(row, model.cpp_prefix + 'PathRow', false) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% if model.scales %}constexpr std::array<TcgenMxScaleLayoutRow, {{ model.scales | length }}> kMxScaleLayouts = {{ '{' }}{{ '{' }}
+{% for row in model.scales %}{{ rows.scale(row) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% endif %}}  // namespace
+std::span<const {{ model.cpp_prefix }}ShapeRow> {{ model.snake }}_shape_rows() noexcept {{ '{' }}
+  return {{ model.shape_array }};
+}
+std::span<const {{ model.cpp_prefix }}PathRow> {{ model.snake }}_path_rows() noexcept {{ '{' }}
+  return {{ model.path_array }};
+}
+{% if model.scales %}std::span<const TcgenMxScaleLayoutRow> tcgen_mx_scale_layout_rows() noexcept {{ '{' }}
+  return kMxScaleLayouts;
+}
+{% endif %}bool {{ model.snake }}_row_contains(const {{ model.cpp_prefix }}ShapeRow& row,
+{{ model.dimension_indent }}uint16_t m, uint16_t n, uint16_t k) noexcept {{ '{' }}
+{% if model.has_n_prefix %}  const bool small = n != 0 &&
+      std::find(row.n_small.begin(), row.n_small.end(), n) != row.n_small.end();
+  return (m == row.m_values[0] || m == row.m_values[1]) && k == row.k &&
+         (small || (n >= row.n_first && n <= row.n_last &&
+                    (n - row.n_first) % row.n_step == 0));
+{% else %}  return (m == row.m_values[0] || m == row.m_values[1]) &&
+         n >= row.n_first && n <= row.n_last &&
+         (n - row.n_first) % row.n_step == 0 && k == row.k;
+{% endif %}}
+}  // namespace ptx_frontend::resolved_ir
+
+{% endmacro %}{% macro query_preamble(model) %}#include <algorithm>
+#include <array>
+#include <string_view>
+#include <utility>
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+{% endmacro %}{% macro scaled_target_storage(model) %}/** One approved target floor, matched through the accepted profile catalog. */
+struct {{ model.cpp_prefix }}TargetGate {
+  /** Exact target spelling or enabled family feature. */
+  std::string_view feature;
+  /** Whether the spelling must match the identity exactly. */
+  bool exact;
+  /** PTX version from which the gate is available. */
+  checker::PtxVersion minimum_ptx;
+  /** Whether this row applies only when D scaling is present. */
+  bool scaled_d;
+};
+constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.targets | length }}> {{ model.target_array }} = {{ '{{' }}
+{% for row in model.targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% endmacro %}{% macro scaled_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
+bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
+  const auto profile = base::find_target_profile(facts.target->source_spelling);
+  if (!profile || profile->identity != *facts.target) return false;
+  for (const auto& gate : {{ model.target_array }}) {
+    if (gate.scaled_d != facts.scaled_d ||
+        *facts.ptx_version < gate.minimum_ptx) continue;
+    if (gate.exact && facts.target->source_spelling == gate.feature)
+      return true;
+    if (!gate.exact &&
+        std::find(profile->enabled_family_features.begin(),
+                  profile->enabled_family_features.end(), gate.feature) !=
+            profile->enabled_family_features.end())
+      return true;
+  }
+  return false;
+}
+{% endmacro %}{% macro f16_shared_operand(model) %}/** Apply the per-operand 16-bit Table 57 rule after field validation. */
+void {{ model.shared_checker }}(bool is_a, bool transpose,
+                          TcgenSharedWord word, TcgenSharedContext context,
+                          const {{ model.cpp_prefix }}KnownFacts& facts,
+                          {{ model.cpp_prefix }}OperationalReport& report) {
+  if (context.target && facts.target && *context.target != *facts.target)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (context.ptx_version && facts.ptx_version &&
+      *context.ptx_version != *facts.ptx_version)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (!context.target) context.target = facts.target;
+  if (!context.ptx_version) context.ptx_version = facts.ptx_version;
+  if (is_a) context.transpose_a = transpose;
+  else context.transpose_b = transpose;
+  auto fields = validate_tcgen_shared_defined_fields(word, context);
+  if (is_a) {
+    report.a_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::ASharedFields);
+  } else {
+    report.b_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::BSharedFields);
+  }
+  if (!context.major) {
+    report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::AMajor
+                                  : {{ model.cpp_prefix }}Obligation::BMajor);
+  } else {
+    if (*context.major != (transpose ? TcgenMajor::MN : TcgenMajor::K))
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::AMajor
+                                        : {{ model.cpp_prefix }}Violation::BMajor);
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::AMajor
+                                  : {{ model.cpp_prefix }}Checked::BMajor);
+  }
+  const auto decoded = decode_tcgen_shared(word);
+  if (!decoded.swizzle ||
+      (transpose && *decoded.swizzle == TcgenSwizzle::B128Atom32))
+    report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ASwizzle
+                                      : {{ model.cpp_prefix }}Violation::BSwizzle);
+  report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ASwizzle
+                                : {{ model.cpp_prefix }}Checked::BSwizzle);
+}
+}  // namespace
+
+{% endmacro %}{% macro operation_start(model) %}{{ model.cpp_prefix }}OperationalReport check_{{ model.snake }}_known_operation(
+    const {{ model.cpp_prefix }}KnownFacts& facts) {
+  {{ model.cpp_prefix }}OperationalReport report;
+  report.instruction_fields =
+      validate_tcgen_instruction_defined_fields(facts.instruction);
+  report.checked.push_back({{ model.cpp_prefix }}Checked::InstructionFields);
+  if (facts.instruction.kind != TcgenMmaKind::{{ model.kind }}) {
+    report.violations.push_back({{ model.cpp_prefix }}Violation::Kind);
+    return report;
+  }
+  if (facts.group != TcgenCtaGroup::One && facts.group != TcgenCtaGroup::Two) {
+    report.violations.push_back({{ model.cpp_prefix }}Violation::Group);
+    return report;
+  }
+{% endmacro %}{% macro shared_placement(model) %}  if (facts.a_in_tmem) {
+    if (facts.a_shared_word)
+      report.violations.push_back({{ model.cpp_prefix }}Violation::APlacementFacts);
+  } else if (!facts.a_shared_word) {
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::ASharedWord);
+  } else {
+    {{ model.shared_checker }}(true, decoded.transpose_a, *facts.a_shared_word,
+                         facts.a_context, facts, report);
+  }
+  if (!facts.b_shared_word) {
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::BSharedWord);
+  } else {
+    {{ model.shared_checker }}(false, decoded.transpose_b, *facts.b_shared_word,
+                         facts.b_context, facts, report);
+  }
+{% endmacro %}{% macro datapath(model) %}  for (const auto& row : {{ model.path_array }}) {
+    if (row.group != facts.group || row.m != decoded.m) continue;
+    report.path_layout = row.layout;
+    report.checked.push_back({{ model.cpp_prefix }}Checked::Datapath);
+    const auto allowed = [&row](uint8_t lane) {
+      return std::find(row.allowed_lane_halves.begin(),
+                       row.allowed_lane_halves.begin() + row.allowed_lane_count,
+                       lane) != row.allowed_lane_halves.begin() +
+                                   row.allowed_lane_count;
+    };
+    if (facts.a_in_tmem) {
+      if (!facts.a_lane_half)
+        report.missing.push_back({{ model.cpp_prefix }}Obligation::ALaneHalf);
+      else if (!allowed(*facts.a_lane_half))
+        report.violations.push_back({{ model.cpp_prefix }}Violation::ALaneHalf);
+    }
+    if (!facts.d_lane_half)
+      report.missing.push_back({{ model.cpp_prefix }}Obligation::DLaneHalf);
+    else if (!allowed(*facts.d_lane_half))
+      report.violations.push_back({{ model.cpp_prefix }}Violation::DLaneHalf);
+    if (row.half_path && facts.a_in_tmem && facts.a_lane_half &&
+        facts.d_lane_half && allowed(*facts.a_lane_half) &&
+        allowed(*facts.d_lane_half)) {
+      if (*facts.a_lane_half != *facts.d_lane_half)
+        report.violations.push_back({{ model.cpp_prefix }}Violation::HalfAlignment);
+      report.checked.push_back({{ model.cpp_prefix }}Checked::HalfAlignment);
+    }
+    break;
+  }
+{% endmacro %}{% macro operation_finish(model) %}  if (!facts.target || !facts.ptx_version)
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::Target);
+  else {
+    if (!{{ model.target_checker }}(facts))
+      report.violations.push_back({{ model.cpp_prefix }}Violation::Target);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::Target);
+  }
+  return report;
+}
+}  // namespace ptx_frontend::resolved_ir
+{% endmacro %}{% macro known_word_fields(model) %}  /** Optional caller-known Table 43 A word; absent for Tensor Memory A. */
+  std::optional<TcgenSharedWord> a_shared_word;
+  /** Optional caller-known Table 43 B word. */
+  std::optional<TcgenSharedWord> b_shared_word;
+  /** Context for A word field checks, including known major/bytes. */
+  TcgenSharedContext a_context;
+  /** Context for B word field checks, including known major/bytes. */
+  TcgenSharedContext b_context;
+  /** Independently known A Tensor Memory lane half, either 0 or 16. */
+  std::optional<uint8_t> a_lane_half;
+  /** Independently known D Tensor Memory lane half, either 0 or 16. */
+  std::optional<uint8_t> d_lane_half;
+  /** Explicit cataloged target identity, when known. */
+  std::optional<base::TargetIdentity> target;
+  /** Explicit PTX version, when known. */
+  std::optional<checker::PtxVersion> ptx_version;
+{% endmacro %}{% macro report_fields(model) %}  /** Accepted Tables 45–47 field report, always populated. */
+  TcgenDefinedFieldReport instruction_fields;
+  /** Accepted Table 43 A report, present only for supplied shared A words. */
+  std::optional<TcgenDefinedFieldReport> a_shared_fields;
+  /** Accepted Table 43 B report, present only for supplied B words. */
+  std::optional<TcgenDefinedFieldReport> b_shared_fields;
+  /** Checks actually evaluated with enough supplied facts. */
+  std::vector<{{ model.cpp_prefix }}Checked> checked;
+  /** Operational failures proved by supplied facts. */
+  std::vector<{{ model.cpp_prefix }}Violation> violations;
+  /** Facts/rules still needed; absence does not mean validity. */
+  std::vector<{{ model.cpp_prefix }}Obligation> missing;
+{% endmacro %}{% macro supplied_facts_ok(model) %}  /** Report whether every supplied checked fact passed its own rule. */
+  [[nodiscard]] bool supplied_facts_ok() const noexcept {
+    return instruction_fields.defined_fields_ok() &&
+           (!a_shared_fields || a_shared_fields->defined_fields_ok()) &&
+           (!b_shared_fields || b_shared_fields->defined_fields_ok()) &&
+           violations.empty();
+  }
+{% endmacro %}{% macro tf32_shared_operand(model) %}/** Apply the per-operand 32-bit Table 57 rule after field validation. */
+void {{ model.shared_checker }}(bool is_a, bool transpose,
+                          TcgenSharedWord word, TcgenSharedContext context,
+                          const {{ model.cpp_prefix }}KnownFacts& facts,
+                          {{ model.cpp_prefix }}OperationalReport& report) {
+  if (context.target && facts.target && *context.target != *facts.target)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (context.ptx_version && facts.ptx_version &&
+      *context.ptx_version != *facts.ptx_version)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (!context.target) context.target = facts.target;
+  if (!context.ptx_version) context.ptx_version = facts.ptx_version;
+  if (is_a) context.transpose_a = transpose;
+  else context.transpose_b = transpose;
+  auto fields = validate_tcgen_shared_defined_fields(word, context);
+  if (is_a) {
+    report.a_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::ASharedFields);
+  } else {
+    report.b_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::BSharedFields);
+  }
+  if (!context.major) {
+    report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::AMajor
+                                  : {{ model.cpp_prefix }}Obligation::BMajor);
+  } else {
+    if (*context.major != (transpose ? TcgenMajor::MN : TcgenMajor::K))
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::AMajor
+                                        : {{ model.cpp_prefix }}Violation::BMajor);
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::AMajor
+                                  : {{ model.cpp_prefix }}Checked::BMajor);
+  }
+  const auto decoded = decode_tcgen_shared(word);
+  if (!decoded.swizzle ||
+      (transpose && *decoded.swizzle != TcgenSwizzle::B128Atom32))
+    report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ASwizzle
+                                      : {{ model.cpp_prefix }}Violation::BSwizzle);
+  report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ASwizzle
+                                : {{ model.cpp_prefix }}Checked::BSwizzle);
+}
+}  // namespace
+
+{% endmacro %}{% macro unscaled_target_storage(model) %}/** One approved target floor, matched through the accepted profile catalog. */
+struct {{ model.cpp_prefix }}TargetGate {
+  /** Exact target spelling or enabled family feature. */
+  std::string_view feature;
+  /** Whether the spelling must match the identity exactly. */
+  bool exact;
+  /** PTX version from which the gate is available. */
+  checker::PtxVersion minimum_ptx;
+};
+constexpr std::array<{{ model.cpp_prefix }}TargetGate, {{ model.targets | length }}> {{ model.target_array }} = {{ '{{' }}
+{% for row in model.targets %}{{ rows.target(row, model.cpp_prefix + 'TargetGate', '  ', false, model.scaled_d_gate) }}{{ ',\n' if not loop.last else '' }}{% endfor %}
+}};
+{% endmacro %}{% macro unscaled_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
+bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
+  const auto profile = base::find_target_profile(facts.target->source_spelling);
+  if (!profile || profile->identity != *facts.target) return false;
+  for (const auto& gate : {{ model.target_array }}) {
+    if (*facts.ptx_version < gate.minimum_ptx) continue;
+    if (gate.exact && facts.target->source_spelling == gate.feature)
+      return true;
+    if (!gate.exact &&
+        std::find(profile->enabled_family_features.begin(),
+                  profile->enabled_family_features.end(), gate.feature) !=
+            profile->enabled_family_features.end())
+      return true;
+  }
+  return false;
+}
+{% endmacro %}{% macro i8_shared_operand(model) %}/** Apply the per-operand 8-bit Table 57 rule after field validation. */
+void {{ model.shared_checker }}(bool is_a, bool transpose,
+                          TcgenSharedWord word, TcgenSharedContext context,
+                          const {{ model.cpp_prefix }}KnownFacts& facts,
+                          {{ model.cpp_prefix }}OperationalReport& report) {
+  if (context.target && facts.target && *context.target != *facts.target)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (context.ptx_version && facts.ptx_version &&
+      *context.ptx_version != *facts.ptx_version)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (!context.target) context.target = facts.target;
+  if (!context.ptx_version) context.ptx_version = facts.ptx_version;
+  if (is_a) context.transpose_a = transpose;
+  else context.transpose_b = transpose;
+  auto fields = validate_tcgen_shared_defined_fields(word, context);
+  if (is_a) {
+    report.a_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::ASharedFields);
+  } else {
+    report.b_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::BSharedFields);
+  }
+  if (!context.major) {
+    report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::AMajor
+                                  : {{ model.cpp_prefix }}Obligation::BMajor);
+  } else {
+    if (*context.major != (transpose ? TcgenMajor::MN : TcgenMajor::K))
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::AMajor
+                                        : {{ model.cpp_prefix }}Violation::BMajor);
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::AMajor
+                                  : {{ model.cpp_prefix }}Checked::BMajor);
+  }
+  const auto decoded = decode_tcgen_shared(word);
+  if (!decoded.swizzle ||
+      (transpose && *decoded.swizzle == TcgenSwizzle::B128Atom32))
+    report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ASwizzle
+                                      : {{ model.cpp_prefix }}Violation::BSwizzle);
+  report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ASwizzle
+                                : {{ model.cpp_prefix }}Checked::BSwizzle);
+}
+}  // namespace
+
+{% endmacro %}{% macro low_bit_shared_operand(model) %}/** Check Table 43 fields while leaving 4/6-bit transpose unresolved. */
+void {{ model.shared_checker }}(bool is_a, bool transpose,
+                          std::optional<MatrixElementType> type,
+                          TcgenSharedWord word, TcgenSharedContext context,
+                          const {{ model.cpp_prefix }}KnownFacts& facts,
+                          {{ model.cpp_prefix }}OperationalReport& report) {
+  if (context.target && facts.target && *context.target != *facts.target)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (context.ptx_version && facts.ptx_version &&
+      *context.ptx_version != *facts.ptx_version)
+    report.violations.push_back({{ model.cpp_prefix }}Violation::InvalidContext);
+  if (!context.target) context.target = facts.target;
+  if (!context.ptx_version) context.ptx_version = facts.ptx_version;
+  if (is_a) context.transpose_a = transpose;
+  else context.transpose_b = transpose;
+  auto fields = validate_tcgen_shared_defined_fields(word, context);
+  if (is_a) {
+    report.a_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::ASharedFields);
+  } else {
+    report.b_shared_fields = std::move(fields);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::BSharedFields);
+  }
+  const bool low = type && (*type == MatrixElementType::E2M3 ||
+                            *type == MatrixElementType::E3M2 ||
+                            *type == MatrixElementType::E2M1);
+  if (!context.major) {
+    report.missing.push_back(is_a ? {{ model.cpp_prefix }}Obligation::AMajor
+                                  : {{ model.cpp_prefix }}Obligation::BMajor);
+  } else if (!low || !transpose) {
+    if (*context.major != (transpose ? TcgenMajor::MN : TcgenMajor::K))
+      report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::AMajor
+                                        : {{ model.cpp_prefix }}Violation::BMajor);
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::AMajor
+                                  : {{ model.cpp_prefix }}Checked::BMajor);
+  }
+  const auto decoded = decode_tcgen_shared(word);
+  if (!decoded.swizzle ||
+      (transpose && *decoded.swizzle == TcgenSwizzle::B128Atom32)) {
+    report.violations.push_back(is_a ? {{ model.cpp_prefix }}Violation::ASwizzle
+                                      : {{ model.cpp_prefix }}Violation::BSwizzle);
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ASwizzle
+                                  : {{ model.cpp_prefix }}Checked::BSwizzle);
+  } else if (!low || !transpose) {
+    report.checked.push_back(is_a ? {{ model.cpp_prefix }}Checked::ASwizzle
+                                  : {{ model.cpp_prefix }}Checked::BSwizzle);
+  }
+}
+}  // namespace
+
+{% endmacro %}{% macro typed_shared_placement(model) %}  if (facts.a_in_tmem) {
+    if (facts.a_shared_word)
+      report.violations.push_back({{ model.cpp_prefix }}Violation::APlacementFacts);
+  } else if (!facts.a_shared_word) {
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::ASharedWord);
+  } else {
+    {{ model.shared_checker }}(true, decoded.transpose_a, decoded.a_type,
+                         *facts.a_shared_word, facts.a_context, facts, report);
+  }
+  if (!facts.b_shared_word) {
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::BSharedWord);
+  } else {
+    {{ model.shared_checker }}(false, decoded.transpose_b, decoded.b_type,
+                         *facts.b_shared_word, facts.b_context, facts, report);
+  }
+{% endmacro %}{% macro mx8_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
+bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
+  const auto profile = base::find_target_profile(facts.target->source_spelling);
+  if (!profile || profile->identity != *facts.target) return false;
+  for (const auto& gate : {{ model.target_array }}) {
+    if (*facts.ptx_version < gate.minimum_ptx) continue;
+    if (facts.scale_selector == TcgenScaleVectorSize::Vec1X &&
+        gate.feature != "sm_100a") continue;
+    if (facts.scale_selector == TcgenScaleVectorSize::Block32 && gate.exact)
+      continue;
+    if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
+        facts.scale_selector != TcgenScaleVectorSize::Vec1X &&
+        facts.scale_selector != TcgenScaleVectorSize::Block32) continue;
+    if (gate.exact && facts.target->source_spelling == gate.feature)
+      return true;
+    if (!gate.exact &&
+        std::find(profile->enabled_family_features.begin(),
+                  profile->enabled_family_features.end(), gate.feature) !=
+            profile->enabled_family_features.end())
+      return true;
+  }
+  return false;
+}
+{% endmacro %}{% macro mx4_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
+bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
+  const auto profile = base::find_target_profile(facts.target->source_spelling);
+  if (!profile || profile->identity != *facts.target) return false;
+  for (const auto& gate : {{ model.target_array }}) {
+    if (*facts.ptx_version < gate.minimum_ptx) continue;
+    if (facts.scale_selector == TcgenScaleVectorSize::Vec2X &&
+        gate.feature != "sm_100a") continue;
+    if (facts.scale_selector == TcgenScaleVectorSize::Block32 && gate.exact)
+      continue;
+    if (facts.scale_selector != TcgenScaleVectorSize::Absent &&
+        facts.scale_selector != TcgenScaleVectorSize::Vec2X &&
+        facts.scale_selector != TcgenScaleVectorSize::Block32) continue;
+    if (gate.exact && facts.target->source_spelling == gate.feature)
+      return true;
+    if (!gate.exact &&
+        std::find(profile->enabled_family_features.begin(),
+                  profile->enabled_family_features.end(), gate.feature) !=
+            profile->enabled_family_features.end())
+      return true;
+  }
+  return false;
+}
+{% endmacro %}{% macro extended_k_operation_finish(model) %}  if (!facts.target || !facts.ptx_version)
+    report.missing.push_back({{ model.cpp_prefix }}Obligation::Target);
+  else {
+    if (!{{ model.target_checker }}(facts) ||
+        (expected_k == 96 &&
+         (facts.target->source_spelling != "sm_103a" ||
+          *facts.ptx_version < checker::PtxVersion{8, 8})))
+      report.violations.push_back({{ model.cpp_prefix }}Violation::Target);
+    report.checked.push_back({{ model.cpp_prefix }}Checked::Target);
+  }
+  return report;
+}
+}  // namespace ptx_frontend::resolved_ir
+{% endmacro %}{% macro mxnv_target_accept(model) %}/** Check a supplied target identity and version against the closed rows. */
+bool {{ model.target_checker }}(const {{ model.cpp_prefix }}KnownFacts& facts) {
+  const auto profile = base::find_target_profile(facts.target->source_spelling);
+  if (!profile || profile->identity != *facts.target) return false;
+  for (const auto& gate : {{ model.target_array }}) {
+    if (*facts.ptx_version < gate.minimum_ptx) continue;
+    const bool vector = facts.scale_selector == TcgenScaleVectorSize::Vec2X ||
+                        facts.scale_selector == TcgenScaleVectorSize::Vec4X;
+    const bool block = facts.scale_selector == TcgenScaleVectorSize::Block32 ||
+                       facts.scale_selector == TcgenScaleVectorSize::Block16;
+    if (vector && gate.feature != "sm_100a") continue;
+    if (block && gate.exact) continue;
+    if (!vector && !block) continue;
+    if (gate.exact && facts.target->source_spelling == gate.feature)
+      return true;
+    if (!gate.exact &&
+        std::find(profile->enabled_family_features.begin(),
+                  profile->enabled_family_features.end(), gate.feature) !=
+            profile->enabled_family_features.end())
+      return true;
+  }
+  return false;
+}
+{% endmacro %}

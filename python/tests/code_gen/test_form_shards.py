@@ -14,7 +14,7 @@ from ptx_frontend.code_gen.cli import (
 )
 from ptx_frontend.code_gen.context import GenerationContext, build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
-from ptx_frontend.code_gen.emit.resolved_model import FORM_SHARD_SIZE, form_shards
+from ptx_frontend.code_gen.artifact_layout import FORM_SHARD_SIZE, form_shards
 from ptx_frontend.code_gen.plan import build_generation_plan
 from ptx_frontend.spec.database import get_packaged_spec_database
 

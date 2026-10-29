@@ -1,0 +1,167 @@
+{% from 'fragments/availability.j2' import availability %}{% macro modifier_value(model) %}          {{ model.descriptor_type }}{
+              .kind_id = "{{ model.kind_id }}",
+              .value_kind = {{ model.value_kind }},
+{% for member in model.members %}              .{{ member.name }} = {{ member.expression }},
+{% endfor %}{% if model.availability is not none %}              .availability = {{ availability(model.availability) }},
+{% endif %}
+          }{% endmacro %}{% macro value_availabilities(model) %}  static constexpr std::array<checker::ModifierValueAvailabilityDescriptor, {{ model.value_availabilities|length }}>
+      {{ model.name }}_modifier_value_availabilities = {
+{% for value in model.value_availabilities %}{{ modifier_value(value) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro value_domains(model) %}  static constexpr std::array<checker::ModifierValueDomainDescriptor, {{ model.value_domains|length }}>
+      {{ model.name }}_modifier_value_domains = {
+{% for value in model.value_domains %}{{ modifier_value(value) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro forbidden(model) %}  inline static constexpr std::array<checker::ModifierSlotTag, {{ model.forbidden_slots|length }}>
+      {{ model.name }} = {{ '{' }}{% for slot in model.forbidden_slots %}{{- '' if loop.first else ', ' }}checker::ModifierSlotTag{ {{- slot }}}{% endfor %}};{% endmacro %}{% macro layout(model) %}          checker::OperandLayoutDescriptor{
+              .layout_name = "{{ model.layout_name }}",
+              .availability = {{ availability(model.availability) }},
+              .forbidden_modifiers = {{ model.forbidden_reference }},
+          }{% endmacro %}{% macro layouts(model) %}{% for layout in model.layouts if layout.forbidden_slots %}{{ forbidden(layout) }}
+{% endfor %}  static constexpr std::array<checker::OperandLayoutDescriptor, {{ model.layouts|length }}>
+      {{ model.name }}_operand_layouts = {
+{% for item in model.layouts %}{{ layout(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };{% endmacro %}{% macro type_compatibility(model) %}          checker::OperandTypeCompatibilityDescriptor{
+              .target_field_id = "{{ model.target_field_id }}",
+              .special_register_kind = {{ model.special_register_kind }},
+              .instruction_width = {{ model.instruction_width }},
+              .effective_type = {{ model.effective_type }},
+              .availability = {{ availability(model.availability) }},
+          }{% endmacro %}{% macro type_compatibilities(model) %}  static constexpr std::array<checker::OperandTypeCompatibilityDescriptor, {{ model.type_compatibilities|length }}>
+      {{ model.name }}_operand_type_compatibilities = { {{- '{' }}
+{% for item in model.type_compatibilities %}{{ type_compatibility(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% endmacro %}{% macro immediate_values(model) %}  static constexpr std::array<uint64_t, {{ model.immediate_value.values|length }}>
+      {{ model.name }}_immediate_value_values = { {{- '{' }}{{ model.immediate_value.values|join(', ') }}}};{% endmacro %}{% macro immediate_range(model) %}          checker::VariantDescriptor::ImmediateRangeDescriptor{
+              .operand_field_id = "{{ model.operand_field_id }}",
+              .minimum = {{ model.minimum }},
+              .has_maximum = {{ model.has_maximum }},
+              .maximum = {{ model.maximum }},
+          }{% endmacro %}{% macro immediate_ranges(model) %}  static constexpr std::array<checker::VariantDescriptor::ImmediateRangeDescriptor, {{ model.immediate_ranges|length }}>
+      {{ model.name }}_immediate_ranges = { {{- '{' }}
+{% for item in model.immediate_ranges %}{{ immediate_range(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% endmacro %}{% macro address_alignment(model) %}          checker::AddressAlignmentConstraint{
+              .address_field_ids = {{ model.name }},
+              .type_field_id = "{{ model.type_field_id }}",
+              .vector_field_id = "{{ model.vector_field_id }}",
+              .immediate_operand_field_id = "{{ model.immediate_operand_field_id }}",
+              .alignment = {{ model.alignment }},
+          }{% endmacro %}{% macro address_alignments(model) %}{% for item in model.address_alignments %}  static constexpr std::array<std::string_view, {{ item.address_fields|length }}>
+      {{ item.name }} = { {{- '{' }}{% for address in item.address_fields %}"{{ address }}"{% if not loop.last %}, {% endif %}{% endfor %}}};
+{% endfor %}  static constexpr std::array<checker::AddressAlignmentConstraint, {{ model.address_alignments|length }}>
+      {{ model.name }}_address_alignments = { {{- '{' }}
+{% for item in model.address_alignments %}{{ address_alignment(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% endmacro %}{% macro mmio_semantic(model) %}          checker::VariantDescriptor::MmioSemanticDescriptor{
+              .semantics = {{ model.semantics }},
+              .availability = {{ availability(model.availability) }},
+          }{% endmacro %}{% macro mmio_semantics(model) %}  static constexpr std::array<checker::VariantDescriptor::MmioSemanticDescriptor, {{ model.memory_consistency.mmio_semantics|length }}>
+      {{ model.name }}_mmio_semantics = { {{- '{' }}
+{% for item in model.memory_consistency.mmio_semantics %}{{ mmio_semantic(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      }};{% endmacro %}{% macro atomic_domain(model) %}  static constexpr std::array<AtomicAddressQualifier, {{ model.atomic_address.values|length }}>
+      {{ model.name }}_atomic_address_qualifiers = { {{- model.atomic_address.values|join(', ') }}};{% endmacro %}{% macro atomic_address(model) %}
+              .atomic_address_qualifier = {
+                  .state_space_field_id = "{{ model.atomic_address.state_space_field_id }}",
+                  .address_operand_id = "{{ model.atomic_address.address_operand_id }}",
+                  .allowed_values = {{ model.name }}_atomic_address_qualifiers,
+              },{% endmacro %}{% macro memory_consistency(model) %}
+              .memory_consistency = {
+                  .semantics_field_id = "{{ model.semantics_field_id }}",
+                  .scope_field_id = "{{ model.scope_field_id }}",
+                  .mmio_field_id = "{{ model.mmio_field_id }}",
+                  .cache_field_id = "{{ model.cache_field_id }}",
+                  .address_field_id = "{{ model.address_field_id }}",
+                  .type_field_id = "{{ model.type_field_id }}",
+                  .state_space_field_id = "{{ model.state_space_field_id }}",
+                  .mmio_semantics = {{ model.mmio_name }},
+              },{% endmacro %}{% macro memory_vector(model) %}
+              .memory_vector = {
+                  .type_field_id = "{{ model.type_field_id }}",
+                  .vector_field_id = "{{ model.vector_field_id }}",
+                  .address_field_id = "{{ model.address_field_id }}",
+                  .state_space_field_id = "{{ model.state_space_field_id }}",
+                  .availability = {{ availability(model.availability) }},
+                  .require_modern = {{ model.require_modern }},
+              },{% endmacro %}{% macro variant_descriptor(model) %}          checker::VariantDescriptor{
+              .variant_name = "{{ model.name }}",
+              .availability = {{ availability(model.availability) }},
+              .modifier_value_domains = {{ model.name }}_modifier_value_domains,
+              .modifier_value_availabilities =
+                  {{ model.name }}_modifier_value_availabilities,
+              .operand_layouts = {{ model.name }}_operand_layouts,
+              .operand_type_compatibilities =
+                  {{ model.name }}_operand_type_compatibilities,
+              .rule_id = "{{ model.rule_id }}",
+              .permits_unified_address = {{ model.permits_unified_address }},
+              .unified_address_access = checker::VariantDescriptor::UnifiedAddressAccess::{{ model.unified_address_access }},
+{% if model.atomic_address is not none %}{{ atomic_address(model) }}{% endif %}
+{% if model.memory_consistency is not none %}{{ memory_consistency(model.memory_consistency) }}{% endif %}
+{% if model.address_alignments %}              .address_alignments = {{ model.name }}_address_alignments,{% endif %}
+{% if model.memory_vector is not none %}{{ memory_vector(model.memory_vector) }}{% endif %}
+{% if model.immediate_value is not none %}
+              .immediate_value = {
+                  .operand_field_id = "{{ model.immediate_value.operand_field_id }}",
+                  .allowed_values = {{ model.name }}_immediate_value_values,
+              },{% endif %}
+{% if model.immediate_multiple is not none %}
+              .immediate_multiple_of = {
+                  .operand_field_id = "{{ model.immediate_multiple.operand_field_id }}",
+                  .divisor = {{ model.immediate_multiple.divisor }},
+              },{% endif %}
+{% if model.immediate_ranges %}
+              .immediate_ranges = {{ model.name }}_immediate_ranges,{% endif %}
+          }{% endmacro %}{% macro storage(model) %}struct {{ model.storage_name }} {
+{% for item in model.variants %}{{ value_availabilities(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants %}{{ value_domains(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants %}{{ layouts(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants %}{{ type_compatibilities(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants if item.immediate_value is not none %}{{ immediate_values(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants if item.immediate_ranges %}{{ immediate_ranges(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants if item.address_alignments %}{{ address_alignments(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants if item.memory_consistency is not none %}{{ mmio_semantics(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+{% for item in model.variants if item.atomic_address is not none %}{{ atomic_domain(item) }}{% if not loop.last %}
+
+{% endif %}{% endfor %}
+
+  static constexpr std::array<checker::VariantDescriptor, {{ model.variants|length }}>
+      variants = {
+{% for item in model.variants %}{{ variant_descriptor(item) }}{% if not loop.last %},
+{% endif %}{% endfor %}
+      };
+
+  static constexpr checker::InstructionDescriptor descriptor{
+      .opcode_name = "{{ model.opcode }}",
+      .variants = variants,
+  };
+};
+{% endmacro %}{% macro getter(model) %}const checker::InstructionDescriptor&
+{{ model.cpp_name }}::get_checker_descriptor() noexcept {
+  return generated_detail::{{ model.storage_name }}::descriptor;
+}{% endmacro %}{% if model is defined %}{{ storage(model) }}{% endif %}

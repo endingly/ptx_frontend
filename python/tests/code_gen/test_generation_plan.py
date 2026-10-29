@@ -10,6 +10,7 @@ from io import StringIO
 import json
 import re
 import shutil
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -24,11 +25,10 @@ from ptx_frontend.code_gen.context import (
     GenerationInstruction,
     build_generation_context,
 )
+from ptx_frontend.code_gen.cpp_names import REFERENCE_TYPES, method_name
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_model import (
-    REFERENCE_TYPES,
-    form_shards,
     generate_resolved_opcode_header,
-    method_name,
 )
 from ptx_frontend.code_gen.resolved_layout import (
     operand_slot_for_field,
@@ -320,16 +320,48 @@ class GenerationPlanTests(unittest.TestCase):
         assert cls._full_output is not None
         return cls._full_plan, cls._full_output
 
+    def test_checker_guards_and_cross_rules_preserve_diagnostic_order(self) -> None:
+        """Presence checks precede optional access and cross rules retain their order."""
+        from ptx_frontend.code_gen.emit.resolved_checks import (
+            _emit_cross_rule_checks, emit_check,
+        )
+
+        entry = next(item for item in self.context.entries if item.specification.opcode == "atom")
+        variant = entry.resolved.variants[0]
+        cross = _emit_cross_rule_checks(
+            entry.resolved, variant, "chosen_descriptor",
+            address_qualifier_expr="chosen.atomic_qualifier",
+        )
+        self.assertIn("chosen.atomic_qualifier, fields, operands, context", cross)
+        checks = ("atomic_check", "unified_address_check")
+        self.assertEqual(sorted(cross.index("const auto " + name) for name in checks),
+                         [cross.index("const auto " + name) for name in checks])
+
+        for entry in self.context.entries:
+            for index, variant in enumerate(entry.resolved.variants):
+                slots = operand_slots(variant, self.backend)
+                if not any(slot.optional for slot in slots):
+                    continue
+                emitted = emit_check(entry, variant, index, self.backend)
+                self.assertLess(emitted.index("const auto predicate_check"), emitted.index("const auto common_check"))
+                self.assertLess(emitted.index("const auto domain_check"), emitted.index("const auto layout_check"))
+                for layout_index, _ in enumerate(variant.operand_layouts):
+                    branch = emitted.split(f"case {layout_index}: {{", 1)[1].split("      break;", 1)[0]
+                    self.assertLess(branch.index("check_operand_layout_availability"), branch.index("check_operand_layout_modifiers"))
+                    self.assertLess(branch.index("OperandLayoutPayloadMismatch"), branch.index("const std::array<checker::OperandView"))
+                return
+        self.fail("canonical corpus must exercise optional direct operand slots")
+
     def test_named_array_address_policy_is_final_variant_local(self) -> None:
         """Only ordinary LD/ST opt in; overlapping rules cannot widen other families."""
-        from ptx_frontend.code_gen.emit.resolved_source import _named_array_policy
+        from ptx_frontend.code_gen.emit.resolved_checks import named_array_policy
 
         observed = {}
         for entry in self.context.entries:
             if entry.specification.opcode not in {"ld", "ldu", "st", "cp", "atom"}:
                 continue
             for variant in entry.resolved.variants:
-                policy = _named_array_policy(entry, variant)
+                policy = named_array_policy(entry, variant)
                 observed[(entry.specification.opcode, variant.variant_id)] = policy
                 if entry.specification.opcode in {"ldu", "cp", "atom"}:
                     self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
@@ -493,12 +525,11 @@ class GenerationPlanTests(unittest.TestCase):
             entry for entry in context.entries
             if entry.specification.opcode == "cp"
         )
-        resolver = _emit_resolve(cp, self.backend)
+        resolver = _emit_resolve(cp, self.backend, context)
         self.assertGreater(len(cp.resolved.variants), 128)
         for variant in cp.resolved.variants:
             self.assertIn(
-                f'if (*selected == "{variant.cpp_name}") '
-                f'return {cp.cpp_name}{variant.cpp_name}::kind;',
+                f'{cp.cpp_name}{variant.cpp_name}::kind',
                 resolver,
             )
 
@@ -801,9 +832,42 @@ class GenerationPlanTests(unittest.TestCase):
         source_imports = imported_modules("resolved_source.py")
         dispatch_imports = imported_modules("resolved_dispatch.py")
         self.assertFalse(any(name.endswith("resolved_source") for name in model_imports))
-        self.assertTrue(any(name.endswith("resolved_model") for name in source_imports))
+        self.assertFalse(any(name.endswith("resolved_model") for name in source_imports))
+        for imports in (model_imports, source_imports):
+            self.assertIn("ptx_frontend.code_gen.artifact_layout", imports)
+            self.assertIn("ptx_frontend.code_gen.rendering", imports)
+        for builder_name in ("resolved_header.py", "resolved_source.py"):
+            imports = imported_modules("../render_models/" + builder_name)
+            self.assertIn("ptx_frontend.code_gen.cpp_names", imports)
+            self.assertFalse(any(name.startswith("ptx_frontend.code_gen.emit") for name in imports))
+            self.assertNotIn("ptx_frontend.code_gen.rendering", imports)
+            self.assertNotIn("ptx_frontend.code_gen.cli", imports)
         self.assertFalse(any(name.endswith("resolved_source") for name in dispatch_imports))
         self.assertFalse(any(name.endswith("category_source") for name in dispatch_imports))
+
+    def test_preparation_modules_do_not_load_emitters_or_orchestration(self) -> None:
+        """Keep preparation imports usable without artifact rendering or CLI setup."""
+
+        result = subprocess.run(
+            [sys.executable, "-c", """
+import importlib
+import sys
+
+for name in ("artifact_layout", "cpp_names", "selection_index"):
+    importlib.import_module("ptx_frontend.code_gen." + name)
+blocked = sorted(
+    name for name in sys.modules
+    if name == "ptx_frontend.code_gen.emit"
+    or name.startswith("ptx_frontend.code_gen.emit.")
+    or name in {"ptx_frontend.code_gen.plan", "ptx_frontend.code_gen.cli"}
+)
+assert not blocked, blocked
+"""],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_plan_is_the_only_artifact_inventory(self) -> None:
         plan, output = self.full_generation()

@@ -5,7 +5,8 @@ from copy import deepcopy
 import unittest
 
 from ptx_frontend.code_gen.emit import tcgen_mma_operations as emitter
-from ptx_frontend.code_gen.emit.resolved_source import _emit_tcgen_mma_source_check
+from ptx_frontend.code_gen.render_models.resolved_checks import _build_tcgen_mma_source_check
+from ptx_frontend.code_gen.rendering import render_template
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.resolved_layout import operand_slots
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
@@ -222,8 +223,10 @@ class TcgenF16OperationTests(unittest.TestCase):
             altered = replace(variant, operand_layouts=(
                 *variant.operand_layouts[:index], renamed,
                 *variant.operand_layouts[index + 1:]))
-            generated = _emit_tcgen_mma_source_check(
+            model = _build_tcgen_mma_source_check(
                 altered, renamed, operand_slots(altered, backend), backend)
+            assert model is not None
+            generated = render_template("resolved/checks/fragment.j2", model)
             expected = (
                 "selected.d, nullptr, &(*selected.a_register)"
                 if a_kind is ResolvedValueKind.REGISTER else

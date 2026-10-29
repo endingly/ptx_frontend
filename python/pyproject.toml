@@ -10,6 +10,8 @@ requires-python = ">=3.14"
 dependencies = [
     "PyYAML>=6.0,<7",
     "jsonschema>=4.26,<5",
+    "jsonschema-rs>=0.60.3,<0.61",
+    "Jinja2>=3.1.6,<4",
 ]
 
 [project.optional-dependencies]
@@ -31,3 +33,5 @@ exclude = [
     "ptx_cpp_backend_spec/*.yaml",
     "ptx_spec/*.yaml",
 ]
+
+"ptx_frontend.code_gen" = ["templates/**/*.j2"]

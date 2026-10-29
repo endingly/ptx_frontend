@@ -1,0 +1,52 @@
+// Generated from canonical selected direct Cp forms.
+#include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
+#include <ptx_frontend/resolved_ir/ptx_resolved_ir_checker_support.hpp>
+#include <ptx_frontend/resolved_ir/ptx_tensor_cache_controls.hpp>
+namespace ptx_frontend::resolved_ir {
+/** Copy selected controls and diagnose inconsistent owned payloads. */
+TensorCacheControlsReport query_tensor_cache_controls(
+    const Instruction& instruction) {
+  TensorCacheControlsReport result;
+  switch (instruction.instruction_kind()) {
+{% for row in model.hinted %}    case {{ row.name }}::kind: {
+      result.applicable = true;
+      const auto* selected = dynamic_cast<const {{ row.name }}*>(&instruction);
+      if (!selected) {
+        result.diagnostics.emplace_back("tensor cache identity and payload disagree");
+        break;
+      }
+      result.hint = selected->cache_hint;
+      bool expected_policy = false;
+      switch (selected->operand_layout.value) {
+{% for index in row.policy_layouts %}        case {{ index }}: expected_policy = true; break;{% if not loop.last %}
+{% endif %}{% endfor %}
+{% for index in row.other_layouts %}        case {{ index }}: break;{% if not loop.last %}
+{% endif %}{% endfor %}
+        default:
+          result.diagnostics.emplace_back("tensor cache layout tag is out of range");
+          break;
+      }
+      if (selected->cache_policy.has_value() != expected_policy)
+        result.diagnostics.emplace_back("tensor cache layout and policy disagree");
+      if (selected->cache_policy) result.policy = *selected->cache_policy;
+      break;
+    }
+{% endfor %}{% for name in model.plain %}    case {{ name }}::kind:
+{% endfor %}      result.applicable = true;
+      break;
+    default: break;
+  }
+  const checker::Context context{};
+  if (result.hint) {
+    auto checked = checker::check_tensor_cache_hint(*result.hint, context);
+    if (!checked) for (const auto& diagnostic : checked.error())
+      result.diagnostics.push_back(diagnostic.message);
+  }
+  if (result.policy) {
+    auto checked = checker::check_tensor_cache_policy(*result.policy, context);
+    if (!checked) for (const auto& diagnostic : checked.error())
+      result.diagnostics.push_back(diagnostic.message);
+  }
+  return result;
+}
+}  // namespace ptx_frontend::resolved_ir

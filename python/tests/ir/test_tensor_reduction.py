@@ -7,8 +7,8 @@ import unittest
 
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.context import build_generation_context
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_model import (
-    form_shards,
     generate_resolved_base_header,
     generate_resolved_form_shard_header,
 )

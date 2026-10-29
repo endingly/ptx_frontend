@@ -1,4 +1,6 @@
+#include <cassert>
 #include "ptx_resolved_ir_private.hpp"
+#include "ptx_resolved_ir_selection_private.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1117,6 +1119,81 @@ std::expected<std::string_view, ResolveDiagnostic> select_variant_name(
           "No variant of instruction '{}' accepts this modifier combination.",
           ast.opcode.syntax.text),
   });
+}
+
+std::expected<size_t, ResolveDiagnostic> detail::select_indexed_variant(
+    const syntax_ast::AstInstruction& ast,
+    const check_end::SyntaxInstructionDescriptor& instruction,
+    const ModifierCandidatePlan& plan, std::span<uint64_t> candidates) {
+  // The general selector remains the diagnostic reference, including duplicate priority.
+  const auto fallback = [&]() -> std::expected<size_t, ResolveDiagnostic> {
+    auto selected = select_variant_name(ast, instruction);
+    if (!selected)
+      return std::unexpected(selected.error());
+    for (size_t index = 0; index < instruction.variants.size(); ++index)
+      if (instruction.variants[index].variant_name == *selected)
+        return index;
+    throw ResolveException("Selected variant is missing from its catalog.");
+  };
+  if (ast.opcode.syntax.text != instruction.Opcode_name)
+    return fallback();
+  const size_t word_count = (instruction.variants.size() + 63) / 64;
+  assert(candidates.size() == word_count);
+  assert(plan.words.size() == plan.rows.size() * word_count);
+  std::ranges::fill(candidates, ~uint64_t{0});
+  for (const auto& modifier : ast.modifiers) {
+    const auto row = std::ranges::lower_bound(
+        plan.rows, modifier.syntax.text, {}, &ModifierCandidateRow::spelling);
+    if (row == plan.rows.end() || row->spelling != modifier.syntax.text ||
+        !row->known)
+      return fallback();
+    const size_t offset =
+        static_cast<size_t>(row - plan.rows.begin()) * word_count;
+    for (size_t word = 0; word < word_count; ++word)
+      candidates[word] &= plan.words[offset + word];
+  }
+  size_t match_count = 0;
+  size_t last_match = 0;
+  for (size_t index = 0; index < instruction.variants.size(); ++index) {
+    if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) == 0)
+      continue;
+    if (bind_variant_modifiers(ast, instruction.variants[index]).modifiers) {
+      ++match_count;
+      last_match = index;
+    } else {
+      candidates[index / 64] &= ~(uint64_t{1} << (index % 64));
+    }
+  }
+  if (match_count == 1)
+    return last_match;
+  std::optional<size_t> arity_match;
+  size_t arity_count = 0;
+  for (size_t index = 0; index < instruction.variants.size(); ++index) {
+    if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) == 0)
+      continue;
+    if (std::ranges::any_of(instruction.variants[index].operand_layouts,
+                            [&](const auto& layout) {
+                              return layout.slots.size() == ast.operands.size();
+                            })) {
+      arity_match = index;
+      ++arity_count;
+    }
+  }
+  if (arity_count == 1)
+    return *arity_match;
+  std::optional<size_t> shape_match;
+  for (size_t index = 0; index < instruction.variants.size(); ++index) {
+    if ((candidates[index / 64] & (uint64_t{1} << (index % 64))) == 0)
+      continue;
+    if (!matches_variant_operand_shapes(instruction.variants[index], ast))
+      continue;
+    if (shape_match)
+      return fallback();
+    shape_match = index;
+  }
+  if (shape_match)
+    return *shape_match;
+  return fallback();
 }
 
 }  // namespace ptx_frontend::resolved_ir

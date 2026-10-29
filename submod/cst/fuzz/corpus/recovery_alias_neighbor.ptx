@@ -1,0 +1,3 @@
+.bogus
+.alias a,b;
+.visible .entry k(){ret;}

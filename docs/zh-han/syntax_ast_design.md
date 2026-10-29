@@ -1,5 +1,25 @@
 # CST 与 Syntax AST 设计
 
+## 手写 parser 实现
+
+`PtxCstParser` 仍是 lexer lookahead 与 token buffer 的唯一所有者。
+成员实现按 grammar 职责拆分为 token/root、常量表达式与 initializer、
+operand 与 control-flow 源码形态、声明与参数、directive/function/module，
+以及 recovery；`CstFile` 操作与解析分离。叶子 parser 返回强类型
+`std::expected` 结果；driver 先预测形态再解析，并且只追加一次 recovery
+node。未出现的可选形态不消费 token。
+
+私有类型区分完整 numeric expression 与在 additive precedence 以上停止的
+address-base expression、包含当前根的剩余允许树高与实际已构造树高，
+以及 lexical block depth。兄弟节点按值共享相同 budget；named initializer
+和 brace list 各增加一层，scalar initializer wrapper 不增加层数。
+expression/initializer 树高上限为 128，nested block depth 上限为 256。
+function 与 nested-block body 共用 item/recovery driver，同时保留各自的
+缺失右花括号诊断。operand helper 说明 opener/closer 的消费边界，并保留
+半开 range。module dispatch 与 recovery 共享 source-form 分类，包括词法
+类型为 dotted identifier 的 `.alias`；body 同步继续采用独立策略。
+这些分类只描述源码 grammar，不选择 ISA variant。
+
 ## 指令常量表达式
 
 指令的数值位置复用声明常量表达式语法：括号、优先级、整数一元/二元/三元运算、

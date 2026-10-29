@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -37,8 +38,8 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.resolved_layout import operand_slots
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_model import (
-    form_shards,
     generate_resolved_base_header,
     generate_resolved_identity_catalogue_header,
     generate_resolved_opcode_header,
@@ -145,6 +146,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
     def test_ld_st_cache_hint_layouts_preserve_public_form_and_bindings(self) -> None:
         """Lower both source states into one form with only policy optional."""
         count = 0
+        cache_hint_layouts = {}
         for spec in self.database.instructions:
             if spec.opcode not in {"ld", "st"}:
                 continue
@@ -156,6 +158,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                 if not any(modifier.name == "cache_hint" for modifier in source.modifiers):
                     continue
                 count += 1
+                cache_hint_layouts[variant.variant_id] = variant.operand_layouts
                 with self.subTest(variant=source.name):
                     self.assertEqual(variant.variant_id, source.name)
                     policy, hint_only = variant.operand_layouts
@@ -192,7 +195,45 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         self.assertIn("class LdGlobalU32L2CacheHint final", model)
         self.assertIn("class StGlobalU32L2CacheHint final", model)
         for name in ("ld_global_u32_l2_cache_hint", "st_global_u32_l2_cache_hint"):
-            self.assertIn(f"{name}_operand_layout_1_bindings", bindings)
+            layouts_match = re.search(
+                rf"\b{re.escape(name)}_operand_layouts = \{{(.*?)\n      \}};",
+                bindings, re.DOTALL,
+            )
+            self.assertIsNotNone(layouts_match, f"Missing layouts for {name}")
+            assert layouts_match is not None
+            layout_references = re.findall(
+                r'\.layout_id = "([^"]+)",\s*'
+                r'\.fields = \w+,\s*\.bindings = (\w+),',
+                layouts_match.group(1),
+            )
+            expected_layouts = cache_hint_layouts[name]
+            self.assertEqual(
+                [layout_id for layout_id, _ in layout_references],
+                [layout.layout_id for layout in expected_layouts],
+            )
+            for (layout_id, binding_name), layout, expected_count in zip(
+                layout_references, expected_layouts, (3, 2), strict=True
+            ):
+                with self.subTest(form=name, layout=layout_id):
+                    definition = re.search(
+                        r"static constexpr std::array<"
+                        r"check_end::ResolvedOperandBindingDescriptor, (\d+)>"
+                        rf"\s+{re.escape(binding_name)} = \{{(.*?)\n      \}};",
+                        bindings, re.DOTALL,
+                    )
+                    self.assertIsNotNone(definition, f"Missing array {binding_name}")
+                    assert definition is not None
+                    targets = re.findall(
+                        r'\.target_field_id = "([^"]+)"', definition.group(2)
+                    )
+                    self.assertEqual(int(definition.group(1)), expected_count)
+                    self.assertEqual(len(targets), expected_count)
+                    self.assertEqual(
+                        targets, [binding.target_field_id for binding in layout.bindings]
+                    )
+                    if layout_id == "without_policy":
+                        self.assertNotIn("cache_policy", targets)
+                    self.assertLess(definition.end(), layouts_match.start())
         self.assertIn('.layout_name = "without_policy"', checks)
 
     def test_ld_and_st_scalar_model_constraints(self) -> None:
@@ -2146,10 +2187,37 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                       generated)
         self.assertIn(".allowed_register_types =", generated)
         self.assertIn(".require_uniform_register_family = true", generated)
-        self.assertIn("red_async_shared_add_u32_operand_layout_0_binding_0_address_state_spaces",
-                      generated)
-        self.assertEqual(generated.count(
-            ".address_base_policy = checker::AddressBasePolicy::Register"), 28)
+        binding_arrays = dict(re.findall(
+            r"static constexpr std::array<check_end::ResolvedOperandBindingDescriptor, \d+>"
+            r"\s+(\w+) = \{(.*?)\n      \};", generated, re.DOTALL,
+        ))
+        red_layouts = re.search(
+            r"\bred_async_shared_add_u32_operand_layouts = \{(.*?)\n      \};",
+            generated, re.DOTALL,
+        )
+        self.assertIsNotNone(red_layouts)
+        assert red_layouts is not None
+        red_binding_names = re.findall(r"\.bindings = (\w+),", red_layouts.group(1))
+        self.assertEqual(len(red_binding_names), 1)
+        red_address_binding = binding_arrays[red_binding_names[0]].split(
+            "check_end::ResolvedOperandBindingDescriptor{"
+        )[1]
+        self.assertIn('.target_field_id = "address"', red_address_binding)
+        address_domains = re.findall(
+            r"\.allowed_address_state_spaces = (\w+),", red_address_binding
+        )
+        self.assertEqual(len(address_domains), 1)
+        self.assertRegex(
+            generated,
+            r"static constexpr std::array<checker::AddressStateSpaceDescriptor, \d+>"
+            rf"\s+{re.escape(address_domains[0])} = \{{",
+        )
+        self.assertEqual(sum(
+            binding_arrays[name].count(
+                ".address_base_policy = checker::AddressBasePolicy::Register"
+            )
+            for name in re.findall(r"\.bindings = (\w+),", generated)
+        ), 28)
         self.assertIn(
             ".address_offset_domain = checker::AddressOffsetDomain::Signed32",
             generated,
@@ -2611,7 +2679,8 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
         )
         self.assertIn("std::expected<std::unique_ptr<Instruction>, ResolveDiagnostic>", add)
         self.assertIn("resolveAdd(", add)
-        self.assertIn("resolve_fields(", add)
+        self.assertIn("detail::resolve_selected_fields(", add)
+        self.assertIn("select_form(ast)", add)
         self.assertIn("fields->execution_predicate", add)
         self.assertIn("selected.dst.value.declared_type", add)
         for class_name in ("AddIntegerNoSat", "AddSat", "AddPackedOptionalSat"):
@@ -3479,7 +3548,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                     origin=ResolvedFieldOrigin.OPERAND,
                     source_name="vector",
                 ),
-                "instruction",
+                'instruction.vector',
                 backend,
             )
 

@@ -1,5 +1,27 @@
 # CST and Syntax AST design
 
+## Handwritten parser implementation
+
+`PtxCstParser` remains the single owner of lexer lookahead and the token buffer.
+Its member implementations are divided by grammar responsibility: token/root
+handling, constant expressions and initializers, operands and control-flow source
+forms, declarations and parameters, directives/functions/modules, and recovery.
+`CstFile` operations are separate from parsing. Leaf parsers return typed
+`std::expected` results; drivers select a form before parsing and append recovery
+nodes once. Optional forms that are absent consume no tokens.
+
+Private types distinguish full numeric expressions from address-base expressions
+that stop above additive precedence, remaining allowed tree height from actual
+constructed height, and lexical block depth. Tree budgets include the current
+root and are copied for siblings; named initializers and brace lists add one
+level, while scalar initializer wrappers add none. Expression/initializer height
+is limited to 128 and nested block depth to 256. Function and nested-block bodies
+share their item/recovery driver, preserving their distinct missing-brace messages.
+Operand helpers document opener/closer consumption and retain half-open ranges.
+Module dispatch and recovery share source-form classification, including `.alias`
+spelled as a dotted identifier; body synchronization keeps its separate policy.
+This classification describes source grammar and does not select ISA variants.
+
 ## Frontend layers
 
 The frontend now separates concrete source representation from the syntax

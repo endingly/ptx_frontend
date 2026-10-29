@@ -1,0 +1,743 @@
+{% macro modifier_view(model) -%}
+{% if model.structure == "modifier_view" %}              FieldView{
+                  .field_id = "{{ model.field_id }}",
+                  .bool_value = {{ model.bool_value }},
+                  .cache_operator = {{ model.cache_operator }},
+                  .eviction_priority = {{ model.eviction_priority }},
+                  .prefetch_size = {{ model.prefetch_size }},
+                  .scalar_type = {{ model.scalar_type }},
+                  .comparison_operator = {{ model.comparison_operator }},
+                  .test_property = {{ model.test_property }},
+                  .boolean_operator = {{ model.boolean_operator }},
+                  .vector_arity = {{ model.vector_arity }},
+                  .memory_state_space = {{ model.memory_state_space }},
+                  .memory_consistency = {{ model.memory_consistency }},
+                  .memory_scope = {{ model.memory_scope }},
+                  .mbarrier_phase_type = {{ model.mbarrier_phase_type }},
+                  .mbarrier_layout = {{ model.mbarrier_layout }},
+                  .tcgen_cta_group = {{ model.cta_group }},
+                  .tcgen_scale_vector_size = {{ model.tcgen_scale_vector_size }},
+                  .tcgen_collector = {{ model.tcgen_collector }},
+                  .tcgen_shape = {{ model.tcgen_shape }},
+                  .tcgen_repeat = {{ model.tcgen_num }},
+                  .tcgen_reduction_op = {{ model.tcgen_red_op }},
+                  .tcgen_wait_class = {{ model.tcgen_wait }},
+                  .video_scale = {{ model.video_scale }},
+                  .video_shift_mode = {{ model.video_shift_mode }},
+                  .video_secondary_op = {{ model.video_secondary_op }},
+                  .video_type = {{ model.video_type }},
+                  .async_proxy_kind = {{ model.async_proxy_kind }},
+                  .proxy_kind_pair = {{ model.proxy_kind_pair }},
+                  .locations = {{ model.locations }},
+              }{% endif -%}
+{% endmacro %}
+{% macro modifier_value_view(model) -%}
+{% if model.structure == "modifier_value_view" %}              ModifierValueView{
+                  .kind_id = "{{ model.kind_id }}",
+                  .value_kind = {{ model.value_kind }},
+                  .bool_value = {{ model.bool_value }},
+                  .scalar_type = {{ model.scalar_type }},
+                  .rounding_mode = {{ model.rounding_mode }},
+                  .comparison_operator = {{ model.comparison_operator }},
+                  .test_property = {{ model.test_property }},
+                  .boolean_operator = {{ model.boolean_operator }},
+                  .cache_operator = {{ model.cache_operator }},
+                  .eviction_priority = {{ model.eviction_priority }},
+                  .prefetch_size = {{ model.prefetch_size }},
+                  .vector_arity = {{ model.vector_arity }},
+                  .memory_state_space = {{ model.memory_state_space }},
+                  .memory_consistency = {{ model.memory_consistency }},
+                  .memory_scope = {{ model.memory_scope }},
+                  .mbarrier_phase_type = {{ model.mbarrier_phase_type }},
+                  .mbarrier_layout = {{ model.mbarrier_layout }},
+                  .tcgen_cta_group = {{ model.cta_group }},
+                  .tcgen_scale_vector_size = {{ model.tcgen_scale_vector_size }},
+                  .tcgen_collector = {{ model.tcgen_collector }},
+                  .tcgen_shape = {{ model.tcgen_shape }},
+                  .tcgen_repeat = {{ model.tcgen_num }},
+                  .tcgen_reduction_op = {{ model.tcgen_red_op }},
+                  .tcgen_wait_class = {{ model.tcgen_wait }},
+                  .video_scale = {{ model.video_scale }},
+                  .video_shift_mode = {{ model.video_shift_mode }},
+                  .video_secondary_op = {{ model.video_secondary_op }},
+                  .video_type = {{ model.video_type }},
+                  .async_proxy_kind = {{ model.async_proxy_kind }},
+                  .proxy_kind_pair = {{ model.proxy_kind_pair }},
+                  .is_present = {{ model.is_present }},
+                  .locations = {{ model.locations }},
+                  .slot = ModifierSlotTag{{ "{" }}{{ model.slot_index }}},
+              }{% endif -%}
+{% endmacro %}
+{% macro operand_view(model) -%}
+{% if model.structure == "operand_view_direct_call_target" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.directcalltarget_cpp }},
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_indirect_callee" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.indirectcallee_cpp }},
+                  .call_table_ref = std::get_if<ResolvedCallTableRef>(&{{ model.member_expr }}.value),
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_call_return_parameter" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.callreturnparameter_cpp }},
+                  .register_type = {{ model.member_expr }}.value.declared_type,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_call_arguments" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.callarguments_cpp }},
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_register_vector" %}              [&]() -> OperandView {
+                OperandView view{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.vector_cpp }},
+                    .register_vector = &{{ model.member_expr }}.value,
+                    .vector_arity = {{ model.member_expr }}.value.elements.size(),
+                    .locations = {{ model.member_expr }}.locs,
+                };
+                size_t index = 0;
+                for (const auto& element :
+                     {{ model.member_expr }}.value.elements) {
+                  if (index >= view.vector_element_shapes.size() ||
+                      index >= view.vector_element_types.size())
+                    break;
+                  if (element) {
+                    view.vector_element_shapes[index] =
+                        {{ model.register_cpp }};
+                    view.vector_element_types[index] =
+                        element->declared_type.value_or({{ model.scalar_types_default }});
+                    view.vector_element_registers[index] = &*element;
+                  } else {
+                    ++view.vector_sink_count;
+                  }
+                  ++index;
+                }
+                return view;
+              }(){% elif model.structure == "operand_view_mov_vector_source" %}checker::project_mov_vector_source("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_value_vector" %}              [&]() -> OperandView {
+                OperandView view{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.vector_cpp }},
+                  .vector_arity = {{ model.member_expr }}.value.elements.size(),
+                  .locations = {{ model.member_expr }}.locs,
+                };
+                size_t index = 0;
+                for (const auto& element :
+                     {{ model.member_expr }}.value.elements) {
+                  if (index >= view.vector_element_shapes.size())
+                    break;
+                  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&element)) {
+                    view.vector_element_shapes[index] =
+                        {{ model.register_cpp }};
+                    view.vector_element_types[index] =
+                        reg->declared_type.value_or({{ model.scalar_types_default }});
+                    view.vector_element_registers[index] = reg;
+                  } else {
+                    const auto& immediate = std::get<ResolvedImmediate>(element);
+                    view.vector_element_shapes[index] =
+                        {{ model.immediate_cpp }};
+                    view.vector_element_types[index] = immediate.type;
+                    view.vector_element_immediates[index] = &immediate;
+                    view.vector_immediate_bits[index] = immediate.bits;
+                    view.vector_immediate_source_bits[index] = immediate.integer_source_bits;
+                    view.vector_immediate_negative[index] = immediate.is_negative;
+                  }
+                  ++index;
+                }
+                return view;
+              }(){% elif model.structure == "operand_view_tensor_coordinate" %}              [&]() -> OperandView {
+                OperandView view{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.vector_cpp }},
+                  .vector_arity = {{ model.member_expr }}.value.elements.size(),
+                  .locations = {{ model.member_expr }}.locs,
+                };
+                size_t index = 0;
+                for (const auto& element :
+                     {{ model.member_expr }}.value.elements) {
+                  if (index >= view.vector_element_shapes.size() ||
+                      index >= view.vector_element_types.size())
+                    break;
+                  if (const auto* register_ref =
+                          std::get_if<ResolvedRegisterRef>(&element)) {
+                    view.vector_element_shapes[index] =
+                        {{ model.register_cpp }};
+                    view.vector_element_types[index] =
+                        register_ref->declared_type.value_or({{ model.scalar_types_default }});
+                    view.vector_element_registers[index] = register_ref;
+                  } else {
+                    const auto& immediate = std::get<ResolvedImmediate>(element);
+                    view.vector_element_shapes[index] =
+                        {{ model.immediate_cpp }};
+                    view.vector_element_types[index] = immediate.type;
+                  }
+                  ++index;
+                }
+                return view;
+              }(){% elif model.structure == "operand_view_tensor_im2col_info" %}              project_tensor_im2col_info("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_tensor_operand" %}              project_tensor_operand("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_fabric_handle" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.fabrichandle_cpp }},
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_video_operand" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.videooperand_cpp }},
+                  .video_operand = &{{ model.member_expr }}.value,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_resource" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.shape_cpp }},
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_texture_result" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.textureresult_cpp }},
+                  .vector_arity = {{ model.member_expr }}.value.data.elements.size(),
+                  .vector_sink_count = [&]() {
+                    uint8_t count = 0;
+                    for (const auto& lane : {{ model.member_expr }}.value.data.elements)
+                      count += !lane.has_value();
+                    return count;
+                  }(),
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_matrix_scale_selector" %}              [&]() -> OperandView {
+                OperandView view{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.vector_cpp }},
+                  .vector_arity = 2,
+                  .locations = {{ model.member_expr }}.locs,
+                };
+                const auto& selector = {{ model.member_expr }}.value;
+                const std::array<const RegOrImm*, 2> values{&selector.byte_id,
+                                                               &selector.thread_id};
+                for (size_t index = 0; index < values.size(); ++index) {
+                  if (const auto* reg = std::get_if<ResolvedRegisterRef>(values[index])) {
+                    view.vector_element_shapes[index] =
+                        {{ model.register_cpp }};
+                    view.vector_element_types[index] = reg->declared_type.value_or(
+                        {{ model.scalar_types_default }});
+                    view.vector_element_registers[index] = reg;
+                  } else {
+                    const auto& imm = std::get<ResolvedImmediate>(*values[index]);
+                    view.vector_element_shapes[index] =
+                        {{ model.immediate_cpp }};
+                    view.vector_element_types[index] = imm.type;
+                    view.vector_immediate_source_bits[index] =
+                        imm.integer_source_bits.value_or(imm.bits);
+                    view.vector_immediate_bits[index] = imm.bits;
+                    view.vector_immediate_negative[index] = imm.is_negative;
+                  }
+                }
+                return view;
+              }(){% elif model.structure == "operand_view_vector_register" %}              [&]() -> OperandView {
+                const auto& register_ref =
+                    {{ model.member_expr }}.value.register_ref;
+                OperandView view{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.vector_cpp }},
+                    .register_ref = &register_ref,
+                    .vector_arity = static_cast<size_t>(
+                        register_ref.vector_width.value_or(0)),
+                    .locations = {{ model.member_expr }}.locs,
+                };
+                for (size_t index = 0;
+                     index < view.vector_arity &&
+                     index < view.vector_element_types.size(); ++index)
+                  view.vector_element_types[index] =
+                      register_ref.declared_type.value_or({{ model.scalar_types_default }});
+                return view;
+              }(){% elif model.structure == "operand_view_vector_special_register" %}              [&]() -> OperandView {
+                const auto& special_register = {{ model.member_expr }}.value;
+                const auto info = base::metadata(special_register.id);
+                OperandView view{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.vector_cpp }},
+                    .special_register_type = info.element_type,
+                    .special_register_id = special_register.id,
+                    .vector_arity = static_cast<size_t>(info.vector_width),
+                    .value_availability = special_register_availability(info),
+                    .value_name = special_register.spelling,
+                    .locations = {{ model.member_expr }}.locs,
+                };
+                for (size_t index = 0;
+                     index < view.vector_arity &&
+                     index < view.vector_element_types.size(); ++index)
+                  view.vector_element_types[index] = info.element_type;
+                return view;
+              }(){% elif model.structure == "operand_view_stack_token" %}              OperandView{
+                  .field_id = "{{ model.field_id }}", .actual_shape = {{ model.shape }},
+                  .register_type = {{ model.member_expr }}.value.register_ref.declared_type,
+                  .register_symbol_id = {{ model.member_expr }}.value.register_ref.symbol_id,
+                  .register_class = {{ model.member_expr }}.value.register_ref.register_class,
+                  .register_ref = &{{ model.member_expr }}.value.register_ref,
+                  .register_vector_width = {{ model.member_expr }}.value.register_ref.vector_width,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_shared_matrix_descriptor" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.register_cpp }},
+                  .register_type = {{ model.member_expr }}.value.register_ref.declared_type,
+                  .register_symbol_id = {{ model.member_expr }}.value.register_ref.symbol_id,
+                  .register_class = {{ model.member_expr }}.value.register_ref.register_class,
+                  .register_ref = &{{ model.member_expr }}.value.register_ref,
+                  .register_vector_width = {{ model.member_expr }}.value.register_ref.vector_width,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_register" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.register_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.declared_type,
+                  .register_symbol_id = {{ model.member_expr }}.value.symbol_id,
+                  .register_class = {{ model.member_expr }}.value.register_class,
+                  .register_ref = &{{ model.member_expr }}.value,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_mbarrier_state_token" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.register_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.register_ref
+                      ? {{ model.member_expr }}.value.register_ref->declared_type
+                      : std::nullopt,
+                  .register_ref = {{ model.member_expr }}.value.register_ref ? &*{{ model.member_expr }}.value.register_ref : nullptr,
+                  .is_sink = !{{ model.member_expr }}.value.register_ref,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_register_or_sink" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.register_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.register_ref
+                      ? {{ model.member_expr }}.value.register_ref->declared_type
+                      : std::nullopt,
+                  .register_ref = {{ model.member_expr }}.value.register_ref ? &*{{ model.member_expr }}.value.register_ref : nullptr,
+                  .is_sink = !{{ model.member_expr }}.value.register_ref,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_shfl_destination" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.shfldestination_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.data
+                      ? {{ model.member_expr }}.value.data->value.declared_type
+                      : std::nullopt,
+                  .register_ref = {{ model.member_expr }}.value.data ? &{{ model.member_expr }}.value.data->value : nullptr,
+                  .paired_register_refs = {{ "{" }}{{ model.member_expr }}.value.predicate ? &{{ model.member_expr }}.value.predicate->value.register_ref : nullptr, nullptr},
+                  .paired_destination_data_present = static_cast<bool>({{ model.member_expr }}.value.data),
+                  .paired_destination_predicate_present = static_cast<bool>({{ model.member_expr }}.value.predicate),
+                  .paired_destination_predicate_type = {{ model.member_expr }}.value.predicate
+                      ? {{ model.member_expr }}.value.predicate->value.register_ref.declared_type
+                      : std::nullopt,
+                  .destination_predicate_negated = {{ model.member_expr }}.value.predicate && {{ model.member_expr }}.value.predicate->value.negated,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_predicate_pair" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.predicatepair_cpp }},
+                  .immediate_type = std::nullopt,
+                  .paired_register_refs = {&{{ model.member_expr }}.value.first.register_ref, &{{ model.member_expr }}.value.second.register_ref},
+                  .predicate_pair_types = {{ "{" }}{{ model.member_expr }}.value.first.register_ref.declared_type.value_or({{ model.scalar_types_default }}), {{ model.member_expr }}.value.second.register_ref.declared_type.value_or({{ model.scalar_types_default }})},
+                  .destination_predicate_negated = {{ model.member_expr }}.value.first.negated || {{ model.member_expr }}.value.second.negated,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_predicate_pair_or_sink" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.predicatepair_cpp }},
+                  .immediate_type = std::nullopt,
+                  .paired_register_refs = {{ "{" }}{{ model.member_expr }}.value.first ? &{{ model.member_expr }}.value.first->register_ref : nullptr, {{ model.member_expr }}.value.second ? &{{ model.member_expr }}.value.second->register_ref : nullptr},
+                  .predicate_pair_has_destination = static_cast<bool>({{ model.member_expr }}.value.first) || static_cast<bool>({{ model.member_expr }}.value.second),
+                  .predicate_pair_types = {{ "{" }}{{ model.member_expr }}.value.first ? {{ model.member_expr }}.value.first->register_ref.declared_type.value_or({{ model.scalar_types_default }}) : {{ model.scalar_types_default }}, {{ model.member_expr }}.value.second ? {{ model.member_expr }}.value.second->register_ref.declared_type.value_or({{ model.scalar_types_default }}) : {{ model.scalar_types_default }}},
+                  .destination_predicate_negated = ({{ model.member_expr }}.value.first && {{ model.member_expr }}.value.first->negated) || ({{ model.member_expr }}.value.second && {{ model.member_expr }}.value.second->negated),
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_immediate" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.immediate_cpp }},
+                  .immediate_type = {{ model.member_expr }}.value.type,
+                  .immediate_bits = {{ model.member_expr }}.value.bits,
+                  .immediate_is_negative = {{ model.member_expr }}.value.is_negative,
+                  .register_type = std::nullopt,
+                  .locations = {{ model.member_expr }}.locs,
+                  .integer_source_bits = {{ model.member_expr }}.value.integer_source_bits,
+              }{% elif model.structure == "operand_view_predicate" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.predicate_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.register_ref.declared_type,
+                  .register_ref = &{{ model.member_expr }}.value.register_ref,
+                  .destination_predicate_negated = {{ model.member_expr }}.value.negated,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_predicate_or_sink" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.predicate_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = {{ model.member_expr }}.value.predicate ? {{ model.member_expr }}.value.predicate->register_ref.declared_type : std::nullopt,
+                  .register_ref = {{ model.member_expr }}.value.predicate ? &{{ model.member_expr }}.value.predicate->register_ref : nullptr,
+                  .is_sink = !{{ model.member_expr }}.value.predicate,
+                  .destination_predicate_negated = {{ model.member_expr }}.value.predicate && {{ model.member_expr }}.value.predicate->negated,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_predicate_source" %}              [&]() -> OperandView {
+                const auto& source = {{ model.member_expr }}.value;
+                if (const auto* special =
+                        std::get_if<ResolvedPredicateSpecialRegister>(&source)) {
+                  const auto info = base::metadata(special->register_ref.id);
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.specialregister_cpp }},
+                      .special_register_type = info.element_type,
+                      .special_register_id = special->register_ref.id,
+                      .value_availability = special_register_availability(info),
+                      .value_name = special->register_ref.spelling,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                if (std::holds_alternative<ResolvedPredicateConstant>(source)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.immediate_cpp }},
+                      .immediate_type = {{ model.pred_cpp }},
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                const auto& predicate = std::get<ResolvedPredicate>(source);
+                return OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.predicate_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = predicate.register_ref.declared_type,
+                  .register_symbol_id = predicate.register_ref.symbol_id,
+                  .register_class = predicate.register_ref.register_class,
+                  .register_ref = &predicate.register_ref,
+                  .register_vector_width = predicate.register_ref.vector_width,
+                  .destination_predicate_negated = predicate.negated,
+                  .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% elif model.structure == "operand_view_branch_target" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.branchtarget_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_branch_target_set" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.branchtargetset_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_special_register" %}              [&]() -> OperandView {
+                const auto info = base::metadata(
+                    {{ model.member_expr }}.value.id);
+                return OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.specialregister_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .special_register_type = info.element_type,
+                  .special_register_id = {{ model.member_expr }}.value.id,
+                  .value_availability = special_register_availability(info),
+                  .value_name = {{ model.member_expr }}.value.spelling,
+                  .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% elif model.structure == "operand_view_symbol" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.symbol_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .value_availability = {{ model.member_expr }}.value.address_availability,
+                  .value_name = {{ model.member_expr }}.value.spelling,
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_address" %}              [&]() -> OperandView {
+                const auto* symbol = std::get_if<ResolvedSymbolRef>(
+                    &{{ model.member_expr }}.value.base);
+                std::optional<MemoryStateSpace> effective_state_space;
+                ParameterDirection parameter_direction = {{ model.parameter_directions_default }};
+                if (symbol != nullptr && symbol->address_state_space) {
+                  // Preserve the declaration-derived effective space. In
+                  // particular, device parameters may produce local rather
+                  // than declaration-space addresses in other instructions.
+                  switch (*symbol->address_state_space) {
+                    case syntax_ast::AstStateSpace::Global:
+                      effective_state_space = {{ model.global_cpp }};
+                      break;
+                    case syntax_ast::AstStateSpace::Shared:
+                      effective_state_space = {{ model.shared_cpp }};
+                      break;
+                    case syntax_ast::AstStateSpace::Local:
+                      effective_state_space = {{ model.local_cpp }};
+                      break;
+                    case syntax_ast::AstStateSpace::Parameter:
+                      effective_state_space = {{ model.param_cpp }};
+                      break;
+                    case syntax_ast::AstStateSpace::Constant:
+                      effective_state_space = {{ model.const_cpp }};
+                      break;
+                    case syntax_ast::AstStateSpace::Register:
+                      break;
+                  }
+                }
+                if (symbol != nullptr && symbol->declaration_kind) {
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::InputParameter) {
+                    parameter_direction = {{ model.input_cpp }};
+                  } else if (*symbol->declaration_kind ==
+                             binding::SymbolKind::ReturnParameter) {
+                    parameter_direction = {{ model.return_cpp }};
+                  } else if (*symbol->declaration_kind ==
+                             binding::SymbolKind::CallParameter) {
+                    parameter_direction = ParameterDirection::CallArgument;
+                  }
+                }
+                const std::optional<bool> declaration_is_unified =
+                    symbol == nullptr ? std::nullopt
+                                      : symbol->declaration_is_unified;
+                const auto address_alignment =
+                    resolved_address_alignment({{ model.member_expr }}.value);
+                // Register, immediate, and unresolved standalone address
+                // bases remain unknown; spelling is not semantic evidence.
+                return OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.address_cpp }},
+                  .immediate_type = std::nullopt,
+                  .register_type = std::nullopt,
+                  .register_ref = std::get_if<ResolvedRegisterRef>(
+                      &{{ model.member_expr }}.value.base),
+                  .address_state_space = effective_state_space,
+                  .address_base_kind =
+                      std::holds_alternative<ResolvedRegisterRef>(
+                          {{ model.member_expr }}.value.base)
+                          ? checker::AddressBaseKind::Register
+                          : std::holds_alternative<ResolvedImmediate>(
+                                {{ model.member_expr }}.value.base)
+                                ? checker::AddressBaseKind::Immediate
+                                : checker::AddressBaseKind::Symbol,
+                  .address_offset_fits_signed32 =
+                      !{{ model.member_expr }}.value.offset ||
+                      address_offset_fits_signed32(
+                          *{{ model.member_expr }}.value.offset),
+                  .address_alignment = address_alignment,
+                  .address_unified = {{ model.member_expr }}.value.unified,
+                  .address_declaration_is_unified = declaration_is_unified,
+                  .enclosing_function_kind =
+                      {{ model.member_expr }}.value.enclosing_function_kind,
+                  .parameter_direction = parameter_direction,
+                  .parameter_qualifier =
+                      {{ model.member_expr }}.value.parameter_qualifier,
+                  .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% elif model.structure == "operand_view_reg_or_imm" %}              [&]() -> OperandView {
+                if (const auto* immediate =
+                        std::get_if<ResolvedImmediate>(&{{ model.source }})) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.immediate_cpp }},
+                      .immediate_type = immediate->type,
+                      .immediate_bits = immediate->bits,
+                      .immediate_is_negative = immediate->is_negative,
+                      .register_type = std::nullopt,
+                      .locations = {{ model.member_expr }}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
+                  };
+                }
+                const auto& register_ref =
+                    std::get<ResolvedRegisterRef>({{ model.source }});
+                return OperandView{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.register_cpp }},
+                    .immediate_type = std::nullopt,
+                    .register_type = register_ref.declared_type,
+                    .register_symbol_id = register_ref.symbol_id,
+                    .register_class = register_ref.register_class,
+                    .register_ref = &register_ref,
+                    .register_vector_width = register_ref.vector_width,
+                    .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% elif model.structure == "operand_view_tcgen_half_split_offset" %}              OperandView{
+                  .field_id = "{{ model.field_id }}",
+                  .actual_shape = {{ model.immediate_cpp }},
+                  .locations = {{ model.member_expr }}.locs,
+              }{% elif model.structure == "operand_view_cp_async_source_control" %}              [&]() -> OperandView {
+                const auto& control = {{ model.member_expr }}.value;
+                if (const auto* immediate = std::get_if<ResolvedImmediate>(&control))
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.immediate_cpp }},
+                      .immediate_type = immediate->type,
+                      .immediate_bits = immediate->bits,
+                      .immediate_is_negative = immediate->is_negative,
+                      .locations = {{ model.member_expr }}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
+                  };
+                if (const auto* predicate = std::get_if<ResolvedPredicate>(&control))
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.predicate_cpp }},
+                      .register_type = predicate->register_ref.declared_type,
+                      .register_symbol_id = predicate->register_ref.symbol_id,
+                      .register_class = predicate->register_ref.register_class,
+                      .register_ref = &predicate->register_ref,
+                      .destination_predicate_negated = predicate->negated,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                if (const auto* policy = std::get_if<ResolvedCpAsyncCachePolicy>(&control))
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.register_cpp }},
+                      .register_type = policy->register_ref.declared_type,
+                      .register_symbol_id = policy->register_ref.symbol_id,
+                      .register_class = policy->register_ref.register_class,
+                      .register_ref = &policy->register_ref,
+                      .cp_async_cache_policy = true,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                const auto& register_ref = std::get<ResolvedRegisterRef>(control);
+                return OperandView{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.register_cpp }},
+                    .register_type = register_ref.declared_type,
+                    .register_symbol_id = register_ref.symbol_id,
+                    .register_class = register_ref.register_class,
+                    .register_ref = &register_ref,
+                    .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% elif model.structure == "operand_view_mov_source" %}              [&]() -> OperandView {
+                const auto state_space_from_symbol =
+                    [](const ResolvedSymbolRef* symbol)
+                        -> std::optional<MemoryStateSpace> {
+                  if (symbol == nullptr || !symbol->address_state_space)
+                    return std::nullopt;
+                  switch (*symbol->address_state_space) {
+                    case syntax_ast::AstStateSpace::Global:
+                      return {{ model.global_cpp }};
+                    case syntax_ast::AstStateSpace::Shared:
+                      return {{ model.shared_cpp }};
+                    case syntax_ast::AstStateSpace::Local:
+                      return {{ model.local_cpp }};
+                    case syntax_ast::AstStateSpace::Parameter:
+                      return {{ model.param_cpp }};
+                    case syntax_ast::AstStateSpace::Constant:
+                      return {{ model.const_cpp }};
+                    case syntax_ast::AstStateSpace::Register:
+                      return std::nullopt;
+                  }
+                  return std::nullopt;
+                };
+                const auto parameter_direction_from_symbol =
+                    [](const ResolvedSymbolRef* symbol) {
+                  if (symbol == nullptr || !symbol->declaration_kind)
+                    return ParameterDirection::None;
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::InputParameter)
+                    return {{ model.input_cpp }};
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::ReturnParameter)
+                    return {{ model.return_cpp }};
+                  if (*symbol->declaration_kind ==
+                      binding::SymbolKind::CallParameter)
+                    return ParameterDirection::CallArgument;
+                  return ParameterDirection::None;
+                };
+                if (const auto* immediate =
+                        std::get_if<ResolvedImmediate>(&{{ model.member_expr }}.value)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.immediate_cpp }},
+                      .immediate_type = immediate->type,
+                      .immediate_bits = immediate->bits,
+                      .immediate_is_negative = immediate->is_negative,
+                      .register_type = std::nullopt,
+                      .locations = {{ model.member_expr }}.locs,
+                      .integer_source_bits = immediate->integer_source_bits,
+                  };
+                }
+                if (const auto* register_ref =
+                        std::get_if<ResolvedRegisterRef>(&{{ model.member_expr }}.value)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.register_cpp }},
+                      .immediate_type = std::nullopt,
+                      .register_type = register_ref->declared_type,
+                      .register_ref = register_ref,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                if (const auto* special_register =
+                        std::get_if<ResolvedSpecialRegisterRef>(
+                            &{{ model.member_expr }}.value)) {
+                  const auto info =
+                      base::metadata(special_register->id);
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.specialregister_cpp }},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .special_register_type = info.element_type,
+                      .special_register_id = special_register->id,
+                      .value_availability = special_register_availability(info),
+                      .value_name = special_register->spelling,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                if (const auto* function = std::get_if<ResolvedFunctionRef>(
+                        &{{ model.member_expr }}.value)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.symbol_cpp }},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .value_availability = function->address_availability,
+                      .value_name = function->spelling,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                if (const auto* symbol = std::get_if<ResolvedSymbolRef>(
+                        &{{ model.member_expr }}.value)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.symbol_cpp }},
+                      .immediate_type = std::nullopt,
+                      .register_type = std::nullopt,
+                      .address_state_space = state_space_from_symbol(symbol),
+                      .enclosing_function_kind = symbol->enclosing_function_kind,
+                      .parameter_direction = parameter_direction_from_symbol(symbol),
+                      .parameter_qualifier = symbol->parameter_qualifier,
+                      .value_availability = symbol->address_availability,
+                      .value_name = symbol->spelling,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                if (const auto* opaque = std::get_if<ResolvedOpaqueSymbolRef>(
+                        &{{ model.member_expr }}.value)) {
+                  return OperandView{
+                      .field_id = "{{ model.field_id }}",
+                      .actual_shape = {{ model.symbol_cpp }},
+                      .opaque_resource_kind = opaque->kind,
+                      .value_name = opaque->spelling,
+                      .locations = {{ model.member_expr }}.locs,
+                  };
+                }
+                // An offset address keeps its value requirements on the
+                // symbol base, so expose those requirements through the same
+                // operand view used for a direct symbol source.
+                const auto& address =
+                    std::get<ResolvedAddress>({{ model.member_expr }}.value);
+                const auto* symbol =
+                    std::get_if<ResolvedSymbolRef>(&address.base);
+                return OperandView{
+                    .field_id = "{{ model.field_id }}",
+                    .actual_shape = {{ model.address_cpp }},
+                    .immediate_type = std::nullopt,
+                    .register_type = std::nullopt,
+                    .register_ref = std::get_if<ResolvedRegisterRef>(&address.base),
+                    .address_state_space = state_space_from_symbol(symbol),
+                    .address_base_kind =
+                        std::holds_alternative<ResolvedRegisterRef>(address.base)
+                            ? checker::AddressBaseKind::Register
+                            : std::holds_alternative<ResolvedImmediate>(address.base)
+                                  ? checker::AddressBaseKind::Immediate
+                                  : checker::AddressBaseKind::Symbol,
+                    .address_offset_fits_signed32 =
+                        !address.offset ||
+                        address_offset_fits_signed32(*address.offset),
+                    .enclosing_function_kind = address.enclosing_function_kind,
+                    .parameter_direction = parameter_direction_from_symbol(symbol),
+                    .parameter_qualifier = address.parameter_qualifier,
+                    .value_availability =
+                        symbol == nullptr ? std::nullopt
+                                          : symbol->address_availability,
+                    .value_name =
+                        symbol == nullptr ? std::string_view{}
+                                          : std::string_view{symbol->spelling},
+                    .locations = {{ model.member_expr }}.locs,
+                };
+              }(){% endif -%}
+{% endmacro %}

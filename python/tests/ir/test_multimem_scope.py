@@ -1,5 +1,6 @@
 """Preserve optional ordinary multimem scope through lowering and C++ emission."""
 
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,7 +10,7 @@ from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.checker_descriptors import (
     _emit_variant_modifier_value_domain_descriptors,
 )
-from ptx_frontend.code_gen.emit.resolved_descriptors import _emit_resolved_variant_storage
+from ptx_frontend.code_gen.emit.resolved_descriptors import _emit_resolved_descriptor_storage
 from ptx_frontend.code_gen.emit.resolved_model import generate_resolved_opcode_header
 from ptx_frontend.ir.resolved_ir import ResolvedValueKind, from_instruction_spec
 from ptx_frontend.spec.database import get_packaged_spec_database
@@ -49,7 +50,8 @@ class MultimemScopeTests(unittest.TestCase):
                               ResolvedValueKind.MEMORY_SCOPE)
                 fields = {field.name: field for field in variant.modifier_fields}
                 self.assertIs(fields["scope"].value_kind, ResolvedValueKind.MEMORY_SCOPE)
-                storage = _emit_resolved_variant_storage(variant, self.backend)
+                storage = _emit_resolved_descriptor_storage(
+                    replace(self.resolved, variants=(variant,)), self.backend)
                 self.assertIn("MemoryConsistency::Omitted", storage)
                 self.assertIn("MemoryScope::None", storage)
                 domains = {entry.value for entry in variant.modifier_value_domains

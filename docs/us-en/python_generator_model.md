@@ -178,6 +178,14 @@ helpers do not depend on emitters, the artifact plan, or the CLI. Emitters rende
 their results, and the plan consumes layout decisions directly. The ordered C++
 reference payload types remain separate from the value-kind reference policy.
 
+[`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
+owns final-form checker rendering, ordered layout/family/cross-rule checks, and
+the named-array address policy shared with resolver rendering. `resolved_source`
+assembles source files and renders resolvers, construction, and reference visits.
+Checker views receive the final class qualifier and payload member expression
+directly; callers guard optional payloads before use, while diagnostic field IDs
+continue to come from metadata.
+
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, opaque identity enum declarations, and observer contract |

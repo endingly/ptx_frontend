@@ -154,6 +154,12 @@ form name 与有序的 C++ reference-observer callback 接口；
 artifact plan 或 CLI。Emitter 渲染其结果，plan 直接读取 layout 决策。有序的 C++
 reference payload type 仍与按 value kind 定义的 reference policy 分开。
 
+[`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
+负责 final-form checker 渲染、有序的 layout/family/cross-rule 检查，以及与 resolver
+渲染共用的 named-array address policy。`resolved_source` 组装源文件并渲染 resolver、
+构造与 reference visit。Checker view 直接接收最终类限定名及 payload member 表达式；
+caller 在使用前保护 optional payload，诊断 field ID 仍来自 metadata。
+
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、opaque identity 枚举声明与 observer 契约 |

@@ -3548,7 +3548,7 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                     origin=ResolvedFieldOrigin.OPERAND,
                     source_name="vector",
                 ),
-                "instruction",
+                'instruction.vector',
                 backend,
             )
 

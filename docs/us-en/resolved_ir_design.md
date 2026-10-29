@@ -953,6 +953,14 @@ emits global dispatch. The shared handwritten implementation is in
 [`ptx_resolved_ir_selection_private.hpp`](../../submod/resolved_ir/src/ptx_resolved_ir_selection_private.hpp),
 and [`ptx_resolved_ir.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir.cpp).
 
+[`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
+owns final-form checker rendering, ordered layout/family/cross-rule checks, and
+the named-array address policy shared with resolver rendering. `resolved_source`
+assembles source files and renders resolvers, construction, and reference visits.
+Checker views receive the final class qualifier and payload member expression
+directly; callers guard optional payloads before use, while diagnostic field IDs
+continue to come from metadata.
+
 ## Opcode-generated structures
 
 Every semantic form generates one final class derived from `Instruction`. An

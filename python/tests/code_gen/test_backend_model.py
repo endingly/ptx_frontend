@@ -353,7 +353,7 @@ class BackendModelTests(unittest.TestCase):
                 origin=ResolvedFieldOrigin.OPERAND,
                 source_name="source",
             ),
-            "instruction",
+            'instruction.source',
             load_cpp_backend(REPOSITORY_CPP_BACKEND_SPEC),
         )
         opaque_projection = emitted.split(
@@ -395,7 +395,7 @@ class BackendModelTests(unittest.TestCase):
                             origin=ResolvedFieldOrigin.OPERAND,
                             source_name="predicate_pair",
                         ),
-                        "instruction",
+                        'instruction.predicate_pair',
                         backend,
                     ),
                     emit_check_operand_view(
@@ -405,7 +405,7 @@ class BackendModelTests(unittest.TestCase):
                             origin=ResolvedFieldOrigin.OPERAND,
                             source_name="predicate_source",
                         ),
-                        "instruction",
+                        'instruction.predicate_source',
                         backend,
                     ),
                     emit_check_operand_view(
@@ -415,7 +415,7 @@ class BackendModelTests(unittest.TestCase):
                             origin=ResolvedFieldOrigin.OPERAND,
                             source_name="address",
                         ),
-                        "instruction",
+                        'instruction.address',
                         backend,
                     ),
                 )

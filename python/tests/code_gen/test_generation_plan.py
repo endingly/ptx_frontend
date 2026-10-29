@@ -320,16 +320,48 @@ class GenerationPlanTests(unittest.TestCase):
         assert cls._full_output is not None
         return cls._full_plan, cls._full_output
 
+    def test_checker_guards_and_cross_rules_preserve_diagnostic_order(self) -> None:
+        """Presence checks precede optional access and cross rules retain their order."""
+        from ptx_frontend.code_gen.emit.resolved_checks import (
+            _emit_cross_rule_checks, emit_check,
+        )
+
+        entry = next(item for item in self.context.entries if item.specification.opcode == "atom")
+        variant = entry.resolved.variants[0]
+        cross = _emit_cross_rule_checks(
+            entry.resolved, variant, "chosen_descriptor",
+            address_qualifier_expr="chosen.atomic_qualifier",
+        )
+        self.assertIn("chosen.atomic_qualifier, fields, operands, context", cross)
+        checks = ("atomic_check", "unified_address_check")
+        self.assertEqual(sorted(cross.index("const auto " + name) for name in checks),
+                         [cross.index("const auto " + name) for name in checks])
+
+        for entry in self.context.entries:
+            for index, variant in enumerate(entry.resolved.variants):
+                slots = operand_slots(variant, self.backend)
+                if not any(slot.optional for slot in slots):
+                    continue
+                emitted = emit_check(entry, variant, index, self.backend)
+                self.assertLess(emitted.index("const auto predicate_check"), emitted.index("const auto common_check"))
+                self.assertLess(emitted.index("const auto domain_check"), emitted.index("const auto layout_check"))
+                for layout_index, _ in enumerate(variant.operand_layouts):
+                    branch = emitted.split(f"case {layout_index}: {{", 1)[1].split("      break;", 1)[0]
+                    self.assertLess(branch.index("check_operand_layout_availability"), branch.index("check_operand_layout_modifiers"))
+                    self.assertLess(branch.index("OperandLayoutPayloadMismatch"), branch.index("const std::array<checker::OperandView"))
+                return
+        self.fail("canonical corpus must exercise optional direct operand slots")
+
     def test_named_array_address_policy_is_final_variant_local(self) -> None:
         """Only ordinary LD/ST opt in; overlapping rules cannot widen other families."""
-        from ptx_frontend.code_gen.emit.resolved_source import _named_array_policy
+        from ptx_frontend.code_gen.emit.resolved_checks import named_array_policy
 
         observed = {}
         for entry in self.context.entries:
             if entry.specification.opcode not in {"ld", "ldu", "st", "cp", "atom"}:
                 continue
             for variant in entry.resolved.variants:
-                policy = _named_array_policy(entry, variant)
+                policy = named_array_policy(entry, variant)
                 observed[(entry.specification.opcode, variant.variant_id)] = policy
                 if entry.specification.opcode in {"ldu", "cp", "atom"}:
                     self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")

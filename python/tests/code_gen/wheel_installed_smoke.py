@@ -79,6 +79,7 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.selection_index",
         "ptx_frontend.code_gen.emit.resolved_model",
         "ptx_frontend.code_gen.emit.resolved_source",
+        "ptx_frontend.code_gen.emit.resolved_checks",
         "ptx_frontend.code_gen.emit.resolved_dispatch",
         "ptx_frontend.code_gen.emit.resolved_descriptors",
         "ptx_frontend.code_gen.emit.checker_descriptors",

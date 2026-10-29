@@ -758,6 +758,12 @@ resolver 显式传入私有 plan，才会使用索引路径。
 [`ptx_resolved_ir_selection_private.hpp`](../../submod/resolved_ir/src/ptx_resolved_ir_selection_private.hpp)
 及 [`ptx_resolved_ir.cpp`](../../submod/resolved_ir/src/ptx_resolved_ir.cpp)。
 
+[`resolved_checks.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_checks.py)
+负责 final-form checker 渲染、有序的 layout/family/cross-rule 检查，以及与 resolver
+渲染共用的 named-array address policy。`resolved_source` 组装源文件并渲染 resolver、
+构造与 reference visit。Checker view 直接接收最终类限定名及 payload member 表达式；
+caller 在使用前保护 optional payload，诊断 field ID 仍来自 metadata。
+
 ## 按 opcode 生成的结构
 
 每个语义形式生成一个继承 `Instruction` 的 final 类。每个 opcode 的窄生成头

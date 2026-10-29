@@ -315,20 +315,66 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                 emitted,
             )
 
+    def test_checker_views_use_final_expressions_and_metadata_identity(self) -> None:
+        """Optional aliases affect payload access without changing diagnostic IDs."""
+        from ptx_frontend.code_gen.emit.operand_views import (
+            emit_check_modifier_value_view, emit_check_modifier_view,
+            emit_check_operand_view,
+        )
+
+        operand = ResolvedField(
+            name="source", source_name="src", origin=ResolvedFieldOrigin.OPERAND,
+            value_kind=ResolvedValueKind.REGISTER,
+        )
+        emitted = emit_check_operand_view(
+            operand, "(*chosen.source_register)", self.backend,
+        )
+        self.assertIn('.field_id = "source"', emitted)
+        self.assertIn("(*chosen.source_register).value.declared_type", emitted)
+        self.assertIn("(*chosen.source_register).locs", emitted)
+        self.assertNotIn("chosen.source.value", emitted)
+
+        for storage in (ResolvedFieldStorage.INSTANCE, ResolvedFieldStorage.STATIC_CONSTANT):
+            with self.subTest(storage=storage):
+                modifier = ResolvedField(
+                    name="type", source_name="type_suffix",
+                    origin=ResolvedFieldOrigin.MODIFIER,
+                    value_kind=ResolvedValueKind.SCALAR_TYPE,
+                    storage=storage,
+                    constant_value="f32" if storage is ResolvedFieldStorage.STATIC_CONSTANT else None,
+                )
+                variant = SimpleNamespace(modifier_bindings=(ResolvedModifierBinding(
+                    source_kind_id="type_suffix", target_field_id="type",
+                    default_value=ResolvedModifierDefault(ResolvedValueKind.SCALAR_TYPE, "f32"),
+                ),))
+                kwargs = dict(form_cpp_name="ExactFinalForm", member_expr="(*chosen.type_alias)")
+                field_view = emit_check_modifier_view(modifier, self.backend, **kwargs)
+                value_view = emit_check_modifier_value_view(
+                    variant, modifier, self.backend, 7, **kwargs,
+                )
+                value = ("ExactFinalForm::type" if storage is ResolvedFieldStorage.STATIC_CONSTANT
+                         else "(*chosen.type_alias).value")
+                self.assertIn(".scalar_type = " + value, field_view)
+                self.assertIn(".scalar_type = " + value, value_view)
+                self.assertIn('.field_id = "type"', field_view)
+                self.assertIn('.kind_id = "type_suffix"', value_view)
+                self.assertIn(".slot = ModifierSlotTag{7}", value_view)
+                if storage is ResolvedFieldStorage.INSTANCE:
+                    self.assertIn("!(*chosen.type_alias).locs.empty() || (*chosen.type_alias).value !=", value_view)
+                else:
+                    self.assertIn(".is_present = true", value_view)
+                    self.assertNotIn("chosen", value_view)
+
     def test_field_views_leave_unselected_members_disengaged(self) -> None:
         from ptx_frontend.code_gen.emit.operand_views import (
             emit_check_modifier_view,
         )
 
-        instruction = SimpleNamespace(cpp_name="Sample")
-        variant = SimpleNamespace(cpp_name="Variant")
         for storage in (
             ResolvedFieldStorage.STATIC_CONSTANT,
             ResolvedFieldStorage.INSTANCE,
         ):
             emitted = emit_check_modifier_view(
-                instruction,
-                variant,
                 ResolvedField(
                     name="type",
                     value_kind=ResolvedValueKind.SCALAR_TYPE,
@@ -342,6 +388,7 @@ class ResolvedValueTraitsTests(unittest.TestCase):
                     ),
                 ),
                 self.backend,
+                form_cpp_name="Sample::Variant", member_expr="selected.type",
             )
             self.assertIn(
                 ".scalar_type = "

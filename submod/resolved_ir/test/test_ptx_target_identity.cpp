@@ -74,6 +74,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   constexpr std::array<std::string_view, 2> sm121f_features{"sm_120f",
                                                             "sm_121f"};
   constexpr std::array<std::string_view, 1> sm110f_features{"sm_110f"};
+  constexpr std::array<std::string_view, 1> graph_capabilities{"graph_exec"};
   constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
                                                               "graph_exec"};
   constexpr std::array<std::string_view, 4> sm90_capabilities{
@@ -92,8 +93,16 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
       ExpectedProfile{"sm_13", 13, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_20", 20, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
-      ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none, none},
-      ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_70", 70, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_72", 72, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_75", 75, TargetFlavor::Generic, none,
+                      graph_capabilities},
       ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
                       sm80_capabilities},
       ExpectedProfile{"sm_89", 89, TargetFlavor::Generic, none,
@@ -135,6 +144,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   };
 
   for (const auto& expected : profiles) {
+    SCOPED_TRACE(expected.spelling);
     const auto profile = find_target_profile(expected.spelling);
     ASSERT_TRUE(profile.has_value()) << expected.spelling;
     EXPECT_EQ(profile->identity.architecture.number, expected.architecture);

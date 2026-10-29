@@ -941,7 +941,7 @@ module pipeline described elsewhere in this document. The
 ownership rules for the steps above.
 
 To trace a generated block back to its source, start with
-[`selection_index.py`](../../python/src/ptx_frontend/code_gen/emit/selection_index.py)
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
 for spelling masks, and `_emit_resolve` in
 [`resolved_source.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_source.py)
 for selection storage, `SelectedForm`, and resolver calls.

@@ -166,6 +166,18 @@ from its source-derived type name, including direct construction and
 `dataclasses.replace`. This validates the frozen snapshot, not every possible
 rendering or filesystem failure.
 
+Internal preparation helpers live directly under `code_gen`:
+[`artifact_layout.py`](../../python/src/ptx_frontend/code_gen/artifact_layout.py)
+owns the generated include root and canonical 64-form shard partition shared by
+planning and emission;
+[`cpp_names.py`](../../python/src/ptx_frontend/code_gen/cpp_names.py) owns final
+form names and the ordered C++ reference-observer callback surface; and
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
+derives conservative modifier candidate masks from syntax metadata. These
+helpers do not depend on emitters, the artifact plan, or the CLI. Emitters render
+their results, and the plan consumes layout decisions directly. The ordered C++
+reference payload types remain separate from the value-kind reference policy.
+
 | Output | Emitter | Contents |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | base `Instruction`, opaque identity enum declarations, and observer contract |

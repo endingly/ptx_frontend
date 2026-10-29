@@ -74,6 +74,9 @@ def check_module_layout() -> None:
         "ptx_frontend.code_gen.context",
         "ptx_frontend.code_gen.plan",
         "ptx_frontend.code_gen.resolved_layout",
+        "ptx_frontend.code_gen.artifact_layout",
+        "ptx_frontend.code_gen.cpp_names",
+        "ptx_frontend.code_gen.selection_index",
         "ptx_frontend.code_gen.emit.resolved_model",
         "ptx_frontend.code_gen.emit.resolved_source",
         "ptx_frontend.code_gen.emit.resolved_dispatch",
@@ -109,7 +112,7 @@ def check_module_layout() -> None:
     for module in packaged_modules:
         import_module(module)
 
-    from ptx_frontend.code_gen.emit.resolved_model import FORM_SHARD_SIZE
+    from ptx_frontend.code_gen.artifact_layout import FORM_SHARD_SIZE
     from ptx_frontend.spec.tcgen_descriptor_domains import (
         validate_catalogue as validate_descriptor_catalogue,
     )

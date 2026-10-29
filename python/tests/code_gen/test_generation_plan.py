@@ -10,6 +10,7 @@ from io import StringIO
 import json
 import re
 import shutil
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -24,11 +25,10 @@ from ptx_frontend.code_gen.context import (
     GenerationInstruction,
     build_generation_context,
 )
+from ptx_frontend.code_gen.cpp_names import REFERENCE_TYPES, method_name
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_model import (
-    REFERENCE_TYPES,
-    form_shards,
     generate_resolved_opcode_header,
-    method_name,
 )
 from ptx_frontend.code_gen.resolved_layout import (
     operand_slot_for_field,
@@ -800,9 +800,36 @@ class GenerationPlanTests(unittest.TestCase):
         source_imports = imported_modules("resolved_source.py")
         dispatch_imports = imported_modules("resolved_dispatch.py")
         self.assertFalse(any(name.endswith("resolved_source") for name in model_imports))
-        self.assertTrue(any(name.endswith("resolved_model") for name in source_imports))
+        self.assertFalse(any(name.endswith("resolved_model") for name in source_imports))
+        for imports in (model_imports, source_imports):
+            self.assertIn("ptx_frontend.code_gen.artifact_layout", imports)
+            self.assertIn("ptx_frontend.code_gen.cpp_names", imports)
         self.assertFalse(any(name.endswith("resolved_source") for name in dispatch_imports))
         self.assertFalse(any(name.endswith("category_source") for name in dispatch_imports))
+
+    def test_preparation_modules_do_not_load_emitters_or_orchestration(self) -> None:
+        """Keep preparation imports usable without artifact rendering or CLI setup."""
+
+        result = subprocess.run(
+            [sys.executable, "-c", """
+import importlib
+import sys
+
+for name in ("artifact_layout", "cpp_names", "selection_index"):
+    importlib.import_module("ptx_frontend.code_gen." + name)
+blocked = sorted(
+    name for name in sys.modules
+    if name == "ptx_frontend.code_gen.emit"
+    or name.startswith("ptx_frontend.code_gen.emit.")
+    or name in {"ptx_frontend.code_gen.plan", "ptx_frontend.code_gen.cli"}
+)
+assert not blocked, blocked
+"""],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_plan_is_the_only_artifact_inventory(self) -> None:
         plan, output = self.full_generation()

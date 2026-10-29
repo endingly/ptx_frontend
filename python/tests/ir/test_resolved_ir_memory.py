@@ -38,8 +38,8 @@ from ptx_frontend.code_gen.emit.resolved_dispatch import (
 from ptx_frontend.code_gen.reference_policy import validate_reference_field_types
 from ptx_frontend.code_gen.resolved_layout import operand_slots
 from ptx_frontend.ir.syntax_ast import from_InstructionSpec
+from ptx_frontend.code_gen.artifact_layout import form_shards
 from ptx_frontend.code_gen.emit.resolved_model import (
-    form_shards,
     generate_resolved_base_header,
     generate_resolved_identity_catalogue_header,
     generate_resolved_opcode_header,

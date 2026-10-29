@@ -746,7 +746,7 @@ resolver 显式传入私有 plan，才会使用索引路径。
 错误与 ownership 规则见后面的 [Resolution 协议](#resolution-协议)。
 
 要追溯生成来源，先看
-[`selection_index.py`](../../python/src/ptx_frontend/code_gen/emit/selection_index.py)
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
 如何导出 spelling mask，以及
 [`resolved_source.py`](../../python/src/ptx_frontend/code_gen/emit/resolved_source.py)
 的 `_emit_resolve` 如何发射选择表 storage、`SelectedForm` 和 resolver 调用。

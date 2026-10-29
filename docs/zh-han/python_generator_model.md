@@ -144,6 +144,16 @@ policy。binding 构造自身会拒绝 resolved C++ name 与 source-derived type
 包括 direct 构造和 `dataclasses.replace`。它只验证冻结 snapshot，而不声称能预测所有
 rendering 或 filesystem 失败。
 
+内部准备 helper 直接位于 `code_gen` 下：
+[`artifact_layout.py`](../../python/src/ptx_frontend/code_gen/artifact_layout.py)
+负责生成 include root，以及 planning 与 emission 共用的 canonical 64-form 分片；
+[`cpp_names.py`](../../python/src/ptx_frontend/code_gen/cpp_names.py) 负责 final
+form name 与有序的 C++ reference-observer callback 接口；
+[`selection_index.py`](../../python/src/ptx_frontend/code_gen/selection_index.py)
+从 syntax metadata 导出保守的 modifier candidate mask。这些 helper 不依赖 emitter、
+artifact plan 或 CLI。Emitter 渲染其结果，plan 直接读取 layout 决策。有序的 C++
+reference payload type 仍与按 value kind 定义的 reference policy 分开。
+
 | 输出 | emitter | 内容 |
 | --- | --- | --- |
 | `public/ptx_frontend/resolved_ir/ptx_instruction_base.gen.hpp` | `emit.resolved_model` | `Instruction` 基类、opaque identity 枚举声明与 observer 契约 |

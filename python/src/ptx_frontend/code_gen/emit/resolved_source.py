@@ -21,10 +21,9 @@ from ptx_frontend.code_gen.emit.syntax_descriptors import (
     _emit_instruction_descriptor_storage as emit_syntax_storage,
     _cpp_string,
 )
-from ptx_frontend.code_gen.emit.resolved_model import (
-    INCLUDE_ROOT, form_name, form_shards, method_name,
-)
-from ptx_frontend.code_gen.emit.selection_index import modifier_candidate_rows
+from ptx_frontend.code_gen.artifact_layout import INCLUDE_ROOT, form_shards
+from ptx_frontend.code_gen.cpp_names import form_name, method_name
+from ptx_frontend.code_gen.selection_index import modifier_candidate_rows
 from ptx_frontend.code_gen.resolved_layout import operand_slot_for_field, operand_slots
 from ptx_frontend.code_gen.reference_policy import REFERENCE_VALUE_KINDS
 from ptx_frontend.code_gen.resolved_field_names import field_value_cpp_type

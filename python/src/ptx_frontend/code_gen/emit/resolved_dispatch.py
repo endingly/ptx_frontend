@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.code_gen.emit.resolved_model import INCLUDE_ROOT
+from ptx_frontend.code_gen.artifact_layout import INCLUDE_ROOT
 
 
 def generate_resolved_dispatch_source(

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ptx_frontend.base.utils import file_stem_to_pascal_case
+from ptx_frontend.code_gen.artifact_layout import INCLUDE_ROOT, form_shards
+from ptx_frontend.code_gen.cpp_names import REFERENCE_TYPES, form_name, method_name
 from ptx_frontend.code_gen.context import GenerationContext, GenerationInstruction
 from ptx_frontend.code_gen.emit.matrix import emit_matrix_descriptor
 from ptx_frontend.code_gen.emit.availability import emit_availability
@@ -25,10 +27,6 @@ from ptx_frontend.spec.model import (
     TextureMipmapMode,
     TextureQuery,
 )
-
-
-INCLUDE_ROOT = "ptx_frontend/resolved_ir"
-FORM_SHARD_SIZE = 64
 
 
 def _fabric_descriptor(variant) -> str:
@@ -208,68 +206,6 @@ def _texture_descriptor(variant) -> str:
 {selected_types}
 {residency_layout}
 '''
-
-
-def form_shards(entry: GenerationInstruction) -> tuple[tuple[int, ...], ...]:
-    """Partition large opcode forms in canonical order for bounded generation."""
-
-    count = len(entry.resolved.variants)
-    if count <= FORM_SHARD_SIZE:
-        return ()
-    return tuple(
-        tuple(range(start, min(start + FORM_SHARD_SIZE, count)))
-        for start in range(0, count, FORM_SHARD_SIZE)
-    )
-
-
-def form_name(entry: GenerationInstruction, variant) -> str:
-    """Return the unique final C++ identity of one semantic form."""
-
-    return entry.cpp_name + variant.cpp_name
-
-
-def method_name(cpp_type: str) -> str:
-    """Return the stable observer callback for one foundation reference type."""
-
-    if cpp_type not in REFERENCE_TYPES:
-        raise ValueError(f"reference payload lacks typed observer callback: {cpp_type}")
-    aliases = {
-        "ResolvedPredicate": "predicate",
-        "ResolvedRegisterRef": "reg",
-        "RegOrImm": "reg_or_imm",
-    }
-    if cpp_type in aliases:
-        return aliases[cpp_type]
-    text = cpp_type.removeprefix("Resolved")
-    result = ""
-    for index, char in enumerate(text):
-        if char.isupper() and index and (
-            text[index - 1].islower()
-            or (index + 1 < len(text) and text[index + 1].islower())
-        ):
-            result += "_"
-        result += char.lower()
-    return result
-
-
-REFERENCE_TYPES = (
-    "RegOrImm", "ResolvedAddress", "ResolvedBranchTarget",
-    "ResolvedBranchTargetSet", "ResolvedCallArguments", "ResolvedCallParameterRef",
-    "ResolvedCpAsyncSourceControl", "ResolvedFunctionRef", "ResolvedIndirectCallee",
-    "ResolvedMbarrierStateToken", "ResolvedMovSource", "ResolvedPredicate",
-    "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
-    "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
-    "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",
-    "ResolvedValueVector",
-    "ResolvedMovVectorSource",
-    "ResolvedTensorCoordinate", "ResolvedTensorIm2colInfo", "ResolvedTensorOperand",
-    "ResolvedSurfaceAccess", "ResolvedSurfaceQueryResource",
-    "ResolvedVideoOperand",
-    "ResolvedFabricHandle", "ResolvedTextureAccess", "ResolvedTextureQueryResource",
-    "ResolvedTextureResult", "ResolvedStackToken", "ResolvedLocalAllocationResult",
-    "TensorMemoryAddress", "ResolvedMatrixScaleSelector",
-    "ResolvedSharedMatrixDescriptor", "ResolvedVectorRegisterRef",
-)
 
 
 def generate_resolved_base_header(

@@ -7,7 +7,7 @@ Selected-form projection never makes caller claims into descriptor contents.
 from pathlib import Path
 
 from ptx_frontend.code_gen.context import GenerationContext
-from ptx_frontend.code_gen.emit.resolved_model import form_name
+from ptx_frontend.code_gen.cpp_names import form_name
 from ptx_frontend.code_gen.resolved_layout import operand_slot_for_field, operand_slots
 
 from ptx_frontend.spec.tensor_map_known_facts import RULE_CATALOG, TensorFactRule

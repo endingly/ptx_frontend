@@ -8,7 +8,7 @@ import unittest
 from ptx_frontend.code_gen.context import GenerationContext, build_generation_context
 from ptx_frontend.code_gen.cpp_backend import load_cpp_backend
 from ptx_frontend.code_gen.emit.resolved_source import generate_resolved_opcode_source
-from ptx_frontend.code_gen.emit.selection_index import modifier_candidate_rows
+from ptx_frontend.code_gen.selection_index import modifier_candidate_rows
 from ptx_frontend.code_gen.emit.syntax_descriptors import _cpp_string
 from ptx_frontend.ir.syntax_ast import (
     ModifierPresence as Presence, SyntaxInstructionDescriptor as Instruction,

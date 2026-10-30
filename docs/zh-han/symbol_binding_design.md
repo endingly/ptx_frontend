@@ -45,7 +45,13 @@ control-flow metadata 则有意保持 function-local，而非 block-local。
 
 debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
 `uint64_t`（decimal/octal/binary/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
-有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+一律报错，即使 filename 与 metadata 完全相同；诊断保留当前及首次 index 的 range。
+第一个 `SymbolId` 仅用于诊断恢复与 `.loc` binding；不同 index 可以命名同一文件。
+`SymbolTable::debugFiles()` 借用按源码顺序拥有的记录，保存规范化 index、bound symbol、
+原始 index/filename token、可选 timestamp/file-size token 及其 source range；被拒绝的
+重复声明也保留。filename escape 不解码，也不做路径去重；省略的数值 metadata 仍表示默认零。
+此约束依据 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
+及 CUDA 13.3 `ptxas` 的重复 index 诊断。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
 `DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
 program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
 `DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为

@@ -166,7 +166,7 @@ warning severity、backend resource feasibility 与数值上限仍不属于本 p
 
 ## Debug metadata 边界
 
-`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复 file index 幂等，
+`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复的规范化 file index 一律诊断，并保留当前/首次 range，
 `.loc` file reference 必须解析，`function_name` 只能标识 `.debug_str` 自身或其中 raw label。
 本 declaration pass 不增加 DWARF payload expression、source attachment 或 resource
 feasibility semantic。

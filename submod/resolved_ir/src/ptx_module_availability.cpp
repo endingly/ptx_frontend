@@ -2480,6 +2480,84 @@ void check_function_parameters(const ResolvedModule& module,
                                : ParameterDeclarationRole::DeviceInput);
 }
 
+/** Rejoin retained debug declarations and references without needing source text. */
+void check_debug_files(const ResolvedModule& module,
+                       checker::CheckDiagnostics& diagnostics) {
+  const auto& table = module.symbols;
+  std::unordered_map<uint64_t, const binding::DebugFileDeclaration*> first;
+  std::vector<bool> covered(table.symbols().size());
+  const auto report = [&](SourceRange range, std::string message) {
+    append_model_mismatch(diagnostics, range, std::move(message));
+  };
+  const auto position = [](SourcePos value) {
+    return std::pair{value.line, value.column};
+  };
+  for (const auto& file : table.debugFiles()) {
+    const auto leaf_valid = [&](const binding::DebugFileSourceLeaf& leaf) {
+      return !leaf.text.empty() && leaf.range.start.line > 0 &&
+             leaf.range.start.column > 0 && leaf.range.end.line > 0 &&
+             leaf.range.end.column > 0 &&
+             position(file.range.start) <= position(leaf.range.start) &&
+             position(leaf.range.start) < position(leaf.range.end) &&
+             position(leaf.range.end) <= position(file.range.end);
+    };
+    const auto parsed = base::parseIntegerMagnitude(file.source_index.text);
+    if (file.range.start.line <= 0 || file.range.start.column <= 0 || !parsed ||
+        *parsed != file.index || !leaf_valid(file.source_index) ||
+        position(file.source_index.range.end) >
+            position(file.filename.range.start) ||
+        !leaf_valid(file.filename) || file.filename.text.size() < 2 ||
+        file.filename.text.front() != '"' || file.filename.text.back() != '"' ||
+        file.timestamp.has_value() != file.file_size.has_value() ||
+        (file.timestamp && (!leaf_valid(*file.timestamp) ||
+                            position(file.filename.range.end) >
+                                position(file.timestamp->range.start))) ||
+        (file.file_size &&
+         (!leaf_valid(*file.file_size) ||
+          (file.timestamp && position(file.timestamp->range.end) >
+                                 position(file.file_size->range.start)))))
+      report(file.range,
+             "Owned debug file payload has inconsistent source boundaries.");
+    const auto [entry, inserted] = first.try_emplace(file.index, &file);
+    if (!inserted)
+      report(file.source_index.range,
+             "Duplicate file index in owned debug metadata.");
+    const auto* symbol = owned_symbol(module, file.symbol_id);
+    if (!symbol || symbol->kind != binding::SymbolKind::DebugFile ||
+        symbol->scope != table.moduleScope() ||
+        symbol->name != std::to_string(file.index) ||
+        symbol->id != entry->second->symbol_id ||
+        symbol->declaration_range != entry->second->source_index.range) {
+      report(file.source_index.range,
+             "Owned debug file declaration disagrees with its first bound "
+             "identity.");
+    } else {
+      covered[file.symbol_id.value] = true;
+    }
+  }
+  for (size_t index = 0; index < table.symbols().size(); ++index) {
+    const auto& symbol = table.symbols()[index];
+    if (symbol.kind == binding::SymbolKind::DebugFile &&
+        (!covered[index] || symbol.id.value != index))
+      report(symbol.declaration_range,
+             "Owned debug file symbol has no retained declaration.");
+  }
+  for (const auto& reference : table.references()) {
+    if (reference.kind != binding::ReferenceKind::DebugFile)
+      continue;
+    const auto index = base::parseIntegerMagnitude(reference.spelling);
+    const auto found = index ? first.find(*index) : first.end();
+    if (found == first.end() || !reference.target ||
+        reference.target->symbol != found->second->symbol_id ||
+        reference.target->parameterized_index ||
+        reference.classification !=
+            binding::ReferenceClassification::DeclaredSymbol)
+      report(reference.range,
+             "Owned debug file reference disagrees with its retained "
+             "declaration.");
+  }
+}
+
 /** Check owned ordinary declaration names without relying on source identity. */
 void check_declaration_identifiers(const ResolvedModule& module,
                                    checker::CheckDiagnostics& diagnostics) {
@@ -3636,6 +3714,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_module_declaration_placement(module, policy, diagnostics);
@@ -3815,6 +3894,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       });
   check_header_features(version, std::array<std::string_view, 0>{},
                         explicit_address_size, ast.range, diagnostics);
+  check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);

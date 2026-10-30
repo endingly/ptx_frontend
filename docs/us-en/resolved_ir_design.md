@@ -400,7 +400,7 @@ to retain a syntax AST.
 Instruction ranges/opcodes and all owned records are semantic provenance. The
 frontend retains `.language` and function ABI/resource contracts; `.file`,
 `.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
-are explicitly not resolved payloads. There is no promise of stable generated
+are not executable resolved payloads. The owned symbol table retains `.file` declaration payloads for debug identity validation. There is no promise of stable generated
 C++ struct layout or binary ABI. Raw module directives still require an AST;
 the owned model is a semantic handoff for the documented subset, not a complete
 source serialization contract.
@@ -434,9 +434,15 @@ labels share a boundary, and a trailing label is at `body.size()`. Standalone
 single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
 fields; owned, normalized parameter and storage metadata are deliberate exceptions.
-Bound `.file` and `.debug_str`
-identities validate `.loc` metadata there, but `.loc`, `.section`, and
-`.pragma` do not add Resolved IR nodes or instruction attachment.
+The owned symbol table additionally retains source-ordered `.file` declarations,
+including exact filename and optional numeric metadata tokens and ranges, after
+source/AST destruction. Both validation overloads recheck normalized index
+uniqueness, first-symbol association, payload boundaries, declaration coverage,
+and basic/inline `.loc` file-reference targets. Replacement source independently
+rebinds its debug metadata: a valid replacement filename or index need not match
+the original. Bound `.debug_str` identities also validate `.loc` metadata, but
+`.file`, `.loc`, `.section`, and `.pragma` add no executable Resolved IR nodes or
+instruction attachment.
 
 `ResolvedFunction::parameter_declarations` owns validated `.param`
 declarations: return formals first, input formals next, then body-local declarators

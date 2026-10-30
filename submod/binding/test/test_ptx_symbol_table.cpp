@@ -962,7 +962,6 @@ TEST(PtxSymbolTable, DiagnosesOverlappingParameterizedNameSets) {
 TEST(PtxSymbolTable, BindsDebugMetadataInItsOwnNamespace) {
   constexpr std::string_view source = R"ptx(
 .file 1 "first.ptx"
-.file 0x1U "same-id.ptx"
 .section .debug_str {
 debug_name:
   .b8 0;

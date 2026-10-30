@@ -210,8 +210,8 @@ limits remain outside this pass.
 
 ## Debug metadata boundary
 
-Binding owns the `.file`/`.loc` and `.debug_str` identity table: duplicate file
-indices are idempotent, `.loc` file references must bind, and
+Binding owns the `.file`/`.loc` and `.debug_str` identity table: every duplicate
+normalized file index diagnoses with current/previous ranges, `.loc` file references must bind, and
 `function_name` must identify `.debug_str` itself or one of its raw labels.
 This declaration pass intentionally adds no DWARF payload-expression, source
 attachment, or resource-feasibility semantics.

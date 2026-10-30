@@ -140,6 +140,30 @@ struct SymbolDeclarationOccurrence {
   std::optional<SourceRange> variable_declaration_range;
 };
 
+/** Owned debug metadata spelling and its exact source boundary. */
+struct DebugFileSourceLeaf {
+  /** Exact token spelling; no filename decoding or path normalization. */
+  std::string text;
+  /** Original token range within the containing file directive. */
+  SourceRange range;
+};
+
+/** One source-ordered file declaration, including rejected duplicate indices. */
+struct DebugFileDeclaration {
+  /** Normalized unsigned file identity; uniqueness is module-wide. */
+  uint64_t index{};
+  /** First DebugFile symbol for this index, retained for diagnostic recovery. */
+  SymbolId symbol_id;
+  /** Original index and quoted filename tokens. */
+  DebugFileSourceLeaf source_index;
+  DebugFileSourceLeaf filename;
+  /** Paired optional source tokens; omission denotes PTX's default zero. */
+  std::optional<DebugFileSourceLeaf> timestamp;
+  std::optional<DebugFileSourceLeaf> file_size;
+  /** Complete source directive extent. */
+  SourceRange range;
+};
+
 enum class BindDiagnosticKind : uint8_t {
   DuplicateSymbol,
   InvalidParameterizedCount,
@@ -170,6 +194,12 @@ class SymbolTable {
   [[nodiscard]] const std::vector<SymbolReference>& references()
       const noexcept {
     return references_;
+  }
+
+  /** Borrow owned file declarations until this table is assigned or destroyed. */
+  [[nodiscard]] std::span<const DebugFileDeclaration> debugFiles()
+      const noexcept {
+    return debug_files_;
   }
 
   [[nodiscard]] const Scope& scope(ScopeId id) const;
@@ -328,6 +358,8 @@ class SymbolTable {
   std::vector<Scope> scopes_;
   std::vector<Symbol> symbols_;
   std::vector<SymbolReference> references_;
+  /** Every parsed file declaration in source order, owning all payload tokens. */
+  std::vector<DebugFileDeclaration> debug_files_;
   /** Declaration occurrences grouped by stable SymbolId. */
   std::vector<std::vector<SymbolDeclarationOccurrence>>
       declaration_occurrences_;

@@ -53,8 +53,16 @@ control-flow metadata are deliberately function-local rather than block-local.
 
 Debug identities use a separate module metadata namespace. `.file` indices are
 normalized to `uint64_t` (decimal/octal/binary/hex and an optional `u`/`U` suffix) and bind
-as `DebugFile` symbols; repeated indices intentionally reuse the first
-`SymbolId`. A `.debug_str` section binds its name and each raw `name:` payload
+as `DebugFile` symbols. Every repeated normalized index is an error, even for
+identical filenames and metadata; diagnostics identify the current and first index
+ranges. The first `SymbolId` survives only for diagnostic recovery and `.loc`
+binding. Different indices may name the same file. `SymbolTable::debugFiles()`
+borrows source-ordered owned records containing the normalized index, bound symbol,
+exact index/filename tokens, optional timestamp/file-size tokens, and their source
+ranges; rejected repeats remain recorded. Filename escapes are retained without
+decoding or path deduplication, and absent numeric metadata retains its default-zero
+meaning. This follows [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
+and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each raw `name:` payload
 label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
 both debug kinds, so a program declaration may use the same spelling. `.loc`
 creates `DebugFile` references for its basic and `inlined_at` file fields, plus

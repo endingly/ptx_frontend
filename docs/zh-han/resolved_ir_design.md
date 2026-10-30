@@ -336,7 +336,7 @@ diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unif
 
 instruction range/opcode 与全部 owned record 都是 semantic provenance。frontend 保留 `.language`
 以及 function ABI/resource contract；`.file`、`.loc`、`.section`、`.pragma` 属于 syntax/debug 或
-advisory metadata，明确不作为 resolved payload。generated C++ struct layout 或 binary ABI 不保证稳定。
+advisory metadata，不作为可执行 resolved payload；owned symbol table 另保留 `.file` 声明 payload 以验证 debug identity。generated C++ struct layout 或 binary ABI 不保证稳定。
 原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
 序列化契约。
 
@@ -361,9 +361,13 @@ boundary 记录每个 function label；boundary 基于递归展平的 body，首
 连续 label 共用一个 boundary、末尾 label 为 `body.size()`。standalone `resolveInstruction`
 与逐 opcode resolver 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
 Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段；刻意保留的
-例外是拥有值的、已规范化 parameter 与 storage metadata。`.file` 与
-`.debug_str` identity 会在那里验证 `.loc` metadata，
-但 `.loc`、`.section` 与 `.pragma` 不产生 Resolved IR node，也不附着到 instruction。
+例外是拥有值的、已规范化 parameter 与 storage metadata。owned symbol table 另按源码顺序
+保留 `.file` 声明的原始 filename、可选数值 metadata token 及 range，在 source/AST 销毁后仍可用。
+两个 validation overload 均重新检查规范化 index 唯一性、首次 symbol association、payload
+边界、声明覆盖与 basic/inline `.loc` file-reference target。replacement source 独立重新绑定
+其 debug metadata，合法的替换 filename 或 index 不必与原始内容相同。`.debug_str` identity
+也验证 `.loc` metadata；`.file`、`.loc`、`.section` 与 `.pragma` 不产生可执行 Resolved IR node，
+也不附着到 instruction。
 
 `ResolvedFunction::parameter_declarations` 拥有通过验证的 `.param` 声明：先按列表顺序
 保存 return formal，再保存 input formal，最后按词法遍历顺序保存 body-local declarator

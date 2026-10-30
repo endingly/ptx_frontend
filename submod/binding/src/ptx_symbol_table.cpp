@@ -831,6 +831,7 @@ struct SymbolTableBuilder {
     }
   }
 
+  /** Retain each file payload and reject every repeated normalized index. */
   void collectDebugFile(const syntax_ast::AstFileDirective& directive) {
     const auto id = parseDebugFileId(directive.file_index.text);
     if (!id) {
@@ -842,8 +843,25 @@ struct SymbolTableBuilder {
       });
       return;
     }
-    addMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id),
-                      directive.file_index.range, true);
+    const SymbolId symbol =
+        addMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id),
+                          directive.file_index.range, false);
+    const auto optional_leaf =
+        [](const std::optional<syntax_ast::AstSyntax>& syntax)
+        -> std::optional<DebugFileSourceLeaf> {
+      if (!syntax)
+        return std::nullopt;
+      return DebugFileSourceLeaf{syntax->text, syntax->range};
+    };
+    result.table.debug_files_.push_back(DebugFileDeclaration{
+        .index = *id,
+        .symbol_id = symbol,
+        .source_index = {directive.file_index.text, directive.file_index.range},
+        .filename = {directive.filename.text, directive.filename.range},
+        .timestamp = optional_leaf(directive.timestamp),
+        .file_size = optional_leaf(directive.file_size),
+        .range = directive.range,
+    });
   }
 
   void collectDebugStringSection(

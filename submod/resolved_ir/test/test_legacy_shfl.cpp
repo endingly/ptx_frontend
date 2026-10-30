@@ -282,7 +282,7 @@ TEST(LegacyShuffle, RejectsWrongTypesShapesModifiersAndCounts) {
       const auto operation =
           "shfl." + std::string(item.mode) + ".b32 " + operands + ";";
       SCOPED_TRACE(operation);
-      const auto source = legacyShuffleModule(operation, "sm_52");
+      const auto source = legacyShuffleModule(operation, "sm_52", "4.1");
       PtxSyntaxParser parser{source};
       const auto ast = parser.parseModule();
       ASSERT_TRUE(ast);
@@ -294,7 +294,7 @@ TEST(LegacyShuffle, RejectsWrongTypesShapesModifiersAndCounts) {
         "shfl.up.sync.b32 %b0, %b1, 1, 31;",
         "shfl.idx.ftz.b32 %b0, %b1, 1, 31;"}) {
     SCOPED_TRACE(operation);
-    const auto source = legacyShuffleModule(operation, "sm_52");
+    const auto source = legacyShuffleModule(operation, "sm_52", "4.1");
     PtxSyntaxParser parser{source};
     const auto ast = parser.parseModule();
     ASSERT_TRUE(ast);
@@ -329,7 +329,7 @@ TEST(LegacyShuffle, PreservesSynchronizedLayoutsMasksAndAvailability) {
           "shfl.sync." + std::string(item.mode) + operands + ", 0xffffffff;";
       expectShuffleAvailability(legacyShuffleModule(operation, "sm_30", "6.0"),
                                 true);
-      expectShuffleAvailability(legacyShuffleModule(operation, "sm_80", "6.0"),
+      expectShuffleAvailability(legacyShuffleModule(operation, "sm_80", "7.0"),
                                 true);
       expectShuffleAvailability(legacyShuffleModule(operation, "sm_30", "5.0"),
                                 false);
@@ -351,7 +351,7 @@ TEST(LegacyShuffle, RetargetsWithoutAddingSyncOrMask) {
     for (const bool paired : {false, true}) {
       const auto operation =
           legacyShuffleOperation(item.mode, paired, false, true);
-      const auto source = legacyShuffleModule(operation, "sm_52");
+      const auto source = legacyShuffleModule(operation, "sm_52", "4.1");
       const auto modern_source = legacyShuffleModule(operation, "sm_80", "9.3");
       PtxSyntaxParser parser{source};
       PtxSyntaxParser modern_parser{modern_source};

@@ -20,17 +20,16 @@ namespace {
 
 /** Independent source options and operand omissions survive one owned module. */
 TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
-  for (const bool mapped : {false, true}) {
+  for (const bool debug : {false, true}) {
     for (const bool policy : {false, true}) {
       for (const bool weak : {false, true}) {
         for (const bool scoped : {false, true}) {
-          SCOPED_TRACE(testing::Message()
-                       << mapped << policy << weak << scoped);
+          SCOPED_TRACE(testing::Message() << debug << policy << weak << scoped);
           std::optional<ResolvedModule> owned;
           {
             const std::string source =
                 std::string{".version 9.3\n.target sm_90"} +
-                (mapped ? ", map_f64_to_f32" : "") + R"ptx(
+                (debug ? ", debug" : "") + R"ptx(
 .address_size 64
 .global .align 64 .b8 memory[64];
 .const .align 64 .b8 constant_map[64];
@@ -60,7 +59,8 @@ TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
           };
           ASSERT_TRUE(strict());
           auto& region = owned->header.regions.back();
-          EXPECT_EQ(region.map_f64_to_f32, mapped);
+          EXPECT_EQ(region.target_options.size(), debug ? 2u : 1u);
+          EXPECT_FALSE(region.map_f64_to_f32);
           auto& function = owned->functions.front();
           const auto& load =
               dynamic_cast<const LdGlobalU32L2CacheHint&>(*function.body[0]);
@@ -83,15 +83,15 @@ TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
                     base::DeclarationStateSpace::Parameter);
           EXPECT_EQ(parameter.enclosing_function_kind,
                     EnclosingFunctionKind::Entry);
-          region.map_f64_to_f32 = !mapped;
+          region.map_f64_to_f32 = true;
           EXPECT_FALSE(strict());
-          region.map_f64_to_f32 = mapped;
+          region.map_f64_to_f32 = false;
           ASSERT_TRUE(strict());
           parameter.enclosing_function_kind = EnclosingFunctionKind::Device;
           hint.address.value.enclosing_function_kind =
               EnclosingFunctionKind::Device;
           EXPECT_FALSE(strict());
-          EXPECT_EQ(region.map_f64_to_f32, mapped);
+          EXPECT_FALSE(region.map_f64_to_f32);
           parameter.enclosing_function_kind = EnclosingFunctionKind::Entry;
           hint.address.value.enclosing_function_kind =
               EnclosingFunctionKind::Entry;

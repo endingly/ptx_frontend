@@ -235,7 +235,7 @@ TEST(ModuleValidationContract, UnknownTargetIsRejectedByBothPipelines) {
 TEST(ModuleValidationContract, EnforcesPtxVersionAvailabilityAtBoundary) {
   const auto too_old_ast = parseModule(R"ptx(
 .version 1.2
-.target sm_80
+.target sm_13
 .entry kernel() {
   .reg .u32 %r;
   mov.u32 %r, %laneid;
@@ -243,7 +243,7 @@ TEST(ModuleValidationContract, EnforcesPtxVersionAvailabilityAtBoundary) {
 )ptx");
   const auto supported_ast = parseModule(R"ptx(
 .version 1.3
-.target sm_80
+.target sm_13
 .entry kernel() {
   .reg .u32 %r;
   mov.u32 %r, %laneid;

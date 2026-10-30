@@ -237,7 +237,7 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
   }
 
   const auto parsed_module_3 = parseModule(R"ptx(
-.version 7.8
+.version 8.0
 .target sm_90a, texmode_independent
 .entry kernel() .reqnctapercluster 2, 1 {
   .reg .u32 %r;
@@ -689,21 +689,21 @@ prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
 
 TEST(ResolvedModule, ChecksNestedInstructionModuleAvailability) {
   const auto parsed_module_1 = parseModule(R"ptx(
-.version 0.9
+.version 1.2
 .entry kernel() {
   .reg .u32 %r<3>;
-  { add.u32 %r0, %r1, %r2; }
+  { mov.u32 %r0, %laneid; }
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto resolved = resolveModule(*parsed_module_1);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto parsed_module_2 = parseModule(R"ptx(
-.version 0.9
-.target sm_80
+.version 1.2
+.target sm_13
 .entry kernel() {
   .reg .u32 %r<3>;
-  { add.u32 %r0, %r1, %r2; }
+  { mov.u32 %r0, %laneid; }
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);

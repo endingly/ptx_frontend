@@ -766,6 +766,15 @@ artifact 与门禁均已退役；下表保留历史完成语境，不要求重�
   精确 `targets` 集合与 singular `target` 在 YAML 中互斥，保留六 clause DNF 上限；
   `test_ptx_target_identity.cpp`、`test_resolved_module_target_checking.cpp` 与 legacy
   vote/shfl 测试覆盖实际 catalog、PTX 9.3 模块和 AST 销毁后的 owned validation。
+- 同一 catalog 的 40 个 exact profile 还拥有 typed `minimum_ptx_version` 和
+  `supports_map_f64_to_f32`；最低 PTX 版本来自固定的 target directive 表，map option
+  仅允许 generic SM10/11/12 及同义 compute profile。两个 validation policy 都检查已知
+  header 矛盾：version 至少 1.0、显式 address-size 至少 2.3、两种显式 texture mode
+  至少 1.5、debug 至少 3.0；省略 address-size 的早期 32-bit 默认值不受显式 directive
+  门槛约束。`test_header_compatibility.cpp` 覆盖全部 profile/prefix 的版本边界、未知 target、
+  replacement AST、源码销毁与 owned mutation；installed `resolved_ir_consumer` 访问公开
+  metadata 并验证 AST-free header rejection。此项不增加 DWARF 内容验证、指令模拟或
+  physical-target translation compatibility。
 - 每个显式 `sm_<number>[a|f]` catalog profile 接受对应 `compute_` 同义 spelling；
   typed architecture/flavor、capability 和 enabled family feature 保持相同，source/owned
   provenance 保留原 spelling。词法合法未知 number 或未支持 flavor 仍为 `UnknownTarget`；

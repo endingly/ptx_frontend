@@ -66,7 +66,10 @@ TEST(LegacyMapF64, ChecksEachOperationAndSourceOptionBoundary) {
       }
     }
     for (const auto target : {"sm_13", "sm_80"}) {
-      expectModuleAvailability(mappedModule(operation, target), true);
+      expectModuleAvailability(
+          mappedModule(operation, target, {},
+                       target == std::string_view{"sm_80"} ? "7.0" : "1.4"),
+          true);
       expectModuleAvailability(mappedModule(operation, target, {}, "1.3"),
                                false);
     }
@@ -184,7 +187,7 @@ TEST(LegacyMapF64, OwnsConcreteFormsAndResistsHeaderForgery) {
       const auto source = mappedModule(
           "div.rn.f64 %rd0, %d1, 1.0; rcp.rn.f64 %d0, %rd1; "
           "sqrt.rn.f64 %rd2, 1.0;",
-          target, ", texmode_unified, map_f64_to_f32");
+          target, ", texmode_unified, map_f64_to_f32", "1.5");
       PtxSyntaxParser parser{source};
       auto ast = parser.parseModule();
       ASSERT_TRUE(ast);

@@ -243,7 +243,7 @@ TEST(LegacyVote, PreservesSynchronizedMasksAndAvailability) {
                            (item.ballot ? ".b32 %b, !%p0, 0xffffffff;"
                                         : ".pred %p1, !%p0, 0xffffffff;");
     expectVoteAvailability(legacyVoteModule(operation, "sm_30", "6.0"), true);
-    expectVoteAvailability(legacyVoteModule(operation, "sm_80", "6.0"), true);
+    expectVoteAvailability(legacyVoteModule(operation, "sm_80", "7.0"), true);
     expectVoteAvailability(legacyVoteModule(operation, "sm_30", "5.9"), false);
     expectVoteAvailability(legacyVoteModule(operation, "sm_20", "6.0"), false);
     const auto missing_mask =
@@ -261,7 +261,7 @@ TEST(LegacyVote, PreservesSynchronizedMasksAndAvailability) {
 TEST(LegacyVote, RetargetsWithoutAddingSyncOrMask) {
   for (const auto& item : kLegacyVotes) {
     const auto operation = legacyVoteOperation(item, true);
-    const auto source = legacyVoteModule(operation, "sm_52");
+    const auto source = legacyVoteModule(operation, "sm_52", "4.1");
     const auto modern_source = legacyVoteModule(operation, "sm_80", "9.3");
     PtxSyntaxParser parser{source};
     PtxSyntaxParser modern_parser{modern_source};

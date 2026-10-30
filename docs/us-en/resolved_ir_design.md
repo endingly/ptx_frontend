@@ -280,10 +280,58 @@ architecture and flavor. `TargetIdentity::operator==` still compares retained
 source spelling as well, so source-provenance consistency checks remain exact.
 Unknown numbers and unsupported flavors, including `compute_101a` and
 `compute_101f`, do not acquire catalog profiles. Texture-mode
-selection is checked for repetition and module conflicts. `debug` and
-`map_f64_to_f32` are retained options; this contract adds neither DWARF checks nor
-floating-point instruction conversion. These source forms follow the archived
+selection is checked for repetition and module conflicts. This contract adds neither
+DWARF content checks nor floating-point instruction conversion. These source forms follow the archived
 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target).
+
+
+Header compatibility is checked in both validation policies, including header-only
+modules and every later target region. `.version` requires PTX ISA 1.0 or later;
+explicit `.address_size` requires 2.3, while an omitted address size retains the
+32-bit default at earlier versions. Both explicit texture mode options require
+1.5, and `debug` requires 3.0. `AvailableContext` defers checks that need an absent
+version or target, but rejects contradictions for the context already supplied.
+Replacement-AST validation uses that AST's header; owned validation rechecks
+retained values, option spellings, provenance and traversal events after source
+destruction. An explicit address-size event cannot become implicit merely by
+changing its owned provenance.
+
+The existing target catalog is the single owner of exact profile introduction
+versions. `base::TargetProfile::minimum_ptx_version` exposes the base-owned
+`PtxIsaVersion` components, independently of `checker::PtxVersion`.
+`supports_map_f64_to_f32` is true only for exact generic SM10/11/12 profiles and
+their compute synonyms; recognized other profiles reject that option even when
+no version is supplied. This follows the archived target table and legacy option
+inheritance, corroborated by CUDA 13.3 `ptxas` rejecting the option on SM13 or
+higher. It does not add instruction emulation. Unknown target keys still produce
+`UnknownTarget` and receive no guessed minimum or option permission.
+
+The pinned [PTX ISA 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+sets these minima (both `sm_` and `compute_` prefixes):
+
+| Exact architecture/flavor suffixes | Minimum PTX ISA |
+| --- | --- |
+| 10, 11 | 1.0 |
+| 12, 13 | 1.2 |
+| 20 | 2.0 |
+| 30 | 3.0 |
+| 35 | 3.1 |
+| 32, 50 | 4.0 |
+| 37, 52 | 4.1 |
+| 53 | 4.2 |
+| 60, 61, 62 | 5.0 |
+| 70 | 6.0 |
+| 72 | 6.1 |
+| 75 | 6.3 |
+| 80 | 7.0 |
+| 86 | 7.1 |
+| 87 | 7.4 |
+| 89, 90 | 7.8 |
+| 90a | 8.0 |
+| 100, 100a | 8.6 |
+| 120, 120a | 8.7 |
+| 100f, 103, 103a, 103f, 120f, 121, 121a, 121f | 8.8 |
+| 88, 110, 110a, 110f | 9.0 |
 
 `ResolvedFunction::declaration_scope` identifies a declaration occurrence:
 a prototype and definition may share a `SymbolId` but have different scopes.

@@ -241,9 +241,53 @@ flavor、enabled family feature 和 capability 相同。词法解析及 owned so
 保留实际书写的 prefix；语义 availability 和显式 checker target 比较使用 architecture
 与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
 一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_101a`、
-`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；`debug` 和
-`map_f64_to_f32` 仅保留为已知 option，此契约不增加 DWARF 检查或浮点指令转换。
+`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
+此契约不增加 DWARF 内容检查或浮点指令转换。
 源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
+
+
+两个 validation policy 都检查 header compatibility，包括只有 header 的模块和每个后续
+target region。`.version` 至少为 PTX ISA 1.0；显式 `.address_size` 至少要求 2.3，
+省略时早期版本仍保留 32-bit 默认值。两种显式 texture mode option 都要求 1.5，
+`debug` 要求 3.0。`AvailableContext` 仅延后依赖缺失 version 或 target 的检查，
+已有上下文的矛盾仍被拒绝。replacement-AST validation 使用传入 AST 的 header；
+owned validation 在 source 销毁后重新检查保留值、option spelling、provenance 和
+traversal event。仅修改 owned provenance 不能把显式 address-size event 变成隐式值。
+
+已有 target catalog 是每个精确 profile 引入版本的唯一来源。
+`base::TargetProfile::minimum_ptx_version` 暴露 base 拥有的 `PtxIsaVersion` 分量，
+独立于 `checker::PtxVersion`。`supports_map_f64_to_f32` 仅对精确 generic SM10/11/12
+及其 compute synonym 为 true；其他已识别 profile 即使缺少 version 也拒绝此 option。
+此规则依据归档 target 表及 legacy option 继承，并由 CUDA 13.3 `ptxas` 拒绝 SM13 及
+更高 target 上该 option 的结果佐证；不增加指令模拟。未知 target key 仍产生
+`UnknownTarget`，不猜测 minimum 或 option permission。
+
+固定的 [PTX ISA 9.3 target 表](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+规定以下最低版本（`sm_` 和 `compute_` prefix 相同）：
+
+| 精确 architecture/flavor 后缀 | 最低 PTX ISA |
+| --- | --- |
+| 10, 11 | 1.0 |
+| 12, 13 | 1.2 |
+| 20 | 2.0 |
+| 30 | 3.0 |
+| 35 | 3.1 |
+| 32, 50 | 4.0 |
+| 37, 52 | 4.1 |
+| 53 | 4.2 |
+| 60, 61, 62 | 5.0 |
+| 70 | 6.0 |
+| 72 | 6.1 |
+| 75 | 6.3 |
+| 80 | 7.0 |
+| 86 | 7.1 |
+| 87 | 7.4 |
+| 89, 90 | 7.8 |
+| 90a | 8.0 |
+| 100, 100a | 8.6 |
+| 120, 120a | 8.7 |
+| 100f, 103, 103a, 103f, 120f, 121, 121a, 121f | 8.8 |
+| 88, 110, 110a, 110f | 9.0 |
 
 `ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
 `SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；

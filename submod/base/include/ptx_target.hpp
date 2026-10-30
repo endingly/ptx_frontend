@@ -30,12 +30,23 @@ struct TargetIdentity {
 [[nodiscard]] bool same_target_identity(const TargetIdentity& left,
                                         const TargetIdentity& right) noexcept;
 
+/** PTX ISA version attached to base target metadata, independent of IR types. */
+struct PtxIsaVersion {
+  /** Decimal ISA version components, compared lexicographically. */
+  uint16_t major = 0;
+  uint16_t minor = 0;
+};
+
 /** One explicitly supported validation target, enabled family feature levels,
  * and capabilities. */
 struct TargetProfile {
   TargetIdentity identity;
   std::span<const std::string_view> enabled_family_features;
   std::span<const std::string_view> capabilities;
+  /** First PTX ISA version that supports this exact architecture and flavor. */
+  PtxIsaVersion minimum_ptx_version;
+  /** Whether this exact source profile supports the legacy FP64 mapping option. */
+  bool supports_map_f64_to_f32 = false;
 };
 
 /** Lexical role of one item in a source `.target` directive. */

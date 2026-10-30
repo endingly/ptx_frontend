@@ -1715,6 +1715,61 @@ void check_target_items(const Items& items, SourceRange range,
                           "Target directive has no architecture item.");
 }
 
+/** Check source-header ISA features using the same catalog for both validators. */
+template <typename Items>
+  requires std::ranges::input_range<Items> &&
+           std::convertible_to<std::ranges::range_reference_t<Items>,
+                               std::string_view>
+void check_header_features(std::optional<checker::PtxVersion> version,
+                           const Items& options, bool explicit_address_size,
+                           SourceRange range,
+                           checker::CheckDiagnostics& diagnostics) {
+  const auto reject = [&](std::string message) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = range,
+        .message = std::move(message),
+    });
+  };
+  const auto require_version = [&](checker::PtxVersion minimum,
+                                   std::string_view feature) {
+    if (version && *version < minimum)
+      reject(fmt::format("{} requires PTX ISA >= {}.{}.", feature,
+                         minimum.major, minimum.minor));
+  };
+  require_version({1, 0}, ".version");
+  if (explicit_address_size)
+    require_version({2, 3}, ".address_size");
+  /** The first item alone selects an exact catalog profile. */
+  std::optional<base::TargetProfile> profile;
+  size_t index = 0;
+  for (const std::string_view option : options) {
+    if (index++ == 0) {
+      profile = base::find_target_profile(option);
+      if (profile)
+        require_version({profile->minimum_ptx_version.major,
+                         profile->minimum_ptx_version.minor},
+                        option);
+      continue;
+    }
+    switch (base::classify_target_directive_item(option)) {
+      case base::TargetDirectiveItemKind::TextureMode:
+        require_version({1, 5}, option);
+        break;
+      case base::TargetDirectiveItemKind::Debug:
+        require_version({3, 0}, option);
+        break;
+      case base::TargetDirectiveItemKind::MapF64ToF32:
+        if (profile && !profile->supports_map_f64_to_f32)
+          reject(fmt::format("map_f64_to_f32 is unsupported for target '{}'.",
+                             profile->identity.source_spelling));
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 /** Validate header payload/provenance consistency under public IR mutation. */
 void check_header_region(const ResolvedSourceTargetRegion& region,
                          SourceRange range,
@@ -3424,8 +3479,18 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     invalid(module.range, "Resolved module has no owned source configuration.");
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_owned_header_order(module, diagnostics);
+  /** Source traversal preserves explicit address syntax even under IR mutation. */
+  const bool explicit_address_size =
+      std::ranges::any_of(module.header.source_order, [](const auto& event) {
+        return event.kind == ResolvedHeaderEventKind::AddressSize;
+      });
   for (const auto& region : module.header.regions) {
     check_header_region(region, region.range, diagnostics);
+    check_header_features(
+        region.version, region.target_options,
+        explicit_address_size || region.address_size_provenance ==
+                                     SourceConfigurationProvenance::Explicit,
+        region.range, diagnostics);
     if (!region.target_options.empty()) {
       const auto target =
           owned_target_context(region, diagnostics, region.range);
@@ -3619,6 +3684,14 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_header_order(detail::module_header_order(ast), ast.range,
                        diagnostics);
+  /** Supplied source, rather than retained owned metadata, selects header features. */
+  const bool explicit_address_size =
+      std::ranges::any_of(ast.items, [](const auto& item) {
+        return std::holds_alternative<syntax_ast::AstAddressSizeDirective>(
+            item);
+      });
+  check_header_features(version, std::array<std::string_view, 0>{},
+                        explicit_address_size, ast.range, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
   for (const auto& function : module.functions) {
@@ -3638,6 +3711,11 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
           return std::string_view{item.text};
         }),
         target->range, diagnostics);
+    check_header_features(
+        version, target->targets | std::views::transform([](const auto& item) {
+                   return std::string_view{item.text};
+                 }),
+        false, target->range, diagnostics);
     bool seen_in_target = false;
     for (const auto& option : target->targets) {
       if (option.text != "texmode_unified" &&

@@ -864,7 +864,7 @@ TEST(ConversionCompleteness, ChecksLowbitArchitectureAndFamilyIntroductions) {
     .reg .b8 %d; .reg .f32 %f;
     cvt.rn.satfinite.e2m1x2.f32 %d, %f, %f;
   })ptx";
-  expectModuleAccepted(".version 8.6 .target sm_120a " + body);
+  expectModuleAccepted(".version 8.7 .target sm_120a " + body);
   expectModuleAccepted(".version 9.0 .target sm_110a " + body);
   expectModuleValidationRejected(".version 8.9 .target sm_110a " + body);
   expectModuleAccepted(".version 8.8 .target sm_120f " + body);

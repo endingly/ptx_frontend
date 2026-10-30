@@ -175,18 +175,18 @@ TEST(ModuleDiagnostics, ProjectsStorageOnlyDeclarationDiagnostic) {
 TEST(ModuleDiagnostics,
      ProjectsCheckerDiagnosticForRecognizedTargetAndVersion) {
   constexpr std::string_view unchecked_source = R"ptx(
-.version 0.9
+.version 6.1
 .entry kernel() {
   .reg .u32 %r<3>;
-  add.u32 %r0, %r1, %r2;
+  activemask.b32 %r0;
 }
 )ptx";
   constexpr std::string_view checked_source = R"ptx(
-.version 0.9
-.target sm_80
+.version 6.1
+.target sm_30
 .entry kernel() {
   .reg .u32 %r<3>;
-  add.u32 %r0, %r1, %r2;
+  activemask.b32 %r0;
 }
 )ptx";
   const auto unchecked_ast = parseModule(unchecked_source);

@@ -138,7 +138,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
     EXPECT_FALSE(parsed && parsed.diagnostics.empty()) << target;
   }
   auto module = resolve_owned_fixture(
-      ".version 9.3\n.target sm_80, texmode_independent, debug, "
+      ".version 9.3\n.target sm_12, texmode_independent, debug, "
       "map_f64_to_f32\n");
   ASSERT_TRUE(module);
   EXPECT_TRUE(validateModule(*module));

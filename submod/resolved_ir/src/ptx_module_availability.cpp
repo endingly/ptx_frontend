@@ -2526,6 +2526,79 @@ void check_register_arrays(const ResolvedModule& module,
       check_record(record, function.range);
 }
 
+/** Recheck every owned module variable occurrence against its active source ABI. */
+void check_module_declaration_placement(
+    const ResolvedModule& module, ModuleValidationPolicy policy,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind != binding::SymbolKind::Variable ||
+        (symbol.state_space != base::DeclarationStateSpace::Register &&
+         symbol.state_space != base::DeclarationStateSpace::Local) ||
+        storage_owner(module, symbol.scope))
+      continue;
+    for (const auto& occurrence :
+         module.symbols.declarationOccurrences(symbol.id)) {
+      if (!occurrence.variable_declaration_range)
+        continue;
+      const auto range = *occurrence.variable_declaration_range;
+      size_t active_region = 0;
+      size_t matches = 0;
+      for (const auto& event : module.header.source_order) {
+        if (event.kind == ResolvedHeaderEventKind::Target) {
+          ++active_region;
+          continue;
+        }
+        const auto position = [](SourcePos value) {
+          return std::pair{value.line, value.column};
+        };
+        if (event.kind != ResolvedHeaderEventKind::Other ||
+            position(event.range.start) > position(range.start) ||
+            position(event.range.end) < position(range.end))
+          continue;
+        ++matches;
+        if (active_region >= module.header.regions.size()) {
+          append_model_mismatch(
+              diagnostics, range,
+              "Module declaration has no matching source region.");
+          continue;
+        }
+        const auto& region = module.header.regions[active_region];
+        const auto profile =
+            region.target_options.empty()
+                ? std::nullopt
+                : base::find_target_profile(region.target_options.front());
+        if (!region.version || !profile) {
+          if (policy == ModuleValidationPolicy::RequireCompleteContext)
+            diagnostics.push_back({
+                .kind = checker::CheckDiagnosticKind::MissingValidationContext,
+                .range = range,
+                .message =
+                    "Module declaration placement requires a PTX version "
+                    "and recognized active source target.",
+            });
+          continue;
+        }
+        if (*region.version >= checker::PtxVersion{3, 0} &&
+            profile->identity.architecture.number >= 20)
+          diagnostics.push_back({
+              .kind = checker::CheckDiagnosticKind::RuleViolation,
+              .range = range,
+              .message = fmt::format(
+                  "{} variables must be declared within a function for PTX ISA "
+                  ">= 3.0 targeting sm_20 or higher.",
+                  symbol.state_space == base::DeclarationStateSpace::Register
+                      ? ".reg"
+                      : ".local"),
+          });
+      }
+      if (matches != 1)
+        append_model_mismatch(
+            diagnostics, range,
+            "Module declaration must match one source event.");
+    }
+  }
+}
+
 /** Rejoin every storage occurrence and validate scalar allocation inputs. */
 void check_storage_declarations(const ResolvedModule& module,
                                 checker::CheckDiagnostics& diagnostics) {
@@ -3565,6 +3638,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto parameter_properties = build_parameter_properties(module);
   check_declaration_identifiers(module, diagnostics);
   check_register_arrays(module, diagnostics);
+  check_module_declaration_placement(module, policy, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_common_availability(module, diagnostics);
   const auto storage_version = module.header.regions.empty()

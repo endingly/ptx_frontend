@@ -109,6 +109,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnsupportedDirectiveTarget,
   /** A concrete declaration name violates the PTX identifier grammar. */
   InvalidIdentifier,
+  /** A module declaration violates its known source ABI placement rules. */
+  InvalidDeclarationPlacement,
 };
 
 struct DeclarationDiagnostic {

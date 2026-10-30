@@ -50,6 +50,11 @@ parameter records bound to a register are also rejected. These checks remain
 available after source and AST destruction; AST-backed validation also checks
 replacement source declarations.
 
+Module placement of `.reg` and `.local` follows the source-target ABI boundary
+(PTX >= 3.0 and recognized SM >= 20); historical versions and SM 1.x remain
+separate. See [declaration semantics](declaration_semantics_design.md) for source
+occurrence, owned lifetime and incomplete-context behavior.
+
 ## Normative source ledger
 
 The project specification is PTX ISA 9.3. This correction uses the

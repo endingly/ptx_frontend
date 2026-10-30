@@ -13,6 +13,30 @@ the `EntryInput` role identifies ordinary entry inputs. Opaque entry inputs live
 in `ResolvedFunction::opaque_entry_parameters` without fabricated byte layout.
 Registers and call parameters do not enter the storage list.
 
+Module `.reg` and `.local` declarations are checked against the source-target
+ABI assumption: PTX ISA 3.0 or later with a recognized active source target of
+SM 20 or later requires these variables to be declared within a function.
+The frontend does not model a caller-selected switch that disables ABI compilation.
+Earlier PTX versions and recognized SM 1.x targets retain their historical
+module placement. Target changes apply in source order; a later unknown or empty
+target clears the previous placement context.
+
+Declaration semantics checks every actual module occurrence, including unused
+variables and conflicting redeclarations, and reports `InvalidDeclarationPlacement`
+at the complete declaration range. Owned validation checks every variable identity
+and retained occurrence against its source region, including registers with no
+storage record, and reports `RuleViolation`. Both validation overloads recheck
+placement after source/AST destruction or replacement source recontextualization.
+`AvailableContext` defers this rule when either the version or recognized active
+target is absent; strict validation reports `MissingValidationContext` at the
+affected declaration. Other header and identity diagnostics remain independent.
+Function-local declarations, nested blocks and valid register formals retain
+their existing contracts. See the pinned PTX 9.3
+[changes from PTX 1.x](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x),
+[register](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space),
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space),
+and [variable declaration](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) rules.
+
 ## Identity and layout inputs
 
 Each source declarator contributes one record in source traversal order.

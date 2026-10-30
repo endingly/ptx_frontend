@@ -39,6 +39,10 @@ resolver 的 suffix table 仍只是 instruction-modifier 的机械映射。`.par
 绑定到寄存器且带数组维度的存储或参数记录也会被拒绝。这些检查在源码与 AST 销毁后仍然有效；
 带 AST 的校验还会检查替换源码中的声明。
 
+Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
+（PTX >= 3.0 且已识别的 SM >= 20），并保留历史版本及 SM 1.x 的行为。
+源码 occurrence、自有 lifetime 与不完整 context 的契约见[声明语义](declaration_semantics_design.md)。
+
 ## 规范来源记录
 
 工程规范版本为 PTX ISA 9.3。本次依据

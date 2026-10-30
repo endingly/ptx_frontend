@@ -24,8 +24,8 @@ std::string multimem_source(std::string_view body,
 .address_size 64
 .global .align 16 .b8 mm[256];
 .shared .align 16 .b8 sh[256];
-.local .align 16 .b8 local_value[32];
 .visible .entry kernel() {
+  .local .align 16 .b8 local_value[32];
   .reg .b32 %b<8>;
   .reg .u32 %u<8>;
   .reg .u64 %u64;

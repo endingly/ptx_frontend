@@ -892,11 +892,16 @@ class Checker {
     checkKernelResources(module);
     checkM11Directives(module);
     checkCommonLinkage(module);
+    std::optional<uint32_t> active_target;
     for (const auto& item : module.items) {
+      if (const auto* target =
+              std::get_if<syntax_ast::AstTargetDirective>(&item))
+        active_target = targetSmVersion(*target);
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration, module_version);
+        checkModulePlacement(*declaration, module_version, active_target);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           diagnose(
               DeclarationDiagnosticKind::ModuleScopeParameter,
@@ -1278,6 +1283,25 @@ class Checker {
         return parsePtxVersion(version->version.text);
     }
     return std::nullopt;
+  }
+
+  /** Enforce stack ABI placement only when both source context facts are known. */
+  void checkModulePlacement(
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> version, std::optional<uint32_t> target_sm) {
+    if (!version || *version < PtxVersion{3, 0} || !target_sm ||
+        *target_sm < 20 ||
+        (declaration.state_space != syntax_ast::AstStateSpace::Register &&
+         declaration.state_space != syntax_ast::AstStateSpace::Local))
+      return;
+    diagnose(DeclarationDiagnosticKind::InvalidDeclarationPlacement,
+             declaration.range,
+             fmt::format(
+                 "{} variables must be declared within a function for "
+                 "PTX ISA >= 3.0 targeting sm_20 or higher.",
+                 declaration.state_space == syntax_ast::AstStateSpace::Register
+                     ? ".reg"
+                     : ".local"));
   }
 
   /** Return the supported architecture selected by one target directive. */

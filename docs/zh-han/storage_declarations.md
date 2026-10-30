@@ -11,6 +11,23 @@ declarator 提供拥有自身数据的元信息。数据类型位于
 `ResolvedFunction::opaque_entry_parameters`，没有臆造的 byte layout。
 register 与 call parameter 不进入存储列表。
 
+Module `.reg` 与 `.local` 声明根据 source target 的 ABI 假设进行检查：
+PTX ISA 3.0 及以上且当前源码 target 为已识别的 SM 20 及以上时，这些变量必须在函数内声明。
+Frontend 不建模由调用者选择的禁用 ABI 编译开关。较早 PTX 版本与已识别的 SM 1.x target
+保留历史 module placement。Target 按源码顺序生效；后续未知或空 target 会清除先前的 placement context。
+
+声明语义检查每个实际 module occurrence，包括未使用的变量与冲突重声明，并在完整声明范围处
+报告 `InvalidDeclarationPlacement`。自有校验把每个 variable identity 及保留的 occurrence
+关联到其 source region，包括没有 storage record 的寄存器，并报告 `RuleViolation`。
+两个 validation overload 在源码与 AST 销毁后或使用替换源码 context 时仍重新检查 placement。
+`AvailableContext` 在 version 或已识别的当前 target 缺失时推迟此规则；严格校验在受影响的声明处
+报告 `MissingValidationContext`。其他 header 与 identity diagnostic 保持独立。
+函数内声明、nested block 与合法 register formal 沿用现有契约。依据为固定的 PTX 9.3
+[PTX 1.x 变更](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x)、
+[寄存器](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space)、
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space) 与
+[变量声明](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) 规则。
+
 ## 身份与布局输入
 
 每个源码 declarator 按源码遍历顺序产生一条记录。`symbol_id` 指向既有 module symbol；

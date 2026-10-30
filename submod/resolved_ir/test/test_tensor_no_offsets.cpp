@@ -22,11 +22,12 @@ namespace {
 std::string no_offset_module(
     std::string_view instruction,
     std::string_view map = ".global .align 64 .b8 tensor_map[128];",
-    std::string_view source = ".shared .align 16 .b8 src[1024];") {
+    std::string_view source = ".shared .align 16 .b8 src[1024];",
+    std::string_view local_declarations = {}) {
   return ".version 9.3\n.target sm_90\n.address_size 64\n" + std::string(map) +
          "\n" + std::string(source) +
-         "\n.entry kernel() {\n.reg .s32 %r<5>;\n" + std::string(instruction) +
-         "\n}\n";
+         "\n.entry kernel() {\n.reg .s32 %r<5>;\n" +
+         std::string(local_declarations) + std::string(instruction) + "\n}\n";
 }
 
 /** Match direct checks to the same catalog profile used by module checks. */
@@ -475,8 +476,8 @@ TEST(TensorNoOffsets, OwnedStoreAndReductionPointerShape) {
         "im2col_no_offs.bulk_group [%map, {0, 1, 2}], [%src];";
     std::optional<ResolvedModule> owned;
     {
-      const auto parsed = test_helpers::parseModule(
-          no_offset_module(instruction, ".reg .b64 %map;", ".reg .b64 %src;"));
+      const auto parsed = test_helpers::parseModule(no_offset_module(
+          instruction, "", "", ".reg .b64 %map; .reg .b64 %src;"));
       ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
       auto resolved = resolveModuleOnly(*parsed);
       ASSERT_TRUE(resolved.has_value());
@@ -519,7 +520,7 @@ TEST(TensorNoOffsets, FiveExistingTiledStoresRecheckOwnedPointers) {
           no_offset_module("cp.async.bulk.tensor." + std::to_string(rank) +
                                "d.global.shared::cta.bulk_group [%map, {" +
                                coordinates + "}], [%src];",
-                           ".reg .b64 %map;", ".reg .b64 %src;"));
+                           "", "", ".reg .b64 %map; .reg .b64 %src;"));
       ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
       auto resolved = resolveModuleOnly(*parsed);
       ASSERT_TRUE(resolved.has_value());

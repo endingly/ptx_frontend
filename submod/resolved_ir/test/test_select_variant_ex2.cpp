@@ -56,7 +56,7 @@ TEST(ResolveEx2, SelectsFrozenFloatAndLowPrecisionVariants) {
 
 TEST(ResolveEx2, RejectsInvalidForms) {
   for (const auto source :
-       {"ex2.f32 %f0, %f1;", "ex2.approx.bf16 %b0, %b1;",
+       {"ex2.ftz.f32 %f0, %f1;", "ex2.approx.bf16 %b0, %b1;",
         "ex2.approx.bf16x2 %r0, %r1;", "ex2.approx.ftz.f16 %h0, %h1;",
         "ex2.approx.f64 %d0, %d1;"}) {
     SCOPED_TRACE(source);

@@ -52,7 +52,7 @@ TEST(ResolveDiv, SelectsM12S32AndRnFloatingVariants) {
 
 TEST(ResolveDiv, RejectsInvalidFloatingModeCombinations) {
   for (const auto source :
-       {"div.f32 %f0, %f1, %f2;", "div.f64 %d0, %d1, %d2;",
+       {"div.ftz.f32 %f0, %f1, %f2;", "div.ftz.f64 %d0, %d1, %d2;",
         "div.approx.rn.f32 %f0, %f1, %f2;",
         "div.approx.full.f32 %f0, %f1, %f2;", "div.rn.ftz.f64 %d0, %d1, %d2;",
         "div.full.f64 %d0, %d1, %d2;", "div.rn.f16 %h0, %h1, %h2;",

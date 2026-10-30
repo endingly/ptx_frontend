@@ -71,6 +71,13 @@ enum class VideoScale : uint8_t { None, Shr7, Shr15 };
 
 enum class ResolvedRegisterClass : uint8_t;
 
+/** Static interpretation of source-omitted floating-point controls. */
+enum class FloatingPointDefault {
+  ApproximateFlushToZero,
+  Approximate,
+  RoundNearestEven,
+};
+
 /**
  * Implicit CC.CF access for an executed instruction. Predication gates both
  * explicit results and this effect. Incoming CC.CF is not preserved by calls.
@@ -742,6 +749,8 @@ struct AvailabilityClause {
    * Generated storage has process lifetime; manual consumers retain ownership.
    * When singular identity fields are also supplied, both requirements apply. */
   std::span<const AvailabilityTarget> exact_targets{};
+  /** Exclusive PTX version limit; disengaged means unbounded. */
+  std::optional<PtxVersion> ptx_before;
 };
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
@@ -750,6 +759,8 @@ struct AvailabilityDescriptor {
   std::string_view required_family{};
   std::array<AvailabilityClause, kMaxAvailabilityClauses> any_of{};
   uint8_t any_of_count = 0;
+  /** Exclusive PTX version limit; disengaged means unbounded. */
+  std::optional<PtxVersion> ptx_before;
 };
 struct TypeExpressionDescriptor {
   OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;

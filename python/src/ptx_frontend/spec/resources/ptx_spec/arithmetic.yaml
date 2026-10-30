@@ -1296,6 +1296,13 @@ instructions:
           - {ptx: "mad.f32 %f0, %f1, %f2, %f3;", valid: true}
           - {ptx: "mad.ftz.sat.f32 %f0, %f1, 1.0, %f3;", valid: true}
 
+      - name: mad_implicit_f64
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 13}
+        floating_point_default: round_nearest_even
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+
   - opcode: div
     section: "9.7.3.8"
     doc: "Explicit approximate, full-range, and rounded single- and double-precision division."
@@ -1374,6 +1381,29 @@ instructions:
         examples:
           - {ptx: "div.rp.f64 %d0, 1.0, %d2;", valid: true}
 
+      - name: div_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
+      - name: div_implicit_f64
+        availability:
+          any_of:
+            - {ptx: "1.0", ptx_before: "1.4", sm: 13}
+            - {ptx: "1.0", ptx_before: "1.4", targets: [sm_10, sm_11, sm_12], map_f64_to_f32: true}
+        floating_point_default: round_nearest_even
+        modifiers:
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: approx, kind: flag, presence: absent}
+          - {name: full, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+
   - opcode: rcp
     section: "9.7.3.13"
     doc: "Explicit approximate and rounded single- and double-precision reciprocal."
@@ -1434,6 +1464,15 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
         examples: [{ptx: "rcp.approx.ftz.f64 %d0, 1.0;", valid: true}]
 
+      - name: rcp_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
   - opcode: sqrt
     section: "9.7.3.15"
     doc: "Explicit approximate and rounded single- and double-precision square root."
@@ -1486,6 +1525,27 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
         examples: [{ptx: "sqrt.rp.f64 %d0, 1.0;", valid: true}]
 
+      - name: sqrt_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
+      - name: sqrt_implicit_f64
+        availability:
+          any_of:
+            - {ptx: "1.0", ptx_before: "1.4", sm: 13}
+            - {ptx: "1.0", ptx_before: "1.4", targets: [sm_10, sm_11, sm_12], map_f64_to_f32: true}
+        floating_point_default: round_nearest_even
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: rounding, kind: rounding, domain: rounding_modes, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+
   - opcode: rsqrt
     section: "9.7.3.16"
     doc: "Explicit approximate single- and double-precision reciprocal square root."
@@ -1514,6 +1574,22 @@ instructions:
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
         examples: [{ptx: "rsqrt.approx.ftz.f64 %d0, 1.0;", valid: true}]
 
+      - name: rsqrt_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
+      - name: rsqrt_implicit_f64
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 13}
+        floating_point_default: approximate
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f64}
+
   - opcode: sin
     section: "9.7.3.18"
     doc: "Fast approximate single-precision sine."
@@ -1529,6 +1605,14 @@ instructions:
         examples:
           - {ptx: "sin.approx.f32 %f0, %f1;", valid: true}
           - {ptx: "sin.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+      - name: sin_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
 
   - opcode: cos
     section: "9.7.3.19"
@@ -1546,6 +1630,14 @@ instructions:
           - {ptx: "cos.approx.f32 %f0, %f1;", valid: true}
           - {ptx: "cos.approx.ftz.f32 %f0, 1.0;", valid: true}
 
+      - name: cos_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
   - opcode: lg2
     section: "9.7.3.20"
     doc: "Fast approximate single-precision base-2 logarithm."
@@ -1562,6 +1654,14 @@ instructions:
           - {ptx: "lg2.approx.f32 %f0, %f1;", valid: true}
           - {ptx: "lg2.approx.ftz.f32 %f0, 1.0;", valid: true}
 
+      - name: lg2_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
+
   - opcode: ex2
     section: "9.7.3.21"
     doc: "Fast approximate single-precision base-2 exponential."
@@ -1577,6 +1677,14 @@ instructions:
         examples:
           - {ptx: "ex2.approx.f32 %f0, %f1;", valid: true}
           - {ptx: "ex2.approx.ftz.f32 %f0, 1.0;", valid: true}
+
+      - name: ex2_implicit_f32
+        availability: {ptx: "1.0", ptx_before: "1.4", sm: 0}
+        floating_point_default: approximate_flush_to_zero
+        modifiers:
+          - {name: approx, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: absent}
+          - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f32}
 
   - opcode: ex2
     section: "9.7.4.10"

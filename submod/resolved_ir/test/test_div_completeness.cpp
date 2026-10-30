@@ -67,8 +67,8 @@ TEST(DivCompleteness, ResolvesExplicitFloatingModesAndOperands) {
 /** Reject legacy, mixed-mode, forbidden-flag, sink, and integer source forms. */
 TEST(DivCompleteness, RejectsInvalidExplicitForms) {
   for (const auto source : {
-           "div.f32 %f0, %f1, %f2;",
-           "div.f64 %d0, %d1, %d2;",
+           "div.ftz.f32 %f0, %f1, %f2;",
+           "div.ftz.f64 %d0, %d1, %d2;",
            "div.approx.rn.f32 %f0, %f1, %f2;",
            "div.approx.full.f32 %f0, %f1, %f2;",
            "div.rn.approx.f32 %f0, %f1, %f2;",

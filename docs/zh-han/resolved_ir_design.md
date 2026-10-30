@@ -224,6 +224,7 @@ storage 或 operand width。PTX 1.4 起，`div.rn.f64`、`rcp.rn.f64` 与 `sqrt.
 及更高 target 的 availability 无需此 option。其他 f64 form、directed rounding 与
 f32 form 保持各自的 gate。前端保存并验证 source option，不执行 lowering 或 emulation。
 
+
 `RequireCompleteContext` 还要求模块起始依次为 `.version`、`.target` 和可选
 `.address_size`，之后才能出现其他 module item。Version 或 address size 不得晚置；
 后续 `.target` 仍可开启合法的 source region。只有 header 的模块同样检查，空模块则
@@ -1030,3 +1031,27 @@ checker 在读取 metadata 前验证 intrinsic identity、索引族边界与 com
 包括较宽整数声明的截取，integer/float 不兼容规则仍然生效。CVT 按 source 使用宽度
 声明与 MOV 相同的历史 16-bit thread/grid component 与 16/32-bit grid-ID 读取兼容性；
 intrinsic identity 与当前 metadata 保持不变，有效类型与 availability 仅作用于当前检查。
+
+## 历史浮点控制省略形式
+
+`1.0 <= PTX < 1.4` 支持十二个保留 source omission 的 exact form：
+`div.f32`、`rcp.f32`、`sqrt.f32`、`rsqrt.f32`、`sin.f32`、`cos.f32`、`lg2.f32`
+与 `ex2.f32` 的解释为 `FloatingPointDefault::ApproximateFlushToZero`；
+`div.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
+`Approximate`。对应 final class 暴露 `inline static constexpr floating_point_default`，
+没有 source mode/rounding/FTZ member；DIV 也省略 `.full`。resolution 不插入 explicit
+modifier，也不改写 opcode。
+
+FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；只有 `div.f64` 与
+`sqrt.f64` 额外接受启用 `map_f64_to_f32` 的精确 generic `sm_10`、`sm_11` 或 `sm_12`。
+该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`rcp.f64` 仍排除：manual 描述旧版 omitted-mode default，
+而 CUDA 13.3.33 拒绝复现的 form。此已记录的 manual/current-assembler discrepancy
+不扩大支持范围。既有 implicit `mad.f32`
+保持自身 contract。
+
+availability metadata 在 plain requirement 和各 DNF clause 中可指定 exclusive 上界
+`ptx_before: "1.4"`。省略上界表示无上界；格式错误、空或逆序 interval 均被拒绝。
+plain 上界失败在相应 source range 报 `UnsupportedPtxVersion`；DNF 失败保持
+`UnsupportedAvailability`。selection 不依赖 version；validation 使用当前 standalone
+context 或当前 source/owned/replacement module version。copy 与 clone 保留 omitted
+identity 和解释；升级至 PTX 1.4 后重新验证会失败，不会自动转换为 explicit form。

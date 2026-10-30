@@ -1,5 +1,7 @@
 # 浮点 `mad` 覆盖
 
+`mad.f64` 额外接受 PTX 1.0–1.3 / SM >=13，解析为没有 rounding field 的 `MadImplicitF64`，解释为 round-to-nearest-even。它不继承 `map_f64_to_f32`；PTX >=1.4 要求 explicit rounding. source omission 与 typed interpretation 分离；见[公共 contract](../resolved_ir_design.md#历史浮点控制省略形式)。
+
 此切片通过 canonical YAML、typed Resolved IR 与 target-aware checker 建模不同的 implicit 与 explicit rounding form。它覆盖下表所列 [PTX 9.3 §9.7.3.7](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-instructions-mad) form，保留 integer 与 carry `mad` variant 和 source opcode，也不添加算术 execution。
 
 | Form | Minimum | Contract |
@@ -8,8 +10,8 @@
 | `mad.{rn,rz,rm,rp}{.ftz}{.sat}.f32` | PTX 2.0 / SM 20 | 必须指定 rounding。`.ftz` 和 `.sat` 独立 optional。每个 source 可为 typed floating literal 或同宽 `.f32`/`.b32` register；destination 为同宽 `.f32`/`.b32` register。 |
 | `mad.{rn,rz,rm,rp}.f64` | PTX 1.0 / SM 13 | 必须指定 rounding。没有 `.ftz` 或 `.sat`。每个 source 可为 typed floating literal 或同宽 `.f64`/`.b64` register；destination 为同宽 `.f64`/`.b64` register。 |
 
-integer literal 或 integer register container、错误宽度、destination sink、不支持的 FP64 flag 及错误 operand count 都会被拒绝。FP64 仍要求 rounding。文档规定 PTX 1.4 起 `mad.f64` 必须有 rounding；这不是 explicit rounded FP64 form 的 introduction floor。CUDA 13.3.73 `ptxas` 在 `sm_90` assembler override 下接受 PTX 1.3 的 explicit `.rn` 与 `.rz` FP64 form，符合 PTX 1.0 model floor。该历史 probe 只证明 syntax/contract，不表示旧 GPU codegen。
+integer literal 或 integer register container、错误宽度、destination sink、不支持的 FP64 flag 及错误 operand count 都会被拒绝。PTX 1.4 起 FP64 要求 rounding。文档规定 PTX 1.4 起 `mad.f64` 必须有 rounding；这不是 explicit rounded FP64 form 的 introduction floor。CUDA 13.3.73 `ptxas` 在 `sm_90` assembler override 下接受 PTX 1.3 的 explicit `.rn` 与 `.rz` FP64 form，符合 PTX 1.0 model floor。该历史 probe 只证明 syntax/contract，不表示旧 GPU codegen。
 
-omitted-rounding FP32 form 解析为没有 rounding field 的 `MadImplicitF32`，保留 source modifier range 和 32-bit operand，绝不改写为 `.rn` 或 `fma`。availability 仅限上表四个 supported catalog profile，不代表所有历史 GPU profile；SM 20、现代及 flavored target 均被拒绝。explicit-rounding FP32 form 保持 SM 20 下限，并拒绝这些 sm1x target。legacy omitted `mad.f64` 及 PTX 3.0/3.1 errata/default behavior 仍不在范围内。implicit form 不要求也不声称有 contemporary `ptxas` legacy oracle。
+omitted-rounding FP32 form 解析为没有 rounding field 的 `MadImplicitF32`，保留 source modifier range 和 32-bit operand，绝不改写为 `.rn` 或 `fma`。availability 仅限上表四个 supported catalog profile，不代表所有历史 GPU profile；SM 20、现代及 flavored target 均被拒绝。explicit-rounding FP32 form 保持 SM 20 下限，并拒绝这些 sm1x target。PTX 3.0/3.1 errata/default behavior 仍不在范围内。implicit form 不要求也不声称有 contemporary `ptxas` legacy oracle。
 
 CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`。32 个 modern matrix module 接受 FP32/FP64 的四个 rounding form、floating immediate 与匹配 bit container；拒绝 14 个非法 flag、type、shape 与 sink case。[explicit 浮点 DIV](div_coverage.md)、[reciprocal 与 square-root form](unary_float_coverage.md)、[浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成对账；ADD/SUB 的 contract 见该文档。

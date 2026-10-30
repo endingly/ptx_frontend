@@ -48,6 +48,23 @@ std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
 
+/** Append the exclusive PTX limit failure at the selected source range. */
+void append_ptx_upper_bound_diagnostic(
+    const AvailabilityDescriptor& availability, const TargetInfo& target,
+    const SourceRange& range, CheckDiagnostics& diagnostics) {
+  if (availability.ptx_before &&
+      target.ptx_version >= *availability.ptx_before) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = range,
+        .message = fmt::format("Availability requires PTX ISA < {} "
+                               "(exclusive), but target PTX ISA is {}.",
+                               format_version(*availability.ptx_before),
+                               format_version(target.ptx_version)),
+    });
+  }
+}
+
 bool has_enabled_family_feature(
     std::span<const std::string_view> enabled_family_features,
     std::string_view required_family) noexcept {
@@ -246,6 +263,8 @@ void append_value_availability_diagnostics(const OperandView& operand,
     });
     return;
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -396,6 +415,8 @@ void append_address_constraint_availability_diagnostics(
     });
     return;
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -743,7 +764,8 @@ bool is_available(const AvailabilityDescriptor& availability,
   if (availability.any_of_count != 0) {
     for (size_t index = 0; index < availability.any_of_count; ++index) {
       const AvailabilityClause& clause = availability.any_of[index];
-      if (target.ptx_version < clause.minimum_ptx_version ||
+      if ((clause.ptx_before && target.ptx_version >= *clause.ptx_before) ||
+          target.ptx_version < clause.minimum_ptx_version ||
           target.sm_version < clause.minimum_sm_version ||
           (clause.requires_map_f64_to_f32 && !target.map_f64_to_f32) ||
           (clause.has_exact_target &&
@@ -775,7 +797,9 @@ bool is_available(const AvailabilityDescriptor& availability,
     }
     return false;
   }
-  return target.ptx_version >= availability.minimum_ptx_version &&
+  return (!availability.ptx_before ||
+          target.ptx_version < *availability.ptx_before) &&
+         target.ptx_version >= availability.minimum_ptx_version &&
          target.sm_version >= availability.minimum_sm_version &&
          (availability.required_family.empty() ||
           has_enabled_family_feature(target.enabled_family_features,
@@ -809,6 +833,9 @@ CheckResult check_availability(const VariantDescriptor& variant,
             variant.variant_name),
     }});
   }
+
+  append_ptx_upper_bound_diagnostic(availability, target,
+                                    context.instruction_range, diagnostics);
 
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
@@ -2235,6 +2262,9 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
     }});
   }
 
+  append_ptx_upper_bound_diagnostic(availability, target,
+                                    context.instruction_range, diagnostics);
+
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -2310,6 +2340,7 @@ CheckResult check_modifier_value_availability(
       });
       continue;
     }
+    append_ptx_upper_bound_diagnostic(availability, target, range, diagnostics);
     if (target.ptx_version < availability.minimum_ptx_version) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -3753,6 +3784,8 @@ CheckResult check_memory_vector(
     });
     return std::unexpected(std::move(diagnostics));
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, vector_range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,

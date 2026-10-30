@@ -619,23 +619,23 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
     def test_mad_merges_complete_integer_and_floating_ternary_layouts(self) -> None:
         self.assertEqual(
             [variant.cpp_name for variant in self.mad_instruction.variants],
-            ["RnF32", "DirectedF32", "RnF64", "DirectedF64", "ImplicitF32", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
+            ["RnF32", "DirectedF32", "RnF64", "DirectedF64", "ImplicitF32", "ImplicitF64", "LoU32", "LoS32", "WideU32", "LoU16", "LoU64",
              "LoS16", "LoS64", "HiU16", "HiU32", "HiU64", "HiS16",
              "HiS32", "HiS64", "WideU16", "WideS16", "WideS32", "HiSatS32",
              "HiCc32", "LoCc32", "HiCc64", "LoCc64"],
         )
         self.assertEqual(
-            [field.name for field in self.mad_instruction.variants[5].fields],
+            [field.name for field in self.mad_instruction.variants[6].fields],
             ["lo", "type", "dst", "src1", "src2", "src3"],
         )
         self.assertEqual(
-            self.mad_instruction.variants[5].operand_layouts[0].bindings[3].role,
+            self.mad_instruction.variants[6].operand_layouts[0].bindings[3].role,
             ResolvedOperandRole.SOURCE,
         )
         self.assertEqual(
             [
                 binding.register_width_policy
-                for binding in self.mad_instruction.variants[7].operand_layouts[0].bindings
+                for binding in self.mad_instruction.variants[8].operand_layouts[0].bindings
             ],
             [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 4,
         )
@@ -715,6 +715,8 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
                 "ApproxF32",
                 "FullF32",
                 "DirectedF64",
+                "ImplicitF32",
+                "ImplicitF64",
                 "U32",
                 "S32",
                 "U16",
@@ -724,7 +726,7 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [field.name for field in self.div_instruction.variants[6].fields],
+            [field.name for field in self.div_instruction.variants[8].fields],
             ["type", "dst", "src1", "src2"],
         )
         for variant in self.div_instruction.variants[:6]:
@@ -926,11 +928,11 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         for opcode, variants in expected.items():
             instruction = by_opcode[opcode]
             self.assertEqual(
-                [variant.cpp_name for variant in instruction.variants],
+                [variant.cpp_name for variant in instruction.variants if variant.floating_point_default is None],
                 [name for name, _, _ in variants],
             )
             for variant, (cpp_name, scalar_type, fields) in zip(
-                instruction.variants, variants, strict=True
+                (variant for variant in instruction.variants if variant.floating_point_default is None), variants, strict=True
             ):
                 self.assertEqual([field.name for field in variant.fields], list(fields), cpp_name)
                 self.assertIs(variant.fields[0].constant_value, True, cpp_name)

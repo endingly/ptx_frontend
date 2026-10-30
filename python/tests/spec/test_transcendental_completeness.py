@@ -32,7 +32,8 @@ class TranscendentalCompletenessTests(unittest.TestCase):
         """Load the five transcendental instruction specifications by opcode."""
 
         cls.instructions = {
-            instruction.opcode: {variant.name: variant for variant in instruction.variants}
+            instruction.opcode: {variant.name: variant for variant in instruction.variants
+                                 if variant.floating_point_default is None}
             for instruction in get_packaged_spec_database().instructions
             if instruction.opcode in {"sin", "cos", "lg2", "ex2", "tanh"}
         }

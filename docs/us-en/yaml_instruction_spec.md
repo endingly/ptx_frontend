@@ -232,6 +232,18 @@ requirements to those values. For example, `add.u32` and `add.u16x2` share the
 no-sat variant, while the latter value requires PTX 8.0 / sm_90. Do not create
 an `add_simd_no_sat_sm90` variant solely for that version difference.
 
+
+A historical omitted floating-control variant may declare
+`floating_point_default: approximate_flush_to_zero`, `approximate`, or
+`round_nearest_even`. This closed typed interpretation is separate from source
+modifiers: every declared `rounding`, `approx`, `full`, and `ftz` slot must have
+`presence: absent`. The first interpretation requires fixed `type: f32`; the
+other two require fixed `type: f64`. Unknown values or contradictory explicit
+controls/types are rejected. Normalization and Resolved IR preserve this fact;
+the generated exact class exposes static `FloatingPointDefault
+floating_point_default`, without synthesizing source modifier fields. See the
+[historical contract](resolved_ir_design.md#historical-omitted-floating-controls).
+
 ## Operands and operand patterns
 
 An operand has a stable `name`, syntax `kind`, semantic `role`, `access`, and
@@ -604,6 +616,17 @@ immediate layout is usable at PTX 1.0 / sm_10, while register and thread-count
 layouts additionally require PTX 2.0 / sm_20.
 
 ## Availability, rules, and examples
+
+
+Plain availability and every `any_of` clause may include `ptx_before: "1.4"`:
+the PTX version must be strictly below that exclusive bound and at least `ptx`
+(default `"0.0"`). Omission means no upper bound. Both versions must be decimal
+`major.minor` strings with uint16 components; malformed, empty, equal, or reversed
+intervals are rejected. The generator carries the optional bound to
+`AvailabilityDescriptor::ptx_before` or `AvailabilityClause::ptx_before`.
+Existing minimum-only metadata keeps its behavior. Plain upper-bound failures
+report a located `UnsupportedPtxVersion` with the exclusive limit; DNF failures
+retain `UnsupportedAvailability`.
 
 Every variant must declare:
 

@@ -202,6 +202,15 @@ values:
 `add.u32` 与 `add.u16x2` 同属 no-sat variant，后者单独要求 PTX 8.0 / sm_90；不得仅因
 该版本差异复制一个 `add_simd_no_sat_sm90` variant。
 
+
+历史浮点控制省略 variant 可声明 `floating_point_default: approximate_flush_to_zero`、
+`approximate` 或 `round_nearest_even`。此 closed typed interpretation 独立于 source
+modifier；所有声明的 `rounding`、`approx`、`full` 与 `ftz` slot 必须为
+`presence: absent`。第一种解释要求 fixed `type: f32`，后两种要求 fixed `type: f64`。
+未知值、冲突的 explicit control/type 均拒绝。normalization 与 Resolved IR 保留此 fact；
+生成的 exact class 暴露 static `FloatingPointDefault floating_point_default`，不合成
+source modifier field。见[历史 contract](resolved_ir_design.md#历史浮点控制省略形式)。
+
 ## Operand 与 operand pattern
 
 operand 由稳定 `name`、syntax `kind`、语义 `role`、`access` 与可选 `type` 定义：
@@ -521,6 +530,15 @@ instructions:
 使用，而 register 或 thread-count layout 额外要求 PTX 2.0 / sm_20。
 
 ## Availability、rule 与 example
+
+
+plain availability 与各 `any_of` clause 可包含 `ptx_before: "1.4"`：PTX version
+必须严格小于此 exclusive 上界，并且至少为 `ptx`（缺省 `"0.0"`）。省略表示无上界。
+两个 version 必须是 uint16 component 的十进制 `major.minor` string；格式错误、空、
+上下界相等或逆序的 interval 均拒绝。generator 把 optional 上界传到
+`AvailabilityDescriptor::ptx_before` 或 `AvailabilityClause::ptx_before`。
+既有仅含下界的 metadata 行为不变。plain 上界失败在相应 source range 报出含 exclusive
+limit 的 `UnsupportedPtxVersion`；DNF 失败保持 `UnsupportedAvailability`。
 
 每个 variant 必须声明：
 

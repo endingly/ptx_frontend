@@ -123,6 +123,7 @@ class FormContractModel:
     commit: TcgenCommitModel | None
     fence: str | None
     copy: TcgenCopyModel | None
+    floating_point_default: str | None
 
 @dataclass(frozen=True)
 class FieldDeclaration:
@@ -336,7 +337,8 @@ def build_form_contract(variant: ResolvedVariant, backend: CodegenUnit) -> FormC
         None if variant.matrix is None else build_matrix_descriptor(variant.matrix, backend), build_surface(variant),
         None if variant.video is None else {'scalar': 'Scalar', 'two': 'Two', 'four': 'Four'}[variant.video.lanes.value],
         None if variant.video is None else file_stem_to_pascal_case(variant.video.operation.value),
-        build_texture(variant), build_stack(variant), tcgen.allocation, tcgen.commit, tcgen.fence, tcgen.copy)
+        build_texture(variant), build_stack(variant), tcgen.allocation, tcgen.commit, tcgen.fence, tcgen.copy,
+        None if variant.floating_point_default is None else file_stem_to_pascal_case(variant.floating_point_default.value))
 
 
 def _identity_namespace(entry: GenerationInstruction) -> str:

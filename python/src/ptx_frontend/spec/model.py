@@ -1007,6 +1007,14 @@ class OperandTypeCompatibilitySpec:
     availability: dict[str, Any] = field(default_factory=dict)
 
 
+class FloatingPointDefault(str, Enum):
+    """Closed interpretation of historically omitted floating-point controls."""
+
+    APPROXIMATE_FLUSH_TO_ZERO = "approximate_flush_to_zero"
+    APPROXIMATE = "approximate"
+    ROUND_NEAREST_EVEN = "round_nearest_even"
+
+
 @dataclass(frozen=True)
 class VariantSpec:
     """One PTX instruction variant."""
@@ -1020,6 +1028,7 @@ class VariantSpec:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
     surface: SurfaceInstructionSpec | None = None
+    floating_point_default: FloatingPointDefault | None = None
     stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     video: VideoInstructionSpec | None = None

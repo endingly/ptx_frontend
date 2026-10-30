@@ -64,6 +64,7 @@ execution evidence for eleven commonly used operation names.
 | Modelled `mad` | Supported subset | Integer and carry forms remain available; explicit-rounding FP32/FP64 forms, operands, target minima, and excluded legacy profiles are documented in [MAD coverage](mad_coverage.md). |
 | Modelled `fma` | Supported | The 16 PTX 9.3 FMA variants, their modifier/operand contracts, and availability are listed in the [FMA coverage matrix](fma_coverage.md); simulator execution remains unsupported |
 | Modelled `div` | Supported subset | Frozen integer `div.u32` (PTX 1.0 / SM 0) and explicit FP32/FP64 forms; see [DIV coverage](div_coverage.md). A zero divisor remains accepted with PTX-specified unspecified behavior. |
+| Historical omitted floating controls | Supported subset | Twelve exact PTX 1.0–1.3 forms retain omission and typed `floating_point_default`; explicit modes remain required from 1.4. `rcp.f64` stays excluded because of the manual/tool discrepancy. See [interpretation and bounds](../resolved_ir_design.md#historical-omitted-floating-controls). |
 
 The conversion-family inventory is documented separately in
 [conversion coverage](conversion_coverage.md). It names the modelled forms and

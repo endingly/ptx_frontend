@@ -33,7 +33,7 @@ TEST(ResolveLg2, SelectsFrozenApproxVariant) {
 
 TEST(ResolveLg2, RejectsInvalidForms) {
   for (const auto source :
-       {"lg2.f32 %f0, %f1;", "lg2.approx.f64 %d0, %d1;",
+       {"lg2.ftz.f32 %f0, %f1;", "lg2.approx.f64 %d0, %d1;",
         "lg2.approx.f32x2 %f0, %f1;", "lg2.approx.sat.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(

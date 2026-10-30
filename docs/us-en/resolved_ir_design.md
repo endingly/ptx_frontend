@@ -256,6 +256,7 @@ exact generic `sm_10`, `sm_11`, or `sm_12` only with this option; their existing
 directed rounding, and f32 forms keep their own gates. This frontend preserves
 and validates the source option; it performs no lowering or emulation.
 
+
 `RequireCompleteContext` also requires an initial `.version`, then `.target`,
 then optional `.address_size`, before other module items. A version or address
 size cannot appear later; subsequent `.target` directives still open valid source
@@ -1286,3 +1287,29 @@ integer chops for wider declarations, while integer/float incompatibility remain
 CVT declares the same historical 16-bit thread/grid-component and 16/32-bit
 grid-ID read compatibilities as MOV, using source use-width. Intrinsic identity
 and current metadata remain unchanged; contextual availability applies per check.
+
+## Historical omitted floating controls
+
+For `1.0 <= PTX < 1.4`, twelve exact forms preserve omitted source controls:
+`div.f32`, `rcp.f32`, `sqrt.f32`, `rsqrt.f32`, `sin.f32`, `cos.f32`, `lg2.f32`,
+and `ex2.f32` have `FloatingPointDefault::ApproximateFlushToZero`; `div.f64`,
+`sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
+without FTZ. Their final classes expose `inline static constexpr
+floating_point_default` and no source mode/rounding/FTZ members. DIV also omits
+`.full`. Resolution never inserts explicit modifiers or rewrites the opcode.
+
+FP32 forms keep the existing all-target rule. FP64 forms need SM >= 13; only
+`div.f64` and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
+`sm_12` with `map_f64_to_f32`. That option does not admit `rsqrt.f64` or `mad.f64`
+on these targets. `rcp.f64` remains excluded: the manual describes an old omitted-mode default,
+while CUDA 13.3.33 rejects the reproduced form. This documented manual/current-assembler
+discrepancy does not widen the supported inventory. Existing implicit `mad.f32` has its own contract.
+
+Availability metadata uses optional `ptx_before: "1.4"` as an exclusive bound,
+in plain requirements and each DNF clause. Missing bounds remain unbounded;
+malformed or empty/reversed intervals are rejected. Plain upper-bound failures
+report located `UnsupportedPtxVersion`; DNF failures retain
+`UnsupportedAvailability`. Selection is version-independent; validation uses the
+current standalone context or current source/owned/replacement module version.
+Copies and clones retain the omitted identity and interpretation. Revalidation
+at PTX 1.4 or later fails without converting the instruction to an explicit form.

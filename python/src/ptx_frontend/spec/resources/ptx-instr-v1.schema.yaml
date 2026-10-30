@@ -1315,6 +1315,9 @@ $defs:
         properties:
           ptx:
             $ref: "#/$defs/ptx_version"
+          ptx_before:
+            description: Exclusive PTX version upper bound; omitted means unbounded.
+            $ref: "#/$defs/ptx_version"
           sm:
             $ref: "#/$defs/sm_version"
           family:
@@ -1331,6 +1334,7 @@ $defs:
           notes:
             type: string
         anyOf:
+          - required: [ptx_before]
           - required: [ptx]
           - required: [sm]
           - required: [family]
@@ -1347,6 +1351,9 @@ $defs:
               additionalProperties: false
               properties:
                 ptx:
+                  $ref: "#/$defs/ptx_version"
+                ptx_before:
+                  description: Exclusive PTX version upper bound for this conjunction.
                   $ref: "#/$defs/ptx_version"
                 sm:
                   $ref: "#/$defs/sm_version"
@@ -1382,6 +1389,7 @@ $defs:
               not:
                 required: [target, targets]
               anyOf:
+                - required: [ptx_before]
                 - required: [ptx]
                 - required: [sm]
                 - required: [target]
@@ -1718,6 +1726,11 @@ $defs:
       - availability
 
     properties:
+      floating_point_default:
+        description: "Static interpretation of omitted historical floating controls."
+        type: string
+        enum: [approximate_flush_to_zero, approximate, round_nearest_even]
+
       condition_code_effect:
         description: "Implicit CC.CF access when the predicated instruction executes."
         type: string

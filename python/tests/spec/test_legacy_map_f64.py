@@ -24,6 +24,8 @@ class LegacyMapF64Tests(unittest.TestCase):
         for instruction in get_packaged_spec_database().instructions:
             for variant in instruction.variants:
                 clauses = variant.availability.get("any_of", [])
+                if variant.floating_point_default is not None:
+                    continue  # Historical omissions have their own bounded descriptor tests.
                 if any("map_f64_to_f32" in clause for clause in clauses):
                     found.add(variant.name)
                     with self.subTest(variant=variant.name):

@@ -62,6 +62,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `mad` | 支持子集 | 保留 integer 与 carry form；explicit-rounding FP32/FP64 form、operand、target minimum 及排除的 legacy profile 见 [MAD 覆盖](mad_coverage.md)。 |
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |
 | 已建模的 `div` | 支持子集 | frozen integer `div.u32`（PTX 1.0 / SM 0）与 explicit FP32/FP64 form；见 [DIV 覆盖](div_coverage.md)。zero divisor 保持接受，行为由 PTX 指定为 unspecified。 |
+| 历史浮点控制省略形式 | 支持子集 | 十二个 PTX 1.0–1.3 exact form 保留 source omission 与 typed `floating_point_default`；1.4 起仍要求 explicit mode。`rcp.f64` 因 manual/tool discrepancy 保持排除。见[解释与版本边界](../resolved_ir_design.md#历史浮点控制省略形式)。 |
 
 conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
 该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。

@@ -43,6 +43,23 @@ def validate_availability_family(family: object) -> str:
     return family
 
 
+def parse_ptx_version(value: object) -> tuple[int, int]:
+    """Parse a nonempty decimal PTX version representable in public descriptors."""
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]+\.[0-9]+", value) is None:
+        raise ValueError(f"invalid PTX availability version {value!r}")
+    parts = tuple(int(part) for part in value.split("."))
+    if any(part > 0xFFFF for part in parts):
+        raise ValueError(f"PTX availability version is out of range: {value!r}")
+    return parts
+
+
+def validate_ptx_interval(raw: dict[str, Any]) -> None:
+    """Reject malformed, empty and reversed half-open availability intervals."""
+    minimum = parse_ptx_version(raw.get("ptx", "0.0"))
+    if "ptx_before" in raw and parse_ptx_version(raw["ptx_before"]) <= minimum:
+        raise ValueError("availability ptx_before must exceed the minimum PTX version")
+
+
 def normalize_availability(raw: object) -> dict[str, Any]:
     """Validate the legacy availability form or its bounded DNF replacement."""
 
@@ -51,9 +68,10 @@ def normalize_availability(raw: object) -> dict[str, Any]:
     if not raw:
         return {}
     if "any_of" not in raw:
-        allowed = {"ptx", "sm", "family", "deprecated", "removed", "notes"}
-        if set(raw) - allowed or not set(raw) & {"ptx", "sm", "family"}:
+        allowed = {"ptx_before", "ptx", "sm", "family", "deprecated", "removed", "notes"}
+        if set(raw) - allowed or not set(raw) & {"ptx_before", "ptx", "sm", "family"}:
             raise ValueError("availability must contain a legacy requirement or any_of")
+        validate_ptx_interval(raw)
         if "sm" in raw:
             validate_availability_sm_version(raw["sm"])
         if "family" in raw:
@@ -70,11 +88,12 @@ def normalize_availability(raw: object) -> dict[str, Any]:
             raise TypeError("availability any_of clauses must be objects")
         if (
             set(clause) - {
-                "ptx", "sm", "target", "targets", "family", "capabilities", "map_f64_to_f32"
+                "ptx_before", "ptx", "sm", "target", "targets", "family", "capabilities", "map_f64_to_f32"
             }
             or not clause
         ):
             raise ValueError("availability any_of clause has invalid fields")
+        validate_ptx_interval(clause)
         if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
         if "sm" in clause:

@@ -13,6 +13,7 @@ from typing import overload
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    FloatingPointDefault,
     VideoInstructionSpec,
     VideoOperandSpec,
     FabricInstructionSpec,
@@ -429,6 +430,7 @@ class ResolvedVariant:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
     surface: SurfaceInstructionSpec | None = None
+    floating_point_default: FloatingPointDefault | None = None
     stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     video: VideoInstructionSpec | None = None
@@ -932,6 +934,7 @@ def _build_variant(
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
         surface=variant.surface,
+        floating_point_default=variant.floating_point_default,
         stack=variant.stack,
         texture=variant.texture,
         video=variant.video,

@@ -668,9 +668,11 @@ struct SymbolTableBuilder {
       std::optional<uint64_t> address_alignment = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
       bool allow_redeclaration = false, bool function_is_entry = false,
-      std::optional<uint8_t> vector_width = std::nullopt) {
+      std::optional<uint8_t> vector_width = std::nullopt,
+      bool is_array = false) {
     if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
-      const Symbol& existing = result.table.symbol(*previous);
+      Symbol& existing = result.table.symbols_[previous->value];
+      existing.is_array = existing.is_array || is_array;
       if (!allow_redeclaration) {
         result.diagnostics.push_back(BindDiagnostic{
             .kind = BindDiagnosticKind::DuplicateSymbol,
@@ -711,6 +713,7 @@ struct SymbolTableBuilder {
         .type = type ? std::optional<std::string>{std::string{*type}}
                      : std::nullopt,
         .vector_width = vector_width,
+        .is_array = is_array,
         .address_alignment = address_alignment,
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
@@ -821,7 +824,8 @@ struct SymbolTableBuilder {
               declaration.alignment, declaration.vector_type,
               declaration.legacy_texture ? ".texref" : declaration.type.text),
           parameterizedCount(declarator), scope == result.table.moduleScope(),
-          false, vectorWidth(declaration.vector_type));
+          false, vectorWidth(declaration.vector_type),
+          !declarator.array_dimensions.empty());
       recordDeclarationOccurrence(variable, declarator.name.syntax.range,
                                   declarator.range);
     }
@@ -874,7 +878,8 @@ struct SymbolTableBuilder {
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
-                std::nullopt, false, false, vectorWidth(parameter.vector_type));
+                std::nullopt, false, false, vectorWidth(parameter.vector_type),
+                parameter.is_array);
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
@@ -882,7 +887,8 @@ struct SymbolTableBuilder {
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
-                std::nullopt, false, false, vectorWidth(parameter.vector_type));
+                std::nullopt, false, false, vectorWidth(parameter.vector_type),
+                parameter.is_array);
     }
     collectBody(function.body, function_scope, function_scope);
   }

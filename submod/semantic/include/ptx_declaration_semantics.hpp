@@ -103,7 +103,7 @@ enum class DeclarationDiagnosticKind : uint8_t {
   UnknownRegisterDeclarationType,
   /** A recognized instruction-only scalar spelling was used in `.reg`. */
   UnsupportedRegisterDeclarationType,
-  /** A `.reg` declaration uses a predicate or vector shape PTX does not allow. */
+  /** A `.reg` declaration uses an array, predicate, or vector shape PTX does not allow. */
   InvalidRegisterDeclarationShape,
   /** A declaration directive is unavailable for its known source target. */
   UnsupportedDirectiveTarget,

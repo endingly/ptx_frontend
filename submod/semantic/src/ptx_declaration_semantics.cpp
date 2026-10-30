@@ -2254,6 +2254,13 @@ class Checker {
     if (declaration.state_space != syntax_ast::AstStateSpace::Register)
       return;
 
+    for (const auto& declarator : declaration.declarators) {
+      if (!declarator.array_dimensions.empty())
+        diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
+                 declarator.array_dimensions.front().range,
+                 "Register declarations cannot be arrays.");
+    }
+
     const auto* metadata =
         base::find_scalar_type_metadata(declaration.type.text);
     if (!metadata || metadata->register_declaration_usage ==

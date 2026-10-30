@@ -47,6 +47,13 @@ so this resource/domain boundary does not claim complete assembler parity.
 
 ## Arrays and initializers
 
+
+Register declarations cannot use bracket array dimensions. The rule applies to
+unused declarations and reports `InvalidRegisterDeclarationShape` at the first
+bracket dimension, independently of type or vector diagnostics. Compact register
+groups (`r<2>`) remain distinct. See [register declaration compatibility](register_type_policy.md)
+for the retained owned shape and validation contract.
+
 Integer literals share decimal, leading-zero octal, binary, and hexadecimal decoding
 with instruction immediates. For example, `010` initializes the value 8 and
 denotes an array extent of 8; an unsigned suffix does not change the radix.

@@ -32,6 +32,24 @@ semantics uses that metadata; the generated resolver suffix table remains a
 mechanical instruction-modifier mapping. `.param` deliberately retains its
 separate storage-type contract.
 
+
+Bracket arrays are forbidden in `.reg` declarations, including unused registers,
+unsized or multidimensional arrays, and arrays of vector registers. Declaration
+semantics reports `InvalidRegisterDeclarationShape` at the first bracket
+dimension. This is separate from legal compact register groups such as
+`.reg .u32 r<2>` and legal `.v2`/`.v4` register declarations. Arrays in `.param`,
+`.global`, `.const`, `.shared`, and `.local` retain their existing rules.
+This follows [PTX ISA 9.3 register state space](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space).
+
+`binding::Symbol::is_array` retains whether any declaration occurrence writes bracket
+dimensions (or a formal parameter is an array), independently of `vector_width`
+and `parameterized_count`. Owned validation checks every register symbol even
+when it is unused and has no storage record; an illegal array reports
+`RuleViolation` at the retained identifier range. Array-bearing storage or
+parameter records bound to a register are also rejected. These checks remain
+available after source and AST destruction; AST-backed validation also checks
+replacement source declarations.
+
 ## Normative source ledger
 
 The project specification is PTX ISA 9.3. This correction uses the

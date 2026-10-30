@@ -42,6 +42,107 @@ size_t declarationCount(
   });
 }
 
+/** Unused register arrays must fail declaration semantics before resolution. */
+TEST(RegisterDeclarations, RejectsUnusedRegisterArrays) {
+  const auto ast = parseModule(
+      ".version 9.3\n.target sm_80\n.entry kernel() { .reg .u32 r[2]; ret; }");
+  ASSERT_TRUE(ast);
+  const auto bound = binding::bindSymbols(*ast);
+  const auto diagnostics =
+      declaration_semantics::checkDeclarations(*ast, bound.table);
+  EXPECT_EQ(declarationCount(diagnostics,
+                             declaration_semantics::DeclarationDiagnosticKind::
+                                 InvalidRegisterDeclarationShape),
+            1u);
+  EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
+  EXPECT_FALSE(test_support::resolveAndValidateModuleSnapshot(*ast));
+}
+
+/** Every bracket shape is illegal independently of type, use, and scope. */
+TEST(RegisterDeclarations, RejectsEveryBracketShapeAtItsFirstDimension) {
+  for (const std::string_view declaration :
+       {".reg .u32 scalar[2];", ".reg .v2 .u32 vector[2];",
+        ".reg .pred predicate[2];", ".reg .u32 unsized[];",
+        ".reg .u32 matrix[2][3];", ".reg .not_a_type unknown[2];",
+        ".reg .bf16 alternate[2];"}) {
+    for (const std::string_view prefix :
+         {"", ".version 9.3\n.target sm_80\n"}) {
+      for (const bool nested : {false, true}) {
+        const std::string source =
+            std::string(prefix) + ".entry kernel() { " + (nested ? "{ " : "") +
+            std::string(declaration) + (nested ? " }" : "") + " ret; }";
+        const auto ast = parseModule(source);
+        ASSERT_TRUE(ast) << source;
+        const auto bound = binding::bindSymbols(*ast);
+        const auto diagnostics =
+            declaration_semantics::checkDeclarations(*ast, bound.table);
+        const auto array =
+            std::ranges::find_if(diagnostics, [](const auto& diagnostic) {
+              return diagnostic.kind ==
+                         declaration_semantics::DeclarationDiagnosticKind::
+                             InvalidRegisterDeclarationShape &&
+                     diagnostic.message ==
+                         "Register declarations cannot be arrays.";
+            });
+        ASSERT_NE(array, diagnostics.end()) << source;
+        EXPECT_EQ(array->range.start.column,
+                  source.substr(source.rfind('\n') + 1).find('[') + 1);
+        EXPECT_EQ(array->range.end.column - array->range.start.column,
+                  declaration.substr(declaration.find('[')).find(']') + 1);
+        EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
+        if (!prefix.empty())
+          EXPECT_FALSE(test_support::resolveAndValidateModuleSnapshot(*ast));
+      }
+    }
+  }
+}
+
+/** Multi-declarator and historical module declarations receive one error per array. */
+TEST(RegisterDeclarations, RejectsMultipleAndModuleArrays) {
+  for (const std::string_view source :
+       {".reg .u32 first[2], scalar, second[3][4];",
+        ".version 1.4\n.target sm_10\n.reg .u32 first[2], scalar, "
+        "second[3][4];"}) {
+    const auto ast = parseModule(source);
+    ASSERT_TRUE(ast);
+    const auto bound = binding::bindSymbols(*ast);
+    const auto diagnostics =
+        declaration_semantics::checkDeclarations(*ast, bound.table);
+    EXPECT_EQ(
+        declarationCount(diagnostics,
+                         declaration_semantics::DeclarationDiagnosticKind::
+                             InvalidRegisterDeclarationShape),
+        2u);
+    EXPECT_FALSE(test_support::resolveModuleSnapshot(*ast));
+  }
+}
+
+/** Memory arrays, legal register vectors and compact register groups remain distinct. */
+TEST(RegisterDeclarations, PreservesMemoryArraysAndRegisterGroups) {
+  const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.global .u32 global_values[2];
+.const .u32 constants[2];
+.entry kernel(.param .b8 arguments[8]) {
+  .shared .u32 shared_values[2];
+  .local .u32 local_values[2];
+  .reg .u32 r<2>, scalar;
+  .reg .v2 .u32 vector;
+  ret;
+}
+)ptx");
+  ASSERT_TRUE(ast);
+  const auto resolved = test_support::resolveAndValidateModuleSnapshot(*ast);
+  ASSERT_TRUE(resolved) << resolved.error().front().message;
+  for (const auto& symbol : resolved->symbols.symbols()) {
+    if (symbol.state_space == base::DeclarationStateSpace::Register)
+      EXPECT_FALSE(symbol.is_array);
+    else if (symbol.type)
+      EXPECT_TRUE(symbol.is_array) << symbol.name;
+  }
+}
+
 /** Unknown `.reg` types fail before either used or unused operands are resolved. */
 TEST(RegisterDeclarations, RejectsUnknownTypesAtTheirDeclarationTokens) {
   const auto ast = parseModule(R"ptx(

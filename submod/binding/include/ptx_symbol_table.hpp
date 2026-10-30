@@ -102,6 +102,8 @@ struct Symbol {
   std::optional<base::DeclarationStateSpace> state_space;
   std::optional<std::string> type;
   std::optional<uint8_t> vector_width;
+  /** True when any declaration occurrence writes an array, independently of compact groups or vectors. */
+  bool is_array{};
   /** Guaranteed byte alignment for an address of this data declaration. */
   std::optional<uint64_t> address_alignment;
   std::optional<uint32_t> parameterized_count;

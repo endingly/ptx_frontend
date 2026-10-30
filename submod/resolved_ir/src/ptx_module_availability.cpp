@@ -2498,6 +2498,34 @@ void check_declaration_identifiers(const ResolvedModule& module,
   }
 }
 
+/** Reject register arrays from owned identities and declaration records. */
+void check_register_arrays(const ResolvedModule& module,
+                           checker::CheckDiagnostics& diagnostics) {
+  const auto report = [&](SourceRange range) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::RuleViolation,
+        .range = range,
+        .message = "Register declarations cannot be arrays.",
+    });
+  };
+  for (const auto& symbol : module.symbols.symbols())
+    if (symbol.state_space == base::DeclarationStateSpace::Register &&
+        symbol.is_array)
+      report(symbol.declaration_range);
+  const auto check_record = [&](const auto& record, SourceRange range) {
+    const auto* symbol = owned_symbol(module, record.symbol_id);
+    if (symbol &&
+        symbol->state_space == base::DeclarationStateSpace::Register &&
+        !record.array_extents.empty())
+      report(range);
+  };
+  for (const auto& record : module.storage_declarations)
+    check_record(record, record.range);
+  for (const auto& function : module.functions)
+    for (const auto& record : function.parameter_declarations)
+      check_record(record, function.range);
+}
+
 /** Rejoin every storage occurrence and validate scalar allocation inputs. */
 void check_storage_declarations(const ResolvedModule& module,
                                 checker::CheckDiagnostics& diagnostics) {
@@ -3536,6 +3564,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
   check_declaration_identifiers(module, diagnostics);
+  check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_common_availability(module, diagnostics);
   const auto storage_version = module.header.regions.empty()
@@ -3713,6 +3742,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   check_header_features(version, std::array<std::string_view, 0>{},
                         explicit_address_size, ast.range, diagnostics);
   check_declaration_identifiers(module, diagnostics);
+  check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
   for (const auto& function : module.functions) {

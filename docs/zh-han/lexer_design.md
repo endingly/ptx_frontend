@@ -167,9 +167,14 @@ Lexer 可以识别：
 二进制整数使用 `TokenKind::Binary` 与 `AstImmediateKind::BinaryInteger`，
 保留准确拼写与范围。`0b`、`0b102U`、`0b1UU` 等无效二进制候选项产生
 覆盖其标识符尾部的单个 `Error` token；数值溢出在整数求值阶段诊断。二进制
-字面量可用于一般整数表达式、维度、操作数、debug ID、`.unified` 和 `.language`；
-要求 decimal token 的字段（如 alignment、参数化计数和 launch resource）仍保留
-原语法限制。仅允许十六进制的 initializer mask 也保留原限制。
+字面量可用于一般整数表达式、维度、操作数、debug metadata、`.unified` 和 `.language`。
+裸整数字段也接受十进制、八进制、十六进制、二进制及可选无符号后缀：声明与 pointer
+alignment、参数化计数、launch resource、ABI-preservation 计数、compact branch-target
+计数、文件 timestamp/size，以及源码位置的 line/column（包括 inline 位置）。各字段保留
+现有范围、正值、对齐、版本与 target 检查；这些位置不接受符号、表达式或 `WARP_SZ`。
+将位置 line/column metadata 视为一般整数是对 PTX 9.3 §§4.5.1、11.5.4 的解释；
+这些章节未规定仅限十进制。`.address_size` 保留枚举的 `32`/`64` 源码形式，version
+分量保留十进制语法，initializer mask 仍仅允许十六进制。
 
 ### 通用标识符
 

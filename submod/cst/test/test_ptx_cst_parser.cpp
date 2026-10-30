@@ -72,6 +72,51 @@ TEST(PtxCstParser, RecoversMalformedBinaryBeforeReturn) {
   }
 }
 
+/** General numeric fields preserve literal spelling across every integer radix. */
+TEST(PtxCstParser, RoundTripsGeneralIntegerFields) {
+  for (const std::string_view value : {"16", "020U", "0X10u", "0B10000U"}) {
+    const std::string v{value};
+    const std::string source =
+        ".file 1 \"f\", " + v + ", " + v + "\n" + ".global .align " + v +
+        " .u32 data;\n" + ".func f(.param .align " + v +
+        " .u64 .ptr .global .align " + v + " pointer) .abi_preserve " + v +
+        " .abi_preserve_control " + v + ";\n" + ".entry k() .maxntid " + v +
+        ", " + v + ", " + v + " {\n" + ".reg .u32 r<" + v + ">;\n" +
+        "p: .callprototype _ () .abi_preserve " + v +
+        " .abi_preserve_control " + v + ";\n" + "b: .branchtargets L<" + v +
+        ">;\n" + ".loc 1 " + v + " " + v + ", function_name f, inlined_at 1 " +
+        v + " " + v + "\nret; }";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    ASSERT_TRUE(parsed.has_value()) << value;
+    ASSERT_TRUE(parsed.diagnostics.empty())
+        << value << ": " << parsed.diagnostics.front().message;
+    EXPECT_EQ(parsed->sourceText(), source);
+  }
+}
+
+/** Bare numeric fields do not acquire expressions, signs, or symbolic constants. */
+TEST(PtxCstParser, RejectsNonliteralGeneralIntegerFields) {
+  for (const std::string_view value :
+       {"1.5", "WARP_SZ", "-8", "+8", "(8)", "8+8"}) {
+    for (const std::string& source :
+         {".global .align " + std::string{value} + " .u32 x;",
+          ".entry k() .maxntid " + std::string{value} + " { ret; }",
+          ".func f() .abi_preserve " + std::string{value} + ";"}) {
+      PtxCstParser parser(source);
+      EXPECT_FALSE(parser.parseModule().diagnostics.empty()) << source;
+    }
+  }
+  for (const std::string_view value : {"0x1", "0b1", "01U"}) {
+    PtxCstParser parser(".entry k() .explicitcluster " + std::string{value} +
+                        " { ret; }");
+    const auto parsed = parser.parseModule();
+    ASSERT_FALSE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed.diagnostics.front().message,
+              ".explicitcluster does not accept a value");
+  }
+}
+
 /** Named indexing retains its own brackets and register displacement tokens. */
 TEST(PtxCstParser, PreservesNamedArrayIndexPunctuation) {
   PtxCstParser parser("mov.u64 %rd, A[idx - (1+2)];");

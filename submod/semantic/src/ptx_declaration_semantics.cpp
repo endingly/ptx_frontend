@@ -1290,6 +1290,26 @@ class Checker {
     return contexts;
   }
 
+  /** Reject directive magnitudes that cannot fit their owned uint32_t field. */
+  void checkDirectiveU32(const syntax_ast::AstSyntax& value,
+                         std::string_view field) {
+    const auto parsed = unsignedIntegerLiteral(value.text);
+    if (!parsed) {
+      reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
+    } else if (*parsed > std::numeric_limits<uint32_t>::max()) {
+      diagnose(
+          DeclarationDiagnosticKind::InvalidDeclarationDirective, value.range,
+          fmt::format("{} must be representable as a uint32_t value.", field));
+    }
+  }
+
+  /** Validate a preservation count before constructing its owned ABI contract. */
+  void checkAbiPreservationCount(
+      const std::optional<syntax_ast::AstCallPrototypeAbiSuffix>& suffix) {
+    if (suffix)
+      checkDirectiveU32(suffix->count, "ABI preservation count");
+  }
+
   void requirePtx(std::optional<PtxVersion> module_version, PtxVersion required,
                   SourceRange range, std::string_view spelling) {
     if (!module_version || *module_version >= required)
@@ -1462,6 +1482,12 @@ class Checker {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         check_attributes(function->attributes,
                          syntax_ast::AstStateSpace::Global, true);
+        for (const auto& resource : function->resources) {
+          for (const auto& value : resource.values)
+            checkDirectiveU32(value, "Kernel resource value");
+        }
+        checkAbiPreservationCount(function->abi_preserve);
+        checkAbiPreservationCount(function->abi_preserve_control);
         if (function->noreturn_directive) {
           requirePtx(module_version, {6, 4},
                      function->noreturn_directive->range, ".noreturn");
@@ -1514,6 +1540,8 @@ class Checker {
             } else if (const auto* prototype =
                            std::get_if<syntax_ast::AstCallPrototype>(
                                &body_item)) {
+              checkAbiPreservationCount(prototype->abi_preserve);
+              checkAbiPreservationCount(prototype->abi_preserve_control);
               if (prototype->noreturn_directive)
                 requirePtx(module_version, {6, 4},
                            prototype->noreturn_directive->range, ".noreturn");

@@ -179,10 +179,18 @@ Binary integers use `TokenKind::Binary` and `AstImmediateKind::BinaryInteger`,
 retaining their exact spelling and range. A malformed binary candidate such as
 `0b`, `0b102U`, or `0b1UU` produces one `Error` token through its identifier tail.
 Magnitude overflow is diagnosed during integer evaluation. Binary literals are
-available in general integer expressions, dimensions, operands, debug IDs,
-`.unified`, and `.language`; fields whose grammar requires a decimal token
-(such as alignment, parameterized counts, and launch resources) retain that
-restriction. Hex-only initializer masks also retain their restriction.
+available in general integer expressions, dimensions, operands, debug metadata,
+`.unified`, and `.language`. Bare integer fields also accept decimal, octal,
+hexadecimal, and binary spellings with optional unsigned suffixes: declaration
+and pointer alignments, parameterized counts, launch resources, ABI-preservation
+counts, compact branch-target counts, file timestamps/sizes, and source-location
+line/column values (including inline locations). Each field retains its existing
+range, positivity, alignment, version, and target checks; these slots do not
+accept signs, expressions, or `WARP_SZ`. Treating location line/column metadata
+as general integers follows PTX 9.3 §§4.5.1 and 11.5.4; no decimal-only restriction
+is stated there. `.address_size` retains its enumerated `32`/`64` source form,
+version components retain their decimal grammar, and initializer masks remain
+hex-only.
 
 ### Generic Identifiers
 

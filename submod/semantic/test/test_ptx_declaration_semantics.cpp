@@ -228,9 +228,9 @@ TEST(PtxDeclarationSemantics, ValidatesUnifiedAttributeUuidHalves) {
             expected_ranges.size());
 }
 
-/** Redeclaration identity compares integer values across octal and decimal spellings. */
-TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
-  for (const std::string count : {"8", "16"}) {
+/** Redeclaration identity compares integer values across supported radix spellings. */
+TEST(PtxDeclarationSemantics, CanonicalizesGeneralIntegerRedeclarationValues) {
+  for (const std::string count : {"8", "010u", "0x8U", "0B1000", "16"}) {
     SCOPED_TRACE(count);
     const auto result = check(
         ".version 9.3\n"
@@ -248,10 +248,46 @@ TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
     EXPECT_TRUE(result.binding.diagnostics.empty());
     EXPECT_EQ(diagnosticCount(
                   result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
-              count == "8" ? 0u : 3u);
-    if (count == "8")
+              count != "16" ? 0u : 3u);
+    if (count != "16")
       EXPECT_TRUE(result.diagnostics.empty());
   }
+}
+
+/** Directive magnitudes report their numeric leaf before owned uint32_t conversion. */
+TEST(PtxDeclarationSemantics, RejectsUnrepresentableDirectiveIntegerFields) {
+  for (const std::string value :
+       {"4294967296", "0x100000000U", "0b100000000000000000000000000000000",
+        "18446744073709551616", "0x10000000000000000"}) {
+    for (const std::string prefix :
+         {".entry k() .maxntid ", ".func f() .abi_preserve ",
+          ".func f() .abi_preserve_control ",
+          ".entry k() { { p: .callprototype _ () .abi_preserve ",
+          ".entry k() { { p: .callprototype _ () .abi_preserve_control "}) {
+      const bool prototype = prefix.find("callprototype") != std::string::npos;
+      const std::string source = ".version 9.3\n" + prefix + value +
+                                 (prototype ? "; } ret; }" : " { ret; }");
+      const auto result = check(source);
+      const auto expected =
+          value == "18446744073709551616" || value == "0x10000000000000000"
+              ? DeclarationDiagnosticKind::InvalidIntegerLiteral
+              : DeclarationDiagnosticKind::InvalidDeclarationDirective;
+      ASSERT_EQ(result.diagnostics.size(), 1u) << source;
+      EXPECT_EQ(result.diagnostics[0].kind, expected) << source;
+      const auto start = static_cast<int32_t>(prefix.size() + 1);
+      EXPECT_EQ(result.diagnostics[0].range,
+                (SourceRange{{2, start},
+                             {2, start + static_cast<int32_t>(value.size())}}));
+    }
+  }
+}
+
+/** Zero resources and ABI counts keep their established acceptance semantics. */
+TEST(PtxDeclarationSemantics, RetainsZeroDirectiveIntegerFields) {
+  const auto result = check(
+      ".version 9.3\n.entry k() .maxntid 0x0 { ret; }\n"
+      ".func f() .abi_preserve 0B0U .abi_preserve_control 00 { ret; }");
+  EXPECT_TRUE(result.diagnostics.empty());
 }
 
 /** External storage redeclarations compare known natural and written alignments. */

@@ -115,12 +115,10 @@ TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowAndHexOnlyMasks) {
   EXPECT_TRUE(resolveSource(".global .u32 valid = 0xff(0xffff);").has_value());
 }
 
-/** Decimal-only directive and count grammar does not acquire binary spellings. */
-TEST(ResolvedStorageDeclarations, BinaryDoesNotExpandDecimalOnlyFields) {
+/** Address-size keeps its enumerated source grammar. */
+TEST(ResolvedStorageDeclarations, RetainsFixedAddressSizeGrammar) {
   for (const std::string_view source :
-       {".address_size 0b1000000", ".global .align 0b1000 .u32 x;",
-        ".global .u32 x<0b10>;", ".entry k() .maxntid 0b10 { ret; }",
-        ".func f() .abi_preserve 0b1;", R"(.file 1 "f", 0b1, 1)"}) {
+       {".address_size 0b1000000", ".address_size 0x40"}) {
     PtxSyntaxParser parser(source);
     EXPECT_FALSE(parser.parseModule().diagnostics.empty()) << source;
   }

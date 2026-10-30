@@ -1,0 +1,2 @@
+# Use Linux line endings for text files on every platform.
+* text=auto eol=lf

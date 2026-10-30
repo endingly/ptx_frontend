@@ -231,5 +231,191 @@ TEST(WmmaCoverage, ResolvesHighestLogicalForm) {
   EXPECT_TRUE(instruction->check(supported).has_value());
 }
 
+/** Whether an instruction exposes a source aligned modifier. */
+template <typename T>
+concept HasAlignedModifier = requires(T value) { value.aligned; };
+static_assert(
+    !HasAlignedModifier<WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned>);
+static_assert(
+    !HasAlignedModifier<WmmaStoreDM16n16k16ColGlobalF32ImplicitAligned>);
+static_assert(
+    !HasAlignedModifier<WmmaMmaM16n16k16RowColF32F16F16F32ImplicitAligned>);
+static_assert(HasAlignedModifier<WmmaLoadAM16n16k16RowGlobalF16>);
+
+/** Build one complete FP16 pipeline with source-selected shape and alignment. */
+std::string historicalWmmaModule(std::string_view version, bool aligned,
+                                 std::string_view shape = "m16n16k16",
+                                 std::string_view target = "sm_70") {
+  const std::string qualifier = aligned ? ".aligned." : ".";
+  const std::string suffix = qualifier + std::string(shape);
+  return ".version " + std::string(version) + "\n.target " +
+         std::string(target) + R"ptx(
+.address_size 64
+.global .align 32 .b32 tile[256];
+.entry kernel() {
+.reg .f16x2 %a<8>, %b<8>;
+.reg .f32 %c<8>, %d<8>;
+wmma.load.a.sync)ptx" +
+         suffix + R"ptx(.global.row.f16
+{%a0,%a1,%a2,%a3,%a4,%a5,%a6,%a7}, [tile], 16;
+wmma.mma.sync)ptx" +
+         suffix + R"ptx(.row.col.f32.f32
+{%d0,%d1,%d2,%d3,%d4,%d5,%d6,%d7},
+{%a0,%a1,%a2,%a3,%a4,%a5,%a6,%a7},
+{%b0,%b1,%b2,%b3,%b4,%b5,%b6,%b7},
+{%c0,%c1,%c2,%c3,%c4,%c5,%c6,%c7};
+wmma.store.d.sync)ptx" +
+         suffix + R"ptx(.global.col.f32
+[tile], {%d0,%d1,%d2,%d3,%d4,%d5,%d6,%d7}, 32;
+})ptx";
+}
+
+/** Source omission selects a stable class before the half-open version gate. */
+TEST(WmmaCoverage, HistoricalVersionMatrixAndExactIdentities) {
+  for (const auto version : {"6.0", "6.1", "6.2", "6.3", "9.3"}) {
+    for (const bool aligned : {false, true}) {
+      for (const auto shape : {"m16n16k16", "m8n32k16", "m32n8k16"}) {
+        SCOPED_TRACE(version);
+        SCOPED_TRACE(shape);
+        SCOPED_TRACE(aligned);
+        const auto parsed = test_helpers::parseModule(
+            historicalWmmaModule(version, aligned, shape));
+        ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+        auto resolved = resolveModuleOnly(*parsed);
+        ASSERT_TRUE(resolved) << resolved.error().front().message;
+        const bool modern = std::string_view(version) >= "6.3";
+        const bool shape_supported = std::string_view(version) != "6.0" ||
+                                     std::string_view(shape) == "m16n16k16";
+        const bool accepted = shape_supported && aligned == modern;
+        for (const auto policy :
+             {ModuleValidationPolicy::AvailableContext,
+              ModuleValidationPolicy::RequireCompleteContext}) {
+          const auto checked = validateModule(*parsed, *resolved, policy);
+          EXPECT_EQ(bool(checked), accepted);
+          if (!accepted) {
+            ASSERT_FALSE(checked);
+            EXPECT_EQ(checked.error().front().range,
+                      resolved->functions.front().instruction_ranges.front());
+          }
+        }
+        EXPECT_EQ(bool(resolveAndValidateModule(*parsed)), accepted);
+        if (std::string_view(shape) == "m16n16k16") {
+          const auto& body = resolved->functions.front().body;
+          EXPECT_EQ(body[0]->instruction_kind(),
+                    aligned
+                        ? WmmaLoadAM16n16k16RowGlobalF16::kind
+                        : WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned::kind);
+          EXPECT_EQ(
+              body[1]->instruction_kind(),
+              aligned
+                  ? WmmaMmaM16n16k16RowColF32F16F16F32::kind
+                  : WmmaMmaM16n16k16RowColF32F16F16F32ImplicitAligned::kind);
+          EXPECT_EQ(body[2]->instruction_kind(),
+                    aligned
+                        ? WmmaStoreDM16n16k16ColGlobalF32::kind
+                        : WmmaStoreDM16n16k16ColGlobalF32ImplicitAligned::kind);
+        }
+      }
+    }
+  }
+}
+
+/** Owned clones retain omission identity, topology and source diagnostic ranges. */
+TEST(WmmaCoverage, HistoricalOwnershipReplacementAndTarget) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto parsed =
+        test_helpers::parseModule(historicalWmmaModule("6.2", false));
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveAndValidateModule(*parsed);
+    ASSERT_TRUE(resolved) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto copy = *owned;
+  const checker::Context supported{
+      .target = {.ptx_version = {6, 2}, .sm_version = 70}};
+  const checker::Context too_old{
+      .target = {.ptx_version = {6, 2}, .sm_version = 60}};
+  for (std::size_t index = 0; index < 3; ++index) {
+    const auto& instruction = copy.functions.front().body[index];
+    auto clone = instruction->clone();
+    EXPECT_EQ(clone->instruction_kind(), instruction->instruction_kind());
+    EXPECT_TRUE(clone->check(supported));
+    EXPECT_FALSE(clone->check(too_old));
+  }
+  auto* load = dynamic_cast<WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned*>(
+      copy.functions.front().body.front().get());
+  ASSERT_NE(load, nullptr);
+  const auto cloned_load = load->clone();
+  const auto* typed_clone =
+      dynamic_cast<const WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned*>(
+          cloned_load.get());
+  ASSERT_NE(typed_clone, nullptr);
+  EXPECT_EQ(typed_clone->matrix_descriptor(),
+            &WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned::matrix_topology);
+  EXPECT_EQ(typed_clone->matrix_descriptor()->family, MatrixFamily::WMMA_LOAD);
+  EXPECT_EQ(typed_clone->matrix_descriptor()->shape, (MatrixShape{16, 16, 16}));
+  EXPECT_EQ(typed_clone->matrix_descriptor()->fragments[0].register_count, 8);
+  ASSERT_TRUE(load->stride);
+  auto& stride = std::get<ResolvedImmediate>(load->stride->value);
+  stride.bits = 17;
+  stride.integer_source_bits = 17;
+  EXPECT_FALSE(load->check(supported));
+  stride.bits = 16;
+  stride.integer_source_bits = 16;
+  EXPECT_TRUE(load->check(supported));
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+    EXPECT_TRUE(validateModule(copy, policy));
+    const auto replacement =
+        test_helpers::parseModule(historicalWmmaModule("6.3", false));
+    ASSERT_MODULE_PARSE_SUCCEEDS(replacement);
+    const auto result = validateModule(*replacement, copy, policy);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().front().range,
+              copy.functions.front().instruction_ranges.front());
+  }
+  for (auto& region : copy.header.regions)
+    region.version = checker::PtxVersion{6, 3};
+  for (auto& function : copy.functions)
+    function.source_version = checker::PtxVersion{6, 3};
+  EXPECT_FALSE(validateModule(copy, ModuleValidationPolicy::AvailableContext));
+  EXPECT_FALSE(
+      validateModule(copy, ModuleValidationPolicy::RequireCompleteContext));
+  EXPECT_TRUE(validateModule(*owned));
+}
+
+/** Standalone selection owns only the fields actually written in the source. */
+TEST(WmmaCoverage, HistoricalStandaloneAndTopologyRejection) {
+  const std::string source =
+      "wmma.load.a.sync.m16n16k16.global.row.f16 "
+      "{%a0,%a1,%a2,%a3,%a4,%a5,%a6,%a7}, [tile], 16;";
+  std::unique_ptr<Instruction> owned;
+  {
+    const auto parsed = test_helpers::parseInstruction(source);
+    ASSERT_TRUE(parsed);
+    auto resolved = resolveInstruction(*parsed);
+    ASSERT_TRUE(resolved) << resolved.error().message;
+    owned = std::move(*resolved);
+  }
+  EXPECT_EQ(owned->instruction_kind(),
+            WmmaLoadAM16n16k16RowGlobalF16ImplicitAligned::kind);
+  const auto clone = owned->clone();
+  for (const auto version :
+       {checker::PtxVersion{6, 0}, {6, 1}, {6, 2}, {6, 3}, {9, 3}}) {
+    const checker::Context context{
+        .target = {.ptx_version = version, .sm_version = 70}};
+    EXPECT_EQ(bool(clone->check(context)),
+              version < (checker::PtxVersion{6, 3}));
+  }
+  auto invalid = historicalWmmaModule("6.2", false);
+  const auto position = invalid.find("%a6,%a7}");
+  ASSERT_NE(position, std::string::npos);
+  invalid.replace(position, 8, "%a6}");
+  const auto parsed = test_helpers::parseModule(invalid);
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  EXPECT_FALSE(resolveModuleOnly(*parsed));
+}
+
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

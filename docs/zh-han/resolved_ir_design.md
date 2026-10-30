@@ -1055,3 +1055,19 @@ plain 上界失败在相应 source range 报 `UnsupportedPtxVersion`；DNF 失�
 `UnsupportedAvailability`。selection 不依赖 version；validation 使用当前 standalone
 context 或当前 source/owned/replacement module version。copy 与 clone 保留 omitted
 identity 和解释；升级至 PTX 1.4 后重新验证会失败，不会自动转换为 explicit form。
+
+WMMA 源码拼写保留 PTX 6.3 的 `.aligned` 边界。PTX 6.0 或 6.1 引入的
+156 个 FP16 输入、FP16 或 FP32 累加形式具有独立的 `*_implicit_aligned`
+variant 与 `*ImplicitAligned` 最终类：load 72 个、store 36 个、multiply-accumulate
+48 个。它们保留原始 PTX 下限和 SM70 要求，并要求 PTX `< 6.3`。现有现代类
+要求显式 `.aligned`，PTX 下限为 `6.3` 或各自更晚的原始下限。历史类没有
+`aligned` 字段、别名项、默认值或伪造的源码范围。两种拼写均保留不可变的
+`MatrixFamily::WMMA_LOAD`、`WMMA_STORE` 或 `WMMA_MMA` topology：这些 family
+蕴含参与 warp 的一致执行要求。此执行要求与按字节计算的地址对齐不同；
+fragment、layout、address 和 stride 检查保持不变。
+
+独立指令解析在没有版本上下文时选择实际写出的拼写。模块验证和指令可用性
+检查根据当前自有上下文或替换上下文应用半开版本区间。`shared::cta`、整数、
+subbyte/bit、BF16、TF32、FP64 及其他 PTX 6.3 或更晚引入的形式没有历史对应项。
+历史 `.satfinite` 不在本语法范围内。来源为
+[CUDA 13.3 所附 PTX 9.3 WMMA 描述](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld)。

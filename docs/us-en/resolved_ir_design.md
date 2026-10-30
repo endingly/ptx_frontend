@@ -1313,3 +1313,23 @@ report located `UnsupportedPtxVersion`; DNF failures retain
 current standalone context or current source/owned/replacement module version.
 Copies and clones retain the omitted identity and interpretation. Revalidation
 at PTX 1.4 or later fails without converting the instruction to an explicit form.
+
+WMMA source spellings preserve the PTX 6.3 `.aligned` boundary. The 156
+FP16-input / FP16-or-FP32 accumulator forms introduced in PTX 6.0 or 6.1 have
+separate `*_implicit_aligned` variants and `*ImplicitAligned` final classes:
+72 loads, 36 stores, and 48 multiply-accumulates. They retain their original
+PTX floor and SM70 requirement and require PTX `< 6.3`. The existing modern
+classes require an explicit `.aligned` and PTX `>= 6.3` (or their later native
+floor). Historical classes have no `aligned` field, alias entry, default, or
+fabricated source range. Both spellings retain immutable `MatrixFamily::WMMA_LOAD`,
+`WMMA_STORE`, or `WMMA_MMA` topology: these families imply uniform execution by
+the participating warp. This execution requirement is distinct from byte address
+alignment; fragment, layout, address, and stride checks remain unchanged.
+
+Standalone resolution selects the written spelling without a version context.
+Module validation and instruction availability checks apply the half-open version
+interval using current owned or replacement context. No historical counterparts
+are added for `shared::cta`, integer, subbyte/bit, BF16, TF32, FP64, or other
+forms introduced in PTX 6.3 or later. Historical `.satfinite` is outside this
+syntax slice. The source reference is the
+[PTX 9.3 WMMA description shipped with CUDA 13.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld).

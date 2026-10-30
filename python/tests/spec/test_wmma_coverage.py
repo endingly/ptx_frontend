@@ -1,6 +1,12 @@
 """Keep the PTX 9.3 WMMA topology and static contract complete."""
 
 from copy import deepcopy
+from dataclasses import replace
+from collections import Counter
+
+from ptx_frontend.ir.resolved_ir import from_instruction_spec
+from ptx_frontend.code_gen.render_models.availability import build_availability
+from ptx_frontend.code_gen.rendering import render_template
 import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
@@ -45,9 +51,9 @@ class WmmaCoverageTests(unittest.TestCase):
         }
         self.assertEqual(
             {family: len(items) for family, items in by_family.items()},
-            {MatrixFamily.WMMA_LOAD: 352,
-             MatrixFamily.WMMA_STORE: 104,
-             MatrixFamily.WMMA_MMA: 96},
+            {MatrixFamily.WMMA_LOAD: 424,
+             MatrixFamily.WMMA_STORE: 140,
+             MatrixFamily.WMMA_MMA: 144},
         )
         self.assertEqual(sum(map(len, by_family.values())), len(self.variants))
         self.assertEqual(
@@ -70,7 +76,7 @@ class WmmaCoverageTests(unittest.TestCase):
         self.assertEqual(f16.address_alignments[0].alignment, 32)
         self.assertEqual(f16.immediate_ranges[0].minimum, 16)
         self.assertEqual(f16.immediate_multiple_of.divisor, 16)
-        self.assertEqual(f16.availability, {"ptx": "6.0", "sm": 70})
+        self.assertEqual(f16.availability, {"ptx": "6.3", "sm": 70})
 
         f64 = self.variants["wmma_load_c_m8n8k4_col_shared_cta_f64"]
         self.assertEqual(f64.matrix.fragments[0].register_count, 2)
@@ -111,7 +117,62 @@ class WmmaCoverageTests(unittest.TestCase):
             next(modifier for modifier in variant.modifiers
                  if modifier.name == "aligned").presence is ModifierPresence.FIXED
             for variant in self.variants.values()
+            if not variant.name.endswith("_implicit_aligned")
         ))
+
+    def test_exact_historical_pairing_and_generated_omission(self) -> None:
+        """All historical forms copy contracts and omit the source aligned field."""
+        historical = {name: item for name, item in self.variants.items()
+                      if name.endswith("_implicit_aligned")}
+        self.assertEqual(len(historical), 156)
+        self.assertEqual(Counter((v.matrix.family, v.availability["ptx"])
+                                 for v in historical.values()), {
+            (MatrixFamily.WMMA_LOAD, "6.0"): 24,
+            (MatrixFamily.WMMA_LOAD, "6.1"): 48,
+            (MatrixFamily.WMMA_STORE, "6.0"): 12,
+            (MatrixFamily.WMMA_STORE, "6.1"): 24,
+            (MatrixFamily.WMMA_MMA, "6.0"): 16,
+            (MatrixFamily.WMMA_MMA, "6.1"): 32,
+        })
+        raw = load_yaml(WMMA_FILE)
+        instruction = next(i for i in raw["instructions"] if i["opcode"] == "wmma")
+        raw_forms = {v["name"]: v for v in instruction["variants"]}
+        normalized = next(i for i in get_packaged_spec_database().instructions
+                          if i.opcode == "wmma")
+        lowered = dict(zip((v.name for v in normalized.variants),
+                           from_instruction_spec(normalized).variants))
+        for name, item in historical.items():
+            with self.subTest(name=name):
+                modern = self.variants[name.removesuffix("_implicit_aligned")]
+                self.assertEqual(item.availability, {
+                    "ptx": "6.0" if item.matrix.shape.m == 16 else "6.1",
+                    "sm": 70, "ptx_before": "6.3"})
+                self.assertEqual(modern.availability, {"ptx": "6.3", "sm": 70})
+                expected = deepcopy(raw_forms[modern.name])
+                expected["name"] = name
+                expected["availability"] = raw_forms[name]["availability"]
+                expected["modifiers"] = [m for m in expected["modifiers"]
+                                         if m["name"] != "aligned"]
+                for alias in expected.get("modifier_order_aliases", []):
+                    alias.remove("aligned")
+                self.assertEqual(raw_forms[name], expected)
+                self.assertEqual(replace(item, name=modern.name,
+                    availability=modern.availability, modifiers=modern.modifiers,
+                    modifier_order_aliases=modern.modifier_order_aliases), modern)
+                self.assertFalse(any(m.name == "aligned" for m in item.modifiers))
+                self.assertFalse(any(f.source_name == "aligned"
+                                     for f in lowered[name].modifier_fields))
+                gate = build_availability(item.availability)
+                self.assertEqual(gate.minimum.ptx_before, (6, 3))
+                self.assertIn("ptx_before", render_template(
+                    "fragments/availability.j2", gate))
+        modern = [v for v in self.variants.values() if v.name not in historical]
+        self.assertEqual(len(modern), 552)
+        eligible = {v.name + "_implicit_aligned" for v in modern
+                    if v.availability == {"ptx": "6.3", "sm": 70}
+                    and "_shared_cta_" not in v.name
+                    and set(raw_forms[v.name]["matrix"]["elements"].values()) <= {"f16", "f32"}}
+        self.assertEqual(set(historical), eligible)
 
     def test_normalizer_rejects_wmma_metadata_drift(self) -> None:
         """A canonical variant cannot lie about its C type or register count."""

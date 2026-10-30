@@ -56,7 +56,9 @@ does not infer a maximum alignment from the ABI's wording about multiples of
 1, 2, 4, 8, or 16 bytes.
 
 `.ptr` belongs to entry inputs and requires PTX 2.2. The supported scalar pointer
-types are `.u32` and `.u64`. Pointed state space may be `.const`, `.global`,
+types are `.b32`, `.b64`, `.s32`, `.s64`, `.u32`, and `.u64`. The declared
+integer or bit type is preserved; both widths are accepted with either
+`.address_size 32` or `.address_size 64`. Pointed state space may be `.const`, `.global`,
 `.local`, or `.shared`; omission denotes generic space. Omitted pointee alignment
 defaults to four bytes. Parameter storage alignment and pointee alignment are
 different fields. No host pointer width or launch-address policy is inferred.

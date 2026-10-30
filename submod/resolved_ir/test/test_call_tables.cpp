@@ -254,8 +254,10 @@ TEST(CallTables, PreservesDeviceFunctionPointerExclusion) {
   const auto resolved = resolveAndValidateModule(*ast);
   ASSERT_FALSE(resolved);
   ASSERT_FALSE(resolved.error().empty());
-  EXPECT_EQ(resolved.error().front().message,
-            ".ptr is supported only on scalar .entry .param .u32/.u64 inputs.");
+  EXPECT_EQ(
+      resolved.error().front().message,
+      ".ptr requires a scalar .entry .param input with a 32-bit or 64-bit "
+      "integer or bit type.");
 }
 
 /** Full owned signature comparison includes pointer fields, not only scalar ABI. */

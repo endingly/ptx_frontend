@@ -1861,12 +1861,16 @@ class Checker {
     if (parameter.is_pointer) {
       if (context != ParameterContext::EntryInput || !is_parameter || !scalar ||
           parameter.is_array ||
-          (*scalar != base::ScalarType::U32 &&
+          (*scalar != base::ScalarType::B32 &&
+           *scalar != base::ScalarType::B64 &&
+           *scalar != base::ScalarType::S32 &&
+           *scalar != base::ScalarType::S64 &&
+           *scalar != base::ScalarType::U32 &&
            *scalar != base::ScalarType::U64)) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
-                 ".ptr is supported only on scalar .entry .param .u32/.u64 "
-                 "inputs.");
+                 ".ptr requires a scalar .entry .param input with a 32-bit "
+                 "or 64-bit integer or bit type.");
       } else {
         requireParameterAvailability(module_version, module_sm, {2, 2}, 0,
                                      parameter.range, ".ptr entry parameter");

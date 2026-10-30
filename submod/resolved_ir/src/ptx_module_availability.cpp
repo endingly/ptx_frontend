@@ -2241,7 +2241,11 @@ bool valid_parameter_pointer(const ResolvedParameterDeclaration& record) {
   const auto& pointer = *record.pointer;
   if (record.role != ParameterDeclarationRole::EntryInput ||
       !record.array_extents.empty() ||
-      (record.scalar_type != ScalarType::U32 &&
+      (record.scalar_type != ScalarType::B32 &&
+       record.scalar_type != ScalarType::B64 &&
+       record.scalar_type != ScalarType::S32 &&
+       record.scalar_type != ScalarType::S64 &&
+       record.scalar_type != ScalarType::U32 &&
        record.scalar_type != ScalarType::U64) ||
       !std::has_single_bit(pointer.pointed_alignment))
     return false;

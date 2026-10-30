@@ -49,7 +49,9 @@ arithmetic register operand。
 采用 element 的自然对齐；即使显式值恰好等于自然值，也单独保留显式指定这一事实。
 Frontend 不会从 ABI 关于 1、2、4、8 或 16 字节倍数的表述推断最大 alignment。
 
-`.ptr` 属于 entry input，要求 PTX 2.2。受支持的 scalar pointer type 为 `.u32` 与 `.u64`。
+`.ptr` 属于 entry input，要求 PTX 2.2。受支持的 scalar pointer type 为 `.b32`、`.b64`、`.s32`、`.s64`、`.u32` 与 `.u64`。
+声明的 integer 或 bit type 会保留；两种宽度均可用于 `.address_size 32` 或
+`.address_size 64`。
 Pointed state space 可为 `.const`、`.global`、`.local` 或 `.shared`，省略时表示 generic。
 Pointee alignment 省略时默认为四字节。Parameter storage alignment 与 pointee alignment
 是不同字段，不推断 host pointer width 或 launch address policy。

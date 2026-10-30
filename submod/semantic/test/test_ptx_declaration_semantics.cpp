@@ -572,6 +572,85 @@ TEST(PtxDeclarationSemantics, ValidatesParameterDeclarationBoundaries) {
   }
 }
 
+/** Integer and bit pointer declarations retain their exact source contracts. */
+TEST(PtxDeclarationSemantics, AcceptsIntegerAndBitEntryPointers) {
+  const std::pair<std::string_view, base::ScalarType> types[] = {
+      {".b32", base::ScalarType::B32}, {".b64", base::ScalarType::B64},
+      {".s32", base::ScalarType::S32}, {".s64", base::ScalarType::S64},
+      {".u32", base::ScalarType::U32}, {".u64", base::ScalarType::U64}};
+  for (const auto address_size : {"32", "64"}) {
+    for (const auto& [spelling, type] : types) {
+      SCOPED_TRACE(std::string(address_size) + " " + std::string(spelling));
+      const std::string source =
+          ".version 9.3\n.target sm_80\n.address_size " +
+          std::string(address_size) + "\n.entry k(.param .align 16 " +
+          std::string(spelling) + " .ptr .global .align 32 pointer) { ret; }";
+      const auto result = check(source);
+      EXPECT_TRUE(result.binding.diagnostics.empty());
+      EXPECT_TRUE(result.diagnostics.empty());
+      const auto& symbols = result.binding.table.symbols();
+      const auto symbol = std::ranges::find_if(
+          symbols, [](const auto& value) { return value.name == "pointer"; });
+      ASSERT_NE(symbol, symbols.end());
+      EXPECT_EQ(symbol->type, spelling);
+      EXPECT_EQ(symbol->address_alignment, 16u);
+      PtxSyntaxParser parser(source);
+      const auto ast = parser.parseModule();
+      ASSERT_TRUE(ast.has_value());
+      const auto function =
+          std::ranges::find_if(ast->items, [](const auto& item) {
+            return std::holds_alternative<syntax_ast::AstFunction>(item);
+          });
+      ASSERT_NE(function, ast->items.end());
+      const auto signature =
+          functionSignature(std::get<syntax_ast::AstFunction>(*function));
+      ASSERT_EQ(signature.parameters.size(), 1u);
+      const auto& formal = signature.parameters.front();
+      EXPECT_EQ(formal.scalar_type, type);
+      EXPECT_EQ(formal.type_spelling, spelling);
+      EXPECT_EQ(contractConstant(formal.alignment), 16u);
+      EXPECT_TRUE(formal.is_pointer);
+      EXPECT_EQ(formal.pointed_state_space,
+                call_argument_compatibility::PointedStateSpace::Global);
+      EXPECT_EQ(contractConstant(formal.pointer_alignment), 32u);
+    }
+  }
+}
+
+/** Pointer eligibility preserves scalar width, role, shape, and version gates. */
+TEST(PtxDeclarationSemantics, RejectsUnsupportedEntryPointerDeclarations) {
+  for (const auto spelling : {".b8", ".b16", ".s16", ".u16", ".b128", ".f16",
+                              ".f32", ".f64", ".pred", ".texref"}) {
+    SCOPED_TRACE(spelling);
+    const auto result = check(".version 9.3\n.target sm_80\n.entry k(.param " +
+                              std::string(spelling) + " .ptr p) {}");
+    EXPECT_GT(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u);
+  }
+  for (const auto source :
+       {".version 9.3\n.target sm_80\n.entry k(.param .b64 .ptr p[2]) {}",
+        ".version 9.3\n.target sm_80\n.func f(.param .s64 .ptr p);",
+        ".version 2.1\n.target sm_20\n.entry k(.param .s32 .ptr p) {}"}) {
+    const auto result = check(source);
+    EXPECT_GT(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u)
+        << source;
+  }
+  const auto alignment = check(
+      ".version 9.3\n.target sm_80\n.entry k(.param .b64 .ptr .align 6 p) {}");
+  EXPECT_FALSE(alignment.diagnostics.empty());
+  for (const auto spelling : {".b32", ".b64", ".s32", ".s64"}) {
+    const auto result = check(".version 2.2\n.target sm_20\n.entry k(.param " +
+                              std::string(spelling) + " .ptr p) {}");
+    EXPECT_TRUE(result.binding.diagnostics.empty());
+    EXPECT_TRUE(result.diagnostics.empty()) << spelling;
+  }
+}
+
 /** Supported parameter forms preserve body-local array coverage and predicates. */
 TEST(PtxDeclarationSemantics, AcceptsSupportedParameterDeclarationForms) {
   const CheckedModule result = check(R"ptx(

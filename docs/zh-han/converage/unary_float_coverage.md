@@ -8,18 +8,20 @@ PTX 1.0–1.3 额外接受 `rcp.f32`、`sqrt.f32`、`rsqrt.f32`，解释为 appr
 | --- | --- | --- |
 | `rcp.approx{.ftz}.f32`、`sqrt.approx{.ftz}.f32`、`rsqrt.approx{.ftz}.f32` | PTX 1.4 / 所有 target architecture | 固定 `.approx`；FP32 `.ftz` optional。 |
 | `rcp.rnd{.ftz}.f32`、`sqrt.rnd{.ftz}.f32` | PTX 2.0 / SM 20 | 必须有 typed `rn`、`rz`、`rm` 或 `rp`；FP32 `.ftz` optional。 |
-| `rcp.rn.f64`、`sqrt.rn.f64` | PTX 1.4 / SM 13 | 固定 typed round-to-nearest；没有 `.ftz`。 |
+| `rcp.rn.f64`、`sqrt.rn.f64` | PTX 1.4 / SM >=13，或精确 generic SM10/11/12 加 `map_f64_to_f32` | 固定 typed round-to-nearest；没有 `.ftz`。 |
 | `rcp.{rz,rm,rp}.f64`、`sqrt.{rz,rm,rp}.f64` | PTX 2.0 / SM 20 | 必须有 directed rounding；没有 `.ftz`。 |
 | `rsqrt.approx.f64` | PTX 1.4 / SM 13 | 固定 `.approx`；没有 `.ftz`。 |
 | `rcp.approx.ftz.f64` | PTX 2.1 / SM 20 | 固定 `.approx` 且必须有 typed `.ftz`。 |
 | `rsqrt.approx.ftz.f64` | PTX 4.0 / SM 20 | 固定 `.approx` 且必须有 typed `.ftz`。 |
 
-每个 source 可为 floating literal 或同宽 native floating/bit register container，destination 可为匹配的 native/bit container。integer literal 和 integer container、错误宽度、sink、PTX >=1.4 时遗漏 mode、混合 approximate/rounding spelling，以及所有 rounded FP64 `.ftz` spelling 都会被拒绝。当前 CUDA 13.3.73 `ptxas` permissively 接受 `rcp.rn.ftz.f64`；canonical PTX syntax 排除它，因此 frontend 会拒绝它。
+每个 source 可为 floating literal 或同宽 native floating/bit register container，destination 可为匹配的 native/bit container。integer literal 和 integer container、错误宽度、sink、PTX >=1.4 时遗漏 mode、混合 approximate/rounding spelling，以及所有 rounded FP64 `.ftz` spelling 都会被拒绝。历史探针记录 CUDA 13.3.73 `ptxas` 曾 permissively 接受 `rcp.rn.ftz.f64`；canonical PTX syntax 排除它，因此 frontend 会拒绝它。
 
-CUDA 13.3.73 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`：60 个 matrix module 有 39 个预期接受、20 个拒绝和一个已记录的 permissive FP64-FTZ acceptance；四个 focused special-FP64 immediate/container probe 都通过。
+历史 CUDA 13.3.73 证据使用 `/usr/local/cuda/bin/ptxas -arch=sm_90 <module>.ptx -o <temporary>.o`：60 个 matrix module 有 39 个预期接受、20 个拒绝和一个已记录的 permissive FP64-FTZ acceptance；四个 focused special-FP64 immediate/container probe 都通过。
 
 [浮点 transcendental](transcendental_coverage.md) 与 [浮点 MIN/MAX](min_max_coverage.md) 已单独建模。[浮点与 mixed ADD/SUB](add_sub_coverage.md) 完成对账；ADD/SUB 的 contract 见该文档。
 
-已确认缺少的 mapped-FP64 可用条件严格限于 SM10/11/12 加 `map_f64_to_f32`
-的 `div.rn.f64`、`rcp.rn.f64` 和 `sqrt.rn.f64`
-（[#287](https://github.com/endingly/ptx_frontend/issues/287)）；不推断其他 FP64 指令有相同替代条件。
+已实现的 mapped-FP64 可用替代条件
+（[#287](https://github.com/endingly/ptx_frontend/issues/287)）严格限于 PTX >=1.4、
+精确 generic SM10/11/12 加 `map_f64_to_f32` 时的 explicit `div.rn.f64`、`rcp.rn.f64`
+和 `sqrt.rn.f64`。Native 可用条件仍为 SM >=13，无须该 option。
+Directed rounding、approximate-FTZ form 和其他 FP64 instruction family 不增加该替代条件。

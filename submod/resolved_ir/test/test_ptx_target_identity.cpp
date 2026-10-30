@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include <ptx_frontend/base/ptx_target.hpp>
@@ -63,6 +64,12 @@ TEST(TargetIdentity, RejectsMalformedSpellings) {
 
   for (const std::string_view spelling : invalid)
     EXPECT_FALSE(parse_target_identity(spelling).has_value()) << spelling;
+  for (const std::string_view suffix :
+       {"", "09", "90b", "90af", "90_", "90a0", "4294967296", "+90", "-90"}) {
+    const std::string spelling = "compute_" + std::string{suffix};
+    EXPECT_FALSE(parse_target_identity(spelling)) << spelling;
+    EXPECT_FALSE(find_target_profile(spelling)) << spelling;
+  }
 }
 
 TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
@@ -74,6 +81,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   constexpr std::array<std::string_view, 2> sm121f_features{"sm_120f",
                                                             "sm_121f"};
   constexpr std::array<std::string_view, 1> sm110f_features{"sm_110f"};
+  constexpr std::array<std::string_view, 1> graph_capabilities{"graph_exec"};
   constexpr std::array<std::string_view, 2> sm80_capabilities{"reserved_smem",
                                                               "graph_exec"};
   constexpr std::array<std::string_view, 4> sm90_capabilities{
@@ -92,9 +100,34 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
       ExpectedProfile{"sm_13", 13, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_20", 20, TargetFlavor::Generic, none, none},
       ExpectedProfile{"sm_30", 30, TargetFlavor::Generic, none, none},
-      ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none, none},
-      ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_32", 32, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_35", 35, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_37", 37, TargetFlavor::Generic, none, none},
+      ExpectedProfile{"sm_50", 50, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_52", 52, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_53", 53, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_60", 60, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_61", 61, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_62", 62, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_70", 70, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_72", 72, TargetFlavor::Generic, none,
+                      graph_capabilities},
+      ExpectedProfile{"sm_75", 75, TargetFlavor::Generic, none,
+                      graph_capabilities},
       ExpectedProfile{"sm_80", 80, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_86", 86, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_87", 87, TargetFlavor::Generic, none,
+                      sm80_capabilities},
+      ExpectedProfile{"sm_88", 88, TargetFlavor::Generic, none,
                       sm80_capabilities},
       ExpectedProfile{"sm_89", 89, TargetFlavor::Generic, none,
                       sm80_capabilities},
@@ -135,6 +168,7 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
   };
 
   for (const auto& expected : profiles) {
+    SCOPED_TRACE(expected.spelling);
     const auto profile = find_target_profile(expected.spelling);
     ASSERT_TRUE(profile.has_value()) << expected.spelling;
     EXPECT_EQ(profile->identity.architecture.number, expected.architecture);
@@ -144,15 +178,29 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
                                    expected.enabled_family_features));
     EXPECT_TRUE(
         std::ranges::equal(profile->capabilities, expected.capabilities));
+
+    const std::string alias =
+        "compute_" + std::string{expected.spelling.substr(3)};
+    const auto alias_profile = find_target_profile(alias);
+    ASSERT_TRUE(alias_profile) << alias;
+    EXPECT_EQ(alias_profile->identity.architecture,
+              profile->identity.architecture);
+    EXPECT_EQ(alias_profile->identity.flavor, profile->identity.flavor);
+    EXPECT_EQ(alias_profile->identity.source_spelling, alias);
+    EXPECT_NE(alias_profile->identity, profile->identity);
+    EXPECT_TRUE(std::ranges::equal(alias_profile->enabled_family_features,
+                                   profile->enabled_family_features));
+    EXPECT_TRUE(
+        std::ranges::equal(alias_profile->capabilities, profile->capabilities));
   }
 
   EXPECT_TRUE(find_target_profile("sm_30")->capabilities.empty());
   for (const std::string_view target : {"sm_10a", "sm_11f", "sm_12a", "sm_14",
-                                        "sm_32", "sm_35", "sm_60", "sm_62"}) {
+                                        "sm_31", "sm_34", "sm_59", "sm_63"}) {
     EXPECT_TRUE(parse_target_identity(target).has_value()) << target;
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   }
-  for (const std::string_view target : {"sm_50a", "sm_52a", "sm_52f", "sm_53"})
+  for (const std::string_view target : {"sm_50a", "sm_52a", "sm_52f", "sm_53a"})
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   EXPECT_FALSE(find_target_profile("sm_30a").has_value());
   EXPECT_FALSE(find_target_profile("sm_30f").has_value());
@@ -162,6 +210,14 @@ TEST(TargetProfile, CatalogsExactIdentityEnabledFamilyFeaturesAndCapabilities) {
     EXPECT_FALSE(find_target_profile(target).has_value()) << target;
   }
   EXPECT_FALSE(find_target_profile("sm_123a").has_value());
+  for (const std::string_view target :
+       {"compute_14", "compute_31", "compute_50a", "compute_90f",
+        "compute_101a", "compute_101f", "compute_123a"}) {
+    const auto identity = parse_target_identity(target);
+    ASSERT_TRUE(identity) << target;
+    EXPECT_EQ(identity->source_spelling, target);
+    EXPECT_FALSE(find_target_profile(target)) << target;
+  }
 }
 
 TEST(TargetProfile, KeepsEnabledFamilyFeaturesExplicit) {

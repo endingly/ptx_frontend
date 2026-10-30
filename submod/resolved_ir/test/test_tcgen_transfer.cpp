@@ -92,6 +92,16 @@ checker::Context transfer_context(const ResolvedModule& module) {
   };
 }
 
+/** Binary half-split offsets use the shared integer-carrier conversion. */
+TEST(TcgenTransfer, BinaryHalfSplitOffset) {
+  const auto ast = parse_transfer(
+      transfer_source("tcgen05.ld.sync.aligned.16x32bx2.x1.b32 " + fragment(1) +
+                      ", [%t], 0b10000;"));
+  ASSERT_TRUE(ast.has_value());
+  const auto resolved = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+}
+
 /** Every Table 52/53 shape/repeat row has its exact fragment cardinality. */
 TEST(TcgenTransfer, AcceptsShapeRowsAndPacking) {
   EXPECT_TRUE(accepts_transfer(

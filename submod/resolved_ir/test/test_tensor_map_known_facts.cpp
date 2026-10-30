@@ -112,6 +112,80 @@ TEST(TensorMapKnownFacts, ExactPackedStoreOverridesGenericRule) {
   ASSERT_NE(exact, nullptr);
   EXPECT_EQ(generic->status, TensorKnownFactStatus::NotApplicable);
   EXPECT_EQ(exact->status, TensorKnownFactStatus::Checked);
+  access.target_identity = base::parse_target_identity("compute_103a");
+  const auto alias = validate_tensor_access_facts(access, supplied);
+  ASSERT_NE(outcome(alias, 7), nullptr);
+  ASSERT_NE(outcome(alias, 15), nullptr);
+  EXPECT_EQ(outcome(alias, 7)->status, generic->status);
+  EXPECT_EQ(outcome(alias, 15)->status, exact->status);
+  access.target_identity = base::parse_target_identity("compute_103f");
+  const auto other_flavor = validate_tensor_access_facts(access, supplied);
+  ASSERT_NE(outcome(other_flavor, 15), nullptr);
+  EXPECT_EQ(outcome(other_flavor, 15)->status,
+            TensorKnownFactStatus::NotApplicable);
+}
+
+/** Alias spelling preserves exact cluster exclusions without conflating flavors. */
+TEST(TensorMapKnownFacts, ComputeAliasKeepsExactClusterExclusion) {
+  TensorKnownAccessContext access;
+  access.direction = TensorKnownFactDirection::Load;
+  access.destination = TensorKnownFactDestination::Cluster;
+  access.rank = TensorRank::Three;
+  access.coordinate_arity = 3;
+  TensorMapKnownFacts supplied;
+  supplied.rank = TensorRank::Three;
+  supplied.element = element(TensorMapElementType::B4x16P64, 14);
+  for (const std::string_view spelling :
+       {"sm_120a", "compute_120a", "compute_120f", "compute_120"}) {
+    access.target_identity = base::parse_target_identity(spelling);
+    const auto report = validate_tensor_access_facts(access, supplied);
+    const auto* operation = outcome(report, 6);
+    const auto* cluster = outcome(report, 16);
+    ASSERT_NE(operation, nullptr);
+    ASSERT_NE(cluster, nullptr);
+    const bool exact = spelling == "sm_120a" || spelling == "compute_120a";
+    EXPECT_EQ(operation->status, exact ? TensorKnownFactStatus::Violated
+                                       : TensorKnownFactStatus::Checked);
+    EXPECT_EQ(cluster->status, exact ? TensorKnownFactStatus::Violated
+                                     : TensorKnownFactStatus::NotApplicable);
+  }
+}
+
+/** Inconsistent or uncataloged target claims cannot decide target-dependent rules. */
+TEST(TensorMapKnownFacts, RejectsForgedCatalogTargetClaims) {
+  TensorKnownAccessContext access;
+  access.direction = TensorKnownFactDirection::Load;
+  access.destination = TensorKnownFactDestination::Cluster;
+  access.rank = TensorRank::Three;
+  access.coordinate_arity = 3;
+  TensorMapKnownFacts supplied;
+  supplied.rank = TensorRank::Three;
+  supplied.element = element(TensorMapElementType::B4x16P64, 14);
+  for (const std::string_view spelling :
+       {"sm_120a", "compute_120a", "compute_123a", "compute_120b"}) {
+    access.target_identity = base::parse_target_identity("sm_120f");
+    access.target_identity->source_spelling = spelling;
+    const auto report = validate_tensor_access_facts(access, supplied);
+    EXPECT_FALSE(report.diagnostics.empty());
+    ASSERT_NE(outcome(report, 6), nullptr);
+    ASSERT_NE(outcome(report, 16), nullptr);
+    EXPECT_EQ(outcome(report, 6)->status, TensorKnownFactStatus::Unresolved);
+    EXPECT_EQ(outcome(report, 16)->status, TensorKnownFactStatus::Unresolved);
+  }
+  access.direction = TensorKnownFactDirection::Store;
+  access.target_identity = base::parse_target_identity("sm_103f");
+  access.target_identity->source_spelling = "sm_103a";
+  supplied.element = code15(TensorKnownCode15Interpretation::Store);
+  const auto forged_override = validate_tensor_access_facts(access, supplied);
+  EXPECT_FALSE(forged_override.diagnostics.empty());
+  ASSERT_NE(outcome(forged_override, 15), nullptr);
+  EXPECT_EQ(outcome(forged_override, 15)->status,
+            TensorKnownFactStatus::Unresolved);
+  access.target_identity.reset();
+  const auto absent = validate_tensor_access_facts(access, supplied);
+  EXPECT_TRUE(absent.diagnostics.empty());
+  ASSERT_NE(outcome(absent, 15), nullptr);
+  EXPECT_EQ(outcome(absent, 15)->status, TensorKnownFactStatus::Unresolved);
 }
 
 /** Both directions preserve one code but check the supplied semantic claim. */

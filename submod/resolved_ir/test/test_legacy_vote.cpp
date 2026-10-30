@@ -100,7 +100,8 @@ void expectVoteAvailability(const std::string& source, bool available) {
 /** All catalog domains and both source-complement states survive AST destruction. */
 TEST(LegacyVote, OwnsEveryModeTargetAndPredicateComplement) {
   for (const auto& item : kLegacyVotes) {
-    for (const auto sm : {12u, 13u, 20u, 30u, 50u, 52u}) {
+    for (const auto sm :
+         {12u, 13u, 20u, 30u, 32u, 35u, 37u, 50u, 52u, 53u, 60u, 61u, 62u}) {
       if (item.ballot && sm < 20)
         continue;
       const auto target = "sm_" + std::to_string(sm);
@@ -109,8 +110,8 @@ TEST(LegacyVote, OwnsEveryModeTargetAndPredicateComplement) {
         SCOPED_TRACE(target);
         std::optional<ResolvedModule> owned;
         {
-          const auto source =
-              legacyVoteModule(legacyVoteOperation(item, negated), target);
+          const auto source = legacyVoteModule(
+              legacyVoteOperation(item, negated), target, "9.3");
           PtxSyntaxParser parser{source};
           const auto ast = parser.parseModule();
           ASSERT_TRUE(ast);
@@ -160,7 +161,8 @@ TEST(LegacyVote, RequiresExactIdentityFlavorAndPtxFloor) {
     const auto resolved = resolveModuleOnly(*ast);
     ASSERT_TRUE(resolved) << resolved.error().front().message;
     const auto& instruction = *resolved->functions.front().body.front();
-    for (const auto sm : {12u, 13u, 20u, 30u, 50u, 52u}) {
+    for (const auto sm :
+         {12u, 13u, 20u, 30u, 32u, 35u, 37u, 50u, 52u, 53u, 60u, 61u, 62u}) {
       if (item.ballot && sm < 20)
         continue;
       const auto spelling = "sm_" + std::to_string(sm);
@@ -241,7 +243,7 @@ TEST(LegacyVote, PreservesSynchronizedMasksAndAvailability) {
                            (item.ballot ? ".b32 %b, !%p0, 0xffffffff;"
                                         : ".pred %p1, !%p0, 0xffffffff;");
     expectVoteAvailability(legacyVoteModule(operation, "sm_30", "6.0"), true);
-    expectVoteAvailability(legacyVoteModule(operation, "sm_80", "6.0"), true);
+    expectVoteAvailability(legacyVoteModule(operation, "sm_80", "7.0"), true);
     expectVoteAvailability(legacyVoteModule(operation, "sm_30", "5.9"), false);
     expectVoteAvailability(legacyVoteModule(operation, "sm_20", "6.0"), false);
     const auto missing_mask =
@@ -259,7 +261,7 @@ TEST(LegacyVote, PreservesSynchronizedMasksAndAvailability) {
 TEST(LegacyVote, RetargetsWithoutAddingSyncOrMask) {
   for (const auto& item : kLegacyVotes) {
     const auto operation = legacyVoteOperation(item, true);
-    const auto source = legacyVoteModule(operation, "sm_52");
+    const auto source = legacyVoteModule(operation, "sm_52", "4.1");
     const auto modern_source = legacyVoteModule(operation, "sm_80", "9.3");
     PtxSyntaxParser parser{source};
     PtxSyntaxParser modern_parser{modern_source};

@@ -16,7 +16,7 @@ execution evidence for eleven commonly used operation names.
 | Tokens and trivia | Partial | Identifiers, dot identifiers, literals, punctuation, comments, whitespace, and selected stable directives; unmodified `CstFile::sourceText()` round-trips its token buffer byte-for-byte |
 | Instruction fragment | Partial | Predicate guard, opcode/modifiers, ordinary operands, addresses, ordinary `.xyzw/.rgba` scalar components and brace lanes, vector members/packs, and dedicated call/branch operand shapes; components in call arguments, address bases and named-array indices remain unsupported |
 | Module header | Supported subset | `.version`, `.target`, and `.address_size` lower to ordered, AST-independent source-configuration regions. Each region owns its effective version, target-option spellings, address width, and explicit/defaulted provenance; an omitted address size owns PTX's 32-bit default rather than a host property. A recognized region supplies target-aware module validation, but is not a hardware-configuration or execution contract. |
-| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/octal/hex uint64 IDs bind in a debug-only namespace, repeated IDs are idempotent, and overflow diagnoses |
+| Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/octal/hex uint64 IDs bind in a debug-only namespace, all repeated normalized IDs diagnose (including identical metadata), payloads are owned in the symbol table, and overflow diagnoses; explicit numeric metadata (including `0, 0`) requires PTX ISA >= 3.2, independently of SM/debug options |
 | Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/octal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it does not attach to instructions or enter Resolved IR |
 | Debug section directive | Supported subset | Outermost `.section name { ... }` retains matched braces and ordered raw DWARF payload tokens; `.debug_str` and raw `name:` labels bind as debug identity, while payload widths, relocations, and offset semantics remain unsupported |
 | Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; pragmas neither bind nor enter Resolved IR |
@@ -64,6 +64,7 @@ execution evidence for eleven commonly used operation names.
 | Modelled `mad` | Supported subset | Integer and carry forms remain available; explicit-rounding FP32/FP64 forms, operands, target minima, and excluded legacy profiles are documented in [MAD coverage](mad_coverage.md). |
 | Modelled `fma` | Supported | The 16 PTX 9.3 FMA variants, their modifier/operand contracts, and availability are listed in the [FMA coverage matrix](fma_coverage.md); simulator execution remains unsupported |
 | Modelled `div` | Supported subset | Frozen integer `div.u32` (PTX 1.0 / SM 0) and explicit FP32/FP64 forms; see [DIV coverage](div_coverage.md). A zero divisor remains accepted with PTX-specified unspecified behavior. |
+| Historical omitted floating controls | Supported subset | Twelve exact PTX 1.0–1.3 forms retain omission and typed `floating_point_default`; explicit modes remain required from 1.4. `rcp.f64` stays excluded because of the manual/tool discrepancy. See [interpretation and bounds](../resolved_ir_design.md#historical-omitted-floating-controls). |
 
 The conversion-family inventory is documented separately in
 [conversion coverage](conversion_coverage.md). It names the modelled forms and
@@ -106,12 +107,12 @@ hardware behavior. `—` = no support at that stage.
 | `.callprototype` | D | T | T | Y | Y / I | C / I | Owns normalized signature and supported ABI metadata. AST-free validation rechecks its identity, scope, and signature, not prototype ABI/`.noreturn` availability; indirect-call availability remains consumer-driven. |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; indirect-call availability remains consumer-driven |
 | Call-table flist arrays | D | T | T | Y | Y / I | C / I | Initialized scalar u32/u64 one-dimensional global/const arrays; owned real-storage identity, sparse explicit function slots, common full signature, lexical order and AST-free storage/function rejoin. Duplicates/implicit zero tails allowed; no runtime pointer-membership proof. |
-| `.common` | G | R | — | — | — | — | Unmodeled declaration directive |
+| `.common` | D | E | E | Y | Y | C / V | Distinct Common linkage on ordinary module-scope global definitions; PTX 5.0 / SM 20, ordinary initializers/layout, AST-free eligibility and ordered target checks; no cross-object linker |
 | `.const` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | Entry-only, zero arguments, PTX 7.8 modeled availability; target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; repeated ID idempotent, overflow diagnoses |
+| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; every repeated normalized ID diagnoses; owned source-ordered payloads; overflow diagnoses; explicit numeric metadata requires PTX >= 3.2 (missing version defers under `AvailableContext`; replacement AST supplies version/metadata) |
 | `.func` | D | E | E | Y | Y | C | Existing function node |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |

@@ -138,7 +138,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
     EXPECT_FALSE(parsed && parsed.diagnostics.empty()) << target;
   }
   auto module = resolve_owned_fixture(
-      ".version 9.3\n.target sm_80, texmode_independent, debug, "
+      ".version 9.3\n.target sm_12, texmode_independent, debug, "
       "map_f64_to_f32\n");
   ASSERT_TRUE(module);
   EXPECT_TRUE(validateModule(*module));
@@ -147,7 +147,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
     mutated.header.regions.back().target_options.emplace_back(option);
     expect_model_rejection(validateModule(mutated));
   }
-  for (const auto target : {"sm_999", "compute_80"}) {
+  for (const auto target : {"sm_999", "compute_999"}) {
     auto unknown = resolve_owned_fixture(std::string{".version 9.3\n.target "} +
                                          target + "\n");
     ASSERT_TRUE(unknown);
@@ -469,5 +469,61 @@ TEST(ModuleStrictInvariants, SignatureMutationFailsBothValidators) {
   }
 }
 
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Vector signature ownership survives AST release and detects ABI corruption. */
+TEST(ModuleStrictInvariants, VectorRegisterFormalsRejoinOwnedBinding) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  const std::string source =
+      ".version 9.3\n.target sm_80\n.func (.reg .v2 .u32 r) f(.reg .v4 .u32 p) "
+      "{ ret; }\n";
+  auto owned = resolve_owned_fixture(source);
+  ASSERT_TRUE(owned);
+  EXPECT_TRUE(validateModule(*owned));
+  EXPECT_EQ(
+      owned->functions[0].contract.signature.return_parameters[0].vector_shape,
+      CallArgumentVectorShape::V2);
+  for (const auto shape :
+       {CallArgumentVectorShape::Scalar, CallArgumentVectorShape::V2,
+        CallArgumentVectorShape::Invalid,
+        static_cast<CallArgumentVectorShape>(255)}) {
+    auto module = resolve_owned_fixture(source);
+    ASSERT_TRUE(module);
+    module->functions[0].contract.signature.parameters[0].vector_shape = shape;
+    expect_model_rejection(validateModule(*module));
+  }
+  for (const auto width : {1, 2, 3, 8}) {
+    auto module = resolve_owned_fixture(source);
+    ASSERT_TRUE(module);
+    auto& symbols =
+        const_cast<std::vector<binding::Symbol>&>(module->symbols.symbols());
+    auto found = std::ranges::find_if(symbols, [](const auto& symbol) {
+      return symbol.kind == binding::SymbolKind::InputParameter;
+    });
+    ASSERT_NE(found, symbols.end());
+    found->vector_width = width;
+    expect_model_rejection(validateModule(*module));
+  }
+  for (const auto type :
+       {ScalarType::Pred, ScalarType::U64, ScalarType::BF16}) {
+    auto module = resolve_owned_fixture(source);
+    ASSERT_TRUE(module);
+    module->functions[0].contract.signature.parameters[0].scalar_type = type;
+    expect_model_rejection(validateModule(*module));
+  }
+  auto entry = resolve_owned_fixture(source);
+  ASSERT_TRUE(entry);
+  entry->functions[0].is_entry = true;
+  entry->functions[0].contract.signature.is_entry = true;
+  expect_model_rejection(validateModule(*entry));
+  auto alignment = resolve_owned_fixture(source);
+  ASSERT_TRUE(alignment);
+  alignment->functions[0].contract.signature.parameters[0].alignment =
+      uint64_t{4};
+  expect_model_rejection(validateModule(*alignment));
+}
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

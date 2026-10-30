@@ -1140,6 +1140,38 @@ class AvailabilityNormalizationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "availability target"):
             emit_availability({"any_of": [{"target": "sm_4294967296"}]})
 
+    def test_exact_target_sets_schema_normalization_and_emission(self) -> None:
+        """Preserve ordered typed membership with bounded numeric identities."""
+        schema = load_yaml(SCHEMA)
+        validator = Draft202012Validator({
+            "$schema": schema["$schema"], "$defs": schema["$defs"],
+            "$ref": "#/$defs/availability",
+        })
+        for targets in (["sm_32", "sm_90a", "sm_100f", "sm_4294967295"],
+                        [f"sm_{number}" for number in range(1, 21)]):
+            availability = {"any_of": [{"ptx": "9.0", "targets": targets}]}
+            self.assertEqual(list(validator.iter_errors(availability)), [])
+            self.assertEqual(normalize_availability(availability), availability)
+            source = emit_availability(availability)
+            self.assertIn(".any_of_count = 1", source)
+            self.assertIn(".exact_targets = checker::kAvailabilityTargets<", source)
+            self.assertEqual(source.count("checker::AvailabilityTarget{"), len(targets))
+        for targets in ([], "sm_32", [32], [None], [["sm_32"]], ["sm_032"],
+                        ["sm_32", "sm_32"], ["sm_4294967296"], ["sm_32b"]):
+            availability = {"any_of": [{"targets": targets}]}
+            if targets != ["sm_4294967296"]:
+                self.assertTrue(list(validator.iter_errors(availability)))
+            with self.assertRaises(ValueError):
+                normalize_availability(availability)
+            with self.assertRaises(ValueError):
+                emit_availability(availability)
+        ambiguous = {"any_of": [{"target": "sm_32", "targets": ["sm_32"]}]}
+        self.assertTrue(list(validator.iter_errors(ambiguous)))
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            normalize_availability(ambiguous)
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            emit_availability(ambiguous)
+
 
 class PackagedDatabaseSnapshotTests(unittest.TestCase):
     """Keep process-level reuse separate from fresh specification loading."""

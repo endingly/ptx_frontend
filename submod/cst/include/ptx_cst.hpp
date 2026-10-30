@@ -466,6 +466,8 @@ struct CstFunctionParameter {
   TokenId state_space{};
   std::optional<TokenId> align_directive;
   std::optional<TokenId> alignment;
+  /** Optional vector modifier retained independently of its scalar element type. */
+  std::optional<TokenId> vector_type;
   TokenId type{};
   std::optional<TokenId> pointer_directive;
   std::optional<TokenId> pointer_space;

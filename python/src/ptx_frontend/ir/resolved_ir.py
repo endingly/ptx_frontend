@@ -13,6 +13,7 @@ from typing import overload
 from ptx_frontend.base.utils import file_stem_to_pascal_case
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    FloatingPointDefault,
     VideoInstructionSpec,
     VideoOperandSpec,
     FabricInstructionSpec,
@@ -157,6 +158,8 @@ _OPERAND_VALUE_KINDS: dict[OperandKind, ResolvedValueKind] = {
     OperandKind.SHFL_DESTINATION: ResolvedValueKind.SHFL_DESTINATION,
     OperandKind.PREDICATE_PAIR: ResolvedValueKind.PREDICATE_PAIR,
     OperandKind.PREDICATE_PAIR_OR_SINK: ResolvedValueKind.PREDICATE_PAIR_OR_SINK,
+    OperandKind.CVT_SCALAR_SOURCE: ResolvedValueKind.CVT_SOURCE,
+    OperandKind.CVT_REGISTER_SOURCE: ResolvedValueKind.CVT_SOURCE,
     OperandKind.MOV_SCALAR_SOURCE: ResolvedValueKind.MOV_SOURCE,
     OperandKind.MOV_VECTOR_SOURCE: ResolvedValueKind.MOV_VECTOR_SOURCE,
     OperandKind.CP_ASYNC_SOURCE_CONTROL: ResolvedValueKind.CP_ASYNC_SOURCE_CONTROL,
@@ -427,6 +430,7 @@ class ResolvedVariant:
     completion_kind: AsyncCompletionKind = AsyncCompletionKind.NONE
     fabric: FabricInstructionSpec | None = None
     surface: SurfaceInstructionSpec | None = None
+    floating_point_default: FloatingPointDefault | None = None
     stack: StackInstructionSpec | None = None
     texture: TextureInstructionSpec | None = None
     video: VideoInstructionSpec | None = None
@@ -600,6 +604,8 @@ _OPERAND_ALLOWED_SHAPES: dict[OperandKind, tuple[ResolvedOperandShape, ...]] = {
     OperandKind.SHFL_DESTINATION: (ResolvedOperandShape.SHFL_DESTINATION,),
     OperandKind.PREDICATE_PAIR: (ResolvedOperandShape.PREDICATE_PAIR,),
     OperandKind.PREDICATE_PAIR_OR_SINK: (ResolvedOperandShape.PREDICATE_PAIR,),
+    OperandKind.CVT_SCALAR_SOURCE: (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE, ResolvedOperandShape.SPECIAL_REGISTER),
+    OperandKind.CVT_REGISTER_SOURCE: (ResolvedOperandShape.REGISTER, ResolvedOperandShape.SPECIAL_REGISTER),
     OperandKind.MOV_SCALAR_SOURCE: (
         ResolvedOperandShape.REGISTER,
         ResolvedOperandShape.IMMEDIATE,
@@ -928,6 +934,7 @@ def _build_variant(
         completion_kind=variant.completion_kind,
         fabric=variant.fabric,
         surface=variant.surface,
+        floating_point_default=variant.floating_point_default,
         stack=variant.stack,
         texture=variant.texture,
         video=variant.video,

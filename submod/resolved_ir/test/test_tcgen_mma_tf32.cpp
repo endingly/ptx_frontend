@@ -387,8 +387,12 @@ TEST(TcgenMmaTf32, KnownFieldAndContextSeparation) {
   EXPECT_TRUE(has(check_tcgen_tf32_known_operation(facts).violations,
                   TcgenTf32Violation::InvalidContext));
   facts.b_context.ptx_version = checker::PtxVersion{9, 3};
+  facts.a_context.target = base::parse_target_identity("compute_100a");
   EXPECT_FALSE(has(check_tcgen_tf32_known_operation(facts).violations,
                    TcgenTf32Violation::InvalidContext));
+  facts.a_context.target->source_spelling = "compute_110a";
+  EXPECT_TRUE(has(check_tcgen_tf32_known_operation(facts).violations,
+                  TcgenTf32Violation::InvalidContext));
 }
 
 /** Use profile inheritance for plain/scaled tf32 rather than numeric SMs. */
@@ -412,13 +416,16 @@ TEST(TcgenMmaTf32, KnownTargetIntersections) {
            std::tuple{"sm_120a", checker::PtxVersion{9, 3}, true, false},
        }) {
     SCOPED_TRACE(name);
-    const auto profile = base::find_target_profile(name);
-    ASSERT_TRUE(profile);
-    facts.target = profile->identity;
-    facts.ptx_version = version;
-    facts.scaled_d = scaled;
-    const auto report = check_tcgen_tf32_known_operation(facts);
-    EXPECT_EQ(!has(report.violations, TcgenTf32Violation::Target), accepted);
+    for (const std::string_view prefix : {"sm_", "compute_"}) {
+      const auto profile = base::find_target_profile(
+          std::string{prefix} + std::string{std::string_view{name}.substr(3)});
+      ASSERT_TRUE(profile);
+      facts.target = profile->identity;
+      facts.ptx_version = version;
+      facts.scaled_d = scaled;
+      const auto report = check_tcgen_tf32_known_operation(facts);
+      EXPECT_EQ(!has(report.violations, TcgenTf32Violation::Target), accepted);
+    }
   }
 }
 

@@ -16,8 +16,9 @@
 | `.callprototype` scalar / array formal | 保留 | Device signature 规则；prototype 本身要求 PTX 2.1 / SM 20 | Semantic API 可生成拥有自身数据的 `declaration_semantics::FunctionSignature`；不进入声明表 |
 | Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 | 按名称使用的 entry input；检查资源种类、shape 与版本 | 按源码顺序保存的 `opaque_entry_parameters`，含绑定 symbol identity、资源种类与源码 shape；无 byte layout |
 | Device formal、return 或 body-local opaque object | 保留 type spelling | 拒绝 | 无；illegal，因为 opaque object 仅可用于 module global 与 entry parameter list |
-| Entry header、device formal/return 或 body-local 中的 `.f16x2` | 保留 type spelling | 明确的 unsupported diagnostic | 无；`.f16x2` 是 fundamental type，因此这是保留的 legal-but-unsupported 边界，不是 alternate-format rejection |
-| Header `.v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；保留为 legal-but-unsupported，等待上下文相关的 vector shape、size 与 ABI metadata |
+| Entry header、device formal/return 或 body-local 中的 `.param .f16x2` | 保留 type spelling | 明确的 unsupported diagnostic | 无；`.f16x2` 是 fundamental type，因此这是保留的 legal-but-unsupported 边界，不是 alternate-format rejection |
+| Device `.reg .v2` / `.v4` input 或 return，含 `.callprototype` | 保留为单个 formal | 非 predicate fundamental element，总大小至多 128 bit；call 必须匹配 scalar/vector 与 width | Typed `FunctionParameterContract::vector_shape` 与 bound vector width；不产生 `.param` 声明记录 |
+| Header `.param .v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；parameter-space vector storage 仍不在本 contract 范围内 |
 | Header 多维 parameter array | 明确的 unsupported parse diagnostic | 不进入 | 无；header array grammar 仍为 unresolved，不据此宣称 illegal |
 | Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无；保留为 legal-but-unsupported，等待 vector shape 与 call-staging metadata |
 | Body-local parameterized `.param` group (`name<count>`) | 保留 | 明确的 unsupported diagnostic | 无；合法 declaration shorthand 需要逐个展开名称的 identity 与 declaration-order metadata |
@@ -32,7 +33,13 @@
 不会因为 spelling 被保留就成为合法 declaration type。`.reg` formal 继续使用既有
 signature/address 路径，不属于 `.param` 声明表。
 在所属 function body 中，register-space input / return formal 会作为带类型的 register
-operand resolve，并保留 lexical symbol identity。parameter-space formal 仍是 data object；
+operand resolve，并保留 lexical symbol identity。
+Device `.reg` input 与 return 支持 `.v2` / `.v4` 的非 predicate fundamental element，
+包括 `.f16x2`，总大小至多 128 bit。一个 vector 始终是一个 formal 与一个 named-register
+call argument；scalar literal 与不同 vector width 不能满足其 signature。省略 alignment
+时采用整个 vector 的大小。Direct call、`.callprototype`、`.calltargets` 与 owned
+call-table signature 在 AST 销毁后仍保留同一 typed shape。
+parameter-space formal 仍是 data object；
 应使用符合其 parameter address 或 storage semantics 的 instruction，而不是将其作为
 arithmetic register operand。
 
@@ -42,7 +49,9 @@ arithmetic register operand。
 采用 element 的自然对齐；即使显式值恰好等于自然值，也单独保留显式指定这一事实。
 Frontend 不会从 ABI 关于 1、2、4、8 或 16 字节倍数的表述推断最大 alignment。
 
-`.ptr` 属于 entry input，要求 PTX 2.2。受支持的 scalar pointer type 为 `.u32` 与 `.u64`。
+`.ptr` 属于 entry input，要求 PTX 2.2。受支持的 scalar pointer type 为 `.b32`、`.b64`、`.s32`、`.s64`、`.u32` 与 `.u64`。
+声明的 integer 或 bit type 会保留；两种宽度均可用于 `.address_size 32` 或
+`.address_size 64`。
 Pointed state space 可为 `.const`、`.global`、`.local` 或 `.shared`，省略时表示 generic。
 Pointee alignment 省略时默认为四字节。Parameter storage alignment 与 pointee alignment
 是不同字段，不推断 host pointer width 或 launch address policy。
@@ -81,7 +90,7 @@ input；其他 role 不是 launch slot。
 两个 `validateModule` overload 都按各 function 的 `declaration_scope`，将有序 return
 与 input signature 同 binding formal 比较。Scalar `.param` formal 必须匹配对应
 declaration record 的 role、identity、type、shape、有效 alignment、checked byte extent
-与 pointer property。`.reg` formal 关联 binding type 和 alignment，不进入 parameter
+与 pointer property。`.reg` formal 关联 binding type、vector shape 和 alignment，不进入 parameter
 table。Opaque entry input 保留独立的 name-only record 和完整 input signature 中的位置。
 Body-local record 单独检查，不能变为 formal。兼容 prototype 和 definition 共享 function
 identity，但各自拥有 declaration scope。因此，即使已销毁源码和 AST，仅将 signature
@@ -107,12 +116,12 @@ texture/surface object，普通 `ld.param` 不能加载，物理 layout 也被�
 shape 与源码位置。
 
 `.f16x2` 是 fundamental type，不同于 alternate packed format。parameter-passing rule
-讨论 base-type scalar 与 vector `.param` formal，因此 frontend 将 `.f16x2` 记录为
+讨论 base-type scalar 与 vector `.param` formal，因此 frontend 将 `.param .f16x2` 记录为
 legal but unsupported，而不会把它并入 instruction-only type diagnostic。支持它还需要一致的
-declaration、direct-call ABI、literal 与 resolved-memory 行为；现有 `ScalarType::F16x2`
+parameter-space declaration、direct-call ABI、literal 与 resolved-memory 行为；现有 `ScalarType::F16x2`
 值本身并不构成该 contract。
 
-`.v2`/`.v4` parameter shape 与 local parameterized group 也采用相同区分。variable rule
+`.param .v2`/`.v4` shape 与 local parameterized group 也采用相同区分。variable rule
 允许 non-predicate fundamental type 的二/四 lane vector，并允许任意 state space 的
 fundamental type 使用 parameterized name。当前 grammar 已保留的 source form 会继续保留，
 但 frontend 不会臆造展开 declaration、vector byte/alignment、call staging 或 public metadata。

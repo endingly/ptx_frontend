@@ -19,7 +19,7 @@ Surface access 使用独立的 typed descriptor 与 owned operand。`SurfaceGeom
 
 Byte load/store 从 PTX 1.5 起支持。Cache selector 与 clamp/zero 要求 PTX 2.0 / sm20；byte 3d/array access 要求 PTX 3.0 / sm20。Formatted store 与 reduction 从 PTX 2.0 / sm20 起支持，包括 `sust.p.3d`。所有间接资源要求 PTX 3.1 / sm20。64 位 min/max reduction 要求 PTX 8.1 / sm50。Query floor：尺寸为 PTX 1.5，channel property 为 2.1，array_size 为 4.1，memory_layout 为 4.2；direct query 无额外 SM floor。
 
-显式 generic `sm_50` target profile 的 enabled-family 与 capability 域均为空。完整模块 fixture 覆盖 PTX 8.1 / sm50 的全部 64 位 min/max form，并拒绝 PTX 8.0 / sm50 与 PTX 8.1 / sm30；该 profile 不代表具备现代 target capability。
+显式 generic `sm_50` target profile 没有 enabled-family feature，具有 `graph_exec` capability。完整模块 fixture 覆盖 PTX 8.1 / sm50 的全部 64 位 min/max form，并拒绝 PTX 8.0 / sm50 与 PTX 8.1 / sm30；该 profile 不代表具备现代 target capability。
 
 当示例与 ISA Syntax 不一致时，以 Syntax 为准：`sured.p.min.u32` 示例不会扩展 formatted reduction 类型矩阵；省略必要 boundary modifier 的 surface array 示例也不授权这种省略。CUDA 13.3.73 `ptxas` 拒绝这些拼写。它的 parser 也拒绝测试过的裸 `[surface,0]` 坐标，但文档 1d scalar 坐标规则与通用 scalar constant 允许该形式，因此前端与 `[surface,{0}]` 一并保留。
 

@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <fmt/format.h>
@@ -235,7 +237,7 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
   }
 
   const auto parsed_module_3 = parseModule(R"ptx(
-.version 7.8
+.version 8.0
 .target sm_90a, texmode_independent
 .entry kernel() .reqnctapercluster 2, 1 {
   .reg .u32 %r;
@@ -272,6 +274,154 @@ TEST(ResolvedModule, ChecksModuleTargetAvailabilityWithCatalogProfiles) {
   ASSERT_EQ(pipeline_unknown.error().size(), 1u);
   EXPECT_EQ(pipeline_unknown.error().front().message,
             "Unknown validation target 'sm_123a'.");
+}
+
+/** Catalog graph availability survives strict checking and AST destruction. */
+TEST(ResolvedModule, ChecksGraphExecWithCatalogProfilesAndOwnedContext) {
+  for (const std::string_view version : {"8.0", "9.3"}) {
+    for (const std::string_view target :
+         {"sm_50", "sm_52", "sm_53", "sm_60", "sm_61", "sm_62", "sm_70",
+          "sm_72", "sm_75", "sm_80", "sm_86", "sm_87", "sm_88", "sm_90"}) {
+      // The sm_88 source target was introduced in PTX 9.0.
+      if (target == "sm_88" && version == "8.0")
+        continue;
+      SCOPED_TRACE(fmt::format("PTX {} target {}", version, target));
+      std::optional<ResolvedModule> owned;
+      {
+        const auto parsed = parseModule(fmt::format(R"ptx(
+.version {}
+.target {}
+.address_size 64
+.entry kernel() {{
+  .reg .u64 %rd;
+  mov.u64 %rd, %current_graph_exec;
+}}
+)ptx",
+                                                    version, target));
+        ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+        auto resolved = resolveAndValidateModule(*parsed);
+        ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+        EXPECT_TRUE(validateModule(*parsed, *resolved).has_value());
+        owned.emplace(std::move(*resolved));
+      }
+      EXPECT_TRUE(validateModule(*owned).has_value());
+    }
+  }
+}
+
+/** Graph capability does not relax version, type, access, or other capabilities. */
+TEST(ResolvedModule, RejectsGraphExecAndUnrelatedCapabilityBoundaryViolations) {
+  /** A complete module whose single move must fail strict validation. */
+  struct RejectedMove {
+    /** Declared PTX language version. */
+    std::string_view version;
+    /** Exact source target spelling used by the production catalog. */
+    std::string_view target;
+    /** The only instruction in the module body. */
+    std::string_view instruction;
+    /** Expected rejection from both AST-backed and owned validation. */
+    checker::CheckDiagnosticKind diagnostic;
+  };
+  for (const auto& fixture : {
+           RejectedMove{"9.3", "sm_32", "mov.u64 %rd, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_35", "mov.u64 %rd, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_37", "mov.u64 %rd, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_53",
+                        "mov.b32 %r, %reserved_smem_offset_begin;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_60",
+                        "mov.b32 %r, %reserved_smem_offset_begin;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_61",
+                        "mov.b32 %r, %reserved_smem_offset_begin;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_62",
+                        "mov.b32 %r, %reserved_smem_offset_begin;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_86", "mov.u32 %r, %cluster_ctarank;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_86", "mov.u32 %r, %aggr_smem_size;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_87", "mov.u32 %r, %cluster_ctarank;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_87", "mov.u32 %r, %aggr_smem_size;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_88", "mov.u32 %r, %cluster_ctarank;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_88", "mov.u32 %r, %aggr_smem_size;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"7.8", "sm_50", "mov.u64 %rd, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"8.0", "sm_30", "mov.u64 %rd, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"8.0", "sm_50", "mov.u32 %r, %current_graph_exec;",
+                        checker::CheckDiagnosticKind::OperandTypeMismatch},
+           RejectedMove{"8.0", "sm_50",
+                        "mov.b32 %r, %reserved_smem_offset_begin;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"8.0", "sm_50", "mov.u32 %r, %cluster_ctarank;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+           RejectedMove{"9.3", "sm_50", "mov.u32 %r, %aggr_smem_size;",
+                        checker::CheckDiagnosticKind::UnsupportedAvailability},
+       }) {
+    SCOPED_TRACE(fmt::format("PTX {} target {}: {}", fixture.version,
+                             fixture.target, fixture.instruction));
+    std::optional<ResolvedModule> owned;
+    {
+      const auto parsed = parseModule(
+          fmt::format(R"ptx(
+.version {}
+.target {}
+.address_size 64
+.entry kernel() {{
+  .reg .b32 %r;
+  .reg .u64 %rd;
+  {}
+}}
+)ptx",
+                      fixture.version, fixture.target, fixture.instruction));
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value());
+      auto resolved = resolveModuleOnly(*parsed);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      const auto checked = validateModule(*parsed, *resolved);
+      ASSERT_FALSE(checked.has_value());
+      ASSERT_EQ(checked.error().size(), 1u);
+      EXPECT_EQ(checked.error().front().kind, fixture.diagnostic);
+      owned.emplace(std::move(*resolved));
+    }
+    const auto checked = validateModule(*owned);
+    ASSERT_FALSE(checked.has_value());
+    ASSERT_EQ(checked.error().size(), 1u);
+    EXPECT_EQ(checked.error().front().kind, fixture.diagnostic);
+  }
+
+  for (const std::string_view target :
+       {"sm_53a", "sm_50a", "sm_52f", "sm_123a"}) {
+    SCOPED_TRACE(target);
+    const auto parsed = parseModule(fmt::format(R"ptx(
+.version 8.0
+.target {}
+.entry kernel() {{ .reg .u64 %rd; mov.u64 %rd, %current_graph_exec; }}
+)ptx",
+                                                target));
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    const auto rejected = resolveAndValidateModule(*parsed);
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().front().message,
+              fmt::format("Unknown validation target '{}'.", target));
+  }
+
+  const auto readonly = parseModule(R"ptx(
+.version 8.0
+.target sm_50
+.entry kernel() { .reg .u64 %rd; mov.u64 %current_graph_exec, %rd; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(readonly);
+  EXPECT_FALSE(resolveAndValidateModule(*readonly).has_value());
 }
 
 TEST(ResolvedModule, KeepsClusterModuleMetadataBoundToSm90AndCapability) {
@@ -539,21 +689,21 @@ prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
 
 TEST(ResolvedModule, ChecksNestedInstructionModuleAvailability) {
   const auto parsed_module_1 = parseModule(R"ptx(
-.version 0.9
+.version 1.2
 .entry kernel() {
   .reg .u32 %r<3>;
-  { add.u32 %r0, %r1, %r2; }
+  { mov.u32 %r0, %laneid; }
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
   const auto resolved = resolveModule(*parsed_module_1);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   const auto parsed_module_2 = parseModule(R"ptx(
-.version 0.9
-.target sm_80
+.version 1.2
+.target sm_13
 .entry kernel() {
   .reg .u32 %r<3>;
-  { add.u32 %r0, %r1, %r2; }
+  { mov.u32 %r0, %laneid; }
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
@@ -608,4 +758,29 @@ TEST(ResolvedModule, ChecksAttributeModuleTargetAvailability) {
 }
 
 }  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+/** Every explicit added generic profile remains valid after syntax ownership ends. */
+TEST(ResolvedModule, OwnsEveryAddedGenericTargetProfile) {
+  for (const std::string_view target :
+       {"sm_32", "sm_35", "sm_37", "sm_53", "sm_60", "sm_61", "sm_62", "sm_86",
+        "sm_87", "sm_88"}) {
+    SCOPED_TRACE(target);
+    std::optional<ResolvedModule> owned;
+    {
+      const auto source = fmt::format(
+          ".version 9.3\n.target {}\n.entry kernel() {{ ret; }}", target);
+      PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved) << resolved.error().front().message;
+      ASSERT_TRUE(validateModule(*ast, *resolved));
+      EXPECT_EQ(resolved->functions.front().source_target, target);
+      owned.emplace(std::move(*resolved));
+    }
+    EXPECT_TRUE(validateModule(*owned));
+  }
+}
 }  // namespace ptx_frontend::resolved_ir

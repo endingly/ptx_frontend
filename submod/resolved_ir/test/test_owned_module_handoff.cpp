@@ -253,6 +253,7 @@ constexpr std::string_view k_attribute_uuid_equivalence_fixture = R"ptx(
 .func .attribute(.unified(0, 18446744073709551615U)) decimal_uuid() { ret; }
 .func .attribute(.unified(0x0U, 0xffffffffffffffff)) hexadecimal_uuid() { ret; }
 .func .attribute(.unified(00, 01777777777777777777777U)) octal_uuid() { ret; }
+.func .attribute(.unified(0B0, 0b1111111111111111111111111111111111111111111111111111111111111111U)) binary_uuid() { ret; }
 )ptx";
 
 /** A valid no-return ABI fixture supplies both distinct preservation suffixes. */
@@ -322,6 +323,108 @@ void expect_owned_validation_success(const ResolvedModule& module,
       << (validation.has_value() || validation.error().empty()
               ? "Owned fixture did not validate."
               : validation.error().front().message);
+}
+
+/** Binary call literals keep lexical provenance and checked values after input release. */
+TEST(OwnedModuleHandoff, BinaryCallProvenanceAndStrictRange) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.func callee(.reg .u32 value) { ret; }
+.entry kernel() { call callee, (0B1000U); ret; }
+)ptx";
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto& call = dynamic_cast<CallDirect&>(*owned->functions[1].body.front());
+  ASSERT_TRUE(call.arguments.has_value());
+  auto& literal =
+      std::get<ResolvedCallLiteral>(call.arguments->value.values.front().value);
+  EXPECT_EQ(literal.kind, base::AstImmediateKind::BinaryInteger);
+  EXPECT_EQ(literal.spelling, "0B1000U");
+  ASSERT_TRUE(literal.value.has_value());
+  EXPECT_EQ(literal.value->bits, 8u);
+  EXPECT_EQ(literal.value->integer_source_bits, 8u);
+  expect_owned_validation_success(
+      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  literal.value->type = base::ScalarType::U64;
+  expect_owned_model_mismatch(*owned);
+
+  const auto parsed = parse_owned_module_fixture(R"ptx(
+.version 9.3
+.target sm_80
+.func callee(.reg .u32 value) { ret; }
+.entry kernel() { call callee, (0b100000000000000000000000000000000); ret; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  EXPECT_FALSE(resolveModuleOnly(*parsed).has_value());
+}
+
+/** Literal field values survive source destruction with their original provenance. */
+TEST(OwnedModuleHandoff, NormalizesGeneralIntegerFieldsWithoutAst) {
+  for (const std::string_view spelling : {"8", "010U", "0X8u", "0B1000U"}) {
+    std::optional<ResolvedModule> owned;
+    {
+      const std::string v{spelling};
+      const std::string source =
+          ".version 9.3\n.target sm_90\n.address_size 64\n"
+          ".global .align " +
+          v +
+          " .u64 storage;\n"
+          ".func f(.param .align " +
+          v + " .u64 input) .abi_preserve " + v + " .abi_preserve_control " +
+          v + " { ret; }\n.entry k(.param .align " + v +
+          " .u64 .ptr .global .align " + v + " pointer) .maxntid " + v +
+          " { .reg .u32 r<" + v +
+          ">;\n"
+          "p: .callprototype _ () .abi_preserve " +
+          v + " .abi_preserve_control " + v +
+          ";\n"
+          "b: .branchtargets L<" +
+          v +
+          ">;\n"
+          "L0: L1: L2: L3: L4: L5: L6: L7: ret; }";
+      const auto parsed = parse_owned_module_fixture(source);
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      auto resolved = resolveModuleOnly(*parsed);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      owned.emplace(std::move(*resolved));
+    }
+    ASSERT_EQ(owned->functions.size(), 2u);
+    EXPECT_EQ(owned->functions[0].contract.abi_preserve->count, 8u);
+    EXPECT_EQ(owned->functions[0].contract.abi_preserve_control->count, 8u);
+    ASSERT_EQ(owned->functions[1].branch_target_sets[0].targets.size(), 8u);
+    EXPECT_EQ(owned->functions[1].call_prototypes[0].abi_preserve->count, 8u);
+    EXPECT_EQ(
+        owned->functions[1].call_prototypes[0].abi_preserve_control->count, 8u);
+    EXPECT_EQ(owned->functions[1].contract.resources[0].values,
+              (std::vector<uint32_t>{8, 1, 1}));
+    expect_owned_validation_success(
+        *owned, ModuleValidationPolicy::RequireCompleteContext);
+  }
+}
+
+/** Bare numeric fields retain field-specific bounds after radix decoding. */
+TEST(OwnedModuleHandoff, RejectsInvalidGeneralIntegerFieldValues) {
+  for (const std::string_view body :
+       {".global .align 0x3 .u32 x;", ".global .align 0b0 .u32 x;",
+        ".entry k() .maxntid 0x100000000 { ret; }",
+        ".entry k() .maxntid 0x10000000000000000 { ret; }",
+        ".func f() .abi_preserve 0x100000000 { ret; }",
+        ".func f() .abi_preserve_control 0x100000000 { ret; }",
+        ".entry k() { .reg .u32 r<0x100000000>; ret; }",
+        ".entry k() { .reg .u32 r<0b0>; ret; }"}) {
+    const std::string source =
+        ".version 9.3\n.target sm_90\n" + std::string{body};
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value()) << body;
+  }
 }
 
 /** Owned module data remains consumer-usable after source text and AST lifetime end. */
@@ -1275,7 +1378,7 @@ TEST(OwnedModuleHandoff, RetainsTypedUnifiedUuidAfterInputDies) {
   ASSERT_TRUE(owned.has_value());
   constexpr ResolvedUnifiedId expected_uuid{
       .upper = 0u, .lower = std::numeric_limits<uint64_t>::max()};
-  ASSERT_EQ(owned->functions.size(), 3u);
+  ASSERT_EQ(owned->functions.size(), 4u);
   for (const ResolvedFunction& function : owned->functions) {
     ASSERT_EQ(function.contract.attributes.size(), 1u);
     const ResolvedFunctionAttribute& attribute =

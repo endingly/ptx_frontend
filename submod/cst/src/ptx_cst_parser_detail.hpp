@@ -13,6 +13,7 @@ inline bool isImmediate(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
     case TokenKind::Hex:
+    case TokenKind::Binary:
     case TokenKind::F32Hex:
     case TokenKind::F64Hex:
     case TokenKind::F64:
@@ -25,7 +26,8 @@ inline bool isImmediate(TokenKind kind) {
 
 /** Recognize integer literal source tokens. */
 inline bool isIntegerLiteral(TokenKind kind) {
-  return kind == TokenKind::Decimal || kind == TokenKind::Hex;
+  return kind == TokenKind::Decimal || kind == TokenKind::Hex ||
+         kind == TokenKind::Binary;
 }
 
 /** Recognize plain and dotted identifier source tokens. */
@@ -132,7 +134,7 @@ inline CstParseResult parseFailure(CstParseDiagnostic diagnostic) {
 /** Recognize linkage prefixes shared by functions and declarations. */
 inline bool isFunctionQualifier(TokenKind kind) {
   return kind == TokenKind::DotExtern || kind == TokenKind::DotVisible ||
-         kind == TokenKind::DotWeak;
+         kind == TokenKind::DotWeak || kind == TokenKind::DotCommon;
 }
 
 /** Recognize variable-declaration state-space prefixes. */
@@ -240,7 +242,7 @@ PtxCstParser::expect(TokenKind kind, std::string_view name) {
       token(id).range, "expected " + std::string(name), kind});
 }
 
-/** Consume one decimal or hexadecimal integer token, preserving mismatch lookahead. */
+/** Consume one integer token, preserving mismatch lookahead. */
 inline std::expected<PtxCstParser::TokenId, CstParseDiagnostic>
 PtxCstParser::expectIntegerLiteral(std::string_view name) {
   const TokenId id = peek();

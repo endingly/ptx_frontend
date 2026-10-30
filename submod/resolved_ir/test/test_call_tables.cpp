@@ -254,8 +254,10 @@ TEST(CallTables, PreservesDeviceFunctionPointerExclusion) {
   const auto resolved = resolveAndValidateModule(*ast);
   ASSERT_FALSE(resolved);
   ASSERT_FALSE(resolved.error().empty());
-  EXPECT_EQ(resolved.error().front().message,
-            ".ptr is supported only on scalar .entry .param .u32/.u64 inputs.");
+  EXPECT_EQ(
+      resolved.error().front().message,
+      ".ptr requires a scalar .entry .param input with a 32-bit or 64-bit "
+      "integer or bit type.");
 }
 
 /** Full owned signature comparison includes pointer fields, not only scalar ABI. */
@@ -521,6 +523,30 @@ TEST(CallTables, RejectsOwnedContractAndStorageTampering) {
     }
     EXPECT_FALSE(validateModule(*module));
   }
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Table targets share one complete vector signature and enforce vector actuals. */
+TEST(CallTables, PreservesVectorRegisterSignatures) {
+  auto ast = test_helpers::parseModule(
+      table_module(".global .u64 T[2] = {f,g};", "call %fp, (input), T;",
+                   ".reg .v2 .u32 input;",
+                   ".func f(.reg .v2 .u32 p); .func g(.reg .v2 .u32 p);"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module) << module.error().front().message;
+  EXPECT_EQ(module->call_tables[0].signature.parameters[0].vector_shape,
+            call_argument_compatibility::CallArgumentVectorShape::V2);
+  EXPECT_TRUE(validateModule(*module));
+  auto mismatch = test_helpers::parseModule(
+      table_module(".global .u64 T[2] = {f,g};", "call %fp, (input), T;",
+                   ".reg .v2 .u32 input;",
+                   ".func f(.reg .v2 .u32 p); .func g(.reg .v4 .u32 p);"));
+  ASSERT_MODULE_PARSE_SUCCEEDS(mismatch);
+  EXPECT_FALSE(resolveModule(*mismatch));
 }
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir

@@ -27,6 +27,16 @@ or floating zero, including negative zero, is invalid. Both conditional arms
 and logical operands are checked even when their values are unselected.
 Floating overflow is not subject to an additional blanket finite-only rule.
 
+Decimal floating constants accept a decimal point with digits on either side,
+including `1.`, `.5`, and `1.e2`, or a digit sequence with an exponent such as
+`1e2`. Exponents use `e`/`E` and an optional sign followed by digits. They have
+no size suffix and decode in binary64 before the existing destination
+conversion to `.f32` or `.f64`. Integer destinations remain incompatible.
+This follows [PTX ISA 9.3 floating-point
+constants](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-constants).
+The shared lexical float category does not broaden `.version`: its syntax still
+requires decimal digits on both sides of the point in `major.minor`.
+
 Binary `&`, `|`, and `^` retain the usual arithmetic conversions (two signed
 inputs give a signed result; any unsigned input gives an unsigned result).
 This follows PTX 9.3 §4.5.5 prose and bounded CUDA 13.3 assembler checks;
@@ -35,9 +45,40 @@ interprets both inputs unsigned and produces signed. Shift counts outside
 0–63 remain explicit frontend errors. The assembler accepts some larger shifts,
 so this resource/domain boundary does not claim complete assembler parity.
 
+Module `.reg` and `.local` declarations are checked against the source-target
+ABI assumption: PTX ISA 3.0 or later with a recognized active source target of
+SM 20 or later requires these variables to be declared within a function.
+The frontend does not model a caller-selected switch that disables ABI compilation.
+Earlier PTX versions and recognized SM 1.x targets retain their historical
+module placement. Target changes apply in source order; a later unknown or empty
+target clears the previous placement context.
+
+Declaration semantics checks every actual module occurrence, including unused
+variables and conflicting redeclarations, and reports `InvalidDeclarationPlacement`
+at the complete declaration range. Owned validation checks every variable identity
+and retained occurrence against its source region, including registers with no
+storage record, and reports `RuleViolation`. Both validation overloads recheck
+placement after source/AST destruction or replacement source recontextualization.
+`AvailableContext` defers this rule when either the version or recognized active
+target is absent; strict validation reports `MissingValidationContext` at the
+affected declaration. Other header and identity diagnostics remain independent.
+Function-local declarations, nested blocks and valid register formals retain
+their existing contracts. See the pinned PTX 9.3
+[changes from PTX 1.x](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x),
+[register](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space),
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space),
+and [variable declaration](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) rules.
+
 ## Arrays and initializers
 
-Integer literals share decimal, leading-zero octal, and hexadecimal decoding
+
+Register declarations cannot use bracket array dimensions. The rule applies to
+unused declarations and reports `InvalidRegisterDeclarationShape` at the first
+bracket dimension, independently of type or vector diagnostics. Compact register
+groups (`r<2>`) remain distinct. See [register declaration compatibility](register_type_policy.md)
+for the retained owned shape and validation contract.
+
+Integer literals share decimal, leading-zero octal, binary, and hexadecimal decoding
 with instruction immediates. For example, `010` initializes the value 8 and
 denotes an array extent of 8; an unsigned suffix does not change the radix.
 
@@ -77,7 +118,7 @@ opaque handle.
 
 For modeled `.unified(upper, lower)` attributes, declaration semantics decodes
 both direct integer tokens as exact unsigned 64-bit UUID halves. Decimal,
-leading-zero octal, hexadecimal, and the supported unsigned suffix share the
+leading-zero octal, binary, hexadecimal, and the supported unsigned suffix share the
 integer-literal rules; overflow diagnoses the offending token rather than
 truncating it. This applies uniformly to eligible global variables and device
 function definitions or prototypes before storage metadata or a future function
@@ -169,8 +210,8 @@ limits remain outside this pass.
 
 ## Debug metadata boundary
 
-Binding owns the `.file`/`.loc` and `.debug_str` identity table: duplicate file
-indices are idempotent, `.loc` file references must bind, and
+Binding owns the `.file`/`.loc` and `.debug_str` identity table: every duplicate
+normalized file index diagnoses with current/previous ranges, `.loc` file references must bind, and
 `function_name` must identify `.debug_str` itself or one of its raw labels.
 This declaration pass intentionally adds no DWARF payload-expression, source
 attachment, or resource-feasibility semantics.

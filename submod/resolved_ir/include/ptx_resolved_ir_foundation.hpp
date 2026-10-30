@@ -71,6 +71,13 @@ enum class VideoScale : uint8_t { None, Shr7, Shr15 };
 
 enum class ResolvedRegisterClass : uint8_t;
 
+/** Static interpretation of source-omitted floating-point controls. */
+enum class FloatingPointDefault {
+  ApproximateFlushToZero,
+  Approximate,
+  RoundNearestEven,
+};
+
 /**
  * Implicit CC.CF access for an executed instruction. Predication gates both
  * explicit results and this effect. Incoming CC.CF is not preserved by calls.
@@ -712,19 +719,38 @@ struct PtxVersion {
 inline constexpr size_t kMaxAvailabilityClauses = 6;
 /** Maximum capabilities retained by one generated availability clause. */
 inline constexpr size_t kMaxAvailabilityCapabilities = 4;
+/** Exact architecture and flavor required independently of catalog capabilities. */
+struct AvailabilityTarget {
+  /** Numeric source architecture; membership never implies neighboring targets. */
+  base::TargetArchitecture architecture{};
+  /** Exact source flavor, without family or architecture-specific inference. */
+  base::TargetFlavor flavor = base::TargetFlavor::Generic;
+  /** Compare exactly the architecture/flavor membership key. */
+  bool operator==(const AvailabilityTarget&) const = default;
+};
+/** Process-lifetime storage for generated exact-target membership spans. */
+template <AvailabilityTarget... Targets>
+inline constexpr std::array<AvailabilityTarget, sizeof...(Targets)>
+    kAvailabilityTargets{Targets...};
 /** One AND-clause in a bounded generated target-availability expression. */
 struct AvailabilityClause {
   PtxVersion minimum_ptx_version{};
   uint32_t minimum_sm_version = 0;
-  bool has_exact_target = false;
   base::TargetArchitecture exact_target_architecture{};
   base::TargetFlavor exact_target_flavor = base::TargetFlavor::Generic;
-  std::string_view required_family{};
-  /** Borrowed capability names; only the first ``capability_count`` are live. */
-  std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
+  bool has_exact_target = false;
   uint8_t capability_count = 0;
   /** Require the source region's explicit map_f64_to_f32 programmer option. */
   bool requires_map_f64_to_f32 = false;
+  std::string_view required_family{};
+  /** Borrowed capability names; only the first ``capability_count`` are live. */
+  std::array<std::string_view, kMaxAvailabilityCapabilities> capabilities{};
+  /** Borrowed exact alternatives; empty adds no identity requirement.
+   * Generated storage has process lifetime; manual consumers retain ownership.
+   * When singular identity fields are also supplied, both requirements apply. */
+  std::span<const AvailabilityTarget> exact_targets{};
+  /** Exclusive PTX version limit; disengaged means unbounded. */
+  std::optional<PtxVersion> ptx_before;
 };
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
@@ -733,6 +759,8 @@ struct AvailabilityDescriptor {
   std::string_view required_family{};
   std::array<AvailabilityClause, kMaxAvailabilityClauses> any_of{};
   uint8_t any_of_count = 0;
+  /** Exclusive PTX version limit; disengaged means unbounded. */
+  std::optional<PtxVersion> ptx_before;
 };
 struct TypeExpressionDescriptor {
   OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;
@@ -2291,6 +2319,9 @@ struct ResolvedPredicatePairOrSink {
   std::optional<ResolvedPredicate> second;
   bool operator==(const ResolvedPredicatePairOrSink&) const = default;
 };
+/** Scalar conversion input; intrinsic registers retain target-independent identity. */
+using ResolvedCvtSource = std::variant<ResolvedRegisterRef, ResolvedImmediate,
+                                       ResolvedSpecialRegisterRef>;
 using ResolvedMovSource =
     std::variant<ResolvedRegisterRef, ResolvedImmediate,
                  ResolvedSpecialRegisterRef, ResolvedFunctionRef,

@@ -13,6 +13,30 @@ the `EntryInput` role identifies ordinary entry inputs. Opaque entry inputs live
 in `ResolvedFunction::opaque_entry_parameters` without fabricated byte layout.
 Registers and call parameters do not enter the storage list.
 
+Module `.reg` and `.local` declarations are checked against the source-target
+ABI assumption: PTX ISA 3.0 or later with a recognized active source target of
+SM 20 or later requires these variables to be declared within a function.
+The frontend does not model a caller-selected switch that disables ABI compilation.
+Earlier PTX versions and recognized SM 1.x targets retain their historical
+module placement. Target changes apply in source order; a later unknown or empty
+target clears the previous placement context.
+
+Declaration semantics checks every actual module occurrence, including unused
+variables and conflicting redeclarations, and reports `InvalidDeclarationPlacement`
+at the complete declaration range. Owned validation checks every variable identity
+and retained occurrence against its source region, including registers with no
+storage record, and reports `RuleViolation`. Both validation overloads recheck
+placement after source/AST destruction or replacement source recontextualization.
+`AvailableContext` defers this rule when either the version or recognized active
+target is absent; strict validation reports `MissingValidationContext` at the
+affected declaration. Other header and identity diagnostics remain independent.
+Function-local declarations, nested blocks and valid register formals retain
+their existing contracts. See the pinned PTX 9.3
+[changes from PTX 1.x](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x),
+[register](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space),
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space),
+and [variable declaration](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) rules.
+
 ## Identity and layout inputs
 
 Each source declarator contributes one record in source traversal order.
@@ -22,6 +46,19 @@ and same-spelled locals therefore remain distinguishable. Repeated compatible
 external declarations share a symbol identity but retain separate occurrences.
 Existing linkage and multiple-definition checks still apply; an extern
 declaration followed by a same-named plain definition is rejected.
+
+`.common` is retained as distinct `SymbolLinkage::Common` on ordinary module-scope
+`.global` definitions (PTX 5.0, SM 20 or later). Scalar, vector, array, and
+parameterized declarations use the existing storage layout rules. Omitted
+initializers retain `Zero`; explicit zero, nonzero, and sparse initializers retain
+`Explicit`. Functions, opaque objects, other state spaces, and conflicting linkage
+qualifiers are rejected. Same-module repeated definitions remain errors.
+Both validation overloads check eligibility and their selected version/target
+context; AST-free validation rejoins declarations to ordered source target events.
+The [PTX 9.3 `.common` rules](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#linking-directives-common)
+select the largest definition across object files and allow only one object file
+to initialize it, which must also provide the largest definition. These cross-object
+rules belong to a downstream linker; the frontend does not select or merge objects.
 
 Both `validateModule` overloads rejoin every record to its bound declaration
 occurrence and require the storage list to be complete, including each compatible
@@ -105,7 +142,8 @@ the upper-half rule for `.b128`. No GPU validation was available, and observed
 anomalous upper words in ptxas 13.3.33 output are not reproduced by this contract.
 
 Floating initialization supports `.f32`/`.f64` literals with signs and
-parentheses; compound floating arithmetic is not normalized. Opaque object
+parentheses, including decimal trailing-point forms such as `1.` and `1.e2`;
+compound floating arithmetic is not normalized. Opaque object
 metadata includes module-global declarations with preserved array shape,
 explicit alignment, and typed named-member initialization. See the
 [texture contract](converage/texture_coverage.md) for its identity and static-field boundary.

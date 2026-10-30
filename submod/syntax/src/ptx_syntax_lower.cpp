@@ -17,6 +17,8 @@ syntax_ast::AstImmediateKind immediateKind(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
       return syntax_ast::AstImmediateKind::DecimalInteger;
+    case TokenKind::Binary:
+      return syntax_ast::AstImmediateKind::BinaryInteger;
     case TokenKind::Hex:
       return syntax_ast::AstImmediateKind::HexInteger;
     case TokenKind::F32Hex:
@@ -663,6 +665,9 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   return syntax_ast::AstFunctionParameter{
       .state_space = lowerStateSpace(cst.token(parameter.state_space).kind),
       .alignment = std::move(alignment),
+      .vector_type = parameter.vector_type ? std::optional{leafSyntax(
+                                                 cst, *parameter.vector_type)}
+                                           : std::nullopt,
       .type = leafSyntax(cst, parameter.type),
       .is_pointer = parameter.pointer_directive.has_value(),
       .pointer_space = std::move(pointer_space),

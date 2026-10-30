@@ -67,9 +67,125 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
   EXPECT_EQ(tok.text, text);
 }
 
+/** Form feed is lossless whitespace and advances one byte column, not a line. */
+TEST(PtxLexerNew, FormFeedWhitespaceRangesAndTrailingTrivia) {
+  PtxLexer lexer("\f.global \t\f.u32\r\n\fvalue;\r\fnext\n\f");
+  const auto global = lexer.next();
+  EXPECT_EQ(global.kind, TokenKind::DotGlobal);
+  EXPECT_EQ(global.range.start.line, 1u);
+  EXPECT_EQ(global.range.start.column, 2u);
+  ASSERT_EQ(global.leading_trivia.size(), 1u);
+  EXPECT_EQ(global.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(global.leading_trivia[0].text, "\f");
+  EXPECT_EQ(global.leading_trivia[0].range.start.column, 1u);
+  EXPECT_EQ(global.leading_trivia[0].range.end.column, 2u);
+  const auto type = lexer.next();
+  EXPECT_EQ(type.text, ".u32");
+  EXPECT_EQ(type.range.start.line, 1u);
+  EXPECT_EQ(type.range.start.column, 12u);
+  ASSERT_EQ(type.leading_trivia.size(), 1u);
+  EXPECT_EQ(type.leading_trivia[0].text, " \t\f");
+  EXPECT_EQ(type.leading_trivia[0].range.start.column, 9u);
+  EXPECT_EQ(type.leading_trivia[0].range.end.column, 12u);
+  const auto value = lexer.next();
+  EXPECT_EQ(value.text, "value");
+  EXPECT_EQ(value.range.start.line, 2u);
+  EXPECT_EQ(value.range.start.column, 2u);
+  ASSERT_EQ(value.leading_trivia.size(), 1u);
+  EXPECT_EQ(value.leading_trivia[0].text, "\r\n\f");
+  EXPECT_EQ(value.leading_trivia[0].range.start.line, 1u);
+  EXPECT_EQ(value.leading_trivia[0].range.start.column, 16u);
+  EXPECT_EQ(value.leading_trivia[0].range.end.line, 2u);
+  EXPECT_EQ(value.leading_trivia[0].range.end.column, 2u);
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto next = lexer.next();
+  EXPECT_EQ(next.text, "next");
+  EXPECT_EQ(next.range.start.line, 3u);
+  EXPECT_EQ(next.range.start.column, 2u);
+  const auto eof = lexer.next();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  EXPECT_EQ(eof.range.start.line, 4u);
+  EXPECT_EQ(eof.range.start.column, 2u);
+  EXPECT_EQ(eof.range.end.line, 4u);
+  EXPECT_EQ(eof.range.end.column, 2u);
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\n\f");
+  EXPECT_EQ(eof.leading_trivia[0].range.start.line, 3u);
+  EXPECT_EQ(eof.leading_trivia[0].range.start.column, 6u);
+  EXPECT_EQ(eof.leading_trivia[0].range.end.line, 4u);
+  EXPECT_EQ(eof.leading_trivia[0].range.end.column, 2u);
+}
+
+/** Form feed remains opaque inside strings and both comment forms. */
+TEST(PtxLexerNew, FormFeedInsideStringsAndComments) {
+  PtxLexer lexer("\"a\fb\"/*c\fd*///e\fnot_a_token\r\nret;\f");
+  const auto string = lexer.next();
+  EXPECT_EQ(string.kind, TokenKind::String);
+  EXPECT_EQ(string.text, "\"a\fb\"");
+  EXPECT_EQ(string.range.end.column, 6u);
+  const auto ret = lexer.next();
+  EXPECT_EQ(ret.text, "ret");
+  EXPECT_EQ(ret.range.start.line, 2u);
+  EXPECT_EQ(ret.range.start.column, 1u);
+  ASSERT_EQ(ret.leading_trivia.size(), 3u);
+  EXPECT_EQ(ret.leading_trivia[0].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(ret.leading_trivia[0].text, "/*c\fd*/");
+  EXPECT_EQ(ret.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(ret.leading_trivia[1].text, "//e\fnot_a_token");
+  EXPECT_EQ(ret.leading_trivia[2].text, "\r\n");
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto eof = lexer.next();
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\f");
+}
+
+/** Other ASCII controls remain bounded errors with normal byte positions. */
+TEST(PtxLexerNew, FormFeedDoesNotAdmitOtherControlWhitespace) {
+  for (const char control : {'\v', '\x01', '\x1f'}) {
+    PtxLexer lexer(std::string(".global") + control + ".u32");
+    EXPECT_EQ(lexer.next().kind, TokenKind::DotGlobal);
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error);
+    EXPECT_EQ(error.text, std::string(1, control));
+    EXPECT_EQ(error.range.start.line, 1u);
+    EXPECT_EQ(error.range.start.column, 8u);
+    EXPECT_EQ(error.range.end.column, 9u);
+    EXPECT_EQ(lexer.next().text, ".u32");
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Basic instruction lexing
 // -----------------------------------------------------------------------------
+
+/** Binary tokens retain prefix/suffix spelling without imposing numeric limits. */
+TEST(PtxLexerNew, BinaryIntegerSpellings) {
+  for (const std::string_view spelling : {"0b0", "0B1", "0b10u", "0B10U",
+                                          "0b1000000000000000000000000000000000"
+                                          "0000000000000000000000000000000"}) {
+    PtxLexer lexer(spelling);
+    const auto token = lexer.next();
+    EXPECT_EQ(token.kind, TokenKind::Binary) << spelling;
+    EXPECT_EQ(token.text, spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
+/** Binary candidates remain one lossless token, including malformed spellings. */
+TEST(PtxLexerNew, BinaryCandidateSpellingAndRecovery) {
+  for (const std::string_view spelling :
+       {"0b", "0B", "0b2", "0b102U", "0b1UU", "0b1L", "0b10tail", "0b1_0"}) {
+    PtxLexer lexer(std::string{spelling} + " 7");
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error) << spelling;
+    EXPECT_EQ(error.text, spelling);
+    EXPECT_EQ(error.range.start.column, 1u);
+    EXPECT_EQ(error.range.end.column, spelling.size() + 1u);
+    EXPECT_EQ(lexer.next().text, "7");
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
 
 /** Octal source retains the existing integer token category and exact spelling. */
 TEST(PtxLexerNew, OctalSpellingsAndDecimalFloatControls) {
@@ -101,6 +217,34 @@ TEST(PtxLexerNew, InvalidOctalReportsWholeLiteralAndRecovers) {
     EXPECT_EQ(lexer.next().kind, TokenKind::Decimal);
     EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
   }
+}
+
+/** Decimal-point literals retain complete spellings, ranges, and separate signs. */
+TEST(PtxLexerNew, TrailingDecimalPointFloats) {
+  for (const std::string_view spelling :
+       {"1.", "0.", "09.", "1.e2", "1.E+2", "1.e-2", ".5", "1.0", "1e2"}) {
+    const std::string source = "-" + std::string(spelling) + ";";
+    const auto tokens = lex_all(source);
+    ASSERT_EQ(tokens.size(), 3u) << spelling;
+    expect_token(tokens[0], TokenKind::Minus, "-");
+    expect_token(tokens[1], TokenKind::F64, spelling);
+    EXPECT_EQ(
+        tokens[1].range,
+        (SourceRange{{1, 2}, {1, static_cast<int32_t>(2 + spelling.size())}}));
+    expect_token(tokens[2], TokenKind::Semicolon, ";");
+  }
+  const auto controls =
+      lex_all("1 010 0x10 0f3f800000 0d3ff0000000000000 .version .f32 %r1.x");
+  ASSERT_EQ(controls.size(), 9u);
+  expect_token(controls[0], TokenKind::Decimal, "1");
+  expect_token(controls[1], TokenKind::Decimal, "010");
+  expect_token(controls[2], TokenKind::Hex, "0x10");
+  expect_token(controls[3], TokenKind::F32Hex, "0f3f800000");
+  expect_token(controls[4], TokenKind::F64Hex, "0d3ff0000000000000");
+  expect_token(controls[5], TokenKind::DotVersion, ".version");
+  expect_token(controls[6], TokenKind::DotIdent, ".f32");
+  expect_token(controls[7], TokenKind::Ident, "%r1");
+  expect_token(controls[8], TokenKind::DotIdent, ".x");
 }
 
 TEST(PtxLexerNew, EmitsEof) {
@@ -364,9 +508,9 @@ TEST(PtxLexerNew, LocDirectiveKeepsAttributeWordsAsIdentifiers) {
 }
 
 TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
-  auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak");
+  auto toks = lex_all(".visible .entry _Z6kernelv .func .extern .weak .common");
 
-  ASSERT_EQ(toks.size(), 6u);
+  ASSERT_EQ(toks.size(), 7u);
 
   expect_token(toks[0], TokenKind::DotVisible, ".visible");
   expect_token(toks[1], TokenKind::DotEntry, ".entry");
@@ -374,6 +518,7 @@ TEST(PtxLexerNew, FunctionAndVisibilityDirectivesRemainDedicatedTokens) {
   expect_token(toks[3], TokenKind::DotFunc, ".func");
   expect_token(toks[4], TokenKind::DotExtern, ".extern");
   expect_token(toks[5], TokenKind::DotWeak, ".weak");
+  expect_token(toks[6], TokenKind::DotCommon, ".common");
 }
 
 TEST(PtxLexerNew, CallPrototypeIsAControlFlowMetadataToken) {

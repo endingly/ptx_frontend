@@ -224,6 +224,7 @@ storage 或 operand width。PTX 1.4 起，`div.rn.f64`、`rcp.rn.f64` 与 `sqrt.
 及更高 target 的 availability 无需此 option。其他 f64 form、directed rounding 与
 f32 form 保持各自的 gate。前端保存并验证 source option，不执行 lowering 或 emulation。
 
+
 `RequireCompleteContext` 还要求模块起始依次为 `.version`、`.target` 和可选
 `.address_size`，之后才能出现其他 module item。Version 或 address size 不得晚置；
 后续 `.target` 仍可开启合法的 source region。只有 header 的模块同样检查，空模块则
@@ -235,10 +236,59 @@ AST overload 在替换 source configuration 时检查传入 AST 的顺序。
 `.target` 的每一项均分类：首项必须为 architecture spelling，后续仅允许
 `texmode_unified`、`texmode_independent`、`debug`、`map_f64_to_f32`。Parser 和两个
 validator 都拒绝未知 option 或额外 architecture 项。词法合法但未识别的 target
-（包括 `compute_` spelling）仍可解析，在 validation 阶段产生 `UnknownTarget`；
-profile catalog 不扩展。Texture mode 继续检查重复与模块级冲突；`debug` 和
-`map_f64_to_f32` 仅保留为已知 option，此契约不增加 DWARF 检查或浮点指令转换。
+仍可解析，在 validation 阶段产生 `UnknownTarget`。每个显式 catalog 中的
+`sm_<number>[a|f]` profile 都接受 `compute_<number>[a|f]` 同义形式，architecture、
+flavor、enabled family feature 和 capability 相同。词法解析及 owned source region
+保留实际书写的 prefix；语义 availability 和显式 checker target 比较使用 architecture
+与 flavor。`TargetIdentity::operator==` 仍比较 source spelling，source provenance
+一致性检查保持精确。未知 number 或未支持 flavor（包括 `compute_101a`、
+`compute_101f`）不会获得 catalog profile。Texture mode 继续检查重复与模块级冲突；
+此契约不增加 DWARF 内容检查或浮点指令转换。
 源码形式依据归档的 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)。
+
+
+两个 validation policy 都检查 header compatibility，包括只有 header 的模块和每个后续
+target region。`.version` 至少为 PTX ISA 1.0；显式 `.address_size` 至少要求 2.3，
+省略时早期版本仍保留 32-bit 默认值。两种显式 texture mode option 都要求 1.5，
+`debug` 要求 3.0。`AvailableContext` 仅延后依赖缺失 version 或 target 的检查，
+已有上下文的矛盾仍被拒绝。replacement-AST validation 使用传入 AST 的 header；
+owned validation 在 source 销毁后重新检查保留值、option spelling、provenance 和
+traversal event。仅修改 owned provenance 不能把显式 address-size event 变成隐式值。
+
+已有 target catalog 是每个精确 profile 引入版本的唯一来源。
+`base::TargetProfile::minimum_ptx_version` 暴露 base 拥有的 `PtxIsaVersion` 分量，
+独立于 `checker::PtxVersion`。`supports_map_f64_to_f32` 仅对精确 generic SM10/11/12
+及其 compute synonym 为 true；其他已识别 profile 即使缺少 version 也拒绝此 option。
+此规则依据归档 target 表及 legacy option 继承，并由 CUDA 13.3 `ptxas` 拒绝 SM13 及
+更高 target 上该 option 的结果佐证；不增加指令模拟。未知 target key 仍产生
+`UnknownTarget`，不猜测 minimum 或 option permission。
+
+固定的 [PTX ISA 9.3 target 表](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+规定以下最低版本（`sm_` 和 `compute_` prefix 相同）：
+
+| 精确 architecture/flavor 后缀 | 最低 PTX ISA |
+| --- | --- |
+| 10, 11 | 1.0 |
+| 12, 13 | 1.2 |
+| 20 | 2.0 |
+| 30 | 3.0 |
+| 35 | 3.1 |
+| 32, 50 | 4.0 |
+| 37, 52 | 4.1 |
+| 53 | 4.2 |
+| 60, 61, 62 | 5.0 |
+| 70 | 6.0 |
+| 72 | 6.1 |
+| 75 | 6.3 |
+| 80 | 7.0 |
+| 86 | 7.1 |
+| 87 | 7.4 |
+| 89, 90 | 7.8 |
+| 90a | 8.0 |
+| 100, 100a | 8.6 |
+| 120, 120a | 8.7 |
+| 100f, 103, 103a, 103f, 120f, 121, 121a, 121f | 8.8 |
+| 88, 110, 110a, 110f | 9.0 |
 
 `ResolvedFunction::declaration_scope` 标识一次声明：prototype 和 definition 可以共享
 `SymbolId`，但具有不同 scope。binding 保存声明 range，提供 `functionScope(range)`；
@@ -287,7 +337,7 @@ diagnostic，而 AST-free validation 会拒绝缺少该 typed payload 的 `.unif
 
 instruction range/opcode 与全部 owned record 都是 semantic provenance。frontend 保留 `.language`
 以及 function ABI/resource contract；`.file`、`.loc`、`.section`、`.pragma` 属于 syntax/debug 或
-advisory metadata，明确不作为 resolved payload。generated C++ struct layout 或 binary ABI 不保证稳定。
+advisory metadata，不作为可执行 resolved payload；owned symbol table 另保留 `.file` 声明 payload 以验证 debug identity。generated C++ struct layout 或 binary ABI 不保证稳定。
 原始 module directive 仍需要 AST；owned model 是已声明 subset 的 semantic handoff，不是完整源码
 序列化契约。
 
@@ -312,9 +362,20 @@ boundary 记录每个 function label；boundary 基于递归展平的 body，首
 连续 label 共用一个 boundary、末尾 label 为 `body.size()`。standalone `resolveInstruction`
 与逐 opcode resolver 不要求声明上下文，继续服务单指令工具。directive 与 declaration 仍由
 Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串字段；刻意保留的
-例外是拥有值的、已规范化 parameter 与 storage metadata。`.file` 与
-`.debug_str` identity 会在那里验证 `.loc` metadata，
-但 `.loc`、`.section` 与 `.pragma` 不产生 Resolved IR node，也不附着到 instruction。
+例外是拥有值的、已规范化 parameter 与 storage metadata。owned symbol table 另按源码顺序
+保留 `.file` 声明的原始 filename、可选数值 metadata token 及 range，在 source/AST 销毁后仍可用。
+两个 validation overload 均重新检查规范化 index 唯一性、首次 symbol association、payload
+边界、声明覆盖与 basic/inline `.loc` file-reference target。replacement source 独立重新绑定
+其 debug metadata，合法的替换 filename 或 index 不必与原始内容相同。`.debug_str` identity
+也验证 `.loc` metadata；`.file`、`.loc`、`.section` 与 `.pragma` 不产生可执行 Resolved IR node，
+也不附着到 instruction。
+
+显式 `.file` timestamp/file-size metadata（包括 `0, 0`）要求 PTX ISA 3.2 或更高版本；
+普通 `.file` 不受此门槛限制。此检查基于可选字段是否存在，不要求 SM 或 debug option，
+即使没有可识别 target，已知的旧版本也会被拒绝。`AvailableContext` 在 version 缺失时延后检查；
+严格验证沿用现有的上下文完整性要求。owned validation 使用保留的 header version 与 file record；
+AST-backed validation 使用传入 AST 的 version 及独立重新绑定的 file metadata，
+因此替换 metadata 与 version 会一起检查。参见 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)。
 
 `ResolvedFunction::parameter_declarations` 拥有通过验证的 `.param` 声明：先按列表顺序
 保存 return formal，再保存 input formal，最后按词法遍历顺序保存 body-local declarator
@@ -395,7 +456,7 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 保留求值后的 64-bit source bits 与数值上的 signed-negative 性质，因此
 fixed-control checker 不必重新解释 literal 文本，也不会信任已经窄化的值。
 
-`AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
+`AstImmediateKind` 保留 lexer 对 literal 的分类。二进制 `0b`/`0B` 拼写保留为 `BinaryInteger`。整数 decimal/octal/binary/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
 type，而 unsigned negation 按该宽度回绕。ordinary data use 随后保留 target width 的低位。
 `WARP_SZ` 是 source 定义的 signed integer constant `32`，也可用于普通
@@ -958,3 +1019,67 @@ memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 ## Owned Video 操作数
 
 `ResolvedVideoOperand` 拥有带位置的 `RegOrImm`、可选带位置的 `VideoSelector` variant、书写的寄存器取负 Boolean 及可选 minus range。Identifier 位置与外层 selector/negation range 分离，用于绑定诊断。Source 数组保留书写的高到低 digit 顺序，索引连接后的 A+B carrier。`video_default_selector` 和 `video_effective_selector` 提供默认值，不虚构书写来源。生成 form 公开静态 `video_lanes`/`video_operation`。`video_mad_interpretation` 独立于书写 dtype 推导 product/input-C/final 符号；负数常量不变成寄存器取负控制。公开 helper 位于 `<ptx_frontend/resolved_ir/ptx_video.hpp>`。Checker operand view 仅在同步检查期间借用 owned Video payload；模块引用遍历使用内部 carrier 的 identifier 位置。
+
+
+## 转换指令的 special-register source
+
+普通 `cvt`（PTX 9.3 第 9.7.9.22 节）拥有 `ResolvedCvtSource`，仅包含
+register、immediate 与 special-register。标量读取位置保留原有的 immediate 接受范围；
+destination、向量 register source 与 `cvt.pack` 保持原有契约，不接受 symbol/address value。
+checker 在读取 metadata 前验证 intrinsic identity、索引族边界与 component 选择；
+展示用 spelling 不决定语义。special source 应用 operand 的 register-width policy，
+包括较宽整数声明的截取，integer/float 不兼容规则仍然生效。CVT 按 source 使用宽度
+声明与 MOV 相同的历史 16-bit thread/grid component 与 16/32-bit grid-ID 读取兼容性；
+intrinsic identity 与当前 metadata 保持不变，有效类型与 availability 仅作用于当前检查。
+
+## 历史浮点控制省略形式
+
+`1.0 <= PTX < 1.4` 支持十二个保留 source omission 的 exact form：
+`div.f32`、`rcp.f32`、`sqrt.f32`、`rsqrt.f32`、`sin.f32`、`cos.f32`、`lg2.f32`
+与 `ex2.f32` 的解释为 `FloatingPointDefault::ApproximateFlushToZero`；
+`div.f64`、`sqrt.f64` 与 `mad.f64` 为 `RoundNearestEven`；`rsqrt.f64` 为无 FTZ 的
+`Approximate`。对应 final class 暴露 `inline static constexpr floating_point_default`，
+没有 source mode/rounding/FTZ member；DIV 也省略 `.full`。resolution 不插入 explicit
+modifier，也不改写 opcode。
+
+FP32 form 保持既有 all-target rule。FP64 form 要求 SM >= 13；只有 `div.f64` 与
+`sqrt.f64` 额外接受启用 `map_f64_to_f32` 的精确 generic `sm_10`、`sm_11` 或 `sm_12`。
+该 option 不会让 `rsqrt.f64` 或 `mad.f64` 在这些 target 上可用。`rcp.f64` 仍排除：manual 描述旧版 omitted-mode default，
+而 CUDA 13.3.33 拒绝复现的 form。此已记录的 manual/current-assembler discrepancy
+不扩大支持范围。既有 implicit `mad.f32`
+保持自身 contract。
+
+availability metadata 在 plain requirement 和各 DNF clause 中可指定 exclusive 上界
+`ptx_before: "1.4"`。省略上界表示无上界；格式错误、空或逆序 interval 均被拒绝。
+plain 上界失败在相应 source range 报 `UnsupportedPtxVersion`；DNF 失败保持
+`UnsupportedAvailability`。selection 不依赖 version；validation 使用当前 standalone
+context 或当前 source/owned/replacement module version。copy 与 clone 保留 omitted
+identity 和解释；升级至 PTX 1.4 后重新验证会失败，不会自动转换为 explicit form。
+
+WMMA 源码拼写保留 PTX 6.3 的 `.aligned` 边界。PTX 6.0 或 6.1 引入的
+156 个 FP16 输入、FP16 或 FP32 累加形式具有独立的 `*_implicit_aligned`
+variant 与 `*ImplicitAligned` 最终类：load 72 个、store 36 个、multiply-accumulate
+48 个。它们保留原始 PTX 下限和 SM70 要求，并要求 PTX `< 6.3`。现有现代类
+要求显式 `.aligned`，PTX 下限为 `6.3` 或各自更晚的原始下限。历史类没有
+`aligned` 字段、别名项、默认值或伪造的源码范围。两种拼写均保留不可变的
+`MatrixFamily::WMMA_LOAD`、`WMMA_STORE` 或 `WMMA_MMA` topology：这些 family
+蕴含参与 warp 的一致执行要求。此执行要求与按字节计算的地址对齐不同；
+fragment、layout、address 和 stride 检查保持不变。
+
+独立指令解析在没有版本上下文时选择实际写出的拼写。模块验证和指令可用性
+检查根据当前自有上下文或替换上下文应用半开版本区间。`shared::cta`、整数、
+subbyte/bit、BF16、TF32、FP64 及其他 PTX 6.3 或更晚引入的形式没有历史对应项。
+来源为
+[CUDA 13.3 所附 PTX 9.3 WMMA 描述](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld)。
+
+现有 96 个 FP16 输入 WMMA MMA 形式（48 个显式 `.aligned` 形式和 48 个隐式
+对应形式）暴露可选布尔 `satfinite`，默认值为 `false`。选中的 `.satfinite` 值
+要求 PTX `< 6.5`，并与形式原始下限和对齐区间取交集：隐式形式支持 PTX
+6.0/6.1 至 6.2，显式形式支持 PTX 6.3 至 6.4，均要求 SM70 或更新目标。
+NVIDIA 在 PTX 6.4 弃用浮点 `.satfinite`，并在 PTX 6.5 移除。省略此限定符
+保留形式原有可用性，包括现代 PTX 版本。饱和将正/负无穷映射为最大正/负
+有限值，将 NaN 映射为正零。类型化 `satfinite.value` 与源码位置在自有解析、
+复制及克隆后保留；当前上下文检查拒绝移除版本中的使用，不改变形式身份。
+整数饱和以及 BF16、TF32、FP64 和其他 MMA family 均保持不变。这些是语法及
+静态验证契约，没有验证 GPU 数值执行。参见
+[CUDA 13.3 PTX 9.3 WMMA MMA 参考](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma)。

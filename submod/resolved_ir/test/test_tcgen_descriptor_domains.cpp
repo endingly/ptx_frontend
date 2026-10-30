@@ -188,6 +188,19 @@ TEST(TcgenDescriptorDomains, AbsoluteModeRequiresExactKnownContext) {
   context.transpose_b = false;
   EXPECT_TRUE(validate_tcgen_shared_defined_fields({bits}, context)
                   .defined_fields_ok());
+  for (const std::string_view spelling : {"sm_103a", "compute_103a"}) {
+    context.target = base::parse_target_identity(spelling);
+    EXPECT_TRUE(validate_tcgen_shared_defined_fields({bits}, context)
+                    .defined_fields_ok());
+  }
+  for (const std::string_view spelling :
+       {"compute_103", "compute_103f", "compute_100a"}) {
+    context.target = base::parse_target_identity(spelling);
+    EXPECT_TRUE(
+        has_violation(validate_tcgen_shared_defined_fields({bits}, context),
+                      TcgenDescriptorViolation::AbsoluteTarget));
+  }
+  context.target = base::parse_target_identity("compute_103a");
   context.target->source_spelling = "sm_103f";
   EXPECT_TRUE(
       has_violation(validate_tcgen_shared_defined_fields({bits}, context),

@@ -686,7 +686,7 @@ PtxCstParser::parseCallPrototype(TokenId label, TokenId colon) {
       return std::optional<syntax_cst::CstCallPrototypeAbiSuffix>{};
     }
     const TokenId suffix = consume();
-    auto count = expect(TokenKind::Decimal, "ABI-preserve register count");
+    auto count = expectIntegerLiteral("ABI-preserve register count");
     if (!count)
       return std::unexpected(count.error());
     return syntax_cst::CstCallPrototypeAbiSuffix{
@@ -790,7 +790,7 @@ PtxCstParser::parseBranchTargets(TokenId label, TokenId colon) {
     TokenId last = *name;
     if (token(peek()).kind == TokenKind::Lt) {
       left_angle = consume();
-      auto parsed_count = expect(TokenKind::Decimal, "branch target count");
+      auto parsed_count = expectIntegerLiteral("branch target count");
       if (!parsed_count)
         return std::unexpected(parsed_count.error());
       count = *parsed_count;

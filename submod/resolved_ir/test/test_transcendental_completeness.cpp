@@ -73,13 +73,9 @@ TEST(TranscendentalCompleteness, ResolvesTypedApproxAndLowPrecisionCohorts) {
   EXPECT_EQ(TanhApproxBf16x2::type, ScalarType::BF16x2);
 }
 
-/** Reject legacy shorthand, forbidden modifiers, missing FTZ, and wrong arity. */
+/** Reject forbidden modifiers, missing FTZ, and wrong arity. */
 TEST(TranscendentalCompleteness, RejectsInvalidExplicitForms) {
   for (const auto source : {
-           "sin.f32 %f0, %f1;",
-           "cos.f32 %f0, %f1;",
-           "lg2.f32 %f0, %f1;",
-           "ex2.f32 %f0, %f1;",
            "tanh.f32 %f0, %f1;",
            "sin.approx.f64 %d0, %d1;",
            "sin.approx.f32x2 %f0, %f1;",

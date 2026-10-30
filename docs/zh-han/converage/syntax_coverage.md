@@ -14,7 +14,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | Token 与 trivia | 部分支持 | identifier、dot identifier、literal、标点、注释、空白与部分稳定 directive；未修改的 `CstFile::sourceText()` 会从 token buffer 逐字节 round-trip |
 | 单 instruction fragment | 部分支持 | predicate guard、opcode/modifier、普通 operand、address、普通 `.xyzw/.rgba` scalar component 与 brace lane、vector member/vector pack，以及 call/branch 专用 operand shape；call argument、address base 与 named-array index 中的 component 尚不支持 |
 | Module header | 支持子集 | `.version`、`.target`、`.address_size` 会 lower 为有序且 independent 于 AST 的 source-configuration region。每个 region 拥有 effective version、target-option spelling、address width 与 explicit/defaulted provenance；省略 address size 时拥有 PTX 的 32-bit default，而非 host property。已识别的 region 会提供 target-aware module validation，但不构成 hardware configuration 或 execution contract。 |
-| Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复 ID 幂等且 overflow 会诊断 |
+| Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复的规范化 ID 一律诊断（包括相同 metadata），symbol table 拥有 payload，overflow 会诊断；显式数值 metadata（包括 `0, 0`）要求 PTX ISA >= 3.2，不依赖 SM/debug option |
 | Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；不附着到 instruction，也不进入 Resolved IR |
 | Debug section directive | 支持子集 | outermost `.section name { ... }` 的匹配 brace 与有序 raw DWARF payload token 会保留；`.debug_str` 与 raw `name:` label 会绑定为 debug identity，payload width、relocation 和 offset semantic 仍未支持 |
 | Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
@@ -62,6 +62,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | 已建模的 `mad` | 支持子集 | 保留 integer 与 carry form；explicit-rounding FP32/FP64 form、operand、target minimum 及排除的 legacy profile 见 [MAD 覆盖](mad_coverage.md)。 |
 | 已建模的 `fma` | 支持 | 16 个 PTX 9.3 FMA variant、其 modifier/operand contract 与 availability 见 [FMA 覆盖矩阵](fma_coverage.md)；simulator execution 仍不支持 |
 | 已建模的 `div` | 支持子集 | frozen integer `div.u32`（PTX 1.0 / SM 0）与 explicit FP32/FP64 form；见 [DIV 覆盖](div_coverage.md)。zero divisor 保持接受，行为由 PTX 指定为 unspecified。 |
+| 历史浮点控制省略形式 | 支持子集 | 十二个 PTX 1.0–1.3 exact form 保留 source omission 与 typed `floating_point_default`；1.4 起仍要求 explicit mode。`rcp.f64` 因 manual/tool discrepancy 保持排除。见[解释与版本边界](../resolved_ir_design.md#历史浮点控制省略形式)。 |
 
 conversion family 的 inventory 已移至独立的 [conversion coverage](conversion_coverage.md)。
 该文档列出已建模 form 与有意保留的边界，但不重建已退役的 manual opcode ledger。
@@ -97,12 +98,12 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.callprototype` | D | T | T | Y | Y / I | C / I | 拥有 normalized signature 与已支持 ABI metadata。AST-free validation 会 recheck identity、scope 与 signature，不检查 prototype ABI/`.noreturn` availability；indirect-call availability 仍由 consumer 决定。 |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；indirect-call availability 仍由 consumer 决定 |
 | Call-table flist array | D | T | T | Y | Y / I | C / I | 已初始化 scalar u32/u64 一维 global/const array；拥有真实 storage identity、sparse 显式 function slot、完整公共 signature、lexical order 与 AST-free storage/function 关联。允许重复/隐式 zero tail；不证明 runtime pointer membership。 |
-| `.common` | G | R | — | — | — | — | 未建模 declaration directive |
+| `.common` | D | E | E | Y | Y | C / V | 普通 module-scope global definition 的独立 Common linkage；PTX 5.0 / SM 20，沿用 initializer/layout，AST-free eligibility 与有序 target 检查；无跨 object linker |
 | `.const` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.entry` | D | E | E | Y | Y | C | 既有 function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | entry-only、零参数、PTX 7.8 modeled availability；target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复 ID 幂等，overflow 诊断 |
+| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；overflow 诊断；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
 | `.func` | D | E | E | Y | Y | C | 既有 function node |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |

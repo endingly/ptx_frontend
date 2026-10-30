@@ -10,6 +10,13 @@ expression。指令数值位置拒绝这两类错误。原有 optional
 conditional 两个分支及 logical 两个 operand 均检查，即使值未被选中；
 浮点溢出不新增统一的 finite-only 限制。
 
+十进制浮点常量允许小数点两侧至少一侧有数字，例如 `1.`、`.5`、`1.e2`；
+也允许带指数的数字序列，例如 `1e2`。指数由 `e`/`E`、可选符号及必需的数字组成。
+浮点常量不带大小后缀，先解码为 binary64，再按现有规则转换到 `.f32` 或 `.f64`；
+整数 destination 仍不兼容。依据是 [PTX ISA 9.3 浮点常量](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-constants)。
+共享的浮点 lexical category 不扩展 `.version`：其 `major.minor` 语法仍要求小数点
+两侧都有十进制数字。
+
 二元 `&`、`|`、`^` 保持 usual arithmetic conversions：两个 signed 输入产生
 signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3 §4.5.5
 正文及有限 CUDA 13.3 assembler 交叉检查；Table 5 的 unsigned 摘要与之不同。
@@ -30,9 +37,30 @@ auto diagnostics =
 module 级 declaration 序列检查跨声明兼容性。`resolveModule()` 会自动运行 binding 与本
 pass，并在解析 instruction 前累积两者的诊断。
 
+Module `.reg` 与 `.local` 声明根据 source target 的 ABI 假设进行检查：
+PTX ISA 3.0 及以上且当前源码 target 为已识别的 SM 20 及以上时，这些变量必须在函数内声明。
+Frontend 不建模由调用者选择的禁用 ABI 编译开关。较早 PTX 版本与已识别的 SM 1.x target
+保留历史 module placement。Target 按源码顺序生效；后续未知或空 target 会清除先前的 placement context。
+
+声明语义检查每个实际 module occurrence，包括未使用的变量与冲突重声明，并在完整声明范围处
+报告 `InvalidDeclarationPlacement`。自有校验把每个 variable identity 及保留的 occurrence
+关联到其 source region，包括没有 storage record 的寄存器，并报告 `RuleViolation`。
+两个 validation overload 在源码与 AST 销毁后或使用替换源码 context 时仍重新检查 placement。
+`AvailableContext` 在 version 或已识别的当前 target 缺失时推迟此规则；严格校验在受影响的声明处
+报告 `MissingValidationContext`。其他 header 与 identity diagnostic 保持独立。
+函数内声明、nested block 与合法 register formal 沿用现有契约。依据为固定的 PTX 9.3
+[PTX 1.x 变更](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x)、
+[寄存器](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space)、
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space) 与
+[变量声明](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) 规则。
+
 ## Array 与 initializer
 
-整数字面量与指令立即数共享十进制、前导零八进制和十六进制解码规则。例如，
+寄存器声明不能使用方括号数组维度。此规则也适用于未使用的声明，并在第一个方括号维度处
+报告 `InvalidRegisterDeclarationShape`，不依赖类型或向量诊断。紧凑寄存器组（`r<2>`）
+仍是独立形式。自有形状与校验契约见[寄存器声明兼容性](register_type_policy.md)。
+
+整数字面量与指令立即数共享十进制、前导零八进制、二进制和十六进制解码规则。例如，
 `010` 的初始化值为 8，用作数组维度时也为 8；无符号后缀不改变基数。
 
 无法在 64 位源码数值域内解码的整数字面量属于非法表达式，而非待求值的合法值。
@@ -62,7 +90,7 @@ function call；该限制不影响允许的 opaque handle `mov` retrieval。
 ## Unified UUID attribute
 
 对于已建模的 `.unified(upper, lower)` attribute，declaration semantics 将两个 direct
-integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、十六进制及
+integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、二进制、十六进制及
 支持的 unsigned suffix 沿用 integer-literal rule；overflow 会指向出错 token，而不会截断。
 该检查同样适用于合法的 global variable 与 device function definition/prototype，并发生在
 storage metadata 或未来 function metadata backend 消费该值之前。placement、PTX-version 与
@@ -138,7 +166,7 @@ warning severity、backend resource feasibility 与数值上限仍不属于本 p
 
 ## Debug metadata 边界
 
-`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复 file index 幂等，
+`.file`/`.loc` 与 `.debug_str` 的 identity table 由 binding 负责：重复的规范化 file index 一律诊断，并保留当前/首次 range，
 `.loc` file reference 必须解析，`function_name` 只能标识 `.debug_str` 自身或其中 raw label。
 本 declaration pass 不增加 DWARF payload expression、source attachment 或 resource
 feasibility semantic。

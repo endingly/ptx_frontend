@@ -17,16 +17,16 @@ namespace {
 /** Synthetic availability gate without changing any canonical instruction form. */
 constexpr checker::AvailabilityDescriptor kMapAvailability{
     .any_of = {{{.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {10},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true},
                 {.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {11},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true},
                 {.minimum_ptx_version = {1, 0},
-                 .has_exact_target = true,
                  .exact_target_architecture = {12},
+                 .has_exact_target = true,
                  .requires_map_f64_to_f32 = true}}},
     .any_of_count = 3,
 };
@@ -72,7 +72,7 @@ TEST(SourceTargetOptions, OwnsExactMapOptionAndResetsAcrossRegions) {
   std::optional<ResolvedModule> owned;
   {
     const std::string source = R"ptx(
-.version 1.5
+.version 3.0
 .target sm_10, map_f64_to_f32, texmode_unified
 .address_size 64
 .func first() { ret; }
@@ -128,7 +128,7 @@ TEST(SourceTargetOptions, RejectsNearSpellingsAtSourceAndOwnedBoundaries) {
     const auto invalid_ast = invalid_parser.parseModule();
     EXPECT_FALSE(invalid_ast && invalid_ast.diagnostics.empty());
     PtxSyntaxParser valid_parser{
-        ".version 1.5\n.target sm_10, debug\n.func f() { ret; }\n"};
+        ".version 3.0\n.target sm_10, debug\n.func f() { ret; }\n"};
     const auto valid_ast = valid_parser.parseModule();
     ASSERT_TRUE(valid_ast && valid_ast.diagnostics.empty());
     auto owned = resolveAndValidateModule(*valid_ast);
@@ -154,7 +154,7 @@ TEST(SourceTargetOptions, AstValidationUsesReplacementSourceOption) {
 .target sm_10, map_f64_to_f32
 .func f() { ret; }
 )ptx"};
-  PtxSyntaxParser replacement{R"ptx(.version 1.5
+  PtxSyntaxParser replacement{R"ptx(.version 3.0
 .target sm_10, debug
 .func f() { ret; }
 )ptx"};

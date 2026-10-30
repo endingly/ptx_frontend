@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from ptx_frontend.spec.normalize.availability import validate_availability_targets, parse_ptx_version, validate_ptx_interval
+
 from ptx_frontend.spec.normalize import (
     parse_availability_target,
     validate_availability_family,
@@ -26,6 +28,8 @@ class AvailabilityClauseModel:
     flavor: str = "Generic"
     capabilities: tuple[str, ...] = ()
     map_f64_to_f32: str = "false"
+    targets: tuple[tuple[int, str], ...] = ()
+    ptx_before: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -40,11 +44,13 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
     """Validate metadata and preserve its exact alternative order."""
 
     if "any_of" not in availability:
-        major, minor = _parse_ptx_version(availability.get("ptx", "0.0"))
+        validate_ptx_interval(dict(availability))
+        major, minor = parse_ptx_version(availability.get("ptx", "0.0"))
         return AvailabilityModel(AvailabilityClauseModel(
             major, minor,
             validate_availability_sm_version(availability.get("sm", 0)),
             validate_availability_family(availability["family"]) if "family" in availability else "",
+            ptx_before=parse_ptx_version(availability["ptx_before"]) if "ptx_before" in availability else None,
         ), ())
     clauses = availability["any_of"]
     assert isinstance(clauses, list)
@@ -53,7 +59,11 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
         assert isinstance(clause, dict)
         if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
-        major, minor = _parse_ptx_version(clause.get("ptx", "0.0"))
+        validate_ptx_interval(clause)
+        major, minor = parse_ptx_version(clause.get("ptx", "0.0"))
+        targets = validate_availability_targets(clause["targets"]) if "targets" in clause else ()
+        if targets and "target" in clause:
+            raise ValueError("availability target and targets are mutually exclusive")
         target = clause.get("target")
         number, flavor = parse_availability_target(target) if target is not None else (0, "Generic")
         family = validate_availability_family(clause["family"]) if "family" in clause else ""
@@ -63,19 +73,12 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
             major, minor, validate_availability_sm_version(clause.get("sm", 0)),
             family,
             str(target is not None).lower(), number, flavor, tuple(capabilities),
-            str(clause.get("map_f64_to_f32", False)).lower(),
+            str(clause.get("map_f64_to_f32", False)).lower(), targets,
+            parse_ptx_version(clause["ptx_before"]) if "ptx_before" in clause else None,
         ))
     return AvailabilityModel(None, tuple(models))
 
 
 def _parse_ptx_version(value: object) -> tuple[int, int]:
-    """Parse decimal major.minor components, each within the uint16_t range."""
-
-    text = str(value)
-    pieces = text.split(".")
-    if len(pieces) != 2 or not all(piece.isdecimal() for piece in pieces):
-        raise ValueError(f"invalid PTX availability version {value!r}")
-    major, minor = (int(piece) for piece in pieces)
-    if not (0 <= major <= 0xFFFF and 0 <= minor <= 0xFFFF):
-        raise ValueError(f"PTX availability version is out of range: {value!r}")
-    return major, minor
+    """Retain the emitter compatibility entrypoint for the shared PTX parser."""
+    return parse_ptx_version(value)

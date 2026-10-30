@@ -366,6 +366,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
 
   switch (immediate.kind) {
     case syntax_ast::AstImmediateKind::DecimalInteger:
+    case syntax_ast::AstImmediateKind::BinaryInteger:
     case syntax_ast::AstImmediateKind::HexInteger:
       return resolve_integer_literal(immediate, type, text, negative,
                                      require_target_range);
@@ -395,6 +396,13 @@ std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
 resolve_call_literal(
     const ResolvedCallLiteral& literal, SourceRange range,
     const declaration_semantics::FunctionParameterContract& formal) {
+  if (formal.vector_shape !=
+      call_argument_compatibility::CallArgumentVectorShape::Scalar) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = "A scalar call literal cannot satisfy a vector formal.",
+    });
+  }
   if (formal.scalar_type == ScalarType::Invalid) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,

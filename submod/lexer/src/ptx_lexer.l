@@ -76,7 +76,7 @@ static void ptx_advance_position(
 
 %x BLOCK_COMMENT
 
-WS              [ \t\r\n]+
+WS              [ \t\r\n\f]+
 LINE_CMT        "//"[^\n\r]*
 
 ID_START        [A-Za-z_$%]
@@ -88,11 +88,13 @@ DOT_IDENT       \.{DOT_ATOM}(::{DOT_ATOM})*
 
 F32HEX          0[fF][0-9a-fA-F]{8}
 F64HEX          0[dD][0-9a-fA-F]{16}
+BINARY          0[bB][01]+[uU]?
+BINARY_CANDIDATE 0[bB][A-Za-z0-9_$]*
 HEX             0[xX][0-9a-fA-F]+[uU]?
 DECIMAL         [0-9]+[uU]?
 INVALID_OCTAL   0[0-9]*[89][0-9]*[uU]?
 
-F64_A           [0-9]*\.[0-9]+([eE][-+]?[0-9]+)?
+F64_A           ([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][-+]?[0-9]+)?
 F64_B           [0-9]+[eE][-+]?[0-9]+
 F64             ({F64_A}|{F64_B})
 
@@ -171,6 +173,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 
 {F32HEX}                { TOK(F32Hex); }
 {F64HEX}                { TOK(F64Hex); }
+{BINARY}                { TOK(Binary); }
+{BINARY_CANDIDATE}      { TOK(Error); }
 {HEX}                   { TOK(Hex); }
 {F64}                   { TOK(F64); }
 {INVALID_OCTAL}         { TOK(Error); }
@@ -190,6 +194,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".extern"               { TOK(DotExtern); }
 ".visible"              { TOK(DotVisible); }
 ".weak"                 { TOK(DotWeak); }
+".common"               { TOK(DotCommon); }
 
 ".entry"                { TOK(DotEntry); }
 ".func"                 { TOK(DotFunc); }

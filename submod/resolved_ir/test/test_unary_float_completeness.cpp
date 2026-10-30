@@ -118,19 +118,16 @@ TEST(UnaryFloatCompleteness, ResolvesTypedModesAndFloatingContainers) {
   }
 }
 
-/** Reject legacy omissions, forbidden rounded FP64 FTZ, mixed modes, sinks, and integer literals. */
+/** Reject forbidden rounded FP64 FTZ, mixed modes, sinks, and integer literals. */
 TEST(UnaryFloatCompleteness, RejectsInvalidExplicitForms) {
   for (const auto source : {
-           "rcp.f32 %f0, %f1;",
            "rcp.approx.rn.f32 %f0, %f1;",
            "rcp.rn.ftz.f64 %d0, %d1;",
            "rcp.approx.f64 %d0, %d1;",
-           "sqrt.f64 %d0, %d1;",
            "sqrt.rp.ftz.f64 %d0, %d1;",
            "sqrt.rn.f32 _, %f1;",
            "sqrt.rn.sat.f32 %f0, %f1;",
            "sqrt.rn.full.f32 %f0, %f1;",
-           "rsqrt.f32 %f0, %f1;",
            "rsqrt.approx.rn.f32 %f0, %f1;",
            "rsqrt.approx.f64 _, %d1;",
            "rsqrt.approx.ftz.f64 %d0, 1;",

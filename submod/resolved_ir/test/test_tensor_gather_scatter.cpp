@@ -285,10 +285,15 @@ TEST(TensorGatherScatter, TargetFloorsAndFamilyInheritance) {
                     .has_value(),
                 expected)
           << instruction << " / " << item.version << " / " << item.target;
+      const auto profile = base::find_target_profile(item.target);
+      ASSERT_TRUE(profile);
+      const checker::PtxVersion minimum{profile->minimum_ptx_version.major,
+                                        profile->minimum_ptx_version.minor};
+      // A standalone instruction gate does not certify the module's source header.
       EXPECT_EQ(
           validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext)
               .has_value(),
-          expected)
+          expected && item.parsed_version >= minimum)
           << instruction << " / " << item.version << " / " << item.target;
     }
   }

@@ -38,6 +38,20 @@ using syntax_ast::AstVectorPack;
 
 std::string_view sourceSlice(std::string_view source, SourceRange range);
 
+/** Malformed binary tokens cannot be accepted as shorter valid immediates. */
+TEST(PtxSyntaxParser, RejectsMalformedBinaryImmediate) {
+  for (const std::string_view spelling : {"0b", "0b102U", "0b1UU", "0b1tail"}) {
+    const std::string source = "mov.u32 %r0, " + std::string{spelling} + ";";
+    PtxSyntaxParser parser(source);
+    const auto result = parser.parseInstruction();
+    EXPECT_FALSE(result.has_value()) << spelling;
+    ASSERT_FALSE(result.diagnostics.empty()) << spelling;
+    EXPECT_EQ(result.diagnostics.front().range,
+              (SourceRange{{1, 14},
+                           {1, static_cast<int32_t>(14 + spelling.size())}}));
+  }
+}
+
 /** Lowering retains nested address, coordinates, and delimiters with ranges. */
 TEST(PtxSyntaxParser, LowersTensorMapCoordinateComposite) {
   constexpr std::string_view source =

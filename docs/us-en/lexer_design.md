@@ -156,11 +156,13 @@ operators and precedence.
 The lexer recognizes:
 
 - Decimal and leading-zero octal integers, with an optional `u` or `U` suffix.
+- Binary integers beginning with `0b` or `0B`, with an optional `u` or `U` suffix.
 - Hexadecimal integers beginning with `0x` or `0X`, with an optional unsigned
   suffix.
 - PTX bit-pattern floating literals `0f` plus eight hex digits.
 - PTX bit-pattern double literals `0d` plus sixteen hex digits.
-- Decimal floating literals with a fractional part or exponent.
+- Decimal floating literals with a decimal point or exponent, including `1.` and
+  `1.e2`; a point must have digits on at least one side.
 - Double-quoted strings containing escaped characters.
 - The built-in spelling `WARP_SZ`.
 
@@ -173,6 +175,23 @@ the numeric radix. Integer decoding treats a leading zero as octal (`010` is
 8). An octal spelling containing `8` or `9`, such as `09U`, produces one
 `Error` token spanning the whole literal. Decimal floating spellings such as
 `09.0` and `09e1` remain floating tokens.
+
+Binary integers use `TokenKind::Binary` and `AstImmediateKind::BinaryInteger`,
+retaining their exact spelling and range. A malformed binary candidate such as
+`0b`, `0b102U`, or `0b1UU` produces one `Error` token through its identifier tail.
+Magnitude overflow is diagnosed during integer evaluation. Binary literals are
+available in general integer expressions, dimensions, operands, debug metadata,
+`.unified`, and `.language`. Bare integer fields also accept decimal, octal,
+hexadecimal, and binary spellings with optional unsigned suffixes: declaration
+and pointer alignments, parameterized counts, launch resources, ABI-preservation
+counts, compact branch-target counts, file timestamps/sizes, and source-location
+line/column values (including inline locations). Each field retains its existing
+range, positivity, alignment, version, and target checks; these slots do not
+accept signs, expressions, or `WARP_SZ`. Treating location line/column metadata
+as general integers follows PTX 9.3 §§4.5.1 and 11.5.4; no decimal-only restriction
+is stated there. `.address_size` retains its enumerated `32`/`64` source form,
+version components retain their decimal grammar, and initializer masks remain
+hex-only.
 
 ### Generic Identifiers
 
@@ -252,11 +271,18 @@ spelling where appropriate.
 
 ## Whitespace and Comments
 
-Spaces, tabs, and line endings are skipped.
+Spaces, horizontal tabs (`\t`), ASCII form feeds (`\f`, byte `0x0c`), and
+CR/LF line endings separate tokens and are retained as whitespace trivia. Form
+feed advances one byte column without starting a new line. Trailing whitespace
+is retained on the EOF token. Vertical tab (`0x0b`) and other unknown control
+bytes remain lexical errors outside strings and comments; this supported subset
+does not admit arbitrary ASCII controls. See the pinned
+[PTX 9.3 source format](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#source-format).
 
 Line comments begin with `//` and continue to, but do not consume, the line
 ending as part of the comment rule. The following whitespace rule consumes the
-line ending.
+line ending. A form feed inside a line comment does not terminate it; form
+feeds inside strings and either comment form retain their exact content.
 
 Block comments use an exclusive `BLOCK_COMMENT` scanner state:
 

@@ -1,3 +1,4 @@
+#include <ptx_frontend/base/ptx_identifier.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
@@ -51,8 +52,8 @@ checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
   result.any_of[0] = checker::AvailabilityClause{
       .minimum_ptx_version = minimum_ptx,
       .minimum_sm_version = minimum_sm,
-      .capabilities = {capability},
       .capability_count = 1,
+      .capabilities = {capability},
   };
   result.any_of_count = 1;
   return result;
@@ -612,6 +613,7 @@ concept ReferenceBearingOperandPayload =
     std::same_as<std::remove_cvref_t<Value>, ResolvedMbarrierStateToken> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedRegisterOrSink> ||
     std::same_as<std::remove_cvref_t<Value>, RegOrImm> ||
+    std::same_as<std::remove_cvref_t<Value>, ResolvedCvtSource> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedVideoOperand> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedShflSyncDestination> ||
     std::same_as<std::remove_cvref_t<Value>, ResolvedPredicatePair> ||
@@ -713,7 +715,8 @@ void collect_operand_references(
   } else if constexpr (std::same_as<Value, ResolvedVideoOperand>) {
     collect_operand_references(value.value.value, value.value.locs, fallback,
                                uses, address_resolution_policy);
-  } else if constexpr (std::same_as<Value, RegOrImm>) {
+  } else if constexpr ((std::same_as<Value, RegOrImm> ||
+                        std::same_as<Value, ResolvedCvtSource>)) {
     if (const auto* register_ref = std::get_if<ResolvedRegisterRef>(&value))
       collect_register(*register_ref);
   } else if constexpr (std::same_as<Value, ResolvedCpAsyncSourceControl>) {
@@ -1009,6 +1012,12 @@ class ReferenceCollector final : public detail::IReferenceObserver {
       const ResolvedMbarrierStateToken& value,
       std::span<const SourceRange> locations,
       checker::AddressSymbolResolutionPolicy policy) override {
+    collect_operand_references(value, locations, fallback_, uses_, policy);
+  }
+  /** Collect ordinary register identities retained by a conversion input. */
+  void cvt_source(const ResolvedCvtSource& value,
+                  std::span<const SourceRange> locations,
+                  checker::AddressSymbolResolutionPolicy policy) override {
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Collect declaration identities from a borrowed ResolvedMovSource. */
@@ -1707,6 +1716,61 @@ void check_target_items(const Items& items, SourceRange range,
                           "Target directive has no architecture item.");
 }
 
+/** Check source-header ISA features using the same catalog for both validators. */
+template <typename Items>
+  requires std::ranges::input_range<Items> &&
+           std::convertible_to<std::ranges::range_reference_t<Items>,
+                               std::string_view>
+void check_header_features(std::optional<checker::PtxVersion> version,
+                           const Items& options, bool explicit_address_size,
+                           SourceRange range,
+                           checker::CheckDiagnostics& diagnostics) {
+  const auto reject = [&](std::string message) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = range,
+        .message = std::move(message),
+    });
+  };
+  const auto require_version = [&](checker::PtxVersion minimum,
+                                   std::string_view feature) {
+    if (version && *version < minimum)
+      reject(fmt::format("{} requires PTX ISA >= {}.{}.", feature,
+                         minimum.major, minimum.minor));
+  };
+  require_version({1, 0}, ".version");
+  if (explicit_address_size)
+    require_version({2, 3}, ".address_size");
+  /** The first item alone selects an exact catalog profile. */
+  std::optional<base::TargetProfile> profile;
+  size_t index = 0;
+  for (const std::string_view option : options) {
+    if (index++ == 0) {
+      profile = base::find_target_profile(option);
+      if (profile)
+        require_version({profile->minimum_ptx_version.major,
+                         profile->minimum_ptx_version.minor},
+                        option);
+      continue;
+    }
+    switch (base::classify_target_directive_item(option)) {
+      case base::TargetDirectiveItemKind::TextureMode:
+        require_version({1, 5}, option);
+        break;
+      case base::TargetDirectiveItemKind::Debug:
+        require_version({3, 0}, option);
+        break;
+      case base::TargetDirectiveItemKind::MapF64ToF32:
+        if (profile && !profile->supports_map_f64_to_f32)
+          reject(fmt::format("map_f64_to_f32 is unsupported for target '{}'.",
+                             profile->identity.source_spelling));
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 /** Validate header payload/provenance consistency under public IR mutation. */
 void check_header_region(const ResolvedSourceTargetRegion& region,
                          SourceRange range,
@@ -1950,6 +2014,41 @@ void check_function_contract_integrity(const ResolvedFunction& function,
   }
 }
 
+/** Return the lane count of a supported ABI vector shape, or zero for junk. */
+uint8_t formal_vector_width(
+    call_argument_compatibility::CallArgumentVectorShape shape) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  switch (shape) {
+    case CallArgumentVectorShape::Scalar:
+      return 1;
+    case CallArgumentVectorShape::V2:
+      return 2;
+    case CallArgumentVectorShape::V4:
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+/** Validate vector formal invariants without borrowing syntax. */
+bool valid_formal_vector(
+    const declaration_semantics::FunctionParameterContract& parameter) {
+  const auto width = formal_vector_width(parameter.vector_shape);
+  if (width == 0)
+    return false;
+  if (width == 1)
+    return true;
+  const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
+  return parameter.state_space ==
+             call_argument_compatibility::CallArgumentStateSpace::Register &&
+         !parameter.is_array && !parameter.is_pointer &&
+         !parameter.opaque_kind && metadata &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::Fundamental &&
+         parameter.scalar_type != ScalarType::Pred &&
+         metadata->size_bytes * width <= 16;
+}
+
 /** Validate one modeled scalar contract without accepting constructed enum junk. */
 bool valid_scalar_contract(
     const declaration_semantics::FunctionParameterContract& parameter) {
@@ -1964,6 +2063,13 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
                      checker::CheckDiagnostics& diagnostics) {
   const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
     for (const auto& parameter : parameters) {
+      if (!valid_formal_vector(parameter) ||
+          (entry_inputs &&
+           parameter.vector_shape !=
+               call_argument_compatibility::CallArgumentVectorShape::Scalar))
+        append_model_mismatch(
+            diagnostics, range,
+            "Resolved function signature has invalid vector shape.");
       if ((parameter.alignment &&
            !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
           (parameter.array_extent &&
@@ -2191,7 +2297,11 @@ bool valid_parameter_pointer(const ResolvedParameterDeclaration& record) {
   const auto& pointer = *record.pointer;
   if (record.role != ParameterDeclarationRole::EntryInput ||
       !record.array_extents.empty() ||
-      (record.scalar_type != ScalarType::U32 &&
+      (record.scalar_type != ScalarType::B32 &&
+       record.scalar_type != ScalarType::B64 &&
+       record.scalar_type != ScalarType::S32 &&
+       record.scalar_type != ScalarType::S64 &&
+       record.scalar_type != ScalarType::U32 &&
        record.scalar_type != ScalarType::U64) ||
       !std::has_single_bit(pointer.pointed_alignment))
     return false;
@@ -2303,7 +2413,11 @@ void check_function_parameters(const ResolvedModule& module,
           : symbol.state_space == base::DeclarationStateSpace::Parameter
               ? CallArgumentStateSpace::Parameter
               : CallArgumentStateSpace::Invalid;
-      if (formal.state_space != expected_state ||
+      if (formal_vector_width(formal.vector_shape) !=
+              symbol.vector_width.value_or(1) ||
+          (symbol.vector_width && *symbol.vector_width != 2 &&
+           *symbol.vector_width != 4) ||
+          formal.state_space != expected_state ||
           formal.opaque_kind != bound_opaque ||
           (!bound_opaque &&
            (!bound_type || bound_type->type != formal.scalar_type)))
@@ -2366,6 +2480,221 @@ void check_function_parameters(const ResolvedModule& module,
                                : ParameterDeclarationRole::DeviceInput);
 }
 
+/** Gate explicit numeric file metadata independently of target/debug options. */
+void check_debug_file_availability(
+    std::span<const binding::DebugFileDeclaration> files,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  if (!version || *version >= checker::PtxVersion{3, 2})
+    return;
+  for (const auto& file : files) {
+    if (!file.timestamp && !file.file_size)
+      continue;
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = file.range,
+        .message = ".file timestamp and file size require PTX ISA >= 3.2.",
+    });
+  }
+}
+
+/** Rejoin retained debug declarations and references without needing source text. */
+void check_debug_files(const ResolvedModule& module,
+                       checker::CheckDiagnostics& diagnostics) {
+  const auto& table = module.symbols;
+  std::unordered_map<uint64_t, const binding::DebugFileDeclaration*> first;
+  std::vector<bool> covered(table.symbols().size());
+  const auto report = [&](SourceRange range, std::string message) {
+    append_model_mismatch(diagnostics, range, std::move(message));
+  };
+  const auto position = [](SourcePos value) {
+    return std::pair{value.line, value.column};
+  };
+  for (const auto& file : table.debugFiles()) {
+    const auto leaf_valid = [&](const binding::DebugFileSourceLeaf& leaf) {
+      return !leaf.text.empty() && leaf.range.start.line > 0 &&
+             leaf.range.start.column > 0 && leaf.range.end.line > 0 &&
+             leaf.range.end.column > 0 &&
+             position(file.range.start) <= position(leaf.range.start) &&
+             position(leaf.range.start) < position(leaf.range.end) &&
+             position(leaf.range.end) <= position(file.range.end);
+    };
+    const auto parsed = base::parseIntegerMagnitude(file.source_index.text);
+    if (file.range.start.line <= 0 || file.range.start.column <= 0 || !parsed ||
+        *parsed != file.index || !leaf_valid(file.source_index) ||
+        position(file.source_index.range.end) >
+            position(file.filename.range.start) ||
+        !leaf_valid(file.filename) || file.filename.text.size() < 2 ||
+        file.filename.text.front() != '"' || file.filename.text.back() != '"' ||
+        file.timestamp.has_value() != file.file_size.has_value() ||
+        (file.timestamp && (!leaf_valid(*file.timestamp) ||
+                            position(file.filename.range.end) >
+                                position(file.timestamp->range.start))) ||
+        (file.file_size &&
+         (!leaf_valid(*file.file_size) ||
+          (file.timestamp && position(file.timestamp->range.end) >
+                                 position(file.file_size->range.start)))))
+      report(file.range,
+             "Owned debug file payload has inconsistent source boundaries.");
+    const auto [entry, inserted] = first.try_emplace(file.index, &file);
+    if (!inserted)
+      report(file.source_index.range,
+             "Duplicate file index in owned debug metadata.");
+    const auto* symbol = owned_symbol(module, file.symbol_id);
+    if (!symbol || symbol->kind != binding::SymbolKind::DebugFile ||
+        symbol->scope != table.moduleScope() ||
+        symbol->name != std::to_string(file.index) ||
+        symbol->id != entry->second->symbol_id ||
+        symbol->declaration_range != entry->second->source_index.range) {
+      report(file.source_index.range,
+             "Owned debug file declaration disagrees with its first bound "
+             "identity.");
+    } else {
+      covered[file.symbol_id.value] = true;
+    }
+  }
+  for (size_t index = 0; index < table.symbols().size(); ++index) {
+    const auto& symbol = table.symbols()[index];
+    if (symbol.kind == binding::SymbolKind::DebugFile &&
+        (!covered[index] || symbol.id.value != index))
+      report(symbol.declaration_range,
+             "Owned debug file symbol has no retained declaration.");
+  }
+  for (const auto& reference : table.references()) {
+    if (reference.kind != binding::ReferenceKind::DebugFile)
+      continue;
+    const auto index = base::parseIntegerMagnitude(reference.spelling);
+    const auto found = index ? first.find(*index) : first.end();
+    if (found == first.end() || !reference.target ||
+        reference.target->symbol != found->second->symbol_id ||
+        reference.target->parameterized_index ||
+        reference.classification !=
+            binding::ReferenceClassification::DeclaredSymbol)
+      report(reference.range,
+             "Owned debug file reference disagrees with its retained "
+             "declaration.");
+  }
+}
+
+/** Check owned ordinary declaration names without relying on source identity. */
+void check_declaration_identifiers(const ResolvedModule& module,
+                                   checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind == binding::SymbolKind::DebugFile ||
+        (symbol.kind == binding::SymbolKind::DebugStringLabel &&
+         symbol.name == ".debug_str"))
+      continue;
+    if (!base::isIdentifier(symbol.name))
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = symbol.declaration_range,
+          .message =
+              fmt::format("Invalid declaration identifier '{}'.", symbol.name),
+      });
+  }
+}
+
+/** Reject register arrays from owned identities and declaration records. */
+void check_register_arrays(const ResolvedModule& module,
+                           checker::CheckDiagnostics& diagnostics) {
+  const auto report = [&](SourceRange range) {
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::RuleViolation,
+        .range = range,
+        .message = "Register declarations cannot be arrays.",
+    });
+  };
+  for (const auto& symbol : module.symbols.symbols())
+    if (symbol.state_space == base::DeclarationStateSpace::Register &&
+        symbol.is_array)
+      report(symbol.declaration_range);
+  const auto check_record = [&](const auto& record, SourceRange range) {
+    const auto* symbol = owned_symbol(module, record.symbol_id);
+    if (symbol &&
+        symbol->state_space == base::DeclarationStateSpace::Register &&
+        !record.array_extents.empty())
+      report(range);
+  };
+  for (const auto& record : module.storage_declarations)
+    check_record(record, record.range);
+  for (const auto& function : module.functions)
+    for (const auto& record : function.parameter_declarations)
+      check_record(record, function.range);
+}
+
+/** Recheck every owned module variable occurrence against its active source ABI. */
+void check_module_declaration_placement(
+    const ResolvedModule& module, ModuleValidationPolicy policy,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind != binding::SymbolKind::Variable ||
+        (symbol.state_space != base::DeclarationStateSpace::Register &&
+         symbol.state_space != base::DeclarationStateSpace::Local) ||
+        storage_owner(module, symbol.scope))
+      continue;
+    for (const auto& occurrence :
+         module.symbols.declarationOccurrences(symbol.id)) {
+      if (!occurrence.variable_declaration_range)
+        continue;
+      const auto range = *occurrence.variable_declaration_range;
+      size_t active_region = 0;
+      size_t matches = 0;
+      for (const auto& event : module.header.source_order) {
+        if (event.kind == ResolvedHeaderEventKind::Target) {
+          ++active_region;
+          continue;
+        }
+        const auto position = [](SourcePos value) {
+          return std::pair{value.line, value.column};
+        };
+        if (event.kind != ResolvedHeaderEventKind::Other ||
+            position(event.range.start) > position(range.start) ||
+            position(event.range.end) < position(range.end))
+          continue;
+        ++matches;
+        if (active_region >= module.header.regions.size()) {
+          append_model_mismatch(
+              diagnostics, range,
+              "Module declaration has no matching source region.");
+          continue;
+        }
+        const auto& region = module.header.regions[active_region];
+        const auto profile =
+            region.target_options.empty()
+                ? std::nullopt
+                : base::find_target_profile(region.target_options.front());
+        if (!region.version || !profile) {
+          if (policy == ModuleValidationPolicy::RequireCompleteContext)
+            diagnostics.push_back({
+                .kind = checker::CheckDiagnosticKind::MissingValidationContext,
+                .range = range,
+                .message =
+                    "Module declaration placement requires a PTX version "
+                    "and recognized active source target.",
+            });
+          continue;
+        }
+        if (*region.version >= checker::PtxVersion{3, 0} &&
+            profile->identity.architecture.number >= 20)
+          diagnostics.push_back({
+              .kind = checker::CheckDiagnosticKind::RuleViolation,
+              .range = range,
+              .message = fmt::format(
+                  "{} variables must be declared within a function for PTX ISA "
+                  ">= 3.0 targeting sm_20 or higher.",
+                  symbol.state_space == base::DeclarationStateSpace::Register
+                      ? ".reg"
+                      : ".local"),
+          });
+      }
+      if (matches != 1)
+        append_model_mismatch(
+            diagnostics, range,
+            "Module declaration must match one source event.");
+    }
+  }
+}
+
 /** Rejoin every storage occurrence and validate scalar allocation inputs. */
 void check_storage_declarations(const ResolvedModule& module,
                                 checker::CheckDiagnostics& diagnostics) {
@@ -2374,6 +2703,19 @@ void check_storage_declarations(const ResolvedModule& module,
   for (const auto& declaration : module.storage_declarations)
     records[declaration.symbol_id.value].push_back(&declaration);
   for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.linkage == binding::SymbolLinkage::Common) {
+      const auto* type =
+          symbol.type ? base::find_scalar_type_metadata(*symbol.type) : nullptr;
+      if (symbol.kind != binding::SymbolKind::Variable ||
+          symbol.scope != module.symbols.moduleScope() ||
+          symbol.state_space != base::DeclarationStateSpace::Global || !type ||
+          type->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          type->kind == base::ScalarKind::Pred)
+        append_model_mismatch(diagnostics, symbol.declaration_range,
+                              ".common requires an ordinary module-scope "
+                              "global variable.");
+    }
     if (symbol.kind != binding::SymbolKind::Variable ||
         !bound_storage_space(symbol))
       continue;
@@ -2441,6 +2783,13 @@ void check_storage_declarations(const ResolvedModule& module,
           diagnostics, declaration.range,
           "Storage declaration kind disagrees with its linkage.");
     const auto* scalar = std::get_if<ScalarType>(&declaration.element_type);
+    if (declaration.linkage == binding::SymbolLinkage::Common &&
+        (!scalar || declaration.legacy_texture ||
+         declaration.scope_id != module.symbols.moduleScope() ||
+         declaration.space != StorageSpace::Global))
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          ".common cannot qualify opaque or nonglobal storage.");
     if (!scalar)
       continue;
     const auto* bound_type =
@@ -2486,6 +2835,57 @@ void check_storage_declarations(const ResolvedModule& module,
       append_model_mismatch(
           diagnostics, declaration.range,
           "Scalar storage initialization disagrees with its declaration kind.");
+  }
+}
+
+/** Rejoin common declarators with ordered source events for AST-free availability. */
+void check_common_availability(const ResolvedModule& module,
+                               checker::CheckDiagnostics& diagnostics) {
+  for (const auto& declaration : module.storage_declarations) {
+    if (declaration.linkage != binding::SymbolLinkage::Common)
+      continue;
+    size_t active_region = 0;
+    size_t matches = 0;
+    for (const auto& event : module.header.source_order) {
+      if (event.kind == ResolvedHeaderEventKind::Target) {
+        ++active_region;
+        continue;
+      }
+      const auto position = [](SourcePos value) {
+        return std::pair{value.line, value.column};
+      };
+      if (event.kind != ResolvedHeaderEventKind::Other ||
+          position(event.range.start) > position(declaration.range.start) ||
+          position(event.range.end) < position(declaration.range.end))
+        continue;
+      ++matches;
+      if (active_region >= module.header.regions.size()) {
+        append_model_mismatch(diagnostics, declaration.range,
+                              "Common storage has no matching source region.");
+        continue;
+      }
+      const auto& region = module.header.regions[active_region];
+      if (region.version && *region.version < checker::PtxVersion{5, 0})
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = declaration.range,
+            .message = ".common requires PTX ISA >= 5.0.",
+        });
+      const auto profile =
+          region.target_options.empty()
+              ? std::nullopt
+              : base::find_target_profile(region.target_options.front());
+      if (profile && profile->identity.architecture.number < 20)
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = declaration.range,
+            .message = ".common requires target sm_20 or higher.",
+        });
+    }
+    if (matches != 1)
+      append_model_mismatch(
+          diagnostics, declaration.range,
+          "Common storage must match one module source event.");
   }
 }
 
@@ -2856,6 +3256,20 @@ CallArgumentProperties call_argument_properties(
 std::unordered_map<uint32_t, CallArgumentProperties> build_parameter_properties(
     const ResolvedModule& module) {
   std::unordered_map<uint32_t, CallArgumentProperties> properties;
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.state_space == base::DeclarationStateSpace::Register &&
+        symbol.type) {
+      const auto* metadata = base::find_scalar_type_metadata(*symbol.type);
+      properties.try_emplace(
+          symbol.id.value,
+          CallArgumentProperties{
+              .state_space = CallArgumentStateSpace::Register,
+              .scalar_type = metadata ? metadata->type : ScalarType::Invalid,
+              .vector_shape =
+                  call_vector_shape(symbol.vector_width.value_or(1)),
+          });
+    }
+  }
   for (const auto& function : module.functions) {
     for (const auto& declaration : function.parameter_declarations)
       properties.try_emplace(declaration.symbol_id.value,
@@ -3281,8 +3695,18 @@ checker::CheckResult validateModule(const ResolvedModule& module,
     invalid(module.range, "Resolved module has no owned source configuration.");
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_owned_header_order(module, diagnostics);
+  /** Source traversal preserves explicit address syntax even under IR mutation. */
+  const bool explicit_address_size =
+      std::ranges::any_of(module.header.source_order, [](const auto& event) {
+        return event.kind == ResolvedHeaderEventKind::AddressSize;
+      });
   for (const auto& region : module.header.regions) {
     check_header_region(region, region.range, diagnostics);
+    check_header_features(
+        region.version, region.target_options,
+        explicit_address_size || region.address_size_provenance ==
+                                     SourceConfigurationProvenance::Explicit,
+        region.range, diagnostics);
     if (!region.target_options.empty()) {
       const auto target =
           owned_target_context(region, diagnostics, region.range);
@@ -3308,10 +3732,17 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_debug_files(module, diagnostics);
+  check_declaration_identifiers(module, diagnostics);
+  check_register_arrays(module, diagnostics);
+  check_module_declaration_placement(module, policy, diagnostics);
   check_storage_declarations(module, diagnostics);
+  check_common_availability(module, diagnostics);
   const auto storage_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  check_debug_file_availability(module.symbols.debugFiles(), storage_version,
+                                diagnostics);
   check_opaque_storage(module, storage_version, diagnostics);
   check_call_tables(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
@@ -3475,6 +3906,17 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   if (policy == ModuleValidationPolicy::RequireCompleteContext)
     check_header_order(detail::module_header_order(ast), ast.range,
                        diagnostics);
+  /** Supplied source, rather than retained owned metadata, selects header features. */
+  const bool explicit_address_size =
+      std::ranges::any_of(ast.items, [](const auto& item) {
+        return std::holds_alternative<syntax_ast::AstAddressSizeDirective>(
+            item);
+      });
+  check_header_features(version, std::array<std::string_view, 0>{},
+                        explicit_address_size, ast.range, diagnostics);
+  check_debug_files(module, diagnostics);
+  check_declaration_identifiers(module, diagnostics);
+  check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
   for (const auto& function : module.functions) {
@@ -3494,6 +3936,11 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
           return std::string_view{item.text};
         }),
         target->range, diagnostics);
+    check_header_features(
+        version, target->targets | std::views::transform([](const auto& item) {
+                   return std::string_view{item.text};
+                 }),
+        false, target->range, diagnostics);
     bool seen_in_target = false;
     for (const auto& option : target->targets) {
       if (option.text != "texmode_unified" &&
@@ -3525,6 +3972,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     });
   // Retargeting must not bypass version/target-sensitive declaration rules.
   const auto rebound = binding::bindSymbols(ast);
+  check_debug_file_availability(rebound.table.debugFiles(), version,
+                                diagnostics);
   for (const auto& diagnostic : rebound.diagnostics) {
     diagnostics.push_back({
         .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,
@@ -3539,6 +3988,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         diagnostic.kind ==
             DeclarationKind::UnsupportedKernelResourcePtxVersion ||
         diagnostic.kind == DeclarationKind::UnsupportedDirectivePtxVersion ||
+        diagnostic.kind == DeclarationKind::UnsupportedDirectiveTarget ||
         diagnostic.kind == DeclarationKind::UnsupportedParameterDeclaration;
     diagnostics.push_back({
         .kind = availability

@@ -228,9 +228,9 @@ TEST(PtxDeclarationSemantics, ValidatesUnifiedAttributeUuidHalves) {
             expected_ranges.size());
 }
 
-/** Redeclaration identity compares integer values across octal and decimal spellings. */
-TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
-  for (const std::string count : {"8", "16"}) {
+/** Redeclaration identity compares integer values across supported radix spellings. */
+TEST(PtxDeclarationSemantics, CanonicalizesGeneralIntegerRedeclarationValues) {
+  for (const std::string count : {"8", "010u", "0x8U", "0B1000", "16"}) {
     SCOPED_TRACE(count);
     const auto result = check(
         ".version 9.3\n"
@@ -248,10 +248,46 @@ TEST(PtxDeclarationSemantics, CanonicalizesOctalRedeclarationValues) {
     EXPECT_TRUE(result.binding.diagnostics.empty());
     EXPECT_EQ(diagnosticCount(
                   result, DeclarationDiagnosticKind::IncompatibleRedeclaration),
-              count == "8" ? 0u : 3u);
-    if (count == "8")
+              count != "16" ? 0u : 3u);
+    if (count != "16")
       EXPECT_TRUE(result.diagnostics.empty());
   }
+}
+
+/** Directive magnitudes report their numeric leaf before owned uint32_t conversion. */
+TEST(PtxDeclarationSemantics, RejectsUnrepresentableDirectiveIntegerFields) {
+  for (const std::string value :
+       {"4294967296", "0x100000000U", "0b100000000000000000000000000000000",
+        "18446744073709551616", "0x10000000000000000"}) {
+    for (const std::string prefix :
+         {".entry k() .maxntid ", ".func f() .abi_preserve ",
+          ".func f() .abi_preserve_control ",
+          ".entry k() { { p: .callprototype _ () .abi_preserve ",
+          ".entry k() { { p: .callprototype _ () .abi_preserve_control "}) {
+      const bool prototype = prefix.find("callprototype") != std::string::npos;
+      const std::string source = ".version 9.3\n" + prefix + value +
+                                 (prototype ? "; } ret; }" : " { ret; }");
+      const auto result = check(source);
+      const auto expected =
+          value == "18446744073709551616" || value == "0x10000000000000000"
+              ? DeclarationDiagnosticKind::InvalidIntegerLiteral
+              : DeclarationDiagnosticKind::InvalidDeclarationDirective;
+      ASSERT_EQ(result.diagnostics.size(), 1u) << source;
+      EXPECT_EQ(result.diagnostics[0].kind, expected) << source;
+      const auto start = static_cast<int32_t>(prefix.size() + 1);
+      EXPECT_EQ(result.diagnostics[0].range,
+                (SourceRange{{2, start},
+                             {2, start + static_cast<int32_t>(value.size())}}));
+    }
+  }
+}
+
+/** Zero resources and ABI counts keep their established acceptance semantics. */
+TEST(PtxDeclarationSemantics, RetainsZeroDirectiveIntegerFields) {
+  const auto result = check(
+      ".version 9.3\n.entry k() .maxntid 0x0 { ret; }\n"
+      ".func f() .abi_preserve 0B0U .abi_preserve_control 00 { ret; }");
+  EXPECT_TRUE(result.diagnostics.empty());
 }
 
 /** External storage redeclarations compare known natural and written alignments. */
@@ -533,6 +569,85 @@ TEST(PtxDeclarationSemantics, ValidatesParameterDeclarationBoundaries) {
   for (const auto& test : cases) {
     const CheckedModule result = check(test.source);
     EXPECT_GT(diagnosticCount(result, test.kind), 0u) << test.source;
+  }
+}
+
+/** Integer and bit pointer declarations retain their exact source contracts. */
+TEST(PtxDeclarationSemantics, AcceptsIntegerAndBitEntryPointers) {
+  const std::pair<std::string_view, base::ScalarType> types[] = {
+      {".b32", base::ScalarType::B32}, {".b64", base::ScalarType::B64},
+      {".s32", base::ScalarType::S32}, {".s64", base::ScalarType::S64},
+      {".u32", base::ScalarType::U32}, {".u64", base::ScalarType::U64}};
+  for (const auto address_size : {"32", "64"}) {
+    for (const auto& [spelling, type] : types) {
+      SCOPED_TRACE(std::string(address_size) + " " + std::string(spelling));
+      const std::string source =
+          ".version 9.3\n.target sm_80\n.address_size " +
+          std::string(address_size) + "\n.entry k(.param .align 16 " +
+          std::string(spelling) + " .ptr .global .align 32 pointer) { ret; }";
+      const auto result = check(source);
+      EXPECT_TRUE(result.binding.diagnostics.empty());
+      EXPECT_TRUE(result.diagnostics.empty());
+      const auto& symbols = result.binding.table.symbols();
+      const auto symbol = std::ranges::find_if(
+          symbols, [](const auto& value) { return value.name == "pointer"; });
+      ASSERT_NE(symbol, symbols.end());
+      EXPECT_EQ(symbol->type, spelling);
+      EXPECT_EQ(symbol->address_alignment, 16u);
+      PtxSyntaxParser parser(source);
+      const auto ast = parser.parseModule();
+      ASSERT_TRUE(ast.has_value());
+      const auto function =
+          std::ranges::find_if(ast->items, [](const auto& item) {
+            return std::holds_alternative<syntax_ast::AstFunction>(item);
+          });
+      ASSERT_NE(function, ast->items.end());
+      const auto signature =
+          functionSignature(std::get<syntax_ast::AstFunction>(*function));
+      ASSERT_EQ(signature.parameters.size(), 1u);
+      const auto& formal = signature.parameters.front();
+      EXPECT_EQ(formal.scalar_type, type);
+      EXPECT_EQ(formal.type_spelling, spelling);
+      EXPECT_EQ(contractConstant(formal.alignment), 16u);
+      EXPECT_TRUE(formal.is_pointer);
+      EXPECT_EQ(formal.pointed_state_space,
+                call_argument_compatibility::PointedStateSpace::Global);
+      EXPECT_EQ(contractConstant(formal.pointer_alignment), 32u);
+    }
+  }
+}
+
+/** Pointer eligibility preserves scalar width, role, shape, and version gates. */
+TEST(PtxDeclarationSemantics, RejectsUnsupportedEntryPointerDeclarations) {
+  for (const auto spelling : {".b8", ".b16", ".s16", ".u16", ".b128", ".f16",
+                              ".f32", ".f64", ".pred", ".texref"}) {
+    SCOPED_TRACE(spelling);
+    const auto result = check(".version 9.3\n.target sm_80\n.entry k(.param " +
+                              std::string(spelling) + " .ptr p) {}");
+    EXPECT_GT(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u);
+  }
+  for (const auto source :
+       {".version 9.3\n.target sm_80\n.entry k(.param .b64 .ptr p[2]) {}",
+        ".version 9.3\n.target sm_80\n.func f(.param .s64 .ptr p);",
+        ".version 2.1\n.target sm_20\n.entry k(.param .s32 .ptr p) {}"}) {
+    const auto result = check(source);
+    EXPECT_GT(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+        0u)
+        << source;
+  }
+  const auto alignment = check(
+      ".version 9.3\n.target sm_80\n.entry k(.param .b64 .ptr .align 6 p) {}");
+  EXPECT_FALSE(alignment.diagnostics.empty());
+  for (const auto spelling : {".b32", ".b64", ".s32", ".s64"}) {
+    const auto result = check(".version 2.2\n.target sm_20\n.entry k(.param " +
+                              std::string(spelling) + " .ptr p) {}");
+    EXPECT_TRUE(result.binding.diagnostics.empty());
+    EXPECT_TRUE(result.diagnostics.empty()) << spelling;
   }
 }
 
@@ -1430,5 +1545,53 @@ TEST(PtxDeclarationSemantics, RejectsModuleScopeParameterVariables) {
       1u);
 }
 
+}  // namespace
+}  // namespace ptx_frontend::declaration_semantics
+
+namespace ptx_frontend::declaration_semantics {
+namespace {
+/** Vector register formals follow fundamental type and 128-bit limits. */
+TEST(PtxDeclarationSemantics, ValidatesVectorRegisterFormalBoundaries) {
+  for (const auto source : {".func f(.reg .v2 .u64 p) { ret; }",
+                            ".func (.reg .v4 .f32 p) f() { ret; }",
+                            ".func f(.reg .v4 .f16x2 p) { ret; }",
+                            ".func f(.reg .v2 .u8 p) { ret; }"}) {
+    SCOPED_TRACE(source);
+    EXPECT_TRUE(check(source).diagnostics.empty());
+  }
+  for (const auto source : {".func f(.reg .v2 .pred p) { ret; }",
+                            ".func f(.reg .v4 .u64 p) { ret; }",
+                            ".func f(.reg .v2 .b128 p) { ret; }",
+                            ".func f(.reg .v2 .bf16 p) { ret; }",
+                            ".func f(.reg .v2 .u32 p[2]) { ret; }",
+                            ".entry f(.reg .v2 .u32 p) { ret; }"}) {
+    SCOPED_TRACE(source);
+    EXPECT_GT(diagnosticCount(
+                  check(source),
+                  DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+              0u);
+  }
+}
+
+/** Typed signatures distinguish vectors and retain malformed constructed shapes. */
+TEST(PtxDeclarationSemantics, VectorRegisterSignaturesCompareShape) {
+  EXPECT_TRUE(check(".func f(.reg .v2 .u32 p); .func f(.reg .align 8 .v2 .u32 "
+                    "q) { ret; }")
+                  .diagnostics.empty());
+  for (const auto declaration : {".reg .u32 q", ".reg .v4 .u32 q"}) {
+    const auto result =
+        check(std::string(".func f(.reg .v2 .u32 p); .func f(") + declaration +
+              ") { ret; }");
+    EXPECT_FALSE(result.diagnostics.empty());
+  }
+  PtxSyntaxParser parser(".func f(.reg .v2 .u32 p) { ret; }");
+  auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  auto& parameter =
+      std::get<syntax_ast::AstFunction>(ast->items[0]).parameters[0];
+  parameter.vector_type->text = ".v3";
+  auto binding = binding::bindSymbols(*ast);
+  EXPECT_FALSE(checkDeclarations(*ast, binding.table).empty());
+}
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics

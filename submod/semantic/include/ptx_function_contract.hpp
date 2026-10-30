@@ -33,6 +33,9 @@ struct FunctionParameterContract {
   std::optional<NormalizedNumericValue> alignment;
   /** Modeled scalar identity, or Invalid for an unsupported source spelling. */
   base::ScalarType scalar_type{base::ScalarType::Invalid};
+  /** Vector shape of one by-value formal; Scalar denotes no vector modifier. */
+  call_argument_compatibility::CallArgumentVectorShape vector_shape{
+      call_argument_compatibility::CallArgumentVectorShape::Scalar};
   /** Present only for a name-only entry input; mutually exclusive with scalar_type. */
   std::optional<base::OpaqueResourceKind> opaque_kind;
   /** Retained source spelling for Invalid scalar diagnostics. */
@@ -53,6 +56,7 @@ struct FunctionParameterContract {
   bool operator==(const FunctionParameterContract& other) const {
     return state_space == other.state_space && alignment == other.alignment &&
            scalar_type == other.scalar_type &&
+           vector_shape == other.vector_shape &&
            opaque_kind == other.opaque_kind &&
            (scalar_type != base::ScalarType::Invalid ||
             type_spelling == other.type_spelling) &&
@@ -87,7 +91,7 @@ call_argument_properties(const FunctionParameterContract& contract) {
     return {
         .state_space = CallArgumentStateSpace::Invalid,
         .scalar_type = contract.scalar_type,
-        .vector_shape = CallArgumentVectorShape::Scalar,
+        .vector_shape = contract.vector_shape,
         .type_spelling = contract.type_spelling,
         .is_array = contract.is_array,
     };
@@ -95,7 +99,7 @@ call_argument_properties(const FunctionParameterContract& contract) {
   CallArgumentProperties properties{
       .state_space = contract.state_space,
       .scalar_type = contract.scalar_type,
-      .vector_shape = CallArgumentVectorShape::Scalar,
+      .vector_shape = contract.vector_shape,
       .type_spelling = contract.type_spelling,
       .array_alignment = *alignment,
       .is_array = contract.is_array,

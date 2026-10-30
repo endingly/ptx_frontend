@@ -232,6 +232,18 @@ requirements to those values. For example, `add.u32` and `add.u16x2` share the
 no-sat variant, while the latter value requires PTX 8.0 / sm_90. Do not create
 an `add_simd_no_sat_sm90` variant solely for that version difference.
 
+
+A historical omitted floating-control variant may declare
+`floating_point_default: approximate_flush_to_zero`, `approximate`, or
+`round_nearest_even`. This closed typed interpretation is separate from source
+modifiers: every declared `rounding`, `approx`, `full`, and `ftz` slot must have
+`presence: absent`. The first interpretation requires fixed `type: f32`; the
+other two require fixed `type: f64`. Unknown values or contradictory explicit
+controls/types are rejected. Normalization and Resolved IR preserve this fact;
+the generated exact class exposes static `FloatingPointDefault
+floating_point_default`, without synthesizing source modifier fields. See the
+[historical contract](resolved_ir_design.md#historical-omitted-floating-controls).
+
 ## Operands and operand patterns
 
 An operand has a stable `name`, syntax `kind`, semantic `role`, `access`, and
@@ -414,7 +426,10 @@ stores the policy; no runtime Resolved IR field is generated. Current scalar
 elements use `equal_or_wider`: the declared register size must be at least the
 instruction size, after which either-side bit types and signed/unsigned integer
 pairs are compatible, floats require exact type/size, and integer/float pairs
-remain incompatible. Immediate and special-register checks stay same-width. The
+remain incompatible. Immediate checks stay same-width. Conversion-only `cvt_scalar_src` and
+`cvt_register_src` carriers admit scalar special registers and selected hardware
+components; the former also admits immediates. Their special-register checks
+apply the declared width policy. Ordinary `reg_or_imm` keeps its existing domain. The
 current scalar `ld/st` domains do include `.b128`, with modifier-value
 availability at PTX 8.3 / SM 70; `.sys` with `.b128` additionally requires PTX
 8.4. An exact `.b128` declaration therefore satisfies a selected `.b128` memory
@@ -602,6 +617,17 @@ layouts additionally require PTX 2.0 / sm_20.
 
 ## Availability, rules, and examples
 
+
+Plain availability and every `any_of` clause may include `ptx_before: "1.4"`:
+the PTX version must be strictly below that exclusive bound and at least `ptx`
+(default `"0.0"`). Omission means no upper bound. Both versions must be decimal
+`major.minor` strings with uint16 components; malformed, empty, equal, or reversed
+intervals are rejected. The generator carries the optional bound to
+`AvailabilityDescriptor::ptx_before` or `AvailabilityClause::ptx_before`.
+Existing minimum-only metadata keeps its behavior. Plain upper-bound failures
+report a located `UnsupportedPtxVersion` with the exclusive limit; DNF failures
+retain `UnsupportedAvailability`.
+
 Every variant must declare:
 
 ```yaml
@@ -638,6 +664,25 @@ permit one through six clauses. `setmaxnreg` uses all six: exact `sm_90a`
 (PTX 8.0), exact `sm_100a` (8.6), exact `sm_120a` (8.7), enabled `sm_100f`
 and `sm_120f` families (8.8), and enabled `sm_110f` family (9.0). See
 [miscellaneous coverage](converage/miscellaneous_coverage.md) for the instruction contract.
+
+An `any_of` clause may use `targets: [sm_32, sm_35, sm_37]` for an exact
+architecture/flavor membership set. `targets` must be a nonempty list of unique
+canonical `sm_<uint32>[a|f]` spellings and is mutually exclusive with `target`.
+Membership requires an explicit target identity and is conjunctive with PTX, SM,
+family, capabilities, and source-option requirements; it never infers neighboring
+architectures or flavors. Generated `AvailabilityTarget` arrays have process
+lifetime and are borrowed by `AvailabilityClause::exact_targets`. The DNF limit
+remains six clauses; the target list has no fixed descriptor capacity. Manual
+consumers supplying both singular and set fields must satisfy both. Scalar member
+ordering changed to retain descriptor size; consumers must rebuild together.
+
+The explicit generic catalog includes `sm_32`, `sm_35`, `sm_37`, `sm_53`, `sm_60`,
+`sm_61`, `sm_62`, `sm_86`, `sm_87`, and `sm_88`, with no enabled family features.
+The first three have no modeled capabilities; `sm_53` and `sm_60`–`sm_62` have
+`graph_exec`; `sm_86`–`sm_88` have `reserved_smem` and `graph_exec`. Suffix variants
+and unlisted architectures remain unsupported. This is the explicit
+[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+contract, independent of the module's PTX instruction-version checks.
 
 An `any_of` clause may require the source programmer option with
 `map_f64_to_f32: true`, for example

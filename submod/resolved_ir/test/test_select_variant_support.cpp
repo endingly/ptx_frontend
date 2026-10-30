@@ -161,6 +161,55 @@ resolve_register_pack(const syntax_ast::AstInstruction& ast) {
   return resolve_fields(ast, syntax_descriptor, resolved_descriptor, "Pack");
 }
 
+/** Binary source categories and magnitudes survive normal integer conversion. */
+TEST(ResolveImmediateLiteral, BinaryCategoriesValuesAndSourceBits) {
+  for (const auto source : {"0b10", "0B10", "0b10u", "0B10U"}) {
+    const auto immediate = parse_immediate(source);
+    EXPECT_EQ(immediate.kind, syntax_ast::AstImmediateKind::BinaryInteger);
+    EXPECT_EQ(immediate.syntax.text, source);
+    const auto value = resolve_immediate_literal(immediate, ScalarType::U8);
+    ASSERT_TRUE(value.has_value()) << value.error().message;
+    EXPECT_EQ(value->bits, 2u);
+    EXPECT_EQ(value->integer_source_bits, 2u);
+  }
+  const auto narrowed =
+      resolve_immediate_literal(parse_immediate("0b100000000"), ScalarType::U8);
+  ASSERT_TRUE(narrowed.has_value());
+  EXPECT_EQ(narrowed->bits, 0u);
+  EXPECT_EQ(narrowed->integer_source_bits, 256u);
+  const auto negative =
+      resolve_immediate_literal(parse_immediate("-0b10"), ScalarType::S8);
+  ASSERT_TRUE(negative.has_value());
+  EXPECT_EQ(negative->bits, 254u);
+  EXPECT_TRUE(negative->is_negative);
+  const auto unsigned_negative =
+      resolve_immediate_literal(parse_immediate("-0b10U"), ScalarType::U64);
+  ASSERT_TRUE(unsigned_negative.has_value());
+  EXPECT_FALSE(unsigned_negative->is_negative);
+  EXPECT_EQ(unsigned_negative->bits, uint64_t{0} - 2u);
+  for (const auto suffix : {"", "u", "U"}) {
+    const std::string maximum = "0b" + std::string(64, '1') + suffix;
+    const auto value =
+        resolve_immediate_literal(parse_immediate(maximum), ScalarType::U64);
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value->bits, std::numeric_limits<uint64_t>::max());
+    EXPECT_FALSE(value->is_negative);
+  }
+}
+
+/** Externally constructed binary literals receive the same complete validation. */
+TEST(ResolveImmediateLiteral, RejectsInvalidBinaryTextOutsideLexer) {
+  const std::array<std::string, 6> invalid{
+      "0b", "0B2", "0b102U", "0b1UU", "0b1tail", "0b1" + std::string(64, '0')};
+  for (const auto& source : invalid) {
+    auto immediate = parse_immediate("0b1");
+    immediate.syntax.text = source;
+    const auto value = resolve_immediate_literal(immediate, ScalarType::U64);
+    ASSERT_FALSE(value.has_value()) << source;
+    EXPECT_EQ(value.error().range, immediate.syntax.range);
+  }
+}
+
 /** Resolve a synthetic pack against two candidate syntax layouts. */
 std::expected<ResolvedInstructionFields, ResolveDiagnostic>
 resolve_modern_pack_layouts(

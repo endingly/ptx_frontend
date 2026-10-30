@@ -34,9 +34,9 @@ SM 75 release+MMIO form, so the common checker never switches on `st`.
 Cache operators and cache-control hints have distinct semantic restrictions.
 
 Global cache forms cover cache operators, L1 eviction priorities, L2 eviction
-priorities (alone and combined with L1), and `L2::cache_hint` with its required
-`b64` cache-policy operand. L1 eviction requires PTX 7.4 / SM 70, cache policy
-requires PTX 7.4 / SM 80, and L2 eviction requires PTX 8.8 / SM 100 with a
+priorities (alone and combined with L1), and `L2::cache_hint` with an optional
+trailing `b64` cache-policy operand. L1 eviction requires PTX 7.4 / SM 70, cache
+policy requires PTX 7.4 / SM 80, and L2 eviction requires PTX 8.8 / SM 100 with a
 256-bit `.v8` 32-bit or `.v4` 64-bit vector. Other vector forms retain legacy
 128-bit layouts and target-qualified modern 256-bit layouts; only modern
 layouts admit partial-store sinks.
@@ -54,13 +54,15 @@ rejected as a read-only store address, including AST-free revalidation. It
 neither allocates unified memory nor weakens normal address-space or alignment
 diagnostics.
 
-## Known source-coverage gap
+## Optional cache-policy operand
 
-The current generated layouts require the final B64 cache-policy operand
-whenever `L2::cache_hint` is written. PTX 9.3 permits omitting that operand for
-LD, LDNC and ST. This is a model coverage gap tracked by
-[#281](https://github.com/endingly/ptx_frontend/issues/281), not an ISA-invalid
-spelling. Earlier CUDA 13.1 PTX 8.0 / SM 90 assembler rejection probes are
+LD, LDNC and ST accept both supplied and omitted trailing cache-policy operands
+with `.L2::cache_hint`, as implemented for
+[#281](https://github.com/endingly/ptx_frontend/issues/281). A supplied operand
+must be a 64-bit register (logical `b64` operand type); omission retains the
+cache-hint form without creating a policy value. The qualifier remains required to supply the operand, and
+omission preserves the same memory-space, type, target and vector-layout
+restrictions. Earlier CUDA 13.1 PTX 8.0 / SM 90 assembler rejection probes are
 historical compiler evidence and do not override the fixed PTX 9.3 syntax.
 
 This coverage performs source acceptance and target-aware validation only. It

@@ -48,6 +48,23 @@ std::string format_version(PtxVersion version) {
   return fmt::format("{}.{}", version.major, version.minor);
 }
 
+/** Append the exclusive PTX limit failure at the selected source range. */
+void append_ptx_upper_bound_diagnostic(
+    const AvailabilityDescriptor& availability, const TargetInfo& target,
+    const SourceRange& range, CheckDiagnostics& diagnostics) {
+  if (availability.ptx_before &&
+      target.ptx_version >= *availability.ptx_before) {
+    diagnostics.push_back(CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
+        .range = range,
+        .message = fmt::format("Availability requires PTX ISA < {} "
+                               "(exclusive), but target PTX ISA is {}.",
+                               format_version(*availability.ptx_before),
+                               format_version(target.ptx_version)),
+    });
+  }
+}
+
 bool has_enabled_family_feature(
     std::span<const std::string_view> enabled_family_features,
     std::string_view required_family) noexcept {
@@ -246,6 +263,8 @@ void append_value_availability_diagnostics(const OperandView& operand,
     });
     return;
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -396,6 +415,8 @@ void append_address_constraint_availability_diagnostics(
     });
     return;
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -743,7 +764,8 @@ bool is_available(const AvailabilityDescriptor& availability,
   if (availability.any_of_count != 0) {
     for (size_t index = 0; index < availability.any_of_count; ++index) {
       const AvailabilityClause& clause = availability.any_of[index];
-      if (target.ptx_version < clause.minimum_ptx_version ||
+      if ((clause.ptx_before && target.ptx_version >= *clause.ptx_before) ||
+          target.ptx_version < clause.minimum_ptx_version ||
           target.sm_version < clause.minimum_sm_version ||
           (clause.requires_map_f64_to_f32 && !target.map_f64_to_f32) ||
           (clause.has_exact_target &&
@@ -753,6 +775,13 @@ bool is_available(const AvailabilityDescriptor& availability,
           (!clause.required_family.empty() &&
            !has_enabled_family_feature(target.enabled_family_features,
                                        clause.required_family)))
+        continue;
+      if (!clause.exact_targets.empty() &&
+          (!target.identity ||
+           std::ranges::find(clause.exact_targets,
+                             AvailabilityTarget{target.identity->architecture,
+                                                target.identity->flavor}) ==
+               clause.exact_targets.end()))
         continue;
       bool capabilities_match = true;
       for (size_t capability = 0; capability < clause.capability_count;
@@ -768,7 +797,9 @@ bool is_available(const AvailabilityDescriptor& availability,
     }
     return false;
   }
-  return target.ptx_version >= availability.minimum_ptx_version &&
+  return (!availability.ptx_before ||
+          target.ptx_version < *availability.ptx_before) &&
+         target.ptx_version >= availability.minimum_ptx_version &&
          target.sm_version >= availability.minimum_sm_version &&
          (availability.required_family.empty() ||
           has_enabled_family_feature(target.enabled_family_features,
@@ -802,6 +833,9 @@ CheckResult check_availability(const VariantDescriptor& variant,
             variant.variant_name),
     }});
   }
+
+  append_ptx_upper_bound_diagnostic(availability, target,
+                                    context.instruction_range, diagnostics);
 
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
@@ -893,6 +927,70 @@ CheckResult check_execution_predicate(
 void append_matrix_operand_diagnostics(const MatrixInstructionDescriptor*,
                                        std::span<const OperandView>,
                                        const Context&, CheckDiagnostics&);
+
+/** Project scalar conversion carriers without consulting presentation spellings. */
+OperandView project_cvt_source(std::string_view field_id,
+                               const WithLocs<ResolvedCvtSource>& operand) {
+  OperandView view{.field_id = field_id, .locations = operand.locs};
+  if (const auto* reg = std::get_if<ResolvedRegisterRef>(&operand.value)) {
+    view.actual_shape = OperandShape::Register;
+    view.register_type = reg->declared_type;
+    if (reg->register_class != ResolvedRegisterClass::General ||
+        reg->vector_width ||
+        (reg->symbol_id &&
+         (!reg->declared_type ||
+          !base::find_scalar_type_metadata(*reg->declared_type))) ||
+        reg->declared_type == ScalarType::Pred ||
+        !valid_register_component(*reg))
+      view.register_type = ScalarType::Invalid;
+    view.register_symbol_id = reg->symbol_id;
+    view.register_class = reg->register_class;
+    view.register_vector_width = reg->vector_width;
+    view.register_ref = reg;
+  } else if (const auto* immediate =
+                 std::get_if<ResolvedImmediate>(&operand.value)) {
+    view.actual_shape = OperandShape::Immediate;
+    view.immediate_type = immediate->type;
+    view.immediate_bits = immediate->bits;
+    view.immediate_is_negative = immediate->is_negative;
+    view.integer_source_bits = immediate->integer_source_bits;
+  } else {
+    const auto& special = std::get<ResolvedSpecialRegisterRef>(operand.value);
+    view.actual_shape = OperandShape::SpecialRegister;
+    view.special_register_type = ScalarType::Invalid;
+    using base::SpecialRegisterKind;
+    const auto id = special.id;
+    bool valid_index = id.index == 0;
+    switch (id.kind) {
+      case SpecialRegisterKind::PerformanceMonitor:
+      case SpecialRegisterKind::PerformanceMonitor64:
+        valid_index = id.index < 8;
+        break;
+      case SpecialRegisterKind::Environment:
+        valid_index = id.index < 32;
+        break;
+      case SpecialRegisterKind::ReservedSmemOffset:
+        valid_index = id.index < 2;
+        break;
+      default:
+        break;
+    }
+    if (!valid_index || id.kind <= SpecialRegisterKind::Invalid ||
+        id.kind > SpecialRegisterKind::ReservedSmemOffset)
+      return view;
+    const auto metadata = base::metadata(id);
+    if (metadata.element_type == ScalarType::Invalid ||
+        metadata.element_type == ScalarType::Pred ||
+        (metadata.vector_width == 4) != special.component.has_value() ||
+        (special.component && *special.component > base::VectorComponent::Z))
+      return view;
+    view.special_register_type = metadata.element_type;
+    view.special_register_id = id;
+    view.value_availability = special_register_availability(metadata);
+    view.value_name = special.spelling;
+  }
+  return view;
+}
 
 /** Project vector MOV payloads while retaining real borrowed lane carriers. */
 OperandView project_mov_vector_source(
@@ -1936,7 +2034,8 @@ CheckResult check_operands(
       });
     } else if (operand->special_register_type &&
                !scalar_types_compatible(*operand->special_register_type,
-                                        expected_type)) {
+                                        expected_type,
+                                        descriptor.register_width_policy)) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::OperandTypeMismatch,
           .range = diagnostic_range(operand->locations, context),
@@ -2163,6 +2262,9 @@ CheckResult check_operand_layout_availability(const VariantDescriptor& variant,
     }});
   }
 
+  append_ptx_upper_bound_diagnostic(availability, target,
+                                    context.instruction_range, diagnostics);
+
   if (target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -2238,6 +2340,7 @@ CheckResult check_modifier_value_availability(
       });
       continue;
     }
+    append_ptx_upper_bound_diagnostic(availability, target, range, diagnostics);
     if (target.ptx_version < availability.minimum_ptx_version) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedPtxVersion,
@@ -3681,6 +3784,8 @@ CheckResult check_memory_vector(
     });
     return std::unexpected(std::move(diagnostics));
   }
+  append_ptx_upper_bound_diagnostic(availability, context.target, vector_range,
+                                    diagnostics);
   if (context.target.ptx_version < availability.minimum_ptx_version) {
     diagnostics.push_back(CheckDiagnostic{
         .kind = CheckDiagnosticKind::UnsupportedPtxVersion,

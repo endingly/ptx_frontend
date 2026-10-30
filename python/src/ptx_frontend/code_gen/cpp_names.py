@@ -42,7 +42,7 @@ REFERENCE_TYPES: tuple[str, ...] = (
     "RegOrImm", "ResolvedAddress", "ResolvedBranchTarget",
     "ResolvedBranchTargetSet", "ResolvedCallArguments", "ResolvedCallParameterRef",
     "ResolvedCpAsyncSourceControl", "ResolvedFunctionRef", "ResolvedIndirectCallee",
-    "ResolvedMbarrierStateToken", "ResolvedMovSource", "ResolvedPredicate",
+    "ResolvedCvtSource", "ResolvedMbarrierStateToken", "ResolvedMovSource", "ResolvedPredicate",
     "ResolvedPredicateOrSink", "ResolvedPredicatePair", "ResolvedPredicatePairOrSink",
     "ResolvedPredicateSource", "ResolvedRegisterOrSink", "ResolvedRegisterRef",
     "ResolvedRegisterVector", "ResolvedShflSyncDestination", "ResolvedSymbolRef",

@@ -19,10 +19,10 @@ PtxCstParser::parseLocDirective() {
   auto file_index = expectIntegerLiteral("source file index");
   if (!file_index)
     return std::unexpected(file_index.error());
-  auto line_number = expect(TokenKind::Decimal, "source line number");
+  auto line_number = expectIntegerLiteral("source line number");
   if (!line_number)
     return std::unexpected(line_number.error());
-  auto column_position = expect(TokenKind::Decimal, "source column position");
+  auto column_position = expectIntegerLiteral("source column position");
   if (!column_position)
     return std::unexpected(column_position.error());
 
@@ -65,11 +65,11 @@ PtxCstParser::parseLocDirective() {
     if (!inline_file_index)
       return std::unexpected(inline_file_index.error());
     auto inline_line_number =
-        expect(TokenKind::Decimal, "inlined source line number");
+        expectIntegerLiteral("inlined source line number");
     if (!inline_line_number)
       return std::unexpected(inline_line_number.error());
     auto inline_column_position =
-        expect(TokenKind::Decimal, "inlined source column position");
+        expectIntegerLiteral("inlined source column position");
     if (!inline_column_position)
       return std::unexpected(inline_column_position.error());
     last = *inline_column_position;
@@ -143,7 +143,7 @@ PtxCstParser::parseKernelResourceDirective() {
   }
 
   if (kind == TokenKind::DotExplicitcluster) {
-    if (token(peek()).kind == TokenKind::Decimal ||
+    if (isIntegerLiteral(token(peek()).kind) ||
         token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, ".explicitcluster does not accept a value"});
@@ -154,7 +154,7 @@ PtxCstParser::parseKernelResourceDirective() {
     };
   }
 
-  auto first = expect(TokenKind::Decimal, "kernel resource value");
+  auto first = expectIntegerLiteral("kernel resource value");
   if (!first)
     return std::unexpected(first.error());
   std::vector<TokenId> values{*first};
@@ -176,8 +176,7 @@ PtxCstParser::parseKernelResourceDirective() {
                                "thread-count kernel resource directives accept "
                                "at most three values"});
       }
-      auto value =
-          expect(TokenKind::Decimal, "kernel resource value after comma");
+      auto value = expectIntegerLiteral("kernel resource value after comma");
       if (!value)
         return std::unexpected(value.error());
       values.push_back(*value);
@@ -200,8 +199,7 @@ PtxCstParser::parseLanguageDirective() {
   std::vector<TokenId> commas;
   for (;;) {
     const TokenKind kind = token(peek()).kind;
-    if (kind != TokenKind::String && kind != TokenKind::Decimal &&
-        kind != TokenKind::Hex) {
+    if (kind != TokenKind::String && !isIntegerLiteral(kind)) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, "expected string or integer in .language"});
     }
@@ -368,6 +366,18 @@ PtxCstParser::parseModuleDirective() {
       auto version = expect(TokenKind::F64, "PTX version");
       if (!version)
         return std::unexpected(version.error());
+      // Version components require digits even when the shared float token does not.
+      const auto spelling = token(*version).text;
+      const auto point = spelling.find('.');
+      const auto is_digit = [](char character) {
+        return character >= '0' && character <= '9';
+      };
+      if (point == std::string_view::npos || point == 0 ||
+          point + 1 == spelling.size() ||
+          !std::ranges::all_of(spelling.substr(0, point), is_digit) ||
+          !std::ranges::all_of(spelling.substr(point + 1), is_digit))
+        return std::unexpected(CstParseDiagnostic{
+            token(*version).range, "expected PTX version in major.minor form"});
       arguments.push_back(*version);
       break;
     }
@@ -414,13 +424,13 @@ PtxCstParser::parseModuleDirective() {
       if (token(peek()).kind != TokenKind::Comma)
         break;
       separators.push_back(consume());
-      auto timestamp = expect(TokenKind::Decimal, "file timestamp");
+      auto timestamp = expectIntegerLiteral("file timestamp");
       if (!timestamp)
         return std::unexpected(timestamp.error());
       auto comma = expect(TokenKind::Comma, "comma before file size");
       if (!comma)
         return std::unexpected(comma.error());
-      auto size = expect(TokenKind::Decimal, "file size");
+      auto size = expectIntegerLiteral("file size");
       if (!size)
         return std::unexpected(size.error());
       arguments.push_back(*timestamp);
@@ -565,7 +575,7 @@ PtxCstParser::parseFunction(std::vector<TokenId> qualifiers,
       [this]() -> std::expected<syntax_cst::CstCallPrototypeAbiSuffix,
                                 CstParseDiagnostic> {
     const TokenId suffix_directive = consume();
-    auto count = expect(TokenKind::Decimal, "ABI preserved register count");
+    auto count = expectIntegerLiteral("ABI preserved register count");
     if (!count)
       return std::unexpected(count.error());
     return syntax_cst::CstCallPrototypeAbiSuffix{

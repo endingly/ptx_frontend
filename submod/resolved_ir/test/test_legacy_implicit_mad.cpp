@@ -22,9 +22,16 @@ static_assert(!HasRoundingMember<MadImplicitF32>);
 /** Build a complete function with typed floating, bit and invalid-width controls. */
 std::string implicitMadModule(std::string_view operation,
                               std::string_view target = "sm_10",
-                              std::string_view version = "1.0") {
-  return ".version " + std::string(version) + "\n.target " +
-         std::string(target) +
+                              std::string_view version = {}) {
+  std::string selected_version{version};
+  if (selected_version.empty()) {
+    const auto profile = base::find_target_profile(target);
+    if (profile)
+      selected_version = std::to_string(profile->minimum_ptx_version.major) +
+                         "." +
+                         std::to_string(profile->minimum_ptx_version.minor);
+  }
+  return ".version " + selected_version + "\n.target " + std::string(target) +
          "\n.func f() { .reg .f32 %f<4>; .reg .b32 %r<4>; "
          ".reg .f64 %d<4>; .reg .u32 %u; " +
          std::string(operation) + " }\n";

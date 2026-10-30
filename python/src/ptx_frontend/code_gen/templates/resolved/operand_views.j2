@@ -113,7 +113,7 @@
                   ++index;
                 }
                 return view;
-              }(){% elif model.structure == "operand_view_mov_vector_source" %}checker::project_mov_vector_source("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_value_vector" %}              [&]() -> OperandView {
+              }(){% elif model.structure == "operand_view_cvt_source" %}checker::project_cvt_source("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_mov_vector_source" %}checker::project_mov_vector_source("{{ model.field_id }}", {{ model.member_expr }}){% elif model.structure == "operand_view_value_vector" %}              [&]() -> OperandView {
                 OperandView view{
                   .field_id = "{{ model.field_id }}",
                   .actual_shape = {{ model.vector_cpp }},

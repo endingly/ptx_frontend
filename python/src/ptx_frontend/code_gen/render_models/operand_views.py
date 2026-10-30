@@ -496,6 +496,15 @@ class OperandCpAsyncSourceControlViewModel:
 
 
 @dataclass(frozen=True)
+class OperandCvtSourceViewModel:
+    """Conversion carrier projected by the typed checker helper."""
+
+    member_expr: str
+    field_id: str
+    structure: Literal["operand_view_cvt_source"] = "operand_view_cvt_source"
+
+
+@dataclass(frozen=True)
 class OperandMovSourceViewModel:
     """Final field identity, payload expression, and backend enum constants."""
 
@@ -553,6 +562,7 @@ OperandViewModel = (
     | OperandRegisterOrImmediateViewModel
     | OperandTcgenHalfSplitOffsetViewModel
     | OperandCpAsyncSourceControlViewModel
+    | OperandCvtSourceViewModel
     | OperandMovSourceViewModel
 )
 
@@ -984,6 +994,8 @@ def build_check_operand_view(
             predicate_cpp=_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, 'Predicate'),
             register_cpp=_cpp(backend, CppDomain.RESOLVED_OPERAND_SHAPES, 'Register'),
         )
+    if field.value_kind is ResolvedValueKind.CVT_SOURCE:
+        return OperandCvtSourceViewModel(member_expr=member_expr, field_id=field.name)
     if field.value_kind is ResolvedValueKind.MOV_SOURCE:
         return OperandMovSourceViewModel(
             global_cpp=_cpp(backend, CppDomain.MEMORY_STATE_SPACES, 'global'),

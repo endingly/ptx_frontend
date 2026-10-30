@@ -1,6 +1,7 @@
 from typing import Any
 from ptx_frontend.spec.model import (
     AsyncCompletionKind,
+    FloatingPointDefault,
     VideoInstructionSpec,
     VideoLanes,
     VideoOperation,
@@ -10,6 +11,7 @@ from ptx_frontend.spec.model import (
     OperandRole,
     OperandAccess,
     ModifierKind,
+    ModifierPresence,
     AtomicAddressQualifierPolicy,
     ConditionCodeEffect,
     FabricEndpointKind,
@@ -507,7 +509,18 @@ def normalize_instruction_spec(spec: dict[str, Any]) -> tuple[InstructionSpec, .
             _validate_modifier_type_expressions(modifiers, operand_layouts)
             _validate_modifier_state_space_expressions(modifiers, operand_layouts)
             copy_pairs, copy_formats = normalize_tcgen_copy_contract(raw_variant)
+            floating_default = raw_variant.get("floating_point_default")
+            if "floating_point_default" in raw_variant:
+                floating_default = FloatingPointDefault(floating_default)
+                if any(modifier.name in {"rounding", "approx", "full", "ftz"}
+                       and modifier.presence is not ModifierPresence.ABSENT for modifier in modifiers):
+                    raise ValueError("floating_point_default contradicts explicit floating controls")
+                types = [modifier for modifier in modifiers if modifier.name == "type"]
+                expected_type = "f32" if floating_default is FloatingPointDefault.APPROXIMATE_FLUSH_TO_ZERO else "f64"
+                if len(types) != 1 or types[0].presence is not ModifierPresence.FIXED or types[0].value != expected_type:
+                    raise ValueError("floating_point_default requires a matching fixed floating type")
             variant = VariantSpec(
+                    floating_point_default=floating_default,
                     name=raw_variant["name"],
                     completion_kind=AsyncCompletionKind(
                         raw_variant.get("completion_kind", "none")

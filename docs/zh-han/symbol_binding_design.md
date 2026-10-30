@@ -30,7 +30,9 @@ function scope，每个 nested `AstBlock` 则有按 source range 识别的 child
 
 `SymbolId` 与 `ScopeId` 是强类型索引。`Symbol` 保留名称、kind、声明位置，以及变量或
 parameter 的 state space/type；function symbol 还记录 `.func/.entry` 类别。
-`SymbolLinkage` 直接记录 `.extern/.visible/.weak`；function symbol 通过 `owned_scope` 指向其
+`SymbolLinkage` 直接记录 `.extern/.visible/.weak/.common`。`Common` 与 `Weak`、
+`Visible` 保持不同，表示普通 module-scope global definition；binding 不选择跨 object
+的 definition。Function symbol 通过 `owned_scope` 指向其
 function scope。若同一 function 同时存在 prototype 与
 definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 definition。
 每个 function scope 同时拥有该次声明的 `SourceRange`。`functionScope(range)` 返回唯一
@@ -42,13 +44,35 @@ definition，每个 item 都有独立 scope，而 `owned_scope` 优先指向 def
 control-flow metadata 则有意保持 function-local，而非 block-local。
 
 debug identity 使用独立的 module metadata namespace。`.file` index 会规范化为
-`uint64_t`（decimal/octal/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
-有意复用第一个 `SymbolId`。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
+`uint64_t`（decimal/octal/binary/hex 与可选 `u`/`U` suffix），并以 `DebugFile` symbol 绑定；重复 index
+一律报错，即使 filename 与 metadata 完全相同；诊断保留当前及首次 index 的 range。
+第一个 `SymbolId` 仅用于诊断恢复与 `.loc` binding；不同 index 可以命名同一文件。
+`SymbolTable::debugFiles()` 借用按源码顺序拥有的记录，保存规范化 index、bound symbol、
+原始 index/filename token、可选 timestamp/file-size token 及其 source range；被拒绝的
+重复声明也保留。filename escape 不解码，也不做路径去重；省略的数值 metadata 仍表示默认零。
+此约束依据 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
+及 CUDA 13.3 `ptxas` 的重复 index 诊断。`.debug_str` section 本身及其 raw `name:` payload label 都会成为
 `DebugStringLabel` symbol。普通 `SymbolTable::lookup()` 会跳过这两种 debug kind，因此 PTX
 program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_at` file field 会生成
 `DebugFile` reference，而 `function_name` 生成 `DebugFunctionName` reference；后者只能解析为
 `.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
 但绝不作为 PTX operand。
+
+声明拼写在词法分析之后按
+[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers)
+的 ASCII 文法检查：字母可单独成名；以 `_`、`$` 或 `%` 开头时，后面至少还需一个
+字母、数字、`_` 或 `$`。百分号只能位于开头。因此 `_x`、`$x`、`%r` 与 `_x<2>`
+等参数化基名仍合法，普通声明中的 `_` 或 `$` 则在名称 token 处报告
+`InvalidIdentifier`。紧凑声明的前缀遵循相同规则：`_x<2>`、`$x<2>` 合法，
+`_<2>`、`$<2>` 则被拒绝。检查覆盖变量、函数、普通形参、标签、别名及 `.debug_str`
+原始载荷标签；调试文件编号与合成的 `.debug_str` 节身份不受该名称文法约束。
+声明检查直接读取 AST 拼写，不依赖符号查找；无 AST 的模块验证检查保留名称，
+并在声明名称范围报告 `RuleViolation`。源码关联仍保留拼写身份，不规范化名称。
+
+词法器仍将 `_` 保留为标识符，以支持上下文用途。指令 sink 继续由具体操作数规则决定。
+按 [PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype)，
+`.callprototype` 保留强制的函数名 `_`，并允许输入与返回形参使用虚拟名称 `_`；
+这些虚拟名称不成为绑定符号或 owned ABI 名称。`$` 没有对应例外。
 
 ## Parameterized variable name
 

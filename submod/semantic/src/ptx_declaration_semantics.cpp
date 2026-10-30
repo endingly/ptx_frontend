@@ -1,5 +1,6 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include <ptx_frontend/base/ptx_identifier.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_target.hpp>
 
@@ -402,6 +403,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
             case syntax_ast::AstImmediateKind::DecimalInteger:
+            case syntax_ast::AstImmediateKind::BinaryInteger:
             case syntax_ast::AstImmediateKind::HexInteger: {
               const auto integer = parseIntegerLiteral(value.value.syntax.text);
               if (!integer) {
@@ -633,6 +635,8 @@ binding::SymbolLinkage declarationLinkage(
       return binding::SymbolLinkage::Visible;
     if (qualifier.text == ".weak")
       return binding::SymbolLinkage::Weak;
+    if (qualifier.text == ".common")
+      return binding::SymbolLinkage::Common;
   }
   return binding::SymbolLinkage::None;
 }
@@ -746,19 +750,39 @@ NormalizedNumericValue parameterArrayExtentContract(
   return InvalidStructuralKey{expressionKey(expression)};
 }
 
+/** Normalize the optional vector modifier without accepting constructed junk. */
+call_argument_compatibility::CallArgumentVectorShape parameterVectorShape(
+    const std::optional<syntax_ast::AstSyntax>& vector_type) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  if (!vector_type)
+    return CallArgumentVectorShape::Scalar;
+  if (vector_type->text == ".v2")
+    return CallArgumentVectorShape::V2;
+  if (vector_type->text == ".v4")
+    return CallArgumentVectorShape::V4;
+  return CallArgumentVectorShape::Invalid;
+}
+
+/** Build an owned, normalized signature contract for one formal. */
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
   const base::ScalarType scalar =
       parameterContractScalarType(parameter.type.text);
+  const auto shape = parameterVectorShape(parameter.vector_type);
+  const uint64_t lanes =
+      !parameter.vector_type                                              ? 1
+      : shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
+                                                                          : 4;
   const std::optional<uint64_t> natural_alignment =
       scalar != base::ScalarType::Invalid
-          ? std::optional<uint64_t>{base::scalar_size_of(scalar)}
+          ? std::optional<uint64_t>{base::scalar_size_of(scalar) * lanes}
           : std::nullopt;
   return {
       .state_space = parameterStateSpace(parameter.state_space),
       .alignment =
           parameterAlignmentContract(parameter.alignment, natural_alignment),
       .scalar_type = scalar,
+      .vector_shape = shape,
       .opaque_kind = base::opaque_resource_kind(parameter.type.text),
       .type_spelling = parameter.type.text,
       .is_pointer = parameter.is_pointer,
@@ -867,11 +891,17 @@ class Checker {
     checkControlFlowMetadata(module_version, function_targets);
     checkKernelResources(module);
     checkM11Directives(module);
+    checkCommonLinkage(module);
+    std::optional<uint32_t> active_target;
     for (const auto& item : module.items) {
+      if (const auto* target =
+              std::get_if<syntax_ast::AstTargetDirective>(&item))
+        active_target = targetSmVersion(*target);
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration, module_version);
+        checkModulePlacement(*declaration, module_version, active_target);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           diagnose(
               DeclarationDiagnosticKind::ModuleScopeParameter,
@@ -885,15 +915,35 @@ class Checker {
             [function](const FunctionTargetContext& candidate) {
               return candidate.function == function;
             });
+        checkIdentifier(function->name);
         checkFunctionParameters(*function, module_version, context->target_sm);
         checkFunctionBodyDeclarations(function->body, module_version,
                                       context->target_sm);
+      } else if (const auto* alias =
+                     std::get_if<syntax_ast::AstAliasDirective>(&item)) {
+        checkIdentifier(alias->alias);
+      } else if (const auto* section =
+                     std::get_if<syntax_ast::AstSectionDirective>(&item);
+                 section && section->name.text == ".debug_str") {
+        for (size_t index = 0; index + 1 < section->payload.size(); ++index)
+          if (section->payload[index + 1].text == ":")
+            checkIdentifier(
+                syntax_ast::AstIdentifierRef{section->payload[index]});
       }
     }
     return std::move(diagnostics_);
   }
 
  private:
+  /** Diagnose a concrete declaration spelling at its identifier leaf. */
+  void checkIdentifier(const syntax_ast::AstIdentifierRef& identifier) {
+    if (!base::isIdentifier(identifier.syntax.text))
+      diagnose(DeclarationDiagnosticKind::InvalidIdentifier,
+               identifier.syntax.range,
+               fmt::format("Invalid declaration identifier '{}'.",
+                           identifier.syntax.text));
+  }
+
   struct SeenDeclaration {
     std::variant<std::string, FunctionSignature> signature;
     binding::SymbolLinkage linkage{};
@@ -1235,6 +1285,25 @@ class Checker {
     return std::nullopt;
   }
 
+  /** Enforce stack ABI placement only when both source context facts are known. */
+  void checkModulePlacement(
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> version, std::optional<uint32_t> target_sm) {
+    if (!version || *version < PtxVersion{3, 0} || !target_sm ||
+        *target_sm < 20 ||
+        (declaration.state_space != syntax_ast::AstStateSpace::Register &&
+         declaration.state_space != syntax_ast::AstStateSpace::Local))
+      return;
+    diagnose(DeclarationDiagnosticKind::InvalidDeclarationPlacement,
+             declaration.range,
+             fmt::format(
+                 "{} variables must be declared within a function for "
+                 "PTX ISA >= 3.0 targeting sm_20 or higher.",
+                 declaration.state_space == syntax_ast::AstStateSpace::Register
+                     ? ".reg"
+                     : ".local"));
+  }
+
   /** Return the supported architecture selected by one target directive. */
   static std::optional<uint32_t> targetSmVersion(
       const syntax_ast::AstTargetDirective& target) {
@@ -1266,6 +1335,26 @@ class Checker {
     return contexts;
   }
 
+  /** Reject directive magnitudes that cannot fit their owned uint32_t field. */
+  void checkDirectiveU32(const syntax_ast::AstSyntax& value,
+                         std::string_view field) {
+    const auto parsed = unsignedIntegerLiteral(value.text);
+    if (!parsed) {
+      reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
+    } else if (*parsed > std::numeric_limits<uint32_t>::max()) {
+      diagnose(
+          DeclarationDiagnosticKind::InvalidDeclarationDirective, value.range,
+          fmt::format("{} must be representable as a uint32_t value.", field));
+    }
+  }
+
+  /** Validate a preservation count before constructing its owned ABI contract. */
+  void checkAbiPreservationCount(
+      const std::optional<syntax_ast::AstCallPrototypeAbiSuffix>& suffix) {
+    if (suffix)
+      checkDirectiveU32(suffix->count, "ABI preservation count");
+  }
+
   void requirePtx(std::optional<PtxVersion> module_version, PtxVersion required,
                   SourceRange range, std::string_view spelling) {
     if (!module_version || *module_version >= required)
@@ -1290,6 +1379,54 @@ class Checker {
       if (!unsignedIntegerLiteral(value.text)) {
         reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
       }
+    }
+  }
+
+  /** Validate module-only common definitions without applying object-linker rules. */
+  void checkCommonLinkage(const syntax_ast::AstModule& module) {
+    const auto version = modulePtxVersion(module);
+    std::optional<uint32_t> active_sm;
+    for (const auto& item : module.items) {
+      if (const auto* target =
+              std::get_if<syntax_ast::AstTargetDirective>(&item)) {
+        active_sm = targetSmVersion(*target);
+      } else if (const auto* declaration =
+                     std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
+        checkCommonVariable(*declaration, version, active_sm, true);
+      } else if (const auto* function =
+                     std::get_if<syntax_ast::AstFunction>(&item)) {
+        for (const auto& qualifier : function->qualifiers) {
+          if (qualifier.text == ".common")
+            diagnose(DeclarationDiagnosticKind::InvalidLinkage, qualifier.range,
+                     ".common cannot qualify a function.");
+        }
+      }
+    }
+  }
+
+  /** Check common placement and availability while retaining ordinary storage rules. */
+  void checkCommonVariable(
+      const syntax_ast::AstVariableDeclaration& declaration,
+      std::optional<PtxVersion> version, std::optional<uint32_t> sm,
+      bool module_scope) {
+    for (const auto& qualifier : declaration.qualifiers) {
+      if (qualifier.text != ".common")
+        continue;
+      const auto* type = base::find_scalar_type_metadata(declaration.type.text);
+      if (!module_scope ||
+          declaration.state_space != syntax_ast::AstStateSpace::Global ||
+          declaration.legacy_texture || !type ||
+          type->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          type->kind == base::ScalarKind::Pred) {
+        diagnose(DeclarationDiagnosticKind::InvalidLinkage, qualifier.range,
+                 ".common requires a module-scope .global variable with a "
+                 "fundamental storage type.");
+      }
+      requirePtx(version, {5, 0}, qualifier.range, ".common");
+      if (sm && *sm < 20)
+        diagnose(DeclarationDiagnosticKind::UnsupportedDirectiveTarget,
+                 qualifier.range, ".common requires target sm_20 or higher.");
     }
   }
 
@@ -1390,6 +1527,12 @@ class Checker {
                      std::get_if<syntax_ast::AstFunction>(&item)) {
         check_attributes(function->attributes,
                          syntax_ast::AstStateSpace::Global, true);
+        for (const auto& resource : function->resources) {
+          for (const auto& value : resource.values)
+            checkDirectiveU32(value, "Kernel resource value");
+        }
+        checkAbiPreservationCount(function->abi_preserve);
+        checkAbiPreservationCount(function->abi_preserve_control);
         if (function->noreturn_directive) {
           requirePtx(module_version, {6, 4},
                      function->noreturn_directive->range, ".noreturn");
@@ -1442,6 +1585,8 @@ class Checker {
             } else if (const auto* prototype =
                            std::get_if<syntax_ast::AstCallPrototype>(
                                &body_item)) {
+              checkAbiPreservationCount(prototype->abi_preserve);
+              checkAbiPreservationCount(prototype->abi_preserve_control);
               if (prototype->noreturn_directive)
                 requirePtx(module_version, {6, 4},
                            prototype->noreturn_directive->range, ".noreturn");
@@ -1652,6 +1797,10 @@ class Checker {
                             ParameterContext context, bool is_final,
                             std::optional<PtxVersion> module_version,
                             std::optional<uint32_t> module_sm) {
+    if (parameter.name.syntax.text != "_" ||
+        (context != ParameterContext::CallPrototypeInput &&
+         context != ParameterContext::CallPrototypeReturn))
+      checkIdentifier(parameter.name);
     checkAlignment(parameter.alignment);
     checkAlignment(parameter.pointer_alignment);
     if (parameter.array_size)
@@ -1668,6 +1817,29 @@ class Checker {
                parameter.range,
                "This parameter role does not permit the declared state space.");
       return;
+    }
+
+    if (parameter.vector_type) {
+      const auto shape = parameterVectorShape(parameter.vector_type);
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.type.text);
+      const uint64_t lanes =
+          shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
+                                                                            : 4;
+      if (!is_register || parameter.is_array || parameter.is_pointer ||
+          shape ==
+              call_argument_compatibility::CallArgumentVectorShape::Invalid ||
+          !metadata ||
+          metadata->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          metadata->type == base::ScalarType::Pred ||
+          metadata->size_bytes * lanes > 16) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 "Vector formals require .reg .v2/.v4 non-predicate "
+                 "fundamental elements totaling at most 128 bits.");
+        return;
+      }
     }
 
     if (const auto opaque = base::opaque_resource_kind(parameter.type.text)) {
@@ -1738,12 +1910,16 @@ class Checker {
     if (parameter.is_pointer) {
       if (context != ParameterContext::EntryInput || !is_parameter || !scalar ||
           parameter.is_array ||
-          (*scalar != base::ScalarType::U32 &&
+          (*scalar != base::ScalarType::B32 &&
+           *scalar != base::ScalarType::B64 &&
+           *scalar != base::ScalarType::S32 &&
+           *scalar != base::ScalarType::S64 &&
+           *scalar != base::ScalarType::U32 &&
            *scalar != base::ScalarType::U64)) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
-                 ".ptr is supported only on scalar .entry .param .u32/.u64 "
-                 "inputs.");
+                 ".ptr requires a scalar .entry .param input with a 32-bit "
+                 "or 64-bit integer or bit type.");
       } else {
         requireParameterAvailability(module_version, module_sm, {2, 2}, 0,
                                      parameter.range, ".ptr entry parameter");
@@ -1976,10 +2152,22 @@ class Checker {
       std::optional<PtxVersion> module_version,
       std::optional<uint32_t> module_sm) {
     for (const auto& body_item : body) {
+      if (const auto* label = std::get_if<syntax_ast::AstLabel>(&body_item))
+        checkIdentifier(label->name);
+      else if (const auto* prototype =
+                   std::get_if<syntax_ast::AstCallPrototype>(&body_item))
+        checkIdentifier(prototype->label);
+      else if (const auto* targets =
+                   std::get_if<syntax_ast::AstCallTargets>(&body_item))
+        checkIdentifier(targets->label);
+      else if (const auto* targets =
+                   std::get_if<syntax_ast::AstBranchTargets>(&body_item))
+        checkIdentifier(targets->label);
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
         checkAlignment(declaration->alignment);
         checkVariableDeclaration(*declaration, module_version);
+        checkCommonVariable(*declaration, module_version, module_sm, false);
         if (declaration->state_space == syntax_ast::AstStateSpace::Parameter) {
           checkBodyParameterDeclaration(*declaration, module_version,
                                         module_sm);
@@ -2090,6 +2278,13 @@ class Checker {
     if (declaration.state_space != syntax_ast::AstStateSpace::Register)
       return;
 
+    for (const auto& declarator : declaration.declarators) {
+      if (!declarator.array_dimensions.empty())
+        diagnose(DeclarationDiagnosticKind::InvalidRegisterDeclarationShape,
+                 declarator.array_dimensions.front().range,
+                 "Register declarations cannot be arrays.");
+    }
+
     const auto* metadata =
         base::find_scalar_type_metadata(declaration.type.text);
     if (!metadata || metadata->register_declaration_usage ==
@@ -2156,6 +2351,7 @@ class Checker {
                "Modern opaque resource declarations require PTX ISA >= 1.5.");
     }
     for (const auto& declarator : declaration.declarators) {
+      checkIdentifier(declarator.name);
       std::vector<std::optional<uint64_t>> extents;
       extents.reserve(declarator.array_dimensions.size() +
                       (declaration.vector_type ? 1 : 0));

@@ -25,21 +25,21 @@ class LegacyShuffleTests(unittest.TestCase):
         cls.resolved = {item.variant_id: item for item in from_instruction_spec(cls.instruction).variants}
 
     def test_exact_inventory_targets_and_emission(self) -> None:
-        """Every mode carries all three exact generic clauses and PTX3.0."""
+        """Every mode carries the complete exact generic target set and PTX3.0."""
         names = {f"shfl_{mode}_b32" for mode in ("up", "down", "bfly", "idx")}
         self.assertEqual(set(self.variants) - {f"shfl_sync_{mode}_b32" for mode in
                                              ("up", "down", "bfly", "idx")}, names)
-        expected = {"any_of": [{"ptx": "3.0", "target": f"sm_{sm}"} for sm in (30, 50, 52)]}
+        expected = {"any_of": [{"ptx": "3.0", "targets": [f"sm_{sm}" for sm in (30, 32, 35, 37, 50, 52, 53, 60, 61, 62)]}]}
         for name in names:
             with self.subTest(variant=name):
                 self.assertEqual(self.variants[name].availability, expected)
                 self.assertEqual(dict(self.resolved[name].availability), expected)
                 emitted = emit_availability(expected)
-                self.assertIn(".any_of_count = 3", emitted)
-                self.assertEqual(emitted.count(".minimum_ptx_version = {3, 0}"), 3)
-                self.assertEqual(emitted.count(".has_exact_target = true"), 3)
-                for sm in (30, 50, 52):
-                    self.assertIn(f".exact_target_architecture = {{{sm}}}", emitted)
+                self.assertIn(".any_of_count = 1", emitted)
+                self.assertEqual(emitted.count(".minimum_ptx_version = {3, 0}"), 1)
+                self.assertIn(".exact_targets = checker::kAvailabilityTargets<", emitted)
+                for sm in (30, 32, 35, 37, 50, 52, 53, 60, 61, 62):
+                    self.assertIn(f"AvailabilityTarget{{ {{{sm}}}, base::TargetFlavor::Generic }}", emitted)
 
     def test_complete_destination_layout_and_control_contract_matrix(self) -> None:
         """Reuse synchronized data/predicate and b/c contracts, omitting only the mask."""

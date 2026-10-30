@@ -211,7 +211,9 @@ TcgenDefinedFieldReport validate_tcgen_shared_defined_fields(
       need(report, TcgenDescriptorObligation::Target);
     else {
       const auto accepted = base::find_target_profile("{{ model.absolute_target }}");
-      if (!accepted || *context.target != accepted->identity ||
+      const auto supplied = base::find_target_profile(context.target->source_spelling);
+      if (!accepted || !supplied || supplied->identity != *context.target ||
+          !base::same_target_identity(*context.target, accepted->identity) ||
           *context.ptx_version < checker::PtxVersion{{ '{' }}{{ model.absolute_major }}, {{ model.absolute_minor }}})
         add(report, TcgenDescriptorViolation::AbsoluteTarget,
             mask(*field(table, "absolute")));

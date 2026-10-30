@@ -33,7 +33,7 @@ TEST(ResolveCos, SelectsFrozenApproxVariant) {
 
 TEST(ResolveCos, RejectsInvalidForms) {
   for (const auto source :
-       {"cos.f32 %f0, %f1;", "cos.approx.f64 %d0, %d1;",
+       {"cos.ftz.f32 %f0, %f1;", "cos.approx.f64 %d0, %d1;",
         "cos.approx.f32x2 %f0, %f1;", "cos.rz.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(

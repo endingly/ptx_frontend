@@ -34,7 +34,9 @@ range-identified child block scope. The initial pass collects:
 `SymbolId` and `ScopeId` are strong index types. A `Symbol` retains its name,
 kind, declaration location, and the state space/type of a variable or
 parameter; a function symbol also records its `.func`/`.entry` classification.
-`SymbolLinkage` directly records `.extern`, `.visible`, or `.weak`.
+`SymbolLinkage` directly records `.extern`, `.visible`, `.weak`, or `.common`.
+`Common` remains distinct from `Weak` and `Visible`; it denotes an ordinary
+module-scope global definition, with no cross-object selection in binding.
 A function symbol points to its function scope through `owned_scope`. When a
 prototype and definition coexist, each item still has a distinct scope and
 `owned_scope` prefers the definition.
@@ -50,15 +52,46 @@ symbol, while sibling blocks remain invisible to each other. Labels and
 control-flow metadata are deliberately function-local rather than block-local.
 
 Debug identities use a separate module metadata namespace. `.file` indices are
-normalized to `uint64_t` (decimal/octal/hex and an optional `u`/`U` suffix) and bind
-as `DebugFile` symbols; repeated indices intentionally reuse the first
-`SymbolId`. A `.debug_str` section binds its name and each raw `name:` payload
+normalized to `uint64_t` (decimal/octal/binary/hex and an optional `u`/`U` suffix) and bind
+as `DebugFile` symbols. Every repeated normalized index is an error, even for
+identical filenames and metadata; diagnostics identify the current and first index
+ranges. The first `SymbolId` survives only for diagnostic recovery and `.loc`
+binding. Different indices may name the same file. `SymbolTable::debugFiles()`
+borrows source-ordered owned records containing the normalized index, bound symbol,
+exact index/filename tokens, optional timestamp/file-size tokens, and their source
+ranges; rejected repeats remain recorded. Filename escapes are retained without
+decoding or path deduplication, and absent numeric metadata retains its default-zero
+meaning. This follows [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)
+and CUDA 13.3 `ptxas` duplicate-index diagnostics. A `.debug_str` section binds its name and each raw `name:` payload
 label as `DebugStringLabel` symbols. Ordinary `SymbolTable::lookup()` skips
 both debug kinds, so a program declaration may use the same spelling. `.loc`
 creates `DebugFile` references for its basic and `inlined_at` file fields, plus
 a `DebugFunctionName` reference for `function_name`; the latter can resolve
 only the `.debug_str` section itself or one of its labels. These metadata
 identities diagnose unresolved references but never behave as PTX operands.
+
+Declaration spelling is checked after lexing, using the ASCII grammar in
+[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers):
+a letter may stand alone; a leading `_`, `$`, or `%` requires at least one
+following letter, digit, `_`, or `$`. Percent is allowed only at the start.
+Thus `_x`, `$x`, `%r`, and parameterized bases such as `_x<2>` remain legal,
+while ordinary declarations named `_` or `$` receive `InvalidIdentifier` at
+the name token. Compact declaration prefixes follow the same rule: `_x<2>`
+and `$x<2>` are legal, while `_<2>` and `$<2>` are rejected. This applies to
+variables, functions, ordinary parameters,
+labels, aliases, and raw `.debug_str` payload labels. Debug file indices and
+the synthetic `.debug_str` section identity are outside this name grammar.
+The declaration checker inspects AST spellings independently of symbol lookup;
+AST-free module validation checks retained names and reports `RuleViolation`
+at the declaration name range. Source association still preserves spelling
+identity and does not normalize names.
+
+The lexer retains `_` as an identifier for contextual uses. Instruction sinks
+remain operand-specific. Under
+[PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype),
+`.callprototype` keeps its mandatory function-name `_` and permits dummy `_`
+input and return names; those dummy names do not become bound symbols or owned
+ABI names. `$` has no corresponding exception.
 
 ## Parameterized variable names
 

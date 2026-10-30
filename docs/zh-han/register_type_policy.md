@@ -26,6 +26,23 @@ declaration usage 的唯一规范来源。declaration semantics 使用该 metada
 resolver 的 suffix table 仍只是 instruction-modifier 的机械映射。`.param` 刻意保留其
 独立的 storage-type contract。
 
+
+`.reg` 声明禁止方括号数组，包括未使用的寄存器、未指定大小或多维数组，以及向量寄存器数组。
+声明语义在第一个方括号维度处报告 `InvalidRegisterDeclarationShape`。
+合法的 `.reg .u32 r<2>` 紧凑寄存器组与 `.v2`/`.v4` 寄存器声明保持有效；
+`.param`、`.global`、`.const`、`.shared` 和 `.local` 数组继续遵循各自现有规则。
+依据为 [PTX ISA 9.3 寄存器状态空间](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space)。
+
+`binding::Symbol::is_array` 保留任一声明出现是否写有方括号维度（或形式参数是否为数组），
+与 `vector_width`、`parameterized_count` 相互独立。自有模块校验检查每个寄存器符号，
+即使它未被使用且没有存储记录；非法数组在保留的标识符范围处报告 `RuleViolation`。
+绑定到寄存器且带数组维度的存储或参数记录也会被拒绝。这些检查在源码与 AST 销毁后仍然有效；
+带 AST 的校验还会检查替换源码中的声明。
+
+Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
+（PTX >= 3.0 且已识别的 SM >= 20），并保留历史版本及 SM 1.x 的行为。
+源码 occurrence、自有 lifetime 与不完整 context 的契约见[声明语义](declaration_semantics_design.md)。
+
 ## 规范来源记录
 
 工程规范版本为 PTX ISA 9.3。本次依据

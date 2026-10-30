@@ -225,6 +225,7 @@ inline void parameter(std::string& output,
   tag(output, "parameter");
   number(output, value.state_space);
   optional_syntax(output, value.alignment);
+  optional_syntax(output, value.vector_type);
   atom(output, value.type.text);
   number(output, value.is_pointer);
   optional_syntax(output, value.pointer_space);

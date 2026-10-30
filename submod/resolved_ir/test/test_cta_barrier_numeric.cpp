@@ -161,7 +161,6 @@ TEST(CtaBarrierNumeric, LeavesRegisterValueContractsDynamic) {
 TEST(CtaBarrierNumeric, PreservesImmediateAndCtaAvailabilityBoundaries) {
   const auto legacy_ast = parse_module(R"ptx(
 .version 1.0
-.address_size 64
 .entry k() { bar.sync 0; ret; }
 )ptx");
   ASSERT_TRUE(legacy_ast.has_value());

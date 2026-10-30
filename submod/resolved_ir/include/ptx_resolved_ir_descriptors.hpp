@@ -80,6 +80,7 @@ enum class ResolvedValueKind : uint8_t {
   ShflDestination,
   PredicatePair,
   PredicatePairOrSink,
+  CvtSource,
   MovSource,
   MovVectorSource,
   CpAsyncSourceControl,

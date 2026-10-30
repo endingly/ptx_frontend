@@ -206,6 +206,8 @@ SymbolLinkage linkageFromSpelling(std::string_view spelling) {
     return SymbolLinkage::Visible;
   if (spelling == ".weak")
     return SymbolLinkage::Weak;
+  if (spelling == ".common")
+    return SymbolLinkage::Common;
   return SymbolLinkage::None;
 }
 
@@ -666,9 +668,11 @@ struct SymbolTableBuilder {
       std::optional<uint64_t> address_alignment = std::nullopt,
       std::optional<uint32_t> parameterized_count = std::nullopt,
       bool allow_redeclaration = false, bool function_is_entry = false,
-      std::optional<uint8_t> vector_width = std::nullopt) {
+      std::optional<uint8_t> vector_width = std::nullopt,
+      bool is_array = false) {
     if (const auto previous = exactSymbol(scope, name, parameterized_count)) {
-      const Symbol& existing = result.table.symbol(*previous);
+      Symbol& existing = result.table.symbols_[previous->value];
+      existing.is_array = existing.is_array || is_array;
       if (!allow_redeclaration) {
         result.diagnostics.push_back(BindDiagnostic{
             .kind = BindDiagnosticKind::DuplicateSymbol,
@@ -709,6 +713,7 @@ struct SymbolTableBuilder {
         .type = type ? std::optional<std::string>{std::string{*type}}
                      : std::nullopt,
         .vector_width = vector_width,
+        .is_array = is_array,
         .address_alignment = address_alignment,
         .parameterized_count = parameterized_count,
         .owned_scope = std::nullopt,
@@ -819,12 +824,14 @@ struct SymbolTableBuilder {
               declaration.alignment, declaration.vector_type,
               declaration.legacy_texture ? ".texref" : declaration.type.text),
           parameterizedCount(declarator), scope == result.table.moduleScope(),
-          false, vectorWidth(declaration.vector_type));
+          false, vectorWidth(declaration.vector_type),
+          !declarator.array_dimensions.empty());
       recordDeclarationOccurrence(variable, declarator.name.syntax.range,
                                   declarator.range);
     }
   }
 
+  /** Retain each file payload and reject every repeated normalized index. */
   void collectDebugFile(const syntax_ast::AstFileDirective& directive) {
     const auto id = parseDebugFileId(directive.file_index.text);
     if (!id) {
@@ -836,8 +843,25 @@ struct SymbolTableBuilder {
       });
       return;
     }
-    addMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id),
-                      directive.file_index.range, true);
+    const SymbolId symbol =
+        addMetadataSymbol(SymbolKind::DebugFile, std::to_string(*id),
+                          directive.file_index.range, false);
+    const auto optional_leaf =
+        [](const std::optional<syntax_ast::AstSyntax>& syntax)
+        -> std::optional<DebugFileSourceLeaf> {
+      if (!syntax)
+        return std::nullopt;
+      return DebugFileSourceLeaf{syntax->text, syntax->range};
+    };
+    result.table.debug_files_.push_back(DebugFileDeclaration{
+        .index = *id,
+        .symbol_id = symbol,
+        .source_index = {directive.file_index.text, directive.file_index.range},
+        .filename = {directive.filename.text, directive.filename.range},
+        .timestamp = optional_leaf(directive.timestamp),
+        .file_size = optional_leaf(directive.file_size),
+        .range = directive.range,
+    });
   }
 
   void collectDebugStringSection(
@@ -870,15 +894,19 @@ struct SymbolTableBuilder {
       addSymbol(function_scope, SymbolKind::ReturnParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
-                declarationAlignment(parameter.alignment, std::nullopt,
-                                     parameter.type.text));
+                declarationAlignment(parameter.alignment, parameter.vector_type,
+                                     parameter.type.text),
+                std::nullopt, false, false, vectorWidth(parameter.vector_type),
+                parameter.is_array);
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
-                declarationAlignment(parameter.alignment, std::nullopt,
-                                     parameter.type.text));
+                declarationAlignment(parameter.alignment, parameter.vector_type,
+                                     parameter.type.text),
+                std::nullopt, false, false, vectorWidth(parameter.vector_type),
+                parameter.is_array);
     }
     collectBody(function.body, function_scope, function_scope);
   }

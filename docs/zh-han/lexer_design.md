@@ -147,10 +147,11 @@ parser 保留准确的运算符和优先级。
 Lexer 可以识别：
 
 - 十进制整数和前导零八进制整数，以及可选的 `u` 或 `U` 后缀。
+- 以 `0b` 或 `0B` 开头的二进制整数，以及可选的 `u` 或 `U` 后缀。
 - 以 `0x` 或 `0X` 开头的十六进制整数，以及可选的无符号后缀。
 - 由 `0f` 和八个十六进制数字组成的 PTX 浮点 bit-pattern 字面量。
 - 由 `0d` 和十六个十六进制数字组成的 PTX 双精度 bit-pattern 字面量。
-- 带小数部分或指数部分的十进制浮点字面量。
+- 带小数点或指数的十进制浮点字面量，包括 `1.` 和 `1.e2`；小数点至少一侧必须有数字。
 - 可以包含转义字符的双引号字符串。
 - 内建拼写 `WARP_SZ`。
 
@@ -162,6 +163,18 @@ Lexer 可以识别：
 解释为八进制（`010` 为 8）。含有 `8` 或 `9` 的八进制拼写（如 `09U`）产生
 覆盖整个字面量的单个 `Error` token。`09.0`、`09e1` 等十进制浮点拼写仍为
 浮点 token。
+
+二进制整数使用 `TokenKind::Binary` 与 `AstImmediateKind::BinaryInteger`，
+保留准确拼写与范围。`0b`、`0b102U`、`0b1UU` 等无效二进制候选项产生
+覆盖其标识符尾部的单个 `Error` token；数值溢出在整数求值阶段诊断。二进制
+字面量可用于一般整数表达式、维度、操作数、debug metadata、`.unified` 和 `.language`。
+裸整数字段也接受十进制、八进制、十六进制、二进制及可选无符号后缀：声明与 pointer
+alignment、参数化计数、launch resource、ABI-preservation 计数、compact branch-target
+计数、文件 timestamp/size，以及源码位置的 line/column（包括 inline 位置）。各字段保留
+现有范围、正值、对齐、版本与 target 检查；这些位置不接受符号、表达式或 `WARP_SZ`。
+将位置 line/column metadata 视为一般整数是对 PTX 9.3 §§4.5.1、11.5.4 的解释；
+这些章节未规定仅限十进制。`.address_size` 保留枚举的 `32`/`64` 源码形式，version
+分量保留十进制语法，initializer mask 仍仅允许十六进制。
 
 ### 通用标识符
 
@@ -233,10 +246,16 @@ token 的调用方应当在适当场景下依据 token 拼写处理。
 
 ## 空白和注释
 
-空格、制表符和换行符会被跳过。
+空格、水平制表符（`\t`）、ASCII 换页符（`\f`，字节 `0x0c`）以及
+CR/LF 换行分隔 token，并作为空白 trivia 保留。换页符只推进一个字节列，
+不产生新行。尾部空白保留在 EOF token 上。字符串和注释以外的垂直制表符
+（`0x0b`）及其他未知控制字节仍是词法错误；这个支持子集不接受任意 ASCII
+控制字符。参见固定的
+[PTX 9.3 源码格式](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#source-format)。
 
 行注释以 `//` 开头，并持续到行末，但注释规则本身不消费换行符。随后的空白
-规则负责消费换行符。
+规则负责消费换行符。行注释内的换页符不会终止注释；字符串以及两种注释中的换页符
+均保留原始内容。
 
 块注释使用独占的 `BLOCK_COMMENT` scanner 状态：
 

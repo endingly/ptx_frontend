@@ -73,10 +73,10 @@ TEST(MadCompleteness, ResolvesEveryExplicitFloatingRoundingForm) {
       RoundingMode::Rp);
 }
 
-/** Reject omitted FP64 rounding and invalid explicit floating combinations. */
+/** Reject omitted FP64 rounding with written FTZ and invalid explicit forms. */
 TEST(MadCompleteness, RejectsLegacyAndInvalidExplicitForms) {
   for (const auto source : {
-           "mad.f64 %d0, %d1, %d2, %d3;",
+           "mad.ftz.f64 %d0, %d1, %d2, %d3;",
            "mad.rn.ftz.f64 %d0, %d1, %d2, %d3;",
            "mad.rn.sat.f64 %d0, %d1, %d2, %d3;",
            "mad.rn.f32 %f0, 1, %f2, %f3;",

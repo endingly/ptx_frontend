@@ -202,6 +202,15 @@ values:
 `add.u32` 与 `add.u16x2` 同属 no-sat variant，后者单独要求 PTX 8.0 / sm_90；不得仅因
 该版本差异复制一个 `add_simd_no_sat_sm90` variant。
 
+
+历史浮点控制省略 variant 可声明 `floating_point_default: approximate_flush_to_zero`、
+`approximate` 或 `round_nearest_even`。此 closed typed interpretation 独立于 source
+modifier；所有声明的 `rounding`、`approx`、`full` 与 `ftz` slot 必须为
+`presence: absent`。第一种解释要求 fixed `type: f32`，后两种要求 fixed `type: f64`。
+未知值、冲突的 explicit control/type 均拒绝。normalization 与 Resolved IR 保留此 fact；
+生成的 exact class 暴露 static `FloatingPointDefault floating_point_default`，不合成
+source modifier field。见[历史 contract](resolved_ir_design.md#历史浮点控制省略形式)。
+
 ## Operand 与 operand pattern
 
 operand 由稳定 `name`、syntax `kind`、语义 `role`、`access` 与可选 `type` 定义：
@@ -356,8 +365,9 @@ operand 也可使用该 policy，并逐元素检查。resolved operand descripto
 runtime Resolved IR field。当前 scalar `ld` destination、scalar `st` source，以及 legacy
 `.v2/.v4` memory vector element 使用 `equal_or_wider`：声明 register size 必须大于等于
 instruction size；通过 size 检查后，任一侧 bit type 与 signed/unsigned integer pair 兼容，
-float 要求 exact type/size，integer/float 不兼容。immediate 与 special-register check 仍为
-same-width。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
+float 要求 exact type/size，integer/float 不兼容。immediate check 仍为 same-width。仅转换指令使用的 `cvt_scalar_src` 与
+`cvt_register_src` 接受标量 special register 或已选择的硬件向量分量；前者还接受 immediate。
+其 special-register check 应用声明的 width policy；普通 `reg_or_imm` domain 保持原有边界。当前 scalar `ld/st` domain 已包含 `.b128`，其 modifier-value availability 为 PTX
 8.3 / SM 70；`.b128` 搭配 `.sys` 还要求 PTX 8.4。因此 exact `.b128` declaration 可以满足
 selected `.b128` memory instruction。`equal_or_wider` escape hatch 仍不允许把 wider actual
 `.b128` register 用于 narrower selected instruction。supported memory form 及其剩余边界见
@@ -521,6 +531,15 @@ instructions:
 
 ## Availability、rule 与 example
 
+
+plain availability 与各 `any_of` clause 可包含 `ptx_before: "1.4"`：PTX version
+必须严格小于此 exclusive 上界，并且至少为 `ptx`（缺省 `"0.0"`）。省略表示无上界。
+两个 version 必须是 uint16 component 的十进制 `major.minor` string；格式错误、空、
+上下界相等或逆序的 interval 均拒绝。generator 把 optional 上界传到
+`AvailabilityDescriptor::ptx_before` 或 `AvailabilityClause::ptx_before`。
+既有仅含下界的 metadata 行为不变。plain 上界失败在相应 source range 报出含 exclusive
+limit 的 `UnsupportedPtxVersion`；DNF 失败保持 `UnsupportedAvailability`。
+
 每个 variant 必须声明：
 
 ```yaml
@@ -553,6 +572,22 @@ Python 测试。
 `sm_90a`（PTX 8.0）、exact `sm_100a`（8.6）、exact `sm_120a`（8.7）、
 已启用的 `sm_100f` 与 `sm_120f` family（8.8），以及已启用的 `sm_110f`
 family（9.0）。指令契约见[杂项指令覆盖范围](converage/miscellaneous_coverage.md)。
+
+`any_of` clause 可以用 `targets: [sm_32, sm_35, sm_37]` 表达精确的
+architecture/flavor 成员集合。`targets` 必须是非空、无重复的 canonical
+`sm_<uint32>[a|f]` spelling 列表，与 `target` 互斥。成员检查要求显式 target identity，
+并与 PTX、SM、family、capability 和 source option 要求取 AND；不推导相邻架构或其他
+flavor。生成的 `AvailabilityTarget` 数组具有进程生命周期，由
+`AvailabilityClause::exact_targets` 借用。DNF 上限仍为六个 clause；target 列表没有
+固定 descriptor 容量。手工 consumer 同时设置 singular 与 set 字段时必须同时满足两者。
+scalar 成员顺序已调整以维持 descriptor 大小，consumer 必须一起重新构建。
+
+显式 generic catalog 包含 `sm_32`、`sm_35`、`sm_37`、`sm_53`、`sm_60`、`sm_61`、
+`sm_62`、`sm_86`、`sm_87` 与 `sm_88`，均无 enabled family feature。前三者无已建模
+capability；`sm_53` 与 `sm_60`–`sm_62` 具有 `graph_exec`；`sm_86`–`sm_88` 具有
+`reserved_smem` 与 `graph_exec`。suffix 变体和未列架构仍不支持。此显式
+[PTX 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+contract 与模块内指令的 PTX version 检查相互独立。
 
 `any_of` clause 可以用 `map_f64_to_f32: true` 要求 source programmer option，例如
 `{ptx: "1.0", target: sm_10, map_f64_to_f32: true}`。它与 PTX、exact target（含 flavor）、

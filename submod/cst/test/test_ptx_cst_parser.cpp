@@ -29,6 +29,168 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Form-feed token separators and EOF trivia survive exact CST reconstruction. */
+TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {
+  constexpr std::string_view source =
+      "\f.version\f9.3\r\n.target\fsm_80\n.address_size\f64\n"
+      ".global\f.u32\fvalue;\n.entry\fkernel()\f{\fret;\f}\f";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+  PtxCstParser reparsing(result->sourceText());
+  const auto reparsed = reparsing.parseModule();
+  ASSERT_TRUE(reparsed.has_value());
+  EXPECT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), source);
+}
+
+/** Decimal-point floats round-trip through both declaration and operand syntax. */
+TEST(PtxCstParser, RoundTripsTrailingDecimalPointFloats) {
+  constexpr std::string_view source = R"ptx(// floating source
+.version 9.3
+.target sm_80
+.global .f32 g = 1.;
+.global .f64 h = (-1.E+2);
+.entry kernel() { .reg .f32 %f; mov.f32 %f, 1.e-2; ret; }
+)ptx";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+/** Invalid exponent and suffix spellings recover at the following instruction. */
+TEST(PtxCstParser, RecoversMalformedTrailingDecimalPointFloats) {
+  for (const std::string_view spelling :
+       {"1.e", "1.e+", "1.e-", "1..", "1..2", "1.f", "1.F", "1.L"}) {
+    SCOPED_TRACE(spelling);
+    const std::string source =
+        ".entry k() { mov.f32 %f, " + std::string(spelling) + "; ret; }";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.diagnostics.empty());
+    EXPECT_LE(result.diagnostics.size(), 3u);
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items.front());
+    ASSERT_FALSE(function.body.empty());
+    const auto* ret =
+        std::get_if<syntax_cst::CstInstruction>(&function.body.back());
+    ASSERT_NE(ret, nullptr);
+    EXPECT_EQ(result->token(ret->opcode).text, "ret");
+  }
+}
+
+/** Version syntax requires decimal major and minor digits independently of floats. */
+TEST(PtxCstParser, VersionRequiresMajorAndMinorDigits) {
+  for (const std::string_view spelling : {"9.", "9.e2", "9e2", ".3", "9.3e2"}) {
+    SCOPED_TRACE(spelling);
+    const std::string source =
+        ".version " + std::string(spelling) + "\n.target sm_80\n";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), source);
+  }
+  PtxCstParser parser(".version 9.3\n.target sm_80\n");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
+/** Binary tokens retain their complete spelling, range, and surrounding trivia. */
+TEST(PtxCstParser, RoundTripsBinaryIntegerSource) {
+  constexpr std::string_view source =
+      " /* binary */ mov.u32 %r0, 0B1000U; // tail\n";
+  PtxCstParser parser(source);
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+  size_t binaries = 0;
+  for (const auto& token : result->tokens) {
+    if (token.kind != TokenKind::Binary)
+      continue;
+    ++binaries;
+    EXPECT_EQ(token.text, "0B1000U");
+    EXPECT_EQ(token.range, (SourceRange{{1, 28}, {1, 35}}));
+  }
+  EXPECT_EQ(binaries, 1u);
+}
+
+/** Malformed binary candidates diagnose once and preserve the following instruction. */
+TEST(PtxCstParser, RecoversMalformedBinaryBeforeReturn) {
+  for (const std::string_view spelling : {"0b", "0b102U", "0b1UU", "0b1tail"}) {
+    const std::string source =
+        ".entry k() { mov.u32 %r0, " + std::string{spelling} + "; ret; }";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value()) << spelling;
+    ASSERT_EQ(result.diagnostics.size(), 1u) << spelling;
+    EXPECT_EQ(result.diagnostics.front().range,
+              (SourceRange{{1, 27},
+                           {1, static_cast<int32_t>(27 + spelling.size())}}));
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items.front());
+    ASSERT_FALSE(function.body.empty());
+    const auto* ret =
+        std::get_if<syntax_cst::CstInstruction>(&function.body.back());
+    ASSERT_NE(ret, nullptr);
+    EXPECT_EQ(result->token(ret->opcode).text, "ret");
+  }
+}
+
+/** General numeric fields preserve literal spelling across every integer radix. */
+TEST(PtxCstParser, RoundTripsGeneralIntegerFields) {
+  for (const std::string_view value : {"16", "020U", "0X10u", "0B10000U"}) {
+    const std::string v{value};
+    const std::string source =
+        ".file 1 \"f\", " + v + ", " + v + "\n" + ".global .align " + v +
+        " .u32 data;\n" + ".func f(.param .align " + v +
+        " .u64 .ptr .global .align " + v + " pointer) .abi_preserve " + v +
+        " .abi_preserve_control " + v + ";\n" + ".entry k() .maxntid " + v +
+        ", " + v + ", " + v + " {\n" + ".reg .u32 r<" + v + ">;\n" +
+        "p: .callprototype _ () .abi_preserve " + v +
+        " .abi_preserve_control " + v + ";\n" + "b: .branchtargets L<" + v +
+        ">;\n" + ".loc 1 " + v + " " + v + ", function_name f, inlined_at 1 " +
+        v + " " + v + "\nret; }";
+    PtxCstParser parser(source);
+    const auto parsed = parser.parseModule();
+    ASSERT_TRUE(parsed.has_value()) << value;
+    ASSERT_TRUE(parsed.diagnostics.empty())
+        << value << ": " << parsed.diagnostics.front().message;
+    EXPECT_EQ(parsed->sourceText(), source);
+  }
+}
+
+/** Bare numeric fields do not acquire expressions, signs, or symbolic constants. */
+TEST(PtxCstParser, RejectsNonliteralGeneralIntegerFields) {
+  for (const std::string_view value :
+       {"1.5", "WARP_SZ", "-8", "+8", "(8)", "8+8"}) {
+    for (const std::string& source :
+         {".global .align " + std::string{value} + " .u32 x;",
+          ".entry k() .maxntid " + std::string{value} + " { ret; }",
+          ".func f() .abi_preserve " + std::string{value} + ";"}) {
+      PtxCstParser parser(source);
+      EXPECT_FALSE(parser.parseModule().diagnostics.empty()) << source;
+    }
+  }
+  for (const std::string_view value : {"0x1", "0b1", "01U"}) {
+    PtxCstParser parser(".entry k() .explicitcluster " + std::string{value} +
+                        " { ret; }");
+    const auto parsed = parser.parseModule();
+    ASSERT_FALSE(parsed.diagnostics.empty());
+    EXPECT_EQ(parsed.diagnostics.front().message,
+              ".explicitcluster does not accept a value");
+  }
+}
+
 /** Named indexing retains its own brackets and register displacement tokens. */
 TEST(PtxCstParser, PreservesNamedArrayIndexPunctuation) {
   PtxCstParser parser("mov.u64 %rd, A[idx - (1+2)];");
@@ -1050,14 +1212,35 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+/** Device vector formals retain one typed input or return declaration. */
+TEST(PtxCstParser, ParsesVectorRegisterFormals) {
+  for (const auto source : {".func f(.reg .v2 .u32 p) { ret; }",
+                            ".func (.reg .v4 .u32 r) f() { ret; }"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_TRUE(result.diagnostics.empty()) << source;
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+    const auto& parameters = function.return_parameters
+                                 ? *function.return_parameters
+                                 : *function.parameters;
+    ASSERT_EQ(parameters.parameters.size(), 1u);
+    ASSERT_TRUE(parameters.parameters[0].vector_type);
+    EXPECT_EQ(result->token(*parameters.parameters[0].vector_type).text,
+              function.return_parameters ? ".v4" : ".v2");
+    EXPECT_EQ(result->token(parameters.parameters[0].type).text, ".u32");
+  }
+}
+
 /** Parameter syntax restrictions report their boundary before generic token errors. */
 TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
   for (const auto& [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
            {".entry kernel(.param .v2 .u32 input) { }",
-            "vector function parameters are not supported"},
+            "vector .param function parameters are not supported"},
            {".func (.param .v4 .b8 result) helper();",
-            "vector function parameters are not supported"},
+            "vector .param function parameters are not supported"},
            {".entry kernel(.param .u32 input[2][3]) { }",
             "multidimensional function parameters are not supported"},
            {".func (.param .u32 result[2][3]) helper();",

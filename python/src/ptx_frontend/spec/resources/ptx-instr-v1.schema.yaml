@@ -696,6 +696,8 @@ $defs:
       - shfl_dest
       - pred_pair
       - pred_pair_or_sink
+      - cvt_scalar_src
+      - cvt_register_src
       - mov_scalar_src
       - mov_vector_src
       - cp_async_source_control
@@ -1313,6 +1315,9 @@ $defs:
         properties:
           ptx:
             $ref: "#/$defs/ptx_version"
+          ptx_before:
+            description: Exclusive PTX version upper bound; omitted means unbounded.
+            $ref: "#/$defs/ptx_version"
           sm:
             $ref: "#/$defs/sm_version"
           family:
@@ -1329,6 +1334,7 @@ $defs:
           notes:
             type: string
         anyOf:
+          - required: [ptx_before]
           - required: [ptx]
           - required: [sm]
           - required: [family]
@@ -1346,11 +1352,22 @@ $defs:
               properties:
                 ptx:
                   $ref: "#/$defs/ptx_version"
+                ptx_before:
+                  description: Exclusive PTX version upper bound for this conjunction.
+                  $ref: "#/$defs/ptx_version"
                 sm:
                   $ref: "#/$defs/sm_version"
                 target:
                   type: string
                   pattern: "^sm_[1-9][0-9]*(a|f)?$"
+                targets:
+                  description: Exact architecture/flavor alternatives within this clause.
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    pattern: "^sm_[1-9][0-9]*(a|f)?$"
                 family:
                   description: >
                     Minimum family-specific source feature target required from
@@ -1369,10 +1386,14 @@ $defs:
                     independently of hardware capabilities and operand widths.
                   type: boolean
                   const: true
+              not:
+                required: [target, targets]
               anyOf:
+                - required: [ptx_before]
                 - required: [ptx]
                 - required: [sm]
                 - required: [target]
+                - required: [targets]
                 - required: [family]
                 - required: [capabilities]
                 - required: [map_f64_to_f32]
@@ -1705,6 +1726,11 @@ $defs:
       - availability
 
     properties:
+      floating_point_default:
+        description: "Static interpretation of omitted historical floating controls."
+        type: string
+        enum: [approximate_flush_to_zero, approximate, round_nearest_even]
+
       condition_code_effect:
         description: "Implicit CC.CF access when the predicated instruction executes."
         type: string

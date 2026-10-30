@@ -34,7 +34,7 @@ TEST(ResolveSin, SelectsFrozenApproxVariant) {
 
 TEST(ResolveSin, RejectsInvalidForms) {
   for (const auto source :
-       {"sin.f32 %f0, %f1;", "sin.approx.f64 %d0, %d1;",
+       {"sin.ftz.f32 %f0, %f1;", "sin.approx.f64 %d0, %d1;",
         "sin.approx.f32x2 %f0, %f1;", "sin.approx.sat.f32 %f0, %f1;"}) {
     SCOPED_TRACE(source);
     EXPECT_FALSE(

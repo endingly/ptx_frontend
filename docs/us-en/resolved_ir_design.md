@@ -256,6 +256,7 @@ exact generic `sm_10`, `sm_11`, or `sm_12` only with this option; their existing
 directed rounding, and f32 forms keep their own gates. This frontend preserves
 and validates the source option; it performs no lowering or emulation.
 
+
 `RequireCompleteContext` also requires an initial `.version`, then `.target`,
 then optional `.address_size`, before other module items. A version or address
 size cannot appear later; subsequent `.target` directives still open valid source
@@ -271,12 +272,67 @@ Every `.target` item is classified: its first item must be an architecture
 spelling, and later items may be `texmode_unified`, `texmode_independent`, `debug`,
 or `map_f64_to_f32`. Unknown options and additional architecture items are
 rejected during parsing and by both validators. Lexically valid unrecognized
-targets, including `compute_` spellings, remain parseable and produce
-`UnknownTarget` at validation; the profile catalog does not expand. Texture-mode
-selection is checked for repetition and module conflicts. `debug` and
-`map_f64_to_f32` are retained options; this contract adds neither DWARF checks nor
-floating-point instruction conversion. These source forms follow the archived
+targets remain parseable and produce `UnknownTarget` at validation. For every
+explicitly cataloged `sm_<number>[a|f]` profile, `compute_<number>[a|f]` is a
+synonym with the same architecture, flavor, enabled family features and
+capabilities. Both lexical parsing and owned source regions preserve the written
+prefix; semantic availability and explicit checker-target comparisons use
+architecture and flavor. `TargetIdentity::operator==` still compares retained
+source spelling as well, so source-provenance consistency checks remain exact.
+Unknown numbers and unsupported flavors, including `compute_101a` and
+`compute_101f`, do not acquire catalog profiles. Texture-mode
+selection is checked for repetition and module conflicts. This contract adds neither
+DWARF content checks nor floating-point instruction conversion. These source forms follow the archived
 [PTX ISA 9.3 target directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target).
+
+
+Header compatibility is checked in both validation policies, including header-only
+modules and every later target region. `.version` requires PTX ISA 1.0 or later;
+explicit `.address_size` requires 2.3, while an omitted address size retains the
+32-bit default at earlier versions. Both explicit texture mode options require
+1.5, and `debug` requires 3.0. `AvailableContext` defers checks that need an absent
+version or target, but rejects contradictions for the context already supplied.
+Replacement-AST validation uses that AST's header; owned validation rechecks
+retained values, option spellings, provenance and traversal events after source
+destruction. An explicit address-size event cannot become implicit merely by
+changing its owned provenance.
+
+The existing target catalog is the single owner of exact profile introduction
+versions. `base::TargetProfile::minimum_ptx_version` exposes the base-owned
+`PtxIsaVersion` components, independently of `checker::PtxVersion`.
+`supports_map_f64_to_f32` is true only for exact generic SM10/11/12 profiles and
+their compute synonyms; recognized other profiles reject that option even when
+no version is supplied. This follows the archived target table and legacy option
+inheritance, corroborated by CUDA 13.3 `ptxas` rejecting the option on SM13 or
+higher. It does not add instruction emulation. Unknown target keys still produce
+`UnknownTarget` and receive no guessed minimum or option permission.
+
+The pinned [PTX ISA 9.3 target table](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+sets these minima (both `sm_` and `compute_` prefixes):
+
+| Exact architecture/flavor suffixes | Minimum PTX ISA |
+| --- | --- |
+| 10, 11 | 1.0 |
+| 12, 13 | 1.2 |
+| 20 | 2.0 |
+| 30 | 3.0 |
+| 35 | 3.1 |
+| 32, 50 | 4.0 |
+| 37, 52 | 4.1 |
+| 53 | 4.2 |
+| 60, 61, 62 | 5.0 |
+| 70 | 6.0 |
+| 72 | 6.1 |
+| 75 | 6.3 |
+| 80 | 7.0 |
+| 86 | 7.1 |
+| 87 | 7.4 |
+| 89, 90 | 7.8 |
+| 90a | 8.0 |
+| 100, 100a | 8.6 |
+| 120, 120a | 8.7 |
+| 100f, 103, 103a, 103f, 120f, 121, 121a, 121f | 8.8 |
+| 88, 110, 110a, 110f | 9.0 |
 
 `ResolvedFunction::declaration_scope` identifies a declaration occurrence:
 a prototype and definition may share a `SymbolId` but have different scopes.
@@ -345,7 +401,7 @@ to retain a syntax AST.
 Instruction ranges/opcodes and all owned records are semantic provenance. The
 frontend retains `.language` and function ABI/resource contracts; `.file`,
 `.loc`, `.section`, and `.pragma` remain syntax/debug or advisory metadata and
-are explicitly not resolved payloads. There is no promise of stable generated
+are not executable resolved payloads. The owned symbol table retains `.file` declaration payloads for debug identity validation. There is no promise of stable generated
 C++ struct layout or binary ABI. Raw module directives still require an AST;
 the owned model is a semantic handoff for the documented subset, not a complete
 source serialization contract.
@@ -379,9 +435,24 @@ labels share a boundary, and a trailing label is at `body.size()`. Standalone
 single-instruction tools. Raw directives and declarations remain in the Syntax
 AST/symbol table instead of being copied into Resolved IR as unresolved string
 fields; owned, normalized parameter and storage metadata are deliberate exceptions.
-Bound `.file` and `.debug_str`
-identities validate `.loc` metadata there, but `.loc`, `.section`, and
-`.pragma` do not add Resolved IR nodes or instruction attachment.
+The owned symbol table additionally retains source-ordered `.file` declarations,
+including exact filename and optional numeric metadata tokens and ranges, after
+source/AST destruction. Both validation overloads recheck normalized index
+uniqueness, first-symbol association, payload boundaries, declaration coverage,
+and basic/inline `.loc` file-reference targets. Replacement source independently
+rebinds its debug metadata: a valid replacement filename or index need not match
+the original. Bound `.debug_str` identities also validate `.loc` metadata, but
+`.file`, `.loc`, `.section`, and `.pragma` add no executable Resolved IR nodes or
+instruction attachment.
+
+Explicit `.file` timestamp/file-size metadata (including `0, 0`) requires PTX ISA
+3.2 or later; plain `.file` has no such gate. This presence-based check has no SM
+or debug-option requirement and rejects a known older version even without a
+recognized target. `AvailableContext` defers an absent version; strict validation
+retains its existing completeness requirements. Owned validation uses the retained
+header version and file records. AST-backed validation uses the supplied AST's
+version and independently rebound file metadata, so replacement metadata and
+versions are checked together. See [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file).
 
 `ResolvedFunction::parameter_declarations` owns validated `.param`
 declarations: return formals first, input formals next, then body-local declarators
@@ -489,7 +560,8 @@ the destination type; owned-module validation rechecks that conversion after
 the AST is released. Source identity retains the expression operation tree in
 the CST/AST boundary; Resolved IR requires no generic expression tree.
 
-`AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
+`AstImmediateKind` retains the lexer's literal classification, including
+`BinaryInteger` for `0b`/`0B` spellings. Decimal, octal, binary, and hex
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type
 and unsigned negation wraps. Ordinary data uses retain the low target-width
@@ -1200,3 +1272,78 @@ covered here.
 ## Owned video operands
 
 `ResolvedVideoOperand` owns a located `RegOrImm`, an optional located `VideoSelector` variant, a written register-negation Boolean and optional minus range. Identifier locations remain separate from the enclosing selector/negation range for binding diagnostics. Source arrays preserve written high-to-low digit order and index concatenated A+B carriers. `video_default_selector` and `video_effective_selector` expose defaults without inventing written provenance. Generated forms expose static `video_lanes`/`video_operation`. `video_mad_interpretation` derives product/input-C/final signs independently of written dtype; numeric negative constants never become register-negation controls. Public helpers are in `<ptx_frontend/resolved_ir/ptx_video.hpp>`. Checker operand views borrow owned Video payloads only for synchronous checking; module reference traversal uses the inner carrier's identifier locations.
+
+
+## Conversion special-register sources
+
+Ordinary `cvt` (PTX 9.3 section 9.7.9.22) owns `ResolvedCvtSource`, a
+register/immediate/special-register union. Scalar read positions retain their
+original immediate admission; destinations, vector register sources and
+`cvt.pack` keep their existing contracts. Symbol and address values are excluded.
+The checker validates intrinsic identity, indexed-family bounds and component
+selection before consuming metadata. Presentation spelling does not determine
+semantics. Special sources follow the operand's register-width policy, including
+integer chops for wider declarations, while integer/float incompatibility remains.
+CVT declares the same historical 16-bit thread/grid-component and 16/32-bit
+grid-ID read compatibilities as MOV, using source use-width. Intrinsic identity
+and current metadata remain unchanged; contextual availability applies per check.
+
+## Historical omitted floating controls
+
+For `1.0 <= PTX < 1.4`, twelve exact forms preserve omitted source controls:
+`div.f32`, `rcp.f32`, `sqrt.f32`, `rsqrt.f32`, `sin.f32`, `cos.f32`, `lg2.f32`,
+and `ex2.f32` have `FloatingPointDefault::ApproximateFlushToZero`; `div.f64`,
+`sqrt.f64`, and `mad.f64` have `RoundNearestEven`; `rsqrt.f64` has `Approximate`
+without FTZ. Their final classes expose `inline static constexpr
+floating_point_default` and no source mode/rounding/FTZ members. DIV also omits
+`.full`. Resolution never inserts explicit modifiers or rewrites the opcode.
+
+FP32 forms keep the existing all-target rule. FP64 forms need SM >= 13; only
+`div.f64` and `sqrt.f64` additionally accept exact generic `sm_10`, `sm_11`, or
+`sm_12` with `map_f64_to_f32`. That option does not admit `rsqrt.f64` or `mad.f64`
+on these targets. `rcp.f64` remains excluded: the manual describes an old omitted-mode default,
+while CUDA 13.3.33 rejects the reproduced form. This documented manual/current-assembler
+discrepancy does not widen the supported inventory. Existing implicit `mad.f32` has its own contract.
+
+Availability metadata uses optional `ptx_before: "1.4"` as an exclusive bound,
+in plain requirements and each DNF clause. Missing bounds remain unbounded;
+malformed or empty/reversed intervals are rejected. Plain upper-bound failures
+report located `UnsupportedPtxVersion`; DNF failures retain
+`UnsupportedAvailability`. Selection is version-independent; validation uses the
+current standalone context or current source/owned/replacement module version.
+Copies and clones retain the omitted identity and interpretation. Revalidation
+at PTX 1.4 or later fails without converting the instruction to an explicit form.
+
+WMMA source spellings preserve the PTX 6.3 `.aligned` boundary. The 156
+FP16-input / FP16-or-FP32 accumulator forms introduced in PTX 6.0 or 6.1 have
+separate `*_implicit_aligned` variants and `*ImplicitAligned` final classes:
+72 loads, 36 stores, and 48 multiply-accumulates. They retain their original
+PTX floor and SM70 requirement and require PTX `< 6.3`. The existing modern
+classes require an explicit `.aligned` and PTX `>= 6.3` (or their later native
+floor). Historical classes have no `aligned` field, alias entry, default, or
+fabricated source range. Both spellings retain immutable `MatrixFamily::WMMA_LOAD`,
+`WMMA_STORE`, or `WMMA_MMA` topology: these families imply uniform execution by
+the participating warp. This execution requirement is distinct from byte address
+alignment; fragment, layout, address, and stride checks remain unchanged.
+
+Standalone resolution selects the written spelling without a version context.
+Module validation and instruction availability checks apply the half-open version
+interval using current owned or replacement context. No historical counterparts
+are added for `shared::cta`, integer, subbyte/bit, BF16, TF32, FP64, or other
+forms introduced in PTX 6.3 or later. The source reference is the
+[PTX 9.3 WMMA description shipped with CUDA 13.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld).
+
+The 96 existing FP16-input WMMA MMA forms (48 explicit `.aligned` forms and
+48 implicit counterparts) expose optional Boolean `satfinite`, default `false`.
+The selected `.satfinite` value requires PTX `< 6.5`, intersected with the form's
+native floor and alignment interval: implicit forms use PTX 6.0/6.1 through 6.2,
+explicit forms use PTX 6.3 through 6.4, all on SM70 or later. NVIDIA deprecated
+floating `.satfinite` in PTX 6.4 and removed it in PTX 6.5. Omission retains each
+form's existing availability, including modern PTX versions. Saturation maps
+positive/negative infinity to the largest positive/negative finite value and NaN
+to positive zero. Typed `satfinite.value` and source locations survive owned
+resolution, copying and cloning; current context checks reject removal-era use
+without changing the form identity. Integer saturation and BF16, TF32, FP64 and
+other MMA families are unchanged. These are syntax and static validation
+contracts; numerical GPU execution is not validated. See the
+[CUDA 13.3 PTX 9.3 WMMA MMA reference](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma).

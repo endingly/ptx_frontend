@@ -180,7 +180,7 @@ operand_patterns:
         expr: modifier(dst_type)
       register_width: equal_or_wider
     - name: src
-      kind: reg_or_imm
+      kind: cvt_scalar_src
       role: src
       access: read
       type:
@@ -189,29 +189,29 @@ operand_patterns:
 
   cvt_rn_f32_s32:
     - {name: dst, kind: reg, role: dst, access: write, type: f32, register_width: equal_or_wider}
-    - {name: src, kind: reg_or_imm, role: src, access: read, type: s32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_scalar_src, role: src, access: read, type: s32, register_width: equal_or_wider}
 
   cvt_rn_f16x2_f32:
     - {name: dst, kind: reg, role: dst, access: write, type: f16x2, register_width: equal_or_wider}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b16_f32:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src, kind: reg_or_imm, role: src, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_scalar_src, role: src, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_f16_f32:
     - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: equal_or_wider}
-    - {name: src, kind: reg_or_imm, role: src, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_scalar_src, role: src, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b32_f32:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src, kind: reg_or_imm, role: src, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_scalar_src, role: src, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b32_f32_pair:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b32_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
@@ -222,7 +222,7 @@ operand_patterns:
       type: f32
       register_width: equal_or_wider
       vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
 
   cvt_b16_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
@@ -233,62 +233,62 @@ operand_patterns:
       type: f32
       register_width: equal_or_wider
       vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: reg, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
 
   cvt_b16_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b8_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b8, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: equal_or_wider}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b8_packed_bf16x2:
     - {name: dst, kind: reg, role: dst, access: write, type: b8, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: same_width}
 
   cvt_b16_packed_bf16x2:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: same_width}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: same_width}
 
   cvt_b32_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: equal_or_wider}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b32_b8_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b8, register_width: equal_or_wider}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b8, register_width: equal_or_wider}
 
   cvt_b8_f32_pair:
     - {name: dst, kind: reg, role: dst, access: write, type: b8, register_width: equal_or_wider}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b16_f32_pair:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
 
   cvt_b16_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: reg, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: equal_or_wider}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
 
   cvt_b32_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b16, register_width: equal_or_wider}
-    - {name: scale_factor, kind: reg, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b16, register_width: equal_or_wider}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
 
   cvt_b32_b8_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-    - {name: src, kind: reg, role: src, access: read, type: b8, register_width: equal_or_wider}
-    - {name: scale_factor, kind: reg, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: src, kind: cvt_register_src, role: src, access: read, type: b8, register_width: equal_or_wider}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
 
   cvt_b16_f32_pair_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
-    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: reg, role: src3, access: read, type: b16, register_width: same_width}
+    - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+    - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
+    - {name: scale_factor, kind: cvt_register_src, role: src3, access: read, type: b16, register_width: same_width}
 
   cvt_pack_sat_u8_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
@@ -1763,6 +1763,10 @@ instructions:
     operands: $cvt_scalar
     variants:
       - name: cvt_s32_u32
+        operand_type_compatibilities: &cvt_sreg_0
+          - {operand: src, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         description: "Unsigned 32-bit to signed 32-bit conversion."
         rule: data_movement.cvt
         availability:
@@ -1785,6 +1789,7 @@ instructions:
           - ptx: "cvt.s32.u32 %s0, %r0;"
             valid: true
       - name: cvt_rn_f32_f64
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Round-to-nearest f64 to f32 conversion."
         rule: data_movement.cvt
         availability:
@@ -1812,6 +1817,7 @@ instructions:
           - ptx: "cvt.rn.f32.f64 %f0, %fd0;"
             valid: true
       - name: cvt_rn_f32_u32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Round-to-nearest u32 to f32 conversion."
         rule: data_movement.cvt
         availability:
@@ -1839,6 +1845,7 @@ instructions:
           - ptx: "cvt.rn.f32.u32 %f0, %r0;"
             valid: true
       - name: cvt_rn_f32_s32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Round-to-nearest signed 32-bit to f32 conversion."
         operands: $cvt_rn_f32_s32
         rule: data_movement.cvt
@@ -1852,6 +1859,7 @@ instructions:
         examples:
           - {ptx: "cvt.rn.f32.s32 %f0, %r0;", valid: true}
       - name: cvt_rzi_u32_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Round-toward-zero f32 to u32 conversion."
         rule: data_movement.cvt
         availability:
@@ -1879,6 +1887,13 @@ instructions:
           - ptx: "cvt.rzi.u32.f32 %r0, %f0;"
             valid: true
       - name: cvt_rn_f16x2_f32
+        operand_type_compatibilities: &cvt_sreg_1
+          - {operand: src1, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         description: "Round-to-nearest packed f16x2 conversion from two f32 sources."
         operands: $cvt_rn_f16x2_f32
         rule: data_movement.cvt
@@ -1893,6 +1908,7 @@ instructions:
           - {ptx: "cvt.rn.f16x2.f32 %r0, %f0, %f1;", valid: true}
 
       - name: cvt_unrounded_s32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Unrounded base scalar conversion to s32 except the retained u32 form."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1906,6 +1922,7 @@ instructions:
           - {ptx: "cvt.s32.s16 %r0, %r1;", valid: true}
 
       - name: cvt_unrounded_base
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Unrounded base scalar conversion outside the retained s32.u32 form."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1919,6 +1936,7 @@ instructions:
           - {ptx: "cvt.u16.u32 %r0, %r1;", valid: true}
 
       - name: cvt_required_non_rn_rzi
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base scalar conversions selected by rni, rmi, rpi, rz, rm, or rp."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1932,6 +1950,7 @@ instructions:
           - {ptx: "cvt.rmi.s32.f32 %r0, %f0;", valid: true}
 
       - name: cvt_required_non_rn_rzi_f16
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base directed forms to f16 excluding its dedicated f32 source family."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1945,6 +1964,7 @@ instructions:
           - {ptx: "cvt.rz.f16.s16 %h0, %r0;", valid: true}
 
       - name: cvt_required_rm_rp_f16_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base directed f32-to-f16 forms not selected by the dedicated rn/rz family."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1958,6 +1978,7 @@ instructions:
           - {ptx: "cvt.rm.ftz.sat.f16.f32 %h0, %f0;", valid: true}
 
       - name: cvt_required_rzi_non_u32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base rzi conversions outside the retained u32.f32 form."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1971,6 +1992,7 @@ instructions:
           - {ptx: "cvt.rzi.s16.f32 %r0, %f0;", valid: true}
 
       - name: cvt_required_rzi_u32_non_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base rzi conversions to u32 outside the retained f32 source form."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1984,6 +2006,7 @@ instructions:
           - {ptx: "cvt.rzi.u32.f64 %r0, %fd0;", valid: true}
 
       - name: cvt_required_rn_non_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base rn conversions outside retained f32 destination forms."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -1997,6 +2020,7 @@ instructions:
           - {ptx: "cvt.rn.f64.s32 %fd0, %r0;", valid: true}
 
       - name: cvt_required_rn_f16_non_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base rn forms to f16 excluding its dedicated f32 source family."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -2010,6 +2034,7 @@ instructions:
           - {ptx: "cvt.rn.f16.f64 %h0, %fd0;", valid: true}
 
       - name: cvt_required_rn_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Base rn conversions to f32 outside retained source forms."
         availability: {ptx: "1.0", sm: 0}
         rule: data_movement.cvt
@@ -2023,6 +2048,7 @@ instructions:
           - {ptx: "cvt.rn.f32.s16 %f0, %h0;", valid: true}
 
       - name: cvt_bf16_f32
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Bfloat16 destination from f32 with required floating rounding."
         availability: {ptx: "7.0", sm: 80}
         rule: data_movement.cvt
@@ -2037,6 +2063,7 @@ instructions:
         examples:
           - {ptx: "cvt.rn.bf16.f32 %h0, %f0;", valid: true}
       - name: cvt_f32_bf16
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Unrounded f32 destination from bf16."
         availability: {ptx: "7.1", sm: 80}
         rule: data_movement.cvt
@@ -2050,6 +2077,7 @@ instructions:
           - {ptx: "cvt.f32.bf16 %f0, %h0;", valid: true}
 
       - name: cvt_bf16_f32_frnd2_relu
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_f32
         description: "Rounded f32 to bf16 conversion with ReLU."
         availability: {ptx: "7.0", sm: 80}
@@ -2066,6 +2094,7 @@ instructions:
           - {ptx: "cvt.rz.relu.bf16.f32 %b0, %f0;", valid: true}
 
       - name: cvt_bf16_f32_frnd2_satfinite
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_f32
         description: "Rounded f32 to bf16 conversion with finite saturation."
         availability: {ptx: "8.1", sm: 80}
@@ -2082,6 +2111,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.bf16.f32 %b0, %f0;", valid: true}
 
       - name: cvt_bf16_f32_frnd2_relu_satfinite
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_f32
         description: "Rounded f32 to bf16 conversion with ReLU and finite saturation."
         availability: {ptx: "8.1", sm: 80}
@@ -2098,6 +2128,7 @@ instructions:
           - {ptx: "cvt.rn.relu.satfinite.bf16.f32 %b0, %f0;", valid: true}
 
       - name: cvt_f32_bf16_ftz
+        operand_type_compatibilities: *cvt_sreg_0
         description: "F32 destination from bf16 with flush-to-zero."
         availability: {ptx: "7.8", sm: 90}
         rule: data_movement.cvt
@@ -2111,6 +2142,7 @@ instructions:
           - {ptx: "cvt.ftz.f32.bf16 %f0, %b0;", valid: true}
 
       - name: cvt_bf16_from_non_f32_base
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Scalar bfloat16 conversion from integer, f16, f64, or bf16 input."
         availability: {ptx: "7.8", sm: 90}
         rule: data_movement.cvt
@@ -2124,6 +2156,7 @@ instructions:
           - {ptx: "cvt.rn.bf16.s32 %b0, %r0;", valid: true}
 
       - name: cvt_non_f32_base_from_bf16
+        operand_type_compatibilities: *cvt_sreg_0
         description: "Scalar integer, f16, f64, or bf16 conversion from bfloat16 input."
         availability: {ptx: "7.8", sm: 90}
         rule: data_movement.cvt
@@ -2137,6 +2170,7 @@ instructions:
           - {ptx: "cvt.rzi.s32.bf16 %r0, %b0;", valid: true}
 
       - name: cvt_f16_f32_frnd2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_f16_f32
         description: "Rounded scalar f32 to f16 conversion with optional ReLU and finite saturation."
         availability: {ptx: "1.0", sm: 0}
@@ -2153,6 +2187,7 @@ instructions:
           - {ptx: "cvt.rz.f16.f32 %h0, %f0;", valid: true}
 
       - name: cvt_f16_f32_frnd2_relu
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_f16_f32
         description: "Rounded scalar f32 to f16 conversion with ReLU."
         availability: {ptx: "7.0", sm: 80}
@@ -2167,6 +2202,7 @@ instructions:
           - {ptx: "cvt.rz.relu.f16.f32 %h0, %f0;", valid: true}
 
       - name: cvt_f16_f32_frnd2_satfinite
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_f16_f32
         description: "Rounded scalar f32 to f16 conversion with finite saturation."
         availability: {ptx: "8.1", sm: 0}
@@ -2181,6 +2217,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.f16.f32 %h0, %f0;", valid: true}
 
       - name: cvt_f16_f32_frnd2_relu_satfinite
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_f16_f32
         description: "Rounded scalar f32 to f16 conversion with ReLU and finite saturation."
         availability: {ptx: "8.1", sm: 80}
@@ -2195,6 +2232,7 @@ instructions:
           - {ptx: "cvt.rn.relu.satfinite.f16.f32 %h0, %f0;", valid: true}
 
       - name: cvt_rz_f16x2_f32
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_rn_f16x2_f32
         description: "Round-toward-zero packed f16x2 conversion from two f32 values."
         availability: {ptx: "7.0", sm: 80}
@@ -2209,6 +2247,16 @@ instructions:
           - {ptx: "cvt.rz.satfinite.f16x2.f32 %r0, %f0, %f1;", valid: true}
 
       - name: cvt_rs_f16x2_f32
+        operand_type_compatibilities: &cvt_sreg_2
+          - {operand: src1, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: rbits, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: rbits, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: rbits, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         description: "Stochastic packed f16x2 conversion from two f32 values and random bits."
         availability:
           any_of:
@@ -2225,13 +2273,14 @@ instructions:
           - name: stochastic
             operands:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-              - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-              - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+              - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
         examples:
           - {ptx: "cvt.rs.satfinite.f16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 
       - name: cvt_bf16x2_f32_frnd2
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_b32_f32_pair
         description: "Rounded packed bf16x2 conversion from two f32 values."
         availability: {ptx: "7.0", sm: 80}
@@ -2246,6 +2295,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.bf16x2.f32 %r0, %f0, %f1;", valid: true}
 
       - name: cvt_rs_bf16x2_f32
+        operand_type_compatibilities: *cvt_sreg_2
         description: "Stochastic packed bf16x2 conversion from two f32 values and random bits."
         availability:
           any_of:
@@ -2262,13 +2312,14 @@ instructions:
           - name: stochastic
             operands:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
-              - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f32, register_width: equal_or_wider}
-              - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: reg, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
+              - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
         examples:
           - {ptx: "cvt.rs.satfinite.bf16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 
       - name: cvt_rna_tf32_f32
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_f32
         description: "Round-to-nearest-away scalar f32 to tf32 conversion."
         availability: {ptx: "7.0", sm: 80}
@@ -2282,6 +2333,7 @@ instructions:
           - {ptx: "cvt.rna.satfinite.tf32.f32 %r0, %f0;", valid: true}
 
       - name: cvt_frnd2_tf32_f32
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_f32
         description: "Directed scalar f32 to tf32 conversion with optional ReLU or finite saturation."
         availability: {ptx: "7.8", sm: 90}
@@ -2296,6 +2348,7 @@ instructions:
           - {ptx: "cvt.rn.relu.tf32.f32 %r0, %f0;", valid: true}
 
       - name: cvt_rn_satfinite_f8x2_f32
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_b16_f32_pair
         description: "Finite-saturating FP8 x2 conversion from two f32 values."
         availability:
@@ -2313,6 +2366,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e4m3x2.f32 %b0, %f0, %f1;", valid: true}
 
       - name: cvt_rn_satfinite_f8x2_packed
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_packed
         description: "Finite-saturating FP8 x2 conversion from a packed f16x2 input."
         availability:
@@ -2330,6 +2384,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e4m3x2.f16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_satfinite_f8x2_bf16x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_packed
         description: "Finite-saturating FP8 x2 conversion from a packed bf16x2 input."
         availability:
@@ -2345,6 +2400,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e4m3x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_f16x2_f8x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_packed
         description: "Packed FP8 x2 to f16x2 conversion."
         availability:
@@ -2361,6 +2417,13 @@ instructions:
           - {ptx: "cvt.rn.relu.f16x2.e4m3x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_bf16x2_f8x2
+        operand_type_compatibilities: &cvt_sreg_3
+          - {operand: src, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         description: "Packed FP8 x2 to bf16x2 conversion, optionally scaled by ue8m0."
         availability:
           any_of: [{ptx: "9.2", sm: 100, family: sm_100f}, {ptx: "9.2", sm: 110, family: sm_110f}, {ptx: "9.2", sm: 120, family: sm_120f}]
@@ -2379,6 +2442,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.bf16x2.e4m3x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_satfinite_f4x2_f32
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_b8_f32_pair
         description: "Finite-saturating FP4 x2 conversion from two f32 values."
         availability:
@@ -2399,6 +2463,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m1x2.f32 %b0, %f0, %f1;", valid: true}
 
       - name: cvt_rn_satfinite_f6x2_f32
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_b16_f32_pair
         description: "Finite-saturating FP6 x2 conversion from two f32 values."
         availability:
@@ -2419,6 +2484,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m3x2.f32 %b0, %f0, %f1;", valid: true}
 
       - name: cvt_rn_satfinite_lowbit_packed
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b8_packed
         description: "Finite-saturating FP4 x2 conversion from a packed f16x2 input."
         availability:
@@ -2434,6 +2500,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m1x2.f16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_satfinite_f4x2_bf16x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b8_packed_bf16x2
         description: "Finite-saturating FP4 x2 conversion from a packed bf16x2 input."
         availability:
@@ -2449,6 +2516,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m1x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_satfinite_f6x2_packed
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_packed
         description: "Finite-saturating FP6 x2 conversion from a packed f16x2 input."
         availability:
@@ -2464,6 +2532,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m3x2.f16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_satfinite_f6x2_bf16x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_packed_bf16x2
         description: "Finite-saturating FP6 x2 conversion from a packed bf16x2 input."
         availability:
@@ -2479,6 +2548,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.e2m3x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_f16x2_lowbit
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_packed
         description: "Low-bit x2 to f16x2 conversion."
         availability:
@@ -2498,6 +2568,7 @@ instructions:
           - {ptx: "cvt.rn.f16x2.e2m3x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_f16x2_f4x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_b8_packed
         description: "FP4 x2 to f16x2 conversion from its b8 physical container."
         availability:
@@ -2512,6 +2583,7 @@ instructions:
           - {ptx: "cvt.rn.f16x2.e2m1x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_bf16x2_lowbit
+        operand_type_compatibilities: *cvt_sreg_3
         description: "Low-bit x2 to bf16x2 conversion, optionally scaled by ue8m0."
         availability:
           any_of: [{ptx: "9.2", sm: 100, family: sm_100f}, {ptx: "9.2", sm: 110, family: sm_110f}, {ptx: "9.2", sm: 120, family: sm_120f}]
@@ -2530,6 +2602,7 @@ instructions:
           - {ptx: "cvt.rn.bf16x2.e2m3x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_bf16x2_f4x2
+        operand_type_compatibilities: *cvt_sreg_3
         description: "FP4 x2 to bf16x2 conversion, optionally scaled by ue8m0."
         availability:
           any_of: [{ptx: "9.2", sm: 100, family: sm_100f}, {ptx: "9.2", sm: 110, family: sm_110f}, {ptx: "9.2", sm: 120, family: sm_120f}]
@@ -2548,6 +2621,10 @@ instructions:
           - {ptx: "cvt.rn.bf16x2.e2m1x2 %r0, %b0;", valid: true}
 
       - name: cvt_rs_satfinite_f8x4_f32
+        operand_type_compatibilities: &cvt_sreg_4
+          - {operand: rbits, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: rbits, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: rbits, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         operands: $cvt_b32_f32_quad_rbits
         description: "Stochastic finite-saturating FP8 x4 conversion from four f32 values."
         availability:
@@ -2565,6 +2642,7 @@ instructions:
           - {ptx: "cvt.rs.satfinite.e4m3x4.f32 %r0, {%f0, %f1, %f2, %f3}, %r1;", valid: true}
 
       - name: cvt_rs_satfinite_f4x4_f32
+        operand_type_compatibilities: *cvt_sreg_4
         operands: $cvt_b16_f32_quad_rbits
         description: "Stochastic finite-saturating FP4 x4 conversion from four f32 values."
         availability:
@@ -2582,6 +2660,7 @@ instructions:
           - {ptx: "cvt.rs.satfinite.e2m1x4.f32 %b0, {%f0, %f1, %f2, %f3}, %r1;", valid: true}
 
       - name: cvt_rs_satfinite_f6x4_f32
+        operand_type_compatibilities: *cvt_sreg_4
         operands: $cvt_b32_f32_quad_rbits
         description: "Stochastic finite-saturating FP6 x4 conversion from four f32 values."
         availability:
@@ -2599,6 +2678,7 @@ instructions:
           - {ptx: "cvt.rs.satfinite.e3m2x4.f32 %r0, {%f0, %f1, %f2, %f3}, %r1;", valid: true}
 
       - name: cvt_frnd3_ue8m0x2_f32
+        operand_type_compatibilities: *cvt_sreg_1
         operands: $cvt_b16_f32_pair
         description: "Directed ue8m0x2 conversion from two f32 values."
         availability:
@@ -2618,6 +2698,7 @@ instructions:
           - {ptx: "cvt.rz.satfinite.ue8m0x2.f32 %b0, %f0, %f1;", valid: true}
 
       - name: cvt_frnd3_ue8m0x2_bf16x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b16_packed
         description: "Directed ue8m0x2 conversion from a packed bf16x2 value."
         availability:
@@ -2637,6 +2718,7 @@ instructions:
           - {ptx: "cvt.rp.satfinite.ue8m0x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_bf16x2_ue8m0x2
+        operand_type_compatibilities: *cvt_sreg_0
         operands: $cvt_b32_packed
         description: "Packed ue8m0x2 to bf16x2 conversion."
         availability:
@@ -2655,6 +2737,16 @@ instructions:
           - {ptx: "cvt.rn.bf16x2.ue8m0x2 %r0, %b0;", valid: true}
 
       - name: cvt_rn_satfinite_s2f6x2_f32
+        operand_type_compatibilities: &cvt_sreg_5
+          - {operand: src1, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src1, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: src2, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [tid, ntid, ctaid, nctaid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [gridid], instruction_width: 16, effective_type: u16, availability: {ptx: "1.0", sm: 0}}
+          - {operand: scale_factor, value_kind: special_register, values: [gridid], instruction_width: 32, effective_type: u32, availability: {ptx: "1.3", sm: 0}}
         description: "Finite-saturating s2f6x2 conversion from two f32 values, optionally ue8m0-scaled."
         availability:
           any_of:
@@ -2678,6 +2770,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.scaled::n2::ue8m0.s2f6x2.f32 %b0, %f0, %f1, %b1;", valid: true}
 
       - name: cvt_rn_satfinite_s2f6x2_bf16x2
+        operand_type_compatibilities: *cvt_sreg_3
         description: "Finite-saturating s2f6x2 conversion from bf16x2, optionally ue8m0-scaled."
         availability:
           any_of:
@@ -2701,6 +2794,7 @@ instructions:
           - {ptx: "cvt.rn.satfinite.s2f6x2.bf16x2 %b0, %r0;", valid: true}
 
       - name: cvt_rn_bf16x2_s2f6x2
+        operand_type_compatibilities: *cvt_sreg_3
         description: "s2f6x2 to bf16x2 conversion, optionally finite-saturated, ReLU, or ue8m0-scaled."
         availability:
           any_of:
@@ -3997,9 +4091,8 @@ instructions:
       - name: shfl_up_b32
         availability: &shfl_legacy_availability
           any_of:
-            - {ptx: "3.0", target: sm_30}
-            - {ptx: "3.0", target: sm_50}
-            - {ptx: "3.0", target: sm_52}
+            - ptx: "3.0"
+              targets: [sm_30, sm_32, sm_35, sm_37, sm_50, sm_52, sm_53, sm_60, sm_61, sm_62]
         modifiers:
           - {name: sync, kind: flag, presence: absent, token: .sync}
           - {name: up, kind: flag, presence: fixed, value: true, token: .up}

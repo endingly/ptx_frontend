@@ -150,6 +150,11 @@ TensorKnownFactsReport validate_tensor_access_facts(
     return array && (array->arity > maximum ||
                      (expected && array->arity != *expected));
   };
+  if (c.target_identity) {
+    const auto profile = base::find_target_profile(c.target_identity->source_spelling);
+    if (!profile || profile->identity != *c.target_identity)
+      diagnose("target_identity", "spelling and typed identity must match a catalog profile");
+  }
   if (!in_range(c.direction, 0, 3)) diagnose("direction", "invalid enum");
   if (!in_range(mode, 0, 6)) diagnose("mode", "invalid enum");
   if (rank < 1 || rank > 5) diagnose("rank", "invalid selected rank");
@@ -206,7 +211,9 @@ TensorKnownFactsReport validate_tensor_access_facts(
       *swizzle == TensorMapSwizzleMode::None)
     diagnose("active_atomicity_use", "contradicts no-swizzle claim");
   const bool special = c.target_identity &&
-      c.target_identity->source_spelling == "sm_103a" &&
+      base::same_target_identity(*c.target_identity,
+          base::TargetIdentity{.architecture = {103},
+              .flavor = base::TargetFlavor::ArchitectureSpecific}) &&
       c.direction == TensorKnownFactDirection::Store && element &&
       *element == TensorMapElementType::B6x16P32OrB6p2x16;
   const auto geometry = [&](uint8_t id, bool override_profile) {
@@ -343,7 +350,9 @@ TensorKnownFactsReport validate_tensor_access_facts(
           item = violated(id, "store excludes b4x16_p64");
         else if (c.direction == TensorKnownFactDirection::Load &&
                  c.destination == TensorKnownFactDestination::Cluster &&
-                 c.target_identity && c.target_identity->source_spelling == "sm_120a")
+                 c.target_identity && base::same_target_identity(*c.target_identity,
+          base::TargetIdentity{.architecture = {120},
+              .flavor = base::TargetFlavor::ArchitectureSpecific}))
           item = violated(id, "sm120a cluster excludes packed format");
         else item = checked(id, "no selected packed-direction exclusion");
         break;
@@ -482,7 +491,9 @@ TensorKnownFactsReport validate_tensor_access_facts(
         break;
       case TensorMapFactRule::SM120A_CLUSTER:
         if (!c.target_identity) item = unresolved(id, "exact target identity absent");
-        else if (c.target_identity->source_spelling != "sm_120a" ||
+        else if (!base::same_target_identity(*c.target_identity,
+          base::TargetIdentity{.architecture = {120},
+              .flavor = base::TargetFlavor::ArchitectureSpecific}) ||
                  c.direction != TensorKnownFactDirection::Load ||
                  c.destination != TensorKnownFactDestination::Cluster)
           item = na(id, "not exact sm120a cluster tensor load");

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(vector_formal_consumer LANGUAGES CXX)
+find_package(ptx_frontend CONFIG REQUIRED COMPONENTS resolved_ir)
+add_executable(vector_formal_consumer main.cpp)
+target_link_libraries(vector_formal_consumer PRIVATE ptx_frontend::resolved_ir)
+target_compile_features(vector_formal_consumer PRIVATE cxx_std_23)

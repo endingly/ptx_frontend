@@ -163,12 +163,10 @@ std::optional<checker::PtxVersion> parse_version(std::string_view text) {
 
 /** Parse one validated unsigned directive operand into owned semantic storage. */
 std::optional<uint32_t> normalized_u32(std::string_view text) {
-  uint32_t value{};
-  const auto [end, error] =
-      std::from_chars(text.data(), text.data() + text.size(), value);
-  if (text.empty() || error != std::errc{} || end != text.data() + text.size())
+  const auto value = base::parseIntegerMagnitude(text);
+  if (!value || *value > std::numeric_limits<uint32_t>::max())
     return std::nullopt;
-  return value;
+  return static_cast<uint32_t>(*value);
 }
 
 /** Convert a syntax-only resource category to the public semantic category. */

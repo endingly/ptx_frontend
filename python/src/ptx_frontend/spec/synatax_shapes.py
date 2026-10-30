@@ -32,6 +32,8 @@ OPERAND_SYNTAX_SHAPES = {
     OperandKind.VIDEO_OPERAND: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     OperandKind.REGISTER: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.IMMEDIATE: OperandSyntaxShape.IMMEDIATE,
+    OperandKind.CVT_SCALAR_SOURCE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE | OperandSyntaxShape.VECTOR_MEMBER,
+    OperandKind.CVT_REGISTER_SOURCE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.VECTOR_MEMBER,
     OperandKind.REGISTER_OR_IMMEDIATE: OperandSyntaxShape.IDENTIFIER_REF | OperandSyntaxShape.IMMEDIATE,
     OperandKind.REGISTER_OR_SINK: OperandSyntaxShape.IDENTIFIER_REF,
     OperandKind.SHFL_DESTINATION: OperandSyntaxShape.REGISTER_PREDICATE_PAIR,

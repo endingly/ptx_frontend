@@ -7,9 +7,50 @@
 #include <utility>
 #include <variant>
 
+#include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
+
+/** Verify installed catalog metadata and owned header gates without source storage. */
+bool checkInstalledHeaderCompatibility() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace base = ptx_frontend::base;
+  const auto sm = base::find_target_profile("sm_100f");
+  const auto compute = base::find_target_profile("compute_100f");
+  const auto legacy = base::find_target_profile("compute_12");
+  if (!sm || !compute || !legacy ||
+      !base::same_target_identity(sm->identity, compute->identity) ||
+      sm->minimum_ptx_version.major != 8 ||
+      sm->minimum_ptx_version.minor != 8 ||
+      compute->minimum_ptx_version.major != sm->minimum_ptx_version.major ||
+      compute->minimum_ptx_version.minor != sm->minimum_ptx_version.minor ||
+      sm->supports_map_f64_to_f32 || !legacy->supports_map_f64_to_f32)
+    return false;
+  for (const auto source :
+       {".version 1.0\n.target sm_80\n",
+        ".version 2.2\n.target sm_20\n.address_size 32\n",
+        ".version 2.3\n.target sm_20, debug\n",
+        ".version 9.3\n.target compute_80, map_f64_to_f32\n"}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      ptx_frontend::PtxSyntaxParser parser{source};
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty() ||
+          ir::resolveAndValidateModule(*ast))
+        return false;
+      auto resolved = ir::resolveModuleOnly(*ast);
+      if (!resolved)
+        return false;
+      owned.emplace(std::move(*resolved));
+    }
+    if (ir::validateModule(*owned) ||
+        ir::validateModule(*owned,
+                           ir::ModuleValidationPolicy::AvailableContext))
+      return false;
+  }
+  return true;
+}
 
 /** Verify installed legacy forms have no synthesized synchronization controls. */
 template <typename T>
@@ -27,8 +68,14 @@ bool checkInstalledLegacyVote() {
   for (const auto sm : {12u, 13u, 20u, 30u, 50u, 52u}) {
     std::optional<ir::ResolvedModule> owned;
     {
-      std::string source =
-          ".version 1.2\n.target sm_" + std::to_string(sm) + R"ptx(
+      const auto profile =
+          ptx_frontend::base::find_target_profile("sm_" + std::to_string(sm));
+      if (!profile)
+        return false;
+      const auto minimum = profile->minimum_ptx_version;
+      std::string source = ".version " + std::to_string(minimum.major) + "." +
+                           std::to_string(minimum.minor) + "\n.target sm_" +
+                           std::to_string(sm) + R"ptx(
 .func f() { .reg .pred %p<2>; .reg .b32 %b;
  vote.all.pred %p1, %p0; vote.all.pred %p1, !%p0;
  vote.any.pred %p1, %p0; vote.any.pred %p1, !%p0;
@@ -114,8 +161,13 @@ bool checkInstalledLegacyShuffle() {
   for (const auto target : {"sm_30", "sm_50", "sm_52"}) {
     std::optional<ir::ResolvedModule> owned;
     {
+      const auto profile = ptx_frontend::base::find_target_profile(target);
+      if (!profile)
+        return false;
+      const auto minimum = profile->minimum_ptx_version;
       std::string source =
-          ".version 3.0\n.target " + std::string(target) +
+          ".version " + std::to_string(minimum.major) + "." +
+          std::to_string(minimum.minor) + "\n.target " + std::string(target) +
           "\n.func f() { .reg .b32 %b<2>; .reg .pred %p; .reg .u32 %u<2>;\n";
       for (const auto mode : {"up", "down", "bfly", "idx"}) {
         source += "shfl." + std::string(mode) + ".b32 %b0, %b1, 1, 31;\n";
@@ -219,7 +271,13 @@ bool checkInstalledImplicitMad() {
     for (const auto flags : {"", ".ftz", ".sat", ".ftz.sat"}) {
       std::optional<ir::ResolvedModule> owned;
       {
-        const auto source = ".version 1.0\n.target " + std::string(target) +
+        const auto profile = ptx_frontend::base::find_target_profile(target);
+        if (!profile)
+          return false;
+        const auto minimum = profile->minimum_ptx_version;
+        const auto source = ".version " + std::to_string(minimum.major) + "." +
+                            std::to_string(minimum.minor) + "\n.target " +
+                            std::string(target) +
                             "\n.func f() { .reg .f32 %f<4>; .reg .b32 %r; mad" +
                             std::string(flags) + ".f32 %r, %f1, 1.0, %f3; }\n";
         ptx_frontend::PtxSyntaxParser parser{source};
@@ -331,11 +389,11 @@ bool checkInstalledMappedF64() {
 /** Validate independent source-option and entry-parameter metadata together. */
 bool checkInstalledCombinedSourceStates() {
   namespace ir = ptx_frontend::resolved_ir;
-  for (const bool mapped : {false, true}) {
+  for (const bool debug : {false, true}) {
     std::optional<ir::ResolvedModule> owned;
     {
       const std::string source = std::string{".version 9.3\n.target sm_90"} +
-                                 (mapped ? ", map_f64_to_f32" : "") + R"ptx(
+                                 (debug ? ", debug" : "") + R"ptx(
 .address_size 64
 .global .u32 memory;
 .entry kernel(.param .u32 input_map) {
@@ -365,16 +423,18 @@ bool checkInstalledCombinedSourceStates() {
     const auto& reduction =
         dynamic_cast<const ir::MultimemLdReduceIntegerAddScalarDefaultWeak&>(
             *body[1]);
-    if (!strict() || region.map_f64_to_f32 != mapped || load.cache_policy ||
+    if (!strict() || region.map_f64_to_f32 ||
+        region.target_options.size() != (debug ? 2u : 1u) ||
+        load.cache_policy ||
         reduction.semantics.value != ir::MemoryConsistency::Omitted ||
         !reduction.semantics.locs.empty() ||
         reduction.scope.value != ir::MemoryScope::Gpu ||
         reduction.scope.locs.empty())
       return false;
-    region.map_f64_to_f32 = !mapped;
+    region.map_f64_to_f32 = true;
     if (strict())
       return false;
-    region.map_f64_to_f32 = mapped;
+    region.map_f64_to_f32 = false;
     auto& hint = dynamic_cast<ir::PrefetchGenericTensormap&>(*body[2]);
     auto& parameter = std::get<ir::ResolvedSymbolRef>(hint.address.value.base);
     parameter.enclosing_function_kind = ir::EnclosingFunctionKind::Device;
@@ -393,6 +453,8 @@ bool checkInstalledCombinedSourceStates() {
 
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledHeaderCompatibility())
+    return 1;
   if (!checkInstalledCombinedSourceStates())
     return 1;
   if (!checkInstalledLegacyShuffle())

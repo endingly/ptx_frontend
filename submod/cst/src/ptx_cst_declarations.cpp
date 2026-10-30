@@ -29,7 +29,7 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers) {
   std::optional<TokenId> alignment;
   if (token(peek()).kind == TokenKind::DotAlign) {
     align_directive = consume();
-    auto value = expect(TokenKind::Decimal, "variable alignment");
+    auto value = expectIntegerLiteral("variable alignment");
     if (!value)
       return std::unexpected(value.error());
     alignment = *value;
@@ -59,7 +59,7 @@ PtxCstParser::parseVariableDeclaration(std::vector<TokenId> qualifiers) {
     TokenId last = *name;
     if (token(peek()).kind == TokenKind::Lt) {
       left_angle = consume();
-      auto count_token = expect(TokenKind::Decimal, "parameterized count");
+      auto count_token = expectIntegerLiteral("parameterized count");
       if (!count_token)
         return std::unexpected(count_token.error());
       parameterized_count = *count_token;
@@ -242,19 +242,23 @@ PtxCstParser::parseFunctionParameter() {
   std::optional<TokenId> alignment;
   if (token(peek()).kind == TokenKind::DotAlign) {
     align_directive = consume();
-    auto value = expect(TokenKind::Decimal, "parameter alignment");
+    auto value = expectIntegerLiteral("parameter alignment");
     if (!value)
       return std::unexpected(value.error());
     alignment = *value;
   }
 
+  std::optional<TokenId> vector_type;
+  if (token(peek()).text == ".v2" || token(peek()).text == ".v4") {
+    vector_type = consume();
+    if (token(state_space).kind == TokenKind::DotParam)
+      return std::unexpected(CstParseDiagnostic{
+          token(*vector_type).range,
+          "vector .param function parameters are not supported"});
+  }
   auto type = expect(TokenKind::DotIdent, "parameter type");
   if (!type)
     return std::unexpected(type.error());
-  if (token(*type).text == ".v2" || token(*type).text == ".v4") {
-    return std::unexpected(CstParseDiagnostic{
-        token(*type).range, "vector function parameters are not supported"});
-  }
 
   std::optional<TokenId> pointer_directive;
   std::optional<TokenId> pointer_space;
@@ -271,7 +275,7 @@ PtxCstParser::parseFunctionParameter() {
     }
     if (token(peek()).kind == TokenKind::DotAlign) {
       pointer_align_directive = consume();
-      auto value = expect(TokenKind::Decimal, "pointer alignment");
+      auto value = expectIntegerLiteral("pointer alignment");
       if (!value)
         return std::unexpected(value.error());
       pointer_alignment = *value;
@@ -311,6 +315,7 @@ PtxCstParser::parseFunctionParameter() {
       state_space,
       align_directive,
       alignment,
+      vector_type,
       *type,
       pointer_directive,
       pointer_space,

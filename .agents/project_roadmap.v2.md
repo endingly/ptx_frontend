@@ -539,6 +539,9 @@ initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 cons
 与[中文契约](../docs/zh-han/parameter_declarations.md)：保留 entry/device input、device return
 与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
 其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
+Device `.reg` input/return 支持 `.v2`/`.v4` 非 predicate fundamental vector（总大小至多
+128 bit）；signature、binding 与 direct/indirect call 保留一个完整 vector shape，owned
+validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsupported。
 
 ## M3：值、地址与 `mov`
 
@@ -757,6 +760,26 @@ artifact 与门禁均已退役；下表保留历史完成语境，不要求重�
   `sm_120f`，`sm_121` 为无，`sm_121f`/`sm_121a` 为 `sm_120f`+`sm_121f`。此集合不由数值或
   suffix 推导，也不表示当前未建模的 PTX-to-physical-GPU translation compatibility；numeric
   target/SM 受 `uint32_t` 范围约束。
+- generic catalog 显式包含 `sm_32/35/37/53/60/61/62/86/87/88`（各自为完整
+  `sm_<number>` spelling），均无 enabled family feature；`sm_32/35/37` 无已建模 capability，
+  `sm_53/60/61/62` 具有 `graph_exec`，`sm_86/87/88` 具有 `reserved_smem` 与 `graph_exec`。
+  精确 `targets` 集合与 singular `target` 在 YAML 中互斥，保留六 clause DNF 上限；
+  `test_ptx_target_identity.cpp`、`test_resolved_module_target_checking.cpp` 与 legacy
+  vote/shfl 测试覆盖实际 catalog、PTX 9.3 模块和 AST 销毁后的 owned validation。
+- 同一 catalog 的 40 个 exact profile 还拥有 typed `minimum_ptx_version` 和
+  `supports_map_f64_to_f32`；最低 PTX 版本来自固定的 target directive 表，map option
+  仅允许 generic SM10/11/12 及同义 compute profile。两个 validation policy 都检查已知
+  header 矛盾：version 至少 1.0、显式 address-size 至少 2.3、两种显式 texture mode
+  至少 1.5、debug 至少 3.0；省略 address-size 的早期 32-bit 默认值不受显式 directive
+  门槛约束。`test_header_compatibility.cpp` 覆盖全部 profile/prefix 的版本边界、未知 target、
+  replacement AST、源码销毁与 owned mutation；installed `resolved_ir_consumer` 访问公开
+  metadata 并验证 AST-free header rejection。此项不增加 DWARF 内容验证、指令模拟或
+  physical-target translation compatibility。
+- 每个显式 `sm_<number>[a|f]` catalog profile 接受对应 `compute_` 同义 spelling；
+  typed architecture/flavor、capability 和 enabled family feature 保持相同，source/owned
+  provenance 保留原 spelling。词法合法未知 number 或未支持 flavor 仍为 `UnknownTarget`；
+  exact availability 与 TCGEN/tensor 的 typed target 比较不依赖 prefix，完整 provenance
+  equality 不变。`test_target_synonyms.cpp` 覆盖 strict source 与 AST 销毁后的 owned 路径。
 - modern operand pack 的 cardinality、element shape/type 与 layout specificity 均进入运行时
   contract；normalization 在生成前拒绝不可比较的 overlap，typed element 检查覆盖至第 64 项。
 - synthetic modern-operand outputs 以 `gen_all.py --list-outputs` 为权威清单；spec 内容变更通过

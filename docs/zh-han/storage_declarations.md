@@ -11,6 +11,23 @@ declarator 提供拥有自身数据的元信息。数据类型位于
 `ResolvedFunction::opaque_entry_parameters`，没有臆造的 byte layout。
 register 与 call parameter 不进入存储列表。
 
+Module `.reg` 与 `.local` 声明根据 source target 的 ABI 假设进行检查：
+PTX ISA 3.0 及以上且当前源码 target 为已识别的 SM 20 及以上时，这些变量必须在函数内声明。
+Frontend 不建模由调用者选择的禁用 ABI 编译开关。较早 PTX 版本与已识别的 SM 1.x target
+保留历史 module placement。Target 按源码顺序生效；后续未知或空 target 会清除先前的 placement context。
+
+声明语义检查每个实际 module occurrence，包括未使用的变量与冲突重声明，并在完整声明范围处
+报告 `InvalidDeclarationPlacement`。自有校验把每个 variable identity 及保留的 occurrence
+关联到其 source region，包括没有 storage record 的寄存器，并报告 `RuleViolation`。
+两个 validation overload 在源码与 AST 销毁后或使用替换源码 context 时仍重新检查 placement。
+`AvailableContext` 在 version 或已识别的当前 target 缺失时推迟此规则；严格校验在受影响的声明处
+报告 `MissingValidationContext`。其他 header 与 identity diagnostic 保持独立。
+函数内声明、nested block 与合法 register formal 沿用现有契约。依据为固定的 PTX 9.3
+[PTX 1.x 变更](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#changes-from-ptx-isa-version-1-x)、
+[寄存器](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#register-state-space)、
+[local](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#local-state-space) 与
+[变量声明](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#variable-declarations) 规则。
+
 ## 身份与布局输入
 
 每个源码 declarator 按源码遍历顺序产生一条记录。`symbol_id` 指向既有 module symbol；
@@ -18,6 +35,18 @@ register 与 call parameter 不进入存储列表。
 因此，nested block 和同名 local 仍可区分。重复且兼容的 external declaration 共享
 symbol identity，但保留各自的声明记录。既有 linkage 与 multiple-definition 检查保持有效；
 external declaration 后出现同名 plain definition 会被拒绝。
+
+`.common` 在普通 module-scope `.global` definition 上保留为独立的
+`SymbolLinkage::Common`（PTX 5.0、SM 20 及以上）。Scalar、vector、array 与
+parameterized declaration 沿用既有 storage layout 规则。省略 initializer 保留 `Zero`；
+显式零、非零与 sparse initializer 保留 `Explicit`。拒绝 function、opaque object、
+其他 state space 和冲突 linkage qualifier；同一 module 的重复 definition 仍是错误。
+两个 validation overload 检查 eligibility 以及所选 version/target context；AST-free
+validation 通过有序 source target event 重新关联 declaration。
+[PTX 9.3 `.common` 规则](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#linking-directives-common)
+在跨 object file 时选择最大的 definition，并只允许一个 object file 初始化该变量，且该
+object 必须提供最大的 definition。这些跨 object 规则由 downstream linker 负责；frontend
+不选择或合并 object。
 
 两个 `validateModule` overload 都把每条记录重新关联到 binding declaration occurrence，
 并要求 storage list 完整，包括兼容 extern 的每次声明。
@@ -89,7 +118,8 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 初始化处转换宽度，但未明确说明 `.b128` 高半部分的规则。当前没有 GPU 验证条件，
 本契约也不复现 ptxas 13.3.33 输出中观察到的异常高位 word。
 
-floating initializer 支持 `.f32/.f64` literal、符号及括号，不规范化复合浮点算术。
+floating initializer 支持 `.f32/.f64` literal、符号及括号，包括 `1.`、`1.e2` 这样的
+十进制末尾小数点形式；不规范化复合浮点算术。
 opaque object metadata 包含保留 array shape、显式 alignment 和 typed 命名成员初始化的
 module-global 声明。其 identity 与静态 field 边界见[纹理契约](converage/texture_coverage.md)。
 这些边界不会把不支持的值变为零。

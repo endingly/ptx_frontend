@@ -25,6 +25,7 @@ class UnaryFloatCompletenessTests(unittest.TestCase):
         self.assertEqual(
             set(self.instructions["rcp"]),
             {
+                "rcp_implicit_f32",
                 "rcp_approx_f32",
                 "rcp_rn_f32",
                 "rcp_directed_f32",
@@ -36,6 +37,8 @@ class UnaryFloatCompletenessTests(unittest.TestCase):
         self.assertEqual(
             set(self.instructions["sqrt"]),
             {
+                "sqrt_implicit_f32",
+                "sqrt_implicit_f64",
                 "sqrt_approx_f32",
                 "sqrt_rn_f32",
                 "sqrt_directed_f32",
@@ -45,7 +48,7 @@ class UnaryFloatCompletenessTests(unittest.TestCase):
         )
         self.assertEqual(
             set(self.instructions["rsqrt"]),
-            {"rsqrt_approx_f32", "rsqrt_approx_f64", "rsqrt_approx_ftz_f64"},
+            {"rsqrt_implicit_f32", "rsqrt_implicit_f64", "rsqrt_approx_f32", "rsqrt_approx_f64", "rsqrt_approx_ftz_f64"},
         )
 
     def test_assigns_independent_ptx_and_target_minima(self) -> None:

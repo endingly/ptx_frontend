@@ -9,7 +9,7 @@ namespace ptx_frontend::base {
 
 /**
  * Decode a non-negative PTX integer spelling into its 64-bit magnitude.
- * Supports decimal, leading-zero octal, and 0x/0X hexadecimal with an optional
+ * Supports decimal, leading-zero octal, 0b/0B binary, and hexadecimal with an optional
  * u/U suffix. Signs and use-site conversion/range policies belong to callers.
  * Invalid digits, empty input, trailing characters, and overflow return nullopt.
  */
@@ -19,10 +19,11 @@ inline std::optional<uint64_t> parseIntegerMagnitude(std::string_view text) {
   if (text.empty())
     return std::nullopt;
 
-  const int radix = text.starts_with("0x") || text.starts_with("0X") ? 16
-                    : text.front() == '0'                            ? 8
-                                                                     : 10;
-  if (radix == 16)
+  const int radix = text.starts_with("0x") || text.starts_with("0X")   ? 16
+                    : text.starts_with("0b") || text.starts_with("0B") ? 2
+                    : text.front() == '0'                              ? 8
+                                                                       : 10;
+  if (radix == 16 || radix == 2)
     text.remove_prefix(2);
   if (text.empty())
     return std::nullopt;

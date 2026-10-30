@@ -131,6 +131,34 @@ TEST(PtxLexerNew, InvalidOctalReportsWholeLiteralAndRecovers) {
   }
 }
 
+/** Decimal-point literals retain complete spellings, ranges, and separate signs. */
+TEST(PtxLexerNew, TrailingDecimalPointFloats) {
+  for (const std::string_view spelling :
+       {"1.", "0.", "09.", "1.e2", "1.E+2", "1.e-2", ".5", "1.0", "1e2"}) {
+    const std::string source = "-" + std::string(spelling) + ";";
+    const auto tokens = lex_all(source);
+    ASSERT_EQ(tokens.size(), 3u) << spelling;
+    expect_token(tokens[0], TokenKind::Minus, "-");
+    expect_token(tokens[1], TokenKind::F64, spelling);
+    EXPECT_EQ(
+        tokens[1].range,
+        (SourceRange{{1, 2}, {1, static_cast<int32_t>(2 + spelling.size())}}));
+    expect_token(tokens[2], TokenKind::Semicolon, ";");
+  }
+  const auto controls =
+      lex_all("1 010 0x10 0f3f800000 0d3ff0000000000000 .version .f32 %r1.x");
+  ASSERT_EQ(controls.size(), 9u);
+  expect_token(controls[0], TokenKind::Decimal, "1");
+  expect_token(controls[1], TokenKind::Decimal, "010");
+  expect_token(controls[2], TokenKind::Hex, "0x10");
+  expect_token(controls[3], TokenKind::F32Hex, "0f3f800000");
+  expect_token(controls[4], TokenKind::F64Hex, "0d3ff0000000000000");
+  expect_token(controls[5], TokenKind::DotVersion, ".version");
+  expect_token(controls[6], TokenKind::DotIdent, ".f32");
+  expect_token(controls[7], TokenKind::Ident, "%r1");
+  expect_token(controls[8], TokenKind::DotIdent, ".x");
+}
+
 TEST(PtxLexerNew, EmitsEof) {
   PtxLexer lexer("add.s32;");
 

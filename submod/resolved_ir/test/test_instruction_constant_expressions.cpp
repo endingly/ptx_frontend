@@ -124,7 +124,8 @@ TEST(InstructionConstantExpressions,
 /** Floating arithmetic evaluates in f64 and comparisons yield signed integers. */
 TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
   for (const auto text :
-       {"1.0 + 2.0 * 3.0", "1 ? 7.0 : 9.0", "0d401c000000000000 + 0.0"}) {
+       {"1.0 + 2.0 * 3.0", "1 ? 7.0 : 9.0", "0d401c000000000000 + 0.0",
+        "1. + 2.e0 * 3.E+0", "1 ? 7. : 9."}) {
     SCOPED_TRACE(text);
     auto source_expression = expression(text);
     ASSERT_TRUE(source_expression);

@@ -161,7 +161,8 @@ The lexer recognizes:
   suffix.
 - PTX bit-pattern floating literals `0f` plus eight hex digits.
 - PTX bit-pattern double literals `0d` plus sixteen hex digits.
-- Decimal floating literals with a fractional part or exponent.
+- Decimal floating literals with a decimal point or exponent, including `1.` and
+  `1.e2`; a point must have digits on at least one side.
 - Double-quoted strings containing escaped characters.
 - The built-in spelling `WARP_SZ`.
 

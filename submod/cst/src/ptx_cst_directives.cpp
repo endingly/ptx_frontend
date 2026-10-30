@@ -366,6 +366,18 @@ PtxCstParser::parseModuleDirective() {
       auto version = expect(TokenKind::F64, "PTX version");
       if (!version)
         return std::unexpected(version.error());
+      // Version components require digits even when the shared float token does not.
+      const auto spelling = token(*version).text;
+      const auto point = spelling.find('.');
+      const auto is_digit = [](char character) {
+        return character >= '0' && character <= '9';
+      };
+      if (point == std::string_view::npos || point == 0 ||
+          point + 1 == spelling.size() ||
+          !std::ranges::all_of(spelling.substr(0, point), is_digit) ||
+          !std::ranges::all_of(spelling.substr(point + 1), is_digit))
+        return std::unexpected(CstParseDiagnostic{
+            token(*version).range, "expected PTX version in major.minor form"});
       arguments.push_back(*version);
       break;
     }

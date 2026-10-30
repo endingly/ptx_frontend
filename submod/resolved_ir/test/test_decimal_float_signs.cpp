@@ -76,6 +76,77 @@ TEST(DecimalFloatSigns, ResolvesLeadingSignsZeroAndExponents) {
   }
 }
 
+/** Trailing decimal points share f64 decoding, destination narrowing, and ownership. */
+TEST(DecimalFloatSigns, ResolvesTrailingDecimalPointsInOwnedModule) {
+  auto resolved = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.global .f32 g = 1.;
+.global .f64 h = (-1.E+2);
+.entry kernel() {
+  .reg .f32 %f;
+  .reg .f64 %d;
+  mov.f32 %f, +1.;
+  mov.f32 %f, -0.;
+  mov.f32 %f, 1.e2;
+  mov.f64 %d, -1.E-2;
+  mov.f64 %d, (1. + 2.e1);
+  ret;
+}
+)ptx";
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    EXPECT_TRUE(ast.has_value());
+    EXPECT_TRUE(ast.diagnostics.empty());
+    return resolveAndValidateModule(*ast);
+  }();
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  ASSERT_EQ(resolved->storage_declarations.size(), 2u);
+  EXPECT_EQ(std::get<StorageConstant>(
+                resolved->storage_declarations[0].initializer[0].value)
+                .bits,
+            0x3f800000u);
+  EXPECT_EQ(std::get<StorageConstant>(
+                resolved->storage_declarations[1].initializer[0].value)
+                .bits,
+            0xc059000000000000ULL);
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 6u);
+  const std::array<uint64_t, 5> expected{0x3f800000u, 0x80000000u, 0x42c80000u,
+                                         0xbf847ae147ae147bULL,
+                                         0x4035000000000000ULL};
+  for (size_t i = 0; i < expected.size(); ++i)
+    EXPECT_EQ(scalarMovImmediate(*body[i]).bits, expected[i]);
+  EXPECT_TRUE(validateModule(*resolved));
+}
+
+/** Floating spellings cannot acquire integer destination or declaration semantics. */
+TEST(DecimalFloatSigns, TrailingDecimalPointsRejectIntegerUses) {
+  for (const std::string_view source :
+       {".global .u32 g = 1.;", ".global .u64 g = 1.e2;",
+        ".entry k() { .reg .u32 %r; mov.u32 %r, 1.; ret; }"}) {
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast.has_value());
+    ASSERT_TRUE(ast.diagnostics.empty());
+    EXPECT_FALSE(resolveModule(*ast).has_value());
+  }
+  for (const std::string_view spelling : {"1.", "1.e2", "+1.E+2", "-0."}) {
+    SCOPED_TRACE(spelling);
+    const auto parsed = parseImmediate(spelling);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    const auto& immediate = immediateOperand(*parsed);
+    EXPECT_EQ(immediate.kind, syntax_ast::AstImmediateKind::DecimalFloat);
+    EXPECT_EQ(immediate.syntax.text, spelling);
+    EXPECT_FALSE(resolve_immediate_literal(immediate, ScalarType::U32));
+    EXPECT_TRUE(resolve_immediate_literal(immediate, ScalarType::F32));
+    EXPECT_TRUE(resolve_immediate_literal(immediate, ScalarType::F64));
+  }
+}
+
 /** Keep raw floating bit-pattern sign handling independent of decimal decoding. */
 TEST(DecimalFloatSigns, PreservesRawBitPatternSignRules) {
   const auto unsigned_instruction = parseImmediate("0f3f800000");

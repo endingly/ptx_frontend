@@ -10,6 +10,13 @@ expression。指令数值位置拒绝这两类错误。原有 optional
 conditional 两个分支及 logical 两个 operand 均检查，即使值未被选中；
 浮点溢出不新增统一的 finite-only 限制。
 
+十进制浮点常量允许小数点两侧至少一侧有数字，例如 `1.`、`.5`、`1.e2`；
+也允许带指数的数字序列，例如 `1e2`。指数由 `e`/`E`、可选符号及必需的数字组成。
+浮点常量不带大小后缀，先解码为 binary64，再按现有规则转换到 `.f32` 或 `.f64`；
+整数 destination 仍不兼容。依据是 [PTX ISA 9.3 浮点常量](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-constants)。
+共享的浮点 lexical category 不扩展 `.version`：其 `major.minor` 语法仍要求小数点
+两侧都有十进制数字。
+
 二元 `&`、`|`、`^` 保持 usual arithmetic conversions：两个 signed 输入产生
 signed 结果，任一 unsigned 输入产生 unsigned 结果。依据是 PTX 9.3 §4.5.5
 正文及有限 CUDA 13.3 assembler 交叉检查；Table 5 的 unsigned 摘要与之不同。

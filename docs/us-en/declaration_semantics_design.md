@@ -27,6 +27,16 @@ or floating zero, including negative zero, is invalid. Both conditional arms
 and logical operands are checked even when their values are unselected.
 Floating overflow is not subject to an additional blanket finite-only rule.
 
+Decimal floating constants accept a decimal point with digits on either side,
+including `1.`, `.5`, and `1.e2`, or a digit sequence with an exponent such as
+`1e2`. Exponents use `e`/`E` and an optional sign followed by digits. They have
+no size suffix and decode in binary64 before the existing destination
+conversion to `.f32` or `.f64`. Integer destinations remain incompatible.
+This follows [PTX ISA 9.3 floating-point
+constants](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#floating-point-constants).
+The shared lexical float category does not broaden `.version`: its syntax still
+requires decimal digits on both sides of the point in `major.minor`.
+
 Binary `&`, `|`, and `^` retain the usual arithmetic conversions (two signed
 inputs give a signed result; any unsigned input gives an unsigned result).
 This follows PTX 9.3 §4.5.5 prose and bounded CUDA 13.3 assembler checks;

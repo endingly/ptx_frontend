@@ -29,6 +29,63 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Decimal-point floats round-trip through both declaration and operand syntax. */
+TEST(PtxCstParser, RoundTripsTrailingDecimalPointFloats) {
+  constexpr std::string_view source = R"ptx(// floating source
+.version 9.3
+.target sm_80
+.global .f32 g = 1.;
+.global .f64 h = (-1.E+2);
+.entry kernel() { .reg .f32 %f; mov.f32 %f, 1.e-2; ret; }
+)ptx";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+}
+
+/** Invalid exponent and suffix spellings recover at the following instruction. */
+TEST(PtxCstParser, RecoversMalformedTrailingDecimalPointFloats) {
+  for (const std::string_view spelling :
+       {"1.e", "1.e+", "1.e-", "1..", "1..2", "1.f", "1.F", "1.L"}) {
+    SCOPED_TRACE(spelling);
+    const std::string source =
+        ".entry k() { mov.f32 %f, " + std::string(spelling) + "; ret; }";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.diagnostics.empty());
+    EXPECT_LE(result.diagnostics.size(), 3u);
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items.front());
+    ASSERT_FALSE(function.body.empty());
+    const auto* ret =
+        std::get_if<syntax_cst::CstInstruction>(&function.body.back());
+    ASSERT_NE(ret, nullptr);
+    EXPECT_EQ(result->token(ret->opcode).text, "ret");
+  }
+}
+
+/** Version syntax requires decimal major and minor digits independently of floats. */
+TEST(PtxCstParser, VersionRequiresMajorAndMinorDigits) {
+  for (const std::string_view spelling : {"9.", "9.e2", "9e2", ".3", "9.3e2"}) {
+    SCOPED_TRACE(spelling);
+    const std::string source =
+        ".version " + std::string(spelling) + "\n.target sm_80\n";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), source);
+  }
+  PtxCstParser parser(".version 9.3\n.target sm_80\n");
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+}
+
 /** Binary tokens retain their complete spelling, range, and surrounding trivia. */
 TEST(PtxCstParser, RoundTripsBinaryIntegerSource) {
   constexpr std::string_view source =

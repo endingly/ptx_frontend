@@ -118,7 +118,8 @@ the upper-half rule for `.b128`. No GPU validation was available, and observed
 anomalous upper words in ptxas 13.3.33 output are not reproduced by this contract.
 
 Floating initialization supports `.f32`/`.f64` literals with signs and
-parentheses; compound floating arithmetic is not normalized. Opaque object
+parentheses, including decimal trailing-point forms such as `1.` and `1.e2`;
+compound floating arithmetic is not normalized. Opaque object
 metadata includes module-global declarations with preserved array shape,
 explicit alignment, and typed named-member initialization. See the
 [texture contract](converage/texture_coverage.md) for its identity and static-field boundary.

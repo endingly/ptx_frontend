@@ -101,7 +101,8 @@ packed/alternate format 必须使用对应 bit-container type。integer/bit init
 初始化处转换宽度，但未明确说明 `.b128` 高半部分的规则。当前没有 GPU 验证条件，
 本契约也不复现 ptxas 13.3.33 输出中观察到的异常高位 word。
 
-floating initializer 支持 `.f32/.f64` literal、符号及括号，不规范化复合浮点算术。
+floating initializer 支持 `.f32/.f64` literal、符号及括号，包括 `1.`、`1.e2` 这样的
+十进制末尾小数点形式；不规范化复合浮点算术。
 opaque object metadata 包含保留 array shape、显式 alignment 和 typed 命名成员初始化的
 module-global 声明。其 identity 与静态 field 边界见[纹理契约](converage/texture_coverage.md)。
 这些边界不会把不支持的值变为零。

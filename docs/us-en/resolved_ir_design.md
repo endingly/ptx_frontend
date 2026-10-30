@@ -444,6 +444,15 @@ the original. Bound `.debug_str` identities also validate `.loc` metadata, but
 `.file`, `.loc`, `.section`, and `.pragma` add no executable Resolved IR nodes or
 instruction attachment.
 
+Explicit `.file` timestamp/file-size metadata (including `0, 0`) requires PTX ISA
+3.2 or later; plain `.file` has no such gate. This presence-based check has no SM
+or debug-option requirement and rejects a known older version even without a
+recognized target. `AvailableContext` defers an absent version; strict validation
+retains its existing completeness requirements. Owned validation uses the retained
+header version and file records. AST-backed validation uses the supplied AST's
+version and independently rebound file metadata, so replacement metadata and
+versions are checked together. See [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file).
+
 `ResolvedFunction::parameter_declarations` owns validated `.param`
 declarations: return formals first, input formals next, then body-local declarators
 in lexical traversal order (including nested blocks). Each

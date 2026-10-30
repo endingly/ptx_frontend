@@ -180,6 +180,181 @@ TEST(DebugFileMetadata, RejectsMalformedRetainedPayloadRanges) {
   }
 }
 
+/** Explicit numeric metadata uses its presence, including zeros, to select PTX 3.2. */
+TEST(DebugFileMetadata, EnforcesNumericMetadataVersionInBothValidationRoutes) {
+  for (const std::string_view version : {"3.1", "3.2"}) {
+    for (const std::string_view suffix : {"", ", 7, 8", ", 0, 0"}) {
+      const std::string source = ".version " + std::string(version) +
+                                 "\n.target sm_20\n.file 1 \"a.cu\"" +
+                                 std::string(suffix) + "\n";
+      SCOPED_TRACE(source);
+      PtxSyntaxParser parser(source);
+      const auto ast = parser.parseModule();
+      ASSERT_TRUE(ast);
+      ASSERT_TRUE(ast.diagnostics.empty());
+      const auto module = resolveModuleOnly(*ast);
+      ASSERT_TRUE(module);
+      const bool accepted = version == "3.2" || suffix.empty();
+      const auto& file = module->symbols.debugFiles().front();
+      for (const auto policy :
+           {ModuleValidationPolicy::AvailableContext,
+            ModuleValidationPolicy::RequireCompleteContext}) {
+        EXPECT_EQ(bool(resolveAndValidateModule(*ast)), accepted);
+        for (const auto& result : {validateModule(*module, policy),
+                                   validateModule(*ast, *module, policy)}) {
+          EXPECT_EQ(bool(result), accepted);
+          if (!result) {
+            ASSERT_EQ(result.error().size(), 1u);
+            EXPECT_EQ(result.error().front().kind,
+                      checker::CheckDiagnosticKind::UnsupportedAvailability);
+            EXPECT_EQ(result.error().front().range, file.range);
+            EXPECT_EQ(result.error().front().message,
+                      ".file timestamp and file size require PTX ISA >= 3.2.");
+          }
+        }
+      }
+    }
+  }
+}
+
+/** A known old version fails without a target, while an absent version defers. */
+TEST(DebugFileMetadata, UsesVersionWithoutRequiringTargetContext) {
+  for (const std::string_view prefix : {".version 3.1\n", ""}) {
+    PtxSyntaxParser parser(std::string(prefix) + ".file 1 \"a.cu\", 0, 0\n");
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast);
+    const auto module = resolveModuleOnly(*ast);
+    ASSERT_TRUE(module);
+    EXPECT_EQ(bool(resolveModule(*ast)), prefix.empty());
+    EXPECT_FALSE(resolveAndValidateModule(*ast));
+    for (const auto& result :
+         {validateModule(*module, ModuleValidationPolicy::AvailableContext),
+          validateModule(*ast, *module,
+                         ModuleValidationPolicy::AvailableContext)}) {
+      EXPECT_EQ(bool(result), prefix.empty());
+      if (!result) {
+        ASSERT_EQ(result.error().size(), 1u);
+        EXPECT_EQ(result.error().front().kind,
+                  checker::CheckDiagnosticKind::UnsupportedAvailability);
+      }
+    }
+    EXPECT_FALSE(validateModule(*module));
+    EXPECT_FALSE(validateModule(*ast, *module));
+  }
+}
+
+/** Unknown targets retain their diagnostics and cannot suppress the version gate. */
+TEST(DebugFileMetadata, RejectsOldMetadataAlongsideUnknownTarget) {
+  PtxSyntaxParser parser(
+      ".version 3.1\n.target sm_unknown\n.file 1 \"a.cu\", 0, 0\n");
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  const auto module = resolveModuleOnly(*ast);
+  ASSERT_TRUE(module);
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+    for (const auto& result : {validateModule(*module, policy),
+                               validateModule(*ast, *module, policy)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(
+          std::ranges::any_of(result.error(), [](const auto& diagnostic) {
+            return diagnostic.kind ==
+                       checker::CheckDiagnosticKind::UnsupportedAvailability &&
+                   diagnostic.message ==
+                       ".file timestamp and file size require PTX ISA >= 3.2.";
+          }));
+    }
+  }
+}
+
+/** Replacement source supplies both the debug payload and the version gate. */
+TEST(DebugFileMetadata, RebindsReplacementPayloadAndVersionTogether) {
+  for (const std::string_view retained :
+       {".version 3.1\n.target sm_20\n.file 1 \"a.cu\"\n",
+        ".version 3.2\n.target sm_20\n.file 1 \"a.cu\", 0, 0\n"}) {
+    PtxSyntaxParser original{std::string(retained) +
+                             ".entry k() { .loc 1 1 0 ret; }\n"};
+    const auto original_ast = original.parseModule();
+    ASSERT_TRUE(original_ast);
+    const auto module = resolveAndValidateModule(*original_ast);
+    ASSERT_TRUE(module);
+    for (const std::string_view version : {"3.1", "3.2"}) {
+      for (const std::string_view suffix : {"", ", 0, 0"}) {
+        PtxSyntaxParser replacement(".version " + std::string(version) +
+                                    "\n.target sm_20\n.file 1 \"a.cu\"" +
+                                    std::string(suffix) +
+                                    "\n.entry k() { .loc 1 1 0 ret; }\n");
+        const auto ast = replacement.parseModule();
+        ASSERT_TRUE(ast);
+        for (const auto policy :
+             {ModuleValidationPolicy::AvailableContext,
+              ModuleValidationPolicy::RequireCompleteContext})
+          EXPECT_EQ(bool(validateModule(*ast, *module, policy)),
+                    version == "3.2" || suffix.empty());
+      }
+    }
+  }
+}
+
+/** Owned payloads remain gated after source destruction and coherent mutation. */
+TEST(DebugFileMetadata, RechecksOwnedMetadataAfterSourceDestruction) {
+  std::optional<ResolvedModule> module;
+  {
+    PtxSyntaxParser parser(
+        ".version 3.2\n.target sm_20\n.file 1 \"a.cu\", 0, 0\n.entry k() { "
+        "ret; }\n");
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast);
+    auto result = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(result);
+    module.emplace(std::move(*result));
+  }
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext})
+    EXPECT_TRUE(validateModule(*module, policy));
+  for (auto& region : module->header.regions)
+    region.version = checker::PtxVersion{3, 1};
+  for (auto& function : module->functions)
+    function.source_version = checker::PtxVersion{3, 1};
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+    const auto result = validateModule(*module, policy);
+    ASSERT_FALSE(result);
+    ASSERT_EQ(result.error().size(), 1u);
+    EXPECT_EQ(result.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+}
+
+/** Replacing the entire symbol table cannot bypass the owned version gate. */
+TEST(DebugFileMetadata, RechecksCoherentSymbolTableReplacement) {
+  PtxSyntaxParser parser(".version 3.1\n.target sm_20\n.file 1 \"a.cu\"\n");
+  const auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module);
+  const auto plain = module->symbols;
+  {
+    PtxSyntaxParser replacement(
+        ".version 3.1\n.target sm_20\n.file 1 \"a.cu\", 0, 0\n");
+    const auto replacement_ast = replacement.parseModule();
+    ASSERT_TRUE(replacement_ast);
+    module->symbols = binding::bindSymbols(*replacement_ast).table;
+  }
+  for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext}) {
+    const auto result = validateModule(*module, policy);
+    ASSERT_FALSE(result);
+    ASSERT_EQ(result.error().size(), 1u);
+    EXPECT_EQ(result.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedAvailability);
+  }
+  module->symbols = plain;
+  EXPECT_TRUE(validateModule(*module));
+  EXPECT_TRUE(
+      validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
+}
+
 /** Missing or unrelated declarations cannot satisfy a retained file reference. */
 TEST(DebugFileMetadata, RejectsUnresolvedBasicAndInlineReferences) {
   for (const std::string_view location :

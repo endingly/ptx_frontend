@@ -2480,6 +2480,24 @@ void check_function_parameters(const ResolvedModule& module,
                                : ParameterDeclarationRole::DeviceInput);
 }
 
+/** Gate explicit numeric file metadata independently of target/debug options. */
+void check_debug_file_availability(
+    std::span<const binding::DebugFileDeclaration> files,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  if (!version || *version >= checker::PtxVersion{3, 2})
+    return;
+  for (const auto& file : files) {
+    if (!file.timestamp && !file.file_size)
+      continue;
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = file.range,
+        .message = ".file timestamp and file size require PTX ISA >= 3.2.",
+    });
+  }
+}
+
 /** Rejoin retained debug declarations and references without needing source text. */
 void check_debug_files(const ResolvedModule& module,
                        checker::CheckDiagnostics& diagnostics) {
@@ -3723,6 +3741,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto storage_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  check_debug_file_availability(module.symbols.debugFiles(), storage_version,
+                                diagnostics);
   check_opaque_storage(module, storage_version, diagnostics);
   check_call_tables(module, diagnostics);
   check_cvta_constant_pointer_restriction(module, diagnostics);
@@ -3952,6 +3972,8 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     });
   // Retargeting must not bypass version/target-sensitive declaration rules.
   const auto rebound = binding::bindSymbols(ast);
+  check_debug_file_availability(rebound.table.debugFiles(), version,
+                                diagnostics);
   for (const auto& diagnostic : rebound.diagnostics) {
     diagnostics.push_back({
         .kind = checker::CheckDiagnosticKind::ModuleSourceMismatch,

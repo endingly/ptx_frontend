@@ -369,6 +369,13 @@ Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串�
 也验证 `.loc` metadata；`.file`、`.loc`、`.section` 与 `.pragma` 不产生可执行 Resolved IR node，
 也不附着到 instruction。
 
+显式 `.file` timestamp/file-size metadata（包括 `0, 0`）要求 PTX ISA 3.2 或更高版本；
+普通 `.file` 不受此门槛限制。此检查基于可选字段是否存在，不要求 SM 或 debug option，
+即使没有可识别 target，已知的旧版本也会被拒绝。`AvailableContext` 在 version 缺失时延后检查；
+严格验证沿用现有的上下文完整性要求。owned validation 使用保留的 header version 与 file record；
+AST-backed validation 使用传入 AST 的 version 及独立重新绑定的 file metadata，
+因此替换 metadata 与 version 会一起检查。参见 [PTX ISA 9.3 §11.5.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-file)。
+
 `ResolvedFunction::parameter_declarations` 拥有通过验证的 `.param` 声明：先按列表顺序
 保存 return formal，再保存 input formal，最后按词法遍历顺序保存 body-local declarator
 （含嵌套 block）。每个 `ResolvedParameterDeclaration` 保留 `symbol_id`、`scope_id`、role

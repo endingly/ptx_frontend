@@ -76,7 +76,7 @@ static void ptx_advance_position(
 
 %x BLOCK_COMMENT
 
-WS              [ \t\r\n]+
+WS              [ \t\r\n\f]+
 LINE_CMT        "//"[^\n\r]*
 
 ID_START        [A-Za-z_$%]

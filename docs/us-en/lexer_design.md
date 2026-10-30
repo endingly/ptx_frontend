@@ -271,11 +271,18 @@ spelling where appropriate.
 
 ## Whitespace and Comments
 
-Spaces, tabs, and line endings are skipped.
+Spaces, horizontal tabs (`\t`), ASCII form feeds (`\f`, byte `0x0c`), and
+CR/LF line endings separate tokens and are retained as whitespace trivia. Form
+feed advances one byte column without starting a new line. Trailing whitespace
+is retained on the EOF token. Vertical tab (`0x0b`) and other unknown control
+bytes remain lexical errors outside strings and comments; this supported subset
+does not admit arbitrary ASCII controls. See the pinned
+[PTX 9.3 source format](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#source-format).
 
 Line comments begin with `//` and continue to, but do not consume, the line
 ending as part of the comment rule. The following whitespace rule consumes the
-line ending.
+line ending. A form feed inside a line comment does not terminate it; form
+feeds inside strings and either comment form retain their exact content.
 
 Block comments use an exclusive `BLOCK_COMMENT` scanner state:
 

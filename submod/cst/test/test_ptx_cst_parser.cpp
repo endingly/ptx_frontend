@@ -29,6 +29,23 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Form-feed token separators and EOF trivia survive exact CST reconstruction. */
+TEST(PtxCstParser, RoundTripsFormFeedWhitespace) {
+  constexpr std::string_view source =
+      "\f.version\f9.3\r\n.target\fsm_80\n.address_size\f64\n"
+      ".global\f.u32\fvalue;\n.entry\fkernel()\f{\fret;\f}\f";
+  PtxCstParser parser(source);
+  const auto result = parser.parseModule();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+  PtxCstParser reparsing(result->sourceText());
+  const auto reparsed = reparsing.parseModule();
+  ASSERT_TRUE(reparsed.has_value());
+  EXPECT_TRUE(reparsed.diagnostics.empty());
+  EXPECT_EQ(reparsed->sourceText(), source);
+}
+
 /** Decimal-point floats round-trip through both declaration and operand syntax. */
 TEST(PtxCstParser, RoundTripsTrailingDecimalPointFloats) {
   constexpr std::string_view source = R"ptx(// floating source

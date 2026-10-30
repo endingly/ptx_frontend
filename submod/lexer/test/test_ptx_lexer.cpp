@@ -67,6 +67,94 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
   EXPECT_EQ(tok.text, text);
 }
 
+/** Form feed is lossless whitespace and advances one byte column, not a line. */
+TEST(PtxLexerNew, FormFeedWhitespaceRangesAndTrailingTrivia) {
+  PtxLexer lexer("\f.global \t\f.u32\r\n\fvalue;\r\fnext\n\f");
+  const auto global = lexer.next();
+  EXPECT_EQ(global.kind, TokenKind::DotGlobal);
+  EXPECT_EQ(global.range.start.line, 1u);
+  EXPECT_EQ(global.range.start.column, 2u);
+  ASSERT_EQ(global.leading_trivia.size(), 1u);
+  EXPECT_EQ(global.leading_trivia[0].kind, TriviaKind::Whitespace);
+  EXPECT_EQ(global.leading_trivia[0].text, "\f");
+  EXPECT_EQ(global.leading_trivia[0].range.start.column, 1u);
+  EXPECT_EQ(global.leading_trivia[0].range.end.column, 2u);
+  const auto type = lexer.next();
+  EXPECT_EQ(type.text, ".u32");
+  EXPECT_EQ(type.range.start.line, 1u);
+  EXPECT_EQ(type.range.start.column, 12u);
+  ASSERT_EQ(type.leading_trivia.size(), 1u);
+  EXPECT_EQ(type.leading_trivia[0].text, " \t\f");
+  EXPECT_EQ(type.leading_trivia[0].range.start.column, 9u);
+  EXPECT_EQ(type.leading_trivia[0].range.end.column, 12u);
+  const auto value = lexer.next();
+  EXPECT_EQ(value.text, "value");
+  EXPECT_EQ(value.range.start.line, 2u);
+  EXPECT_EQ(value.range.start.column, 2u);
+  ASSERT_EQ(value.leading_trivia.size(), 1u);
+  EXPECT_EQ(value.leading_trivia[0].text, "\r\n\f");
+  EXPECT_EQ(value.leading_trivia[0].range.start.line, 1u);
+  EXPECT_EQ(value.leading_trivia[0].range.start.column, 16u);
+  EXPECT_EQ(value.leading_trivia[0].range.end.line, 2u);
+  EXPECT_EQ(value.leading_trivia[0].range.end.column, 2u);
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto next = lexer.next();
+  EXPECT_EQ(next.text, "next");
+  EXPECT_EQ(next.range.start.line, 3u);
+  EXPECT_EQ(next.range.start.column, 2u);
+  const auto eof = lexer.next();
+  EXPECT_EQ(eof.kind, TokenKind::Eof);
+  EXPECT_EQ(eof.range.start.line, 4u);
+  EXPECT_EQ(eof.range.start.column, 2u);
+  EXPECT_EQ(eof.range.end.line, 4u);
+  EXPECT_EQ(eof.range.end.column, 2u);
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\n\f");
+  EXPECT_EQ(eof.leading_trivia[0].range.start.line, 3u);
+  EXPECT_EQ(eof.leading_trivia[0].range.start.column, 6u);
+  EXPECT_EQ(eof.leading_trivia[0].range.end.line, 4u);
+  EXPECT_EQ(eof.leading_trivia[0].range.end.column, 2u);
+}
+
+/** Form feed remains opaque inside strings and both comment forms. */
+TEST(PtxLexerNew, FormFeedInsideStringsAndComments) {
+  PtxLexer lexer("\"a\fb\"/*c\fd*///e\fnot_a_token\r\nret;\f");
+  const auto string = lexer.next();
+  EXPECT_EQ(string.kind, TokenKind::String);
+  EXPECT_EQ(string.text, "\"a\fb\"");
+  EXPECT_EQ(string.range.end.column, 6u);
+  const auto ret = lexer.next();
+  EXPECT_EQ(ret.text, "ret");
+  EXPECT_EQ(ret.range.start.line, 2u);
+  EXPECT_EQ(ret.range.start.column, 1u);
+  ASSERT_EQ(ret.leading_trivia.size(), 3u);
+  EXPECT_EQ(ret.leading_trivia[0].kind, TriviaKind::BlockComment);
+  EXPECT_EQ(ret.leading_trivia[0].text, "/*c\fd*/");
+  EXPECT_EQ(ret.leading_trivia[1].kind, TriviaKind::LineComment);
+  EXPECT_EQ(ret.leading_trivia[1].text, "//e\fnot_a_token");
+  EXPECT_EQ(ret.leading_trivia[2].text, "\r\n");
+  EXPECT_EQ(lexer.next().kind, TokenKind::Semicolon);
+  const auto eof = lexer.next();
+  ASSERT_EQ(eof.leading_trivia.size(), 1u);
+  EXPECT_EQ(eof.leading_trivia[0].text, "\f");
+}
+
+/** Other ASCII controls remain bounded errors with normal byte positions. */
+TEST(PtxLexerNew, FormFeedDoesNotAdmitOtherControlWhitespace) {
+  for (const char control : {'\v', '\x01', '\x1f'}) {
+    PtxLexer lexer(std::string(".global") + control + ".u32");
+    EXPECT_EQ(lexer.next().kind, TokenKind::DotGlobal);
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error);
+    EXPECT_EQ(error.text, std::string(1, control));
+    EXPECT_EQ(error.range.start.line, 1u);
+    EXPECT_EQ(error.range.start.column, 8u);
+    EXPECT_EQ(error.range.end.column, 9u);
+    EXPECT_EQ(lexer.next().text, ".u32");
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Basic instruction lexing
 // -----------------------------------------------------------------------------

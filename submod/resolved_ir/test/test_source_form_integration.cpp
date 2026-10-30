@@ -18,6 +18,34 @@
 namespace ptx_frontend::resolved_ir {
 namespace {
 
+/** Form-feed declarations and instructions retain owned source associations. */
+TEST(SourceFormIntegration, OwnsFormFeedSeparatedSourceAfterAstDestruction) {
+  std::optional<ResolvedModule> owned;
+  {
+    const std::string source =
+        ".version\f9.3\n.target\fsm_80\n.address_size\f64\n"
+        ".global\f.u32\fvalue;\n.entry\fkernel()\f{\fret;\f}\f";
+    const auto ast = test_helpers::parseModule(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto resolved = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(resolved) << resolved.error().front().message;
+    ASSERT_TRUE(validateModule(*ast, *resolved));
+    owned.emplace(std::move(*resolved));
+  }
+  ASSERT_TRUE(
+      validateModule(*owned, ModuleValidationPolicy::RequireCompleteContext));
+  ASSERT_EQ(owned->storage_declarations.size(), 1u);
+  ASSERT_EQ(owned->functions.size(), 1u);
+  const auto& function = owned->functions.front();
+  EXPECT_FALSE(owned->source_identity.empty());
+  EXPECT_FALSE(function.source_identity.empty());
+  ASSERT_EQ(function.instruction_opcodes.size(), 1u);
+  EXPECT_EQ(function.instruction_opcodes.front(), "ret");
+  ASSERT_EQ(function.instruction_ranges.size(), 1u);
+  EXPECT_EQ(function.instruction_ranges.front().start.line, 5u);
+  EXPECT_EQ(function.instruction_ranges.front().start.column, 19u);
+}
+
 /** Independent source options and operand omissions survive one owned module. */
 TEST(SourceFormIntegration, PreservesIndependentModernSourceStates) {
   for (const bool debug : {false, true}) {

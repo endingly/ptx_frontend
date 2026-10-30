@@ -890,3 +890,162 @@ TEST(ResolvedModule, ResolvesSameModuleAliasCallsToCanonicalSignature) {
 
 }  // namespace
 }  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Preserve vector formals and named-vector actuals as single ABI arguments. */
+TEST(ResolvedModule, VectorRegisterFormalsAndCallsRetainShape) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.func (.reg .v2 .u32 result) f(.reg .v4 .u32 input);
+.func (.reg .align 8 .v2 .u32 result) f(.reg .align 16 .v4 .u32 input) { ret; }
+.func caller(.reg .v4 .u32 input) {
+  .reg .v2 .u32 output;
+  call (output), f, (input);
+  ret;
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  const auto& function = std::get<syntax_ast::AstFunction>(ast->items[2]);
+  ASSERT_TRUE(function.return_parameters[0].vector_type);
+  EXPECT_EQ(function.return_parameters[0].vector_type->text, ".v2");
+  EXPECT_EQ(function.parameters[0].vector_type->text, ".v4");
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module) << module.error().front().message;
+  const auto& signature = module->functions[0].contract.signature;
+  EXPECT_EQ(signature.return_parameters[0].vector_shape,
+            CallArgumentVectorShape::V2);
+  EXPECT_EQ(signature.parameters[0].vector_shape, CallArgumentVectorShape::V4);
+  EXPECT_EQ(declaration_semantics::contract_constant(
+                signature.parameters[0].alignment),
+            16u);
+  EXPECT_TRUE(module->functions[0].parameter_declarations.empty());
+  EXPECT_TRUE(validateModule(*module));
+}
+
+/** Calls must match complete vector shape without scalar or literal coercion. */
+TEST(ResolvedModule, RejectsVectorRegisterCallShapeMismatch) {
+  for (const auto actual : {"scalar", "wrong", "7"}) {
+    const auto ast = parseModule(fmt::format(R"ptx(
+.version 9.3
+.target sm_80
+.func f(.reg .v2 .u32 input) {{ ret; }}
+.func caller() {{
+  .reg .u32 scalar;
+  .reg .v4 .u32 wrong;
+  call f, ({});
+  ret;
+}}
+)ptx",
+                                             actual));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    EXPECT_FALSE(resolveModule(*ast)) << actual;
+  }
+}
+
+/** Indirect prototypes and target lists retain the same vector ABI contract. */
+TEST(ResolvedModule, VectorRegisterIndirectMetadataRetainsShape) {
+  for (const auto metadata :
+       {"proto: .callprototype (.reg .v2 .u32 r) _ (.reg .v4 .u32 p);",
+        "proto: .calltargets f;"}) {
+    const auto ast = parseModule(fmt::format(R"ptx(
+.version 9.3
+.target sm_80
+.func (.reg .v2 .u32 r) f(.reg .v4 .u32 p) {{ ret; }}
+.func caller() {{
+  .reg .b64 target;
+  .reg .v4 .u32 input;
+  .reg .v2 .u32 output;
+  {}
+  call (output), target, (input), proto;
+  ret;
+}}
+)ptx",
+                                             metadata));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto module = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(module) << module.error().front().message;
+    EXPECT_TRUE(validateModule(*module));
+  }
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Owned vector calls reject scalar literal replacement even after AST release. */
+TEST(ResolvedModule, OwnedVectorCallRejectsScalarLiteralTampering) {
+  std::optional<ResolvedModule> owned;
+  {
+    const auto ast = parseModule(R"ptx(
+.version 9.3
+.target sm_80
+.func f(.reg .v2 .u32 input) { ret; }
+.func scalar(.reg .u32 input) { ret; }
+.func caller() {
+  .reg .v2 .u32 input;
+  call f, (input);
+  call scalar, (7);
+  ret;
+}
+)ptx");
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    auto module = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(module) << module.error().front().message;
+    owned = std::move(*module);
+  }
+  auto& vector_call =
+      dynamic_cast<CallDirect&>(*owned->functions.back().body[0]);
+  const auto& scalar_call =
+      dynamic_cast<const CallDirect&>(*owned->functions.back().body[1]);
+  vector_call.arguments->value.values[0].value =
+      scalar_call.arguments->value.values[0].value;
+  EXPECT_FALSE(validateModule(*owned));
+}
+
+/** Source comparison includes vector modifier identity independently of type. */
+TEST(ResolvedModule, SourceVectorFormalMutationIsRejected) {
+  auto ast = parseModule(
+      ".version 9.3\n.target sm_80\n.func f(.reg .v2 .u32 p) { ret; }");
+  ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+  auto module = resolveAndValidateModule(*ast);
+  ASSERT_TRUE(module) << module.error().front().message;
+  std::get<syntax_ast::AstFunction>(ast->items[2])
+      .parameters[0]
+      .vector_type->text = ".v4";
+  EXPECT_FALSE(validateModule(*ast, *module));
+  EXPECT_TRUE(validateModule(*module));
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir
+
+namespace ptx_frontend::resolved_ir {
+namespace {
+/** Indirect calls and target groups reject mismatching vector contracts. */
+TEST(ResolvedModule, RejectsVectorRegisterIndirectShapeMismatch) {
+  for (const auto metadata :
+       {"proto: .callprototype (.reg .v2 .u32 r) _ (.reg .v2 .u32 p);",
+        "proto: .calltargets f, g;"}) {
+    const auto ast = parseModule(fmt::format(R"ptx(
+.version 9.3
+.target sm_80
+.func (.reg .v2 .u32 r) f(.reg .v4 .u32 p) {{ ret; }}
+.func (.reg .v2 .u32 r) g(.reg .v2 .u32 p) {{ ret; }}
+.func caller() {{
+  .reg .b64 target;
+  .reg .v4 .u32 input;
+  .reg .v2 .u32 output;
+  {}
+  call (output), target, (input), proto;
+  ret;
+}}
+)ptx",
+                                             metadata));
+    ASSERT_MODULE_PARSE_SUCCEEDS(ast);
+    EXPECT_FALSE(resolveModule(*ast)) << metadata;
+  }
+}
+}  // namespace
+}  // namespace ptx_frontend::resolved_ir

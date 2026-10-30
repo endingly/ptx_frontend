@@ -396,6 +396,13 @@ std::expected<WithLocs<ResolvedImmediate>, ResolveDiagnostic>
 resolve_call_literal(
     const ResolvedCallLiteral& literal, SourceRange range,
     const declaration_semantics::FunctionParameterContract& formal) {
+  if (formal.vector_shape !=
+      call_argument_compatibility::CallArgumentVectorShape::Scalar) {
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = "A scalar call literal cannot satisfy a vector formal.",
+    });
+  }
   if (formal.scalar_type == ScalarType::Invalid) {
     return std::unexpected(ResolveDiagnostic{
         .range = range,

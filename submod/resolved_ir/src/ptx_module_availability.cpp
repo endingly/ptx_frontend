@@ -1958,6 +1958,41 @@ void check_function_contract_integrity(const ResolvedFunction& function,
   }
 }
 
+/** Return the lane count of a supported ABI vector shape, or zero for junk. */
+uint8_t formal_vector_width(
+    call_argument_compatibility::CallArgumentVectorShape shape) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  switch (shape) {
+    case CallArgumentVectorShape::Scalar:
+      return 1;
+    case CallArgumentVectorShape::V2:
+      return 2;
+    case CallArgumentVectorShape::V4:
+      return 4;
+    default:
+      return 0;
+  }
+}
+
+/** Validate vector formal invariants without borrowing syntax. */
+bool valid_formal_vector(
+    const declaration_semantics::FunctionParameterContract& parameter) {
+  const auto width = formal_vector_width(parameter.vector_shape);
+  if (width == 0)
+    return false;
+  if (width == 1)
+    return true;
+  const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
+  return parameter.state_space ==
+             call_argument_compatibility::CallArgumentStateSpace::Register &&
+         !parameter.is_array && !parameter.is_pointer &&
+         !parameter.opaque_kind && metadata &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::Fundamental &&
+         parameter.scalar_type != ScalarType::Pred &&
+         metadata->size_bytes * width <= 16;
+}
+
 /** Validate one modeled scalar contract without accepting constructed enum junk. */
 bool valid_scalar_contract(
     const declaration_semantics::FunctionParameterContract& parameter) {
@@ -1972,6 +2007,13 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
                      checker::CheckDiagnostics& diagnostics) {
   const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
     for (const auto& parameter : parameters) {
+      if (!valid_formal_vector(parameter) ||
+          (entry_inputs &&
+           parameter.vector_shape !=
+               call_argument_compatibility::CallArgumentVectorShape::Scalar))
+        append_model_mismatch(
+            diagnostics, range,
+            "Resolved function signature has invalid vector shape.");
       if ((parameter.alignment &&
            !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
           (parameter.array_extent &&
@@ -2311,7 +2353,11 @@ void check_function_parameters(const ResolvedModule& module,
           : symbol.state_space == base::DeclarationStateSpace::Parameter
               ? CallArgumentStateSpace::Parameter
               : CallArgumentStateSpace::Invalid;
-      if (formal.state_space != expected_state ||
+      if (formal_vector_width(formal.vector_shape) !=
+              symbol.vector_width.value_or(1) ||
+          (symbol.vector_width && *symbol.vector_width != 2 &&
+           *symbol.vector_width != 4) ||
+          formal.state_space != expected_state ||
           formal.opaque_kind != bound_opaque ||
           (!bound_opaque &&
            (!bound_type || bound_type->type != formal.scalar_type)))
@@ -2935,6 +2981,20 @@ CallArgumentProperties call_argument_properties(
 std::unordered_map<uint32_t, CallArgumentProperties> build_parameter_properties(
     const ResolvedModule& module) {
   std::unordered_map<uint32_t, CallArgumentProperties> properties;
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.state_space == base::DeclarationStateSpace::Register &&
+        symbol.type) {
+      const auto* metadata = base::find_scalar_type_metadata(*symbol.type);
+      properties.try_emplace(
+          symbol.id.value,
+          CallArgumentProperties{
+              .state_space = CallArgumentStateSpace::Register,
+              .scalar_type = metadata ? metadata->type : ScalarType::Invalid,
+              .vector_shape =
+                  call_vector_shape(symbol.vector_width.value_or(1)),
+          });
+    }
+  }
   for (const auto& function : module.functions) {
     for (const auto& declaration : function.parameter_declarations)
       properties.try_emplace(declaration.symbol_id.value,

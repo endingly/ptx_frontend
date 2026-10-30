@@ -749,19 +749,39 @@ NormalizedNumericValue parameterArrayExtentContract(
   return InvalidStructuralKey{expressionKey(expression)};
 }
 
+/** Normalize the optional vector modifier without accepting constructed junk. */
+call_argument_compatibility::CallArgumentVectorShape parameterVectorShape(
+    const std::optional<syntax_ast::AstSyntax>& vector_type) {
+  using call_argument_compatibility::CallArgumentVectorShape;
+  if (!vector_type)
+    return CallArgumentVectorShape::Scalar;
+  if (vector_type->text == ".v2")
+    return CallArgumentVectorShape::V2;
+  if (vector_type->text == ".v4")
+    return CallArgumentVectorShape::V4;
+  return CallArgumentVectorShape::Invalid;
+}
+
+/** Build an owned, normalized signature contract for one formal. */
 FunctionParameterContract parameterContract(
     const syntax_ast::AstFunctionParameter& parameter) {
   const base::ScalarType scalar =
       parameterContractScalarType(parameter.type.text);
+  const auto shape = parameterVectorShape(parameter.vector_type);
+  const uint64_t lanes =
+      !parameter.vector_type                                              ? 1
+      : shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
+                                                                          : 4;
   const std::optional<uint64_t> natural_alignment =
       scalar != base::ScalarType::Invalid
-          ? std::optional<uint64_t>{base::scalar_size_of(scalar)}
+          ? std::optional<uint64_t>{base::scalar_size_of(scalar) * lanes}
           : std::nullopt;
   return {
       .state_space = parameterStateSpace(parameter.state_space),
       .alignment =
           parameterAlignmentContract(parameter.alignment, natural_alignment),
       .scalar_type = scalar,
+      .vector_shape = shape,
       .opaque_kind = base::opaque_resource_kind(parameter.type.text),
       .type_spelling = parameter.type.text,
       .is_pointer = parameter.is_pointer,
@@ -1720,6 +1740,29 @@ class Checker {
                parameter.range,
                "This parameter role does not permit the declared state space.");
       return;
+    }
+
+    if (parameter.vector_type) {
+      const auto shape = parameterVectorShape(parameter.vector_type);
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.type.text);
+      const uint64_t lanes =
+          shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
+                                                                            : 4;
+      if (!is_register || parameter.is_array || parameter.is_pointer ||
+          shape ==
+              call_argument_compatibility::CallArgumentVectorShape::Invalid ||
+          !metadata ||
+          metadata->register_declaration_usage !=
+              base::ScalarDeclarationUsage::Fundamental ||
+          metadata->type == base::ScalarType::Pred ||
+          metadata->size_bytes * lanes > 16) {
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 "Vector formals require .reg .v2/.v4 non-predicate "
+                 "fundamental elements totaling at most 128 bits.");
+        return;
+      }
     }
 
     if (const auto opaque = base::opaque_resource_kind(parameter.type.text)) {

@@ -665,6 +665,9 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   return syntax_ast::AstFunctionParameter{
       .state_space = lowerStateSpace(cst.token(parameter.state_space).kind),
       .alignment = std::move(alignment),
+      .vector_type = parameter.vector_type ? std::optional{leafSyntax(
+                                                 cst, *parameter.vector_type)}
+                                           : std::nullopt,
       .type = leafSyntax(cst, parameter.type),
       .is_pointer = parameter.pointer_directive.has_value(),
       .pointer_space = std::move(pointer_space),

@@ -539,6 +539,9 @@ initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 cons
 与[中文契约](../docs/zh-han/parameter_declarations.md)：保留 entry/device input、device return
 与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
 其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
+Device `.reg` input/return 支持 `.v2`/`.v4` 非 predicate fundamental vector（总大小至多
+128 bit）；signature、binding 与 direct/indirect call 保留一个完整 vector shape，owned
+validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsupported。
 
 ## M3：值、地址与 `mov`
 

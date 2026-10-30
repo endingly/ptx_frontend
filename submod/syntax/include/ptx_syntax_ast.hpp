@@ -488,6 +488,8 @@ struct AstAliasDirective {
 struct AstFunctionParameter {
   AstStateSpace state_space{};
   std::optional<AstSyntax> alignment;
+  /** Optional vector shape, independent of the scalar element type. */
+  std::optional<AstSyntax> vector_type;
   AstSyntax type;
   bool is_pointer{};
   std::optional<AstSyntax> pointer_space;

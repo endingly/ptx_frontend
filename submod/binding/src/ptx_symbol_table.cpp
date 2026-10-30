@@ -872,15 +872,17 @@ struct SymbolTableBuilder {
       addSymbol(function_scope, SymbolKind::ReturnParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
-                declarationAlignment(parameter.alignment, std::nullopt,
-                                     parameter.type.text));
+                declarationAlignment(parameter.alignment, parameter.vector_type,
+                                     parameter.type.text),
+                std::nullopt, false, false, vectorWidth(parameter.vector_type));
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
                 parameter.name.syntax.text, parameter.name.syntax.range,
                 SymbolLinkage::None, parameter.state_space, parameter.type.text,
-                declarationAlignment(parameter.alignment, std::nullopt,
-                                     parameter.type.text));
+                declarationAlignment(parameter.alignment, parameter.vector_type,
+                                     parameter.type.text),
+                std::nullopt, false, false, vectorWidth(parameter.vector_type));
     }
     collectBody(function.body, function_scope, function_scope);
   }

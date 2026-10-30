@@ -248,13 +248,17 @@ PtxCstParser::parseFunctionParameter() {
     alignment = *value;
   }
 
+  std::optional<TokenId> vector_type;
+  if (token(peek()).text == ".v2" || token(peek()).text == ".v4") {
+    vector_type = consume();
+    if (token(state_space).kind == TokenKind::DotParam)
+      return std::unexpected(CstParseDiagnostic{
+          token(*vector_type).range,
+          "vector .param function parameters are not supported"});
+  }
   auto type = expect(TokenKind::DotIdent, "parameter type");
   if (!type)
     return std::unexpected(type.error());
-  if (token(*type).text == ".v2" || token(*type).text == ".v4") {
-    return std::unexpected(CstParseDiagnostic{
-        token(*type).range, "vector function parameters are not supported"});
-  }
 
   std::optional<TokenId> pointer_directive;
   std::optional<TokenId> pointer_space;
@@ -311,6 +315,7 @@ PtxCstParser::parseFunctionParameter() {
       state_space,
       align_directive,
       alignment,
+      vector_type,
       *type,
       pointer_directive,
       pointer_space,

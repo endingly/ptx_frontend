@@ -1093,14 +1093,35 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(result->sourceText(), source);
 }
 
+/** Device vector formals retain one typed input or return declaration. */
+TEST(PtxCstParser, ParsesVectorRegisterFormals) {
+  for (const auto source : {".func f(.reg .v2 .u32 p) { ret; }",
+                            ".func (.reg .v4 .u32 r) f() { ret; }"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value()) << source;
+    ASSERT_TRUE(result.diagnostics.empty()) << source;
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+    const auto& parameters = function.return_parameters
+                                 ? *function.return_parameters
+                                 : *function.parameters;
+    ASSERT_EQ(parameters.parameters.size(), 1u);
+    ASSERT_TRUE(parameters.parameters[0].vector_type);
+    EXPECT_EQ(result->token(*parameters.parameters[0].vector_type).text,
+              function.return_parameters ? ".v4" : ".v2");
+    EXPECT_EQ(result->token(parameters.parameters[0].type).text, ".u32");
+  }
+}
+
 /** Parameter syntax restrictions report their boundary before generic token errors. */
 TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
   for (const auto& [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
            {".entry kernel(.param .v2 .u32 input) { }",
-            "vector function parameters are not supported"},
+            "vector .param function parameters are not supported"},
            {".func (.param .v4 .b8 result) helper();",
-            "vector function parameters are not supported"},
+            "vector .param function parameters are not supported"},
            {".entry kernel(.param .u32 input[2][3]) { }",
             "multidimensional function parameters are not supported"},
            {".func (.param .u32 result[2][3]) helper();",

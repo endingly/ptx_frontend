@@ -1432,3 +1432,51 @@ TEST(PtxDeclarationSemantics, RejectsModuleScopeParameterVariables) {
 
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics
+
+namespace ptx_frontend::declaration_semantics {
+namespace {
+/** Vector register formals follow fundamental type and 128-bit limits. */
+TEST(PtxDeclarationSemantics, ValidatesVectorRegisterFormalBoundaries) {
+  for (const auto source : {".func f(.reg .v2 .u64 p) { ret; }",
+                            ".func (.reg .v4 .f32 p) f() { ret; }",
+                            ".func f(.reg .v4 .f16x2 p) { ret; }",
+                            ".func f(.reg .v2 .u8 p) { ret; }"}) {
+    SCOPED_TRACE(source);
+    EXPECT_TRUE(check(source).diagnostics.empty());
+  }
+  for (const auto source : {".func f(.reg .v2 .pred p) { ret; }",
+                            ".func f(.reg .v4 .u64 p) { ret; }",
+                            ".func f(.reg .v2 .b128 p) { ret; }",
+                            ".func f(.reg .v2 .bf16 p) { ret; }",
+                            ".func f(.reg .v2 .u32 p[2]) { ret; }",
+                            ".entry f(.reg .v2 .u32 p) { ret; }"}) {
+    SCOPED_TRACE(source);
+    EXPECT_GT(diagnosticCount(
+                  check(source),
+                  DeclarationDiagnosticKind::UnsupportedParameterDeclaration),
+              0u);
+  }
+}
+
+/** Typed signatures distinguish vectors and retain malformed constructed shapes. */
+TEST(PtxDeclarationSemantics, VectorRegisterSignaturesCompareShape) {
+  EXPECT_TRUE(check(".func f(.reg .v2 .u32 p); .func f(.reg .align 8 .v2 .u32 "
+                    "q) { ret; }")
+                  .diagnostics.empty());
+  for (const auto declaration : {".reg .u32 q", ".reg .v4 .u32 q"}) {
+    const auto result =
+        check(std::string(".func f(.reg .v2 .u32 p); .func f(") + declaration +
+              ") { ret; }");
+    EXPECT_FALSE(result.diagnostics.empty());
+  }
+  PtxSyntaxParser parser(".func f(.reg .v2 .u32 p) { ret; }");
+  auto ast = parser.parseModule();
+  ASSERT_TRUE(ast);
+  auto& parameter =
+      std::get<syntax_ast::AstFunction>(ast->items[0]).parameters[0];
+  parameter.vector_type->text = ".v3";
+  auto binding = binding::bindSymbols(*ast);
+  EXPECT_FALSE(checkDeclarations(*ast, binding.table).empty());
+}
+}  // namespace
+}  // namespace ptx_frontend::declaration_semantics

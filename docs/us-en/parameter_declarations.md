@@ -18,8 +18,9 @@ validation before publishing metadata.
 | `.callprototype` scalar / array formals | Retained | Device signature rules; prototype itself requires PTX 2.1 / SM 20 | Owned `declaration_semantics::FunctionSignature` from the semantic API; not a declaration table entry |
 | Entry-header opaque `.texref`, `.samplerref`, `.surfref` | Retained | Name-only entry inputs; resource kind, shape, and version checked | Ordered `opaque_entry_parameters` with bound symbol identity, resource kind, and source shape; no byte layout |
 | Device formal, return, or body-local opaque object | Type spelling retained | Rejected | None; illegal because opaque-object use is limited to module globals and entry parameter lists |
-| `.f16x2` in an entry header, device formal/return, or body-local declaration | Type spelling retained | Explicit unsupported diagnostic | None; `.f16x2` is a fundamental type, so this is a retained legal-but-unsupported boundary, not an alternate-format rejection |
-| Header `.v2` / `.v4` parameter | Explicit unsupported parse diagnostic | Not reached | None; retained legal-but-unsupported boundary pending context-specific vector shape, size, and ABI metadata |
+| `.param .f16x2` in an entry header, device formal/return, or body-local declaration | Type spelling retained | Explicit unsupported diagnostic | None; `.f16x2` is a fundamental type, so this is a retained legal-but-unsupported boundary, not an alternate-format rejection |
+| Device `.reg .v2` / `.v4` input or return, including `.callprototype` | Retained as one formal | Non-predicate fundamental elements, at most 128 bits total; scalar/vector and width must match at calls | Typed `FunctionParameterContract::vector_shape`, bound vector width; no `.param` declaration record |
+| Header `.param .v2` / `.v4` parameter | Explicit unsupported parse diagnostic | Not reached | None; parameter-space vector storage remains outside this contract |
 | Header multidimensional parameter array | Explicit unsupported parse diagnostic | Not reached | None; context-specific header-array grammar remains unresolved rather than being classified as illegal |
 | Body-local vector `.param` | Retained | Explicit unsupported diagnostic | None; retained legal-but-unsupported boundary pending vector shape and call-staging metadata |
 | Body-local parameterized `.param` group (`name<count>`) | Retained | Explicit unsupported diagnostic | None; legal declaration shorthand needs per-expanded-name identity and declaration-order metadata |
@@ -36,6 +37,12 @@ declaration types by retaining their spelling. `.reg` formals retain their
 existing separate signature/address path; they are not `.param` table entries.
 Within the owning function body, register-space input and return formals are
 resolved as typed register operands and retain their lexical symbol identities.
+Device `.reg` inputs and returns support `.v2` and `.v4` of non-predicate
+fundamental elements, including `.f16x2`, with at most 128 bits in total. A
+vector remains one formal and one named-register call argument; scalar literals
+and differing vector widths do not satisfy its signature. Omitted alignment is
+the total vector size. Direct calls, `.callprototype`, `.calltargets`, and owned
+call-table signatures preserve the same typed shape after AST destruction.
 Parameter-space formals remain data objects: use an instruction appropriate to
 their parameter address or storage semantics rather than an arithmetic register
 operand.
@@ -95,7 +102,7 @@ Both `validateModule` overloads compare the ordered return and input signatures
 with binding formals in each function's `declaration_scope`. Scalar `.param`
 formals must match the corresponding declaration record's role, identity, type,
 shape, effective alignment, checked byte extent, and pointer properties. `.reg`
-formals rejoin their binding type and alignment without entering the parameter
+formals rejoin their binding type, vector shape, and alignment without entering the parameter
 table. Opaque entry inputs keep their separate name-only records and their
 positions in the full input signature. Body-local records are validated separately
 and cannot become formals. Compatible prototypes and definitions share function
@@ -129,12 +136,12 @@ declarations consequently remain rejected.
 
 `.f16x2` is listed as a fundamental type, unlike the alternate packed formats.
 The parameter-passing rules discuss base-type scalar and vector `.param`
-formals, so the frontend records `.f16x2` as legal but unsupported rather than
+formals, so the frontend records `.param .f16x2` as legal but unsupported rather than
 collapsing it into the instruction-only-type diagnostic. Supporting it requires
-coherent declaration, direct-call ABI, literal, and resolved-memory behavior;
+coherent parameter-space declaration, direct-call ABI, literal, and resolved-memory behavior;
 the existing `ScalarType::F16x2` value alone is not that contract.
 
-The same distinction applies to `.v2`/`.v4` parameter shapes and local
+The same distinction applies to `.param .v2`/`.v4` shapes and local
 parameterized groups. The variable rules permit two- and four-lane vectors of
 non-predicate fundamental types and permit parameterized names for fundamental
 types in any state space. The frontend retains those source forms where its

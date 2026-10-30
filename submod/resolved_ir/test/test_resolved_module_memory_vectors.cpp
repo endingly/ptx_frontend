@@ -238,6 +238,68 @@ TEST(ResolvedModule, ResolvesOctalImmediateAndAddressOffsets) {
 }
 
 /**
+ * @brief Resolves binary instruction immediates and every supported
+ * address-offset base.
+ */
+TEST(ResolvedModule, ResolvesBinaryImmediateAndAddressOffsets) {
+  const auto parsed_module_1 = parseModule(R"ptx(
+.version 8.0
+.target sm_80
+.address_size 64
+.global .u32 global_value;
+.entry kernel() {
+  .reg .u64 %rd0;
+  .reg .u32 %r<4>;
+  mov.u32 %r0, 0b1000;
+  mov.u64 %rd0, global_value+0b1000;
+  ld.u32 %r1, [%rd0-0b1000];
+  ld.u32 %r2, [0b1000+0b1000];
+}
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_1);
+  const auto& ast = *parsed_module_1;
+
+  const auto resolved = resolveModule(ast);
+
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& body = resolved->functions.front().body;
+  ASSERT_EQ(body.size(), 4u);
+
+  const auto& immediate = std::get<ResolvedImmediate>(
+      dynamic_cast<const MovScalar&>(*body[0]).src_mov_source->value);
+  EXPECT_EQ(immediate.type, ScalarType::U32);
+  EXPECT_EQ(immediate.bits, 8U);
+
+  const auto& symbol_address = std::get<ResolvedAddress>(
+      dynamic_cast<const MovScalar&>(*body[1]).src_mov_source->value);
+  ASSERT_TRUE(symbol_address.offset.has_value());
+  EXPECT_EQ(symbol_address.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(symbol_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(symbol_address.offset->value.bits, 8U);
+
+  const auto& register_address =
+      dynamic_cast<LdGenericScalar&>(*body[2]).address.value;
+  ASSERT_TRUE(register_address.offset.has_value());
+  EXPECT_EQ(register_address.offset->operation,
+            ResolvedAddressOffsetOperator::Subtract);
+  EXPECT_EQ(register_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(register_address.offset->value.bits, 8U);
+
+  const auto& absolute_address =
+      dynamic_cast<LdGenericScalar&>(*body[3]).address.value;
+  const auto& absolute_base =
+      std::get<ResolvedImmediate>(absolute_address.base);
+  EXPECT_EQ(absolute_base.type, ScalarType::U32);
+  EXPECT_EQ(absolute_base.bits, 8U);
+  ASSERT_TRUE(absolute_address.offset.has_value());
+  EXPECT_EQ(absolute_address.offset->operation,
+            ResolvedAddressOffsetOperator::Add);
+  EXPECT_EQ(absolute_address.offset->value.type, ScalarType::S64);
+  EXPECT_EQ(absolute_address.offset->value.bits, 8U);
+}
+
+/**
  * Memory addresses use unsigned bases and signed offsets in their PTX domains.
  */
 TEST(ResolvedModule, ValidatesMemoryAddressImmediateDomains) {

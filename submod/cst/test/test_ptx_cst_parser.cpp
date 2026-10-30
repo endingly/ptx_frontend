@@ -29,6 +29,49 @@ using syntax_cst::CstTokenRange;
 using syntax_cst::CstVectorMember;
 using syntax_cst::CstVectorPack;
 
+/** Binary tokens retain their complete spelling, range, and surrounding trivia. */
+TEST(PtxCstParser, RoundTripsBinaryIntegerSource) {
+  constexpr std::string_view source =
+      " /* binary */ mov.u32 %r0, 0B1000U; // tail\n";
+  PtxCstParser parser(source);
+  const auto result = parser.parseInstruction();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.diagnostics.empty());
+  EXPECT_EQ(result->sourceText(), source);
+  size_t binaries = 0;
+  for (const auto& token : result->tokens) {
+    if (token.kind != TokenKind::Binary)
+      continue;
+    ++binaries;
+    EXPECT_EQ(token.text, "0B1000U");
+    EXPECT_EQ(token.range, (SourceRange{{1, 28}, {1, 35}}));
+  }
+  EXPECT_EQ(binaries, 1u);
+}
+
+/** Malformed binary candidates diagnose once and preserve the following instruction. */
+TEST(PtxCstParser, RecoversMalformedBinaryBeforeReturn) {
+  for (const std::string_view spelling : {"0b", "0b102U", "0b1UU", "0b1tail"}) {
+    const std::string source =
+        ".entry k() { mov.u32 %r0, " + std::string{spelling} + "; ret; }";
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result.has_value()) << spelling;
+    ASSERT_EQ(result.diagnostics.size(), 1u) << spelling;
+    EXPECT_EQ(result.diagnostics.front().range,
+              (SourceRange{{1, 27},
+                           {1, static_cast<int32_t>(27 + spelling.size())}}));
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items.front());
+    ASSERT_FALSE(function.body.empty());
+    const auto* ret =
+        std::get_if<syntax_cst::CstInstruction>(&function.body.back());
+    ASSERT_NE(ret, nullptr);
+    EXPECT_EQ(result->token(ret->opcode).text, "ret");
+  }
+}
+
 /** Named indexing retains its own brackets and register displacement tokens. */
 TEST(PtxCstParser, PreservesNamedArrayIndexPunctuation) {
   PtxCstParser parser("mov.u64 %rd, A[idx - (1+2)];");

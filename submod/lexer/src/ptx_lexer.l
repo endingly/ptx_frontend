@@ -88,6 +88,8 @@ DOT_IDENT       \.{DOT_ATOM}(::{DOT_ATOM})*
 
 F32HEX          0[fF][0-9a-fA-F]{8}
 F64HEX          0[dD][0-9a-fA-F]{16}
+BINARY          0[bB][01]+[uU]?
+BINARY_CANDIDATE 0[bB][A-Za-z0-9_$]*
 HEX             0[xX][0-9a-fA-F]+[uU]?
 DECIMAL         [0-9]+[uU]?
 INVALID_OCTAL   0[0-9]*[89][0-9]*[uU]?
@@ -171,6 +173,8 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 
 {F32HEX}                { TOK(F32Hex); }
 {F64HEX}                { TOK(F64Hex); }
+{BINARY}                { TOK(Binary); }
+{BINARY_CANDIDATE}      { TOK(Error); }
 {HEX}                   { TOK(Hex); }
 {F64}                   { TOK(F64); }
 {INVALID_OCTAL}         { TOK(Error); }

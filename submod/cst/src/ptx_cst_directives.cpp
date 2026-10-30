@@ -200,8 +200,7 @@ PtxCstParser::parseLanguageDirective() {
   std::vector<TokenId> commas;
   for (;;) {
     const TokenKind kind = token(peek()).kind;
-    if (kind != TokenKind::String && kind != TokenKind::Decimal &&
-        kind != TokenKind::Hex) {
+    if (kind != TokenKind::String && !isIntegerLiteral(kind)) {
       return std::unexpected(CstParseDiagnostic{
           token(peek()).range, "expected string or integer in .language"});
     }

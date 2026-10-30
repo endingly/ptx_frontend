@@ -169,6 +169,7 @@ TEST(VideoFamily, MadInterpretationQuery) {
 
 /** Each packed opcode accepts shared-bank swizzles and optional destination masks. */
 TEST(VideoFamily, PackedArithmeticSlices) {
+  EXPECT_TRUE(family_accepts("vadd.u32.u32.u32 %r0, 0b1, 0B10U;"));
   for (const auto count : {2, 4})
     for (const auto stem :
          {"vadd", "vsub", "vavrg", "vabsdiff", "vmin", "vmax"})

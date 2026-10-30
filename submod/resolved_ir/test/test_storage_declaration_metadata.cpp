@@ -72,6 +72,60 @@ bool hasDeclarationKind(const std::vector<ResolveDiagnostic>& diagnostics,
   });
 }
 
+/** Binary expression values feed dimensions, narrowing, signedness, and relocations. */
+TEST(ResolvedStorageDeclarations, BinaryExpressionsAndDimensions) {
+  const auto resolved = resolveSource(R"ptx(
+.global .u8 values[0b100 + 0B100] = {0b0, 0B1U, 0b1000, 0b111111u, +0b1000, -0b1000, 0b1000 + 0b10, 0x10};
+.global .u64 pointer = generic(values) + 0b1000;
+.global .u64 signs[] = {(-0b1000 < 0), (-0b1000U < 0), (0b1000000000000000000000000000000000000000000000000000000000000000 < 0)};
+)ptx");
+  ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+  const auto& values = storageNamed(*resolved, "values");
+  EXPECT_EQ(values.byte_extent, 8u);
+  const std::array<uint64_t, 8> expected{0, 1, 8, 63, 8, 248, 10, 16};
+  ASSERT_EQ(values.initializer.size(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i)
+    EXPECT_EQ(std::get<StorageConstant>(values.initializer[i].value).bits,
+              expected[i]);
+  EXPECT_EQ(std::get<StorageRelocation>(
+                storageNamed(*resolved, "pointer").initializer[0].value)
+                .addend_bits,
+            8u);
+  const auto& signs = storageNamed(*resolved, "signs");
+  ASSERT_EQ(signs.initializer.size(), 3u);
+  EXPECT_EQ(std::get<StorageConstant>(signs.initializer[0].value).bits, 1u);
+  EXPECT_EQ(std::get<StorageConstant>(signs.initializer[1].value).bits, 0u);
+  EXPECT_EQ(std::get<StorageConstant>(signs.initializer[2].value).bits, 0u);
+}
+
+/** Binary literal errors cannot disappear through conditional constant folding. */
+TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowAndHexOnlyMasks) {
+  const std::string overflow = "0b1" + std::string(64, '0');
+  for (const std::string source :
+       {".global .u32 result = (" + overflow + " ? 7 : 7);",
+        ".global .u8 bytes[" + overflow + " ? 1 : 1];"}) {
+    const auto resolved = resolveSource(source);
+    ASSERT_FALSE(resolved.has_value());
+    EXPECT_TRUE(hasDeclarationKind(
+        resolved.error(), declaration_semantics::DeclarationDiagnosticKind::
+                              InvalidIntegerLiteral));
+  }
+  EXPECT_FALSE(
+      resolveSource(".global .u32 invalid = 0b11111111(0xffff);").has_value());
+  EXPECT_TRUE(resolveSource(".global .u32 valid = 0xff(0xffff);").has_value());
+}
+
+/** Decimal-only directive and count grammar does not acquire binary spellings. */
+TEST(ResolvedStorageDeclarations, BinaryDoesNotExpandDecimalOnlyFields) {
+  for (const std::string_view source :
+       {".address_size 0b1000000", ".global .align 0b1000 .u32 x;",
+        ".global .u32 x<0b10>;", ".entry k() .maxntid 0b10 { ret; }",
+        ".func f() .abi_preserve 0b1;", R"(.file 1 "f", 0b1, 1)"}) {
+    PtxSyntaxParser parser(source);
+    EXPECT_FALSE(parser.parseModule().diagnostics.empty()) << source;
+  }
+}
+
 /** Common linkage preserves ordinary global initialization and inferred shape. */
 TEST(ResolvedStorageDeclarations, RetainsCommonGlobalDefinitions) {
   const auto resolved = resolveSource(R"ptx(

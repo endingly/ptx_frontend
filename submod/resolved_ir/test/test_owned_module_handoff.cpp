@@ -253,6 +253,7 @@ constexpr std::string_view k_attribute_uuid_equivalence_fixture = R"ptx(
 .func .attribute(.unified(0, 18446744073709551615U)) decimal_uuid() { ret; }
 .func .attribute(.unified(0x0U, 0xffffffffffffffff)) hexadecimal_uuid() { ret; }
 .func .attribute(.unified(00, 01777777777777777777777U)) octal_uuid() { ret; }
+.func .attribute(.unified(0B0, 0b1111111111111111111111111111111111111111111111111111111111111111U)) binary_uuid() { ret; }
 )ptx";
 
 /** A valid no-return ABI fixture supplies both distinct preservation suffixes. */
@@ -322,6 +323,46 @@ void expect_owned_validation_success(const ResolvedModule& module,
       << (validation.has_value() || validation.error().empty()
               ? "Owned fixture did not validate."
               : validation.error().front().message);
+}
+
+/** Binary call literals keep lexical provenance and checked values after input release. */
+TEST(OwnedModuleHandoff, BinaryCallProvenanceAndStrictRange) {
+  std::optional<ResolvedModule> owned;
+  {
+    std::string source = R"ptx(
+.version 9.3
+.target sm_80
+.func callee(.reg .u32 value) { ret; }
+.entry kernel() { call callee, (0B1000U); ret; }
+)ptx";
+    const auto parsed = parse_owned_module_fixture(source);
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    auto resolved = resolveModuleOnly(*parsed);
+    ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+    owned.emplace(std::move(*resolved));
+  }
+  auto& call = dynamic_cast<CallDirect&>(*owned->functions[1].body.front());
+  ASSERT_TRUE(call.arguments.has_value());
+  auto& literal =
+      std::get<ResolvedCallLiteral>(call.arguments->value.values.front().value);
+  EXPECT_EQ(literal.kind, base::AstImmediateKind::BinaryInteger);
+  EXPECT_EQ(literal.spelling, "0B1000U");
+  ASSERT_TRUE(literal.value.has_value());
+  EXPECT_EQ(literal.value->bits, 8u);
+  EXPECT_EQ(literal.value->integer_source_bits, 8u);
+  expect_owned_validation_success(
+      *owned, ModuleValidationPolicy::RequireCompleteContext);
+  literal.value->type = base::ScalarType::U64;
+  expect_owned_model_mismatch(*owned);
+
+  const auto parsed = parse_owned_module_fixture(R"ptx(
+.version 9.3
+.target sm_80
+.func callee(.reg .u32 value) { ret; }
+.entry kernel() { call callee, (0b100000000000000000000000000000000); ret; }
+)ptx");
+  ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+  EXPECT_FALSE(resolveModuleOnly(*parsed).has_value());
 }
 
 /** Owned module data remains consumer-usable after source text and AST lifetime end. */
@@ -1275,7 +1316,7 @@ TEST(OwnedModuleHandoff, RetainsTypedUnifiedUuidAfterInputDies) {
   ASSERT_TRUE(owned.has_value());
   constexpr ResolvedUnifiedId expected_uuid{
       .upper = 0u, .lower = std::numeric_limits<uint64_t>::max()};
-  ASSERT_EQ(owned->functions.size(), 3u);
+  ASSERT_EQ(owned->functions.size(), 4u);
   for (const ResolvedFunction& function : owned->functions) {
     ASSERT_EQ(function.contract.attributes.size(), 1u);
     const ResolvedFunctionAttribute& attribute =

@@ -71,6 +71,34 @@ static void expect_token(const LexedToken& tok, TokenKind kind,
 // Basic instruction lexing
 // -----------------------------------------------------------------------------
 
+/** Binary tokens retain prefix/suffix spelling without imposing numeric limits. */
+TEST(PtxLexerNew, BinaryIntegerSpellings) {
+  for (const std::string_view spelling : {"0b0", "0B1", "0b10u", "0B10U",
+                                          "0b1000000000000000000000000000000000"
+                                          "0000000000000000000000000000000"}) {
+    PtxLexer lexer(spelling);
+    const auto token = lexer.next();
+    EXPECT_EQ(token.kind, TokenKind::Binary) << spelling;
+    EXPECT_EQ(token.text, spelling);
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
+/** Binary candidates remain one lossless token, including malformed spellings. */
+TEST(PtxLexerNew, BinaryCandidateSpellingAndRecovery) {
+  for (const std::string_view spelling :
+       {"0b", "0B", "0b2", "0b102U", "0b1UU", "0b1L", "0b10tail", "0b1_0"}) {
+    PtxLexer lexer(std::string{spelling} + " 7");
+    const auto error = lexer.next();
+    EXPECT_EQ(error.kind, TokenKind::Error) << spelling;
+    EXPECT_EQ(error.text, spelling);
+    EXPECT_EQ(error.range.start.column, 1u);
+    EXPECT_EQ(error.range.end.column, spelling.size() + 1u);
+    EXPECT_EQ(lexer.next().text, "7");
+    EXPECT_EQ(lexer.next().kind, TokenKind::Eof);
+  }
+}
+
 /** Octal source retains the existing integer token category and exact spelling. */
 TEST(PtxLexerNew, OctalSpellingsAndDecimalFloatControls) {
   for (const std::string_view spelling :

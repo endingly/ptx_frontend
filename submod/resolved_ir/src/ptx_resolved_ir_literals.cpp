@@ -366,6 +366,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
 
   switch (immediate.kind) {
     case syntax_ast::AstImmediateKind::DecimalInteger:
+    case syntax_ast::AstImmediateKind::BinaryInteger:
     case syntax_ast::AstImmediateKind::HexInteger:
       return resolve_integer_literal(immediate, type, text, negative,
                                      require_target_range);

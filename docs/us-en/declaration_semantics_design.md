@@ -37,7 +37,7 @@ so this resource/domain boundary does not claim complete assembler parity.
 
 ## Arrays and initializers
 
-Integer literals share decimal, leading-zero octal, and hexadecimal decoding
+Integer literals share decimal, leading-zero octal, binary, and hexadecimal decoding
 with instruction immediates. For example, `010` initializes the value 8 and
 denotes an array extent of 8; an unsigned suffix does not change the radix.
 
@@ -77,7 +77,7 @@ opaque handle.
 
 For modeled `.unified(upper, lower)` attributes, declaration semantics decodes
 both direct integer tokens as exact unsigned 64-bit UUID halves. Decimal,
-leading-zero octal, hexadecimal, and the supported unsigned suffix share the
+leading-zero octal, binary, hexadecimal, and the supported unsigned suffix share the
 integer-literal rules; overflow diagnoses the offending token rather than
 truncating it. This applies uniformly to eligible global variables and device
 function definitions or prototypes before storage metadata or a future function

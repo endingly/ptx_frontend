@@ -496,7 +496,8 @@ the destination type; owned-module validation rechecks that conversion after
 the AST is released. Source identity retains the expression operation tree in
 the CST/AST boundary; Resolved IR requires no generic expression tree.
 
-`AstImmediateKind` retains the lexer's literal classification. Decimal, octal, and hex
+`AstImmediateKind` retains the lexer's literal classification, including
+`BinaryInteger` for `0b`/`0B` spellings. Decimal, octal, binary, and hex
 integers, including their optional `U` suffix, first evaluate in the PTX
 64-bit signed/unsigned source domain; unary minus preserves that source type
 and unsigned negation wraps. Ordinary data uses retain the low target-width

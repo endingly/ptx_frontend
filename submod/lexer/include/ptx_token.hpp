@@ -120,6 +120,8 @@ enum class TokenKind : uint16_t {
   DotShared,
   DotLocal,
   DotParam,
+
+  Binary,  // 0b/0B integer, optional u/U suffix; appended for stable token values
 };
 
 enum class TriviaKind : uint8_t {

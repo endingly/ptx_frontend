@@ -22,6 +22,27 @@ const binding::SymbolReference* findReference(const binding::SymbolTable& table,
   return iterator == table.references().end() ? nullptr : &*iterator;
 }
 
+/** Binary debug IDs bind by magnitude while source spellings remain available. */
+TEST(PtxSymbolTable, BinaryDebugIntegerIdentity) {
+  PtxSyntaxParser parser(R"ptx(
+.file 0B1000U "binary.ptx"
+.entry k() .language "C", 0b10 {
+  .loc 8 1 0
+  ret;
+}
+)ptx");
+  const auto module = parser.parseModule();
+  ASSERT_TRUE(module.has_value());
+  ASSERT_TRUE(module.diagnostics.empty());
+  const auto result = binding::bindSymbols(*module);
+  ASSERT_TRUE(result.diagnostics.empty());
+  const auto* file =
+      findReference(result.table, "8", binding::ReferenceKind::DebugFile);
+  ASSERT_NE(file, nullptr);
+  ASSERT_TRUE(file->target.has_value());
+  EXPECT_EQ(result.table.symbol(file->target->symbol).name, "8");
+}
+
 /** Octal declaration counts and alignments agree with indexed binding and debug IDs. */
 TEST(PtxSymbolTable, OctalDeclarationMetadata) {
   PtxSyntaxParser parser(R"ptx(

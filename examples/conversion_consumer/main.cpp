@@ -8,6 +8,7 @@
 #include <variant>
 
 #include <ptx_frontend/base/base.hpp>
+#include <ptx_frontend/lexer/ptx_lexer.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -99,6 +100,28 @@ bool require(bool condition, std::string_view description) {
   if (!condition)
     std::cerr << "consumer contract failed: " << description << '\n';
   return condition;
+}
+
+/** Verify installed lexer and syntax headers expose distinct binary provenance. */
+bool checkBinaryIntegerContract() {
+  ptx_frontend::PtxLexer lexer("0B1000U");
+  const auto token = lexer.next();
+  if (!require(token.kind == ptx_frontend::TokenKind::Binary &&
+                   token.text == "0B1000U",
+               "binary token classification and spelling"))
+    return false;
+  ptx_frontend::PtxSyntaxParser parser("mov.u32 %r0, 0B1000U;");
+  const auto instruction = parser.parseInstruction();
+  if (!require(instruction.has_value() && instruction.diagnostics.empty(),
+               "binary instruction parses through installed API"))
+    return false;
+  const auto* immediate = std::get_if<ptx_frontend::syntax_ast::AstImmediate>(
+      &instruction->operands.back());
+  return require(immediate &&
+                     immediate->kind ==
+                         ptx_frontend::base::AstImmediateKind::BinaryInteger &&
+                     immediate->syntax.text == "0B1000U",
+                 "binary AST classification and spelling");
 }
 
 /** Check that owned validation rejects a deliberate public-IR mutation. */
@@ -1339,6 +1362,8 @@ int main() {
   static_assert(RoundingMode::Rna != RoundingMode::Invalid);
   static_assert(RoundingMode::Rs != RoundingMode::Invalid);
 
+  if (!checkBinaryIntegerContract())
+    return 19;
   if (const int result = runOwnedValidation(); result != 0)
     return result;
   if (!checkBarrierSyncContract())

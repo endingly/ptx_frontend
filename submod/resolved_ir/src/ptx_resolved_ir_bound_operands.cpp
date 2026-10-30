@@ -3145,6 +3145,7 @@ resolve_video_operand(const syntax_ast::AstOperand& operand,
     if (!contract.allow_immediate ||
         (immediate->kind != base::AstImmediateKind::DecimalInteger &&
          immediate->kind != base::AstImmediateKind::HexInteger &&
+         immediate->kind != base::AstImmediateKind::BinaryInteger &&
          immediate->kind != base::AstImmediateKind::WarpSize))
       return std::unexpected(
           ResolveDiagnostic{range, "Video slot requires an integer carrier."});
@@ -3379,6 +3380,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       if (!immediate ||
           (immediate->kind != syntax_ast::AstImmediateKind::DecimalInteger &&
            immediate->kind != syntax_ast::AstImmediateKind::HexInteger &&
+           immediate->kind != syntax_ast::AstImmediateKind::BinaryInteger &&
            immediate->kind != syntax_ast::AstImmediateKind::WarpSize)) {
         return std::unexpected(ResolveDiagnostic{
             .range = syntax_ast::sourceRange(operand),

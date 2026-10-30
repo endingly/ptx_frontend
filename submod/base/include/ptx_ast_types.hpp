@@ -14,6 +14,7 @@ enum class AstImmediateKind : uint8_t {
   F64Hex,
   DecimalFloat,
   WarpSize,
+  BinaryInteger,  ///< 0b/0B integer spelling, including an optional u/U suffix.
 };
 
 /** PTX declaration state space independent of the complete syntax AST. */

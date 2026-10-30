@@ -147,6 +147,7 @@ parser 保留准确的运算符和优先级。
 Lexer 可以识别：
 
 - 十进制整数和前导零八进制整数，以及可选的 `u` 或 `U` 后缀。
+- 以 `0b` 或 `0B` 开头的二进制整数，以及可选的 `u` 或 `U` 后缀。
 - 以 `0x` 或 `0X` 开头的十六进制整数，以及可选的无符号后缀。
 - 由 `0f` 和八个十六进制数字组成的 PTX 浮点 bit-pattern 字面量。
 - 由 `0d` 和十六个十六进制数字组成的 PTX 双精度 bit-pattern 字面量。
@@ -162,6 +163,13 @@ Lexer 可以识别：
 解释为八进制（`010` 为 8）。含有 `8` 或 `9` 的八进制拼写（如 `09U`）产生
 覆盖整个字面量的单个 `Error` token。`09.0`、`09e1` 等十进制浮点拼写仍为
 浮点 token。
+
+二进制整数使用 `TokenKind::Binary` 与 `AstImmediateKind::BinaryInteger`，
+保留准确拼写与范围。`0b`、`0b102U`、`0b1UU` 等无效二进制候选项产生
+覆盖其标识符尾部的单个 `Error` token；数值溢出在整数求值阶段诊断。二进制
+字面量可用于一般整数表达式、维度、操作数、debug ID、`.unified` 和 `.language`；
+要求 decimal token 的字段（如 alignment、参数化计数和 launch resource）仍保留
+原语法限制。仅允许十六进制的 initializer mask 也保留原限制。
 
 ### 通用标识符
 

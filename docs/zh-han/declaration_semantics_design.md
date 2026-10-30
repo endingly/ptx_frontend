@@ -32,7 +32,7 @@ pass，并在解析 instruction 前累积两者的诊断。
 
 ## Array 与 initializer
 
-整数字面量与指令立即数共享十进制、前导零八进制和十六进制解码规则。例如，
+整数字面量与指令立即数共享十进制、前导零八进制、二进制和十六进制解码规则。例如，
 `010` 的初始化值为 8，用作数组维度时也为 8；无符号后缀不改变基数。
 
 无法在 64 位源码数值域内解码的整数字面量属于非法表达式，而非待求值的合法值。
@@ -62,7 +62,7 @@ function call；该限制不影响允许的 opaque handle `mov` retrieval。
 ## Unified UUID attribute
 
 对于已建模的 `.unified(upper, lower)` attribute，declaration semantics 将两个 direct
-integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、十六进制及
+integer token 都解码为精确的 unsigned 64-bit UUID half。十进制、前导零八进制、二进制、十六进制及
 支持的 unsigned suffix 沿用 integer-literal rule；overflow 会指向出错 token，而不会截断。
 该检查同样适用于合法的 global variable 与 device function definition/prototype，并发生在
 storage metadata 或未来 function metadata backend 消费该值之前。placement、PTX-version 与

@@ -17,6 +17,8 @@ syntax_ast::AstImmediateKind immediateKind(TokenKind kind) {
   switch (kind) {
     case TokenKind::Decimal:
       return syntax_ast::AstImmediateKind::DecimalInteger;
+    case TokenKind::Binary:
+      return syntax_ast::AstImmediateKind::BinaryInteger;
     case TokenKind::Hex:
       return syntax_ast::AstImmediateKind::HexInteger;
     case TokenKind::F32Hex:

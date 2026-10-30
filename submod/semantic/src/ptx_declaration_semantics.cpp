@@ -402,6 +402,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
             case syntax_ast::AstImmediateKind::DecimalInteger:
+            case syntax_ast::AstImmediateKind::BinaryInteger:
             case syntax_ast::AstImmediateKind::HexInteger: {
               const auto integer = parseIntegerLiteral(value.value.syntax.text);
               if (!integer) {

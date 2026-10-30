@@ -156,6 +156,7 @@ operators and precedence.
 The lexer recognizes:
 
 - Decimal and leading-zero octal integers, with an optional `u` or `U` suffix.
+- Binary integers beginning with `0b` or `0B`, with an optional `u` or `U` suffix.
 - Hexadecimal integers beginning with `0x` or `0X`, with an optional unsigned
   suffix.
 - PTX bit-pattern floating literals `0f` plus eight hex digits.
@@ -173,6 +174,15 @@ the numeric radix. Integer decoding treats a leading zero as octal (`010` is
 8). An octal spelling containing `8` or `9`, such as `09U`, produces one
 `Error` token spanning the whole literal. Decimal floating spellings such as
 `09.0` and `09e1` remain floating tokens.
+
+Binary integers use `TokenKind::Binary` and `AstImmediateKind::BinaryInteger`,
+retaining their exact spelling and range. A malformed binary candidate such as
+`0b`, `0b102U`, or `0b1UU` produces one `Error` token through its identifier tail.
+Magnitude overflow is diagnosed during integer evaluation. Binary literals are
+available in general integer expressions, dimensions, operands, debug IDs,
+`.unified`, and `.language`; fields whose grammar requires a decimal token
+(such as alignment, parameterized counts, and launch resources) retain that
+restriction. Hex-only initializer masks also retain their restriction.
 
 ### Generic Identifiers
 

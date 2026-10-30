@@ -400,7 +400,7 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 保留求值后的 64-bit source bits 与数值上的 signed-negative 性质，因此
 fixed-control checker 不必重新解释 literal 文本，也不会信任已经窄化的值。
 
-`AstImmediateKind` 保留 lexer 对 literal 的分类。整数 decimal/octal/hex（包括可选 `U`
+`AstImmediateKind` 保留 lexer 对 literal 的分类。二进制 `0b`/`0B` 拼写保留为 `BinaryInteger`。整数 decimal/octal/binary/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source
 type，而 unsigned negation 按该宽度回绕。ordinary data use 随后保留 target width 的低位。
 `WARP_SZ` 是 source 定义的 signed integer constant `32`，也可用于普通

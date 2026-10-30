@@ -107,6 +107,8 @@ enum class DeclarationDiagnosticKind : uint8_t {
   InvalidRegisterDeclarationShape,
   /** A declaration directive is unavailable for its known source target. */
   UnsupportedDirectiveTarget,
+  /** A concrete declaration name violates the PTX identifier grammar. */
+  InvalidIdentifier,
 };
 
 struct DeclarationDiagnostic {

@@ -1,3 +1,4 @@
+#include <ptx_frontend/base/ptx_identifier.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/resolved_ir/model/control_flow/call.gen.hpp>
 #include <ptx_frontend/resolved_ir/model/data_movement/cp.gen.hpp>
@@ -2479,6 +2480,24 @@ void check_function_parameters(const ResolvedModule& module,
                                : ParameterDeclarationRole::DeviceInput);
 }
 
+/** Check owned ordinary declaration names without relying on source identity. */
+void check_declaration_identifiers(const ResolvedModule& module,
+                                   checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind == binding::SymbolKind::DebugFile ||
+        (symbol.kind == binding::SymbolKind::DebugStringLabel &&
+         symbol.name == ".debug_str"))
+      continue;
+    if (!base::isIdentifier(symbol.name))
+      diagnostics.push_back({
+          .kind = checker::CheckDiagnosticKind::RuleViolation,
+          .range = symbol.declaration_range,
+          .message =
+              fmt::format("Invalid declaration identifier '{}'.", symbol.name),
+      });
+  }
+}
+
 /** Rejoin every storage occurrence and validate scalar allocation inputs. */
 void check_storage_declarations(const ResolvedModule& module,
                                 checker::CheckDiagnostics& diagnostics) {
@@ -3516,6 +3535,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const OwnedSignatureIndex signatures =
       build_signature_index(module, diagnostics);
   const auto parameter_properties = build_parameter_properties(module);
+  check_declaration_identifiers(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_common_availability(module, diagnostics);
   const auto storage_version = module.header.regions.empty()
@@ -3692,6 +3712,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       });
   check_header_features(version, std::array<std::string_view, 0>{},
                         explicit_address_size, ast.range, diagnostics);
+  check_declaration_identifiers(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);
   for (const auto& function : module.functions) {

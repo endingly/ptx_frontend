@@ -1,5 +1,6 @@
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 
+#include <ptx_frontend/base/ptx_identifier.hpp>
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/base/ptx_target.hpp>
 
@@ -909,15 +910,35 @@ class Checker {
             [function](const FunctionTargetContext& candidate) {
               return candidate.function == function;
             });
+        checkIdentifier(function->name);
         checkFunctionParameters(*function, module_version, context->target_sm);
         checkFunctionBodyDeclarations(function->body, module_version,
                                       context->target_sm);
+      } else if (const auto* alias =
+                     std::get_if<syntax_ast::AstAliasDirective>(&item)) {
+        checkIdentifier(alias->alias);
+      } else if (const auto* section =
+                     std::get_if<syntax_ast::AstSectionDirective>(&item);
+                 section && section->name.text == ".debug_str") {
+        for (size_t index = 0; index + 1 < section->payload.size(); ++index)
+          if (section->payload[index + 1].text == ":")
+            checkIdentifier(
+                syntax_ast::AstIdentifierRef{section->payload[index]});
       }
     }
     return std::move(diagnostics_);
   }
 
  private:
+  /** Diagnose a concrete declaration spelling at its identifier leaf. */
+  void checkIdentifier(const syntax_ast::AstIdentifierRef& identifier) {
+    if (!base::isIdentifier(identifier.syntax.text))
+      diagnose(DeclarationDiagnosticKind::InvalidIdentifier,
+               identifier.syntax.range,
+               fmt::format("Invalid declaration identifier '{}'.",
+                           identifier.syntax.text));
+  }
+
   struct SeenDeclaration {
     std::variant<std::string, FunctionSignature> signature;
     binding::SymbolLinkage linkage{};
@@ -1752,6 +1773,10 @@ class Checker {
                             ParameterContext context, bool is_final,
                             std::optional<PtxVersion> module_version,
                             std::optional<uint32_t> module_sm) {
+    if (parameter.name.syntax.text != "_" ||
+        (context != ParameterContext::CallPrototypeInput &&
+         context != ParameterContext::CallPrototypeReturn))
+      checkIdentifier(parameter.name);
     checkAlignment(parameter.alignment);
     checkAlignment(parameter.pointer_alignment);
     if (parameter.array_size)
@@ -2103,6 +2128,17 @@ class Checker {
       std::optional<PtxVersion> module_version,
       std::optional<uint32_t> module_sm) {
     for (const auto& body_item : body) {
+      if (const auto* label = std::get_if<syntax_ast::AstLabel>(&body_item))
+        checkIdentifier(label->name);
+      else if (const auto* prototype =
+                   std::get_if<syntax_ast::AstCallPrototype>(&body_item))
+        checkIdentifier(prototype->label);
+      else if (const auto* targets =
+                   std::get_if<syntax_ast::AstCallTargets>(&body_item))
+        checkIdentifier(targets->label);
+      else if (const auto* targets =
+                   std::get_if<syntax_ast::AstBranchTargets>(&body_item))
+        checkIdentifier(targets->label);
       if (const auto* declaration =
               std::get_if<syntax_ast::AstVariableDeclaration>(&body_item)) {
         checkAlignment(declaration->alignment);
@@ -2284,6 +2320,7 @@ class Checker {
                "Modern opaque resource declarations require PTX ISA >= 1.5.");
     }
     for (const auto& declarator : declaration.declarators) {
+      checkIdentifier(declarator.name);
       std::vector<std::optional<uint64_t>> extents;
       extents.reserve(declarator.array_dimensions.size() +
                       (declaration.vector_type ? 1 : 0));

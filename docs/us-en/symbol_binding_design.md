@@ -62,6 +62,29 @@ a `DebugFunctionName` reference for `function_name`; the latter can resolve
 only the `.debug_str` section itself or one of its labels. These metadata
 identities diagnose unresolved references but never behave as PTX operands.
 
+Declaration spelling is checked after lexing, using the ASCII grammar in
+[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers):
+a letter may stand alone; a leading `_`, `$`, or `%` requires at least one
+following letter, digit, `_`, or `$`. Percent is allowed only at the start.
+Thus `_x`, `$x`, `%r`, and parameterized bases such as `_x<2>` remain legal,
+while ordinary declarations named `_` or `$` receive `InvalidIdentifier` at
+the name token. Compact declaration prefixes follow the same rule: `_x<2>`
+and `$x<2>` are legal, while `_<2>` and `$<2>` are rejected. This applies to
+variables, functions, ordinary parameters,
+labels, aliases, and raw `.debug_str` payload labels. Debug file indices and
+the synthetic `.debug_str` section identity are outside this name grammar.
+The declaration checker inspects AST spellings independently of symbol lookup;
+AST-free module validation checks retained names and reports `RuleViolation`
+at the declaration name range. Source association still preserves spelling
+identity and does not normalize names.
+
+The lexer retains `_` as an identifier for contextual uses. Instruction sinks
+remain operand-specific. Under
+[PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype),
+`.callprototype` keeps its mandatory function-name `_` and permits dummy `_`
+input and return names; those dummy names do not become bound symbols or owned
+ABI names. `$` has no corresponding exception.
+
 ## Parameterized variable names
 
 PTX `name<count>` denotes `name0` through `name(count-1)`. The symbol table

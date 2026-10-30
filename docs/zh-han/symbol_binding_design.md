@@ -52,6 +52,22 @@ program declaration 可以使用相同 spelling。`.loc` 的 basic 与 `inlined_
 `.debug_str` section 自身或其中 label。这些 metadata identity 会诊断 unresolved reference，
 但绝不作为 PTX operand。
 
+声明拼写在词法分析之后按
+[PTX ISA 9.3 §4.4](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#identifiers)
+的 ASCII 文法检查：字母可单独成名；以 `_`、`$` 或 `%` 开头时，后面至少还需一个
+字母、数字、`_` 或 `$`。百分号只能位于开头。因此 `_x`、`$x`、`%r` 与 `_x<2>`
+等参数化基名仍合法，普通声明中的 `_` 或 `$` 则在名称 token 处报告
+`InvalidIdentifier`。紧凑声明的前缀遵循相同规则：`_x<2>`、`$x<2>` 合法，
+`_<2>`、`$<2>` 则被拒绝。检查覆盖变量、函数、普通形参、标签、别名及 `.debug_str`
+原始载荷标签；调试文件编号与合成的 `.debug_str` 节身份不受该名称文法约束。
+声明检查直接读取 AST 拼写，不依赖符号查找；无 AST 的模块验证检查保留名称，
+并在声明名称范围报告 `RuleViolation`。源码关联仍保留拼写身份，不规范化名称。
+
+词法器仍将 `_` 保留为标识符，以支持上下文用途。指令 sink 继续由具体操作数规则决定。
+按 [PTX ISA 9.3 §11.3.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#control-flow-directives-callprototype)，
+`.callprototype` 保留强制的函数名 `_`，并允许输入与返回形参使用虚拟名称 `_`；
+这些虚拟名称不成为绑定符号或 owned ABI 名称。`$` 没有对应例外。
+
 ## Parameterized variable name
 
 `name<count>` 依 PTX 语法表示 `name0` 到 `name(count-1)`。symbol table 不展开这些名称，

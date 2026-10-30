@@ -174,6 +174,40 @@ class WmmaCoverageTests(unittest.TestCase):
                     and set(raw_forms[v.name]["matrix"]["elements"].values()) <= {"f16", "f32"}}
         self.assertEqual(set(historical), eligible)
 
+    def test_f16_saturation_exact_contract(self) -> None:
+        """Saturation changes only the selected flag value on all FP16 MMA forms."""
+        raw = load_yaml(WMMA_FILE)
+        forms = next(i["variants"] for i in raw["instructions"]
+                     if i["opcode"] == "wmma")
+        eligible = [v for v in forms if v.get("matrix", {}).get("family") == "wmma_mma"
+                    and v["matrix"]["elements"]["a"] == "f16"]
+        self.assertEqual(len(eligible), 96)
+        self.assertEqual(sum(v["name"].endswith("_implicit_aligned")
+                             for v in eligible), 48)
+        for raw_form in eligible:
+            with self.subTest(name=raw_form["name"]):
+                expected = {"name": "satfinite", "kind": "flag",
+                            "presence": "optional", "default": False,
+                            "token": ".satfinite", "values": [
+                                {"value": False},
+                                {"value": True, "availability": {"ptx_before": "6.5"}}]}
+                self.assertEqual(raw_form["modifiers"][-1], expected)
+                for alias in raw_form["modifier_order_aliases"]:
+                    self.assertEqual(alias[-1], "satfinite")
+                    self.assertEqual(len(alias), len(raw_form["modifiers"]))
+                form = self.variants[raw_form["name"]]
+                flag = form.modifiers[-1]
+                self.assertEqual(flag.name, "satfinite")
+                self.assertIs(flag.presence, ModifierPresence.OPTIONAL)
+                self.assertIs(flag.default, False)
+                self.assertEqual(flag.token, ".satfinite")
+                self.assertEqual(tuple(v.value for v in flag.values), (False, True))
+                self.assertFalse(flag.values[0].availability)
+                self.assertEqual(flag.values[1].availability, {"ptx_before": "6.5"})
+                self.assertNotIn("ptx_before", form.availability
+                                 if not form.name.endswith("_implicit_aligned") else {})
+        self.assertEqual(len(forms), 708)
+
     def test_normalizer_rejects_wmma_metadata_drift(self) -> None:
         """A canonical variant cannot lie about its C type or register count."""
 

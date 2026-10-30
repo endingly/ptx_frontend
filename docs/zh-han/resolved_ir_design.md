@@ -1069,5 +1069,17 @@ fragment、layout、address 和 stride 检查保持不变。
 独立指令解析在没有版本上下文时选择实际写出的拼写。模块验证和指令可用性
 检查根据当前自有上下文或替换上下文应用半开版本区间。`shared::cta`、整数、
 subbyte/bit、BF16、TF32、FP64 及其他 PTX 6.3 或更晚引入的形式没有历史对应项。
-历史 `.satfinite` 不在本语法范围内。来源为
+来源为
 [CUDA 13.3 所附 PTX 9.3 WMMA 描述](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld)。
+
+现有 96 个 FP16 输入 WMMA MMA 形式（48 个显式 `.aligned` 形式和 48 个隐式
+对应形式）暴露可选布尔 `satfinite`，默认值为 `false`。选中的 `.satfinite` 值
+要求 PTX `< 6.5`，并与形式原始下限和对齐区间取交集：隐式形式支持 PTX
+6.0/6.1 至 6.2，显式形式支持 PTX 6.3 至 6.4，均要求 SM70 或更新目标。
+NVIDIA 在 PTX 6.4 弃用浮点 `.satfinite`，并在 PTX 6.5 移除。省略此限定符
+保留形式原有可用性，包括现代 PTX 版本。饱和将正/负无穷映射为最大正/负
+有限值，将 NaN 映射为正零。类型化 `satfinite.value` 与源码位置在自有解析、
+复制及克隆后保留；当前上下文检查拒绝移除版本中的使用，不改变形式身份。
+整数饱和以及 BF16、TF32、FP64 和其他 MMA family 均保持不变。这些是语法及
+静态验证契约，没有验证 GPU 数值执行。参见
+[CUDA 13.3 PTX 9.3 WMMA MMA 参考](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma)。

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -415,6 +416,266 @@ TEST(WmmaCoverage, HistoricalStandaloneAndTopologyRejection) {
   const auto parsed = test_helpers::parseModule(invalid);
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   EXPECT_FALSE(resolveModuleOnly(*parsed));
+}
+
+/** Build a source-selected FP16-input MMA with exact packed fragment sizes. */
+std::string saturatedWmmaInstruction(std::string_view shape, bool aligned,
+                                     std::string_view a_layout,
+                                     std::string_view b_layout,
+                                     std::string_view d_type,
+                                     std::string_view c_type, bool saturated) {
+  const auto fragment = [](char prefix, int count) {
+    std::string result = "{";
+    for (int i = 0; i < count; ++i) {
+      if (i)
+        result += ',';
+      result += '%' + std::string(1, prefix) + std::to_string(i);
+    }
+    return result + '}';
+  };
+  return std::string("wmma.mma.sync.") + (aligned ? "aligned." : "") +
+         std::string(shape) + '.' + std::string(a_layout) + '.' +
+         std::string(b_layout) + '.' + std::string(d_type) + '.' +
+         std::string(c_type) + (saturated ? ".satfinite " : " ") +
+         fragment('d', d_type == "f16" ? 4 : 8) + ", " + fragment('a', 8) +
+         ", " + fragment('b', 8) + ", " +
+         fragment('c', c_type == "f16" ? 4 : 8) + ";";
+}
+
+/** Wrap an FP16-input MMA in a module whose version can change independently. */
+std::string saturatedWmmaModule(std::string_view instruction,
+                                std::string_view version) {
+  return ".version " + std::string(version) + R"ptx(
+.target sm_70
+.entry kernel() {
+.reg .f16x2 %a<8>, %b<8>, %h<4>;
+.reg .b32 %d<8>, %c<8>;
+)ptx" + std::string(instruction) +
+         "\n}";
+}
+
+/** Exhaust all existing FP16 forms without changing source-driven identity. */
+TEST(WmmaCoverage, FloatingSaturationVersionAndTopologyMatrix) {
+  for (const auto shape : {"m16n16k16", "m8n32k16", "m32n8k16"})
+    for (const bool aligned : {false, true})
+      for (const auto a : {"row", "col"})
+        for (const auto b : {"row", "col"})
+          for (const auto d : {"f16", "f32"})
+            for (const auto c : {"f16", "f32"})
+              for (const bool saturated : {false, true}) {
+                const auto source = saturatedWmmaInstruction(
+                    shape, aligned, a, b, d, c, saturated);
+                SCOPED_TRACE(source);
+                const auto parsed = test_helpers::parseInstruction(source);
+                ASSERT_TRUE(parsed);
+                auto resolved = resolveInstruction(*parsed);
+                ASSERT_TRUE(resolved) << resolved.error().message;
+                const auto kind = (*resolved)->instruction_kind();
+                for (const auto version : {checker::PtxVersion{6, 0},
+                                           {6, 1},
+                                           {6, 2},
+                                           {6, 3},
+                                           {6, 4},
+                                           {6, 5},
+                                           {9, 3}}) {
+                  const bool accepted =
+                      (std::string_view(shape) == "m16n16k16" ||
+                       version >= (checker::PtxVersion{6, 1})) &&
+                      aligned == (version >= (checker::PtxVersion{6, 3})) &&
+                      (!saturated || version < (checker::PtxVersion{6, 5}));
+                  const checker::Context context{
+                      .target = {.ptx_version = version, .sm_version = 70}};
+                  EXPECT_EQ(bool((*resolved)->check(context)), accepted);
+                  EXPECT_EQ((*resolved)->instruction_kind(), kind);
+                  const auto module =
+                      test_helpers::parseModule(saturatedWmmaModule(
+                          source, std::to_string(version.major) + "." +
+                                      std::to_string(version.minor)));
+                  ASSERT_MODULE_PARSE_SUCCEEDS(module);
+                  auto owned = resolveModuleOnly(*module);
+                  ASSERT_TRUE(owned) << owned.error().front().message;
+                  for (const auto policy :
+                       {ModuleValidationPolicy::AvailableContext,
+                        ModuleValidationPolicy::RequireCompleteContext})
+                    EXPECT_EQ(bool(validateModule(*module, *owned, policy)),
+                              accepted);
+                }
+                const checker::Context below_target{
+                    .target = {.ptx_version = aligned
+                                                  ? checker::PtxVersion{6, 4}
+                                                  : checker::PtxVersion{6, 2},
+                               .sm_version = 60}};
+                EXPECT_FALSE((*resolved)->check(below_target));
+              }
+}
+
+/** Selected flag values, locations and owned context survive copies and clones. */
+TEST(WmmaCoverage, FloatingSaturationOwnershipMutationAndDiagnostics) {
+  for (const bool aligned : {false, true}) {
+    const auto source = saturatedWmmaInstruction("m16n16k16", aligned, "row",
+                                                 "col", "f32", "f32", true);
+    std::optional<ResolvedModule> owned;
+    {
+      const auto parsed = test_helpers::parseModule(
+          saturatedWmmaModule(source, aligned ? "6.4" : "6.2"));
+      ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+      auto result = resolveAndValidateModule(*parsed);
+      ASSERT_TRUE(result) << result.error().front().message;
+      owned.emplace(std::move(*result));
+    }
+    auto copy = *owned;
+    auto& instruction = copy.functions.front().body.front();
+    const auto check_flag = [&]<typename T>(T& typed)
+      requires requires(T value) {
+        value.satfinite.value;
+        value.satfinite.locs;
+      }
+    {
+      EXPECT_TRUE(typed.satfinite.value);
+      ASSERT_EQ(typed.satfinite.locs.size(), 1u);
+      const auto range = typed.satfinite.locs.front();
+      const auto column = static_cast<int32_t>(source.find(".satfinite") + 1);
+      EXPECT_EQ(range, (SourceRange{{6, column}, {6, column + 10}}));
+      const checker::Context removed{
+          .target = {.ptx_version = {6, 5}, .sm_version = 70}};
+      auto result = typed.check(removed);
+      ASSERT_FALSE(result);
+      // Explicit alignment remains valid, so its rejection must locate the flag.
+      if (aligned)
+        EXPECT_EQ(result.error().front().range, range);
+      auto clone = typed.clone();
+      const auto* cloned = dynamic_cast<const T*>(clone.get());
+      ASSERT_NE(cloned, nullptr);
+      EXPECT_TRUE(cloned->satfinite.value);
+      EXPECT_EQ(cloned->satfinite.locs, typed.satfinite.locs);
+      EXPECT_EQ(cloned->instruction_kind(), typed.instruction_kind());
+      EXPECT_TRUE(
+          validateModule(copy, ModuleValidationPolicy::RequireCompleteContext));
+      const auto replacement =
+          test_helpers::parseModule(saturatedWmmaModule(source, "6.5"));
+      ASSERT_MODULE_PARSE_SUCCEEDS(replacement);
+      for (const auto policy : {ModuleValidationPolicy::AvailableContext,
+                                ModuleValidationPolicy::RequireCompleteContext})
+        EXPECT_FALSE(validateModule(*replacement, copy, policy));
+      for (auto& region : copy.header.regions)
+        region.version = checker::PtxVersion{6, 5};
+      for (auto& function : copy.functions)
+        function.source_version = checker::PtxVersion{6, 5};
+      EXPECT_FALSE(validateModule(copy));
+      typed.satfinite.value = false;
+      const auto mismatched = typed.check(removed);
+      ASSERT_FALSE(mismatched);
+      EXPECT_TRUE(
+          std::ranges::any_of(mismatched.error(), [](const auto & diagnostic) {
+            return diagnostic.kind ==
+                   checker::CheckDiagnosticKind::ModuleSourceMismatch;
+          }));
+      typed.satfinite.value = true;
+    };
+    if (aligned) {
+      auto* typed =
+          dynamic_cast<WmmaMmaM16n16k16RowColF32F16F16F32*>(instruction.get());
+      ASSERT_NE(typed, nullptr);
+      check_flag(*typed);
+    } else {
+      auto* typed =
+          dynamic_cast<WmmaMmaM16n16k16RowColF32F16F16F32ImplicitAligned*>(
+              instruction.get());
+      ASSERT_NE(typed, nullptr);
+      check_flag(*typed);
+    }
+    EXPECT_TRUE(validateModule(*owned));
+  }
+  const auto source = saturatedWmmaInstruction("m16n16k16", true, "row", "col",
+                                               "f32", "f32", false);
+  const auto parsed = test_helpers::parseInstruction(source);
+  ASSERT_TRUE(parsed);
+  auto resolved = resolveInstruction(*parsed);
+  ASSERT_TRUE(resolved);
+  auto* typed =
+      dynamic_cast<WmmaMmaM16n16k16RowColF32F16F16F32*>(resolved->get());
+  ASSERT_NE(typed, nullptr);
+  EXPECT_FALSE(typed->satfinite.value);
+  EXPECT_TRUE(typed->satfinite.locs.empty());
+  const checker::Context modern{
+      .target = {.ptx_version = {9, 3}, .sm_version = 70}};
+  EXPECT_TRUE(typed->check(modern));
+  typed->satfinite.value = true;
+  const auto removed = typed->check(modern);
+  ASSERT_FALSE(removed);
+  EXPECT_TRUE(std::ranges::any_of(removed.error(), [](const auto& diagnostic) {
+    return diagnostic.kind ==
+           checker::CheckDiagnosticKind::UnsupportedPtxVersion;
+  }));
+}
+
+/** Canonical modifier order retains the selected flag and original identity. */
+TEST(WmmaCoverage, FloatingSaturationCanonicalOrder) {
+  for (const bool aligned : {false, true}) {
+    auto alias = saturatedWmmaInstruction("m16n16k16", aligned, "row", "col",
+                                          "f32", "f32", true);
+    auto canonical = alias;
+    const auto position = canonical.find("m16n16k16.row.col");
+    ASSERT_NE(position, std::string::npos);
+    canonical.replace(position, 17, "row.col.m16n16k16");
+    const auto alias_parsed = test_helpers::parseInstruction(alias);
+    const auto canonical_parsed = test_helpers::parseInstruction(canonical);
+    ASSERT_TRUE(alias_parsed);
+    ASSERT_TRUE(canonical_parsed);
+    const auto alias_resolved = resolveInstruction(*alias_parsed);
+    const auto canonical_resolved = resolveInstruction(*canonical_parsed);
+    ASSERT_TRUE(alias_resolved);
+    ASSERT_TRUE(canonical_resolved);
+    EXPECT_EQ((*alias_resolved)->instruction_kind(),
+              (*canonical_resolved)->instruction_kind());
+    const checker::Context supported{
+        .target = {.ptx_version = aligned ? checker::PtxVersion{6, 4}
+                                          : checker::PtxVersion{6, 2},
+                   .sm_version = 70}};
+    EXPECT_TRUE((*canonical_resolved)->check(supported));
+  }
+}
+
+/** Floating compatibility does not admit saturation on later floating types. */
+TEST(WmmaCoverage, FloatingSaturationLeavesOtherTypesUnchanged) {
+  const auto fragment = [](int count) {
+    std::string value = "{";
+    for (int i = 0; i < count; ++i) {
+      if (i)
+        value += ',';
+      value += "%r" + std::to_string(i);
+    }
+    return value + '}';
+  };
+  const checker::Context modern{
+      .target = {.ptx_version = {9, 3}, .sm_version = 80}};
+  for (const auto opcode :
+       {"wmma.mma.sync.aligned.m16n16k16.row.col.f32.bf16.bf16.f32",
+        "wmma.mma.sync.aligned.m16n16k8.row.col.f32.tf32.tf32.f32",
+        "wmma.mma.sync.aligned.m8n8k4.row.col.f64.f64.f64.f64",
+        "wmma.mma.sync.aligned.m16n16k16.row.col.s32.s8.s8.s32"}) {
+    const std::string spelling = opcode;
+    const bool integer = spelling.find("s8") != std::string::npos;
+    const bool fp64 = spelling.find("f64") != std::string::npos;
+    const auto operands = " " + fragment(fp64 ? 2 : 8) + ", " +
+                          fragment(fp64      ? 1
+                                   : integer ? 2
+                                             : 4) +
+                          ", " +
+                          fragment(fp64      ? 1
+                                   : integer ? 2
+                                             : 4) +
+                          ", " + fragment(fp64 ? 2 : 8) + ";";
+    for (const bool saturated : {false, true}) {
+      const auto parsed = test_helpers::parseInstruction(
+          spelling + (saturated ? ".satfinite" : "") + operands);
+      ASSERT_TRUE(parsed);
+      const auto resolved = resolveInstruction(*parsed);
+      EXPECT_EQ(bool(resolved), !saturated || integer) << spelling;
+      if (resolved)
+        EXPECT_TRUE((*resolved)->check(modern)) << spelling;
+    }
+  }
 }
 
 }  // namespace

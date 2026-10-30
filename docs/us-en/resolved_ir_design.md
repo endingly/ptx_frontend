@@ -1330,6 +1330,20 @@ Standalone resolution selects the written spelling without a version context.
 Module validation and instruction availability checks apply the half-open version
 interval using current owned or replacement context. No historical counterparts
 are added for `shared::cta`, integer, subbyte/bit, BF16, TF32, FP64, or other
-forms introduced in PTX 6.3 or later. Historical `.satfinite` is outside this
-syntax slice. The source reference is the
+forms introduced in PTX 6.3 or later. The source reference is the
 [PTX 9.3 WMMA description shipped with CUDA 13.3](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-ld).
+
+The 96 existing FP16-input WMMA MMA forms (48 explicit `.aligned` forms and
+48 implicit counterparts) expose optional Boolean `satfinite`, default `false`.
+The selected `.satfinite` value requires PTX `< 6.5`, intersected with the form's
+native floor and alignment interval: implicit forms use PTX 6.0/6.1 through 6.2,
+explicit forms use PTX 6.3 through 6.4, all on SM70 or later. NVIDIA deprecated
+floating `.satfinite` in PTX 6.4 and removed it in PTX 6.5. Omission retains each
+form's existing availability, including modern PTX versions. Saturation maps
+positive/negative infinity to the largest positive/negative finite value and NaN
+to positive zero. Typed `satfinite.value` and source locations survive owned
+resolution, copying and cloning; current context checks reject removal-era use
+without changing the form identity. Integer saturation and BF16, TF32, FP64 and
+other MMA families are unchanged. These are syntax and static validation
+contracts; numerical GPU execution is not validated. See the
+[CUDA 13.3 PTX 9.3 WMMA MMA reference](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma).

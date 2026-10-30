@@ -105862,6 +105862,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -105871,6 +105881,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -105975,6 +105986,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -105984,6 +106005,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106088,6 +106110,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106097,6 +106129,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106201,6 +106234,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106210,6 +106253,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106314,6 +106358,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106323,6 +106377,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106427,6 +106482,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106436,6 +106501,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106540,6 +106606,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106549,6 +106625,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106653,6 +106730,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106662,6 +106749,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106766,6 +106854,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106775,6 +106873,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106879,6 +106978,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -106888,6 +106997,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -106992,6 +107102,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107001,6 +107121,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -107105,6 +107226,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107114,6 +107245,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -107218,6 +107350,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107227,6 +107369,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -107331,6 +107474,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107340,6 +107493,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -107444,6 +107598,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107453,6 +107617,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -107557,6 +107722,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -107566,6 +107741,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -109218,6 +109394,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109227,6 +109413,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109331,6 +109518,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109340,6 +109537,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109444,6 +109642,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109453,6 +109661,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109557,6 +109766,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109566,6 +109785,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109670,6 +109890,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109679,6 +109909,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109783,6 +110014,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109792,6 +110033,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -109896,6 +110138,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -109905,6 +110157,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110009,6 +110262,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110018,6 +110281,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110122,6 +110386,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110131,6 +110405,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110235,6 +110510,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110244,6 +110529,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110348,6 +110634,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110357,6 +110653,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110461,6 +110758,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110470,6 +110777,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110574,6 +110882,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110583,6 +110901,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110687,6 +111006,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110696,6 +111025,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110800,6 +111130,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110809,6 +111149,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -110913,6 +111254,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -110922,6 +111273,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -112574,6 +112926,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -112583,6 +112945,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -112687,6 +113050,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -112696,6 +113069,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -112800,6 +113174,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -112809,6 +113193,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -112913,6 +113298,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -112922,6 +113317,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113026,6 +113422,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113035,6 +113441,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113139,6 +113546,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113148,6 +113565,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113252,6 +113670,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113261,6 +113689,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113365,6 +113794,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113374,6 +113813,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113478,6 +113918,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113487,6 +113937,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113591,6 +114042,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113600,6 +114061,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113704,6 +114166,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113713,6 +114185,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113817,6 +114290,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113826,6 +114309,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -113930,6 +114414,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -113939,6 +114433,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -114043,6 +114538,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -114052,6 +114557,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -114156,6 +114662,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -114165,6 +114681,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -114269,6 +114786,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -114278,6 +114805,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -128344,6 +128872,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128352,6 +128890,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128452,6 +128991,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128460,6 +129009,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128560,6 +129110,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128568,6 +129128,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128668,6 +129229,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128676,6 +129247,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128776,6 +129348,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128784,6 +129366,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128884,6 +129467,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -128892,6 +129485,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -128992,6 +129586,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129000,6 +129604,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129100,6 +129705,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129108,6 +129723,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129208,6 +129824,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129216,6 +129842,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129316,6 +129943,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129324,6 +129961,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129424,6 +130062,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129432,6 +130080,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129532,6 +130181,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129540,6 +130199,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129640,6 +130300,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129648,6 +130318,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129748,6 +130419,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129756,6 +130437,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129856,6 +130538,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129864,6 +130556,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -129964,6 +130657,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -129972,6 +130675,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 16
@@ -130072,6 +130776,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130080,6 +130794,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130180,6 +130895,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130188,6 +130913,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130288,6 +131014,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130296,6 +131032,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130396,6 +131133,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130404,6 +131151,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130504,6 +131252,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130512,6 +131270,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130612,6 +131371,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130620,6 +131389,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130720,6 +131490,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130728,6 +131508,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130828,6 +131609,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130836,6 +131627,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -130936,6 +131728,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -130944,6 +131746,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131044,6 +131847,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131052,6 +131865,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131152,6 +131966,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131160,6 +131984,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131260,6 +132085,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131268,6 +132103,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131368,6 +132204,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131376,6 +132222,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131476,6 +132323,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131484,6 +132341,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131584,6 +132442,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131592,6 +132460,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131692,6 +132561,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131700,6 +132579,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 8
@@ -131800,6 +132680,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131808,6 +132698,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -131908,6 +132799,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -131916,6 +132817,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132016,6 +132918,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132024,6 +132936,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132124,6 +133037,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132132,6 +133055,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132232,6 +133156,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132240,6 +133174,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132340,6 +133275,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132348,6 +133293,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132448,6 +133394,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132456,6 +133412,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132556,6 +133513,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132564,6 +133531,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132664,6 +133632,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132672,6 +133650,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132772,6 +133751,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132780,6 +133769,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132880,6 +133870,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132888,6 +133888,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -132988,6 +133989,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -132996,6 +134007,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -133096,6 +134108,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -133104,6 +134126,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -133204,6 +134227,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -133212,6 +134245,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -133312,6 +134346,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f16
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -133320,6 +134364,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32
@@ -133420,6 +134465,16 @@ instructions:
       domain: scalar_types
       presence: fixed
       value: f32
+    - name: satfinite
+      kind: flag
+      presence: optional
+      default: false
+      token: .satfinite
+      values:
+      - value: false
+      - value: true
+        availability:
+          ptx_before: '6.5'
     modifier_order_aliases:
     - - operation
       - sync
@@ -133428,6 +134483,7 @@ instructions:
       - b_layout
       - d_type
       - c_type
+      - satfinite
     matrix:
       family: wmma_mma
       m: 32

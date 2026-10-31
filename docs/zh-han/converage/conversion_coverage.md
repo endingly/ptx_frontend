@@ -173,3 +173,7 @@ ordinary matrix 记录 140 个 accepted case 和四个 8-bit integer-width discr
 observation 是 compiler 工具证据，不能替代 PTX 9.3，也不能以该工具版本验证 PTX 9.2 form。
 
 Scalar F16 numeric source 现经公共 binary64-to-binary16 RNE 路径转换：支持 decimal/F64 expression 与裸 unsigned exact F32，不经过 binary32 中间值。Literal 转换保留 signed zero 与 subnormal，与指令 rounding/FTZ/saturation 无关。既有 CVT source kind 及 rounding 规则不变：四个含 F16 source 的 model template 在这些独立 rounding 检查下仍没有合法 positive。不增加 integer-to-F16 literal reinterpretation；Bit16 precision 规则及 exact F32 expression 禁令保留。
+
+普通 `cvt.pack.sat` 的 S32 input 除同宽 B32/S32/U32 register 外，也接受 integer constant 与 expression。既有 64-bit evaluator 将每个 input 窄化为低32位 S32 word，并保留原64位 integer bits／sign metadata；因此 `0x100000001U` 的 use word 为1，不要求 target-range。前端不把 input 预先饱和到 destination lane 宽度，也不预计算 packed result。Floating-valued input 仍不兼容 S32；最终 category 为 Integer 的 expression（包括 FP comparison）走 integer 路径。独立 B32 carry source 保留既有 literal／precision 契约，包括同宽 unsigned direct0f bit data；这不使 register-only stochastic `rbits` 接受 literal。Carry topology、destination width 与 target 边界不变。
+
+公共 ABI 迁移：`CvtPackSatU8S32B32`、`CvtPackSat16S32`、`CvtPackSatSmallS32B32` 的 `src1`／`src2` 从 `WithLocs<ResolvedRegisterRef>` 改为 `WithLocs<RegOrImm>`。Consumer 必须重编译，并通过 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>` 检查 `.value`。六个字段原位迁移；class、modifier domain、selector 顺序不变。Copy／assignment／clone 保留 typed word、source cache、declaration identity 与 location。普通当前 IR word／reference 修改按当前事实核对；source association 仍是独立的 retained-syntax 检查。

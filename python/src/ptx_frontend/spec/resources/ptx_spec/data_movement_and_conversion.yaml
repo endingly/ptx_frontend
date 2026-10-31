@@ -292,19 +292,19 @@ operand_patterns:
 
   cvt_pack_sat_u8_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
     - {name: carry, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
 
   cvt_pack_sat_16_s32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
 
   cvt_pack_sat_small_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: s32, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: s32, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: s32, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: s32, register_width: same_width}
     - {name: carry, kind: reg_or_imm, role: src3, access: read, type: b32, register_width: same_width}
 
   cvta_register:
@@ -2826,7 +2826,7 @@ instructions:
     variants:
       - name: cvt_pack_sat_u8_s32_b32
         operands: $cvt_pack_sat_u8_s32_b32
-        description: "Register-only saturated packed u8 conversion."
+        description: "Saturating packed u8 conversion from s32 sources."
         availability: {ptx: "6.5", sm: 72}
         modifiers:
           - {name: pack, kind: flag, presence: fixed, value: true, token: ".pack"}

@@ -782,8 +782,73 @@ call target,(1.0+0.5),proto;
   return !ir::validateModule(assigned);
 }
 
+/** Inspect all migrated pack sources and Narrow metadata using only installed types. */
+bool checkInstalledPackIntegerSources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_75
+.entry kernel() {
+.reg .u32 d;
+.reg .s32 a;
+mov.b32 a,7;
+cvt.pack.sat.u8.s32.b32 d,1,-2,0;
+cvt.pack.sat.u16.s32 d,0x100000001U,a;
+cvt.pack.sat.s4.s32.b32 d,(1+2),0xffffffff,0f3f800000;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.front().body.size() != 4)
+    return false;
+  auto& body = owned->functions.front().body;
+  auto& byte = dynamic_cast<ir::CvtPackSatU8S32B32&>(*body[1]);
+  auto& half = dynamic_cast<ir::CvtPackSat16S32&>(*body[2]);
+  auto& small = dynamic_cast<ir::CvtPackSatSmallS32B32&>(*body[3]);
+  const auto* one = std::get_if<ir::ResolvedImmediate>(&byte.src1.value);
+  const auto* negative = std::get_if<ir::ResolvedImmediate>(&byte.src2.value);
+  const auto* narrowed = std::get_if<ir::ResolvedImmediate>(&half.src1.value);
+  const auto* reg = std::get_if<ir::ResolvedRegisterRef>(&half.src2.value);
+  const auto* expression =
+      std::get_if<ir::ResolvedImmediate>(&small.src1.value);
+  const auto* unsigned_word =
+      std::get_if<ir::ResolvedImmediate>(&small.src2.value);
+  if (!one || !negative || !narrowed || !reg || !expression || !unsigned_word ||
+      one->type != ir::ScalarType::S32 || one->bits != 1 ||
+      negative->bits != 0xfffffffeU || !negative->is_negative ||
+      negative->integer_source_bits != 0xfffffffffffffffeULL ||
+      narrowed->bits != 1 || narrowed->integer_source_bits != 0x100000001ULL ||
+      !reg->symbol_id || reg->declared_type != ir::ScalarType::S32 ||
+      expression->bits != 3 || unsigned_word->bits != 0xffffffffU ||
+      unsigned_word->is_negative)
+    return false;
+  half.src2.value = ir::ResolvedImmediate{
+      .bits = 2, .type = ir::ScalarType::S32, .integer_source_bits = 2};
+  if (!ir::validateModule(*owned))
+    return false;
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  assigned.functions.front().body.back() =
+      copied.functions.front().body.back()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& forged = dynamic_cast<ir::CvtPackSatSmallS32B32&>(
+      *assigned.functions.front().body.back());
+  std::get<ir::ResolvedImmediate>(forged.src1.value).bits = 4;
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledPackIntegerSources())
+    return 30;
   if (!checkInstalledScalarHalfImmediates())
     return 29;
   if (!checkInstalledMbarrierTokenForms())

@@ -540,8 +540,16 @@ initializer 信息；内存布局、分配及 CTA/thread instance 仍属于 cons
 与 body-local parameter 的 typed shape、size/alignment、role 和 lexical identity；opaque 与
 其他 unsupported form 明确诊断，不扩展为 launch packing 或 simulator allocation。
 Device `.reg` input/return 支持 `.v2`/`.v4` 非 predicate fundamental vector（总大小至多
-128 bit）；signature、binding 与 direct/indirect call 保留一个完整 vector shape，owned
-validation 在 AST 销毁后继续核对。`.param` vector 仍明确为 unsupported。
+128 bit）；default stack ABI 下，仅在 PTX 版本已知且不低于 2.0、当前 target 可识别且
+架构不低于 SM 20 时，整个 register-state formal 还必须至少 32 bit。Signature、binding
+与 direct/indirect call 保留完整 vector shape，owned validation 在 AST 销毁后继续核对。
+合法 `.param` scalar、`.v2` 与 `.v4` fundamental object（每个 vector shape 的 payload 至多
+128 bit，含当前规则允许的 native `.f16x2` element）在适用的 entry/header、device input/return、
+body-local、signature 与 call 路径中受支持；数组 extent 独立于 vector payload，数组总大小可
+超过 128 bit。源码与 AST-free owned metadata 保留 vector shape 和 parameter-array 各轴；call
+ABI 按总元素数并结合 vector type/shape 匹配。predicate、instruction-only element 与不适用的
+declaration context 仍明确诊断；这不扩展为 launch packing 或 simulator allocation，也不定义
+numeric packed `.f16x2` literal representation。
 
 ## M3：值、地址与 `mov`
 

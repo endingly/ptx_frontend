@@ -194,3 +194,14 @@ byte 或 padding，同时继续检查后续 numeric/vector input。
 完整 module 的 direct-call target 必须在 use 前声明/定义实际绑定的 function 或 alias
 identity；兼容的先行 prototype 足够，whole-module lookup 找到 later declaration
 不代表已可见。此 source/owned 检查独立于精确 parameter ABI 与 staging 规则。
+
+Default stack ABI 下，只有在已知 PTX >=2.0 且当前可识别 target architecture >=20
+时，device/call-prototype 的 register-state 输入和返回 formal 才要求**整个值**至少
+32 bit。宽度是 scalar storage width 乘显式 vector lane：`.v2.u8`、scalar `.f16/.pred`
+不满足；`.v4.u8`、`.v2.f16` 与 native scalar `.f16x2` 满足。既有 fundamental/vector
+资格及最大宽度仍独立检查，source type/shape 不隐式 promote。已知旧版本或旧 target
+使该下限不生效；缺失 context 在 available-context validation 中延后判断，strict
+validation 仍报告既有 missing-context 错误。每个 function 使用自身 active target region；
+source-aware validation 使用所提供 AST，AST-free validation 使用 owned region。
+未使用 prototype 同样检查。该规则仅针对 formal：普通小宽度/predicate register 声明、
+小宽度 `.param` formal，以及传给匹配 `.param` 的小 register actual，仍合法。

@@ -1941,6 +1941,20 @@ class Checker {
       return;
     }
 
+    if (is_register && !is_array && module_version &&
+        *module_version >= PtxVersion{2, 0} && module_sm && *module_sm >= 20) {
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.type.text);
+      const uint64_t lanes = !parameter.vector_type                 ? 1
+                             : parameter.vector_type->text == ".v2" ? 2
+                                                                    : 4;
+      if (metadata && metadata->size_bytes * lanes < 4)
+        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+                 parameter.range,
+                 "Register formal total width must be at least 32 bits under "
+                 "the default ABI.");
+    }
+
     if (is_array && !is_parameter) {
       const bool is_call_prototype =
           context == ParameterContext::CallPrototypeInput ||

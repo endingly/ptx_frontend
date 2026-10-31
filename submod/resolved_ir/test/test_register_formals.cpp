@@ -7,7 +7,7 @@
 
 #include <ptx_frontend/binding/ptx_symbol_table.hpp>
 #include <ptx_frontend/resolved_ir/model/arithmetic/add.gen.hpp>
-#include <ptx_frontend/resolved_ir/model/parallel_synchronization_and_communication/bar.gen.hpp>
+#include <ptx_frontend/resolved_ir/model/data_movement/mov.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -112,13 +112,12 @@ TEST(RegisterFormals, ResolveArithmeticReadsAndWritesWithBoundIdentity) {
   }
 }
 
-/** Predicate formals retain predicate class while serving as body operands. */
+/** Legacy non-ABI predicate formals retain their body operand identities. */
 TEST(RegisterFormals, ResolvePredicateReadAndWrite) {
-  constexpr std::string_view source = R"ptx(.version 8.0
-.target sm_80
-.address_size 64
+  constexpr std::string_view source = R"ptx(.version 1.4
+.target sm_13
 .func (.reg .pred %result) formal(.reg .pred %input) {
-  bar.red.and.pred %result, 0, %input;
+  mov.pred %result, %input;
   ret;
 }
 )ptx";
@@ -130,14 +129,16 @@ TEST(RegisterFormals, ResolvePredicateReadAndWrite) {
   const auto resolved = resolveModule(*ast);
   ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
   ASSERT_EQ(resolved->functions.front().body.size(), 2u);
-  const auto& reduction = dynamic_cast<const BarRedAndPred&>(
-      *resolved->functions.front().body.front());
+  const auto& reduction =
+      dynamic_cast<const MovPred&>(*resolved->functions.front().body.front());
   EXPECT_EQ(reduction.dst.value.register_ref.register_class,
             ResolvedRegisterClass::Predicate);
-  EXPECT_EQ(reduction.predicate.value.register_ref.register_class,
+  EXPECT_EQ(std::get<ResolvedPredicate>(reduction.src.value)
+                .register_ref.register_class,
             ResolvedRegisterClass::Predicate);
   EXPECT_EQ(reduction.dst.value.register_ref.declared_type, ScalarType::Pred);
-  EXPECT_EQ(reduction.predicate.value.register_ref.declared_type,
+  EXPECT_EQ(std::get<ResolvedPredicate>(reduction.src.value)
+                .register_ref.declared_type,
             ScalarType::Pred);
 }
 

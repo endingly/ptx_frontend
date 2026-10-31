@@ -350,7 +350,7 @@ TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
 .extern .func external(.reg .u32 input);
 .func defined_before(.reg .u32 input) { }
 .func bytes(.param .align 8 .b8 input[]);
-.func immediate(.reg .u8 high, .reg .s8 low, .reg .f32 float);
+.func immediate(.reg .u32 high, .reg .s32 low, .reg .f32 float);
 .func defined_after(.reg .u32 input);
 .func renamed(.reg .u32 declaration_name);
 .entry caller() {

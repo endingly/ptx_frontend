@@ -2231,6 +2231,47 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
   check_parameters(signature.parameters, signature.is_entry, true);
 }
 
+/** Apply the whole-value register-formal minimum in a known default ABI context. */
+void check_register_formal_width(
+    const declaration_semantics::FunctionSignature& signature,
+    const checker::TargetInfo& target, SourceRange range,
+    checker::CheckDiagnostics& diagnostics) {
+  if (target.ptx_version < checker::PtxVersion{2, 0} || target.sm_version < 20)
+    return;
+  const auto check = [&](const auto& parameters) {
+    for (const auto& parameter : parameters) {
+      if (parameter.state_space !=
+              call_argument_compatibility::CallArgumentStateSpace::Register ||
+          !parameter.array_extents.empty() ||
+          !valid_scalar_contract(parameter) || !valid_formal_vector(parameter))
+        continue;
+      const auto* metadata =
+          base::find_scalar_type_metadata(parameter.scalar_type);
+      if (metadata->size_bytes * formal_vector_width(parameter.vector_shape) <
+          4)
+        diagnostics.push_back({
+            .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+            .range = range,
+            .message = "Register formal total width must be at least 32 bits "
+                       "under the default ABI.",
+        });
+    }
+  };
+  check(signature.return_parameters);
+  check(signature.parameters);
+}
+
+/** Recheck local interfaces in their enclosing function's active source context. */
+void check_function_register_formals(const ResolvedFunction& function,
+                                     const checker::TargetInfo& target,
+                                     checker::CheckDiagnostics& diagnostics) {
+  check_register_formal_width(function.contract.signature, target,
+                              function.range, diagnostics);
+  for (const auto& prototype : function.call_prototypes)
+    check_register_formal_width(prototype.signature, target, prototype.range,
+                                diagnostics);
+}
+
 /** Revalidate name-only entry inputs against both the ABI and bound symbols. */
 void check_opaque_entry_parameters(const ResolvedModule& module,
                                    const ResolvedFunction& function,
@@ -4009,6 +4050,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       const auto target =
           owned_target_context(*region, diagnostics, function.range);
       if (target) {
+        check_function_register_formals(function, *target, diagnostics);
         check_function_contract_availability(function, *target, diagnostics);
         if (complete_instruction_provenance)
           check_instruction_body(function, *target, region->texture_mode,
@@ -4202,6 +4244,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                            resource_name(resource.kind));
       check_body_directives(function->body, *active_target, diagnostics);
       const auto* owned = source_function(*function, module);
+      check_function_register_formals(*owned, *active_target, diagnostics);
       check_instruction_body(*owned, *active_target, texture_mode, diagnostics);
     }
   }

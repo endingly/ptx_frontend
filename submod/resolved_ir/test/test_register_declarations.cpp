@@ -356,7 +356,7 @@ TEST(RegisterDeclarations, AcceptsFundamentalFormsAndRegisterFormals) {
 .version 9.3
 .target sm_80
 .address_size 64
-.func register_forms(.reg .pred %formal_pred, .reg .f16x2 %formal_half) {
+.func register_forms(.reg .u32 %formal_value, .reg .f16x2 %formal_half) {
   .reg .u8 %unsigned8;
   .reg .u16 %unsigned16;
   .reg .u32 %used, %unused;

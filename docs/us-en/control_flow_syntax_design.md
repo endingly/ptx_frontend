@@ -198,3 +198,13 @@ the same variable. Labels, declarations, and other instructions break a block.
 `call` itself may be predicated. `.uni` is retained as the programmer's
 uniformity assertion, so the frontend does not attempt unprovable static
 uniformity analysis or reject a predicated direct `call.uni`.
+
+Register-state device and call-prototype formals have a separate default-ABI
+minimum: when known PTX >=2.0 and the active recognized target is SM20+, the whole
+scalar/vector value must be at least32bits. This measures explicit vector total
+width, not each lane, and preserves source type/shape. It applies to unused input
+and return formals too, with the supplied AST context for source-aware retargeting
+and owned regions after AST death. Known legacy contexts disable the minimum;
+missing context defers it under partial checking. Ordinary small/predicate registers
+and compatible small actuals to `.param` formals remain legal. See
+[parameter declarations](parameter_declarations.md) for the complete boundary.

@@ -229,3 +229,17 @@ Complete-module direct-call targets must have a prior declaration/definition of
 the actual bound function or alias identity. Prior compatible prototypes suffice;
 whole-module lookup of a later declaration does not establish visibility. This
 source/owned check is independent of the exact parameter ABI and staging rules.
+
+Under the default stack ABI, register-state device and call-prototype input and
+return formals require at least 32 bits in the **whole value** when both PTX >=2.0
+and the active recognized target architecture >=20 are known. The width is scalar
+storage width times explicit vector lanes: `.v2.u8` and scalar `.f16/.pred` fail,
+while `.v4.u8`, `.v2.f16` and native scalar `.f16x2` meet the minimum. Existing
+fundamental/vector eligibility and maximum width remain independent. Source types
+and shapes are preserved, with no implicit formal promotion. A known older version
+or target disables this minimum; missing context defers it in available-context
+validation, while strict validation retains its missing-context errors. Each
+function uses its active target region; source-aware validation uses the supplied
+AST and AST-free validation uses owned regions. Unused prototypes are checked too.
+This is a formal rule: ordinary small/predicate register declarations, small
+`.param` formals and matching small-register actuals to `.param` remain legal.

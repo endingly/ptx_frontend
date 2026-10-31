@@ -197,3 +197,11 @@ signedness 传播与求值逻辑。
 溢出仍无效并保留逐轴 identity。未知外轴仍保留并检查已知内轴。
 派生 `CallArgumentProperties::array_size` 表示总数，不是第一轴缓存。
 精确 source identity 独立保留，见[parameter 合同与 member migration](parameter_declarations.md)。
+
+Register-state device/call-prototype formal 使用独立的 default-ABI 下限：已知
+PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必须至少32bit，
+不是每个 lane 都要求32bit；source type/shape 保持不变。未使用的输入和返回 formal
+同样检查。Source-aware retarget 使用所提供 AST 的 context，AST 销毁后使用 owned
+region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
+普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
+完整边界见[parameter 声明](parameter_declarations.md)。

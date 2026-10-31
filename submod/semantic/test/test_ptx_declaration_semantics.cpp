@@ -695,8 +695,9 @@ TEST(PtxDeclarationSemantics, AcceptsSupportedParameterDeclarationForms) {
 .target sm_80
 .entry k(.param .u64 .ptr .global pointer) {
   .param .u32 matrix[2][3];
+  .reg .pred predicate;
 }
-.func device(.reg .pred predicate, .param .b8 bytes[]);
+.func device(.reg .u32 value, .param .b8 bytes[]);
 )ptx");
 
   EXPECT_TRUE(result.binding.diagnostics.empty());

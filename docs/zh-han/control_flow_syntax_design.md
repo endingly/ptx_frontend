@@ -154,3 +154,11 @@ predicate，并与使用同一 variable 的 call 形成紧邻的连续块；其 
 predicate，并紧跟在返回同一 variable 的 call 后。label、declaration 或其他 instruction 会打断该块。
 `call` 自身可以带 predicate。`.uni` 仅保留为程序员的 uniformity assertion，frontend 不尝试不可
 证明的 static uniformity analysis，也不会因 predicated direct `call.uni` 而拒绝它。
+
+Register-state device/call-prototype formal 使用独立的 default-ABI 下限：已知
+PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必须至少32bit，
+不是每个 lane 都要求32bit；source type/shape 保持不变。未使用的输入和返回 formal
+同样检查。Source-aware retarget 使用所提供 AST 的 context，AST 销毁后使用 owned
+region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
+普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
+完整边界见[parameter 声明](parameter_declarations.md)。

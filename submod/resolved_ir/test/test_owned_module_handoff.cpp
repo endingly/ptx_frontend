@@ -654,8 +654,8 @@ TEST(OwnedModuleHandoff, RetainsUniformReturnAndGuardsWithoutAst) {
 /** Valid predicate declarations retain their existing binding forms. */
 TEST(OwnedModuleHandoff, PreservesPredicateFormalAndParameterizedGuards) {
   const auto parsed = parse_owned_module_fixture(R"ptx(
-.version 9.3
-.target sm_90
+.version 1.4
+.target sm_13
 .func predicate_formal(.reg .pred %formal) { @%formal ret; }
 .entry kernel() {
   .reg .pred %p<2>;

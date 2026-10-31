@@ -798,7 +798,7 @@ operand_patterns:
 
   async_store_shared_scalar:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [shared], address_base: register}
-    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: equal_or_wider}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_shared_vector:
@@ -808,13 +808,13 @@ operand_patterns:
       role: src
       access: read
       type: {expr: "modifier(type)"}
-      register_width: same_width
+      register_width: equal_or_wider
       vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_global:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [global], address_base: register}
-    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: same_width}
+    - {name: value, kind: reg, role: src, access: read, type: {expr: "modifier(type)"}, register_width: equal_or_wider}
 
   bulk_store_zero:
     - {name: dst, kind: addr, role: addr, access: write, state_space: [shared]}

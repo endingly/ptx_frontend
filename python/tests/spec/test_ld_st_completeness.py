@@ -3,7 +3,9 @@
 import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
-from ptx_frontend.spec.model import ModifierKind, ModifierPresence, OperandKind
+from ptx_frontend.spec.model import (ModifierKind, ModifierPresence, OperandKind,
+                                     OperandRegisterWidthPolicy, OperandTypeExpressionKind,
+                                     OperandAddressBasePolicy)
 
 
 
@@ -14,6 +16,39 @@ class LdStCompletenessTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Load the source-tree instruction database once for these checks."""
         cls.database = get_packaged_spec_database()
+
+    def test_all_async_store_data_keys_inherit_wider_carriers(self) -> None:
+        """Keep the exact eight selectors, including combined compatibility flags."""
+
+        names = {"st_async_shared_scalar", "st_async_shared_v2", "st_async_shared_v4",
+                 "st_async_shared_cluster_scalar", "st_async_shared_cluster_v2", "st_async_shared_cluster_v4",
+                 "st_async_global_release", "st_async_global_mmio_release"}
+        instruction = next(row for row in self.database.instructions if row.opcode == "st")
+        variants = [row for row in instruction.variants if row.name in names]
+        self.assertEqual({row.name for row in variants}, names)
+        branches = 0
+        combined = 0
+        for variant in variants:
+            self.assertEqual(len(variant.operand_layouts), 1)
+            operands = {row.name: row for row in variant.operand_layouts[0].operands}
+            data = operands["value"]
+            self.assertIs(data.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER)
+            self.assertIs(data.type_expression.kind, OperandTypeExpressionKind.MODIFIER)
+            self.assertEqual(data.type_expression.modifier_name, "type")
+            self.assertIn(data.kind, {OperandKind.REGISTER, OperandKind.REGISTER_VECTOR})
+            self.assertIs(operands["dst"].address_base_policy, OperandAddressBasePolicy.REGISTER)
+            dtype = next(row for row in variant.modifiers if row.name == "type")
+            branches += len(dtype.values)
+            if "shared_cluster" in variant.name:
+                combined += 1
+                self.assertFalse(any(row.name == "async" for row in variant.modifiers))
+            if "mbar" in operands:
+                self.assertIs(operands["mbar"].kind, OperandKind.ADDRESS)
+                self.assertEqual(variant.completion_kind.value, "mbarrier_complete_tx_bytes")
+            else:
+                self.assertEqual(variant.completion_kind.value, "none")
+        self.assertEqual(combined, 3)
+        self.assertEqual(branches, 70)
 
     def test_every_cache_hint_variant_has_equivalent_policy_layouts(self) -> None:
         """Inventory the complete hint partition without changing its other gates."""

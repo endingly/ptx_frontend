@@ -257,3 +257,12 @@ and owned regions after AST death. Known legacy contexts disable the minimum;
 missing context defers it under partial checking. Ordinary small/predicate registers
 and compatible small actuals to `.param` formals remain legal. See
 [parameter declarations](parameter_declarations.md) for the complete boundary.
+
+Instruction-root spellings remain ordinary identifiers in explicit declaration
+name roles under the [contextual keyword interpretation](lexer_design.md).
+The official `bar` object/function examples preclude a blanket name exclusion;
+this is a normative interpretation and regression clarification, not an added
+missing-predicate fix. Source validation checks name leaves and AST-free owned
+validation checks actual bound symbol names with the shared character grammar.
+Diagnostic reference spellings do not reconstruct authoritative identity. All
+independent declaration-role, type, ABI and prior-visibility restrictions remain.

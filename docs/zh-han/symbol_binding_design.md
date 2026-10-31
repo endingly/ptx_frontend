@@ -190,3 +190,8 @@ SM 35，device-function 地址沿用 `mov` 的 PTX 1.0 baseline。
 词法绑定记录声明身份和元数据；已建模 form 的指令相关 state-space 与
 special-register/type 兼容由 Resolved IR resolution/checker 检查。剩余工作是尚未建模的
 指令/operand form，而非整体兼容检查阶段尚未实现。
+
+显式 name role 中的 instruction-keyword 拼写采用[上下文词法解释](lexer_design.md)，
+保留官方 `bar` object/function 示例。Binding 保留精确大小写和拼写；source name check
+与 AST-free owned check 针对 actual declaration/symbol name，不增加全局 keyword
+排除或 diagnostic-spelling history join。独立的 role、type、ABI 与先行声明检查仍为权威。

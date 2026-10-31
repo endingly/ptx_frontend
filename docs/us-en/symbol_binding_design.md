@@ -245,3 +245,10 @@ instruction-specific state-space and special-register/type compatibility is
 checked during Resolved IR resolution/checking for modeled forms. Remaining
 work concerns unmodeled instruction/operand forms rather than a missing
 compatibility phase.
+
+Instruction-keyword spellings in explicit name roles follow the
+[contextual lexical interpretation](lexer_design.md), including the official
+`bar` object/function examples. Binding preserves exact case and spelling;
+source name checks and AST-free owned checks apply to actual declaration/symbol
+names without a global keyword exclusion or diagnostic-spelling history join.
+Independent role, type, ABI and prior-declaration checks remain authoritative.

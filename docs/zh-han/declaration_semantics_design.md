@@ -205,3 +205,10 @@ PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必�
 region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
 普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
 完整边界见[parameter 声明](parameter_declarations.md)。
+
+按[上下文 keyword 解释](lexer_design.md)，instruction root 拼写在显式声明 name role
+中仍可作为普通 identifier。官方 `bar` object/function 示例不支持无条件名称排除；
+这是规范解释与 regression 澄清，不是补加 missing predicate 的代码修复。Source
+validation 检查 name leaf，AST-free owned validation 通过共享字符 grammar 检查
+actual bound symbol name；diagnostic reference spelling 不重建权威 identity。
+独立的声明 role、type、ABI 与先行 visibility 限制保持不变。

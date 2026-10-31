@@ -481,6 +481,10 @@ modifier 得到的编译期常量，或由 optional modifier 的 YAML `default` 
 `ResolvedImmediate` 保存 use-width bits 和 `ScalarType`。integer form 还会
 保留求值后的 64-bit source bits 与数值上的 signed-negative 性质，因此
 fixed-control checker 不必重新解释 literal 文本，也不会信任已经窄化的值。
+原 integer source bits 存在时，在确认 use-width bits 与 source 一致之后，true negative
+flag 要求原 word 的 bit63 为1。Bit63 为1且 flag 为 false 可以表示 unsigned source。
+负的原始值可以窄化为正的 use-width bits；destination type 与窄化后的符号均不能重建
+source signedness。没有 source cache 的 scalar legacy input 保留既有行为。
 
 `AstImmediateKind` 保留 lexer 对 literal 的分类。二进制 `0b`/`0B` 拼写保留为 `BinaryInteger`。整数 decimal/octal/binary/hex（包括可选 `U`
 后缀）先在 PTX 64-bit signed/unsigned source domain 中求值；unary minus 保留该 source

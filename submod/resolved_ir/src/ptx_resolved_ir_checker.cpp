@@ -353,16 +353,26 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
   const uint8_t bit_width = byte_width * 8;
   const uint64_t mask = bit_width == 64 ? std::numeric_limits<uint64_t>::max()
                                         : (uint64_t{1} << bit_width) - 1;
-  if (*operand.immediate_bits == (*operand.integer_source_bits & mask))
-    return {};
-  return std::unexpected(CheckDiagnostics{CheckDiagnostic{
-      .kind = CheckDiagnosticKind::ImmediateValueMismatch,
-      .range = diagnostic_range(operand.locations, context),
-      .message = fmt::format(
-          "Immediate operand '{}' has bits inconsistent with its integer "
-          "source value.",
-          operand.field_id),
-  }});
+  if (*operand.immediate_bits != (*operand.integer_source_bits & mask))
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Immediate operand '{}' has bits inconsistent with its integer "
+            "source value.",
+            operand.field_id),
+    }});
+  if (operand.immediate_is_negative.value_or(false) &&
+      (*operand.integer_source_bits & (uint64_t{1} << 63)) == 0)
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::ImmediateValueMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "Immediate operand '{}' has a negative flag inconsistent with its "
+            "integer source value.",
+            operand.field_id),
+    }});
+  return {};
 }
 
 void append_value_availability_diagnostics(const OperandView& operand,

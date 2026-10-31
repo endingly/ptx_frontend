@@ -578,6 +578,12 @@ strings. Operand primitives include `ResolvedRegisterRef`, `ResolvedImmediate`,
 and `ScalarType`. Integer forms also retain evaluated 64-bit source bits and
 numerical signed-negativity, so fixed-control checks never reinterpret literal
 text or trust a narrowed value.
+When original integer source bits are present, a true negative flag requires bit63
+of that original word to be set, after use-width bits are checked against the
+source. A false flag with bit63 set can represent an unsigned source. A negative
+original value may narrow to positive use-width bits; neither the destination
+type nor the narrowed sign reconstructs source signedness. Cache-absent scalar
+legacy inputs retain their existing behavior.
 
 Owned constant-expression operands are evaluated through the shared semantic
 evaluator before conversion at their numeric use site. Integer source bits and

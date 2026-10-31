@@ -785,7 +785,8 @@ parameterPointedStateSpace(
 NormalizedNumericValue parameterArrayExtentContract(
     const AstConstantExpression& expression) {
   const ExpressionInfo value = classifyExpression(expression, nullptr);
-  if (const auto extent = nonnegativeIntegerValue(value))
+  if (const auto extent = nonnegativeIntegerValue(value);
+      extent && *extent != 0)
     return *extent;
   return InvalidStructuralKey{expressionKey(expression)};
 }
@@ -817,6 +818,12 @@ FunctionParameterContract parameterContract(
       scalar != base::ScalarType::Invalid
           ? std::optional<uint64_t>{base::scalar_size_of(scalar) * lanes}
           : std::nullopt;
+  std::vector<std::optional<NormalizedNumericValue>> extents;
+  for (const auto& dimension : parameter.array_dimensions)
+    extents.push_back(
+        dimension.size
+            ? std::optional{parameterArrayExtentContract(*dimension.size)}
+            : std::nullopt);
   return {
       .state_space = parameterStateSpace(parameter.state_space),
       .alignment =
@@ -831,11 +838,7 @@ FunctionParameterContract parameterContract(
       .pointer_alignment = parameterAlignmentContract(
           parameter.pointer_alignment,
           parameter.is_pointer ? std::optional<uint64_t>{4} : std::nullopt),
-      .is_array = parameter.is_array,
-      .array_extent = parameter.array_size
-                          ? std::optional{parameterArrayExtentContract(
-                                *parameter.array_size)}
-                          : std::nullopt,
+      .array_extents = std::move(extents),
   };
 }
 
@@ -1820,21 +1823,26 @@ class Checker {
            context == ParameterContext::CallPrototypeInput;
   }
 
-  /** Return checked scalar/vector bytes times an optional header array extent. */
+  /** Check all known axes and derive bytes, retaining unknown outer extent. */
   static std::optional<uint64_t> parameterByteExtent(
-      base::ScalarType type, uint32_t lanes, bool is_array,
-      const std::optional<AstConstantExpression>& array_size) {
-    const uint64_t scalar_bytes = base::scalar_size_of(type) * lanes;
-    if (scalar_bytes == 0 || (is_array && !array_size))
+      base::ScalarType type, uint32_t lanes,
+      std::span<const syntax_ast::AstArrayDimension> dimensions) {
+    uint64_t bytes = base::scalar_size_of(type) * lanes;
+    bool unknown = false;
+    if (bytes == 0)
       return std::nullopt;
-    if (!is_array)
-      return scalar_bytes;
-    const auto extent = constantArrayExtent(*array_size);
-    if (!extent || *extent == 0 ||
-        scalar_bytes > std::numeric_limits<uint64_t>::max() / *extent) {
-      return std::nullopt;
+    for (const auto& dimension : dimensions) {
+      if (!dimension.size) {
+        unknown = true;
+        continue;
+      }
+      const auto extent = constantArrayExtent(*dimension.size);
+      if (!extent || *extent == 0 ||
+          bytes > std::numeric_limits<uint64_t>::max() / *extent)
+        return std::nullopt;
+      bytes *= *extent;
     }
-    return scalar_bytes * *extent;
+    return unknown ? std::nullopt : std::optional<uint64_t>{bytes};
   }
 
   /** Validate type, state space, shape, availability, and pointer attributes. */
@@ -1848,8 +1856,18 @@ class Checker {
       checkIdentifier(parameter.name);
     checkAlignment(parameter.alignment);
     checkAlignment(parameter.pointer_alignment);
-    if (parameter.array_size)
-      checkDimension(*parameter.array_size);
+    const bool is_array = !parameter.array_dimensions.empty();
+    for (std::size_t axis = 0; axis < parameter.array_dimensions.size();
+         ++axis) {
+      const auto& dimension = parameter.array_dimensions[axis];
+      if (dimension.size)
+        checkDimension(*dimension.size);
+      else if (axis != 0)
+        diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
+                 dimension.range,
+                 "Only the outermost parameter axis may be unsized.");
+    }
+    const bool unsized = is_array && !parameter.array_dimensions.front().size;
 
     const bool is_parameter =
         parameter.state_space == syntax_ast::AstStateSpace::Parameter;
@@ -1871,7 +1889,7 @@ class Checker {
       const uint64_t lanes =
           shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
                                                                             : 4;
-      if ((is_register && parameter.is_array) || parameter.is_pointer ||
+      if ((is_register && is_array) || parameter.is_pointer ||
           shape ==
               call_argument_compatibility::CallArgumentVectorShape::Invalid ||
           !metadata ||
@@ -1888,13 +1906,20 @@ class Checker {
     }
 
     if (const auto opaque = base::opaque_resource_kind(parameter.type.text)) {
+      const auto extent = detail::parameter_array_extent(
+          parameterContract(parameter).array_extents);
+      if (!extent.valid)
+        diagnose(DeclarationDiagnosticKind::InvalidArrayDimension,
+                 parameter.range,
+                 "Opaque parameter dimensions require a representable positive "
+                 "element count.");
       if (context != ParameterContext::EntryInput || !is_parameter ||
           parameter.is_pointer || parameter.pointer_alignment) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
                  "Opaque resource parameters require an .entry input "
                  "without pointer qualifiers.");
-      } else if (parameter.is_array && !parameter.array_size) {
+      } else if (unsized) {
         diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                  parameter.range,
                  "Opaque entry parameter arrays require a positive extent.");
@@ -1916,7 +1941,7 @@ class Checker {
       return;
     }
 
-    if (parameter.is_array && !is_parameter) {
+    if (is_array && !is_parameter) {
       const bool is_call_prototype =
           context == ParameterContext::CallPrototypeInput ||
           context == ParameterContext::CallPrototypeReturn;
@@ -1930,7 +1955,7 @@ class Checker {
               : "Array parameters must use .param state space.");
       return;
     }
-    if (parameter.is_array && !parameter.array_size) {
+    if (unsized) {
       if (!permitsUnsizedInput(context) || !is_final || !scalar ||
           *scalar != base::ScalarType::B8 || parameter.vector_type) {
         diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
@@ -1949,7 +1974,7 @@ class Checker {
     }
     if (parameter.is_pointer) {
       if (context != ParameterContext::EntryInput || !is_parameter || !scalar ||
-          parameter.is_array ||
+          is_array ||
           (*scalar != base::ScalarType::B32 &&
            *scalar != base::ScalarType::B64 &&
            *scalar != base::ScalarType::S32 &&
@@ -1965,18 +1990,35 @@ class Checker {
                                      parameter.range, ".ptr entry parameter");
       }
     }
-    if (scalar && parameter.array_size) {
-      const auto extent = constantArrayExtent(*parameter.array_size);
-      if (extent && *extent != 0 &&
+    if (scalar && is_array) {
+      const auto contract = parameterContract(parameter);
+      const auto extent =
+          detail::parameter_array_extent(contract.array_extents);
+      // Unknown outer axes still require representable known inner byte products.
+      auto known_dimensions = std::span<const syntax_ast::AstArrayDimension>{
+          parameter.array_dimensions};
+      if (unsized)
+        known_dimensions = known_dimensions.subspan(1);
+      if (extent.valid &&
           !parameterByteExtent(
               *scalar,
               parameter.vector_type
                   ? (parameter.vector_type->text == ".v2" ? 2 : 4)
                   : 1,
-              true, parameter.array_size)) {
+              known_dimensions)) {
         diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
-                 parameter.array_size->range,
-                 "Parameter byte extent overflows uint64_t.");
+                 parameter.range, "Parameter byte extent overflows uint64_t.");
+      } else if (!extent.valid) {
+        bool known_positive = true;
+        for (const auto& dimension : parameter.array_dimensions)
+          if (dimension.size) {
+            const auto count = constantArrayExtent(*dimension.size);
+            known_positive &= count && *count != 0;
+          }
+        if (known_positive)
+          diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
+                   parameter.range,
+                   "Parameter array extent overflows uint64_t.");
       }
     }
   }
@@ -2048,7 +2090,7 @@ class Checker {
                        parameter.vector_type
                            ? (parameter.vector_type->text == ".v2" ? 2 : 4)
                            : 1,
-                       parameter.is_array, parameter.array_size)
+                       parameter.array_dimensions)
                  : std::nullopt;
       if (!bytes)
         return;

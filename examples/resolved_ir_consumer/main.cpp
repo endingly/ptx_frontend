@@ -8,6 +8,7 @@
 #include <variant>
 
 #include <ptx_frontend/base/ptx_target.hpp>
+#include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
@@ -489,9 +490,68 @@ bool checkInstalledParameterDomain() {
          record.alignment == 8 && ir::validateModule(copy).has_value();
 }
 
+/** Exercise migrated public dimensions and derived ABI totals after syntax death. */
+bool checkInstalledHeaderArrayRank() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace ast = ptx_frontend::syntax_ast;
+  namespace cst = ptx_frontend::syntax_cst;
+  namespace semantics = ptx_frontend::declaration_semantics;
+  const auto owned = []() -> std::optional<ir::ResolvedModule> {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_80, texmode_independent
+.address_size 64
+.extern .func take(.param .v2 .u32 input[2][3]);
+.entry kernel(.param .texref texture[2][3], .param .u32 number[3][2]) {
+  .param .v2 .u32 a[6];
+  .reg .b64 target;
+  proto: .callprototype _ (.param .v2 .u32 input[3][2]);
+  call take, (a);
+  call target, (a), proto;
+}
+)ptx";
+    ptx_frontend::PtxCstParser cst_parser(source);
+    const auto concrete = cst_parser.parseModule();
+    if (!concrete || !concrete.diagnostics.empty() ||
+        concrete->sourceText() != source)
+      return std::nullopt;
+    const auto& concrete_function =
+        std::get<cst::CstFunction>(concrete->module()->items.back());
+    if (!concrete_function.parameters ||
+        concrete_function.parameters->parameters[0].array_dimensions.size() !=
+            2)
+      return std::nullopt;
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto parsed = parser.parseModule();
+    if (!parsed || !parsed.diagnostics.empty())
+      return std::nullopt;
+    const auto& function = std::get<ast::AstFunction>(parsed->items.back());
+    if (function.parameters[0].array_dimensions.size() != 2)
+      return std::nullopt;
+    auto module = ir::resolveAndValidateModule(*parsed);
+    if (!module)
+      return std::nullopt;
+    return std::move(*module);
+  }();
+  if (!owned)
+    return false;
+  auto copy = *owned;
+  const auto& function = copy.functions.back();
+  const auto& prototype =
+      function.call_prototypes.front().signature.parameters.front();
+  return function.opaque_entry_parameters.front().array_extents ==
+             std::vector<std::optional<uint64_t>>{2, 3} &&
+         function.parameter_declarations.front().array_extents ==
+             std::vector<std::optional<uint64_t>>{3, 2} &&
+         function.parameter_declarations.front().byte_extent == 24 &&
+         prototype.array_extents.size() == 2 &&
+         semantics::call_argument_properties(prototype).array_size == 6 &&
+         ir::validateModule(copy).has_value();
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
-  if (!checkInstalledParameterDomain())
+  if (!checkInstalledHeaderArrayRank() || !checkInstalledParameterDomain())
     return 1;
   if (!checkInstalledHeaderCompatibility())
     return 1;

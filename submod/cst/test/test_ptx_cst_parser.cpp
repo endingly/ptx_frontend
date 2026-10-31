@@ -1200,8 +1200,8 @@ TEST(PtxCstParser, ParsesParameterAttributesArraysAndPrototype) {
   ASSERT_TRUE(blob.alignment.has_value());
   EXPECT_EQ(result->token(*blob.alignment).text, "8");
   EXPECT_EQ(result->token(blob.type).text, ".b8");
-  EXPECT_TRUE(blob.left_bracket.has_value());
-  EXPECT_FALSE(blob.array_size.has_value());
+  ASSERT_EQ(blob.array_dimensions.size(), 1u);
+  EXPECT_FALSE(blob.array_dimensions[0].size.has_value());
 
   const auto& pointer = function.parameters->parameters[1];
   EXPECT_TRUE(pointer.pointer_directive.has_value());
@@ -1233,14 +1233,45 @@ TEST(PtxCstParser, ParsesVectorRegisterFormals) {
   }
 }
 
+/** Every header axis retains its delimiters and exact token round-trip. */
+TEST(PtxCstParser, RetainsAllHeaderParameterDimensions) {
+  for (const auto source :
+       {".entry k(.param .u32 a[2][3][4]) {}",
+        ".func (.param .b8 r[2][3]) f(.param .b8 p[][2][3]);",
+        ".entry k() { p: .callprototype (.param .b8 r[2][3]) _ (.param .b8 "
+        "a[1][1][1][1][1][1][1][1]); }"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(result.diagnostics.empty());
+    EXPECT_EQ(result->sourceText(), source);
+    const auto& function =
+        std::get<syntax_cst::CstFunction>(result->module()->items[0]);
+    if (!function.parameters || function.parameters->parameters.empty())
+      continue;
+    const auto& dimensions =
+        function.parameters->parameters[0].array_dimensions;
+    ASSERT_EQ(dimensions.size(), 3u);
+    for (const auto& axis : dimensions) {
+      EXPECT_EQ(result->token(axis.left_bracket).kind, TokenKind::LBracket);
+      EXPECT_EQ(result->token(axis.right_bracket).kind, TokenKind::RBracket);
+      EXPECT_EQ(axis.token_range.first, axis.left_bracket);
+      EXPECT_EQ(axis.token_range.last, axis.right_bracket + 1);
+    }
+  }
+  for (const auto source :
+       {".entry k(.param .u32 a[2][) {}", ".entry k(.param .u32 a[2][3) {}",
+        ".func f(.param .b8 a[][2+]);"}) {
+    PtxCstParser parser(source);
+    const auto result = parser.parseModule();
+    EXPECT_TRUE(!result || !result.diagnostics.empty()) << source;
+  }
+}
+
 /** Parameter syntax restrictions report their boundary before generic token errors. */
 TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
   for (const auto& [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
-           {".entry kernel(.param .u32 input[2][3]) { }",
-            "multidimensional function parameters are not supported"},
-           {".func (.param .u32 result[2][3]) helper();",
-            "multidimensional function parameters are not supported"},
            {".entry kernel() { .param .b8 bytes[] = {1}; }",
             "variable initializer requires '.global' or '.const' state "
             "space"}}) {

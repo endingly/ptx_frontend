@@ -9,9 +9,9 @@ validation before publishing metadata.
 
 | Form / context | Parser | Declaration validation | Installed public metadata |
 | --- | --- | --- | --- |
-| Entry header scalar/vector / sized 1-D array | Retained | Fundamental non-predicate types, constant positive extents, alignment, pointer attributes, version and total-size checks | Ordered typed `parameter_declarations` with `EntryInput` role |
-| Device input / return scalar/vector / sized 1-D array | Retained | Same type/extent checks; `.param` needs PTX 2.0 / SM 20; modern functions have at most one return | `parameter_declarations`, `DeviceInput` / `DeviceReturn` |
-| Final device input `.param .b8 bytes[]` | Retained | Only final input; PTX 6.0 / SM 30 minimum | One unknown extent and unknown byte extent, distinct from a scalar |
+| Entry header scalar/vector / sized multidimensional array | Retained | Fundamental non-predicate types, constant positive extents, alignment, pointer attributes, version and total-size checks | Ordered typed `parameter_declarations` with `EntryInput` role |
+| Device input / return scalar/vector / sized multidimensional array | Retained | Same type/extent checks; `.param` needs PTX 2.0 / SM 20; modern functions have at most one return | `parameter_declarations`, `DeviceInput` / `DeviceReturn` |
+| Final device input `.param .b8 bytes[]` | Retained | Only final input; PTX 6.0 / SM 30 minimum | Unknown outer extent, checked known inner axes and unknown byte extent, distinct from a scalar |
 | Unsized entry, return, non-final input, or non-`.b8` input | Retained | Rejected | No resolved module |
 | Body-local scalar/vector / sized array, including multiple dimensions | Retained | Fundamental non-predicate type, positive constant extents, checked size, alignment, PTX 2.0 / SM 20 | `parameter_declarations`, `BodyLocal`, lexical scope and full array shape |
 | Unsized body-local `.param` | Retained | Rejected | No resolved module |
@@ -19,7 +19,7 @@ validation before publishing metadata.
 | Entry-header opaque `.texref`, `.samplerref`, `.surfref` | Retained | Name-only entry inputs; resource kind, shape, and version checked | Ordered `opaque_entry_parameters` with bound symbol identity, resource kind, and source shape; no byte layout |
 | Device formal, return, or body-local opaque object | Type spelling retained | Rejected | None; illegal because opaque-object use is limited to module globals and entry parameter lists |
 | Device `.reg .v2` / `.v4` input or return, including `.callprototype` | Retained as one formal | Non-predicate fundamental elements, at most 128 bits total; scalar/vector and width must match at calls | Typed `FunctionParameterContract::vector_shape`, bound vector width; no `.param` declaration record |
-| Header multidimensional parameter array | Retained unsupported parser boundary | Required general-array extension is tracked separately | Existing header representation remains single-dimensional |
+| Header multidimensional parameter array | Every axis retained | Positive sized axes, checked products; only a supported final scalar byte input may omit its outer extent | Exact axes in signature and own declaration records; total element count for call ABI |
 | Body-local parameterized `.param` group (`name<count>`) | Retained | Supported scalar/vector parameter elements, positive uint32 count, no arrays or initializers; existing body-local availability applies | One `BodyLocal` parameter record and one owning symbol with count; members use the same `SymbolId` plus an index |
 | `.pred`, unknown or instruction-only type spelling | Type spelling retained | Rejected for `.param` | None |
 | Module-scope `.param` | Retained | Rejected | None |
@@ -150,8 +150,30 @@ is supplied, source association separately retains compact counts and written
 member references. No expanded source declarations or per-member symbols are
 manufactured.
 
-Header multidimensional parameter arrays are a required general-array extension
-tracked separately; this delivery retains the current one-dimensional header representation.
+Header dimensions are ordered outer-to-inner. Sized entry inputs and device/prototype inputs
+and returns admit multiple axes. Only the outer axis of a supported final scalar
+`.b8` device/prototype input may be omitted, for example `bytes[][2][3]`.
+Known inner products are checked even when total bytes remain unknown. A caller's
+payload need not have the same rank or be divisible by that inner product:
+call ABI compares element type, vector shape, total count and effective alignment.
+For example `[2][3]` and `[6]` are ABI-compatible. Each function's own signature
+and declaration record must still agree on every axis. Source association also
+distinguishes written shapes even when their ABI totals agree.
+
+This is a source-breaking C++ member migration: `CstFunctionParameter` removes
+`left_bracket`, `array_size`, `right_bracket` in favor of
+`std::vector<CstArrayDimension> array_dimensions`; `AstFunctionParameter` removes
+`is_array` and `array_size` in favor of `std::vector<AstArrayDimension>
+array_dimensions`. `FunctionParameterContract` replaces `is_array` and
+`array_extent` with `std::vector<std::optional<NormalizedNumericValue>>
+array_extents`; `ResolvedOpaqueEntryParameter` replaces those same old fields with
+`std::vector<std::optional<uint64_t>> array_extents`. Empty vectors denote scalars.
+Numeric `ResolvedParameterDeclaration::array_extents` is unchanged. Binding
+`Symbol::is_array` and `CallArgumentProperties::is_array/array_size` remain derived
+category/ABI-total facts; they do not own exact axes. Invalid axes and overflowing
+products remain invalid, rather than becoming ordinary unknown extents. Opaque
+axes carry no invented physical byte size. No multi-bracket memory operand or
+runtime allocation/bounds semantics is added.
 
 No instruction families, simulator execution, argument packing, or physical
 allocation are added here.

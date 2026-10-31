@@ -474,9 +474,8 @@ struct CstFunctionParameter {
   std::optional<TokenId> pointer_align_directive;
   std::optional<TokenId> pointer_alignment;
   TokenId name{};
-  std::optional<TokenId> left_bracket;
-  std::optional<CstConstantExpression> array_size;
-  std::optional<TokenId> right_bracket;
+  /** Written outer-to-inner axes; empty denotes a scalar formal. */
+  std::vector<CstArrayDimension> array_dimensions;
   CstTokenRange token_range;
 };
 

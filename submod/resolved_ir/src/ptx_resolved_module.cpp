@@ -738,8 +738,10 @@ void check_call_abi(const syntax_ast::AstInstruction& call,
     // A validated final unsized byte input can be omitted for an empty payload.
     const bool omitted_unsized_input =
         kind == "input" && !formals.empty() &&
-        actual_count == formals.size() - 1 && formals.back().is_array &&
-        !formals.back().array_extent &&
+        actual_count == formals.size() - 1 &&
+        !formals.back().array_extents.empty() &&
+        !declaration_semantics::call_argument_properties(formals.back())
+             .array_size &&
         formals.back().scalar_type == base::ScalarType::B8 &&
         formals.back().state_space == CallArgumentStateSpace::Parameter;
     if (actual_count != formals.size() && !omitted_unsized_input) {
@@ -872,10 +874,10 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
     throw ResolveException(
         "Validated parameter has no scalar type or alignment.");
   std::vector<std::optional<uint64_t>> extents;
-  if (parameter.is_array)
+  for (const auto& dimension : parameter.array_dimensions)
     extents.push_back(
-        parameter.array_size
-            ? declaration_semantics::constantArrayExtent(*parameter.array_size)
+        dimension.size
+            ? declaration_semantics::constantArrayExtent(*dimension.size)
             : std::nullopt);
   const uint32_t lanes = symbol.vector_width.value_or(1);
   const auto bytes = parameter_byte_extent(*type, lanes, extents);
@@ -1197,12 +1199,17 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
                   .explicit_alignment = parameter.alignment
                                             ? parameter_symbol.address_alignment
                                             : std::nullopt,
-                  .is_array = parameter.is_array,
-                  .array_extent =
-                      parameter.array_size
-                          ? declaration_semantics::constantArrayExtent(
-                                *parameter.array_size)
-                          : std::nullopt,
+                  .array_extents =
+                      [&] {
+                        std::vector<std::optional<uint64_t>> axes;
+                        for (const auto& dimension : parameter.array_dimensions)
+                          axes.push_back(
+                              dimension.size
+                                  ? declaration_semantics::constantArrayExtent(
+                                        *dimension.size)
+                                  : std::nullopt);
+                        return axes;
+                      }(),
                   .range = parameter.range,
               });
               continue;

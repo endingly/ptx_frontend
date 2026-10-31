@@ -282,29 +282,24 @@ PtxCstParser::parseFunctionParameter() {
   if (!name)
     return std::unexpected(name.error());
 
-  std::optional<TokenId> left_bracket;
-  std::optional<syntax_cst::CstConstantExpression> array_size;
-  std::optional<TokenId> right_bracket;
+  std::vector<syntax_cst::CstArrayDimension> array_dimensions;
   TokenId last = *name;
-  if (token(peek()).kind == TokenKind::LBracket) {
-    left_bracket = consume();
+  while (token(peek()).kind == TokenKind::LBracket) {
+    const TokenId open = consume();
+    std::optional<syntax_cst::CstConstantExpression> size;
     if (token(peek()).kind != TokenKind::RBracket) {
-      auto size =
+      auto expression =
           parseConstantExpression(0, RemainingTreeDepth{maxConstantTreeDepth});
-      if (!size)
-        return std::unexpected(size.error());
-      array_size = std::move(size->expression);
+      if (!expression)
+        return std::unexpected(expression.error());
+      size = std::move(expression->expression);
     }
     auto close = expect(TokenKind::RBracket, "']'");
     if (!close)
       return std::unexpected(close.error());
-    right_bracket = *close;
+    array_dimensions.push_back(
+        {open, std::move(size), *close, {open, *close + 1}});
     last = *close;
-  }
-  if (token(peek()).kind == TokenKind::LBracket) {
-    return std::unexpected(CstParseDiagnostic{
-        token(peek()).range,
-        "multidimensional function parameters are not supported"});
   }
 
   return syntax_cst::CstFunctionParameter{
@@ -318,9 +313,7 @@ PtxCstParser::parseFunctionParameter() {
       pointer_align_directive,
       pointer_alignment,
       *name,
-      left_bracket,
-      std::move(array_size),
-      right_bracket,
+      std::move(array_dimensions),
       {state_space, last + 1},
   };
 }

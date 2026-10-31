@@ -495,8 +495,8 @@ struct AstFunctionParameter {
   std::optional<AstSyntax> pointer_space;
   std::optional<AstSyntax> pointer_alignment;
   AstIdentifierRef name;
-  bool is_array{};
-  std::optional<AstConstantExpression> array_size;
+  /** Owned outer-to-inner axes, including any omitted outer extent. */
+  std::vector<AstArrayDimension> array_dimensions;
   SourceRange range;
 };
 

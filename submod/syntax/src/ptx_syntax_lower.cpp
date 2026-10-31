@@ -658,9 +658,15 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
   std::optional<syntax_ast::AstSyntax> pointer_alignment;
   if (parameter.pointer_alignment)
     pointer_alignment = leafSyntax(cst, *parameter.pointer_alignment);
-  std::optional<syntax_ast::AstConstantExpression> array_size;
-  if (parameter.array_size)
-    array_size = lowerConstantExpression(cst, *parameter.array_size);
+  std::vector<syntax_ast::AstArrayDimension> dimensions;
+  for (const auto& dimension : parameter.array_dimensions) {
+    dimensions.push_back({
+        .size = dimension.size ? std::optional{lowerConstantExpression(
+                                     cst, *dimension.size)}
+                               : std::nullopt,
+        .range = cst.sourceRange(dimension.token_range),
+    });
+  }
 
   return syntax_ast::AstFunctionParameter{
       .state_space = lowerStateSpace(cst.token(parameter.state_space).kind),
@@ -673,8 +679,7 @@ syntax_ast::AstFunctionParameter lowerFunctionParameter(
       .pointer_space = std::move(pointer_space),
       .pointer_alignment = std::move(pointer_alignment),
       .name = lowerIdentifier(cst, {parameter.name}),
-      .is_array = parameter.left_bracket.has_value(),
-      .array_size = std::move(array_size),
+      .array_dimensions = std::move(dimensions),
       .range = cst.sourceRange(parameter.token_range),
   };
 }

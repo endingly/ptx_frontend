@@ -72,8 +72,7 @@ void expect_opaque_copy(const ResolvedFunction& copied,
     EXPECT_EQ(actual.scope_id, expected.scope_id);
     EXPECT_EQ(actual.kind, expected.kind);
     EXPECT_EQ(actual.explicit_alignment, expected.explicit_alignment);
-    EXPECT_EQ(actual.is_array, expected.is_array);
-    EXPECT_EQ(actual.array_extent, expected.array_extent);
+    EXPECT_EQ(actual.array_extents, expected.array_extents);
     EXPECT_EQ(actual.range, expected.range);
   }
   EXPECT_EQ(copied.symbol_id, original.symbol_id);
@@ -110,11 +109,10 @@ TEST(ResolvedFunctionOwnership, RetainsOpaqueParametersAcrossValueCopies) {
   EXPECT_EQ(function.opaque_entry_parameters[2].kind,
             base::OpaqueResourceKind::Sampler);
   EXPECT_EQ(function.opaque_entry_parameters[0].explicit_alignment, 8u);
-  EXPECT_TRUE(function.opaque_entry_parameters[0].is_array);
-  EXPECT_EQ(function.opaque_entry_parameters[0].array_extent, 2u);
-  EXPECT_FALSE(function.opaque_entry_parameters[1].is_array);
+  ASSERT_EQ(function.opaque_entry_parameters[0].array_extents.size(), 1u);
+  EXPECT_EQ(function.opaque_entry_parameters[0].array_extents[0], 2u);
+  EXPECT_TRUE(function.opaque_entry_parameters[1].array_extents.empty());
   EXPECT_FALSE(function.opaque_entry_parameters[1].explicit_alignment);
-  EXPECT_FALSE(function.opaque_entry_parameters[1].array_extent);
   ASSERT_EQ(function.parameter_declarations.size(), 1u);
 
   ResolvedFunction copied(function);

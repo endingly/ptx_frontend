@@ -900,7 +900,7 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
                 std::nullopt, false, false, vectorWidth(parameter.vector_type),
-                parameter.is_array);
+                !parameter.array_dimensions.empty());
     }
     for (const auto& parameter : function.parameters) {
       addSymbol(function_scope, SymbolKind::InputParameter,
@@ -909,7 +909,7 @@ struct SymbolTableBuilder {
                 declarationAlignment(parameter.alignment, parameter.vector_type,
                                      parameter.type.text),
                 std::nullopt, false, false, vectorWidth(parameter.vector_type),
-                parameter.is_array);
+                !parameter.array_dimensions.empty());
     }
     collectBody(function.body, function_scope, function_scope);
   }
@@ -1378,16 +1378,16 @@ struct SymbolTableBuilder {
   void bindFunction(const FunctionContext& context) {
     const auto& function = *context.function;
     for (const auto& parameter : function.return_parameters) {
-      if (parameter.array_size) {
-        bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
-                               *parameter.array_size);
-      }
+      for (const auto& dimension : parameter.array_dimensions)
+        if (dimension.size)
+          bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
+                                 *dimension.size);
     }
     for (const auto& parameter : function.parameters) {
-      if (parameter.array_size) {
-        bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
-                               *parameter.array_size);
-      }
+      for (const auto& dimension : parameter.array_dimensions)
+        if (dimension.size)
+          bindConstantExpression(context.scope, ReferenceKind::ArrayDimension,
+                                 *dimension.size);
     }
     bindBody(function.body, context.scope, context.scope);
   }

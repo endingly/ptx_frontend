@@ -290,7 +290,7 @@ TEST(PtxSyntaxParser, LowersFunctionLocalCallPrototypePayload) {
   ASSERT_EQ(prototype.parameters.size(), 2u);
   EXPECT_EQ(prototype.parameters[0].name.syntax.text, "arg");
   EXPECT_EQ(prototype.parameters[1].name.syntax.text, "bytes");
-  EXPECT_TRUE(prototype.parameters[1].is_array);
+  EXPECT_FALSE(prototype.parameters[1].array_dimensions.empty());
   ASSERT_TRUE(prototype.noreturn_directive.has_value());
   EXPECT_EQ(prototype.noreturn_directive->text, ".noreturn");
   ASSERT_TRUE(prototype.abi_preserve.has_value());
@@ -864,10 +864,10 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   EXPECT_EQ(blob.state_space, syntax_ast::AstStateSpace::Parameter);
   ASSERT_TRUE(blob.alignment.has_value());
   EXPECT_EQ(blob.alignment->text, "8");
-  EXPECT_TRUE(blob.is_array);
-  ASSERT_TRUE(blob.array_size.has_value());
-  const auto& size =
-      std::get<syntax_ast::AstConstantBinary>(blob.array_size->node);
+  ASSERT_EQ(blob.array_dimensions.size(), 1u);
+  ASSERT_TRUE(blob.array_dimensions[0].size.has_value());
+  const auto& size = std::get<syntax_ast::AstConstantBinary>(
+      blob.array_dimensions[0].size->node);
   EXPECT_EQ(size.operation, syntax_ast::AstConstantBinaryOperator::Multiply);
   const auto& warp_size =
       std::get<syntax_ast::AstConstantLiteral>(size.right->node).value;
@@ -881,6 +881,39 @@ TEST(PtxSyntaxParser, LowersParameterAttributesArraysAndPrototype) {
   ASSERT_TRUE(pointer.pointer_alignment.has_value());
   EXPECT_EQ(pointer.pointer_alignment->text, "16");
   EXPECT_TRUE(function.body.empty());
+}
+
+/** Formal axes move with their trees; existing operand copies still deep-clone them. */
+TEST(PtxSyntaxParser, OwnsMultidimensionalHeaderExpressions) {
+  PtxSyntaxParser parser(
+      ".func (.param .b8 r[2][3]) f(.param .u32 a[2+1][4][5]);");
+  auto parsed = parser.parseModule();
+  ASSERT_TRUE(parsed);
+  ASSERT_TRUE(parsed.diagnostics.empty());
+  auto& function = std::get<syntax_ast::AstFunction>(parsed->items[0]);
+  ASSERT_EQ(function.parameters[0].array_dimensions.size(), 3u);
+  ASSERT_EQ(function.return_parameters[0].array_dimensions.size(), 2u);
+  auto owned = std::move(function.parameters[0]);
+  EXPECT_LE(owned.array_dimensions[0].range.end.column,
+            owned.array_dimensions[1].range.start.column);
+  syntax_ast::AstConstantOperand original(
+      std::make_unique<syntax_ast::AstConstantExpression>(
+          std::move(*owned.array_dimensions[0].size)),
+      owned.array_dimensions[0].range);
+  auto copied = original;
+  auto& expression =
+      std::get<syntax_ast::AstConstantBinary>(copied.expression->node);
+  const auto& original_expression =
+      std::get<syntax_ast::AstConstantBinary>(original.expression->node);
+  EXPECT_NE(expression.left.get(), original_expression.left.get());
+  EXPECT_NE(expression.right.get(), original_expression.right.get());
+  EXPECT_EQ(copied.range, original.range);
+  std::get<syntax_ast::AstConstantLiteral>(expression.left->node)
+      .value.syntax.text = "9";
+  EXPECT_EQ(
+      std::get<syntax_ast::AstConstantLiteral>(original_expression.left->node)
+          .value.syntax.text,
+      "2");
 }
 
 TEST(PtxSyntaxParser, LowersRegisterDeclarationsAndLabels) {

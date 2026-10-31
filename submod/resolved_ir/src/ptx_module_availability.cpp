@@ -2106,8 +2106,11 @@ bool valid_formal_vector(
               call_argument_compatibility::CallArgumentStateSpace::Parameter ||
           (parameter.state_space ==
                call_argument_compatibility::CallArgumentStateSpace::Register &&
-           !parameter.is_array)) &&
-         (!parameter.is_array || parameter.array_extent.has_value()) &&
+           parameter.array_extents.empty())) &&
+         (parameter.array_extents.empty() ||
+          declaration_semantics::detail::parameter_array_extent(
+              parameter.array_extents)
+              .total.has_value()) &&
          !parameter.is_pointer && !parameter.opaque_kind && metadata &&
          metadata->register_declaration_usage ==
              base::ScalarDeclarationUsage::Fundamental &&
@@ -2129,6 +2132,15 @@ bool valid_scalar_contract(
               call_argument_compatibility::CallArgumentStateSpace::Register);
 }
 
+/** Project known normalized axes; callers separately reject invalid numeric keys. */
+std::vector<std::optional<uint64_t>> parameter_axes(
+    const declaration_semantics::FunctionParameterContract& parameter) {
+  std::vector<std::optional<uint64_t>> result;
+  for (const auto& axis : parameter.array_extents)
+    result.push_back(declaration_semantics::contract_constant(axis));
+  return result;
+}
+
 /** Check the normalized signature fields needed by contextual call validation. */
 void check_signature(const declaration_semantics::FunctionSignature& signature,
                      SourceRange range,
@@ -2143,43 +2155,37 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
             "Resolved function signature has invalid vector shape.");
       if ((parameter.alignment &&
            !std::holds_alternative<uint64_t>(*parameter.alignment)) ||
-          (parameter.array_extent &&
-           !std::holds_alternative<uint64_t>(*parameter.array_extent)) ||
+          !declaration_semantics::detail::parameter_array_extent(
+               parameter.array_extents)
+               .valid ||
           (parameter.pointer_alignment &&
-           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)) ||
-          (!parameter.is_array && parameter.array_extent))
+           !std::holds_alternative<uint64_t>(*parameter.pointer_alignment)))
         append_model_mismatch(diagnostics, range,
                               "Resolved function signature has invalid "
                               "normalized numeric fields.");
       if (!parameter.opaque_kind) {
         const auto alignment =
             declaration_semantics::contract_constant(parameter.alignment);
-        const auto extent =
-            declaration_semantics::contract_constant(parameter.array_extent);
+        const auto extents = parameter_axes(parameter);
         const auto lanes = formal_vector_width(parameter.vector_shape);
         const bool unsized =
             input_list && !entry_inputs && index + 1 == parameters.size() &&
             parameter.state_space == call_argument_compatibility::
                                          CallArgumentStateSpace::Parameter &&
             parameter.scalar_type == ScalarType::B8 && lanes == 1;
-        const std::array<std::optional<uint64_t>, 1> extents{extent};
         std::optional<uint64_t> bytes;
         if (!alignment || !std::has_single_bit(*alignment) ||
-            !checked_declaration_extent(
-                parameter.scalar_type, lanes,
-                parameter.is_array
-                    ? std::span<const std::optional<uint64_t>>{extents}
-                    : std::span<const std::optional<uint64_t>>{},
-                unsized, bytes))
+            !checked_declaration_extent(parameter.scalar_type, lanes, extents,
+                                        unsized, bytes))
           append_model_mismatch(diagnostics, range,
                                 "Resolved function signature has invalid "
                                 "alignment, array shape or byte extent.");
       }
       const auto properties =
           declaration_semantics::call_argument_properties(parameter);
-      if ((parameter.is_array && parameter.state_space !=
-                                     call_argument_compatibility::
-                                         CallArgumentStateSpace::Parameter) ||
+      if ((!parameter.array_extents.empty() &&
+           parameter.state_space != call_argument_compatibility::
+                                        CallArgumentStateSpace::Parameter) ||
           (!parameter.is_pointer &&
            (parameter.pointed_state_space || parameter.pointer_alignment)) ||
           (parameter.is_pointer &&
@@ -2190,8 +2196,8 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
                 entry_inputs ? ParameterDeclarationRole::EntryInput
                              : ParameterDeclarationRole::DeviceInput,
                 parameter.scalar_type,
-                formal_vector_width(parameter.vector_shape), parameter.is_array,
-                properties.pointer))))
+                formal_vector_width(parameter.vector_shape),
+                !parameter.array_extents.empty(), properties.pointer))))
         append_model_mismatch(diagnostics, range,
                               "Resolved function signature has invalid "
                               "parameter role or pointer attributes.");
@@ -2292,14 +2298,17 @@ void check_opaque_entry_parameters(const ResolvedModule& module,
         (contract &&
          (record.explicit_alignment !=
               declaration_semantics::contract_constant(contract->alignment) ||
-          record.is_array != contract->is_array ||
-          record.array_extent != declaration_semantics::contract_constant(
-                                     contract->array_extent))) ||
+          !declaration_semantics::detail::parameter_array_extent(
+               contract->array_extents)
+               .valid ||
+          record.array_extents != parameter_axes(*contract))) ||
         record.explicit_alignment != symbol->address_alignment ||
         (record.explicit_alignment &&
          !std::has_single_bit(*record.explicit_alignment)) ||
-        (record.is_array ? !record.array_extent || *record.array_extent == 0
-                         : record.array_extent.has_value())) {
+        symbol->is_array != !record.array_extents.empty() ||
+        std::ranges::any_of(record.array_extents, [](const auto& axis) {
+          return !axis || *axis == 0;
+        })) {
       append_model_mismatch(diagnostics, record.range,
                             "Opaque entry input identity or kind disagrees "
                             "with its declaration.");
@@ -2407,7 +2416,7 @@ void check_function_parameters(const ResolvedModule& module,
     const bool unsized = role == ParameterDeclarationRole::DeviceInput &&
                          record.scalar_type == ScalarType::B8 &&
                          record.vector_width == 1 &&
-                         record.array_extents.size() == 1;
+                         !record.array_extents.empty();
     if (!symbol ||
         symbol->state_space != base::DeclarationStateSpace::Parameter ||
         symbol->scope != record.scope_id ||
@@ -2430,8 +2439,7 @@ void check_function_parameters(const ResolvedModule& module,
         !checked_declaration_extent(record.scalar_type, record.vector_width,
                                     record.array_extents, unsized, extent) ||
         record.byte_extent != extent ||
-        (role && (record.scope_id != function.declaration_scope ||
-                  record.array_extents.size() > 1)) ||
+        (role && record.scope_id != function.declaration_scope) ||
         !valid_parameter_pointer(record.role, record.scalar_type,
                                  record.vector_width,
                                  !record.array_extents.empty(), record.pointer))
@@ -2501,10 +2509,9 @@ void check_function_parameters(const ResolvedModule& module,
       if (properties.state_space == CallArgumentStateSpace::Invalid ||
           declaration_semantics::contract_constant(formal.alignment) !=
               symbol.address_alignment ||
-          (!formal.is_array && formal.array_extent) ||
           (!formal.is_pointer &&
            (formal.pointed_state_space || formal.pointer_alignment)) ||
-          (formal.is_array && !properties.array_size &&
+          (!formal.array_extents.empty() && !properties.array_size &&
            (role != ParameterDeclarationRole::DeviceInput ||
             formal.scalar_type != ScalarType::B8 ||
             formal_vector_width(formal.vector_shape) != 1 ||
@@ -2513,7 +2520,7 @@ void check_function_parameters(const ResolvedModule& module,
             diagnostics, symbol.declaration_range,
             "Signature formal has inconsistent normalized ABI fields.");
       if (expected_state == CallArgumentStateSpace::Register) {
-        if (formal.is_array || formal.is_pointer ||
+        if (!formal.array_extents.empty() || formal.is_pointer ||
             records.contains(symbol.id.value))
           append_model_mismatch(
               diagnostics, symbol.declaration_range,
@@ -2528,8 +2535,8 @@ void check_function_parameters(const ResolvedModule& module,
       const bool array = !record.array_extents.empty();
       if (record.role != role || record.scalar_type != formal.scalar_type ||
           record.alignment != properties.array_alignment ||
-          array != formal.is_array || record.array_extents.size() > 1 ||
-          (array && record.array_extents.front() != properties.array_size) ||
+          array != !formal.array_extents.empty() ||
+          record.array_extents != parameter_axes(formal) ||
           record.pointer != properties.pointer)
         append_model_mismatch(
             diagnostics, symbol.declaration_range,
@@ -3444,7 +3451,9 @@ bool omits_unsized_byte_input(
         formals,
     size_t actual_count) {
   return !formals.empty() && actual_count == formals.size() - 1 &&
-         formals.back().is_array && !formals.back().array_extent &&
+         !formals.back().array_extents.empty() &&
+         !declaration_semantics::call_argument_properties(formals.back())
+              .array_size &&
          formals.back().scalar_type == base::ScalarType::B8 &&
          formals.back().state_space == CallArgumentStateSpace::Parameter;
 }

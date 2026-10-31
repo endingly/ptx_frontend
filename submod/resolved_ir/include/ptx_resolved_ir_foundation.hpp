@@ -1307,10 +1307,8 @@ struct ResolvedOpaqueEntryParameter {
   base::OpaqueResourceKind kind{};
   /** Explicit source alignment in bytes; absent never implies natural alignment. */
   std::optional<uint64_t> explicit_alignment;
-  /** Retained declaration array shape without assigning element bytes. */
-  bool is_array{};
-  /** Known array extent; absent for a source array with unspecified extent. */
-  std::optional<uint64_t> array_extent;
+  /** Owned outer-to-inner axes, without assigning opaque element bytes. */
+  std::vector<std::optional<uint64_t>> array_extents;
   /** Complete source range of the header parameter. */
   SourceRange range;
 };

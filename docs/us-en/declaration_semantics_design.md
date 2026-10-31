@@ -239,3 +239,11 @@ evaluation together.
 Binary bitwise operators follow the detailed PTX usual-conversion rule; see
 [the signedness decision and reproducible assembler evidence](bitwise_constant_policy.md)
 for the conflicting summary-table wording and tool-version limitations.
+
+`FunctionParameterContract::array_extents` is the sole normalized formal-axis
+representation. Valid arrays compare by checked total element count for ABI
+compatibility, independently of rank; invalid structural axes and overflow remain
+invalid and retain their axis identity. Unknown outer dimensions preserve checked
+known inner axes. Derived `CallArgumentProperties::array_size` is a total count,
+not a cached first axis. Exact source identity remains separate; see
+[parameter contracts and member migration](parameter_declarations.md).

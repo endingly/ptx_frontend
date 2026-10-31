@@ -386,7 +386,7 @@ AST-backed validation 使用传入 AST 的 version 及独立重新绑定的 file
 （`EntryInput`、`DeviceInput`、`DeviceReturn` 或 `BodyLocal`）、基础 `scalar_type`、有效字节
 `alignment`、`explicit_alignment`、`vector_width`、从外到内的 `array_extents`、经溢出检查的
 `byte_extent` 与可选 pointee property。scalar 的维度列表为空；受支持的 unsized device input
-array 的维度值及 byte extent 为空。所属 function 与 symbol table 即使在局部同名遮蔽时仍
+array 仅外轴为空，保留并检查已知内轴，byte extent 为空。所属 function 与 symbol table 即使在局部同名遮蔽时仍
 保留词法 identity。Source text 与 Syntax AST 销毁后仍可检查这些值。Non-pointer 没有
 pointer property；未写 pointed state space 的 pointer 为 generic，省略 pointee alignment
 时默认为四字节。该唯一 parameter table 不包含 `.reg` formal 或 `.callprototype`
@@ -1142,3 +1142,9 @@ NVIDIA 在 PTX 6.4 弃用浮点 `.satfinite`，并在 PTX 6.5 移除。省略此
 整数饱和以及 BF16、TF32、FP64 和其他 MMA family 均保持不变。这些是语法及
 静态验证契约，没有验证 GPU 数值执行。参见
 [CUDA 13.3 PTX 9.3 WMMA MMA 参考](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma)。
+
+Header numeric parameter record 保留完整有序 `array_extents` 与检查后的
+`byte_extent`，须与自身 signature 逐轴一致；不同声明/调用之间 ABI 使用总元素数。
+Name-only `ResolvedOpaqueEntryParameter::array_extents` 替换原 `is_array` 与
+`array_extent`，保留有界轴而不推导 opaque 字节数。Function copy 独立拥有这些向量，
+并独立 clone body instruction，见[公共 parameter migration](parameter_declarations.md)。

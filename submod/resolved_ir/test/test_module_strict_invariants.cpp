@@ -409,13 +409,10 @@ TEST(ModuleStrictInvariants, OpaqueNormalizedFieldsFailBothValidators) {
                   declaration_semantics::InvalidStructuralKey{"bad"};
             },
             [](auto& formal) {
-              formal.array_extent =
-                  declaration_semantics::InvalidStructuralKey{"bad"};
+              formal.array_extents = {
+                  declaration_semantics::InvalidStructuralKey{"bad"}};
             },
-            [](auto& formal) {
-              formal.is_array = false;
-              formal.array_extent = uint64_t{2};
-            },
+            [](auto& formal) { formal.array_extents = {std::nullopt}; },
             [](auto& formal) {
               formal.pointer_alignment =
                   declaration_semantics::InvalidStructuralKey{"bad"};

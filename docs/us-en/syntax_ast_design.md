@@ -266,3 +266,11 @@ offsets. This does not require widening the Syntax AST responsibility.
 ## Arithmetic-negated register syntax
 
 `CstNegatedRegisterOperand` retains the minus token and a child limited to one identifier or vector member. `AstNegatedRegisterOperand` owns the minus range, child range and full range. The parser recognizes `-Ident[.selector]` before signed-numeric immediate parsing; it does not introduce recursive unary operands. The distinct `ArithmeticNegatedRegister` syntax shape is enabled only for approved `vmad` source slots. Binding, lowering, source identity and layout classification traverse this child explicitly. Predicate `!` negation remains separate, and `!-%r` is rejected.
+
+Function-header and local `.callprototype` arrays reuse `CstArrayDimension` and
+`AstArrayDimension` vectors in `array_dimensions`, preserving outer-to-inner
+brackets, optional expressions and ranges. These replace the singular CST
+bracket/size fields and AST `is_array/array_size`; an empty vector means scalar.
+Token round-trip is preserved. Dimension and AST expression trees remain move-only;
+the existing `AstConstantOperand` copy operation deep-clones its owned expression. See the exact
+[public member migration](parameter_declarations.md).

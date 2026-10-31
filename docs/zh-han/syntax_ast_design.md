@@ -210,3 +210,9 @@ identity 与 byte offset；这不需要重新扩大 Syntax AST 的职责。
 ## Arithmetic-negated register 语法
 
 `CstNegatedRegisterOperand` 保留 minus token，child 限定为一个 identifier 或 vector member。`AstNegatedRegisterOperand` 拥有 minus range、child range 及 full range。Parser 在带符号数字立即数解析前识别 `-Ident[.selector]`，不引入递归 unary operand。独立的 `ArithmeticNegatedRegister` syntax shape 仅在批准的 `vmad` source slot 开放。Binding、lowering、source identity 与 layout classification 显式遍历该 child。Predicate `!` 取反保持独立，拒绝 `!-%r`。
+
+Function header 与局部 `.callprototype` 数组在 `array_dimensions` 中复用
+`CstArrayDimension` / `AstArrayDimension` 向量，逐轴保留从外到内的 bracket、
+可选 expression 与 range。它们替换原 CST 单一 bracket/size 字段及 AST
+`is_array/array_size`；空向量表示 scalar。Token round-trip 保持不变；dimension 与 AST expression tree 仍为 move-only，
+既有 `AstConstantOperand` copy 操作深度 clone 自身拥有的 expression，详见[公共 member migration](parameter_declarations.md)。

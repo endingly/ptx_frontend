@@ -7,9 +7,9 @@
 
 | 形式 / 上下文 | Parser | 声明验证 | Installed public metadata |
 | --- | --- | --- | --- |
-| Entry header scalar/vector / 有界一维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、alignment、pointer attribute、版本与总大小 | 有序 typed `parameter_declarations`，role 为 `EntryInput` |
-| Device input / return scalar/vector / 有界一维数组 | 保留 | 同类 type/extent 检查；`.param` 要求 PTX 2.0 / SM 20；现代函数至多一个返回值 | `parameter_declarations`，role 为 `DeviceInput` / `DeviceReturn` |
-| 最后一个 device input `.param .b8 bytes[]` | 保留 | 仅限最后一个 input；最低 PTX 6.0 / SM 30 | 单个未知 extent，byte extent 未知，与 scalar 可区分 |
+| Entry header scalar/vector / 有界多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、alignment、pointer attribute、版本与总大小 | 有序 typed `parameter_declarations`，role 为 `EntryInput` |
+| Device input / return scalar/vector / 有界多维数组 | 保留 | 同类 type/extent 检查；`.param` 要求 PTX 2.0 / SM 20；现代函数至多一个返回值 | `parameter_declarations`，role 为 `DeviceInput` / `DeviceReturn` |
+| 最后一个 device input `.param .b8 bytes[]` | 保留 | 仅限最后一个 input；最低 PTX 6.0 / SM 30 | 未知外轴、保留并检查的已知内轴及未知 byte extent，与 scalar 可区分 |
 | Unsized entry、return、非末尾 input 或非 `.b8` input | 保留 | 拒绝 | 不生成 resolved module |
 | Body-local scalar/vector / 有界数组，含多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、大小溢出检查、alignment、PTX 2.0 / SM 20 | `parameter_declarations`，role 为 `BodyLocal`，保留词法 scope 与完整 shape |
 | Unsized body-local `.param` | 保留 | 拒绝 | 不生成 resolved module |
@@ -17,7 +17,7 @@
 | Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 | 按名称使用的 entry input；检查资源种类、shape 与版本 | 按源码顺序保存的 `opaque_entry_parameters`，含绑定 symbol identity、资源种类与源码 shape；无 byte layout |
 | Device formal、return 或 body-local opaque object | 保留 type spelling | 拒绝 | 无；illegal，因为 opaque object 仅可用于 module global 与 entry parameter list |
 | Device `.reg .v2` / `.v4` input 或 return，含 `.callprototype` | 保留为单个 formal | 非 predicate fundamental element，总大小至多 128 bit；call 必须匹配 scalar/vector 与 width | Typed `FunctionParameterContract::vector_shape` 与 bound vector width；不产生 `.param` 声明记录 |
-| Header 多维 parameter array | 保留 unsupported parser 边界 | 必须实现的通用 array 扩展单独跟踪 | 现有 header representation 仍为一维 |
+| Header 多维 parameter array | 保留全部轴 | 正整数有界轴、检查乘积；仅受支持的最后一个 scalar byte input 可省略外层 extent | signature 与自身声明记录保留精确轴，call ABI 使用总元素数 |
 | Body-local parameterized `.param` group (`name<count>`) | 保留 | 支持的 scalar/vector parameter element、正 uint32 count、禁止 array/initializer；保留 body-local availability | 每个 declarator 一个 `BodyLocal` record 与带 count 的 owning symbol；member 使用相同 `SymbolId` 加 index |
 | `.pred`、未知或仅用于指令的 type spelling | 保留 type spelling | 在 `.param` 中拒绝 | 无 |
 | Module-scope `.param` | 保留 | 拒绝 | 无 |
@@ -125,8 +125,25 @@ owned validation 拒绝缺失或越界的 member index，以及 ordinary symbol 
 提供 AST 时，source association 独立保留 compact count 与 written member reference。
 不生成展开的 source declaration 或逐 member symbol。
 
-Header 多维 parameter array 是单独跟踪的 required 通用 array 扩展；
-本交付保留现有一维 header representation。
+Header 的轴按从外到内排列；entry 的有界输入，以及 device/prototype 的有界输入与返回值，均可使用多维数组。
+仅受支持的最后一个 scalar `.b8` device/prototype input 可省略最外轴，例如 `bytes[][2][3]`。
+即使总字节数未知，仍检查已知内层乘积。Call ABI 比较 element type、vector shape、
+总元素数与 effective alignment，不要求调用实参 rank 相同，也不新增 inner product 整除要求；
+`[2][3]` 与 `[6]` ABI 兼容。各函数自身 signature 与声明记录仍须逐轴精确一致，
+source association 仍区分 ABI 总数相同的书写 shape。
+
+这是 C++ source-breaking member migration：`CstFunctionParameter` 删除
+`left_bracket`、`array_size`、`right_bracket`，替换为
+`std::vector<CstArrayDimension> array_dimensions`；`AstFunctionParameter` 删除
+`is_array`、`array_size`，替换为 `std::vector<AstArrayDimension> array_dimensions`。
+`FunctionParameterContract` 删除 `is_array`、`array_extent`，替换为
+`std::vector<std::optional<NormalizedNumericValue>> array_extents`；
+`ResolvedOpaqueEntryParameter` 对应替换为
+`std::vector<std::optional<uint64_t>> array_extents`。空向量表示 scalar。
+Numeric `ResolvedParameterDeclaration::array_extents` 不变；binding `Symbol::is_array`
+和 `CallArgumentProperties::is_array/array_size` 仍是派生 category/ABI 总数，
+不是精确轴的权威。无效轴与溢出乘积不会退化为普通 unknown extent；opaque 轴不推导物理字节数。
+本变更不增加多 bracket memory operand、运行时 allocation 或 bounds 语义。
 
 本工作不增加 instruction family、simulator execution、argument packing 或物理分配。
 
@@ -164,8 +181,7 @@ Source 与 AST-free owned validation 重算相同的 padded entry byte limit 与
 extent。Native typed F16x2 parameter/register actual 保留精确 dtype 和显式 shape；
 call 不采用 instruction-style bit compatibility。Packed storage 使用既有 b32 memory
 container；named array index 仍按声明 scalar element 缩放（F16x2 为四字节），不是
-vector 大小。Header 多维 parameter array 是单独跟踪的 required 通用 array 扩展，
-本交付保留现有一维 header representation。
+vector 大小。Header 多维 parameter array 保留完整轴；call ABI 使用总元素数，自身记录逐轴核对。
 
 直接 numeric-to-packed F16x2 call literal 没有 adopted representation：整数、zero、
 decimal、0f、0d 不隐含 raw bits、splat 或 lane placement。Frontend 在支持 native

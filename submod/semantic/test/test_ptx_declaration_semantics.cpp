@@ -1000,8 +1000,8 @@ TEST(PtxDeclarationSemantics, BuildsReusableCanonicalFunctionSignatures) {
   EXPECT_EQ(contractConstant(address.alignment), 8u);
   ASSERT_EQ(prototype_signature.parameters.size(), 2u);
   const auto& values = prototype_signature.parameters[1];
-  EXPECT_TRUE(values.is_array);
-  EXPECT_EQ(contractConstant(values.array_extent), 4u);
+  ASSERT_EQ(values.array_extents.size(), 1u);
+  EXPECT_EQ(contractConstant(values.array_extents[0]), 4u);
   const FunctionSignature kernel_signature =
       functionSignature(std::get<syntax_ast::AstFunction>(module->items[2]));
   EXPECT_TRUE(kernel_signature.is_entry);
@@ -1631,5 +1631,30 @@ TEST(PtxDeclarationSemantics, VectorRegisterSignaturesCompareShape) {
   auto binding = binding::bindSymbols(*ast);
   EXPECT_FALSE(checkDeclarations(*ast, binding.table).empty());
 }
+/** ABI totals are rank-insensitive while invalid axes keep structural identity. */
+TEST(PtxDeclarationSemantics,
+     ComparesHeaderArrayTotalsWithoutErasingInvalidAxes) {
+  /** Build signature data without validating deliberately malformed dimensions. */
+  const auto signature = [](std::string_view axes) {
+    PtxSyntaxParser parser(".func f(.param .b8 a" + std::string(axes) + ");");
+    const auto ast = parser.parseModule();
+    EXPECT_TRUE(ast && ast.diagnostics.empty());
+    return functionSignature(
+        std::get<syntax_ast::AstFunction>(ast->items.front()));
+  };
+  EXPECT_EQ(signature("[2][3]"), signature("[6]"));
+  EXPECT_EQ(signature("[][2][3]"), signature("[]"));
+  EXPECT_NE(signature("[0]"), signature("[]"));
+  EXPECT_NE(signature("[0]"), signature("[0+0]"));
+  EXPECT_NE(signature("[missing]"), signature("[other]"));
+  EXPECT_NE(signature("[18446744073709551615][2]"), signature("[][2]"));
+  for (const auto axes :
+       {"[0]", "[missing]", "[18446744073709551615][2]", "[2][]"}) {
+    const auto formal = signature(axes).parameters.front();
+    EXPECT_EQ(call_argument_properties(formal).state_space,
+              call_argument_compatibility::CallArgumentStateSpace::Invalid);
+  }
+}
+
 }  // namespace
 }  // namespace ptx_frontend::declaration_semantics

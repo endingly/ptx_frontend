@@ -466,7 +466,7 @@ in lexical traversal order (including nested blocks). Each
 `scalar_type`, effective byte `alignment`, `explicit_alignment`, `vector_width`,
 outer-to-inner `array_extents`, checked `byte_extent`, and optional pointee
 properties. Scalar shapes have no array extents; supported unsized device input
-arrays have a null extent and no byte extent. The owning function and symbol
+arrays retain a null outer axis and checked known inner axes, with no byte extent. The owning function and symbol
 table preserve lexical identity even for shadowed local names. Values remain
 inspectable after source text and Syntax AST destruction. A non-pointer has no
 pointer properties; a pointer with no pointed state space is generic, and omitted
@@ -1419,3 +1419,11 @@ without changing the form identity. Integer saturation and BF16, TF32, FP64 and
 other MMA families are unchanged. These are syntax and static validation
 contracts; numerical GPU execution is not validated. See the
 [CUDA 13.3 PTX 9.3 WMMA MMA reference](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#warp-level-matrix-instructions-wmma-mma).
+
+Header numeric parameter records retain every ordered `array_extents` axis and
+checked `byte_extent`. Their own signature axes must match exactly, while ABI
+comparison across declarations/calls uses total count. Name-only
+`ResolvedOpaqueEntryParameter::array_extents` replaces its old `is_array` and
+`array_extent`; it retains sized axes without assigning opaque bytes. Function
+copies own these vectors and clone body instructions independently. See the
+[public parameter migration](parameter_declarations.md).

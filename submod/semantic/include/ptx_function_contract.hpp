@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <variant>
 #include <vector>
@@ -23,6 +25,50 @@ struct InvalidStructuralKey {
 
 /** Valid numeric ABI data or a structural identity for invalid source data. */
 using NormalizedNumericValue = std::variant<uint64_t, InvalidStructuralKey>;
+
+namespace detail {
+
+/** Checked ABI count; a valid absent total denotes an unknown outer axis. */
+struct ParameterArrayExtent {
+  /** False for invalid values, unknown inner axes, zero, or product overflow. */
+  bool valid{true};
+  /** Total vector-base elements; absent only for a valid unknown outer axis. */
+  std::optional<uint64_t> total{1};
+};
+
+/** Derive total elements while checking known inner axes even with unknown outer. */
+inline ParameterArrayExtent parameter_array_extent(
+    std::span<const std::optional<NormalizedNumericValue>> axes) {
+  uint64_t count = 1;
+  bool unknown = false;
+  for (std::size_t index = 0; index < axes.size(); ++index) {
+    if (!axes[index]) {
+      if (index != 0)
+        return {false, std::nullopt};
+      unknown = true;
+      continue;
+    }
+    const auto* value = std::get_if<uint64_t>(&*axes[index]);
+    if (!value || *value == 0 ||
+        count > std::numeric_limits<uint64_t>::max() / *value)
+      return {false, std::nullopt};
+    count *= *value;
+  }
+  return {true, unknown ? std::nullopt : std::optional<uint64_t>{count}};
+}
+
+/** Compare valid arrays by ABI count, preserving exact invalid axis identities. */
+inline bool parameter_arrays_equal(
+    const std::vector<std::optional<NormalizedNumericValue>>& left,
+    const std::vector<std::optional<NormalizedNumericValue>>& right) {
+  if (left.empty() != right.empty())
+    return false;
+  const auto a = parameter_array_extent(left);
+  const auto b = parameter_array_extent(right);
+  return a.valid && b.valid ? a.total == b.total : left == right;
+}
+
+}  // namespace detail
 
 /** ABI-relevant parameter data independent of syntax-tree lifetime. */
 struct FunctionParameterContract {
@@ -47,10 +93,8 @@ struct FunctionParameterContract {
       pointed_state_space;
   /** Effective pointee alignment, or invalid source; absent for non-pointers. */
   std::optional<NormalizedNumericValue> pointer_alignment;
-  /** Whether the parameter denotes an array. */
-  bool is_array{};
-  /** Array extent, or invalid source; absent is an unspecified extent. */
-  std::optional<NormalizedNumericValue> array_extent;
+  /** Sole normalized outer-to-inner axes; empty is scalar, null is unknown. */
+  std::vector<std::optional<NormalizedNumericValue>> array_extents;
 
   /** Compare ABI fields, retaining spelling identity only for invalid scalars. */
   bool operator==(const FunctionParameterContract& other) const {
@@ -63,7 +107,7 @@ struct FunctionParameterContract {
            is_pointer == other.is_pointer &&
            pointed_state_space == other.pointed_state_space &&
            pointer_alignment == other.pointer_alignment &&
-           is_array == other.is_array && array_extent == other.array_extent;
+           detail::parameter_arrays_equal(array_extents, other.array_extents);
   }
 };
 
@@ -84,16 +128,16 @@ call_argument_properties(const FunctionParameterContract& contract) {
   using call_argument_compatibility::CallArgumentStateSpace;
   using call_argument_compatibility::CallArgumentVectorShape;
   const auto alignment = contract_constant(contract.alignment);
-  const auto array_size = contract_constant(contract.array_extent);
+  const auto array = detail::parameter_array_extent(contract.array_extents);
   const auto pointer_alignment = contract_constant(contract.pointer_alignment);
-  if (!alignment || (contract.array_extent && !array_size) ||
+  if (!alignment || !array.valid ||
       (contract.is_pointer && !pointer_alignment)) {
     return {
         .state_space = CallArgumentStateSpace::Invalid,
         .scalar_type = contract.scalar_type,
         .vector_shape = contract.vector_shape,
         .type_spelling = contract.type_spelling,
-        .is_array = contract.is_array,
+        .is_array = !contract.array_extents.empty(),
     };
   }
   CallArgumentProperties properties{
@@ -102,8 +146,8 @@ call_argument_properties(const FunctionParameterContract& contract) {
       .vector_shape = contract.vector_shape,
       .type_spelling = contract.type_spelling,
       .array_alignment = *alignment,
-      .is_array = contract.is_array,
-      .array_size = array_size,
+      .is_array = !contract.array_extents.empty(),
+      .array_size = contract.array_extents.empty() ? std::nullopt : array.total,
   };
   if (contract.is_pointer) {
     properties.pointer = {

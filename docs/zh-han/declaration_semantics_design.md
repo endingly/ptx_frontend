@@ -191,3 +191,9 @@ signedness 传播与求值逻辑。
 
 二元位运算遵循 PTX 正文中的通常算术转换规则；汇总表的不同表述、可复现汇编
 证据和工具版本限制见[符号性决策说明](bitwise_constant_policy.md)。
+
+`FunctionParameterContract::array_extents` 是 formal 轴唯一的 normalized 表示。
+合法数组按检查后的总元素数比较 ABI，rank 本身不是额外限制；无效 structural 轴与
+溢出仍无效并保留逐轴 identity。未知外轴仍保留并检查已知内轴。
+派生 `CallArgumentProperties::array_size` 表示总数，不是第一轴缓存。
+精确 source identity 独立保留，见[parameter 合同与 member migration](parameter_declarations.md)。

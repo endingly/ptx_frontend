@@ -397,9 +397,9 @@ TEST(ParameterDomain, RechecksUnusedVectorArrayPrototypeLayout) {
       auto& formal = returns ? signature.return_parameters.front()
                              : signature.parameters.front();
       if (mutation == 0)
-        formal.array_extent = uint64_t{0};
+        formal.array_extents = {uint64_t{0}};
       if (mutation == 1)
-        formal.array_extent = std::numeric_limits<uint64_t>::max();
+        formal.array_extents = {std::numeric_limits<uint64_t>::max()};
       if (mutation == 2)
         formal.alignment = uint64_t{0};
       if (mutation == 3)
@@ -441,8 +441,7 @@ TEST(ParameterDomain, RechecksUnusedScalarPrototypeRoles) {
                          .call_prototypes.front()
                          .signature.parameters.front();
       if (mutation == 0) {
-        formal.is_array = true;
-        formal.array_extent = uint64_t{2};
+        formal.array_extents = {uint64_t{2}};
       }
       if (mutation == 1) {
         formal.is_pointer = true;

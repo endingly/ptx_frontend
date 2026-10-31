@@ -231,8 +231,11 @@ inline void parameter(std::string& output,
   optional_syntax(output, value.pointer_space);
   optional_syntax(output, value.pointer_alignment);
   identifier(output, value.name);
-  number(output, value.is_array);
-  optional_constant_expression(output, value.array_size);
+  number(output, value.array_dimensions.size());
+  for (const auto& dimension : value.array_dimensions) {
+    tag(output, "axis");
+    optional_constant_expression(output, dimension.size);
+  }
 }
 
 /** Encode one operand and its alternative-specific semantic spelling. */

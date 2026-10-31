@@ -824,9 +824,9 @@ operand_patterns:
   isspacep_generic_address:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
     # PTX deliberately omits a size suffix: the generic address source is
-    # either 32 or 64 bits.  Equal-or-wider from u32 admits those fundamental
-    # address containers without admitting floating or packed declarations.
-    - {name: src, kind: reg, role: src, access: read, type: u32, register_width: equal_or_wider}
+    # either 32 or 64 bits. The finite address-container policy excludes wider
+    # data carriers while retaining ordinary integer/bit register compatibility.
+    - {name: src, kind: reg, role: src, access: read, type: u64, register_width: word_or_doubleword}
 
   shfl_sync_with_predicate:
     - &shfl_paired_destination

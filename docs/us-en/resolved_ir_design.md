@@ -798,6 +798,10 @@ operands through `.b128` declared bit registers, following PTX ISA 9.3 Tables
 rejecting instruction-only declaration formats and register vectors over 128
 bits. Declaration eligibility does not bypass instruction, format, PTX-version,
 or SM gates: selected `.b128` memory instructions still require PTX 8.3 / SM 70.
+The unsuffixed `isspacep` address-source role instead selects `WordOrDoubleword`
+with a fixed u64 use type: ordinary B/S/U32 and B/S/U64 registers are legal,
+independently of module address size; wider, floating and packed containers remain
+excluded. This finite address-role rule does not restrict general data carriers.
 Exact `.b128` compatibility remains unchanged for existing `mov` vector consumers.
 The focused [LD coverage](converage/ld_coverage.md) and [ST coverage](converage/st_coverage.md)
 documents define the current memory subset.

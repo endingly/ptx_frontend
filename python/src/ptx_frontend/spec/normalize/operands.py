@@ -570,10 +570,10 @@ def _normalize_register_width(
                 "requires a type expression"
             )
     if register_width_policy is OperandRegisterWidthPolicy.WORD_OR_DOUBLEWORD:
-        if raw["kind"] is not OperandKind.REGISTER_OR_IMMEDIATE:
+        if raw["kind"] not in {OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE}:
             raise ValueError(
                 f"operand {raw['name']!r}: word_or_doubleword register_width "
-                "requires kind 'reg_or_imm'"
+                "requires kind 'reg' or 'reg_or_imm'"
             )
         if (
             type_expression is None

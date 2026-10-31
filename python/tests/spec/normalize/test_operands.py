@@ -627,6 +627,24 @@ class OperandNormalizationTests(unittest.TestCase):
             operand.register_width_policy, OperandRegisterWidthPolicy.EQUAL_OR_WIDER
         )
 
+    def test_word_or_doubleword_supports_register_and_immediate_capable_roles(self) -> None:
+        """Finite 32/64-bit container width retains the fixed-u64 use contract."""
+        for kind in ("reg", "reg_or_imm"):
+            with self.subTest(kind=kind):
+                operand = normalize_operand(_operand(kind, type="u64", register_width="word_or_doubleword"))
+                self.assertIs(operand.register_width_policy, OperandRegisterWidthPolicy.WORD_OR_DOUBLEWORD)
+                for type_use in (None, "u32", {"expr": "modifier(type)"}):
+                    raw = _operand(kind, register_width="word_or_doubleword")
+                    if type_use is not None:
+                        raw["type"] = type_use
+                    with self.assertRaisesRegex(ValueError, "requires fixed u64 use type"):
+                        normalize_operand(raw)
+        for kind in ("imm", "addr", "pred", "reg_vector"):
+            raw = _vector() if kind == "reg_vector" else _operand(kind)
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(ValueError, "requires kind 'reg' or 'reg_or_imm'"):
+                    normalize_operand(raw | {"type": "u64", "register_width": "word_or_doubleword"})
+
     def test_equal_or_wider_requires_supported_kind_and_type(self) -> None:
         for kind in ("imm", "vector_reg", "vector_sreg"):
             raw = _vector(kind) if kind.startswith("vector_") else _operand(kind)

@@ -631,6 +631,10 @@ register 最宽为 `.b128` 的 wider load destination、store source（包括 st
 将 `.b128` 归类为 fundamental，同时拒绝 instruction-only declaration format 和超过
 128 bit 的 register vector。声明资格不会绕过 instruction、format、PTX-version 或 SM
 gate：selected `.b128` memory instruction 仍要求 PTX 8.3 / SM 70。
+无 size suffix 的 `isspacep` 地址 source role 使用 fixed u64 use type 与
+`WordOrDoubleword`：普通 B/S/U32、B/S/U64 register 均合法，不要求与 module address
+size 相等；更宽、floating 和 packed container 仍被排除。此有限 address-role 规则
+不限制通用 data carrier。
 既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。当前 memory subset 见
 [LD 覆盖](converage/ld_coverage.md) 与 [ST 覆盖](converage/st_coverage.md)。
 

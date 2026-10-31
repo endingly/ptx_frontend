@@ -74,3 +74,5 @@ declaration; standalone instruction checking defers that declaration check.
 For register sizes and addresses, runtime values, remote-CTA provenance,
 group/phase completion protocol, and cache behavior remain consumer
 obligations. This frontend does not execute instructions.
+
+Root shared `st.async` v2/v4 data sources accept ordinary named register vectors alongside scalar brace lanes. The declaration itself must remain at most 128 bits even when each carrier is wider than the logical element. Completion bytes and transfer alignment still derive from logical type times arity. Named data does not relax the independent register-base address requirement.

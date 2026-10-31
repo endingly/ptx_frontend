@@ -505,6 +505,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -583,6 +584,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -661,6 +663,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -739,6 +742,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -817,6 +821,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -895,6 +900,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -973,6 +979,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1050,6 +1057,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1128,6 +1136,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1205,6 +1214,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1283,6 +1293,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1360,6 +1371,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1858,6 +1870,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -1936,6 +1949,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2014,6 +2028,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2092,6 +2107,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2170,6 +2186,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2248,6 +2265,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2326,6 +2344,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2403,6 +2422,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2481,6 +2501,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2558,6 +2579,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2636,6 +2658,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -2713,6 +2736,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3211,6 +3235,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3289,6 +3314,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3367,6 +3393,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3445,6 +3472,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3523,6 +3551,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3601,6 +3630,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3679,6 +3709,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3756,6 +3787,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3834,6 +3866,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3911,6 +3944,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -3989,6 +4023,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4066,6 +4101,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4564,6 +4600,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4642,6 +4679,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4720,6 +4758,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4798,6 +4837,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4876,6 +4916,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -4954,6 +4995,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5032,6 +5074,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5109,6 +5152,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5187,6 +5231,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5264,6 +5309,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5342,6 +5388,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5419,6 +5466,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5917,6 +5965,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -5995,6 +6044,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6073,6 +6123,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6151,6 +6202,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6229,6 +6281,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6307,6 +6360,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6385,6 +6439,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6462,6 +6517,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6540,6 +6596,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6617,6 +6674,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6695,6 +6753,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src
@@ -6772,6 +6831,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
     - name: access
       kind: surface_access
       role: src

@@ -56,7 +56,9 @@ TEST(NamedVectorMemory, ResolvesNamedAndBraceFamilies) {
                                "ld.v2.u32 {V.x,V.y}, [%rd];",
                                "st.v2.u32 [%rd], {V.r,V.g};",
                                "ld.global.nc.v2.u32 {%r0,%r1}, [A];",
-                               "ldu.v2.u32 {%r0,%r1}, [A];"}) {
+                               "ldu.v2.u32 {%r0,%r1}, [A];",
+                               "st.async.shared::cluster.mbarrier::complete_tx:"
+                               ":bytes.v2.u32 [%rd], V, [bar];"}) {
     SCOPED_TRACE(operation);
     const auto ast = test_helpers::parseModule(vector_memory_module(operation));
     ASSERT_MODULE_PARSE_SUCCEEDS(ast);
@@ -305,10 +307,6 @@ TEST(NamedVectorMemory, KeepsUnrelatedFamiliesBraceOnly) {
          "red.global.add.v2.f32 [A], G;"},
         {"ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r0,%r1}, [S];",
          "ldmatrix.sync.aligned.m8n8.x2.shared.b16 V, [S];"},
-        {"st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 "
-         "[%rd], {V.x,V.y}, [bar];",
-         "st.async.shared::cluster.mbarrier::complete_tx::bytes.v2.u32 "
-         "[%rd], V, [bar];"},
         {"st.bulk [S], 64, 0;", "st.bulk [S], 64, V;"},
         {"tex.2d.v4.f32.f32 {F.x,F.y,F.z,F.w}, [tex0,{G.x,G.y}];",
          "tex.2d.v4.f32.f32 F, [tex0,{G.x,G.y}];"}}) {

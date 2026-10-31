@@ -1162,3 +1162,5 @@ dtype/carrier policy、named-source 许可或 immediate range。
 [Block-scaled MMA scale selector](converage/mma_scale_selector_coverage.md) 使用 U16
 逻辑值与封闭的 B16/S16/U16 register carrier。两个 scalar leaf、byte mask、独立 A/B
 thread 上限及 unsigned literal conversion，不因 whole-vector shape 或运行时 register 内容而改变。
+
+选定的 multimem data vector、SULD destination 及根 `st.async` v2/v4 source 与 brace 一样接受普通 named register vector。没有 vector modifier 时，Element binding 唯一的固定 arity 决定 lane 数。既有 whole-base identity 与 canonical `NamedProjection` lane 一起独立拥有。MM/SULD 要求 element 同宽；根 `st.async` 保留较宽 carrier 规则。Named 声明仍仅限 v2/v4 且总宽不超过 128 bit；MM v8 仍仅接受 brace。SUST value vector 保持独立 source 契约。

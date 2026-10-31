@@ -59,3 +59,5 @@ Checker 检查已知地址空间、静态对齐（bulk copy/reduce/prefetch 为 
 16,777,216。owned module 验证会对照绑定声明核验寄存器字节数的缓存类型；
 单条指令检查在没有声明时延后这一步。对寄存器字节数和地址，其运行时值、远端 CTA 身份、
 group/phase 完成协议及缓存效果仍由 consumer 负责；frontend 不执行指令。
+
+根 shared `st.async` v2/v4 data source 除 scalar brace lane 外也接受普通 named register vector。即使每个 carrier 比 logical element 更宽，声明本身总宽仍不得超过 128 bit。Completion byte 数与 transfer alignment 仍由 logical type 乘 arity 得到。Named data 不放宽独立的 register-base address 要求。

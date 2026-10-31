@@ -1445,3 +1445,5 @@ named-source permission or immediate range.
 U16 logical values with closed B16/S16/U16 register carriers. Their two scalar
 leaves, byte masks, separate A/B thread limits and unsigned literal conversion
 remain independent of whole-vector shape and runtime register contents.
+
+Selected multimem data vectors, SULD destinations, and root `st.async` v2/v4 sources accept ordinary named register vectors alongside braces. A sole fixed Element arity is taken from the binding when no vector modifier supplies it. The existing whole-base identity and canonical `NamedProjection` lanes remain owned together. MM/SULD require matching element widths; root `st.async` retains its wider-carrier rule. Every named declaration remains v2/v4 and at most 128 bits; MM v8 remains brace-only. SUST value vectors retain their separate source contract.

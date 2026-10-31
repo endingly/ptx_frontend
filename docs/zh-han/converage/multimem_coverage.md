@@ -73,3 +73,5 @@ Canonical 清单和负例边界测试见
 [`test_multimem_coverage.cpp`](../../../submod/resolved_ir/test/test_multimem_coverage.cpp)。
 [`multimem_consumer`](../../../examples/multimem_consumer/main.cpp) 验证安装后的公共头。
 这些测试检验前端接受性与源码生命周期，不在 GPU 上执行 multimem 指令。
+
+选定的 v2/v4 data register-vector role 接受普通 named 声明与 brace list。Instruction-only logical format 使用兼容的 fundamental Bit carrier。V8 仍仅接受 brace；普通声明总宽不得超过 128 bit。Named form 不改变逐 element 的 SameWidth 契约。

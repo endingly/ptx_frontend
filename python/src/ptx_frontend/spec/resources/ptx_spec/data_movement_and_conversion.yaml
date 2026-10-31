@@ -809,7 +809,7 @@ operand_patterns:
       access: read
       type: {expr: "modifier(type)"}
       register_width: equal_or_wider
-      vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element}
+      vector: {kind: vector, arity: {expr: "modifier(vector)"}, type_policy: element, allow_named: true}
     - {name: mbar, kind: addr, role: barrier, access: read, state_space: [shared]}
 
   async_store_global:
@@ -22551,6 +22551,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22713,6 +22714,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22796,6 +22798,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -22878,6 +22881,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23058,6 +23062,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23237,6 +23242,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23399,6 +23405,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23560,6 +23567,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23643,6 +23651,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23725,6 +23734,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -23905,6 +23915,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24084,6 +24095,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24246,6 +24258,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24407,6 +24420,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24490,6 +24504,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24572,6 +24587,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24752,6 +24768,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -24931,6 +24948,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25096,6 +25114,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25253,6 +25272,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25333,6 +25353,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -25531,6 +25552,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25735,6 +25757,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25818,6 +25841,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -25900,6 +25924,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26122,6 +26147,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26343,6 +26369,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26547,6 +26574,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26750,6 +26778,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26833,6 +26862,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -26915,6 +26945,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27137,6 +27168,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27358,6 +27390,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27562,6 +27595,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27765,6 +27799,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27848,6 +27883,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -27930,6 +27966,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28152,6 +28189,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28373,6 +28411,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       - name: address
         kind: addr
         role: addr
@@ -28580,6 +28619,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -28779,6 +28819,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -28859,6 +28900,7 @@ instructions:
           arity:
             expr: modifier(vector)
           type_policy: element
+          allow_named: true
       constraints:
       - kind: address_alignment
         address_operand: address

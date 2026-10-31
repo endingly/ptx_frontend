@@ -1619,6 +1619,13 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   const auto range = syntax_ast::sourceRange(operand);
   std::optional<WithLocs<ResolvedVectorRegisterRef>> whole_base;
+  // A fixed Element binding can carry its sole arity without a modifier field.
+  if (!vector && allow_named && !required_arity &&
+      vector_type_policy == checker::VectorTypePolicy::Element &&
+      allowed_arities.size() == 1 &&
+      (allowed_arities.front() == 2 || allowed_arities.front() == 4)) {
+    required_arity = allowed_arities.front();
+  }
   if (!vector && allow_named && !required_arity &&
       vector_type_policy == checker::VectorTypePolicy::Aggregate) {
     const auto* identifier =

@@ -403,6 +403,7 @@ class GenerationPlanTests(unittest.TestCase):
 
         observed = set()
         aggregate_mov = set()
+        inherited = {"multimem": 0, "suld": 0, "st": 0}
         for entry in self.context.entries:
             opcode = entry.specification.opcode
             for variant in entry.resolved.variants:
@@ -410,12 +411,19 @@ class GenerationPlanTests(unittest.TestCase):
                     for binding in layout.bindings:
                         if binding.allow_named_vector:
                             observed.add(opcode)
-                            self.assertIn(opcode, {"ld", "ldu", "st", "mov"})
+                            self.assertIn(opcode, {"ld", "ldu", "st", "mov", "multimem", "suld"})
+                            inherited_data = (opcode in {"multimem", "suld"} or
+                                              (opcode == "st" and binding.target_field_id == "value"))
                             if (opcode == "mov" and binding.vector_type_policy
                                     is ResolvedVectorTypePolicy.AGGREGATE):
                                 aggregate_mov.add((variant.variant_id, binding.target_field_id))
                                 self.assertEqual(binding.allowed_vector_arities, (2, 4))
                                 self.assertIn(binding.target_field_id, {"src", "dst"})
+                            elif inherited_data:
+                                inherited[opcode] += 1
+                                self.assertIs(binding.vector_type_policy, ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertIn(binding.target_field_id, {"dst", "src", "data", "value"})
+                                self.assertTrue(set(binding.allowed_vector_arities) <= {2, 4})
                             else:
                                 self.assertIs(binding.vector_type_policy,
                                               ResolvedVectorTypePolicy.ELEMENT)
@@ -423,17 +431,17 @@ class GenerationPlanTests(unittest.TestCase):
                                                  "src" if opcode == "st" else "dst")
                                 if opcode == "mov":
                                     self.assertEqual(variant.variant_id, "mov_v4_u32")
-                            self.assertFalse(any(
-                                field.name in {"async", "bulk"} and
-                                field.constant_value is True
-                                for field in variant.modifier_fields))
-                        if opcode not in {"ld", "ldu", "st", "mov"} or any(
-                            field.name in {"async", "bulk"} and
-                            field.constant_value is True
-                            for field in variant.modifier_fields
-                        ):
+                            if not inherited_data:
+                                self.assertFalse(any(
+                                    field.name in {"async", "bulk"} and
+                                    field.constant_value is True
+                                    for field in variant.modifier_fields))
+                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld"}:
                             self.assertFalse(binding.allow_named_vector)
-        self.assertEqual(observed, {"ld", "ldu", "st", "mov"})
+                        if opcode == "multimem" and 8 in binding.allowed_vector_arities:
+                            self.assertFalse(binding.allow_named_vector)
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld"})
+        self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4})
         self.assertEqual(aggregate_mov, {
             ("mov_scalar", "src"), ("mov_scalar", "dst"),
             ("mov_b128_pack_unpack", "src"), ("mov_b128_pack_unpack", "dst"),

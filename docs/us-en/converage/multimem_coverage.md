@@ -91,3 +91,5 @@ and [`test_multimem_coverage.cpp`](../../../submod/resolved_ir/test/test_multime
 [`multimem_consumer`](../../../examples/multimem_consumer/main.cpp) exercises
 installed public headers. These tests cover frontend acceptance and source
 lifetime; they do not execute multimem instructions on a GPU.
+
+The selected v2/v4 data register-vector roles accept ordinary named declarations and brace lists. Instruction-only logical formats use compatible fundamental Bit carriers. V8 remains brace-only; ordinary declarations cannot exceed 128 bits. Named form does not widen the SameWidth element contract.

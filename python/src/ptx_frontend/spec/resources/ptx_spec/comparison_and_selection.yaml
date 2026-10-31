@@ -162,6 +162,17 @@ operand_patterns:
     - {name: src2, kind: reg, role: src2, access: read, type: f16}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
+  setp_f16x2_pair:
+    - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+
+  setp_f16x2_pair_boolean:
+    - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
+    - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
+    - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
+    - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
+
   setp_packed_pair:
     - {name: dst, kind: pred_pair, role: dst, access: write, type: pred}
     - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
@@ -739,7 +750,7 @@ instructions:
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
-        operands: $setp_packed_pair
+        operands: $setp_f16x2_pair
 
       - name: setp_f16x2_boolean
         availability: {ptx: "4.2", sm: 53}
@@ -748,7 +759,7 @@ instructions:
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: f16x2}
-        operands: $setp_packed_pair_boolean
+        operands: $setp_f16x2_pair_boolean
 
       - name: setp_bf16
         availability: {ptx: "7.8", sm: 90}

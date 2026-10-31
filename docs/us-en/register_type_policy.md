@@ -77,7 +77,7 @@ decisions are:
 | Consumers | Policy decision |
 | --- | --- |
 | `mul/mad.wide.u32`, `popc/clz`, `bfind/bfe`, ordinary `mad/div/min/max` float forms | Same-width fundamental compatibility; keep each operand's original width |
-| `neg.f16x2` | Require exact `.b32` storage for both operands; native `.f16x2` registers are not admitted |
+| `neg.f16x2` | Native `.f16x2` or `.b32` for both operands, with same-width compatibility |
 | packed `cvt` destination | Require expected `f16x2` with `same_width`, accepting `.f16x2`/`.b32`, not arbitrary 32-bit storage |
 | `cvt` ordinary f32 operands, `mapa/getctarank`, `isspacep` | Same-width compatibility; address shape/state-space checks remain independent |
 | `vote/match/redux/elect/activemask`, mbarrier counts/parity/hints, decoded cluster CTA IDs | Same-width compatibility; masks, ranges, and target checks remain independent |
@@ -128,3 +128,14 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_resolved_ir --gtest_brief=1
 out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gtest_brief=1
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
+
+Native packed `.f16x2` is a fundamental 32-bit floating value. Table 9's explicit
+`.f16x2`/`.b32` declaration alternatives apply to the register data roles of
+`mul.f16x2`, `neg.f16x2` and both predicate-pair `setp.f16x2` forms. Mixed native
+and bit carriers are legal; same-width `.f32/.s32/.u32`, other widths, whole vectors
+and nonfundamental alternate formats do not join this closed carrier set. Explicit
+scalar components retain their real vector declaration and compact-member provenance.
+Shared BF16x2/other alternate-format exact-B32 contracts remain unchanged.
+These slots remain register-only; no packed numeric literal bits/splat/zero
+representation or ordinary scalar-F16 conversion is added. Existing modifier,
+predicate, layout and PTX/target availability contracts remain unchanged.

@@ -14,13 +14,13 @@ Every row is modelled through syntax, Resolved IR, and target-aware checking. Th
 | Ordinary `.f32` | 1.0 / all targets | `.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`; optional Boolean form and `.ftz` | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
 | Ordinary `.f64` | 1.0 / `sm_13` | The same floating comparison and optional Boolean form; `.ftz` is not legal | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
 | `.f16` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly one predicate result. Sources are `.f16` or same-width `.b16` registers; `_` is not a destination. |
-| `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results and exact `.b32` register sources; sink destinations are not legal. |
+| `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results and native `.f16x2` or `.b32` register sources; sink destinations are not legal. |
 | `.bf16` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly one predicate result and exact `.b16` register sources; `_` is not a destination. |
 | `.bf16x2` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly two predicate results and exact `.b32` register sources; sink destinations are not legal. |
 
 ## Deliberate boundaries
 
-The ordinary syntax permits a single `_` destination or one `_` lane of a predicate pair. The frontend represents that explicitly, and checker revalidation rejects a public-IR pair edited to contain two sinks. Half and bfloat forms retain their required single or pair predicate destinations; their packed source containers are exact rather than merely width-compatible.
+The ordinary syntax permits a single `_` destination or one `_` lane of a predicate pair. The frontend represents that explicitly, and checker revalidation rejects a public-IR pair edited to contain two sinks. Half and bfloat forms retain their required single or pair predicate destinations; native F16x2 sources admit only `.f16x2` or `.b32`, while nonfundamental BF16x2 sources retain exact `.b32` containers. Arbitrary same-width types remain excluded.
 
 The optional Boolean operand is a predicate source, not a predicate-register-only field. It accepts a plain or complemented predicate register and PTX integer predicate constants. Constants are canonicalized with C truth rules: zero is false, nonzero is true, and a leading `!` complements that truth value. Predicate special registers are not admitted by `setp`, even though `mov.pred` admits them.
 

@@ -529,7 +529,7 @@ TEST(RegisterTypePolicy, PackedBfloatStorageRemainsExact) {
                      occurrenceRange(source, "%src1", 2));
 }
 
-/** Packed-half negation requires b32 while conversion retains compatible containers. */
+/** Packed-half negation admits native/bit carriers; conversion stays independent. */
 TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
   constexpr std::string_view neg_source =
       ".entry kernel() { .reg .b32 %dst, %src; neg.f16x2 %dst, "
@@ -543,8 +543,7 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
       "%src; }";
   const auto native_neg = resolveSingleInstruction(native_neg_source);
   ASSERT_TRUE(native_neg);
-  expectTypeMismatch((*native_neg)->check(kContext),
-                     occurrenceRange(native_neg_source, "%dst", 2));
+  expectAccepted((*native_neg)->check(kContext));
 
   constexpr std::string_view cvt_f16x2_source =
       ".entry kernel() { .reg .f16x2 %dst; .reg .b32 %src1, %src2; "
@@ -599,8 +598,7 @@ TEST(RegisterTypePolicy, GeneratedDescriptorsExposeTheWidthPolicy) {
   expectBindingPolicy(div_resolved_descriptor(), "RnF64", same_width);
   expectBindingPolicy(min_resolved_descriptor(), "F32", same_width);
   expectBindingPolicy(max_resolved_descriptor(), "F32", same_width);
-  expectBindingPolicy(neg_resolved_descriptor(), "F16x2",
-                      base::ScalarTypeSizePolicy::Exact);
+  expectBindingPolicy(neg_resolved_descriptor(), "F16x2", same_width);
   expectBindingPolicy(cvt_resolved_descriptor(), "RnF16x2F32",
                       base::ScalarTypeSizePolicy::EqualOrWider);
   expectBindingPolicy(fma_resolved_descriptor(), "Bf16",

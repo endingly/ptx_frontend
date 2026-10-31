@@ -62,7 +62,7 @@ class AbsNegCompletenessTests(unittest.TestCase):
             ("abs_f16", "f16", OperandRegisterWidthPolicy.SAME_WIDTH),
             ("abs_f16x2", "f16x2", OperandRegisterWidthPolicy.SAME_WIDTH),
             ("neg_f16", "f16", OperandRegisterWidthPolicy.SAME_WIDTH),
-            ("neg_f16x2", "b32", OperandRegisterWidthPolicy.EXACT),
+            ("neg_f16x2", "f16x2", OperandRegisterWidthPolicy.SAME_WIDTH),
             ("abs_bf16", "b16", OperandRegisterWidthPolicy.EXACT),
             ("abs_bf16x2", "b32", OperandRegisterWidthPolicy.EXACT),
             ("neg_bf16", "b16", OperandRegisterWidthPolicy.EXACT),

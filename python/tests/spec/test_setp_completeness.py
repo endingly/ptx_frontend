@@ -181,7 +181,7 @@ class SetpCompletenessTests(unittest.TestCase):
 
         for family, type_name, destination, source_container in (
             ("setp_f16", "f16", "pred", "f16"),
-            ("setp_f16x2", "f16x2", "pred_pair", "b32"),
+            ("setp_f16x2", "f16x2", "pred_pair", "f16x2"),
             ("setp_bf16", "bf16", "pred", "b16"),
             ("setp_bf16x2", "bf16x2", "pred_pair", "b32"),
         ):
@@ -200,13 +200,12 @@ class SetpCompletenessTests(unittest.TestCase):
                     ),
                     (source_container, source_container),
                 )
-                if source_container != "f16":
-                    self.assertEqual(
-                        tuple(
-                            operand.register_width_policy for operand in operands[1:3]
-                        ),
-                        (OperandRegisterWidthPolicy.EXACT,) * 2,
-                    )
+                self.assertEqual(
+                    tuple(operand.register_width_policy for operand in operands[1:3]),
+                    (OperandRegisterWidthPolicy.SAME_WIDTH
+                     if source_container in ("f16", "f16x2")
+                     else OperandRegisterWidthPolicy.EXACT,) * 2,
+                )
                 modifiers = {modifier.name: modifier for modifier in variant.modifiers}
                 self.assertEqual(modifiers["type"].value, type_name)
                 if name.endswith("_boolean"):

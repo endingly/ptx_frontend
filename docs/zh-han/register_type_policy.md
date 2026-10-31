@@ -61,7 +61,7 @@ Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
 | Consumer | Policy 决策 |
 | --- | --- |
 | `mul/mad.wide.u32`、`popc/clz`、`bfind/bfe`、普通 `mad/div/min/max` 浮点形式 | 同宽基础类型兼容，保留各 operand 原有位宽 |
-| `neg.f16x2` | 两个 operand 都要求 exact `.b32` storage；不接受 native `.f16x2` 寄存器 |
+| `neg.f16x2` | 两个 operand 接受 native `.f16x2` 或 `.b32`，使用 same-width compatibility |
 | packed `cvt` 的 destination | expected type 使用 `f16x2` 加 `same_width`，接受 `.f16x2`/`.b32`，不接受任意 32 位存储 |
 | `cvt` 普通 f32 operand、`mapa/getctarank`、`isspacep` | 同宽兼容；address shape/state-space 检查独立保留 |
 | `vote/match/redux/elect/activemask`、mbarrier count/parity/hint、解码后的 cluster CTA ID | 同宽兼容；mask、数值范围与 target 检查独立保留 |
@@ -103,3 +103,12 @@ out/build/ci-linux-gcc-debug/submod/resolved_ir/test_resolved_ir --gtest_brief=1
 out/build/ci-linux-gcc-debug/submod/resolved_ir/test_modern_operand_codegen --gtest_brief=1
 PYTHONPATH=python .venv/bin/python -m unittest discover -s python/tests -t python -p 'test_*.py' -q
 ```
+
+Native packed `.f16x2` 是32-bit fundamental floating 值。Table 9 明确给出的
+`.f16x2`/`.b32` declaration 选择适用于 `mul.f16x2`、`neg.f16x2` 及两个 predicate-pair
+`setp.f16x2` form 的 register data role；可混用 native/bit carrier。同宽
+`.f32/.s32/.u32`、其他宽度、whole vector 和非 fundamental alternate format 不属于该
+封闭 carrier 集。显式 scalar component 保留真实 vector declaration 与 compact-member
+provenance。共享 BF16x2/其他 alternate-format exact-B32 合同保持不变。这些 slot 仍仅接受
+register，不增加 packed numeric literal 的 bits/splat/zero 表示或普通 scalar-F16 conversion。
+既有 modifier、predicate、layout 与 PTX/target availability 不变。

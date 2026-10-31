@@ -1012,7 +1012,7 @@ instructions:
           - {ptx: "mul.rn.ftz.sat.f16 %h0, %h1, %h2;", valid: true}
 
       - name: mul_half_x2
-        operands: $binary_b32_register_exact
+        operands: $binary_float_register
         availability: {ptx: "4.2", sm: 53}
         modifiers:
           - {name: rounding, kind: rounding, domain: rounding_modes, presence: optional, default: rn, values: [rn]}
@@ -2652,7 +2652,7 @@ instructions:
           - {ptx: "neg.f16 %h0, %h1;", valid: true}
           - {ptx: "neg.ftz.f16 %h0, %h1;", valid: true}
       - name: neg_f16x2
-        operands: $unary_b32_register_exact
+        operands: $unary_f16x2_register
         availability: {ptx: "6.0", sm: 53}
         modifiers:
           - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}

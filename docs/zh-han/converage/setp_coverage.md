@@ -14,13 +14,13 @@
 | ordinary `.f32` | 1.0 / 全部 target | 全部 floating comparison：`.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`；可选 Boolean form 与 `.ftz` | 采用 ordinary single/pair sink 和 floating register-or-immediate source 规则。 |
 | ordinary `.f64` | 1.0 / `sm_13` | 相同 floating comparison 与可选 Boolean form；不允许 `.ftz` | 采用 ordinary single/pair sink 和 floating register-or-immediate source 规则。 |
 | `.f16` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有一个 predicate result。source 是 `.f16` 或同宽 `.b16` register；destination 不能为 `_`。 |
-| `.f16x2` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有两个 predicate result，source 是 exact `.b32` register；不允许 sink destination。 |
+| `.f16x2` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有两个 predicate result，source 是 native `.f16x2` 或 `.b32` register；不允许 sink destination。 |
 | `.bf16` | 7.8 / `sm_90` | 全部 floating comparison 与可选 Boolean form；不允许 `.ftz` | 恰有一个 predicate result，source 是 exact `.b16` register；destination 不能为 `_`。 |
 | `.bf16x2` | 7.8 / `sm_90` | 全部 floating comparison 与可选 Boolean form；不允许 `.ftz` | 恰有两个 predicate result，source 是 exact `.b32` register；不允许 sink destination。 |
 
 ## 有意保留的边界
 
-ordinary syntax 允许单个 `_` destination，或 predicate pair 的一个 `_` lane。frontend 显式表示该信息，checker revalidation 会拒绝被 public IR 编辑为两个 sink 的 pair。half 与 bfloat form 保持 required single/pair predicate destination；其 packed source container 为 exact，而不只是 width-compatible。
+ordinary syntax 允许单个 `_` destination，或 predicate pair 的一个 `_` lane。frontend 显式表示该信息，checker revalidation 会拒绝被 public IR 编辑为两个 sink 的 pair。half 与 bfloat form 保持 required single/pair predicate destination；native F16x2 source 仅接受 `.f16x2` 或 `.b32`，非 fundamental BF16x2 source 保留 exact `.b32` container；任意其他同宽 type 仍被排除。
 
 可选 Boolean operand 是 predicate source，而不是只能使用 predicate register 的字段。它接收 plain/complemented predicate register，也接收 PTX integer predicate constant。constant 按 C truth rule canonicalize：零为 false，非零为 true；前导 `!` 对 truth value 取反。尽管 `mov.pred` 接收 predicate special register，`setp` 不接收此类 source。
 

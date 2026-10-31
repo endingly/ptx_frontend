@@ -921,6 +921,12 @@ resolve_predicate_constant(
   auto resolved = resolve_immediate_value(immediate, ScalarType::B64);
   if (!resolved)
     return std::unexpected(resolved.error());
+  const auto* literal = std::get_if<syntax_ast::AstImmediate>(&immediate);
+  const auto range =
+      literal ? literal->syntax.range
+              : std::get<syntax_ast::AstConstantOperand>(immediate).range;
+  if (auto integer = require_integer_source(*resolved, range); !integer)
+    return std::unexpected(integer.error());
   const bool truth = resolved->bits != 0;
   return ResolvedPredicateConstant{.value = negated ? !truth : truth};
 }
@@ -935,6 +941,8 @@ resolve_predicate_source(const syntax_ast::AstOperand& operand,
     auto value = resolve_numeric_operand(operand, ScalarType::B64);
     if (!value)
       return std::unexpected(value.error());
+    if (auto integer = require_integer_source(*value, range); !integer)
+      return std::unexpected(integer.error());
     auto constant = std::expected<ResolvedPredicateConstant, ResolveDiagnostic>(
         ResolvedPredicateConstant{.value = value->bits != 0});
     if (!constant)
@@ -3266,6 +3274,10 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
         auto value = resolve_numeric_operand(operand, ScalarType::B64);
         if (!value)
           return std::unexpected(value.error());
+        if (auto integer = require_integer_source(
+                *value, syntax_ast::sourceRange(operand));
+            !integer)
+          return std::unexpected(integer.error());
         if (value->is_negative || value->bits > 1) {
           return std::unexpected(ResolveDiagnostic{
               .range = syntax_ast::sourceRange(operand),

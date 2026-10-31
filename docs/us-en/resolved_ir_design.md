@@ -687,6 +687,16 @@ predicate special registers. Neither shape admits floating constants.
 Standalone resolution continues to accept numbered predicate registers without
 declaration context.
 
+Predicate constants, logical `!`, and WGMMA scale-d numeric controls require an
+integer result source before truth or range conversion. A `B64` conversion
+carrier does not establish integer origin: decimal/exact-F64 literals and
+floating-valued expressions remain invalid in these roles, even with payload
+zero or one. Floating comparisons that return an integer, and `!` of that
+integer result, remain valid. Equal-width floating `B64` bit-data operands keep
+their separate compatibility rule. Owned predicate constants contain only a
+canonical Boolean; validation does not reconstruct source syntax erased by
+normalization.
+
 `MovScalar` owns the scalar dynamic type modifier
 `.b16/.u16/.s16`, `.b32/.u32/.s32/.f32`, and `.b64/.u64/.s64/.f64`, including
 the established `.b16/.b32/.b64` pack and unpack layouts.

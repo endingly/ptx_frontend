@@ -547,6 +547,14 @@ predicate register 和整数常量及其取反形式；MOV 的 `pred_or_sreg` �
 special register。两种 shape 都不接收浮点常量。standalone resolution 仍接受无需声明
 上下文的 numbered predicate register。
 
+Predicate constant、logical `!` 与 WGMMA scale-d numeric control 必须先具有 integer
+result source，再进行 truth/range conversion。`B64` conversion carrier 不证明 integer
+origin：decimal/exact-F64 literal 与 floating-valued expression 在这些 role 中仍不合法，
+即使 payload 为零或一。返回 integer 的 floating comparison 及对该 integer result 的
+`!` 仍合法。等宽 floating `B64` bit-data operand 保留独立 compatibility rule。owned
+predicate constant 仅保存 canonical Boolean；validation 不重建 normalization 已抹去的
+source syntax。
+
 `MovScalar` 负责 scalar 动态 type modifier：`.b16/.u16/.s16`、
 `.b32/.u32/.s32/.f32` 与 `.b64/.u64/.s64/.f64`，并保留既有的
 `.b16/.b32/.b64` pack/unpack layout。`MovB128PackUnpack` 是具有 fixed `.b128` 的独立生成

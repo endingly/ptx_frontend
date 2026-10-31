@@ -9,6 +9,10 @@
 
 namespace ptx_frontend::resolved_ir::detail {
 
+/** Require retained integer result provenance before an integer-only coercion. */
+std::expected<void, ResolveDiagnostic> require_integer_source(
+    const ResolvedImmediate& value, SourceRange range);
+
 /** Decode an AST immediate without borrowing it beyond the returned value. */
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
     const syntax_ast::AstImmediate& immediate, ScalarType type,

@@ -10,6 +10,15 @@
 
 namespace ptx_frontend::resolved_ir {
 namespace detail {
+std::expected<void, ResolveDiagnostic> require_integer_source(
+    const ResolvedImmediate& value, SourceRange range) {
+  if (value.integer_source_bits.has_value())
+    return {};
+  return std::unexpected(ResolveDiagnostic{
+      .range = range,
+      .message = "This operand requires an integer constant source."});
+}
+
 /** Accept ordinary floating destinations and bit carriers of the lexical source width. */
 bool floating_destination_compatible(ScalarType destination,
                                      ScalarType source) {
@@ -354,6 +363,8 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_operand(
     auto value = resolve_immediate_value(negated->immediate, ScalarType::B64);
     if (!value)
       return std::unexpected(value.error());
+    if (auto integer = require_integer_source(*value, negated->range); !integer)
+      return std::unexpected(integer.error());
     return resolve_numeric_value(
         declaration_semantics::IntegerConstantValue{
             value->bits == 0 ? uint64_t{1} : uint64_t{0}, false},

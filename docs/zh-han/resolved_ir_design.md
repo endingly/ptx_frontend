@@ -12,7 +12,7 @@ frontend 证据，不代表 GPU 执行、broadcast/truncation 语义或 assemble
 | v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed value、parameterized register member 和 source form 在所有权转移后保留。同 lane 的 destination alias 仍为重复；source 重复和 source/destination overlap 合法。 |
 | Named v2 f64 NC/LDU → MOV → ST | Memory 与 MOV 保留各自 type policy。既有 availability 不混用：NC 需 PTX 3.1 / SM 32，generic LDU 需 PTX 2.0 / SM 20，explicit-global LDU 需 PTX 2.0 并叠加 f64 SM 13，f64 MOV 需 SM 13。 |
 | Named-array constant address → vector LD → MOV → ST | 声明 `.v4 .f32 A[]` 的 index stride 仍为标量四字节，不是十六字节。`A[4]` 贡献十六字节，可满足 v4 alignment；动态 index 将已知对齐降为 `gcd(base alignment, 4)`，仅保证四字节对齐时同一 vector access 被拒绝。 |
-| 邻接的不支持组合 | Atom/red 保持 brace-only；scalar bit pack/unpack 保留 sink/B128 门槛，不接纳 named aggregate、float packing 或 scalar-to-scalar B128。现代 256-bit memory 使用合法 scalar brace lane，不依赖超宽普通 named 声明，也不扩宽 vector MOV。 |
+| 邻接的不支持组合 | Atom/red 保持 brace-only；scalar bit pack/unpack 接受总宽严格匹配的 named ordinary aggregate，并保留 sink/B128 门槛；floating instruction type 与 scalar-to-scalar B128 仍不支持。现代 256-bit memory 使用合法 scalar brace lane，不依赖超宽普通 named 声明，也不扩宽 vector MOV。 |
 
 Owned revalidation 检查完整 source form、component origin/order、实际声明宽度、
 type/arity 和 source owner，并对被篡改 payload 提供带位置的失败。这些集成检查
@@ -47,8 +47,8 @@ Whole hardware vector 仍为独立 width-four intrinsic-u32 read，只兼容 u32
 nested whole vector、address、function 与 symbol 不能作为 source lane。
 `mov.v2.u32 V, 1` 等 bare scalar vector source 仍是 frontend 不支持的子集，
 不宣称 ISA-invalid 或 broadcast/truncation 语义。Scalar `.b16/.b32/.b64/.b128`
-pack/unpack 保持 brace-only，包括 B128 PTX 8.3 / SM 70 门槛；不加入 named scalar
-aggregate、floating pack 或 scalar-to-scalar B128。其他 family fence 与现代 256-bit
+pack/unpack 接受 brace 或总宽严格匹配的完整 ordinary named vector，并保留 B128
+PTX 8.3 / SM 70 门槛；floating instruction type 与 scalar-to-scalar B128 仍不支持。其他 family fence 与现代 256-bit
 brace memory form 不变。Source 释放及 module copy/move 后，owned validation
 重联完整 base/lane 声明与 source owner。
 
@@ -415,7 +415,8 @@ call 必须使用的已绑定参数 identity。
 普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通
 named `.reg .v2`/`.reg .v4`。声明宽度必须等于 arity，实际声明总大小不超过 128 bit；
 memory equal-or-wider element 规则不变。现代 256-bit vector、async store、
-atomic/reduction、matrix、texture 与 scalar pack/unpack operand 仍只接受 brace。
+atomic/reduction、matrix 与 texture operand 保留各自的 brace 限制。
+scalar bit pack/unpack 也按下述 exact aggregate-width policy 接受 named ordinary vector。
 
 `ResolvedRegisterVector::elements` 保留各 lane；owned `ResolvedVectorSource` 区分
 `BraceList`/`NamedVector`，保存完整书写范围，仅 named form 拥有真实 whole
@@ -553,6 +554,16 @@ public variant，只用于 vector pack/unpack。`ResolvedRegisterVector` 保存 
 `ResolvedRegisterRef`，空元素表示 destination-only `_` sink。resolver 与 checker 都要求
 bit-size instruction type、vector 总位宽等于 instruction 位宽，并拒绝 source sink、全 sink
 destination 与 sub-byte element。`MovB128PackUnpack` 携带 PTX 8.3 / SM 70 availability。
+
+既有 aggregate layout 在 brace 外接受普通 named `.reg .v2`/`.v4` vector；arity 来自
+已绑定声明，而非隐式 MOV modifier。named source metadata 保留真实 whole base 与
+canonical `NamedProjection` lane，identifier range、declaration type、`SymbolId` 和
+parameterized-member identity 完全一致；不伪造显式 component selector 或 brace syntax。
+layout selection 仅在 descriptor 授权的 aggregate/scalar alternative 处使用 declaration
+shape。unknown name 与 context-free input 不会被推断为 named aggregate；既有 scalar
+行为与诊断保留，包括无需声明的 scalar symbol-address source。width/type 与 target error
+不会重试其他 layout。scalar 与带 vector modifier 的普通 vector MOV 保留既有 layout。
+source form、opcode、type 与 source identity 在 owned module copy 和 instruction clone 后保留。
 
 `ResolvedFunctionRef` 保存源码 spelling、稳定 function `SymbolId` 与 `.func/.entry` 类别。
 device-function 地址沿用 `mov` 的 PTX 1.0 baseline；kernel function 地址携带 PTX 3.1 /

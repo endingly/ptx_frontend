@@ -1110,8 +1110,10 @@ CheckResult check_operands(
                                                 operand.locations, false,
                                                 context.instruction_range) &&
                    (!named || (descriptor && descriptor->allow_named_vector &&
-                               descriptor->vector_type_policy ==
-                                   VectorTypePolicy::Element &&
+                               (descriptor->vector_type_policy ==
+                                    VectorTypePolicy::Element ||
+                                descriptor->vector_type_policy ==
+                                    VectorTypePolicy::Aggregate) &&
                                !descriptor->source_value_vector)));
     if (!valid_source)
       diagnostics.push_back(

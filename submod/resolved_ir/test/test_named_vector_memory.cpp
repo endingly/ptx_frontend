@@ -125,7 +125,6 @@ TEST(NamedVectorMemory, RejectsBadNamedShapesAndExcludedFamilies) {
                                "ld.v8.u32 Q, [%rd];",
                                "ld.v4.u64 W, [%rd];",
                                "st.v4.u64 [%rd], Q;",
-                               "mov.b64 %rd, V;",
                                "atom.global.add.v2.u32 V, [A], V;",
                                "red.global.add.v2.u32 [A], V;",
                                "st.async.shared::cluster.mbarrier::complete_tx:"

@@ -54,17 +54,19 @@ def _pack(kind: str = "tensor_coordinate", **fields: Any) -> dict[str, Any]:
 
 
 class OperandNormalizationTests(unittest.TestCase):
-    def test_named_vector_option_is_typed_and_element_register_local(self) -> None:
+    def test_named_vector_option_is_typed_and_register_vector_local(self) -> None:
         """Named admission is explicit and cannot widen other vector domains."""
         self.assertFalse(normalize_operand(_vector()).vector_allow_named)
         self.assertTrue(normalize_operand(
             _vector(type_policy="element", allow_named=True)
         ).vector_allow_named)
+        self.assertTrue(normalize_operand(
+            _vector(type_policy="aggregate", allow_named=True)
+        ).vector_allow_named)
         for value in (1, "true", None, []):
             with self.subTest(value=value), self.assertRaises(TypeError):
                 normalize_operand(_vector(type_policy="element", allow_named=value))
-        for kind, policy in (("reg_vector", "aggregate"),
-                             ("value_vector", "element"),
+        for kind, policy in (("value_vector", "element"),
                              ("vector_reg", "element"), ("reg", "element")):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 normalize_operand(_vector(kind, type_policy=policy, allow_named=True))

@@ -1611,9 +1611,25 @@ resolve_reg_vector(const syntax_ast::AstOperand& operand,
   const auto* vector = std::get_if<syntax_ast::AstVectorPack>(&operand);
   const auto range = syntax_ast::sourceRange(operand);
   std::optional<WithLocs<ResolvedVectorRegisterRef>> whole_base;
+  if (!vector && allow_named && !required_arity &&
+      vector_type_policy == checker::VectorTypePolicy::Aggregate) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&operand);
+    const auto lookup =
+        identifier && context
+            ? context->symbols.lookup(context->scope, identifier->syntax.text)
+            : std::nullopt;
+    if (!lookup)
+      return std::unexpected(
+          ResolveDiagnostic{.range = range,
+                            .message = "A named aggregate vector requires a "
+                                       "bound register declaration."});
+    required_arity = context->symbols.symbol(lookup->symbol).vector_width;
+  }
   if (!vector && allow_named && required_arity &&
       (*required_arity == 2 || *required_arity == 4) &&
-      vector_type_policy == checker::VectorTypePolicy::Element) {
+      (vector_type_policy == checker::VectorTypePolicy::Element ||
+       vector_type_policy == checker::VectorTypePolicy::Aggregate)) {
     auto whole = resolve_vector_register(operand, context, *required_arity);
     if (!whole)
       return std::unexpected(whole.error());

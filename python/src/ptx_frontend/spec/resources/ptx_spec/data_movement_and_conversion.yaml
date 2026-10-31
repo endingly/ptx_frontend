@@ -384,6 +384,7 @@ operand_patterns:
       vector:
         kind: vector
         arity: [2, 4]
+        allow_named: true
 
   mov_unpack:
     - name: dst
@@ -395,6 +396,7 @@ operand_patterns:
       vector:
         kind: vector
         arity: [2, 4]
+        allow_named: true
         allow_sink: true
     - name: src
       kind: reg

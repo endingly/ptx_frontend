@@ -1162,7 +1162,7 @@ $defs:
         default: false
 
       allow_named:
-        description: "Admit a named ordinary vector register for an element-policy reg_vector."
+        description: "Admit a named ordinary vector register for an aggregate- or element-policy reg_vector."
         type: boolean
         default: false
 

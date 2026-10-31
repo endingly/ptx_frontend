@@ -13,7 +13,7 @@ not GPU execution, broadcast/truncation semantics or assembler parity.
 | v2 u32 constant-expression MOV → alias/overlap MOV → ST | Folded typed values, parameterized register members and source form survive ownership transfer. Destination aliases of one lane are duplicates; repeated sources and source/destination overlap remain legal. |
 | Named v2 f64 NC/LDU → MOV → ST | Memory and MOV retain their own type policies. Existing availability remains distinct: NC needs PTX 3.1 / SM 32, generic LDU PTX 2.0 / SM 20, explicit-global LDU PTX 2.0 plus f64 SM 13, and f64 MOV SM 13. |
 | Named-array constant address → vector LD → MOV → ST | A declared `.v4 .f32 A[]` still has scalar index stride four bytes, not sixteen. `A[4]` contributes sixteen bytes and can satisfy v4 alignment; a dynamic index reduces the known alignment to `gcd(base alignment, 4)`, so the same vector access is rejected when only four-byte alignment is guaranteed. |
-| Adjacent unsupported combinations | Atom/red remain brace-only; scalar bit pack/unpack retains its sink and B128 gates and does not admit named aggregates, float packing or scalar-to-scalar B128. Modern 256-bit memory uses legal scalar brace lanes, not oversized ordinary named declarations or widened vector MOV. |
+| Adjacent unsupported combinations | Atom/red remain brace-only; scalar bit pack/unpack accepts exact-width named ordinary aggregates and retains its sink and B128 gates; floating instruction types and scalar-to-scalar B128 remain excluded. Modern 256-bit memory uses legal scalar brace lanes, not oversized ordinary named declarations or widened vector MOV. |
 
 Owned revalidation checks complete source forms, component origin/order, actual
 declaration width, type/arity and source ownership, with located failures for
@@ -51,9 +51,10 @@ only with u32/s32/b32 and their existing availability. No fourth scalar hardware
 selector is invented. Sinks, predicate lanes, nested whole vectors, addresses,
 functions and symbols are not source lanes. Bare scalar vector sources such as
 `mov.v2.u32 V, 1` remain an unsupported frontend subset, not an ISA-invalid claim
-or a broadcast/truncation promise. Scalar `.b16/.b32/.b64/.b128` pack/unpack stays
-brace-only, including the B128 PTX 8.3 / SM 70 gates. No named scalar aggregate,
-floating pack or scalar-to-scalar B128 form is added. Other family fences and
+or a broadcast/truncation promise. Scalar `.b16/.b32/.b64/.b128` pack/unpack
+accepts braces or a complete ordinary named vector with exactly matching total
+width, retaining B128 PTX 8.3 / SM 70 gates. Floating instruction types and
+scalar-to-scalar B128 forms remain excluded. Other family fences and
 modern 256-bit brace memory forms are unchanged. Owned validation rejoins complete
 base/lane declarations and source ownership after source release/copy/move.
 
@@ -502,8 +503,9 @@ placement does not change which bound parameter identity the call must use.
 Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`
 or `.reg .v4` data operand alongside braces. Declaration width must equal arity,
 with at most 128 declared bits; memory equal-or-wider element rules remain.
-Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix, texture
-and scalar pack/unpack operands remain brace-only.
+Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix and texture
+operands retain their separate brace restrictions. Scalar bit pack/unpack also
+admits named ordinary vectors through its exact aggregate-width policy below.
 
 `ResolvedRegisterVector::elements` retains the lanes. Its owned `ResolvedVectorSource`
 distinguishes `BraceList`/`NamedVector`, saves the full written range, and only for
@@ -695,6 +697,19 @@ destination-only `_` sink. Resolution and checking require a bit-size
 instruction type, equal total vector/instruction widths, no source sink, at
 least one real destination register, and no sub-byte element.
 `MovB128PackUnpack` carries PTX 8.3 / SM 70 availability.
+
+The existing aggregate layouts accept ordinary named `.reg .v2`/`.v4` vectors
+alongside braces. Arity comes from the bound declaration, not an implicit MOV
+modifier. Named source metadata retains the real whole base and canonical
+`NamedProjection` lanes with identical identifier ranges, declaration type,
+`SymbolId` and parameterized-member identity; no explicit component selectors or
+synthetic brace syntax are introduced. Layout selection uses declaration shape
+only at descriptor-authorized aggregate/scalar alternatives. Unknown names and
+context-free inputs never imply a named aggregate; existing scalar behavior and
+diagnostics remain, including declaration-free scalar symbol-address sources.
+Width/type and target errors do not retry another layout. Scalar and modifier-typed ordinary vector MOV keep
+their existing layouts. Source form, opcode, type and source identity survive
+owned module copy and instruction cloning.
 
 `ResolvedFunctionRef` retains source spelling, a stable function `SymbolId`,
 and the `.func`/`.entry` classification. A device-function address uses the

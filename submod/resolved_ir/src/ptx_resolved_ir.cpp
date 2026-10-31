@@ -75,7 +75,8 @@ detail::resolve_selected_fields(
   const auto variant_name = syntax_variant.variant_name;
   const auto selected_layout = detail::select_operand_layout(
       syntax_variant, ast,
-      context ? context->texture_mode : TextureMode::Unified);
+      context ? context->texture_mode : TextureMode::Unified, resolved_variant,
+      context);
   if (!selected_layout)
     return std::unexpected(selected_layout.error());
 

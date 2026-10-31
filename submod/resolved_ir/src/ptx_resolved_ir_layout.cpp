@@ -339,6 +339,81 @@ bool is_more_specific_operand_layout(
   return strictly_more_specific;
 }
 
+/** Return a binding's field kind without inferring semantics from its name. */
+std::optional<ResolvedValueKind> binding_value_kind(
+    const ResolvedOperandLayoutDescriptor& layout,
+    const ResolvedOperandBindingDescriptor& binding) {
+  const auto field = std::ranges::find(layout.fields, binding.target_field_id,
+                                       &ResolvedFieldDescriptor::field_id);
+  return field == layout.fields.end() ? std::nullopt
+                                      : std::optional{field->value_kind};
+}
+
+/** Identify an authorized ordinary named aggregate using the paired typed binding. */
+bool named_aggregate_binding(const ResolvedOperandLayoutDescriptor& layout,
+                             size_t slot) {
+  if (slot >= layout.bindings.size())
+    return false;
+  const auto& binding = layout.bindings[slot];
+  return binding_value_kind(layout, binding) ==
+             ResolvedValueKind::RegisterVector &&
+         binding.allow_named_vector &&
+         binding.vector_type_policy == checker::VectorTypePolicy::Aggregate;
+}
+
+/** Filter only competing aggregate/scalar identifier slots by real declaration shape. */
+bool declaration_layout_eligible(
+    const SyntaxVariantDescriptor& syntax_variant,
+    const ResolvedVariantDescriptor& resolved_variant, size_t candidate,
+    const syntax_ast::AstInstruction& ast, const ResolveContext* context) {
+  if (candidate >= resolved_variant.operand_layouts.size() ||
+      syntax_variant.operand_layouts[candidate].kind !=
+          check_end::OperandLayoutKind::Flat)
+    return true;
+  const auto& layout = resolved_variant.operand_layouts[candidate];
+  if (layout.bindings.size() != ast.operands.size())
+    return true;
+  for (size_t slot = 0; slot < ast.operands.size(); ++slot) {
+    const auto* identifier =
+        std::get_if<syntax_ast::AstIdentifierRef>(&ast.operands[slot]);
+    if (!identifier) {
+      if (named_aggregate_binding(layout, slot) &&
+          !std::holds_alternative<syntax_ast::AstVectorPack>(
+              ast.operands[slot]))
+        return false;
+      continue;
+    }
+    const bool has_named_alternative = std::ranges::any_of(
+        resolved_variant.operand_layouts, [slot](const auto& other) {
+          return named_aggregate_binding(other, slot);
+        });
+    if (!has_named_alternative)
+      continue;
+    bool whole_vector = false;
+    if (context) {
+      const auto lookup =
+          context->symbols.lookup(context->scope, identifier->syntax.text);
+      if (lookup) {
+        const auto& symbol = context->symbols.symbol(lookup->symbol);
+        whole_vector =
+            symbol.state_space == base::DeclarationStateSpace::Register &&
+            (symbol.vector_width == 2 || symbol.vector_width == 4);
+      }
+    }
+    if (named_aggregate_binding(layout, slot)) {
+      if (!whole_vector)
+        return false;
+    } else {
+      const auto kind = binding_value_kind(layout, layout.bindings[slot]);
+      if (whole_vector && (kind == ResolvedValueKind::Register ||
+                           kind == ResolvedValueKind::RegOrImm ||
+                           kind == ResolvedValueKind::MovSource))
+        return false;
+    }
+  }
+  return true;
+}
+
 /**
  * @brief Select the operand layout descriptor that matches the actual operands of an instruction.
  *
@@ -348,11 +423,15 @@ bool is_more_specific_operand_layout(
  */
 std::expected<SelectedOperandLayout, ResolveDiagnostic> select_operand_layout(
     const SyntaxVariantDescriptor& variant,
-    const syntax_ast::AstInstruction& ast, TextureMode texture_mode) {
+    const syntax_ast::AstInstruction& ast, TextureMode texture_mode,
+    const ResolvedVariantDescriptor& resolved_variant,
+    const ResolveContext* context) {
   std::vector<SelectedOperandLayout> matches;
   for (size_t index = 0; index < variant.operand_layouts.size(); ++index) {
     const auto& layout = variant.operand_layouts[index];
-    if (!matches_operand_layout(layout, ast, texture_mode))
+    if (!matches_operand_layout(layout, ast, texture_mode) ||
+        !declaration_layout_eligible(variant, resolved_variant, index, ast,
+                                     context))
       continue;
     matches.push_back(
         SelectedOperandLayout{.descriptor = layout, .index = index});

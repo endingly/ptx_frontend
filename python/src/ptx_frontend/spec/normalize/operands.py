@@ -391,7 +391,7 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
     if (isinstance(raw.get("vector"), dict)
             and "allow_named" in raw["vector"]
             and raw["kind"] is not OperandKind.REGISTER_VECTOR):
-        raise ValueError("vector.allow_named requires element-policy reg_vector")
+        raise ValueError("vector.allow_named requires aggregate- or element-policy reg_vector")
 
     vector_arities: tuple[int, ...] = ()
     vector_arity_expression: OperandVectorArityExpression | None = None
@@ -446,9 +446,11 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
             raise TypeError("vector.allow_named must be a boolean")
         if "allow_named" in vector and (
             raw["kind"] is not OperandKind.REGISTER_VECTOR
-            or vector_type_policy is not OperandVectorTypePolicy.ELEMENT
+            or vector_type_policy not in {
+                OperandVectorTypePolicy.ELEMENT, OperandVectorTypePolicy.AGGREGATE
+            }
         ):
-            raise ValueError("vector.allow_named requires element-policy reg_vector")
+            raise ValueError("vector.allow_named requires aggregate- or element-policy reg_vector")
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."

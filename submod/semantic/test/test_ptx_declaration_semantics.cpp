@@ -60,6 +60,19 @@ TEST(PtxDeclarationSemantics, AcceptsIncompleteAndInferredAggregates) {
   EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/** Literal byte-mask classification is independent of the integer radix. */
+TEST(PtxDeclarationSemantics, AcceptsIntegerLiteralMaskRadices) {
+  for (const auto mask : {"255", "0377", "0b11111111", "0xff"}) {
+    const std::string source =
+        ".global .u32 target; .global .u8 numeric = " + std::string(mask) +
+        "(257); .global .u8 address = " + std::string(mask) + "(target + 1);";
+    SCOPED_TRACE(source);
+    const auto result = check(source);
+    EXPECT_TRUE(result.binding.diagnostics.empty());
+    EXPECT_TRUE(result.diagnostics.empty());
+  }
+}
+
 /** Opaque object handles cannot become initializer addresses through wrappers. */
 TEST(PtxDeclarationSemantics, RejectsOpaqueObjectInitializerSymbols) {
   const CheckedModule result = check(R"ptx(

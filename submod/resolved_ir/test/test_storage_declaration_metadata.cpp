@@ -99,7 +99,7 @@ TEST(ResolvedStorageDeclarations, BinaryExpressionsAndDimensions) {
 }
 
 /** Binary literal errors cannot disappear through conditional constant folding. */
-TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowAndHexOnlyMasks) {
+TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowInConditionalExpressions) {
   const std::string overflow = "0b1" + std::string(64, '0');
   for (const std::string source :
        {".global .u32 result = (" + overflow + " ? 7 : 7);",
@@ -110,9 +110,6 @@ TEST(ResolvedStorageDeclarations, RejectsBinaryOverflowAndHexOnlyMasks) {
         resolved.error(), declaration_semantics::DeclarationDiagnosticKind::
                               InvalidIntegerLiteral));
   }
-  EXPECT_FALSE(
-      resolveSource(".global .u32 invalid = 0b11111111(0xffff);").has_value());
-  EXPECT_TRUE(resolveSource(".global .u32 valid = 0xff(0xffff);").has_value());
 }
 
 /** Address-size keeps its enumerated source grammar. */

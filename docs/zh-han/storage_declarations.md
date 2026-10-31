@@ -88,6 +88,10 @@ typed field group 与对象索引路径；它们不进入这个 byte-offset 列�
 `StorageRelocation` 保存 bound symbol、
 可选的 parameterized member、state-space/generic/function address interpretation、
 byte addend 及可选原始 byte mask（`0xff` 左移 0、8、…、56 bit）。
+mask callee 必须为 integer literal；decimal、前导零 octal、binary 与 hexadecimal
+拼写（包括 unsigned suffix）使用公共 integer decoder，并选择相同的八个合法 mask 值。
+例如 `255(257)`、`0377(257)`、`0b11111111(257)` 和 `0xff(257)` 均存储 `1`。
+expression-valued 或 parenthesized mask callee 以及 floating literal 会被拒绝。
 mask 在应用 addend 之后选择一个 byte，并将其放入低八位；提取之后的算术会被拒绝，
 不会被重排到提取之前。
 symbol identity 沿用 lexical binding，包括内层 scope 的同名声明。

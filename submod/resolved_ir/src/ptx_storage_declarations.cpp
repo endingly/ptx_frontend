@@ -531,8 +531,7 @@ std::optional<StorageConstant> integer_constant(
         call == nullptr
             ? nullptr
             : std::get_if<syntax_ast::AstConstantLiteral>(&call->callee->node);
-    if (mask == nullptr ||
-        mask->value.kind != syntax_ast::AstImmediateKind::HexInteger) {
+    if (mask == nullptr) {
       return std::nullopt;
     }
     const auto mask_value =
@@ -739,8 +738,7 @@ std::optional<StorageRelocation> relocation(
           }
           const auto* mask =
               std::get_if<syntax_ast::AstConstantLiteral>(&value.callee->node);
-          if (!mask ||
-              mask->value.kind != syntax_ast::AstImmediateKind::HexInteger)
+          if (!mask)
             return std::nullopt;
           if (before_version(version, 7, 1)) {
             diagnose(diagnostics,

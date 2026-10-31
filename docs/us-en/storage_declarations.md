@@ -107,6 +107,11 @@ word is zero for elements of at most 64 bits. `StorageRelocation`
 retains the bound symbol, optional parameterized member, state-space/generic/
 function address interpretation, a byte addend, and an optional raw byte mask
 (`0xff` shifted by 0, 8, ..., 56 bits).
+Mask callees must be integer literals; decimal, leading-zero octal, binary,
+and hexadecimal spellings (including an unsigned suffix) use the common integer
+decoder and select the same eight allowed mask values. For example,
+`255(257)`, `0377(257)`, `0b11111111(257)`, and `0xff(257)` each store `1`.
+Expression-valued or parenthesized mask callees and floating literals are rejected.
 The mask selects a byte after applying the addend and places that byte in the
 low eight bits. Arithmetic after extraction is rejected rather than reordered.
 Symbol identity follows lexical binding, including same-named declarations in

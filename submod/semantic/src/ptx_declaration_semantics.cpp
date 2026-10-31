@@ -483,8 +483,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           }
           const auto* mask =
               std::get_if<syntax_ast::AstConstantLiteral>(&value.callee->node);
-          if (mask != nullptr &&
-              mask->value.kind == syntax_ast::AstImmediateKind::HexInteger) {
+          if (mask != nullptr && callee.integer_value) {
             if (callee.category == ExpressionCategory::Integer &&
                 (argument.category == ExpressionCategory::Integer ||
                  argument.category == ExpressionCategory::Address)) {

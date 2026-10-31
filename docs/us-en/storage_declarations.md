@@ -152,11 +152,15 @@ supported compound arithmetic and integer-condition ternaries use the shared
 binary64 constant evaluator, followed by the common `.f32`/`.f64` destination
 conversion. Mixed integer/floating operands promote to binary64 using integer
 signedness; floating comparisons produce integer results. Exact-F32 literals
-retain their raw payload only as direct initializers, including parentheses.
-Unary signs, arithmetic, comparisons, casts, and conditional expression uses of
+retain their raw payload only as unsigned direct initializers. Parentheses,
+unary signs, arithmetic, comparisons, casts, and conditional expression uses of
 exact-F32 are rejected even in unselected branches. Decimal and exact-F64 unary
-signs remain valid, including negative zero. Floating results do not initialize
-integer or bit destinations. Opaque object
+signs remain valid, including negative zero. Bit destinations accept only equal
+source precision: `.b32` receives a direct exact-F32 literal, while `.b64`
+receives decimal/exact-F64 literals or supported binary64 expressions. Raw
+payload and negative-zero bits are preserved. `.b8/.b16/.b128` and mismatched
+`.b32/.b64` source precision are rejected; integer destinations remain incompatible
+with floating results. Opaque object
 metadata includes module-global declarations with preserved array shape,
 explicit alignment, and typed named-member initialization. See the
 [texture contract](converage/texture_coverage.md) for its identity and static-field boundary.

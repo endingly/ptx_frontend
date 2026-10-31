@@ -10,6 +10,15 @@
 
 namespace ptx_frontend::resolved_ir {
 namespace detail {
+/** Accept ordinary floating destinations and bit carriers of the lexical source width. */
+bool floating_destination_compatible(ScalarType destination,
+                                     ScalarType source) {
+  return destination == ScalarType::F32 || destination == ScalarType::F64 ||
+         (scalar_kind(destination) == base::ScalarKind::Bit &&
+          base::scalar_types_compatible(destination, source,
+                                        base::ScalarTypeSizePolicy::SameWidth));
+}
+
 ResolveDiagnostic invalid_immediate(const syntax_ast::AstImmediate& immediate,
                                     std::string message) {
   return ResolveDiagnostic{
@@ -187,14 +196,9 @@ uint64_t widen_float_literal_bits(uint32_t bits) {
 std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
     const syntax_ast::AstImmediate& immediate, ScalarType type,
     std::string_view text, bool negative, uint8_t bit_width) {
-  if (negative) {
-    return std::unexpected(invalid_immediate(
-        immediate,
-        fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
-                    immediate.syntax.text)));
-  }
   const bool packed_raw32 = is_raw32_fp8x4_type(type) && bit_width == 32;
-  if (type != ScalarType::F32 && type != ScalarType::F64 && !packed_raw32) {
+  const auto source_type = bit_width == 32 ? ScalarType::F32 : ScalarType::F64;
+  if (!floating_destination_compatible(type, source_type) && !packed_raw32) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format(
@@ -207,6 +211,12 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
   const auto bits = parse_unsigned_literal(immediate, text, 16);
   if (!bits)
     return std::unexpected(bits.error());
+  if (negative) {
+    return resolve_numeric_value(
+        declaration_semantics::FloatingConstantValue{
+            -std::bit_cast<double>(*bits)},
+        immediate.syntax.range, type);
+  }
   if (packed_raw32) {
     if (*bits > std::numeric_limits<uint32_t>::max()) {
       return std::unexpected(invalid_immediate(
@@ -229,7 +239,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_float_bits_literal(
 std::expected<ResolvedImmediate, ResolveDiagnostic>
 resolve_decimal_float_literal(const syntax_ast::AstImmediate& immediate,
                               ScalarType type, std::string_view text) {
-  if (type != ScalarType::F32 && type != ScalarType::F64) {
+  if (!floating_destination_compatible(type, ScalarType::F64)) {
     return std::unexpected(invalid_immediate(
         immediate,
         fmt::format("Decimal floating literal '{}' is incompatible with scalar "
@@ -272,7 +282,7 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_numeric_value(
   if (const auto* integer =
           std::get_if<declaration_semantics::IntegerConstantValue>(&value))
     return convert_integer_value(*integer, range, type, require_target_range);
-  if (type != ScalarType::F32 && type != ScalarType::F64)
+  if (!floating_destination_compatible(type, ScalarType::F64))
     return std::unexpected(
         ResolveDiagnostic{.range = range,
                           .message = "Floating constant expression is "
@@ -371,6 +381,11 @@ std::expected<ResolvedImmediate, ResolveDiagnostic> resolve_immediate_value(
       return resolve_integer_literal(immediate, type, text, negative,
                                      require_target_range);
     case syntax_ast::AstImmediateKind::F32Hex:
+      if (text.size() != immediate.syntax.text.size())
+        return std::unexpected(invalid_immediate(
+            immediate,
+            fmt::format("Floating bit-pattern literal '{}' cannot have a sign.",
+                        immediate.syntax.text)));
       return resolve_float_bits_literal(immediate, type, text, negative, 32);
     case syntax_ast::AstImmediateKind::F64Hex:
       return resolve_float_bits_literal(immediate, type, text, negative, 64);

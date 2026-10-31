@@ -576,12 +576,23 @@ strict conversion explicitly. Call literals checked against formal parameter
 types and address offsets retain strict target-width representability. A signed
 `-0` is numerically zero,
 whereas floating negative zero retains its IEEE sign bit. Decimal floats
-currently convert to `F32` and `F64`; a single leading `+` is normalized only
-at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
-their normal floating semantics. Raw `0f`/`0d` bit-pattern rules are unchanged.
+convert to `F32`, `F64`, and equal-source-width `B64`; a single leading `+`
+is normalized at decimal decoding, while a leading `-`, signed zero, and exponent signs retain
+their normal floating semantics. Exact-F32 `0f` literals reject parentheses
+and both unary signs, including lexer-compacted signed spellings. Exact-F64
+`0d` literals admit unary signs through the shared numeric conversion, preserving negative zero.
 `0f<8 hex>` and `0d<16 hex>` are raw IEEE bit patterns for `F32` and `F64`
-respectively. Other floating formats require explicit quantization rules and
-must not silently take the integer path.
+respectively. Scalar data slots that already admit constants also accept
+unsigned direct exact-F32 into `B32`, and decimal/exact-F64 literals or
+supported binary64 expressions into `B64`. This uses source precision rather
+than arbitrary floating conversion: exact-F32 into `B64`, binary64 sources into
+`B32`, and floating sources into `B8`/`B16`/`B128` are rejected. Typed immediates
+retain their bit destination and raw payload without integer-source provenance;
+owned call literal revalidation retains lexical source kind and spelling.
+Integer-only controls and register-only slots keep their role requirements.
+Exact-F32 operators remain excluded, including unselected branches. Other
+floating formats require explicit quantization rules and must not silently take
+the integer path.
 
 `ResolvedRegisterRef` owns the complete source spelling and its
 `ResolvedRegisterClass`. During module resolution it also stores the

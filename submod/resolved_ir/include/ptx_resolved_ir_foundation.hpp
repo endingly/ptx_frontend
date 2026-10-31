@@ -1593,6 +1593,10 @@ struct ResolvedImmediate {
     return false;
   if (kind == base::ScalarKind::Float)
     return !range && !value.integer_source_bits && !value.is_negative;
+  // Equal-width floating sources carry bit data without integer provenance.
+  if ((value.type == ScalarType::B32 || value.type == ScalarType::B64) &&
+      !value.integer_source_bits)
+    return !range && !value.is_negative;
   if (kind != base::ScalarKind::Bit && kind != base::ScalarKind::Signed &&
       kind != base::ScalarKind::Unsigned)
     return false;

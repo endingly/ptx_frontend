@@ -466,10 +466,18 @@ representability；fixed scalar type 只表达 provenance。generated range、ex
 multiple-of control 比较保留的 source bits，而无约束的 control 显式选择严格 conversion。
 按 formal parameter type 检查的 call literal 与 address offset 继续执行严格的 target-width
 representability 检查。signed `-0` 在数值上是 zero，而 floating negative
-zero 保留其 IEEE sign bit。decimal float 目前支持转换至 `F32` 与 `F64`；
+zero 保留其 IEEE sign bit。decimal float 支持转换至 `F32`、`F64` 及等 source width 的 `B64`；
 单个 leading `+` 只在 decimal decoding 时规范化，而 leading `-`、signed zero 与
-exponent sign 保持通常的 floating semantics。raw `0f`/`0d` bit-pattern rule 不变。
+exponent sign 保持通常的 floating semantics。exact-F32 `0f` literal 拒绝括号与两个 unary sign，包括 lexer 合并的 signed spelling；
+exact-F64 `0d` literal 通过公共 numeric conversion 接受 unary sign 并保留 negative zero。
 `0f<8 hex>` 与 `0d<16 hex>` 分别作为 `F32` 与 `F64` 的原始 IEEE bit pattern。
+原本允许 constant 的 scalar data slot 也接受 unsigned direct exact-F32
+进入 `B32`，以及 decimal/exact-F64 literal 或受支持的 binary64 expression 进入 `B64`。
+这一规则依据 source precision：exact-F32 进入 `B64`、binary64 source 进入 `B32`、
+floating source 进入 `B8`/`B16`/`B128` 均被拒绝。typed immediate 保留 bit destination 与
+raw payload，不伪造 integer-source provenance；owned call literal 重验保留 lexical
+source kind 与 spelling。integer-only control 和 register-only slot 仍遵循各自 role
+要求。exact-F32 operator 仍被排除，包括未选中的 branch。
 其他浮点格式需要其明确的量化规则后再加入，不能静默按整数处理。
 
 `ResolvedRegisterRef` 拥有完整源码拼写与 `ResolvedRegisterClass`。在 module resolution

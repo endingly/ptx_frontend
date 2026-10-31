@@ -160,8 +160,9 @@ TEST(DecimalFloatSigns, PreservesRawBitPatternSignRules) {
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(positive_instruction);
   const auto positive_bits = resolve_immediate_literal(
       immediateOperand(*positive_instruction), ScalarType::F32);
-  ASSERT_TRUE(positive_bits.has_value()) << positive_bits.error().message;
-  EXPECT_EQ(positive_bits->bits, 0x3f800000u);
+  ASSERT_FALSE(positive_bits.has_value());
+  EXPECT_EQ(positive_bits.error().message,
+            "Floating bit-pattern literal '+0f3f800000' cannot have a sign.");
 
   const auto negative_instruction = parseImmediate("-0f3f800000");
   ASSERT_INSTRUCTION_PARSE_SUCCEEDS(negative_instruction);
@@ -170,6 +171,26 @@ TEST(DecimalFloatSigns, PreservesRawBitPatternSignRules) {
   ASSERT_FALSE(negative_bits.has_value());
   EXPECT_EQ(negative_bits.error().message,
             "Floating bit-pattern literal '-0f3f800000' cannot have a sign.");
+}
+
+/** Signed exact-F64 literals use the same numeric unary semantics as expressions. */
+TEST(DecimalFloatSigns, ResolvesExactF64SignsAndNegativeZero) {
+  for (const auto& [source, expected] :
+       {std::pair{"+0d3ff0000000000000", uint64_t{0x3ff0000000000000}},
+        std::pair{"-0d3ff0000000000000", uint64_t{0xbff0000000000000}},
+        std::pair{"+0d8000000000000000", uint64_t{0x8000000000000000}},
+        std::pair{"-0d8000000000000000", uint64_t{0}}}) {
+    const auto parsed = parseImmediate(source);
+    ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
+    for (const auto type : {ScalarType::F64, ScalarType::B64}) {
+      const auto value =
+          resolve_immediate_literal(immediateOperand(*parsed), type);
+      ASSERT_TRUE(value.has_value()) << value.error().message;
+      EXPECT_EQ(value->bits, expected);
+      EXPECT_EQ(value->type, type);
+      EXPECT_FALSE(value->integer_source_bits);
+    }
+  }
 }
 
 /** Reject malformed leading signs without changing exponent or raw-bit syntax. */

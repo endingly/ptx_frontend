@@ -580,16 +580,9 @@ std::optional<StorageConstant> integer_constant(
 std::optional<StorageConstant> floating_constant(
     const AstConstantExpression& expression, base::ScalarType type,
     std::vector<DeclarationDiagnostic>& diagnostics) {
-  if (type != base::ScalarType::F32 && type != base::ScalarType::F64)
-    return std::nullopt;
-  const AstConstantExpression* current = &expression;
-  while (const auto* parenthesized =
-             std::get_if<syntax_ast::AstConstantParenthesized>(&current->node))
-    current = parenthesized->expression.get();
-
   // Exact single-precision literals retain their payload outside expressions.
   if (const auto* literal =
-          std::get_if<syntax_ast::AstConstantLiteral>(&current->node);
+          std::get_if<syntax_ast::AstConstantLiteral>(&expression.node);
       literal && literal->value.kind == syntax_ast::AstImmediateKind::F32Hex) {
     const auto resolved = resolve_immediate_literal(literal->value, type);
     if (resolved)

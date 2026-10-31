@@ -50,6 +50,8 @@ struct ExpressionInfo {
   std::optional<IntegerValue> integer_value;
   /** Concrete binary64 value when the expression is floating and evaluable. */
   std::optional<double> floating_value;
+  /** Lexical precision for direct floating literals; expression results are F64. */
+  base::ScalarType floating_type = base::ScalarType::F64;
 };
 
 using DiagnosticSink = std::vector<DeclarationDiagnostic>*;
@@ -270,7 +272,7 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
 }
 
 /**
- * Classify/evaluate one source tree; direct F32 permission crosses parentheses only.
+ * Classify/evaluate one source tree; direct F32 permission is limited to its root.
  * Operator operands always use expression rules, including unselected branches.
  */
 ExpressionInfo classifyExpression(
@@ -452,8 +454,11 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                           .type = ExpressionInfo::IntegerType::Signed,
                       }};
             case syntax_ast::AstImmediateKind::F32Hex:
-              if (allow_direct_f32)
-                return {ExpressionCategory::Floating, std::nullopt};
+              if (allow_direct_f32 &&
+                  !value.value.syntax.text.starts_with('+') &&
+                  !value.value.syntax.text.starts_with('-'))
+                return {ExpressionCategory::Floating, std::nullopt,
+                        std::nullopt, base::ScalarType::F32};
               if (failure) {
                 if (failure->message.empty() || failure->deferred)
                   *failure = {value.value.syntax.range,
@@ -464,14 +469,20 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
               return {};
             case syntax_ast::AstImmediateKind::F64Hex: {
               uint64_t bits{};
-              const auto& text = value.value.syntax.text;
+              std::string_view text = value.value.syntax.text;
+              const bool negative = text.starts_with('-');
+              if (negative || text.starts_with('+'))
+                text.remove_prefix(1);
+              if (text.size() < 2)
+                return {};
               const auto parsed = std::from_chars(
                   text.data() + 2, text.data() + text.size(), bits, 16);
               if (parsed.ec != std::errc{} ||
                   parsed.ptr != text.data() + text.size())
                 return {};
+              const double number = std::bit_cast<double>(bits);
               return {ExpressionCategory::Floating, std::nullopt,
-                      std::bit_cast<double>(bits)};
+                      negative ? -number : number};
             }
             case syntax_ast::AstImmediateKind::DecimalFloat: {
               double number{};
@@ -495,8 +506,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           return {ExpressionCategory::Address, std::nullopt};
         } else if constexpr (std::same_as<
                                  Value, syntax_ast::AstConstantParenthesized>) {
-          return classifyExpression(*value.expression, diagnostics, failure,
-                                    allow_direct_f32);
+          return classifyExpression(*value.expression, diagnostics, failure);
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCall>) {
           const ExpressionInfo callee =
               classifyExpression(*value.callee, diagnostics, failure);
@@ -895,8 +905,8 @@ bool isOpaqueObjectType(std::string_view type) {
   return base::opaque_resource_kind(type).has_value();
 }
 
-bool initializerTypeAccepts(std::string_view type,
-                            ExpressionCategory category) {
+bool initializerTypeAccepts(std::string_view type, const ExpressionInfo& info) {
+  const auto category = info.category;
   if (category == ExpressionCategory::Address)
     return type == ".u32" || type == ".u64";
   if (category == ExpressionCategory::Integer) {
@@ -904,6 +914,11 @@ bool initializerTypeAccepts(std::string_view type,
            type.starts_with(".b") || type == ".pred";
   }
   if (category == ExpressionCategory::Floating) {
+    const auto* destination = base::find_scalar_type_metadata(type);
+    if (destination && destination->kind == base::ScalarKind::Bit)
+      return base::scalar_types_compatible(
+          destination->type, info.floating_type,
+          base::ScalarTypeSizePolicy::SameWidth);
     return type.starts_with(".f") || type.starts_with(".bf") ||
            type.starts_with(".tf") || type.starts_with(".e");
   }
@@ -2464,7 +2479,7 @@ class Checker {
                  expression->range,
                  "Initializer contains an invalid constant expression.");
       } else if (!isUnsupportedInitializerType(element_type) &&
-                 !initializerTypeAccepts(element_type, info.category)) {
+                 !initializerTypeAccepts(element_type, info)) {
         diagnose(DeclarationDiagnosticKind::InitializerTypeMismatch,
                  expression->range,
                  fmt::format(

@@ -5,10 +5,12 @@
 `register_width: same_width` 同时检查位宽和基础类型兼容性，而非枚举 identity：
 bit-size 寄存器可承载同宽兼容的整数或浮点 operand，同宽有符号与无符号整数声明可互换。
 整数与浮点之间的替换仍然非法。`mul.wide.u32` 和 `mad.wide.u32` 仍要求 32 位乘数、
-64 位结果；`mad` 的加数也必须为 64 位。本次不引入更宽寄存器放宽。
+64 位结果；`mad` 的加数也必须为 64 位。这些 same-width operand 拒绝更宽寄存器。
 
 `exact` 保留枚举 identity 语义，适用于显式声明格式要求，不能仅因为普通算术 operand
-位宽固定就使用它。`equal_or_wider` 和立即数转换不变。resolution 仍构造相同 IR，
+位宽固定就使用它。`equal_or_wider` 按 PTX ISA 9.3 Tables 27/28 为适用的
+`ld`/`st`/`cvt` operand 接受最宽为 `.b128` 的兼容 bit carrier。声明资格由中央检查；
+instruction、format、PTX-version 和 SM gate 仍然适用。立即数转换不变。resolution 仍构造相同 IR，
 generated checker 按 descriptor policy 检查已绑定寄存器声明；仅 resolve 成功不表示
 整个模块的指令均通过 checking。
 

@@ -286,7 +286,7 @@ TEST(ScalarTypeMetadata, AppliesExplicitRegisterSizePolicy) {
       scalar_types_compatible(ScalarType::F64, ScalarType::F32, wider));
   EXPECT_FALSE(
       scalar_types_compatible(ScalarType::F64, ScalarType::U32, wider));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       scalar_types_compatible(ScalarType::B128, ScalarType::U32, wider));
   EXPECT_TRUE(
       scalar_types_compatible(ScalarType::B128, ScalarType::B128, wider));

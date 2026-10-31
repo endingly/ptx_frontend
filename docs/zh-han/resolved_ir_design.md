@@ -589,13 +589,16 @@ element type policy：每个 register element 都按 instruction type 检查，�
 `EqualOrWider` register width。legacy payload 最多 128 bit；generated cross constraint
 另加入 PTX 8.8/SM 100 的精确 256-bit `.v8` × 32-bit 与 `.v4` × 64-bit form，地址已知时
 要求 global，并允许部分 sink。默认 register-width policy 为 `SameWidth`，
-保持 `mov/add/sub`、immediate 与 special-register 的既有行为；只有 `ld` destination 与
-`st` source register descriptor 选择 `EqualOrWider`，因此声明 register 位宽可大于等于
+保持 `mov/add/sub`、immediate 与 special-register 的既有行为；`ld` destination、
+`st` source register descriptor 及适用的 `cvt` data operand 选择 `EqualOrWider`，
+因此声明 register 位宽可大于等于
 instruction type。通过 size 检查后，任一侧为 bit type 即兼容，fundamental signed/unsigned
 integer 互相兼容，float 只接受 exact type/size，integer/float 仍不兼容。这同时覆盖声明
-register 不超过 64-bit 的 wider load destination 与 store source（包括 store truncation）。
-wider actual `.b128` register 用于 narrower selected instruction 时，仍由 `EqualOrWider`
-policy 明确拒绝；exact `.b128` declaration 可用于 selected `.b128` memory instruction。
+register 最宽为 `.b128` 的 wider load destination、store source（包括 store truncation）
+与适用的 conversion operand，遵循 PTX ISA 9.3 Tables 27/28。中央 declaration semantics
+将 `.b128` 归类为 fundamental，同时拒绝 instruction-only declaration format 和超过
+128 bit 的 register vector。声明资格不会绕过 instruction、format、PTX-version 或 SM
+gate：selected `.b128` memory instruction 仍要求 PTX 8.3 / SM 70。
 既有 `mov` vector consumer 的 exact `.b128` compatibility 不受影响。当前 memory subset 见
 [LD 覆盖](converage/ld_coverage.md) 与 [ST 覆盖](converage/st_coverage.md)。
 
@@ -1012,8 +1015,8 @@ instruction 约束仍不属于当前 ABI。
 
 direct-call ABI、function-local call-argument `.param` memory、带限定的 `::entry`/`::func`
 form，以及 call adjacency/predication constraint 均由 module resolution 覆盖。indirect-call
-metadata、由生成的 `MovScalar` type domain 拒绝的 scalar `.b128` 与 wider `.b128` register
-所需的 declaration-type availability 仍不在本切片范围内。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
+metadata 与由生成的 `MovScalar` type domain 拒绝的 scalar `.b128` 仍不在本切片范围内。
+wider `.b128` carrier 使用中央 register declaration rule 与所选 instruction 的 width policy。legacy scalar/vector `ld/st` cache operator、PTX 8.8 modern memory vector、static
 memory-address alignment 与 memory consistency qualifier 已纳入本切片。
 
 ## Owned Video 操作数

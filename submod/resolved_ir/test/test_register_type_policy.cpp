@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
@@ -209,6 +210,127 @@ TEST(RegisterTypePolicy, BaseFundamentalCompatibilityMatrixIsIndependent) {
   };
   expect_matrix(kScalarCompatibility32);
   expect_matrix(kScalarCompatibility64);
+}
+
+/** PTX Tables 27/28 admit a b128 carrier without changing other width policies. */
+TEST(RegisterTypePolicy, B128CarrierCompatibilityIsIndependentOfDescriptors) {
+  using base::ScalarTypeSizePolicy;
+  constexpr std::array narrower_types{
+      ScalarType::B8,  ScalarType::B16, ScalarType::B32, ScalarType::B64,
+      ScalarType::U8,  ScalarType::U16, ScalarType::U32, ScalarType::U64,
+      ScalarType::S8,  ScalarType::S16, ScalarType::S32, ScalarType::S64,
+      ScalarType::F16, ScalarType::F32, ScalarType::F64};
+  for (const auto type : narrower_types) {
+    SCOPED_TRACE(static_cast<int>(type));
+    EXPECT_TRUE(base::scalar_types_compatible(
+        ScalarType::B128, type, ScalarTypeSizePolicy::EqualOrWider));
+    for (const auto policy :
+         {ScalarTypeSizePolicy::Exact, ScalarTypeSizePolicy::SameWidth,
+          ScalarTypeSizePolicy::WordOrDoubleword}) {
+      EXPECT_FALSE(
+          base::scalar_types_compatible(ScalarType::B128, type, policy));
+    }
+    EXPECT_FALSE(base::scalar_types_compatible(
+        type, ScalarType::B128, ScalarTypeSizePolicy::EqualOrWider));
+  }
+}
+
+/** Build complete source with a declared carrier and one independently chosen use. */
+std::string carrierSource(std::string_view carrier,
+                          std::string_view instruction,
+                          std::string_view version = "9.3",
+                          std::string_view target = "sm_100") {
+  return ".version " + std::string(version) + "\n.target " +
+         std::string(target) +
+         "\n.address_size 64\n.global .align 16 .b128 A; "
+         ".entry kernel() { .reg ." +
+         std::string(carrier) + " %q; " + std::string(instruction) + " }";
+}
+
+/** Resolve into owned IR so source, parser, and AST are gone before validation. */
+std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveOwnedCarrier(
+    std::string source) {
+  PtxSyntaxParser parser(source);
+  const auto ast = parser.parseModule();
+  if (!ast || !ast.diagnostics.empty()) {
+    ADD_FAILURE() << "Carrier fixture must parse without diagnostics.";
+    return std::unexpected(ModuleResolveDiagnostics{});
+  }
+  return resolveModuleOnly(*ast);
+}
+
+/** Wider bit carriers work through source checking and independent owned checking. */
+TEST(RegisterTypePolicy, B128CarriersPassLoadStoreAndConversionBoundaries) {
+  constexpr std::array instructions{
+      "ld.global.u32 %q, [A];", "st.global.u32 [A], %q;",
+      "cvt.u32.u32 %q, 1;",     "cvt.u32.u32 %q, %q;",
+      "ld.global.f32 %q, [A];", "st.global.f32 [A], %q;",
+      "cvt.rn.f32.u32 %q, %q;"};
+  for (const auto carrier : {"b64", "b128"}) {
+    for (const auto instruction : instructions) {
+      const auto source = carrierSource(carrier, instruction);
+      SCOPED_TRACE(source);
+      PtxSyntaxParser parser(source);
+      const auto ast = parser.parseModule();
+      ASSERT_TRUE(ast.has_value());
+      ASSERT_TRUE(ast.diagnostics.empty());
+      const auto resolved = resolveAndValidateModule(*ast);
+      ASSERT_TRUE(resolved.has_value()) << resolved.error().front().message;
+      expectAccepted(validateModule(*ast, *resolved));
+
+      const auto owned = resolveOwnedCarrier(source);
+      ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
+      expectAccepted(validateModule(*owned));
+    }
+  }
+}
+
+/** A carrier declaration does not inherit the newer b128 instruction minima. */
+TEST(RegisterTypePolicy, B128CarriersRetainOlderInstructionsAndTargetGates) {
+  for (const auto instruction :
+       {"ld.global.u32 %q, [A];", "st.global.u32 [A], %q;",
+        "cvt.u32.u32 %q, 1;"}) {
+    const auto owned =
+        resolveOwnedCarrier(carrierSource("b128", instruction, "8.0", "sm_60"));
+    ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
+    expectAccepted(validateModule(*owned));
+  }
+  for (const auto instruction :
+       {"ld.global.b128 %q, [A];", "st.global.b128 [A], %q;"}) {
+    for (const auto& [version, target] :
+         {std::pair{"8.2", "sm_70"}, std::pair{"9.3", "sm_60"},
+          std::pair{"8.3", "sm_70"}}) {
+      const auto owned = resolveOwnedCarrier(
+          carrierSource("b128", instruction, version, target));
+      ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
+      const auto checked = validateModule(*owned);
+      EXPECT_EQ(checked.has_value(), std::string_view(version) == "8.3");
+    }
+  }
+}
+
+/** Wider carriers do not relax same-width arithmetic or mandatory format storage. */
+TEST(RegisterTypePolicy, B128CarriersRetainWidthCategoryAndFormatRejections) {
+  for (const auto& [carrier, instruction] :
+       {std::pair{"b128", "add.u32 %q, %q, %q;"},
+        std::pair{"b16", "ld.global.u32 %q, [A];"},
+        std::pair{"b16", "st.global.u32 [A], %q;"},
+        std::pair{"b16", "cvt.u32.u32 %q, 1;"},
+        std::pair{"f64", "ld.global.u32 %q, [A];"},
+        std::pair{"f64", "st.global.u32 [A], %q;"},
+        std::pair{"f64", "cvt.u32.u32 %q, 1;"},
+        std::pair{"b128", "fma.rn.bf16 %q, %q, %q, %q;"}}) {
+    const auto source = carrierSource(carrier, instruction);
+    SCOPED_TRACE(source);
+    PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    ASSERT_TRUE(ast.has_value());
+    ASSERT_TRUE(ast.diagnostics.empty());
+    EXPECT_FALSE(resolveAndValidateModule(*ast));
+    const auto owned = resolveOwnedCarrier(source);
+    ASSERT_TRUE(owned.has_value()) << owned.error().front().message;
+    EXPECT_FALSE(validateModule(*owned));
+  }
 }
 
 /** Construct a wide multiply fixture with independently chosen declaration types. */

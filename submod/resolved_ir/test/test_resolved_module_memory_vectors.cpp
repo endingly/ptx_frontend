@@ -858,7 +858,11 @@ TEST(ResolvedModule, ChecksBoundLoadStoreRegisterWidthPolicy) {
     EXPECT_TRUE(checked.has_value());
   }
 
-  for (size_t index = 8; index < body.size(); ++index) {
+  // Wider b128 carriers follow the same load/store policy as b64 carriers.
+  for (size_t index = 14; index < body.size(); ++index)
+    EXPECT_TRUE(body[index]->check(context).has_value());
+
+  for (size_t index = 8; index < 14; ++index) {
     const auto checked = body[index]->check(context);
     ASSERT_FALSE(checked.has_value());
     ASSERT_EQ(checked.error().size(), 1u);

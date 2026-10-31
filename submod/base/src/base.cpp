@@ -39,11 +39,6 @@ bool scalar_types_compatible(ScalarType actual, ScalarType instruction,
     return true;
   if (size_policy == ScalarTypeSizePolicy::Exact)
     return false;
-  // Reject wider .b128 until declaration-type availability is
-  // checked centrally; remove this guard when that registry/checker exists.
-  if (size_policy == ScalarTypeSizePolicy::EqualOrWider &&
-      actual == ScalarType::B128)
-    return false;
   const uint8_t actual_size = scalar_size_of(actual);
   const uint8_t instruction_size = scalar_size_of(instruction);
   if (size_policy == ScalarTypeSizePolicy::WordOrDoubleword) {

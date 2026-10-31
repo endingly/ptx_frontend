@@ -743,17 +743,20 @@ instruction type, with `EqualOrWider` register width accepted. Legacy payloads
 are capped at 128 bits; the generated cross constraint adds only exact 256-bit
 `.v8` × 32-bit and `.v4` × 64-bit forms at PTX 8.8/SM 100, global when known,
 with partial sinks. The default register-width policy is `SameWidth`, preserving
-`mov/add/sub`, immediate, and special-register behavior. Only `ld` destination
-and `st` source register descriptors select `EqualOrWider`, so the declared
+`mov/add/sub`, immediate, and special-register behavior. `ld` destination
+and `st` source register descriptors, together with applicable `cvt` data
+operands, select `EqualOrWider`, so the declared
 register may be at least as wide as the instruction type. After that size
 check, either side being a bit type is compatible, signed/unsigned fundamental
 integers are mutually compatible, floats require the exact type/size, and
 integer/float combinations remain incompatible. This covers wider load
-destinations and store sources through 64-bit declared registers, including
-store truncation. A wider actual `.b128` register is deliberately rejected by
-the `EqualOrWider` policy for a narrower selected instruction; an exact `.b128`
-declaration is accepted for a selected `.b128` memory instruction. Exact
-`.b128` compatibility remains unchanged for existing `mov` vector consumers.
+destinations, store sources (including truncation), and applicable conversion
+operands through `.b128` declared bit registers, following PTX ISA 9.3 Tables
+27/28. Central declaration semantics classifies `.b128` as fundamental while
+rejecting instruction-only declaration formats and register vectors over 128
+bits. Declaration eligibility does not bypass instruction, format, PTX-version,
+or SM gates: selected `.b128` memory instructions still require PTX 8.3 / SM 70.
+Exact `.b128` compatibility remains unchanged for existing `mov` vector consumers.
 The focused [LD coverage](converage/ld_coverage.md) and [ST coverage](converage/st_coverage.md)
 documents define the current memory subset.
 
@@ -1264,8 +1267,8 @@ Implementation entry points are
 Direct/indirect-call ABI plus function-local call-argument `.param` memory, qualified
 `::entry`/`::func` forms, and call adjacency/predication constraints are covered
 by module resolution. Scalar `.b128` is rejected by the generated `MovScalar`
-type domain; declaration-type availability for wider `.b128` registers remains
-outside this slice. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
+type domain; wider `.b128` carriers use the central register declaration rules
+and the selected instruction's width policy. Legacy scalar/vector `ld`/`st` cache operators, PTX 8.8 modern memory
 vectors, static memory-address alignment, and memory-consistency qualifiers are
 covered here.
 

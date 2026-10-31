@@ -7,11 +7,15 @@ compatibility. It is not enum identity: bit-size registers can carry compatible
 same-width integer or floating operands, and signed/unsigned integer declarations
 can be interchanged at the same width. Integer/float substitutions remain errors.
 `mul.wide.u32` and `mad.wide.u32` still require 32-bit multiplicands and a 64-bit
-result (and 64-bit addend for `mad`). No wider-register relaxation is introduced.
+result (and 64-bit addend for `mad`). These same-width operands reject wider
+registers.
 
 `exact` retains its existing enum-identity meaning. It is appropriate for
 explicit declaration-format requirements, not ordinary arithmetic merely because
-its width is fixed. `equal_or_wider` and immediate conversion are unchanged.
+its width is fixed. `equal_or_wider` admits compatible wider bit carriers through
+`.b128` for applicable `ld`/`st`/`cvt` operands under PTX ISA 9.3 Tables 27/28.
+Declaration eligibility is checked centrally; instruction, format, PTX-version,
+and SM gates still apply. Immediate conversion is unchanged.
 Resolution still builds the same IR; generated checking applies the descriptor
 policy to bound register declarations. Resolving a module alone is not a claim
 that its instructions pass checking.

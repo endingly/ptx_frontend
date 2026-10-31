@@ -544,7 +544,8 @@ class ResolvedOperandBinding:
     source_value_vector: bool = False
     allow_destination_sink: bool = False
     allow_predicate_sink: bool = False
-    mbarrier_state_token_form: MbarrierStateTokenForm = MbarrierStateTokenForm.REGISTER
+    # None identifies a non-token binding; engaged forms are canonical token policy.
+    mbarrier_state_token_form: MbarrierStateTokenForm | None = None
     sink_availability: tuple[tuple[str, Any], ...] = ()
     allow_function_symbol: bool = False
     allow_call_table: bool = False
@@ -1983,7 +1984,8 @@ def _build_operand_layout(
                 source_value_vector=operand.kind is OperandKind.VALUE_VECTOR,
                 allow_destination_sink=operand.allow_destination_sink,
                 allow_predicate_sink=operand.allow_predicate_sink,
-                mbarrier_state_token_form=operand.mbarrier_state_token_form,
+                mbarrier_state_token_form=(operand.mbarrier_state_token_form
+                    if operand.kind is OperandKind.MBARRIER_STATE_TOKEN else None),
                 sink_availability=tuple(operand.sink_availability.items()),
                 allow_function_symbol=operand.kind == OperandKind.MOV_SCALAR_SOURCE,
                 allow_call_table=operand.kind == OperandKind.INDIRECT_CALL_METADATA,

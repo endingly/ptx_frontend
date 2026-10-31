@@ -88,6 +88,52 @@ const SourceRange& diagnostic_range(std::span<const SourceRange> locations,
   return locations.empty() ? context.instruction_range : locations.front();
 }
 
+/** Validate an engaged token-form policy against the existing actual view mirrors.
+ * Non-token descriptors remain outside this rule; unknown declaration types are
+ * allowed only when both the actual reference and its projected cache omit them.
+ */
+std::optional<CheckDiagnostic> check_mbarrier_token_form(
+    const OperandDescriptor& descriptor, const OperandView& operand,
+    const Context& context) {
+  if (!descriptor.mbarrier_state_token_form)
+    return std::nullopt;
+  const auto form = *descriptor.mbarrier_state_token_form;
+  const auto range = diagnostic_range(operand.locations, context);
+  if (form != MbarrierStateTokenForm::Register &&
+      form != MbarrierStateTokenForm::RegisterOrSink &&
+      form != MbarrierStateTokenForm::Sink)
+    return CheckDiagnostic{
+        .kind = CheckDiagnosticKind::RuleViolation,
+        .range = range,
+        .message = "Mbarrier state token has an unknown form policy."};
+  if (form != MbarrierStateTokenForm::Register &&
+      (descriptor.role != OperandRole::Destination ||
+       descriptor.access != OperandAccess::Write))
+    return CheckDiagnostic{.kind = CheckDiagnosticKind::RuleViolation,
+                           .range = range,
+                           .message =
+                               "Mbarrier state token with a sink-capable "
+                               "policy requires a write destination."};
+  if (operand.actual_shape != OperandShape::Register ||
+      operand.is_sink != (operand.register_ref == nullptr) ||
+      (operand.is_sink && operand.register_type) ||
+      (operand.register_ref &&
+       operand.register_type != operand.register_ref->declared_type))
+    return CheckDiagnostic{
+        .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+        .range = range,
+        .message =
+            "Mbarrier state token view has inconsistent register/sink facts."};
+  if ((form == MbarrierStateTokenForm::Register && operand.is_sink) ||
+      (form == MbarrierStateTokenForm::Sink && !operand.is_sink))
+    return CheckDiagnostic{.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+                           .range = range,
+                           .message =
+                               "Mbarrier state token register/sink form is not "
+                               "allowed by its policy."};
+  return std::nullopt;
+}
+
 /** Reject whole declared vectors only when borrowed as scalar vector leaves.
  * The caller has already established a nonzero arity within kMaxOperandElements;
  * the enclosing named-vector root is deliberately not inspected here.
@@ -1112,6 +1158,13 @@ CheckResult check_operands(
           return &item;
       return nullptr;
     }();
+    if (descriptor) {
+      if (auto invalid =
+              check_mbarrier_token_form(*descriptor, operand, context)) {
+        diagnostics.push_back(std::move(*invalid));
+        continue;
+      }
+    }
     if (operand.call_table_ref &&
         (!descriptor || !descriptor->allow_call_table))
       diagnostics.push_back(

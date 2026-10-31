@@ -890,12 +890,12 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         self.assertEqual(
             [binding.register_width_policy
              for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
-            [ResolvedRegisterWidthPolicy.EXACT] * 2,
+            [ResolvedRegisterWidthPolicy.SAME_WIDTH] * 2,
         )
         self.assertEqual(
             [binding.type_expression.scalar_type
              for binding in self.neg_instruction.variants[4].operand_layouts[0].bindings],
-            ["b32"] * 2,
+            ["f16x2"] * 2,
         )
 
     def test_transcendental_models_typed_approx_and_cohort_containers(self) -> None:
@@ -2482,12 +2482,12 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
             bindings = variant.operand_layouts[0].bindings
             self.assertEqual(
                 [binding.type_expression.scalar_type for binding in bindings],
-                ["pred", "u32"],
+                ["pred", "u64"],
             )
             self.assertEqual(
                 [binding.register_width_policy for binding in bindings],
                 [ResolvedRegisterWidthPolicy.SAME_WIDTH,
-                 ResolvedRegisterWidthPolicy.EQUAL_OR_WIDER],
+                 ResolvedRegisterWidthPolicy.WORD_OR_DOUBLEWORD],
             )
 
     def test_prmt_generic_and_specialized_selector_variants(self) -> None:

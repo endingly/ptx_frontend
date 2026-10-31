@@ -24,3 +24,5 @@ forms remain distinct in the source model; their effective semantics default
 to acquire at CTA scope. The frontend validates instruction-local contracts
 but does not simulate suspension, the time limit, phase progress, or memory
 visibility at runtime.
+
+Non-parity state inputs retain explicit Register token policy in generated descriptors and reject sink payloads during both source resolution and AST-free checking. The same common rule distinguishes CTA arrival RegisterOrSink from remote cluster Sink outputs; ordinary report-value registers are excluded. Optional descriptor absence denotes non-token policy. The public optional-member migration requires rebuilding consumers; it does not change Exact B64 compatibility, source qualifiers, availability, or runtime token/phase obligations.

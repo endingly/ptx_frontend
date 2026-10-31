@@ -618,8 +618,101 @@ sust.b.1d.v2.b32.trap [surf,x], {V1.r,1};
          ir::validateModule(copied) && ir::validateModule(assigned);
 }
 
+/** Verify the installed optional token policy and owned form parity without AST storage. */
+bool checkInstalledMbarrierTokenForms() {
+  namespace ir = ptx_frontend::resolved_ir;
+  std::array<size_t, 3> forms{};
+  size_t reports = 0;
+  for (const auto& variant : ir::mbarrier_resolved_descriptor().variants)
+    for (const auto& layout : variant.operand_layouts)
+      for (const auto& binding : layout.bindings) {
+        if (binding.mbarrier_state_token_form)
+          ++forms[static_cast<size_t>(*binding.mbarrier_state_token_form)];
+        else if (binding.target_field_id == "report_value")
+          ++reports;
+      }
+  if (forms != std::array<size_t, 3>{49, 32, 12} || reports != 24)
+    return false;
+  ir::checker::OperandDescriptor generic{
+      .target_field_id = "data",
+      .type_expression =
+          {.kind = ir::checker::OperandTypeExpressionKind::FixedScalar,
+           .fixed_scalar_type = ir::ScalarType::B64},
+      .role = ir::checker::OperandRole::Destination,
+      .access = ir::checker::OperandAccess::Write,
+      .allowed_shapes = ir::checker::OperandShape::Register,
+      .allow_destination_sink = true};
+  if (generic.mbarrier_state_token_form.has_value())
+    return false;
+  static constexpr std::array<std::string_view, 1> capabilities{"cluster"};
+  const ir::checker::Context context{.target = {.ptx_version = {9, 3},
+                                                .sm_version = 90,
+                                                .capabilities = capabilities}};
+  const ir::checker::OperandView sink{
+      .field_id = "data",
+      .actual_shape = ir::checker::OperandShape::Register,
+      .is_sink = true};
+  if (!ir::checker::check_operands(std::span{&generic, 1}, {},
+                                   std::span{&sink, 1}, {}, context))
+    return false;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_90
+.address_size 64
+.shared .align 8 .b64 barrier;
+.entry kernel() {
+.reg .b64 q;
+.reg .pred p;
+mbarrier.arrive.shared::cta.b64 q,[barrier];
+mbarrier.arrive.shared::cluster.b64 _,[barrier];
+mbarrier.test_wait.b64 p,[barrier],q;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser{source};
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned)
+    return false;
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  assigned.functions.front().body.back() =
+      copied.functions.front().body.back()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  /** Borrow one actual token while its owned instruction remains alive. */
+  struct TokenObserver final : ir::detail::IReferenceObserver {
+    /** Borrowed only until that instruction is changed or destroyed. */
+    const ir::ResolvedMbarrierStateToken* token = nullptr;
+    /** Inspect the installed optional-register payload synchronously. */
+    void mbarrier_state_token(
+        const ir::ResolvedMbarrierStateToken& value,
+        std::span<const ptx_frontend::SourceRange>,
+        ir::checker::AddressSymbolResolutionPolicy) override {
+      token = &value;
+    }
+  } observer;
+  assigned.functions.front().body.back()->visit_references(observer);
+  if (!observer.token || !observer.token->register_ref)
+    return false;
+  const_cast<ir::ResolvedMbarrierStateToken&>(*observer.token)
+      .register_ref.reset();
+  const auto direct = assigned.functions.front().body.back()->check(context);
+  const auto invalid = ir::validateModule(assigned);
+  return !direct && !invalid && direct.error().size() == 1 &&
+         direct.error().front().kind ==
+             ir::checker::CheckDiagnosticKind::UnsupportedOperandShape;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledMbarrierTokenForms())
+    return 1;
   if (!checkInstalledValueVectorSources())
     return 1;
   if (!checkInstalledHeaderArrayRank() || !checkInstalledParameterDomain())

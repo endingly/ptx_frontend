@@ -3233,6 +3233,14 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::MbarrierStateToken: {
+      const auto form = binding.mbarrier_state_token_form;
+      if (!form || (*form != checker::MbarrierStateTokenForm::Register &&
+                    *form != checker::MbarrierStateTokenForm::RegisterOrSink &&
+                    *form != checker::MbarrierStateTokenForm::Sink))
+        return std::unexpected(
+            ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
+                              .message = "A mbarrier state token binding "
+                                         "requires a valid form policy."});
       const bool is_sink =
           std::get_if<syntax_ast::AstIdentifierRef>(&operand) != nullptr &&
           std::get<syntax_ast::AstIdentifierRef>(operand).syntax.text == "_";

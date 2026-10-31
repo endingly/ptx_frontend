@@ -8,7 +8,7 @@ from ptx_frontend.base.utils import to_file_stem
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
 from ptx_frontend.code_gen.render_models.availability import AvailabilityModel, build_availability
 from ptx_frontend.code_gen.render_models.matrix import MatrixDescriptorModel, build_matrix_descriptor
-from ptx_frontend.spec.model import CodegenUnit, MbarrierStateTokenForm, TextureResourceRole
+from ptx_frontend.spec.model import CodegenUnit, TextureResourceRole
 from ptx_frontend.ir.resolved_ir import (
     ResolvedAddressStateSpace,
     ResolvedField,
@@ -238,7 +238,7 @@ def _build_operand_binding(binding: ResolvedOperandBinding, name: str, backend: 
         sink.append(member("allow_destination_sink", "true"))
     if binding.allow_predicate_sink:
         sink.append(member("allow_predicate_sink", "true"))
-    if binding.mbarrier_state_token_form is not MbarrierStateTokenForm.REGISTER:
+    if binding.mbarrier_state_token_form is not None:
         sink.append(member("mbarrier_state_token_form", "checker::MbarrierStateTokenForm::" +
             ''.join(part.capitalize() for part in binding.mbarrier_state_token_form.value.split('_'))))
     symbol: list[ResolvedBindingMemberModel] = []

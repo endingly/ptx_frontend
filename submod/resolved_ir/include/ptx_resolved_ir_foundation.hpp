@@ -854,8 +854,9 @@ struct OperandDescriptor {
   std::optional<SignedVectorImmediateRange> vector_signed_immediate_range;
   bool allow_destination_sink = false;
   bool allow_predicate_sink = false;
-  MbarrierStateTokenForm mbarrier_state_token_form =
-      MbarrierStateTokenForm::Register;
+  /** Absent for non-token operands; engaged policy constrains the existing token
+   * payload's register/sink form and does not own or authenticate that payload. */
+  std::optional<MbarrierStateTokenForm> mbarrier_state_token_form;
   AvailabilityDescriptor sink_availability;
   bool allow_function_symbol = false;
   /** Admit storage-backed tables only in the final indirect-call metadata slot. */

@@ -19,3 +19,5 @@ phase-type 与 report 形式要求 PTX 9.3、`sm_90`。无显式限定符的形�
 保持独立：源码模型记录限定符缺省，实际语义默认为 acquire、CTA scope。
 前端检查指令局部语法、操作数和目标可用性；不证明 mbarrier 阶段推进、
 参与线程或运行时内存可见性。`mbarrier.try_wait` 的限定符形式不在本文范围内。
+
+非 parity state input 在生成的 descriptor 中保留显式 Register token policy，source resolution 与 AST-free checker 均拒绝 sink payload。同一 common rule 区分 CTA arrival 的 RegisterOrSink 与 remote cluster 的 Sink output；普通 report-value register 不属于该 token 规则。Optional descriptor 缺省表示非 token policy。公共 optional member 迁移要求重新编译 consumer；这不改变 Exact B64 兼容性、source qualifier、availability 或运行时 token/phase 义务。

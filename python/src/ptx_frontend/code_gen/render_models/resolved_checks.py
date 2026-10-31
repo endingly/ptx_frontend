@@ -21,10 +21,10 @@ from ptx_frontend.code_gen.resolved_layout import (
 )
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldOrigin, ResolvedInstruction,
-    ResolvedOperandLayout, ResolvedValueKind, ResolvedVariant, TensorAccessMode,
+    ResolvedOperandBinding, ResolvedOperandLayout, ResolvedValueKind, ResolvedVariant, TensorAccessMode,
 )
 from ptx_frontend.spec.model import (
-    AsyncCompletionKind, CodegenUnit, FabricOperation, SemanticRule,
+    AsyncCompletionKind, CodegenUnit, FabricOperation, OperandAddressBasePolicy, SemanticRule,
 )
 
 
@@ -323,18 +323,27 @@ CrossRuleRow = (
     | NamedRuleCheckModel
 )
 
+
+def _named_array_field_policy(field: ResolvedField, binding: ResolvedOperandBinding | None) -> str:
+    """Derive named source admission from an existing typed field and its role binding."""
+    if field.value_kind is ResolvedValueKind.ADDRESS:
+        if binding is None:
+            raise ValueError(f"address field {field.name!r} has no operand binding")
+        return ("NamedArrayAddressPolicy::Memory"
+                if binding.address_base_policy is OperandAddressBasePolicy.ANY
+                else "NamedArrayAddressPolicy::Reject")
+    if field.value_kind is ResolvedValueKind.MOV_SOURCE:
+        return "NamedArrayAddressPolicy::Mov"
+    return "NamedArrayAddressPolicy::Reject"
+
+
 def named_array_policy(entry: GenerationInstruction, variant: ResolvedVariant) -> str:
-    """Select the bounded address surface from canonical final-variant metadata."""
-    opcode = entry.specification.opcode
-    if opcode == "ld" and variant.rule in {
-        SemanticRule.DATA_MOVEMENT_LD_GENERIC, SemanticRule.DATA_MOVEMENT_LD_EXPLICIT
-    } and not any(field.name == "nc" and field.constant_value is True
-                  for field in variant.modifier_fields):
-        return "NamedArrayAddressPolicy::Memory"
-    if opcode == "st" and variant.rule in {
-        SemanticRule.DATA_MOVEMENT_ST_GENERIC, SemanticRule.DATA_MOVEMENT_ST_EXPLICIT
-    }:
-        return "NamedArrayAddressPolicy::Memory"
+    """Keep form fallback plumbing derived from eligible generic address bindings."""
+    for layout in variant.operand_layouts:
+        fields = {field.name: field for field in layout.fields}
+        if any(_named_array_field_policy(fields[binding.target_field_id], binding)
+               == "NamedArrayAddressPolicy::Memory" for binding in layout.bindings):
+            return "NamedArrayAddressPolicy::Memory"
     return "NamedArrayAddressPolicy::Reject"
 
 
@@ -402,7 +411,8 @@ def _build_check_layout(entry: GenerationInstruction, variant: ResolvedVariant, 
     named_checks = []
     for field in layout.fields:
         member = _member_expr(field, operand_slot_for_field(slots, field, backend))
-        policy = named_array_policy(entry, variant)
+        binding = next((item for item in layout.bindings if item.target_field_id == field.name), None)
+        policy = _named_array_field_policy(field, binding)
         if field.value_kind is ResolvedValueKind.ADDRESS:
             pointer = f"&{member}.value"
         elif field.value_kind is ResolvedValueKind.MOV_SOURCE:

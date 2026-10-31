@@ -54,10 +54,12 @@ brace memory form 不变。Source 释放及 module copy/move 后，owned validat
 
 ## 具名数组地址
 
-专用 address-source MOV 与普通 LD（ISA §9.7.9.8）/ ST（§9.7.9.11）
-接纳 `A[index]`。LDNC、LDU、ST.async/bulk、atom/red、cp.async、prefetch、
-matrix、tensor、texture family 仍不在此支持子集内；这不声称它们的 PTX ISA
-语法非法。接纳策略由最终 variant 的规范元数据决定，并在 owned IR 中独立复查。
+专用 address-source MOV 与通用 address operand 接纳 `A[index]`，包括 LDNC/LDU、
+atomic/reduction、cache、async-copy、barrier、tensor-map、response object 与 fabric
+本地 memory 地址。接纳策略按 typed binding 决定：明确要求 register-only 的 async
+数据地址仍受限制，不影响同一指令的通用 barrier-object 地址。Tensor operand、fabric
+handle、texture/surface access 保留独立语法。生成的 source 与 owned 检查采用相同的
+role policy；既有 target、state-space、alignment 和 control 规则继续适用。
 具名形式不与 `.unified` suffix 组合。已知 unified storage 的 LD 仍需既有
 bracket-qualified 路径，ST 仍因只读约束被拒绝；MOV 可以取其地址（包括具名
 indexing）而不进行解引用。
@@ -65,7 +67,8 @@ indexing）而不进行解引用。
 `ResolvedAddress::named_index` 拥有整数 index 的 bits/signedness 或精确绑定的
 标量 register、可选整数 displacement、源码 operator、标量字节 stride 和 range；
 它与原有 byte offset 互斥。`A[1]` 按声明的标量 base element 大小缩放：
-u32、v2.u32 和多维 u32 数组均为四字节，u64 为八字节。array shape 来自按
+u32、v2.u32 和多维 u32 数组均为四字节，u64 为八字节。Instruction data type、transfer
+granule 与 opaque object 大小不决定该 scalar stride。array shape 来自按
 SymbolId 关联的 owned storage/parameter record；缺少此上下文的 standalone
 resolve 明确失败。负数或越界常量不会仅因数组 bounds 被拒绝。
 
@@ -430,7 +433,7 @@ consumer 仍拒绝。Reference traversal 包含 wholebase 与每个 lane；AST-f
 validation 重联声明和来源 owner。实际 brace 总保存 fullrange；历史手工 standalone
 brace 可省略，但提供的畸形范围必须拒绝。Owned validation 要求完整 provenance 与
 instruction/lane containment，named provenance 始终不可省略。Data-source opt-in
-不扩展 array-address policy：LDNC/LDU named-array 地址仍排除。不宣称 GPU 执行或
+data-source admission 与通用 array-address role policy 独立。不宣称 GPU 执行或
 assembler parity。
 
 ## 位置与基本值

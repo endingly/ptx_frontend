@@ -352,28 +352,38 @@ class GenerationPlanTests(unittest.TestCase):
                 return
         self.fail("canonical corpus must exercise optional direct operand slots")
 
-    def test_named_array_address_policy_is_final_variant_local(self) -> None:
-        """Only ordinary LD/ST opt in; overlapping rules cannot widen other families."""
-        from ptx_frontend.code_gen.emit.resolved_checks import named_array_policy
+    def test_named_array_address_policy_is_binding_local(self) -> None:
+        """Generic address bindings and generated owned checks share role policy."""
+        from ptx_frontend.code_gen.render_models.resolved_checks import (
+            _named_array_field_policy, build_check, named_array_policy,
+        )
+        from ptx_frontend.spec.model import OperandAddressBasePolicy
 
-        observed = {}
+        counts = {"Memory": 0, "Reject": 0}
+        mixed = False
         for entry in self.context.entries:
-            if entry.specification.opcode not in {"ld", "ldu", "st", "cp", "atom"}:
-                continue
-            for variant in entry.resolved.variants:
-                policy = named_array_policy(entry, variant)
-                observed[(entry.specification.opcode, variant.variant_id)] = policy
-                if entry.specification.opcode in {"ldu", "cp", "atom"}:
-                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
-                if any(field.name in {"nc", "async", "bulk"} and field.constant_value is True
-                       for field in variant.modifier_fields):
-                    self.assertEqual(policy, "NamedArrayAddressPolicy::Reject")
-        self.assertTrue(any(opcode == "ld" and policy.endswith("::Memory")
-                            for (opcode, _), policy in observed.items()))
-        self.assertTrue(any(opcode == "st" and policy.endswith("::Memory")
-                            for (opcode, _), policy in observed.items()))
-        self.assertTrue(any(opcode == "ld" and policy.endswith("::Reject")
-                            for (opcode, _), policy in observed.items()))
+            for index, variant in enumerate(entry.resolved.variants):
+                checks = build_check(entry, variant, index, self.backend)
+                form_memory = False
+                for layout, generated in zip(variant.operand_layouts, checks.layout_cases):
+                    policies = []
+                    for field in layout.fields:
+                        if field.value_kind is not ResolvedValueKind.ADDRESS:
+                            continue
+                        binding = next(b for b in layout.bindings if b.target_field_id == field.name)
+                        expected = "Reject" if binding.address_base_policy is OperandAddressBasePolicy.REGISTER else "Memory"
+                        policy = _named_array_field_policy(field, binding)
+                        self.assertEqual(policy, "NamedArrayAddressPolicy::" + expected)
+                        self.assertTrue(any(check.pointer == f"&selected.{field.name}.value" and check.policy == policy
+                                            for check in generated.named_check))
+                        counts[expected] += 1
+                        policies.append(expected)
+                        form_memory |= expected == "Memory"
+                    mixed |= "Memory" in policies and "Reject" in policies
+                self.assertEqual(named_array_policy(entry, variant).endswith("::Memory"), form_memory)
+        self.assertGreater(counts["Memory"], 100)
+        self.assertGreater(counts["Reject"], 10)
+        self.assertTrue(mixed)
 
     def test_ret_header_preserves_uniformity_on_the_canonical_class(self) -> None:
         """The generated public return payload owns its optional assertion."""
@@ -392,6 +402,7 @@ class GenerationPlanTests(unittest.TestCase):
         from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy
 
         observed = set()
+        aggregate_mov = set()
         for entry in self.context.entries:
             opcode = entry.specification.opcode
             for variant in entry.resolved.variants:
@@ -400,24 +411,33 @@ class GenerationPlanTests(unittest.TestCase):
                         if binding.allow_named_vector:
                             observed.add(opcode)
                             self.assertIn(opcode, {"ld", "ldu", "st", "mov"})
-                            if opcode == "mov":
-                                self.assertEqual(variant.cpp_name, "V4U32")
-                            self.assertIs(binding.vector_type_policy,
-                                          ResolvedVectorTypePolicy.ELEMENT)
-                            self.assertEqual(binding.target_field_id,
-                                             "src" if opcode == "st" else "dst")
+                            if (opcode == "mov" and binding.vector_type_policy
+                                    is ResolvedVectorTypePolicy.AGGREGATE):
+                                aggregate_mov.add((variant.variant_id, binding.target_field_id))
+                                self.assertEqual(binding.allowed_vector_arities, (2, 4))
+                                self.assertIn(binding.target_field_id, {"src", "dst"})
+                            else:
+                                self.assertIs(binding.vector_type_policy,
+                                              ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.target_field_id,
+                                                 "src" if opcode == "st" else "dst")
+                                if opcode == "mov":
+                                    self.assertEqual(variant.variant_id, "mov_v4_u32")
                             self.assertFalse(any(
                                 field.name in {"async", "bulk"} and
                                 field.constant_value is True
                                 for field in variant.modifier_fields))
-                        if (opcode not in {"ld", "ldu", "st", "mov"}
-                            or (opcode == "mov" and variant.cpp_name != "V4U32")) or any(
+                        if opcode not in {"ld", "ldu", "st", "mov"} or any(
                             field.name in {"async", "bulk"} and
                             field.constant_value is True
                             for field in variant.modifier_fields
                         ):
                             self.assertFalse(binding.allow_named_vector)
         self.assertEqual(observed, {"ld", "ldu", "st", "mov"})
+        self.assertEqual(aggregate_mov, {
+            ("mov_scalar", "src"), ("mov_scalar", "dst"),
+            ("mov_b128_pack_unpack", "src"), ("mov_b128_pack_unpack", "dst"),
+        })
         _, output = self.full_generation()
         load_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_data_movement_ld*.gen.cpp"))
         self.assertIn(".allow_named_vector = true", load_source)

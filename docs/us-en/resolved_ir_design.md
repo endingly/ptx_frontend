@@ -60,11 +60,13 @@ base/lane declarations and source ownership after source release/copy/move.
 
 ## Named array addresses
 
-Dedicated address-source MOV and ordinary LD (ISA §9.7.9.8) / ST (§9.7.9.11)
-accept `A[index]`. LDNC, LDU, ST.async/bulk, atom/red, cp.async, prefetch,
-matrix, tensor and texture families remain outside this supported subset;
-this is not a claim that their PTX ISA syntax is invalid. Admission is selected
-from the final variant's canonical metadata and independently rechecked on owned IR.
+Dedicated address-source MOV and generic address operands accept `A[index]`,
+including LDNC/LDU, atomic/reduction, cache, asynchronous-copy, barrier, tensor-map,
+response-object and fabric local-memory addresses. Admission follows each typed
+binding: explicit register-only async data addresses remain restricted, independently
+of generic barrier-object siblings. Tensor operands, fabric handles and texture/surface
+accesses retain their separate grammars. Generated source and owned checks use the
+same role policy; existing target, state-space, alignment and control rules still apply.
 The named form does not compose with a `.unified` suffix. Known unified storage
 still requires the existing bracket-qualified LD path and remains read-only for
 ST; MOV may take its address, including named indexing, without dereferencing it.
@@ -74,7 +76,8 @@ exact bound scalar register, optional integer displacement, written operator,
 scalar byte stride and source ranges. It is mutually exclusive with the old
 byte offset. `A[1]` scales by the declaration's scalar base element size:
 u32, v2.u32 and multidimensional u32 arrays all use four bytes, while u64 uses
-eight. Array shape comes from owned storage/parameter records keyed by SymbolId;
+eight. Instruction data types, transfer granules and opaque object sizes do not
+determine this scalar stride. Array shape comes from owned storage/parameter records keyed by SymbolId;
 standalone resolution without that context fails explicitly. Negative and
 out-of-bounds constants are not rejected merely for array bounds.
 
@@ -521,8 +524,8 @@ and each lane; AST-free owned validation rejoins declarations and source ownersh
 Actual braces always retain their full range. Legacy standalone manual braces may
 omit it, but malformed supplied ranges reject; owned validation requires full
 provenance and instruction/lane containment. Named provenance is always mandatory.
-This data-source opt-in does not widen array-address policy: LDNC/LDU named-array
-addresses remain excluded. No GPU execution or assembler parity is claimed.
+Data-source admission is independent of the generic array-address role policy.
+No GPU execution or assembler parity is claimed.
 
 ## Locations and primitive values
 

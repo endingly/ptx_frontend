@@ -3194,7 +3194,7 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
     const ResolvedOperandBindingDescriptor& binding,
     const syntax_ast::AstOperand& operand,
     const ResolvedInstructionFields& fields, const ResolveContext* context,
-    NamedArrayAddressPolicy named_array_policy) {
+    [[maybe_unused]] NamedArrayAddressPolicy named_array_policy) {
   switch (field.value_kind) {
     case ResolvedValueKind::VideoOperand: {
       if (!binding.video)
@@ -3584,7 +3584,12 @@ std::expected<ResolvedFieldValue, ResolveDiagnostic> resolve_operand_value(
       return ResolvedFieldValue{std::move(*value)};
     }
     case ResolvedValueKind::Address: {
-      auto value = resolve_address(operand, context, named_array_policy);
+      // The binding owns admission independently of any sibling address role.
+      const auto role_policy =
+          binding.address_base_policy == checker::AddressBasePolicy::Register
+              ? NamedArrayAddressPolicy::Reject
+              : NamedArrayAddressPolicy::Memory;
+      auto value = resolve_address(operand, context, role_policy);
       if (!value)
         return std::unexpected(value.error());
       if (binding.address_base_policy == checker::AddressBasePolicy::Register &&

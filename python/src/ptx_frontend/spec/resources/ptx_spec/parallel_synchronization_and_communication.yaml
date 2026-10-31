@@ -404,7 +404,7 @@ operand_patterns:
   red_async_shared:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared], address_base: register}
     - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}
-    - {name: mbarrier, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared], address_base: register}
+    - {name: mbarrier, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [shared]}
   red_async_release:
     - {name: address, kind: addr, address_offset_domain: signed32, role: addr, access: read, state_space: [global], address_base: register}
     - {name: src, kind: reg_or_imm, role: src, access: read, type: {expr: "modifier(type)"}}

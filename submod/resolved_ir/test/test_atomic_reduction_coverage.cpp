@@ -1897,7 +1897,7 @@ TEST(AtomicReductionCoverage, ResolvesAsyncReductionModes) {
       .spelling = "barrier",
       .address_state_space = base::DeclarationStateSpace::Shared,
   };
-  EXPECT_FALSE(body[2]->check(shared_target).has_value());
+  EXPECT_TRUE(body[2]->check(shared_target).has_value());
 }
 
 /** Reject mode mixing, nonregister destinations, and invalid barrier addresses. */
@@ -1929,8 +1929,6 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
            "[shared_value], %u, [barrier];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [global_value];",
-           "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
-           "[%a], %u, [barrier];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u, [barrier+4];",
            "red.async.release.sys.add.u32 [%a], %u, [barrier];",

@@ -7,6 +7,7 @@ from ptx_frontend.spec.model import (
     ModifierPresence,
     OperandKind,
     OperandRegisterWidthPolicy,
+    OperandTypeExpressionKind,
 )
 
 
@@ -158,9 +159,9 @@ class SetCompletenessTests(unittest.TestCase):
             ("set_half_integer_f16", None, same, "f16", same),
             ("set_half_integer_bf16", None, same, "b16", exact),
             ("set_half_native_f16x2", "f16x2", same, "f16x2", same),
-            ("set_half_integer_f16x2", "b32", same, "f16x2", same),
+            ("set_half_integer_f16x2", None, same, "f16x2", same),
             ("set_half_native_bf16x2", "b32", exact, "b32", exact),
-            ("set_half_integer_bf16x2", "b32", same, "b32", exact),
+            ("set_half_integer_bf16x2", None, same, "b32", exact),
         ):
             for name in (family, family + "_boolean"):
                 with self.subTest(name=name):
@@ -168,6 +169,15 @@ class SetCompletenessTests(unittest.TestCase):
                     self.assertEqual(
                         destination_operand.type_expression.scalar_type,
                         destination,
+                    )
+                    self.assertIs(
+                        destination_operand.type_expression.kind,
+                        OperandTypeExpressionKind.MODIFIER if destination is None
+                        else OperandTypeExpressionKind.FIXED_SCALAR,
+                    )
+                    self.assertEqual(
+                        destination_operand.type_expression.modifier_name,
+                        "dtype" if destination is None else None,
                     )
                     self.assertIs(destination_operand.register_width_policy, destination_width)
                     for operand in sources[:2]:

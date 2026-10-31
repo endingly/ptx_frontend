@@ -97,12 +97,12 @@ operand_patterns:
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_f16x2:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
     - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
 
   set_integer_result_f16x2_boolean:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: f16x2, register_width: same_width}
     - {name: src2, kind: reg, role: src2, access: read, type: f16x2, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
@@ -119,12 +119,12 @@ operand_patterns:
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_bf16x2:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
     - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
 
   set_integer_result_bf16x2_boolean:
-    - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: same_width}
+    - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
     - {name: src1, kind: reg, role: src1, access: read, type: b32, register_width: exact}
     - {name: src2, kind: reg, role: src2, access: read, type: b32, register_width: exact}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}

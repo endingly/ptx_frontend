@@ -209,9 +209,9 @@ TEST(SetHalfCompleteness, ChecksPackedResultContainers) {
       {"set.eq.bf16x2.bf16x2 %u0, %b1, %b2;", false},
       {"set.eq.bf16x2.bf16x2 %b0, %hx1, %b2;", false},
       {"set.eq.u32.f16x2 %u0, %b1, %b2;", true},
-      {"set.eq.u32.f16x2 %hx0, %b1, %b2;", true},
+      {"set.eq.u32.f16x2 %hx0, %b1, %b2;", false},
       {"set.eq.u32.bf16x2 %u0, %b1, %b2;", true},
-      {"set.eq.u32.bf16x2 %hx0, %b1, %b2;", true},
+      {"set.eq.u32.bf16x2 %hx0, %b1, %b2;", false},
   };
   for (const auto& [source, accepted] : cases) {
     SCOPED_TRACE(source);

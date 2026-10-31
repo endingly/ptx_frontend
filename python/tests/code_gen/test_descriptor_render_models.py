@@ -47,6 +47,24 @@ class DescriptorRenderModelTests(unittest.TestCase):
         self.assertIsInstance(checker.variants[0].availability, AvailabilityModel)
         self.assertEqual(syntax.storage_name, "MovDescriptorStorage")
 
+    def test_packed_integer_set_destination_retains_dtype_expression(self) -> None:
+        """Keep all four typed dtype bindings through descriptor render models."""
+
+        specification = next(spec for spec in self.specifications if spec.opcode == "set")
+        names = {"set_half_integer_f16x2", "set_half_integer_f16x2_boolean",
+                 "set_half_integer_bf16x2", "set_half_integer_bf16x2_boolean"}
+        selected = replace(specification, variants=tuple(
+            variant for variant in specification.variants if variant.name in names))
+        self.assertEqual(len(selected.variants), 4)
+        model = build_resolved_descriptor_storage(from_instruction_spec(selected), self.backend)
+        destinations = [binding for group in model.binding_groups
+                        for binding in group.bindings if binding.target_field_id == "dst"]
+        self.assertEqual(len(destinations), 4)
+        for binding in destinations:
+            self.assertEqual(binding.type_expression.kind.rsplit("::", 1)[-1], "ModifierField")
+            self.assertEqual(binding.type_expression.modifier_field_id, '"dtype"')
+            self.assertEqual(binding.type_expression.fixed_scalar_type.rsplit("::", 1)[-1], "Invalid")
+
     def test_matrix_descriptor_remains_a_typed_child(self) -> None:
         """Resolved storage owns matrix facts until the parent template renders."""
 

@@ -52,13 +52,14 @@ class CvtPackSourceTests(unittest.TestCase):
                 self.assertEqual(carry.register_width_policy.value, "same_width")
         self.assertEqual((changed, branches), (6, 16))
 
-    def test_quad_and_random_bits_remain_outside_scalar_admission(self) -> None:
+    def test_quad_values_keep_random_bits_outside_literal_admission(self) -> None:
         """Source constants in scalar pack do not grant stochastic random-bit literals."""
         cvt = next(i for i in get_packaged_spec_database().instructions if i.opcode == "cvt")
         for name in ("cvt_rs_satfinite_f8x4_f32", "cvt_rs_satfinite_f4x4_f32", "cvt_rs_satfinite_f6x4_f32"):
             variant = next(v for v in cvt.variants if v.name == name)
             source, random = variant.operand_layouts[0].operands[1:]
-            self.assertIs(source.kind, OperandKind.REGISTER_VECTOR)
+            self.assertIs(source.kind, OperandKind.VALUE_VECTOR)
+            self.assertTrue(source.vector_allow_named)
             self.assertIs(random.kind, OperandKind.CVT_REGISTER_SOURCE)
             self.assertEqual(random.register_width_policy.value, "equal_or_wider")
             self.assertEqual(random.type_expression.scalar_type, "b32")

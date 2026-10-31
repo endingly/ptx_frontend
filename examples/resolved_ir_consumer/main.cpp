@@ -845,8 +845,70 @@ cvt.pack.sat.s4.s32.b32 d,(1+2),0xffffffff,0f3f800000;
   return !ir::validateModule(assigned);
 }
 
+/** Inspect the three installed quad ValueVector fields after destroying all source state. */
+bool checkInstalledStochasticQuadSources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100a
+.entry kernel() {
+.reg .b32 d,r; .reg .b16 h; .reg .f32 a;
+.reg .v4 .f32 V<2>;
+mov.b32 r,0; mov.f32 a,1.0;
+cvt.rs.satfinite.e4m3x4.f32 d,{a,1.5,0f3fc00000,0d3ff8000000000000},r;
+cvt.rs.satfinite.e2m1x4.f32 h,V1,r;
+cvt.rs.satfinite.e2m3x4.f32 d,{1.5,1.0+0.5,0f3fc00000,0d3ff8000000000000},r;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.front().body.size() != 5)
+    return false;
+  auto& body = owned->functions.front().body;
+  auto& mixed = dynamic_cast<ir::CvtRsSatfiniteF8x4F32&>(*body[2]).src.value;
+  auto& named = dynamic_cast<ir::CvtRsSatfiniteF4x4F32&>(*body[3]).src.value;
+  auto& constants =
+      dynamic_cast<ir::CvtRsSatfiniteF6x4F32&>(*body[4]).src.value;
+  if (mixed.source.kind != ir::ResolvedVectorSourceKind::BraceList ||
+      named.source.kind != ir::ResolvedVectorSourceKind::NamedVector ||
+      !named.source.whole_base ||
+      named.source.whole_base->value.register_ref.parameterized_index != 1u ||
+      named.source.whole_base->value.register_ref.vector_width != 4u ||
+      mixed.elements.size() != 4 || named.elements.size() != 4 ||
+      constants.elements.size() != 4)
+    return false;
+  for (size_t lane = 0; lane < 4; ++lane) {
+    const auto& immediate =
+        std::get<ir::ResolvedImmediate>(constants.elements[lane]);
+    const auto& reg = std::get<ir::ResolvedRegisterRef>(named.elements[lane]);
+    if (immediate.bits != 0x3fc00000 || immediate.type != ir::ScalarType::F32 ||
+        immediate.integer_source_bits || !reg.component ||
+        reg.component->origin != ir::RegisterComponentOrigin::NamedProjection ||
+        reg.component->lane != lane || reg.vector_width)
+      return false;
+  }
+  ir::ResolvedModule copied(*owned), assigned;
+  assigned = copied;
+  assigned.functions.front().body.back() =
+      copied.functions.front().body.back()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& corrupt = dynamic_cast<ir::CvtRsSatfiniteF4x4F32&>(
+      *assigned.functions.front().body[3]);
+  corrupt.src.value.source.whole_base.reset();
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledStochasticQuadSources())
+    return 31;
   if (!checkInstalledPackIntegerSources())
     return 30;
   if (!checkInstalledScalarHalfImmediates())

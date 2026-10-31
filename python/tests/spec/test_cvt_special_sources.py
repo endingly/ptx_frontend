@@ -20,7 +20,7 @@ class CvtSpecialSourceTests(unittest.TestCase):
                 continue
             for layout, lowered_layout in zip(variant.operand_layouts, lowered.operand_layouts, strict=True):
                 for operand, field in zip(layout.operands, lowered_layout.fields, strict=True):
-                    if operand.access.value != "read" or operand.kind is OperandKind.REGISTER_VECTOR:
+                    if operand.access.value != "read" or operand.kind in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}:
                         continue
                     self.assertIn(operand.kind, {OperandKind.CVT_SCALAR_SOURCE, OperandKind.CVT_REGISTER_SOURCE})
                     self.assertIs(field.value_kind, ResolvedValueKind.CVT_SOURCE)

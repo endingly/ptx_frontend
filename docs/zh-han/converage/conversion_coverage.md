@@ -126,7 +126,7 @@ modern form 保留 physical packing，不把 instruction-only type spelling 当�
   path。packed-source FP4 按正常 equal-or-wider register policy 接受 `.b8` destination，
   而 FP6 保留 `.b16` minimum。packed-source 和 BF16-destination extension 保留 `sm_100f`、
   `sm_110f`、`sm_120f` family 上的 PTX 9.1/9.2 gate。
-- x4 FP8、FP4、FP6 form 是来自四元素 `.f32` register vector 的 `.rs` conversion。它们要求
+- x4 FP8、FP4、FP6 form 是以四个逻辑 `.f32` input 进行 `.rs` conversion。Brace 可混合 scalar register 与 floating constant／expression；真实 named `.v4.f32` 或 `.v4.b32` 声明（包括 compact member）提供相同的四个有序 lane。它们要求
   scalar register 中独立的逻辑 `.b32` `rbits` value、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
   `sm_103a` target。
 - `ue8m0x2` 支持指定的 `.rz/.rp` f32 与 packed-BF16 input，以及 `.rn` BF16 output form，

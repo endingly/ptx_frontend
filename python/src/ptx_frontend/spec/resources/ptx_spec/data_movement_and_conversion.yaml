@@ -216,23 +216,23 @@ operand_patterns:
   cvt_b32_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - name: src
-      kind: reg_vector
+      kind: value_vector
       role: src
       access: read
       type: f32
       register_width: equal_or_wider
-      vector: {kind: vector, arity: [4], type_policy: element}
+      vector: {kind: vector, arity: [4], type_policy: element, allow_named: true}
     - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - name: src
-      kind: reg_vector
+      kind: value_vector
       role: src
       access: read
       type: f32
       register_width: equal_or_wider
-      vector: {kind: vector, arity: [4], type_policy: element}
+      vector: {kind: vector, arity: [4], type_policy: element, allow_named: true}
     - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_packed:

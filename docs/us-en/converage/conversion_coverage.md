@@ -161,7 +161,9 @@ instruction-only type spellings as declaration types:
   packed-source and BF16-destination extensions retain their PTX
   9.1/9.2 gates on the `sm_100f`, `sm_110f`, and `sm_120f` families.
 - The x4 FP8, FP4, and FP6 forms are `.rs` conversions from a four-element
-  `.f32` register vector. They require a separate logical `.b32` `rbits` value in a scalar register,
+  logical `.f32` inputs. Braces may mix scalar registers with floating constants or
+  expressions; a real named `.v4.f32` or `.v4.b32` declaration, including a compact
+  member, supplies the same four ordered lanes. They require a separate logical `.b32` `rbits` value in a scalar register,
   mandatory `.satfinite`, and exact PTX 8.7 `sm_100a` or `sm_103a` targets.
 - `ue8m0x2` accepts its `.rz/.rp` f32 and packed-BF16 inputs and its `.rn`
   BF16 output form with the specified low-bit target alternatives.

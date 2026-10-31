@@ -3266,6 +3266,10 @@ void check_control_contracts(const ResolvedModule& module,
           diagnostics, prototype.range,
           "Resolved .callprototype has a mismatched owner scope.");
     }
+    if (prototype.signature.is_entry)
+      append_model_mismatch(diagnostics, prototype.range,
+                            "Resolved .callprototype signature must be a "
+                            "non-entry device-call interface.");
     check_signature(prototype.signature, prototype.range, diagnostics);
   }
 }

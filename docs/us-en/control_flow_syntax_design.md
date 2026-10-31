@@ -212,3 +212,11 @@ and owned regions after AST death. Known legacy contexts disable the minimum;
 missing context defers it under partial checking. Ordinary small/predicate registers
 and compatible small actuals to `.param` formals remain legal. See
 [parameter declarations](parameter_declarations.md) for the complete boundary.
+
+A local `ResolvedCallPrototypeContract` describes a device-call interface, so its
+owned `signature.is_entry` must remain false. AST-free module validation checks
+this role even when the prototype is unused, including return-only interfaces
+whose types and widths are otherwise valid. Module/function copies and instruction
+clones preserve prototype identity. This metadata-integrity rule is independent
+of formal ABI width, feature availability and supplied-source association; no
+source spelling/history is reconstructed to validate the flag.

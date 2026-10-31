@@ -164,3 +164,10 @@ PTX >=2.0 且当前可识别 target 为 SM20+ 时，整个 scalar/vector 值必�
 region；已知 legacy context 不应用该下限，缺失 context 在 partial checking 中延后。
 普通小宽度/predicate register 与传给匹配 `.param` formal 的小 actual 仍合法，
 完整边界见[parameter 声明](parameter_declarations.md)。
+
+局部 `ResolvedCallPrototypeContract` 描述 device-call interface，因此 owned
+`signature.is_entry` 必须保持 false。AST-free module validation 即使在 prototype
+未使用时也检查该 role，包括 type/width 其他条件均合法的 return-only interface。
+Module/function copy 与 instruction clone 保留 prototype identity。该 metadata-integrity
+规则独立于 formal ABI width、feature availability 与 supplied-source association；
+不重建 source spelling/history 来检查该 flag。

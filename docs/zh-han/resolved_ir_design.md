@@ -1148,3 +1148,10 @@ Header numeric parameter record 保留完整有序 `array_extents` 与检查后�
 Name-only `ResolvedOpaqueEntryParameter::array_extents` 替换原 `is_array` 与
 `array_extent`，保留有界轴而不推导 opaque 字节数。Function copy 独立拥有这些向量，
 并独立 clone body instruction，见[公共 parameter migration](parameter_declarations.md)。
+
+固定 cardinality 的 vector/tensor operand tuple 由 scalar register leaf 组成。
+即使 element dtype 匹配，owned whole-vector register 也不能替换单个 leaf；诊断定位到
+对应 lane range，缺失时回退到 instruction range。显式 scalar component 与真实 named-vector
+projection 的 effective vector width 仍为空，按既有 source 合同保持合法；外层 named
+MOV/memory vector root 保留自身 vector shape。本规则不改变 tuple cardinality、
+dtype/carrier policy 或 immediate range。

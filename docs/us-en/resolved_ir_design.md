@@ -1427,3 +1427,11 @@ comparison across declarations/calls uses total count. Name-only
 `array_extent`; it retains sized axes without assigning opaque bytes. Function
 copies own these vectors and clone body instructions independently. See the
 [public parameter migration](parameter_declarations.md).
+
+Fixed-cardinality vector/tensor operand tuples contain scalar register leaves.
+An owned whole-vector register cannot replace one leaf, even when its element
+dtype matches; checking reports the offending lane range, with the instruction
+range as fallback. Explicit scalar components and genuine named-vector projections
+retain absent effective vector width and remain legal under their existing source
+contracts. The enclosing named MOV/memory vector root keeps its own vector shape.
+This does not change tuple cardinality, dtype/carrier policies or immediate ranges.

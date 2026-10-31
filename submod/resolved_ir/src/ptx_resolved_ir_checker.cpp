@@ -1404,6 +1404,21 @@ CheckResult check_operands(
                 descriptor.target_field_id),
         });
       } else {
+        // Fixed tuples contain scalar leaves; a separate owner retains vector roots.
+        for (size_t index = 0; index < operand->vector_arity; ++index) {
+          const auto* reg = operand->vector_element_registers[index];
+          if (operand->vector_element_shapes[index] == OperandShape::Register &&
+              reg && reg->vector_width)
+            diagnostics.push_back(CheckDiagnostic{
+                .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+                .range = index < operand->locations.size()
+                             ? operand->locations[index]
+                             : range,
+                .message = fmt::format("Scalar element of vector operand '{}' "
+                                       "cannot use a whole vector.",
+                                       descriptor.target_field_id),
+            });
+        }
         const auto mismatched = std::ranges::find_if(
             operand->vector_element_shapes.begin(),
             operand->vector_element_shapes.begin() + operand->vector_arity,

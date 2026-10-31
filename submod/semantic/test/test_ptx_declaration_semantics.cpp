@@ -73,6 +73,29 @@ TEST(PtxDeclarationSemantics, AcceptsIntegerLiteralMaskRadices) {
   }
 }
 
+/** Direct exact-F32 literals remain distinct from forbidden expression operands. */
+TEST(PtxDeclarationSemantics, ChecksFloatingExpressionCohort) {
+  for (const auto expression :
+       {"0f3f800000", "((0f3f800000))", "-0.0", "+0d8000000000000000",
+        "(1.0 + 2) * 3.0", "1 ? 2 : 3.0", "0 ? 2.0 : 3"}) {
+    SCOPED_TRACE(expression);
+    const auto result =
+        check(".global .f64 value = " + std::string(expression) + ";");
+    EXPECT_TRUE(result.diagnostics.empty());
+  }
+  for (const auto expression :
+       {"+0f3f800000", "-0f3f800000", "0f3f800000 + 1.0", "(.u64)0f3f800000",
+        "1 ? 2.0 : 0f3f800000", "0 ? 0f3f800000 : 2.0"}) {
+    SCOPED_TRACE(expression);
+    const auto result =
+        check(".global .f64 value = " + std::string(expression) + ";");
+    EXPECT_EQ(
+        diagnosticCount(
+            result, DeclarationDiagnosticKind::InvalidInitializerExpression),
+        1u);
+  }
+}
+
 /** Opaque object handles cannot become initializer addresses through wrappers. */
 TEST(PtxDeclarationSemantics, RejectsOpaqueObjectInitializerSymbols) {
   const CheckedModule result = check(R"ptx(

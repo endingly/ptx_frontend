@@ -1,4 +1,5 @@
 #include "ptx_storage_declarations.hpp"
+#include "ptx_resolved_ir_private.hpp"
 
 #include <algorithm>
 #include <array>
@@ -575,74 +576,42 @@ std::optional<StorageConstant> integer_constant(
   return StorageConstant{.bits = value->bits & mask};
 }
 
-/** Resolve a direct floating literal or a signed direct floating literal. */
-std::optional<StorageConstant> floating_literal(
+/** Evaluate floating storage expressions through the shared numeric conversion. */
+std::optional<StorageConstant> floating_constant(
     const AstConstantExpression& expression, base::ScalarType type,
     std::vector<DeclarationDiagnostic>& diagnostics) {
+  if (type != base::ScalarType::F32 && type != base::ScalarType::F64)
+    return std::nullopt;
   const AstConstantExpression* current = &expression;
-  while (
-      const auto* parenthesized =
-          std::get_if<syntax_ast::AstConstantParenthesized>(&current->node)) {
+  while (const auto* parenthesized =
+             std::get_if<syntax_ast::AstConstantParenthesized>(&current->node))
     current = parenthesized->expression.get();
-  }
-  const syntax_ast::AstImmediate* immediate = nullptr;
-  bool negate = false;
+
+  // Exact single-precision literals retain their payload outside expressions.
   if (const auto* literal =
-          std::get_if<syntax_ast::AstConstantLiteral>(&current->node)) {
-    immediate = &literal->value;
-  } else if (const auto* unary =
-                 std::get_if<syntax_ast::AstConstantUnary>(&current->node)) {
-    if (unary->operation != syntax_ast::AstConstantUnaryOperator::Plus &&
-        unary->operation != syntax_ast::AstConstantUnaryOperator::Minus) {
-      return std::nullopt;
-    }
-    const AstConstantExpression* operand = unary->operand.get();
-    while (
-        const auto* parenthesized =
-            std::get_if<syntax_ast::AstConstantParenthesized>(&operand->node)) {
-      operand = parenthesized->expression.get();
-    }
-    const auto* literal =
-        std::get_if<syntax_ast::AstConstantLiteral>(&operand->node);
-    if (!literal)
-      return std::nullopt;
-    immediate = &literal->value;
-    negate = unary->operation == syntax_ast::AstConstantUnaryOperator::Minus;
-  }
-  if (!immediate ||
-      (immediate->kind != syntax_ast::AstImmediateKind::F32Hex &&
-       immediate->kind != syntax_ast::AstImmediateKind::F64Hex &&
-       immediate->kind != syntax_ast::AstImmediateKind::DecimalFloat)) {
+          std::get_if<syntax_ast::AstConstantLiteral>(&current->node);
+      literal && literal->value.kind == syntax_ast::AstImmediateKind::F32Hex) {
+    const auto resolved = resolve_immediate_literal(literal->value, type);
+    if (resolved)
+      return StorageConstant{.bits = resolved->bits};
+    diagnose(diagnostics,
+             DeclarationDiagnosticKind::UnsupportedStorageInitializer,
+             expression.range, resolved.error().message);
     return std::nullopt;
   }
-  syntax_ast::AstImmediate signed_immediate = *immediate;
-  const bool bit_pattern =
-      immediate->kind == syntax_ast::AstImmediateKind::F32Hex ||
-      immediate->kind == syntax_ast::AstImmediateKind::F64Hex;
-  if (negate && !bit_pattern)
-    signed_immediate.syntax.text = "-" + signed_immediate.syntax.text;
-  const auto resolved = resolve_immediate_literal(signed_immediate, type);
+
+  const auto value = declaration_semantics::numericConstantValue(expression);
+  if (!value)
+    return std::nullopt;
+  const auto resolved =
+      detail::resolve_numeric_value(*value, expression.range, type);
   if (!resolved) {
     diagnose(diagnostics,
              DeclarationDiagnosticKind::UnsupportedStorageInitializer,
              expression.range, resolved.error().message);
     return std::nullopt;
   }
-  uint64_t bits = resolved->bits;
-  if (negate && bit_pattern) {
-    if (type == base::ScalarType::F32)
-      bits ^= uint64_t{1} << 31;
-    else if (type == base::ScalarType::F64)
-      bits ^= uint64_t{1} << 63;
-    else {
-      diagnose(
-          diagnostics, DeclarationDiagnosticKind::UnsupportedStorageInitializer,
-          expression.range,
-          "Floating bit-pattern sign requires an F32 or F64 storage type.");
-      return std::nullopt;
-    }
-  }
-  return StorageConstant{.bits = bits};
+  return StorageConstant{.bits = resolved->bits};
 }
 
 /** Resolve one permitted initializer symbol as a non-simulated relocation. */
@@ -849,7 +818,7 @@ initializer_value(const AstConstantExpression& expression,
   if (const auto integer =
           integer_constant(expression, type, version, diagnostics))
     return std::variant<StorageConstant, StorageRelocation>{*integer};
-  if (const auto floating = floating_literal(expression, type, diagnostics))
+  if (const auto floating = floating_constant(expression, type, diagnostics))
     return std::variant<StorageConstant, StorageRelocation>{*floating};
   if (const auto address =
           relocation(expression, symbols, version, diagnostics)) {

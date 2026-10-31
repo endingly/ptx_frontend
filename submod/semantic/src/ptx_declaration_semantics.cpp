@@ -269,16 +269,40 @@ ExpressionInfo evaluateIntegerBinary(AstConstantBinaryOperator operation,
   return {};
 }
 
+/**
+ * Classify/evaluate one source tree; direct F32 permission crosses parentheses only.
+ * Operator operands always use expression rules, including unselected branches.
+ */
 ExpressionInfo classifyExpression(
     const AstConstantExpression& expression, DiagnosticSink diagnostics,
-    ConstantEvaluationDiagnostic* failure = nullptr);
+    ConstantEvaluationDiagnostic* failure = nullptr,
+    bool allow_direct_f32 = false);
+
+/** Promote mixed numeric operands to binary64 while preserving integer signedness. */
+void promoteFloatingOperands(ExpressionInfo& left, ExpressionInfo& right) {
+  const auto promote = [](ExpressionInfo& value) {
+    if (value.integer_value) {
+      value.floating_value =
+          value.integer_value->type == ExpressionInfo::IntegerType::Unsigned
+              ? static_cast<double>(value.integer_value->bits)
+              : static_cast<double>(asSigned(*value.integer_value));
+    }
+    value.integer_value.reset();
+    value.category = ExpressionCategory::Floating;
+  };
+  if (left.category == ExpressionCategory::Floating &&
+      right.category == ExpressionCategory::Integer)
+    promote(right);
+  else if (right.category == ExpressionCategory::Floating &&
+           left.category == ExpressionCategory::Integer)
+    promote(left);
+}
 
 ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
                               DiagnosticSink diagnostics,
                               ConstantEvaluationDiagnostic* failure) {
-  const ExpressionInfo left =
-      classifyExpression(*binary.left, diagnostics, failure);
-  const ExpressionInfo right =
+  ExpressionInfo left = classifyExpression(*binary.left, diagnostics, failure);
+  ExpressionInfo right =
       classifyExpression(*binary.right, diagnostics, failure);
   using Operator = AstConstantBinaryOperator;
 
@@ -306,6 +330,8 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
       right.category == ExpressionCategory::Address) {
     return {ExpressionCategory::Integer, std::nullopt};
   }
+
+  promoteFloatingOperands(left, right);
 
   if (left.category != right.category ||
       (left.category != ExpressionCategory::Integer &&
@@ -396,9 +422,11 @@ ExpressionInfo classifyBinary(const syntax_ast::AstConstantBinary& binary,
 
 ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                                   DiagnosticSink diagnostics,
-                                  ConstantEvaluationDiagnostic* failure) {
+                                  ConstantEvaluationDiagnostic* failure,
+                                  bool allow_direct_f32) {
   const auto result = std::visit(
-      [diagnostics, failure](const auto& value) -> ExpressionInfo {
+      [diagnostics, failure,
+       allow_direct_f32](const auto& value) -> ExpressionInfo {
         using Value = std::remove_cvref_t<decltype(value)>;
         if constexpr (std::same_as<Value, syntax_ast::AstConstantLiteral>) {
           switch (value.value.kind) {
@@ -424,15 +452,16 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
                           .type = ExpressionInfo::IntegerType::Signed,
                       }};
             case syntax_ast::AstImmediateKind::F32Hex:
+              if (allow_direct_f32)
+                return {ExpressionCategory::Floating, std::nullopt};
               if (failure) {
                 if (failure->message.empty() || failure->deferred)
                   *failure = {value.value.syntax.range,
                               "Exact single-precision bit patterns cannot "
                               "participate in constant expressions.",
                               false};
-                return {};
               }
-              return {ExpressionCategory::Floating, std::nullopt};
+              return {};
             case syntax_ast::AstImmediateKind::F64Hex: {
               uint64_t bits{};
               const auto& text = value.value.syntax.text;
@@ -466,7 +495,8 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
           return {ExpressionCategory::Address, std::nullopt};
         } else if constexpr (std::same_as<
                                  Value, syntax_ast::AstConstantParenthesized>) {
-          return classifyExpression(*value.expression, diagnostics, failure);
+          return classifyExpression(*value.expression, diagnostics, failure,
+                                    allow_direct_f32);
         } else if constexpr (std::same_as<Value, syntax_ast::AstConstantCall>) {
           const ExpressionInfo callee =
               classifyExpression(*value.callee, diagnostics, failure);
@@ -547,6 +577,7 @@ ExpressionInfo classifyExpression(const AstConstantExpression& expression,
               classifyExpression(*value.true_expression, diagnostics, failure);
           ExpressionInfo false_value =
               classifyExpression(*value.false_expression, diagnostics, failure);
+          promoteFloatingOperands(true_value, false_value);
           if (condition.category != ExpressionCategory::Integer ||
               true_value.category != false_value.category) {
             return {};
@@ -2426,7 +2457,7 @@ class Checker {
         return;
       }
       const ExpressionInfo info =
-          classifyExpression(*expression, &diagnostics_);
+          classifyExpression(*expression, &diagnostics_, nullptr, true);
       checkInitializerSymbols(*expression);
       if (info.category == ExpressionCategory::Invalid) {
         diagnose(DeclarationDiagnosticKind::InvalidInitializerExpression,

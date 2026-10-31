@@ -125,7 +125,8 @@ TEST(InstructionConstantExpressions,
 TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
   for (const auto text :
        {"1.0 + 2.0 * 3.0", "1 ? 7.0 : 9.0", "0d401c000000000000 + 0.0",
-        "1. + 2.e0 * 3.E+0", "1 ? 7. : 9."}) {
+        "1. + 2.e0 * 3.E+0", "1 ? 7. : 9.", "1 + 2.0 * 3", "1 ? 7 : 9.0",
+        "0 ? 9.0 : 7", "8.0 + -1"}) {
     SCOPED_TRACE(text);
     auto source_expression = expression(text);
     ASSERT_TRUE(source_expression);
@@ -177,10 +178,11 @@ TEST(InstructionConstantExpressions, FloatingDomainAndFinalNarrowing) {
 /** Errors retain their failing subtree and never become a numeric zero. */
 TEST(InstructionConstantExpressions, InvalidAndDeferredAreDistinct) {
   for (const auto text :
-       {"1 / 0", "1 % 0", "1 << 64", "1 >> -1", "1 + 2.0", "(.u64)1.0",
-        "1.0 & 2.0", "1.0 ? 2.0 : 3.0", "0f3f800000 + 1.0", "1.0 / 0.0",
-        "0.0 / -0.0", "1 ? 7 : 1/0", "0 && 1/0", "1 || 1/0",
-        "18446744073709551616 + 1"}) {
+       {"1 / 0", "1 % 0", "1 << 64", "1 >> -1", "(.u64)1.0", "1.0 & 2.0",
+        "1.0 ? 2.0 : 3.0", "0f3f800000 + 1.0", "1.0 / 0.0", "0.0 / -0.0",
+        "+0f3f800000", "-0f3f800000", "(.u64)0f3f800000",
+        "1 ? 7.0 : 0f3f800000", "0 ? 0f3f800000 : 7.0", "1 ? 7 : 1/0",
+        "0 && 1/0", "1 || 1/0", "18446744073709551616 + 1"}) {
     SCOPED_TRACE(text);
     auto source_expression = expression(text);
     ASSERT_TRUE(source_expression);

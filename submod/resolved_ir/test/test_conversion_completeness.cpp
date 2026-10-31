@@ -628,7 +628,7 @@ TEST(ConversionCompleteness, RejectsModernModifierAndOperandFailures) {
 .entry kernel() {
   .reg .f32 %f<4>;
   .reg .b32 %d0;
-  .reg .b64 %rbits;
+  .reg .b16 %rbits;
   cvt.rs.satfinite.e4m3x4.f32 %d0, {%f0, %f1, %f2, %f3}, %rbits;
 }
 )ptx");

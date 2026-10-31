@@ -92,7 +92,11 @@ permits native or Bit declarations. Compatible converted-data Bit carriers can
 widen through B128, with exact BF16/BF16x2 source/destination and TF32 destination
 exceptions. Intrinsic register types obey the same kind/width checks. Scale
 factors require Bit independently, while random-bit auxiliaries retain ordinary
-bit-compatible types; auxiliary width is a separate predicate. See the paired
+bit-compatible types. Under the adopted inclusive reading of the CVT source note,
+factors admit Bit registers at least 16 bits wide and randomness admits compatible
+registers at least 32 bits wide, through B128. Only the low logical 16/32 bits
+contribute; data-format exact-width exceptions remain per data role. This is the
+broad note's interpretation, not an auxiliary-specific sentence. See the paired
 [conversion contract](converage/conversion_coverage.md#logical-formats-and-register-carriers).
 
 The regression suite links the real parser, resolver, compatibility helper, and

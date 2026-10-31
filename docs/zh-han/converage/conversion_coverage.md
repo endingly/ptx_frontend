@@ -83,7 +83,7 @@ half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
   PTX 7.1 / SM 80，其 `.ftz` form 自 PTX 7.8 / SM 90；其余 ordinary BF16 direction 自
   PTX 7.8 / SM 90。
 - `f16x2 <- f32,f32` 与 `bf16x2 <- f32,f32` 使用两个 scalar `.f32` source 与 packed
-  physical destination。stochastic `.rs` form 额外要求 `.b32` register `rbits`，并仅限 PTX
+  physical destination。stochastic `.rs` form 额外要求 scalar register 中的逻辑 `.b32` value `rbits`，并仅限 PTX
   8.7 的 exact `sm_100a` 或 `sm_103a`。
 - `tf32 <- f32` 保留独立 `.rna` 和 `.rn/.rz` form。base destination 为 PTX 7.0 / SM 80；
   directed ReLU cohort 为 PTX 7.8 / SM 90。`.satfinite` 有独立的较晚 availability，包括
@@ -103,8 +103,13 @@ BF16 source。显式向量分量保留有效元素 dtype 与声明身份；完�
 
 Scale factor 独立编码 UE8M0x2，必须使用 Bit 存储。`rbits` 是随机 bit 数据，
 保留普通兼容 S32/U32/F32 载体；两个辅助 operand 均不继承 converted-data 格式。
-该载体 kind 规则不设定辅助 operand 的宽度谓词、不解释寄存器内容，也不添加 packed
-数字字面量构造。
+采用对 CVT 未限定 source-widening note 的解读，两个辅助 operand 也可放宽：factor
+使用至少 16 位 Bit scalar 寄存器的低 16 位；`rbits` 使用至少 32 位、原本兼容的 scalar
+寄存器低 32 位。B128 载体仍可符合要求。更宽的载体不增加 factor lane 或随机 bit 字段：
+两个 factor byte 与 stochastic 分区仍位于这些逻辑 payload 内。BF16/BF16x2 converted-data
+的精确宽度例外不限制独立辅助 operand。这是对宽泛 source note 的包含式解释，并非手册
+另有辅助 operand 专属许可句。检查保留逻辑 operand 类型与实际声明宽度，不执行截位、
+不观察运行时寄存器值，也不构造 packed 数字字面量。
 
 ### FP8、low-bit、UE8M0、S2F6、stochastic 与 scaled form
 
@@ -122,14 +127,14 @@ modern form 保留 physical packing，不把 instruction-only type spelling 当�
   而 FP6 保留 `.b16` minimum。packed-source 和 BF16-destination extension 保留 `sm_100f`、
   `sm_110f`、`sm_120f` family 上的 PTX 9.1/9.2 gate。
 - x4 FP8、FP4、FP6 form 是来自四元素 `.f32` register vector 的 `.rs` conversion。它们要求
-  独立 `.b32` `rbits` register、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
+  scalar register 中独立的逻辑 `.b32` `rbits` value、强制 `.satfinite`，并只允许 PTX 8.7 exact `sm_100a` 或
   `sm_103a` target。
 - `ue8m0x2` 支持指定的 `.rz/.rp` f32 与 packed-BF16 input，以及 `.rn` BF16 output form，
   并使用对应 low-bit target alternative。
 - `s2f6x2` 为 PTX 9.1。f32 与 BF16 x2 direction 保留强制 `.rn.satfinite`；BF16 x2 result
   direction 保留适用的 optional flag。这些 form 仅限 `sm_100a`、`sm_103a`、`sm_110a`、
   `sm_120a` 或 `sm_121a`。
-- `.scaled::n2::ue8m0` spelling 选择带额外 `.b16` scale-factor operand 的匹配 layout；未写
+- `.scaled::n2::ue8m0` spelling 选择带额外逻辑 `.b16` scale-factor register operand 的匹配 layout；未写
   该 spelling 时使用较短的 physical layout。scale factor 不能代替 instruction-only scalar
   type 的 register declaration。
 

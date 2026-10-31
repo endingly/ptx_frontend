@@ -74,7 +74,10 @@ Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
 仅记录物理 Bit 宽度。原生 F16x2 允许原生或 Bit 声明。兼容 converted-data Bit 载体可
 放宽到 B128，但 BF16/BF16x2 source、destination 与 TF32 destination 必须精确同宽。
 Intrinsic 寄存器类型服从相同 kind／宽度检查。Scale factor 独立要求 Bit，随机 bit
-辅助 operand 则保留普通 bit-compatible 类型；辅助宽度属于独立谓词。参见
+辅助 operand 则保留普通 bit-compatible 类型。根据对 CVT source note 的包含式解读，
+factor 允许至少 16 位的 Bit 寄存器，随机数据允许至少 32 位的兼容寄存器，均可至 B128；
+只有逻辑低 16／32 位参与。Data-format 精确宽度例外仍按 data role 独立检查。这是宽泛
+note 的解释，并非辅助 operand 专属句。参见
 [转换契约](converage/conversion_coverage.md#逻辑格式与寄存器载体)。
 
 回归测试链接真实 parser、resolver、兼容性 helper 和 generated checker。

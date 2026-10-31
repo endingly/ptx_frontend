@@ -222,7 +222,7 @@ operand_patterns:
       type: f32
       register_width: equal_or_wider
       vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_f32_quad_rbits:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
@@ -233,7 +233,7 @@ operand_patterns:
       type: f32
       register_width: equal_or_wider
       vector: {kind: vector, arity: [4], type_policy: element}
-    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: same_width}
+    - {name: rbits, kind: cvt_register_src, role: src2, access: read, type: b32, register_width: equal_or_wider}
 
   cvt_b16_packed:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
@@ -272,23 +272,23 @@ operand_patterns:
   cvt_b16_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b32_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b16, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b32_b8_packed_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
     - {name: src, kind: cvt_register_src, role: src, access: read, type: b8, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src2, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_b16_f32_pair_optional_scale:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: equal_or_wider}
     - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
     - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-    - {name: scale_factor, kind: cvt_register_src, role: src3, access: read, type: b16, register_width: same_width}
+    - {name: scale_factor, kind: cvt_register_src, role: src3, access: read, type: b16, register_width: equal_or_wider}
 
   cvt_pack_sat_u8_s32_b32:
     - {name: dst, kind: reg, role: dst, access: write, type: u32, register_width: same_width}
@@ -2277,7 +2277,7 @@ instructions:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
               - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
               - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: equal_or_wider}
         examples:
           - {ptx: "cvt.rs.satfinite.f16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 
@@ -2316,7 +2316,7 @@ instructions:
               - {name: dst, kind: reg, role: dst, access: write, type: b32, register_width: equal_or_wider}
               - {name: src1, kind: cvt_scalar_src, role: src1, access: read, type: f32, register_width: equal_or_wider}
               - {name: src2, kind: cvt_scalar_src, role: src2, access: read, type: f32, register_width: equal_or_wider}
-              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: same_width}
+              - {name: rbits, kind: cvt_register_src, role: src3, access: read, type: b32, register_width: equal_or_wider}
         examples:
           - {ptx: "cvt.rs.satfinite.bf16x2.f32 %r0, %f0, %f1, %r1;", valid: true}
 

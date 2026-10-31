@@ -101,7 +101,7 @@ The half/bfloat/tf32 cohorts retain their distinct syntax and availability:
   SM 90.
 - `f16x2 <- f32,f32` and `bf16x2 <- f32,f32` use two scalar `.f32` sources
   and a packed physical destination. Their stochastic `.rs` forms add a
-  required `.b32` register `rbits` and are limited to PTX 8.7 on exact
+  required logical `.b32` value `rbits` in a scalar register and are limited to PTX 8.7 on exact
   `sm_100a` or `sm_103a`.
 - `tf32 <- f32` preserves separate `.rna` and `.rn/.rz` forms. Its base
   destination is PTX 7.0 / SM 80; the directed ReLU cohort is PTX 7.8 / SM
@@ -127,8 +127,17 @@ identity; a whole vector cannot supply a scalar data role.
 A scale factor independently encodes UE8M0x2 and requires Bit storage. The
 `rbits` operand is random-bit data, so its ordinary compatible S32/U32/F32
 carriers remain legal. Neither auxiliary inherits the converted-data format.
-This carrier-kind rule does not set auxiliary width predicates or interpret
-register contents, and does not add packed numeric-literal construction.
+The adopted reading of the unqualified CVT source-widening note includes both
+auxiliaries: a factor uses the low 16 bits of a Bit scalar register of at least
+16 bits; `rbits` uses the low 32 bits of an otherwise compatible scalar register
+of at least 32 bits. B128 carriers remain eligible. Wider carriers add no factor
+lanes or random-bit fields: the two factor bytes and stochastic partitions stay
+inside those logical payloads. BF16/BF16x2 converted-data exact-width exceptions
+do not constrain an independent auxiliary. This is an inclusive interpretation
+of the broad source note, rather than a separately printed auxiliary-specific
+permission. Checking retains logical operand types and actual declared widths;
+it does not execute chopping, inspect runtime register values, or construct
+packed numeric literals.
 
 ### FP8, low-bit, UE8M0, S2F6, stochastic, and scaled forms
 
@@ -152,7 +161,7 @@ instruction-only type spellings as declaration types:
   packed-source and BF16-destination extensions retain their PTX
   9.1/9.2 gates on the `sm_100f`, `sm_110f`, and `sm_120f` families.
 - The x4 FP8, FP4, and FP6 forms are `.rs` conversions from a four-element
-  `.f32` register vector. They require a separate `.b32` `rbits` register,
+  `.f32` register vector. They require a separate logical `.b32` `rbits` value in a scalar register,
   mandatory `.satfinite`, and exact PTX 8.7 `sm_100a` or `sm_103a` targets.
 - `ue8m0x2` accepts its `.rz/.rp` f32 and packed-BF16 inputs and its `.rn`
   BF16 output form with the specified low-bit target alternatives.
@@ -160,8 +169,8 @@ instruction-only type spellings as declaration types:
   `.rn.satfinite`; its BF16 x2 result direction retains the applicable optional
   flags. These forms are limited to `sm_100a`, `sm_103a`, `sm_110a`,
   `sm_120a`, or `sm_121a`.
-- A `.scaled::n2::ue8m0` spelling selects the matching optional extra `.b16`
-  scale-factor operand. Without that spelling, the shorter physical operand
+- A `.scaled::n2::ue8m0` spelling selects the matching optional extra logical `.b16`
+  scale-factor register operand. Without that spelling, the shorter physical operand
   layout is used. The scale factor is never a substitute for a register
   declaration of an instruction-only scalar type.
 

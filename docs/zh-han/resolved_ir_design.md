@@ -423,6 +423,12 @@ memory equal-or-wider element 规则不变。现代 256-bit vector、async store
 atomic/reduction、matrix 与 texture operand 保留各自的 brace 限制。
 scalar bit pack/unpack 也按下述 exact aggregate-width policy 接受 named ordinary vector。
 
+通用 checker 边界要求 effective scalar `Register` operand 的
+`ResolvedRegisterRef::vector_width` 为空；完整 vector 不可冒充 scalar。显式 component
+仍为 scalar：effective width 为空，component metadata 保留所属声明宽度。真正的
+`Vector` operand 仍通过专门检查保留 whole base 与有序 lane provenance。AST-free
+copy 与 instruction clone 同样适用这些规则。
+
 `ResolvedRegisterVector::elements` 保留各 lane；owned `ResolvedVectorSource` 区分
 `BraceList`/`NamedVector`，保存完整书写范围，仅 named form 拥有真实 whole
 `WithLocs<ResolvedVectorRegisterRef>`。有序 lane 共享其 SymbolId、parameterized

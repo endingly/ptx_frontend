@@ -513,6 +513,13 @@ Modern 256-bit vectors, asynchronous stores, atomic/reduction, matrix and textur
 operands retain their separate brace restrictions. Scalar bit pack/unpack also
 admits named ordinary vectors through its exact aggregate-width policy below.
 
+At the common checker boundary, an effective scalar `Register` operand cannot
+carry a whole-vector `ResolvedRegisterRef::vector_width`. An explicit component
+remains scalar: its effective width is absent and its component metadata retains
+the owning declaration width. Actual `Vector` operands keep their whole base and
+ordered lane provenance under their dedicated checks. These rules also apply to
+AST-free copies and instruction clones.
+
 `ResolvedRegisterVector::elements` retains the lanes. Its owned `ResolvedVectorSource`
 distinguishes `BraceList`/`NamedVector`, saves the full written range, and only for
 named form owns the real `WithLocs<ResolvedVectorRegisterRef>` whole base. Ordered

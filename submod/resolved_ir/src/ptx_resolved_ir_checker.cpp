@@ -1130,6 +1130,12 @@ CheckResult check_operands(
                             .message = "Register component has invalid "
                                        "explicit-selector provenance."});
     };
+    if (operand.actual_shape == OperandShape::Register &&
+        operand.register_ref && operand.register_ref->vector_width)
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+           .range = diagnostic_range(operand.locations, context),
+           .message = "A scalar register operand cannot use a whole vector."});
     check_component(operand.register_ref,
                     diagnostic_range(operand.locations, context));
     if (operand.actual_shape == OperandShape::Address && operand.register_ref &&

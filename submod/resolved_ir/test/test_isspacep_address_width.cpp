@@ -139,6 +139,10 @@ TEST(IsspacepAddressWidth,
                                             : ScalarType::U16;
     if (name == std::string_view("whole"))
       reference.vector_width = 2;
+    const checker::Context context{
+        .target = {.ptx_version = {9, 3}, .sm_version = 90},
+        .instruction_range = copy.functions.front().instruction_ranges[0]};
+    EXPECT_FALSE(instruction.check(context));
     EXPECT_FALSE(validateModule(copy));
   }
   auto forged = *module;

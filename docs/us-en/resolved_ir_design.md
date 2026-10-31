@@ -1428,13 +1428,18 @@ comparison across declarations/calls uses total count. Name-only
 copies own these vectors and clone body instructions independently. See the
 [public parameter migration](parameter_declarations.md).
 
-Fixed-cardinality vector/tensor operand tuples contain scalar register leaves.
-An owned whole-vector register cannot replace one leaf, even when its element
-dtype matches; checking reports the offending lane range, with the instruction
-range as fallback. Explicit scalar components and genuine named-vector projections
-retain absent effective vector width and remain legal under their existing source
-contracts. The enclosing named MOV/memory vector root keeps its own vector shape.
-This does not change tuple cardinality, dtype/carrier policies or immediate ranges.
+Ordinary register-vector operands and fixed-cardinality vector/tensor tuples
+contain scalar register leaves. This role is independent of whether arity comes
+from a modifier, an allowed-arity list, or fixed tuple bounds, and applies to both
+element and aggregate policies. An owned whole-vector register cannot replace
+one leaf even when its element dtype matches. Checking reports the offending
+lane range, with the operand/instruction range as fallback. Explicit scalar
+components and genuine named-vector projections retain absent effective vector
+width and remain legal under their existing source contracts. The enclosing
+named MOV/memory vector root keeps its own whole-vector shape; that root is not
+a scalar leaf. Value-vector sources retain their existing scalar-register and
+immediate/provenance checks. This changes no cardinality, dtype/carrier policy,
+named-source permission or immediate range.
 
 [Block-scaled MMA scale selectors](converage/mma_scale_selector_coverage.md) use
 U16 logical values with closed B16/S16/U16 register carriers. Their two scalar

@@ -1149,12 +1149,15 @@ Name-only `ResolvedOpaqueEntryParameter::array_extents` 替换原 `is_array` 与
 `array_extent`，保留有界轴而不推导 opaque 字节数。Function copy 独立拥有这些向量，
 并独立 clone body instruction，见[公共 parameter migration](parameter_declarations.md)。
 
-固定 cardinality 的 vector/tensor operand tuple 由 scalar register leaf 组成。
-即使 element dtype 匹配，owned whole-vector register 也不能替换单个 leaf；诊断定位到
-对应 lane range，缺失时回退到 instruction range。显式 scalar component 与真实 named-vector
-projection 的 effective vector width 仍为空，按既有 source 合同保持合法；外层 named
-MOV/memory vector root 保留自身 vector shape。本规则不改变 tuple cardinality、
-dtype/carrier policy 或 immediate range。
+普通 register-vector operand 与固定 cardinality 的 vector/tensor tuple 都由 scalar
+register leaf 组成。无论 arity 来自 modifier、allowed-arity 列表或固定 tuple bounds，
+该角色对 element 和 aggregate policy 均适用。即使 element dtype 匹配，owned
+whole-vector register 也不能替换单个 leaf。检查定位到对应 lane range，缺失时回退到
+operand／instruction range。显式 scalar component 与真实 named-vector projection 的
+effective vector width 仍为空，按既有 source 契约保持合法。外层 named MOV/memory
+vector root 保留自身完整 vector shape；它不是 scalar leaf。Value-vector source 保留
+既有 scalar-register、immediate 与 provenance 检查。该规则不改变 cardinality、
+dtype/carrier policy、named-source 许可或 immediate range。
 
 [Block-scaled MMA scale selector](converage/mma_scale_selector_coverage.md) 使用 U16
 逻辑值与封闭的 B16/S16/U16 register carrier。两个 scalar leaf、byte mask、独立 A/B

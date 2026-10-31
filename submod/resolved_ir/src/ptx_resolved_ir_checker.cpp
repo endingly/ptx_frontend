@@ -88,6 +88,30 @@ const SourceRange& diagnostic_range(std::span<const SourceRange> locations,
   return locations.empty() ? context.instruction_range : locations.front();
 }
 
+/** Reject whole declared vectors only when borrowed as scalar vector leaves.
+ * The caller has already established a nonzero arity within kMaxOperandElements;
+ * the enclosing named-vector root is deliberately not inspected here.
+ */
+void check_scalar_vector_leaves(const OperandView& operand,
+                                std::string_view field_id,
+                                const Context& context,
+                                CheckDiagnostics& diagnostics) {
+  const SourceRange& fallback = diagnostic_range(operand.locations, context);
+  for (size_t index = 0; index < operand.vector_arity; ++index) {
+    const auto* reg = operand.vector_element_registers[index];
+    if (operand.vector_element_shapes[index] == OperandShape::Register && reg &&
+        reg->vector_width)
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = index < operand.locations.size() ? operand.locations[index]
+                                                    : fallback,
+          .message = fmt::format("Scalar element of vector operand '{}' "
+                                 "cannot use a whole vector.",
+                                 field_id),
+      });
+  }
+}
+
 const FieldView* find_field(std::span<const FieldView> fields,
                             std::string_view field_id) noexcept {
   const auto it =
@@ -1422,21 +1446,8 @@ CheckResult check_operands(
                 descriptor.target_field_id),
         });
       } else {
-        // Fixed tuples contain scalar leaves; a separate owner retains vector roots.
-        for (size_t index = 0; index < operand->vector_arity; ++index) {
-          const auto* reg = operand->vector_element_registers[index];
-          if (operand->vector_element_shapes[index] == OperandShape::Register &&
-              reg && reg->vector_width)
-            diagnostics.push_back(CheckDiagnostic{
-                .kind = CheckDiagnosticKind::UnsupportedOperandShape,
-                .range = index < operand->locations.size()
-                             ? operand->locations[index]
-                             : range,
-                .message = fmt::format("Scalar element of vector operand '{}' "
-                                       "cannot use a whole vector.",
-                                       descriptor.target_field_id),
-            });
-        }
+        check_scalar_vector_leaves(*operand, descriptor.target_field_id,
+                                   context, diagnostics);
         const auto mismatched = std::ranges::find_if(
             operand->vector_element_shapes.begin(),
             operand->vector_element_shapes.begin() + operand->vector_arity,
@@ -1860,6 +1871,9 @@ CheckResult check_operands(
         });
         continue;
       }
+      if (!descriptor.source_value_vector)
+        check_scalar_vector_leaves(*operand, descriptor.target_field_id,
+                                   context, diagnostics);
       if (descriptor.source_value_vector) {
         if (descriptor.access != OperandAccess::Read ||
             operand->locations.size() != operand->vector_arity) {

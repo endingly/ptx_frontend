@@ -2936,7 +2936,8 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         self.assertEqual(check_layout_generic_v1.modifier_fields[1].constant_value, "layout::v1")
         self.assertEqual(check_layout_shared_cta_v0.modifier_fields[2].constant_value, True)
         self.assertEqual(check_layout_shared_cta_v1.modifier_fields[1].constant_value, "layout::v1")
-        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(state.type_expression.scalar_type, "u64")
+        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(parity.type_expression.scalar_type, "u32")
         self.assertEqual(parity.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(
@@ -3004,7 +3005,8 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
         count, state = pending_count.operand_layouts[0].bindings
         self.assertEqual(count.type_expression.scalar_type, "u32")
         self.assertEqual(count.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
-        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.EXACT)
+        self.assertEqual(state.type_expression.scalar_type, "b64")
+        self.assertEqual(state.register_width_policy, ResolvedRegisterWidthPolicy.SAME_WIDTH)
         self.assertEqual(state.mbarrier_state_token_form.value, "register")
         self.assertEqual(
             [layout.layout_id for layout in arrive_drop_generic.operand_layouts],

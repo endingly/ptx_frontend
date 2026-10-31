@@ -38,8 +38,10 @@ class MbarrierTokenFormTests(unittest.TestCase):
                             counts[form] += 1
                             self.assertEqual(forms, ["checker::MbarrierStateTokenForm::" +
                                 ''.join(part.capitalize() for part in form.split('_'))], key)
-                            self.assertEqual(binding.type_expression.scalar_type, "b64", key)
-                            self.assertEqual(binding.register_width_policy.value, "exact", key)
+                            self.assertEqual(binding.type_expression.scalar_type,
+                                             operand.type_expression.scalar_type, key)
+                            self.assertEqual(binding.register_width_policy.value,
+                                             operand.register_width_policy.value, key)
                         else:
                             ordinary += 1
                             self.assertIsNone(binding.mbarrier_state_token_form, key)

@@ -1435,3 +1435,8 @@ range as fallback. Explicit scalar components and genuine named-vector projectio
 retain absent effective vector width and remain legal under their existing source
 contracts. The enclosing named MOV/memory vector root keeps its own vector shape.
 This does not change tuple cardinality, dtype/carrier policies or immediate ranges.
+
+[Block-scaled MMA scale selectors](converage/mma_scale_selector_coverage.md) use
+U16 logical values with closed B16/S16/U16 register carriers. Their two scalar
+leaves, byte masks, separate A/B thread limits and unsigned literal conversion
+remain independent of whole-vector shape and runtime register contents.

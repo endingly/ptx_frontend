@@ -1155,3 +1155,7 @@ Name-only `ResolvedOpaqueEntryParameter::array_extents` 替换原 `is_array` 与
 projection 的 effective vector width 仍为空，按既有 source 合同保持合法；外层 named
 MOV/memory vector root 保留自身 vector shape。本规则不改变 tuple cardinality、
 dtype/carrier policy 或 immediate range。
+
+[Block-scaled MMA scale selector](converage/mma_scale_selector_coverage.md) 使用 U16
+逻辑值与封闭的 B16/S16/U16 register carrier。两个 scalar leaf、byte mask、独立 A/B
+thread 上限及 unsigned literal conversion，不因 whole-vector shape 或运行时 register 内容而改变。

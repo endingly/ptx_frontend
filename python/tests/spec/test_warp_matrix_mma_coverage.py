@@ -6,7 +6,9 @@ import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.load_yaml import load_yaml
-from ptx_frontend.spec.model import MatrixBitOperation, MatrixFamily, MatrixKind
+from ptx_frontend.spec.model import (MatrixBitOperation, MatrixFamily, MatrixKind,
+                                     OperandKind, OperandRegisterWidthPolicy,
+                                     OperandImmediateConversionPolicy)
 from ptx_frontend.spec.normalize import normalize_instruction_spec
 from ptx_frontend.spec.resources import packaged_spec_dir
 
@@ -101,6 +103,38 @@ class WarpMatrixMmaCoverageTests(unittest.TestCase):
                     {"ptx": "9.1" if form is late[0] else "8.8",
                      "target": "sm_121a"},
                 ])
+
+    def test_all_scale_selector_contracts_use_same_width_u16(self) -> None:
+        """Close all A/B contracts without changing tuple, range or topology facts."""
+        rows = []
+        cohorts = Counter()
+        variants = set()
+        for variant in self.variants.values():
+            for layout in variant.operand_layouts:
+                for operand in layout.operands:
+                    if operand.kind is not OperandKind.MATRIX_SCALE_SELECTOR:
+                        continue
+                    rows.append((variant.name, layout.name, operand.name))
+                    variants.add(variant.name)
+                    matrix = variant.matrix
+                    self.assertIsNotNone(matrix)
+                    cohorts[(matrix.family, matrix.kind, matrix.scale_vector_size)] += 1
+                    self.assertEqual(operand.type_expression.scalar_type, "u16")
+                    self.assertIs(operand.register_width_policy, OperandRegisterWidthPolicy.SAME_WIDTH)
+                    self.assertEqual((operand.minimum_elements, operand.maximum_elements), (2, 2))
+                    self.assertEqual(tuple(kind.value for kind in operand.element_kinds), ("reg", "imm"))
+                    self.assertIs(operand.immediate_conversion_policy,
+                                  OperandImmediateConversionPolicy.REQUIRE_TARGET_RANGE)
+                    self.assertIn(operand.name, ("scale_a_selector", "scale_b_selector"))
+        self.assertEqual(len(rows), 220)
+        self.assertEqual(len(set(rows)), 220)
+        self.assertEqual(len(variants), 110)
+        self.assertEqual(len(cohorts), 8)
+        for family in (MatrixFamily.MMA, MatrixFamily.MMA_SPARSE):
+            self.assertEqual(cohorts[(family, MatrixKind.MXF8F6F4, 1)], 100)
+            self.assertEqual(cohorts[(family, MatrixKind.MXF4, 2)], 4)
+            self.assertEqual(cohorts[(family, MatrixKind.MXF4NVF4, 2)], 2)
+            self.assertEqual(cohorts[(family, MatrixKind.MXF4NVF4, 4)], 4)
 
     def test_rejects_topology_and_selector_drift(self) -> None:
         """Canonical metadata cannot misstate suffixes or selector operand type."""

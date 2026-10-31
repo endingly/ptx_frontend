@@ -10,7 +10,7 @@
 
 namespace ptx_frontend::resolved_ir {
 namespace {
-/** Keep selector dtype U16, which already satisfies the exact carrier contract. */
+/** Keep the logical selector dtype U16 independent of register shape. */
 std::string selector_shape_source(std::array<std::string, 4> values = {
                                       "%selector", "%selector", "%selector",
                                       "%selector"}) {

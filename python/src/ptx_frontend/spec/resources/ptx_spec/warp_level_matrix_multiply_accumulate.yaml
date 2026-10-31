@@ -13728,7 +13728,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -13746,7 +13746,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e4m3_e4m3_f32_ue8m0
     availability:
@@ -13901,7 +13901,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -13919,7 +13919,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e4m3_e5m2_f32_ue8m0
     availability:
@@ -14069,7 +14069,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14087,7 +14087,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e4m3_e5m2_f32_ue8m0
     availability:
@@ -14242,7 +14242,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14260,7 +14260,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e4m3_e3m2_f32_ue8m0
     availability:
@@ -14410,7 +14410,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14428,7 +14428,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e4m3_e3m2_f32_ue8m0
     availability:
@@ -14583,7 +14583,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14601,7 +14601,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e4m3_e2m3_f32_ue8m0
     availability:
@@ -14751,7 +14751,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14769,7 +14769,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e4m3_e2m3_f32_ue8m0
     availability:
@@ -14924,7 +14924,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -14942,7 +14942,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e4m3_e2m1_f32_ue8m0
     availability:
@@ -15092,7 +15092,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15110,7 +15110,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e4m3_e2m1_f32_ue8m0
     availability:
@@ -15265,7 +15265,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15283,7 +15283,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e5m2_e4m3_f32_ue8m0
     availability:
@@ -15433,7 +15433,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15451,7 +15451,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e5m2_e4m3_f32_ue8m0
     availability:
@@ -15606,7 +15606,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15624,7 +15624,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e5m2_e5m2_f32_ue8m0
     availability:
@@ -15774,7 +15774,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15792,7 +15792,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e5m2_e5m2_f32_ue8m0
     availability:
@@ -15947,7 +15947,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -15965,7 +15965,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e5m2_e3m2_f32_ue8m0
     availability:
@@ -16115,7 +16115,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16133,7 +16133,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e5m2_e3m2_f32_ue8m0
     availability:
@@ -16288,7 +16288,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16306,7 +16306,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e5m2_e2m3_f32_ue8m0
     availability:
@@ -16456,7 +16456,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16474,7 +16474,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e5m2_e2m3_f32_ue8m0
     availability:
@@ -16629,7 +16629,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16647,7 +16647,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e5m2_e2m1_f32_ue8m0
     availability:
@@ -16797,7 +16797,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16815,7 +16815,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e5m2_e2m1_f32_ue8m0
     availability:
@@ -16970,7 +16970,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -16988,7 +16988,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e3m2_e4m3_f32_ue8m0
     availability:
@@ -17138,7 +17138,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -17156,7 +17156,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e3m2_e4m3_f32_ue8m0
     availability:
@@ -17311,7 +17311,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -17329,7 +17329,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e3m2_e5m2_f32_ue8m0
     availability:
@@ -17479,7 +17479,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -17497,7 +17497,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e3m2_e5m2_f32_ue8m0
     availability:
@@ -17652,7 +17652,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -17670,7 +17670,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e3m2_e3m2_f32_ue8m0
     availability:
@@ -17820,7 +17820,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -17838,7 +17838,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e3m2_e3m2_f32_ue8m0
     availability:
@@ -17993,7 +17993,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18011,7 +18011,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e3m2_e2m3_f32_ue8m0
     availability:
@@ -18161,7 +18161,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18179,7 +18179,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e3m2_e2m3_f32_ue8m0
     availability:
@@ -18334,7 +18334,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18352,7 +18352,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e3m2_e2m1_f32_ue8m0
     availability:
@@ -18502,7 +18502,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18520,7 +18520,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e3m2_e2m1_f32_ue8m0
     availability:
@@ -18675,7 +18675,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18693,7 +18693,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m3_e4m3_f32_ue8m0
     availability:
@@ -18843,7 +18843,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -18861,7 +18861,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m3_e4m3_f32_ue8m0
     availability:
@@ -19016,7 +19016,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19034,7 +19034,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m3_e5m2_f32_ue8m0
     availability:
@@ -19184,7 +19184,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19202,7 +19202,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m3_e5m2_f32_ue8m0
     availability:
@@ -19357,7 +19357,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19375,7 +19375,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m3_e3m2_f32_ue8m0
     availability:
@@ -19525,7 +19525,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19543,7 +19543,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m3_e3m2_f32_ue8m0
     availability:
@@ -19698,7 +19698,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19716,7 +19716,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m3_e2m3_f32_ue8m0
     availability:
@@ -19866,7 +19866,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -19884,7 +19884,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m3_e2m3_f32_ue8m0
     availability:
@@ -20039,7 +20039,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20057,7 +20057,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m3_e2m1_f32_ue8m0
     availability:
@@ -20207,7 +20207,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20225,7 +20225,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m3_e2m1_f32_ue8m0
     availability:
@@ -20380,7 +20380,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20398,7 +20398,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m1_e4m3_f32_ue8m0
     availability:
@@ -20548,7 +20548,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20566,7 +20566,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m1_e4m3_f32_ue8m0
     availability:
@@ -20721,7 +20721,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20739,7 +20739,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m1_e5m2_f32_ue8m0
     availability:
@@ -20889,7 +20889,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -20907,7 +20907,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m1_e5m2_f32_ue8m0
     availability:
@@ -21062,7 +21062,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21080,7 +21080,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m1_e3m2_f32_ue8m0
     availability:
@@ -21230,7 +21230,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21248,7 +21248,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m1_e3m2_f32_ue8m0
     availability:
@@ -21403,7 +21403,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21421,7 +21421,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m1_e2m3_f32_ue8m0
     availability:
@@ -21571,7 +21571,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21589,7 +21589,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m1_e2m3_f32_ue8m0
     availability:
@@ -21744,7 +21744,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21762,7 +21762,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_default_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -21912,7 +21912,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -21930,7 +21930,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k32_row_col_kind_mxf8f6f4_block_scale_scale_vec_1_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -22085,7 +22085,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22103,7 +22103,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k64_row_col_kind_mxf4_block_scale_scale_vec_default_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -22253,7 +22253,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22271,7 +22271,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k64_row_col_kind_mxf4_block_scale_scale_vec_2_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -22426,7 +22426,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22444,7 +22444,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k64_row_col_kind_mxf4nvf4_block_scale_scale_vec_2_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -22599,7 +22599,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22617,7 +22617,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k64_row_col_kind_mxf4nvf4_block_scale_scale_vec_4_f32_e2m1_e2m1_f32_ue8m0
     availability:
@@ -22772,7 +22772,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22790,7 +22790,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sync_aligned_m16n8k64_row_col_kind_mxf4nvf4_block_scale_scale_vec_4_f32_e2m1_e2m1_f32_ue4m3
     availability:
@@ -22945,7 +22945,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -22963,7 +22963,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
   - name: mma_sp_sp_sync_aligned_m16n8k16_row_col_f16_f16_f16_f16
     section: 9.7.15.6.3
@@ -40822,7 +40822,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -40840,7 +40840,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41019,7 +41019,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -41037,7 +41037,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41211,7 +41211,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -41229,7 +41229,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41408,7 +41408,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -41426,7 +41426,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41600,7 +41600,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -41618,7 +41618,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41797,7 +41797,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -41815,7 +41815,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -41989,7 +41989,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42007,7 +42007,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -42186,7 +42186,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42204,7 +42204,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -42378,7 +42378,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42396,7 +42396,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -42575,7 +42575,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42593,7 +42593,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -42767,7 +42767,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42785,7 +42785,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -42964,7 +42964,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -42982,7 +42982,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -43156,7 +43156,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -43174,7 +43174,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -43353,7 +43353,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -43371,7 +43371,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -43545,7 +43545,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -43563,7 +43563,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -43742,7 +43742,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -43760,7 +43760,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -43934,7 +43934,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -43952,7 +43952,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -44131,7 +44131,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -44149,7 +44149,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -44323,7 +44323,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -44341,7 +44341,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -44520,7 +44520,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -44538,7 +44538,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -44712,7 +44712,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -44730,7 +44730,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -44909,7 +44909,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -44927,7 +44927,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -45101,7 +45101,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -45119,7 +45119,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -45298,7 +45298,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -45316,7 +45316,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -45490,7 +45490,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -45508,7 +45508,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -45687,7 +45687,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -45705,7 +45705,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -45879,7 +45879,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -45897,7 +45897,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -46076,7 +46076,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -46094,7 +46094,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -46268,7 +46268,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -46286,7 +46286,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -46465,7 +46465,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -46483,7 +46483,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -46657,7 +46657,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -46675,7 +46675,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -46854,7 +46854,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -46872,7 +46872,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -47046,7 +47046,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -47064,7 +47064,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -47243,7 +47243,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -47261,7 +47261,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -47435,7 +47435,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -47453,7 +47453,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -47632,7 +47632,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -47650,7 +47650,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -47824,7 +47824,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -47842,7 +47842,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48021,7 +48021,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -48039,7 +48039,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48213,7 +48213,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -48231,7 +48231,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48410,7 +48410,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -48428,7 +48428,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48602,7 +48602,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -48620,7 +48620,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48799,7 +48799,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -48817,7 +48817,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -48991,7 +48991,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49009,7 +49009,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -49188,7 +49188,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49206,7 +49206,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -49380,7 +49380,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49398,7 +49398,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -49577,7 +49577,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49595,7 +49595,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -49769,7 +49769,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49787,7 +49787,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -49966,7 +49966,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -49984,7 +49984,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -50158,7 +50158,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -50176,7 +50176,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -50355,7 +50355,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -50373,7 +50373,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -50546,7 +50546,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -50564,7 +50564,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -50742,7 +50742,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -50760,7 +50760,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -50938,7 +50938,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -50956,7 +50956,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -51134,7 +51134,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -51152,7 +51152,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range
@@ -51330,7 +51330,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     - name: scale_b
       kind: reg
       role: src4
@@ -51348,7 +51348,7 @@ instructions:
       element_kinds:
       - reg
       - imm
-      register_width: exact
+      register_width: same_width
     rule: matrix.mma
     constraints:
     - kind: immediate_range

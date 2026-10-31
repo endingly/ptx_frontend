@@ -415,6 +415,11 @@ validation 从 byte-address 与 named-array 形式（包括 symbolic index）推
 绑定 object/member identity；offset 不改变 call 必须使用的本地 object。本检查不证明
 运行时 index bounds、逐字节初始化覆盖或任意 incoming control path 的正确性。
 
+Parameter record 也保留 fundamental `.f16x2` 与合法 `.param` v2/v4 shape，
+包含 lane-aware extent、自然 vector alignment 和 AST-free padded entry limit。
+[参数声明 contract](parameter_declarations.md) 区分 packed scalar dtype、显式 vector lane
+与 numeric packed-literal reference gap。
+
 ## Named memory-vector source
 
 普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通

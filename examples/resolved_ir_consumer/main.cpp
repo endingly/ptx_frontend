@@ -10,6 +10,7 @@
 #include <ptx_frontend/base/ptx_target.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
+#include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
 /** Verify installed catalog metadata and owned header gates without source storage. */
@@ -451,8 +452,47 @@ bool checkInstalledCombinedSourceStates() {
   return true;
 }
 
+/** Inspect exported packed element and vector parameter contracts after source release. */
+bool checkInstalledParameterDomain() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace base = ptx_frontend::base;
+  if (ptx_frontend::declaration_semantics::parameterScalarType(".f16x2") !=
+      base::ScalarType::F16x2)
+    return false;
+  const auto owned = []() -> std::optional<ir::ResolvedModule> {
+    ptx_frontend::PtxSyntaxParser parser(R"ptx(
+.version 9.3
+.target sm_80
+.address_size 64
+.extern .func (.param .v2 .f16x2 result) exchange(.param .v2 .f16x2 input);
+.entry kernel() { .param .v2 .f16x2 a, result; call (result), exchange, (a); }
+)ptx");
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::nullopt;
+    auto module = ir::resolveAndValidateModule(*ast);
+    if (!module)
+      return std::nullopt;
+    return std::move(*module);
+  }();
+  if (!owned)
+    return false;
+  auto copy = *owned;
+  const auto& formal =
+      copy.functions.front().contract.signature.parameters.front();
+  const auto& record = copy.functions.back().parameter_declarations.front();
+  return formal.scalar_type == base::ScalarType::F16x2 &&
+         formal.vector_shape == ptx_frontend::call_argument_compatibility::
+                                    CallArgumentVectorShape::V2 &&
+         record.scalar_type == base::ScalarType::F16x2 &&
+         record.vector_width == 2 && record.byte_extent == 8 &&
+         record.alignment == 8 && ir::validateModule(copy).has_value();
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledParameterDomain())
+    return 1;
   if (!checkInstalledHeaderCompatibility())
     return 1;
   if (!checkInstalledCombinedSourceStates())

@@ -876,7 +876,8 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
         parameter.array_size
             ? declaration_semantics::constantArrayExtent(*parameter.array_size)
             : std::nullopt);
-  const auto bytes = parameter_byte_extent(*type, 1, extents);
+  const uint32_t lanes = symbol.vector_width.value_or(1);
+  const auto bytes = parameter_byte_extent(*type, lanes, extents);
   return {
       .symbol_id = symbol.id,
       .scope_id = symbol.scope,
@@ -884,6 +885,7 @@ ResolvedParameterDeclaration resolve_parameter_declaration(
       .scalar_type = *type,
       .alignment = *symbol.address_alignment,
       .explicit_alignment = parameter.alignment.has_value(),
+      .vector_width = lanes,
       .array_extents = std::move(extents),
       .byte_extent = bytes,
       .pointer = properties.pointer,

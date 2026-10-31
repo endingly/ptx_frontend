@@ -874,8 +874,8 @@ TEST(PtxDeclarationSemantics, ValidatesEntryParameterByteBoundaries) {
 /** Parameter scalar classification accepts only the modeled storage subset. */
 TEST(PtxDeclarationSemantics, ClassifiesSupportedParameterScalarTypes) {
   constexpr std::array supported = {
-      ".u8", ".u16", ".u32", ".u64", ".s8",   ".s16", ".s32", ".s64",
-      ".b8", ".b16", ".b32", ".b64", ".b128", ".f16", ".f32", ".f64",
+      ".u8",  ".u16", ".u32", ".u64",  ".s8",  ".s16",   ".s32", ".s64", ".b8",
+      ".b16", ".b32", ".b64", ".b128", ".f16", ".f16x2", ".f32", ".f64",
   };
   std::string source = ".version 9.3\n.target sm_80\n.entry k(";
   for (size_t index = 0; index < supported.size(); ++index) {
@@ -893,7 +893,10 @@ TEST(PtxDeclarationSemantics, ClassifiesSupportedParameterScalarTypes) {
     EXPECT_TRUE(parameterScalarType(type).has_value()) << type;
 
   constexpr std::array unsupported = {
-      ".pred", ".f16x2", ".bf16", ".tf32", ".mystery",
+      ".pred",
+      ".bf16",
+      ".tf32",
+      ".mystery",
   };
   for (const auto type : unsupported) {
     const CheckedModule result = check(
@@ -922,7 +925,7 @@ TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
   constexpr std::array rejected = {
       Case{".param .b8 bytes[];",
            DeclarationDiagnosticKind::UnsizedArrayDimension},
-      Case{".param .v2 .u32 vector;",
+      Case{".param .v4 .u64 vector;",
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
       Case{".param .texref texture;",
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},

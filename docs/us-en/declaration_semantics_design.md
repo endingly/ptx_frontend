@@ -197,6 +197,11 @@ statically decidable ISA version/target and entry-size limits. This applies to
 entry/device headers, call-prototype formals, and body-local `.param`
 declarations; retained type spelling or array syntax alone does not establish validity.
 
+Parameter element classification reuses fundamental metadata, excludes predicates,
+and includes native scalar F16x2 without flattening its packed components. Validated vector
+lanes participate in checked object bytes, natural alignment and padded entry totals;
+unused prototype signatures receive the same shape, alignment and role checks.
+
 ## Entry resource constraints
 
 For the supported entry-header `.maxnreg`, `.maxntid`, `.reqntid`, and

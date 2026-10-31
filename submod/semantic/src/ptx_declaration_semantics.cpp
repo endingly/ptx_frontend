@@ -1820,11 +1820,11 @@ class Checker {
            context == ParameterContext::CallPrototypeInput;
   }
 
-  /** Return a static scalar or one-dimensional array byte count when known. */
+  /** Return checked scalar/vector bytes times an optional header array extent. */
   static std::optional<uint64_t> parameterByteExtent(
-      base::ScalarType type, bool is_array,
+      base::ScalarType type, uint32_t lanes, bool is_array,
       const std::optional<AstConstantExpression>& array_size) {
-    const uint64_t scalar_bytes = base::scalar_size_of(type);
+    const uint64_t scalar_bytes = base::scalar_size_of(type) * lanes;
     if (scalar_bytes == 0 || (is_array && !array_size))
       return std::nullopt;
     if (!is_array)
@@ -1871,7 +1871,7 @@ class Checker {
       const uint64_t lanes =
           shape == call_argument_compatibility::CallArgumentVectorShape::V2 ? 2
                                                                             : 4;
-      if (!is_register || parameter.is_array || parameter.is_pointer ||
+      if ((is_register && parameter.is_array) || parameter.is_pointer ||
           shape ==
               call_argument_compatibility::CallArgumentVectorShape::Invalid ||
           !metadata ||
@@ -1881,7 +1881,7 @@ class Checker {
           metadata->size_bytes * lanes > 16) {
         diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                  parameter.range,
-                 "Vector formals require .reg .v2/.v4 non-predicate "
+                 "Vector formals require .v2/.v4 non-predicate "
                  "fundamental elements totaling at most 128 bits.");
         return;
       }
@@ -1905,19 +1905,14 @@ class Checker {
       return;
     }
     const bool predicate = parameter.type.text == ".pred";
-    const bool packed_half_register =
-        parameter.type.text == ".f16x2" && is_register;
     const auto scalar = parameterScalarType(parameter.type.text);
-    if (!scalar && !(predicate && is_register) && !packed_half_register) {
+    if (!scalar && !(predicate && is_register)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                parameter.type.range,
                predicate ? ".pred parameters must use .reg state space."
-               : parameter.type.text == ".f16x2"
-                   ? "Fundamental .f16x2 parameter storage is not "
-                     "modeled by this frontend."
-                   : fmt::format("Parameter type '{}' is not a supported "
-                                 "fundamental scalar type.",
-                                 parameter.type.text));
+                         : fmt::format("Parameter type '{}' is not a supported "
+                                       "fundamental scalar type.",
+                                       parameter.type.text));
       return;
     }
 
@@ -1937,7 +1932,7 @@ class Checker {
     }
     if (parameter.is_array && !parameter.array_size) {
       if (!permitsUnsizedInput(context) || !is_final || !scalar ||
-          *scalar != base::ScalarType::B8) {
+          *scalar != base::ScalarType::B8 || parameter.vector_type) {
         diagnose(DeclarationDiagnosticKind::UnsizedArrayDimension,
                  parameter.range,
                  "Only a final device or call-prototype .param .b8 input may "
@@ -1973,7 +1968,12 @@ class Checker {
     if (scalar && parameter.array_size) {
       const auto extent = constantArrayExtent(*parameter.array_size);
       if (extent && *extent != 0 &&
-          !parameterByteExtent(*scalar, true, parameter.array_size)) {
+          !parameterByteExtent(
+              *scalar,
+              parameter.vector_type
+                  ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                  : 1,
+              true, parameter.array_size)) {
         diagnose(DeclarationDiagnosticKind::StorageExtentOverflow,
                  parameter.array_size->range,
                  "Parameter byte extent overflows uint64_t.");
@@ -2038,11 +2038,18 @@ class Checker {
     for (const auto& parameter : parameters) {
       if (parameter.state_space != syntax_ast::AstStateSpace::Parameter)
         return;
+      // Name-only opaque inputs contribute no numeric bytes or padding.
+      if (base::opaque_resource_kind(parameter.type.text))
+        continue;
       const auto scalar = parameterScalarType(parameter.type.text);
-      const auto bytes = scalar
-                             ? parameterByteExtent(*scalar, parameter.is_array,
-                                                   parameter.array_size)
-                             : std::nullopt;
+      const auto bytes =
+          scalar ? parameterByteExtent(
+                       *scalar,
+                       parameter.vector_type
+                           ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                           : 1,
+                       parameter.is_array, parameter.array_size)
+                 : std::nullopt;
       if (!bytes)
         return;
       if (parameter.alignment && !isValidAlignment(parameter.alignment->text))
@@ -2050,7 +2057,10 @@ class Checker {
       const uint64_t alignment =
           parameter.alignment
               ? positiveCount(parameter.alignment->text).value_or(0)
-              : base::scalar_size_of(*scalar);
+              : base::scalar_size_of(*scalar) *
+                    (parameter.vector_type
+                         ? (parameter.vector_type->text == ".v2" ? 2 : 4)
+                         : 1);
       if (alignment == 0)
         return;
       if (total > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
@@ -2234,13 +2244,6 @@ class Checker {
       std::optional<uint32_t> module_sm) {
     requireParameterAvailability(module_version, module_sm, {2, 0}, 20,
                                  declaration.range, "Body-local call .param");
-    if (declaration.vector_type) {
-      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-               declaration.vector_type->range,
-               "Vector body-local .param declarations are not modeled by this "
-               "frontend.");
-      return;
-    }
     if (isOpaqueObjectType(declaration.type.text)) {
       diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
                declaration.type.range,
@@ -2254,12 +2257,23 @@ class Checker {
                declaration.type.range,
                declaration.type.text == ".pred"
                    ? ".pred parameters must use .reg state space."
-               : declaration.type.text == ".f16x2"
-                   ? "Fundamental .f16x2 parameter storage is not "
-                     "modeled by this frontend."
                    : fmt::format("Parameter type '{}' is not a supported "
                                  "fundamental scalar type.",
                                  declaration.type.text));
+      return;
+    }
+    const uint32_t lanes =
+        declaration.vector_type
+            ? (declaration.vector_type->text == ".v2" ? 2 : 4)
+            : 1;
+    if (declaration.vector_type &&
+        ((declaration.vector_type->text != ".v2" &&
+          declaration.vector_type->text != ".v4") ||
+         base::scalar_size_of(*scalar) * lanes > 16)) {
+      diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
+               declaration.vector_type->range,
+               "Parameter vectors require .v2/.v4 fundamental elements "
+               "totaling at most 128 bits.");
       return;
     }
     for (const auto& declarator : declaration.declarators) {
@@ -2268,7 +2282,7 @@ class Checker {
                  declarator.initializer->range,
                  "Body-local .param declarations cannot have initializers.");
       }
-      uint64_t bytes = base::scalar_size_of(*scalar);
+      uint64_t bytes = base::scalar_size_of(*scalar) * lanes;
       for (const auto& dimension : declarator.array_dimensions) {
         if (!dimension.size) {
           if (declarator.initializer) {
@@ -2661,40 +2675,14 @@ std::optional<IntegerConstantValue> constantIntegerValue(
 
 std::optional<base::ScalarType> parameterScalarType(
     std::string_view spelling) noexcept {
-  using base::ScalarType;
-  if (spelling == ".u8")
-    return ScalarType::U8;
-  if (spelling == ".u16")
-    return ScalarType::U16;
-  if (spelling == ".u32")
-    return ScalarType::U32;
-  if (spelling == ".u64")
-    return ScalarType::U64;
-  if (spelling == ".s8")
-    return ScalarType::S8;
-  if (spelling == ".s16")
-    return ScalarType::S16;
-  if (spelling == ".s32")
-    return ScalarType::S32;
-  if (spelling == ".s64")
-    return ScalarType::S64;
-  if (spelling == ".b8")
-    return ScalarType::B8;
-  if (spelling == ".b16")
-    return ScalarType::B16;
-  if (spelling == ".b32")
-    return ScalarType::B32;
-  if (spelling == ".b64")
-    return ScalarType::B64;
-  if (spelling == ".b128")
-    return ScalarType::B128;
-  if (spelling == ".f16")
-    return ScalarType::F16;
-  if (spelling == ".f32")
-    return ScalarType::F32;
-  if (spelling == ".f64")
-    return ScalarType::F64;
-  return std::nullopt;
+  // The declaration registry is the common fundamental/instruction-only boundary.
+  const auto* metadata = base::find_scalar_type_metadata(spelling);
+  if (!metadata ||
+      metadata->register_declaration_usage !=
+          base::ScalarDeclarationUsage::Fundamental ||
+      metadata->type == base::ScalarType::Pred)
+    return std::nullopt;
+  return metadata->type;
 }
 
 std::vector<DeclarationDiagnostic> checkDeclarations(

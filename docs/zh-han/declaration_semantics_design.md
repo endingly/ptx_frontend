@@ -156,6 +156,11 @@ unsized array 位置、pointer attribute，以及可静态判定的 ISA version/
 大小限制。该契约适用于 entry/device header、call-prototype formal 与 body-local `.param`
 声明；保留 type spelling 或 array syntax 本身不表示声明合法。
 
+Parameter element classifier 复用 fundamental metadata 并排除 predicate，
+保留 native scalar F16x2，不展开其 packed component。已验证 vector lane 参与
+checked object bytes、自然 alignment 与 padded entry total；未使用的 prototype
+signature 同样检查 shape、alignment 和 role。
+
 ## Entry resource constraint
 
 对已支持的 entry-header `.maxnreg`、`.maxntid`、`.reqntid` 与 `.minnctapersm`，本 pass

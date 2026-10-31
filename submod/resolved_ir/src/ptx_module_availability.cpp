@@ -2033,6 +2033,65 @@ uint8_t formal_vector_width(
   }
 }
 
+/** Check positive shape and bounded products, distinguishing unsized from zero bytes. */
+bool checked_declaration_extent(
+    ScalarType type, uint32_t lanes,
+    std::span<const std::optional<uint64_t>> extents, bool allow_unsized,
+    std::optional<uint64_t>& result) {
+  result.reset();
+  if (!base::find_scalar_type_metadata(type) ||
+      (lanes != 1 && lanes != 2 && lanes != 4))
+    return false;
+  uint64_t bytes = base::scalar_size_of(type) * lanes;
+  if (bytes == 0 || bytes > 16)
+    return false;
+  bool unsized = false;
+  for (size_t axis = 0; axis < extents.size(); ++axis) {
+    if (!extents[axis]) {
+      if (!allow_unsized || axis != 0)
+        return false;
+      unsized = true;
+    } else {
+      const uint64_t count = *extents[axis];
+      if (count == 0 || bytes > std::numeric_limits<uint64_t>::max() / count)
+        return false;
+      bytes *= count;
+    }
+  }
+  if (!unsized)
+    result = bytes;
+  return true;
+}
+
+/** Check typed entry-pointer attributes without inventing an address or ABI slot. */
+bool valid_parameter_pointer(
+    ParameterDeclarationRole role, ScalarType type, uint32_t lanes, bool array,
+    const std::optional<call_argument_compatibility::PointerProperties>&
+        attributes) {
+  if (!attributes)
+    return true;
+  using call_argument_compatibility::PointedStateSpace;
+  const auto& pointer = *attributes;
+  if (role != ParameterDeclarationRole::EntryInput || array || lanes != 1 ||
+      (type != ScalarType::B32 && type != ScalarType::B64 &&
+       type != ScalarType::S32 && type != ScalarType::S64 &&
+       type != ScalarType::U32 && type != ScalarType::U64) ||
+      !std::has_single_bit(pointer.pointed_alignment))
+    return false;
+  if (!pointer.pointed_state_space)
+    return true;
+  switch (*pointer.pointed_state_space) {
+    case PointedStateSpace::Local:
+    case PointedStateSpace::Shared:
+    case PointedStateSpace::Global:
+    case PointedStateSpace::Constant:
+      return true;
+    case PointedStateSpace::Invalid:
+      return false;
+  }
+  return false;
+}
+
 /** Validate vector formal invariants without borrowing syntax. */
 bool valid_formal_vector(
     const declaration_semantics::FunctionParameterContract& parameter) {
@@ -2042,10 +2101,13 @@ bool valid_formal_vector(
   if (width == 1)
     return true;
   const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
-  return parameter.state_space ==
-             call_argument_compatibility::CallArgumentStateSpace::Register &&
-         !parameter.is_array && !parameter.is_pointer &&
-         !parameter.opaque_kind && metadata &&
+  return (parameter.state_space ==
+              call_argument_compatibility::CallArgumentStateSpace::Parameter ||
+          (parameter.state_space ==
+               call_argument_compatibility::CallArgumentStateSpace::Register &&
+           !parameter.is_array)) &&
+         (!parameter.is_array || parameter.array_extent.has_value()) &&
+         !parameter.is_pointer && !parameter.opaque_kind && metadata &&
          metadata->register_declaration_usage ==
              base::ScalarDeclarationUsage::Fundamental &&
          parameter.scalar_type != ScalarType::Pred &&
@@ -2057,19 +2119,24 @@ bool valid_scalar_contract(
     const declaration_semantics::FunctionParameterContract& parameter) {
   if (parameter.scalar_type == base::ScalarType::Invalid)
     return false;
-  return base::find_scalar_type_metadata(parameter.scalar_type) != nullptr;
+  const auto* metadata = base::find_scalar_type_metadata(parameter.scalar_type);
+  return metadata &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::Fundamental &&
+         (parameter.scalar_type != ScalarType::Pred ||
+          parameter.state_space ==
+              call_argument_compatibility::CallArgumentStateSpace::Register);
 }
 
 /** Check the normalized signature fields needed by contextual call validation. */
 void check_signature(const declaration_semantics::FunctionSignature& signature,
                      SourceRange range,
                      checker::CheckDiagnostics& diagnostics) {
-  const auto check_parameters = [&](const auto& parameters, bool entry_inputs) {
-    for (const auto& parameter : parameters) {
-      if (!valid_formal_vector(parameter) ||
-          (entry_inputs &&
-           parameter.vector_shape !=
-               call_argument_compatibility::CallArgumentVectorShape::Scalar))
+  const auto check_parameters = [&](const auto& parameters, bool entry_inputs,
+                                    bool input_list) {
+    for (size_t index = 0; index < parameters.size(); ++index) {
+      const auto& parameter = parameters[index];
+      if (!valid_formal_vector(parameter))
         append_model_mismatch(
             diagnostics, range,
             "Resolved function signature has invalid vector shape.");
@@ -2083,6 +2150,50 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
         append_model_mismatch(diagnostics, range,
                               "Resolved function signature has invalid "
                               "normalized numeric fields.");
+      if (!parameter.opaque_kind) {
+        const auto alignment =
+            declaration_semantics::contract_constant(parameter.alignment);
+        const auto extent =
+            declaration_semantics::contract_constant(parameter.array_extent);
+        const auto lanes = formal_vector_width(parameter.vector_shape);
+        const bool unsized =
+            input_list && !entry_inputs && index + 1 == parameters.size() &&
+            parameter.state_space == call_argument_compatibility::
+                                         CallArgumentStateSpace::Parameter &&
+            parameter.scalar_type == ScalarType::B8 && lanes == 1;
+        const std::array<std::optional<uint64_t>, 1> extents{extent};
+        std::optional<uint64_t> bytes;
+        if (!alignment || !std::has_single_bit(*alignment) ||
+            !checked_declaration_extent(
+                parameter.scalar_type, lanes,
+                parameter.is_array
+                    ? std::span<const std::optional<uint64_t>>{extents}
+                    : std::span<const std::optional<uint64_t>>{},
+                unsized, bytes))
+          append_model_mismatch(diagnostics, range,
+                                "Resolved function signature has invalid "
+                                "alignment, array shape or byte extent.");
+      }
+      const auto properties =
+          declaration_semantics::call_argument_properties(parameter);
+      if ((parameter.is_array && parameter.state_space !=
+                                     call_argument_compatibility::
+                                         CallArgumentStateSpace::Parameter) ||
+          (!parameter.is_pointer &&
+           (parameter.pointed_state_space || parameter.pointer_alignment)) ||
+          (parameter.is_pointer &&
+           (parameter.state_space != call_argument_compatibility::
+                                         CallArgumentStateSpace::Parameter ||
+            !properties.pointer ||
+            !valid_parameter_pointer(
+                entry_inputs ? ParameterDeclarationRole::EntryInput
+                             : ParameterDeclarationRole::DeviceInput,
+                parameter.scalar_type,
+                formal_vector_width(parameter.vector_shape), parameter.is_array,
+                properties.pointer))))
+        append_model_mismatch(diagnostics, range,
+                              "Resolved function signature has invalid "
+                              "parameter role or pointer attributes.");
       const bool valid_opaque =
           parameter.opaque_kind && entry_inputs &&
           parameter.scalar_type == base::ScalarType::Invalid &&
@@ -2096,16 +2207,21 @@ void check_signature(const declaration_semantics::FunctionSignature& signature,
             diagnostics, range,
             "Resolved function signature has an invalid parameter type.");
       }
-      if (parameter.state_space ==
-          call_argument_compatibility::CallArgumentStateSpace::Invalid) {
+      if ((parameter.state_space !=
+               call_argument_compatibility::CallArgumentStateSpace::Register &&
+           parameter.state_space != call_argument_compatibility::
+                                        CallArgumentStateSpace::Parameter) ||
+          (entry_inputs && parameter.state_space !=
+                               call_argument_compatibility::
+                                   CallArgumentStateSpace::Parameter)) {
         append_model_mismatch(
             diagnostics, range,
             "Resolved function signature has an invalid state space.");
       }
     }
   };
-  check_parameters(signature.return_parameters, false);
-  check_parameters(signature.parameters, signature.is_entry);
+  check_parameters(signature.return_parameters, false, false);
+  check_parameters(signature.parameters, signature.is_entry, true);
 }
 
 /** Revalidate name-only entry inputs against both the ABI and bound symbols. */
@@ -2262,66 +2378,6 @@ std::optional<binding::SymbolId> storage_owner(const ResolvedModule& module,
   return std::nullopt;
 }
 
-/** Check positive shape and bounded products, distinguishing unsized from zero bytes. */
-bool checked_declaration_extent(
-    ScalarType type, uint32_t lanes,
-    std::span<const std::optional<uint64_t>> extents, bool allow_unsized,
-    std::optional<uint64_t>& result) {
-  result.reset();
-  if (!base::find_scalar_type_metadata(type) ||
-      (lanes != 1 && lanes != 2 && lanes != 4))
-    return false;
-  uint64_t bytes = base::scalar_size_of(type) * lanes;
-  if (bytes == 0 || bytes > 16)
-    return false;
-  bool unsized = false;
-  for (size_t axis = 0; axis < extents.size(); ++axis) {
-    if (!extents[axis]) {
-      if (!allow_unsized || axis != 0)
-        return false;
-      unsized = true;
-    } else {
-      const uint64_t count = *extents[axis];
-      if (count == 0 || bytes > std::numeric_limits<uint64_t>::max() / count)
-        return false;
-      bytes *= count;
-    }
-  }
-  if (!unsized)
-    result = bytes;
-  return true;
-}
-
-/** Check typed entry-pointer attributes without inventing an address or ABI slot. */
-bool valid_parameter_pointer(const ResolvedParameterDeclaration& record) {
-  if (!record.pointer)
-    return true;
-  using call_argument_compatibility::PointedStateSpace;
-  const auto& pointer = *record.pointer;
-  if (record.role != ParameterDeclarationRole::EntryInput ||
-      !record.array_extents.empty() ||
-      (record.scalar_type != ScalarType::B32 &&
-       record.scalar_type != ScalarType::B64 &&
-       record.scalar_type != ScalarType::S32 &&
-       record.scalar_type != ScalarType::S64 &&
-       record.scalar_type != ScalarType::U32 &&
-       record.scalar_type != ScalarType::U64) ||
-      !std::has_single_bit(pointer.pointed_alignment))
-    return false;
-  if (!pointer.pointed_state_space)
-    return true;
-  switch (*pointer.pointed_state_space) {
-    case PointedStateSpace::Local:
-    case PointedStateSpace::Shared:
-    case PointedStateSpace::Global:
-    case PointedStateSpace::Constant:
-      return true;
-    case PointedStateSpace::Invalid:
-      return false;
-  }
-  return false;
-}
-
 /** Rejoin each signature list with the formals in its own declaration scope. */
 void check_function_parameters(const ResolvedModule& module,
                                const ResolvedFunction& function,
@@ -2349,6 +2405,7 @@ void check_function_parameters(const ResolvedModule& module,
     std::optional<uint64_t> extent;
     const bool unsized = role == ParameterDeclarationRole::DeviceInput &&
                          record.scalar_type == ScalarType::B8 &&
+                         record.vector_width == 1 &&
                          record.array_extents.size() == 1;
     if (!symbol ||
         symbol->state_space != base::DeclarationStateSpace::Parameter ||
@@ -2358,16 +2415,25 @@ void check_function_parameters(const ResolvedModule& module,
         record.role != role.value_or(ParameterDeclarationRole::BodyLocal) ||
         (!role && symbol->kind != binding::SymbolKind::CallParameter) ||
         !type || type->type != record.scalar_type ||
+        type->register_declaration_usage !=
+            base::ScalarDeclarationUsage::Fundamental ||
+        record.scalar_type == ScalarType::Pred ||
         record.vector_width != symbol->vector_width.value_or(1) ||
         record.alignment != symbol->address_alignment ||
+        (!record.explicit_alignment &&
+         record.alignment !=
+             base::scalar_size_of(record.scalar_type) * record.vector_width) ||
+        symbol->is_array != !record.array_extents.empty() ||
+        (symbol->parameterized_count && !record.array_extents.empty()) ||
         !std::has_single_bit(record.alignment) ||
         !checked_declaration_extent(record.scalar_type, record.vector_width,
                                     record.array_extents, unsized, extent) ||
         record.byte_extent != extent ||
-        (role &&
-         (record.scope_id != function.declaration_scope ||
-          record.vector_width != 1 || record.array_extents.size() > 1)) ||
-        !valid_parameter_pointer(record))
+        (role && (record.scope_id != function.declaration_scope ||
+                  record.array_extents.size() > 1)) ||
+        !valid_parameter_pointer(record.role, record.scalar_type,
+                                 record.vector_width,
+                                 !record.array_extents.empty(), record.pointer))
       append_model_mismatch(diagnostics, function.range,
                             "Owned parameter role, identity, shape, or layout "
                             "disagrees with binding.");
@@ -2440,6 +2506,7 @@ void check_function_parameters(const ResolvedModule& module,
           (formal.is_array && !properties.array_size &&
            (role != ParameterDeclarationRole::DeviceInput ||
             formal.scalar_type != ScalarType::B8 ||
+            formal_vector_width(formal.vector_shape) != 1 ||
             index + 1 != formals.size())))
         append_model_mismatch(
             diagnostics, symbol.declaration_range,
@@ -2481,6 +2548,46 @@ void check_function_parameters(const ResolvedModule& module,
   check_list(function.contract.signature.parameters, inputs,
              function.is_entry ? ParameterDeclarationRole::EntryInput
                                : ParameterDeclarationRole::DeviceInput);
+}
+
+/** Recompute the source-defined padded entry total without assigning ABI offsets. */
+void check_entry_parameter_size(const ResolvedFunction& function,
+                                std::optional<checker::PtxVersion> version,
+                                checker::CheckDiagnostics& diagnostics) {
+  if (!function.is_entry || !version)
+    return;
+  const uint64_t limit = *version < checker::PtxVersion{1, 5}   ? 256
+                         : *version < checker::PtxVersion{8, 1} ? 4352
+                                                                : 32764;
+  uint64_t total = 0;
+  for (const auto& record : function.parameter_declarations) {
+    if (record.role != ParameterDeclarationRole::EntryInput)
+      continue;
+    std::optional<uint64_t> bytes;
+    if (!checked_declaration_extent(record.scalar_type, record.vector_width,
+                                    record.array_extents, false, bytes) ||
+        !bytes || !std::has_single_bit(record.alignment))
+      continue;
+    const auto padding = record.alignment - 1;
+    if (total > std::numeric_limits<uint64_t>::max() - padding) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Aligned entry parameter byte size overflows uint64_t.");
+      return;
+    }
+    total = ((total + padding) / record.alignment) * record.alignment;
+    if (total > std::numeric_limits<uint64_t>::max() - *bytes) {
+      append_model_mismatch(
+          diagnostics, function.range,
+          "Aligned entry parameter byte size overflows uint64_t.");
+      return;
+    }
+    total += *bytes;
+  }
+  if (total > limit)
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Static entry parameter bytes exceed the PTX version limit.");
 }
 
 /** Gate explicit numeric file metadata independently of target/debug options. */
@@ -3801,6 +3908,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
             ? module.header.regions[*function.source_region].version
             : std::optional<checker::PtxVersion>{};
     check_opaque_entry_parameters(module, function, entry_version, diagnostics);
+    check_entry_parameter_size(function, entry_version, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     const bool complete_instruction_provenance =
         function.instruction_ranges.size() == function.body.size() &&
@@ -3929,6 +4037,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     check_function_parameters(module, function, diagnostics);
     check_function_contract_integrity(function, diagnostics);
     check_opaque_entry_parameters(module, function, version, diagnostics);
+    check_entry_parameter_size(function, version, diagnostics);
   }
   /** Replacement source selects one texturing mode for every target region. */
   std::optional<TextureMode> explicit_texture_mode;

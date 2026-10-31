@@ -437,6 +437,11 @@ resolve_call_literal(
             literal.spelling, formal.type_spelling),
     });
   }
+  if (formal.scalar_type == ScalarType::F16x2)
+    return std::unexpected(ResolveDiagnostic{
+        .range = range,
+        .message = "No direct numeric call-literal conversion to packed .f16x2 "
+                   "is defined."});
   if (literal.source_value) {
     auto value = detail::resolve_numeric_value(*literal.source_value, range,
                                                formal.scalar_type, true);

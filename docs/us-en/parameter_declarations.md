@@ -9,27 +9,23 @@ validation before publishing metadata.
 
 | Form / context | Parser | Declaration validation | Installed public metadata |
 | --- | --- | --- | --- |
-| Entry header scalar / sized 1-D array | Retained | Fundamental non-predicate types, constant positive extents, alignment, pointer attributes, version and total-size checks | Ordered typed `parameter_declarations` with `EntryInput` role |
-| Device input / return scalar / sized 1-D array | Retained | Same type/extent checks; `.param` needs PTX 2.0 / SM 20; modern functions have at most one return | `parameter_declarations`, `DeviceInput` / `DeviceReturn` |
+| Entry header scalar/vector / sized 1-D array | Retained | Fundamental non-predicate types, constant positive extents, alignment, pointer attributes, version and total-size checks | Ordered typed `parameter_declarations` with `EntryInput` role |
+| Device input / return scalar/vector / sized 1-D array | Retained | Same type/extent checks; `.param` needs PTX 2.0 / SM 20; modern functions have at most one return | `parameter_declarations`, `DeviceInput` / `DeviceReturn` |
 | Final device input `.param .b8 bytes[]` | Retained | Only final input; PTX 6.0 / SM 30 minimum | One unknown extent and unknown byte extent, distinct from a scalar |
 | Unsized entry, return, non-final input, or non-`.b8` input | Retained | Rejected | No resolved module |
-| Body-local scalar / sized array, including multiple dimensions | Retained | Fundamental non-predicate type, positive constant extents, checked size, alignment, PTX 2.0 / SM 20 | `parameter_declarations`, `BodyLocal`, lexical scope and full array shape |
+| Body-local scalar/vector / sized array, including multiple dimensions | Retained | Fundamental non-predicate type, positive constant extents, checked size, alignment, PTX 2.0 / SM 20 | `parameter_declarations`, `BodyLocal`, lexical scope and full array shape |
 | Unsized body-local `.param` | Retained | Rejected | No resolved module |
-| `.callprototype` scalar / array formals | Retained | Device signature rules; prototype itself requires PTX 2.1 / SM 20 | Owned `declaration_semantics::FunctionSignature` from the semantic API; not a declaration table entry |
+| `.callprototype` scalar/vector / array formals | Retained | Device signature rules; prototype itself requires PTX 2.1 / SM 20 | Owned `declaration_semantics::FunctionSignature` from the semantic API; not a declaration table entry |
 | Entry-header opaque `.texref`, `.samplerref`, `.surfref` | Retained | Name-only entry inputs; resource kind, shape, and version checked | Ordered `opaque_entry_parameters` with bound symbol identity, resource kind, and source shape; no byte layout |
 | Device formal, return, or body-local opaque object | Type spelling retained | Rejected | None; illegal because opaque-object use is limited to module globals and entry parameter lists |
-| `.param .f16x2` in an entry header, device formal/return, or body-local declaration | Type spelling retained | Explicit unsupported diagnostic | None; `.f16x2` is a fundamental type, so this is a retained legal-but-unsupported boundary, not an alternate-format rejection |
 | Device `.reg .v2` / `.v4` input or return, including `.callprototype` | Retained as one formal | Non-predicate fundamental elements, at most 128 bits total; scalar/vector and width must match at calls | Typed `FunctionParameterContract::vector_shape`, bound vector width; no `.param` declaration record |
-| Header `.param .v2` / `.v4` parameter | Explicit unsupported parse diagnostic | Not reached | None; parameter-space vector storage remains outside this contract |
-| Header multidimensional parameter array | Explicit unsupported parse diagnostic | Not reached | None; context-specific header-array grammar remains unresolved rather than being classified as illegal |
-| Body-local vector `.param` | Retained | Explicit unsupported diagnostic | None; retained legal-but-unsupported boundary pending vector shape and call-staging metadata |
-| Body-local parameterized `.param` group (`name<count>`) | Retained | Supported scalar parameter types, positive uint32 count, no arrays or initializers; existing body-local availability applies | One `BodyLocal` parameter record and one owning symbol with count; members use the same `SymbolId` plus an index |
-| Vector or multidimensional `.param` formal in a `.callprototype` | Explicit unsupported parse diagnostic where the header grammar rejects it | Not reached | Scalar and one-dimensional array contracts remain supported; vector shape and higher-rank header syntax are not inferred |
+| Header multidimensional parameter array | Retained unsupported parser boundary | Required general-array extension is tracked separately | Existing header representation remains single-dimensional |
+| Body-local parameterized `.param` group (`name<count>`) | Retained | Supported scalar/vector parameter elements, positive uint32 count, no arrays or initializers; existing body-local availability applies | One `BodyLocal` parameter record and one owning symbol with count; members use the same `SymbolId` plus an index |
 | `.pred`, unknown or instruction-only type spelling | Type spelling retained | Rejected for `.param` | None |
 | Module-scope `.param` | Retained | Rejected | None |
 
 Supported parameter elements are `.s8/.s16/.s32/.s64`, `.u8/.u16/.u32/.u64`,
-`.b8/.b16/.b32/.b64/.b128`, and `.f16/.f32/.f64`. The public
+`.b8/.b16/.b32/.b64/.b128`, and `.f16/.f16x2/.f32/.f64`. The public
 `declaration_semantics::parameterScalarType()` classifies this supported set;
 its result is a type classification, not validation of context or availability.
 Instruction alternate formats such as `.bf16` and `.tf32` do not become legal
@@ -50,7 +46,8 @@ operand.
 ## Alignment, pointers, and size
 
 Explicit declaration and pointee alignments must be positive powers of two.
-Omitted declaration alignment is natural element alignment; an explicit value
+Omitted declaration alignment is scalar size or total vector size, independently of
+array count; an explicit value
 is retained separately from whether it equals that natural value. The frontend
 does not infer a maximum alignment from the ABI's wording about multiples of
 1, 2, 4, 8, or 16 bytes.
@@ -101,7 +98,7 @@ parameter declaration table. Consumers select `ParameterDeclarationRole::EntryIn
 to inspect entry header inputs in source order; other roles are not launch slots.
 
 Both `validateModule` overloads compare the ordered return and input signatures
-with binding formals in each function's `declaration_scope`. Scalar `.param`
+with binding formals in each function's `declaration_scope`. Scalar/vector `.param`
 formals must match the corresponding declaration record's role, identity, type,
 shape, effective alignment, checked byte extent, and pointer properties. `.reg`
 formals rejoin their binding type, vector shape, and alignment without entering the parameter
@@ -136,18 +133,11 @@ hidden. Each function owns its opaque entry inputs in source order in
 shape, and source location after AST release. Device and body opaque
 declarations consequently remain rejected.
 
-`.f16x2` is listed as a fundamental type, unlike the alternate packed formats.
-The parameter-passing rules discuss base-type scalar and vector `.param`
-formals, so the frontend records `.param .f16x2` as legal but unsupported rather than
-collapsing it into the instruction-only-type diagnostic. Supporting it requires
-coherent parameter-space declaration, direct-call ABI, literal, and resolved-memory behavior;
-the existing `ScalarType::F16x2` value alone is not that contract.
+Fundamental `.f16x2` and legal `.param .v2/.v4` objects retain native type and
+shape throughout declaration, call ABI and owned layout checks. Numeric packed
+literal representation remains the separate reference gap described below.
 
-The same unsupported distinction applies to `.param .v2`/`.v4` shapes. The
-variable rules permit two- and four-lane vectors of non-predicate fundamental
-types, but parameter-space vector metadata remains outside this contract.
-
-Body-local scalar `.param` compact groups reuse the ordinary group binding:
+Body-local scalar/vector `.param` compact groups reuse the ordinary group binding:
 `value<2>` owns one symbol with count 2, while `value0` and `value1` refer to that
 `SymbolId` with indices 0 and 1. Each declarator has one `BodyLocal` parameter
 record and no storage declaration record. Its `byte_extent` is the extent of
@@ -160,8 +150,8 @@ is supplied, source association separately retains compact counts and written
 member references. No expanded source declarations or per-member symbols are
 manufactured.
 
-The generic array rules establish constant dimensions, but do not settle the distinct header
-multidimensional parameter grammar; that row remains unresolved.
+Header multidimensional parameter arrays are a required general-array extension
+tracked separately; this delivery retains the current one-dimensional header representation.
 
 No instruction families, simulator execution, argument packing, or physical
 allocation are added here.
@@ -186,3 +176,29 @@ do not override the PTX 9.3 classifications above and are not execution tests.
 Regressions cover explicit parser boundaries, semantic type/role/version/size
 validation, resolved declaration identity and lifetime, and a separately compiled
 installed-package consumer. GPU execution is not a declaration-validation gate.
+
+## Fundamental vectors and packed elements
+
+All 17 non-predicate fundamental element types are classified, including scalar
+`.f16x2`. Its two half components form one four-byte packed scalar, not an implicit
+`.v2` formal. Explicit `.v2/.v4` parameters contain two/four such elements; vectors
+may total at most 16 bytes, giving 16 legal v2 and 12 legal v4 element combinations.
+Header and body `.param` objects, device/prototype inputs and returns preserve this
+shape. Sized parameter vector arrays are supported; natural alignment is the vector
+size and bytes multiply that size by the dimensions. Compact counts remain separate
+from each member object's extent. Register vector arrays, vector pointers, predicate,
+opaque and instruction-only elements remain rejected. Final unsized byte input is scalar only.
+
+Source and AST-free owned validation recompute the same padded entry byte limits
+and checked extents. Native typed F16x2 parameter/register actuals retain exact dtype
+and explicit shape; calls do not substitute instruction-style bit compatibility.
+Use existing b32 memory access containers for packed storage, while named array
+indices still scale by the declared scalar element (four bytes for F16x2), not vector size.
+
+A direct numeric-to-packed F16x2 call literal has no adopted representation: integers,
+zero, decimal, 0f and 0d values do not imply raw bits, splatting or lane placement.
+The frontend reports this explicit reference gap while supporting native typed objects.
+This is distinct from the separately required ordinary scalar F16 literal converter.
+
+Known opaque entry inputs remain name-only: numeric aggregate traversal skips them
+without assigning bytes or padding, and continues checking later numeric/vector inputs.

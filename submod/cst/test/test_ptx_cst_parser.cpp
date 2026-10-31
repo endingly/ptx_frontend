@@ -1237,10 +1237,6 @@ TEST(PtxCstParser, ParsesVectorRegisterFormals) {
 TEST(PtxCstParser, RejectsUnsupportedParameterDeclarationForms) {
   for (const auto& [source, message] :
        std::initializer_list<std::pair<std::string_view, std::string_view>>{
-           {".entry kernel(.param .v2 .u32 input) { }",
-            "vector .param function parameters are not supported"},
-           {".func (.param .v4 .b8 result) helper();",
-            "vector .param function parameters are not supported"},
            {".entry kernel(.param .u32 input[2][3]) { }",
             "multidimensional function parameters are not supported"},
            {".func (.param .u32 result[2][3]) helper();",

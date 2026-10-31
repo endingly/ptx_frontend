@@ -1,8 +1,9 @@
 # Installed resolved IR consumer
 
-This consumer checks the installed `resolved_ir` CMake component,
+This consumer checks the installed `resolved_ir` and `semantic` CMake components,
 one representative exact-form resolver/checker path, strict module resolution
-and validation, and the installed `ptx_spec` resource paths. It is an
+and validation, native F16x2 vector parameter classification/layout after source release,
+and the installed `ptx_spec` resource paths. It is an
 installation smoke test, not the full
 module semantic suite.
 

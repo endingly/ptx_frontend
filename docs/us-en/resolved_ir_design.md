@@ -504,6 +504,11 @@ named-array forms, including symbolic indices. Offsets do not change which local
 object the call must use. This check does not prove runtime index bounds, byte
 initialization coverage or correctness across arbitrary incoming control paths.
 
+Parameter records also retain fundamental `.f16x2` and legal `.param` v2/v4 shapes,
+with lane-aware extents, natural vector alignment and AST-free padded entry limits.
+The [parameter declaration contract](parameter_declarations.md) distinguishes packed
+scalar dtype from explicit vector lanes and the numeric packed-literal reference gap.
+
 ## Named memory-vector sources
 
 Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`

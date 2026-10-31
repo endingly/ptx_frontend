@@ -251,10 +251,6 @@ PtxCstParser::parseFunctionParameter() {
   std::optional<TokenId> vector_type;
   if (token(peek()).text == ".v2" || token(peek()).text == ".v4") {
     vector_type = consume();
-    if (token(state_space).kind == TokenKind::DotParam)
-      return std::unexpected(CstParseDiagnostic{
-          token(*vector_type).range,
-          "vector .param function parameters are not supported"});
   }
   auto type = expect(TokenKind::DotIdent, "parameter type");
   if (!type)

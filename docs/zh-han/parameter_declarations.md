@@ -7,27 +7,23 @@
 
 | 形式 / 上下文 | Parser | 声明验证 | Installed public metadata |
 | --- | --- | --- | --- |
-| Entry header scalar / 有界一维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、alignment、pointer attribute、版本与总大小 | 有序 typed `parameter_declarations`，role 为 `EntryInput` |
-| Device input / return scalar / 有界一维数组 | 保留 | 同类 type/extent 检查；`.param` 要求 PTX 2.0 / SM 20；现代函数至多一个返回值 | `parameter_declarations`，role 为 `DeviceInput` / `DeviceReturn` |
+| Entry header scalar/vector / 有界一维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、alignment、pointer attribute、版本与总大小 | 有序 typed `parameter_declarations`，role 为 `EntryInput` |
+| Device input / return scalar/vector / 有界一维数组 | 保留 | 同类 type/extent 检查；`.param` 要求 PTX 2.0 / SM 20；现代函数至多一个返回值 | `parameter_declarations`，role 为 `DeviceInput` / `DeviceReturn` |
 | 最后一个 device input `.param .b8 bytes[]` | 保留 | 仅限最后一个 input；最低 PTX 6.0 / SM 30 | 单个未知 extent，byte extent 未知，与 scalar 可区分 |
 | Unsized entry、return、非末尾 input 或非 `.b8` input | 保留 | 拒绝 | 不生成 resolved module |
-| Body-local scalar / 有界数组，含多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、大小溢出检查、alignment、PTX 2.0 / SM 20 | `parameter_declarations`，role 为 `BodyLocal`，保留词法 scope 与完整 shape |
+| Body-local scalar/vector / 有界数组，含多维数组 | 保留 | 基础非 predicate 类型、正整数常量维度、大小溢出检查、alignment、PTX 2.0 / SM 20 | `parameter_declarations`，role 为 `BodyLocal`，保留词法 scope 与完整 shape |
 | Unsized body-local `.param` | 保留 | 拒绝 | 不生成 resolved module |
-| `.callprototype` scalar / array formal | 保留 | Device signature 规则；prototype 本身要求 PTX 2.1 / SM 20 | Semantic API 可生成拥有自身数据的 `declaration_semantics::FunctionSignature`；不进入声明表 |
+| `.callprototype` scalar/vector / array formal | 保留 | Device signature 规则；prototype 本身要求 PTX 2.1 / SM 20 | Semantic API 可生成拥有自身数据的 `declaration_semantics::FunctionSignature`；不进入声明表 |
 | Entry header 的 opaque `.texref`、`.samplerref`、`.surfref` | 保留 | 按名称使用的 entry input；检查资源种类、shape 与版本 | 按源码顺序保存的 `opaque_entry_parameters`，含绑定 symbol identity、资源种类与源码 shape；无 byte layout |
 | Device formal、return 或 body-local opaque object | 保留 type spelling | 拒绝 | 无；illegal，因为 opaque object 仅可用于 module global 与 entry parameter list |
-| Entry header、device formal/return 或 body-local 中的 `.param .f16x2` | 保留 type spelling | 明确的 unsupported diagnostic | 无；`.f16x2` 是 fundamental type，因此这是保留的 legal-but-unsupported 边界，不是 alternate-format rejection |
 | Device `.reg .v2` / `.v4` input 或 return，含 `.callprototype` | 保留为单个 formal | 非 predicate fundamental element，总大小至多 128 bit；call 必须匹配 scalar/vector 与 width | Typed `FunctionParameterContract::vector_shape` 与 bound vector width；不产生 `.param` 声明记录 |
-| Header `.param .v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；parameter-space vector storage 仍不在本 contract 范围内 |
-| Header 多维 parameter array | 明确的 unsupported parse diagnostic | 不进入 | 无；header array grammar 仍为 unresolved，不据此宣称 illegal |
-| Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无；保留为 legal-but-unsupported，等待 vector shape 与 call-staging metadata |
-| Body-local parameterized `.param` group (`name<count>`) | 保留 | 支持的 scalar parameter type、正 uint32 count、禁止 array/initializer；保留 body-local availability | 每个 declarator 一个 `BodyLocal` record 与带 count 的 owning symbol；member 使用相同 `SymbolId` 加 index |
-| `.callprototype` 中的 vector 或多维 `.param` formal | header grammar 拒绝时给出明确 unsupported parse diagnostic | 不会到达 | scalar 与一维 array contract 仍受支持；不从 spelling 推断 vector shape 或更高维 header syntax |
+| Header 多维 parameter array | 保留 unsupported parser 边界 | 必须实现的通用 array 扩展单独跟踪 | 现有 header representation 仍为一维 |
+| Body-local parameterized `.param` group (`name<count>`) | 保留 | 支持的 scalar/vector parameter element、正 uint32 count、禁止 array/initializer；保留 body-local availability | 每个 declarator 一个 `BodyLocal` record 与带 count 的 owning symbol；member 使用相同 `SymbolId` 加 index |
 | `.pred`、未知或仅用于指令的 type spelling | 保留 type spelling | 在 `.param` 中拒绝 | 无 |
 | Module-scope `.param` | 保留 | 拒绝 | 无 |
 
 支持的 parameter element 为 `.s8/.s16/.s32/.s64`、`.u8/.u16/.u32/.u64`、
-`.b8/.b16/.b32/.b64/.b128` 与 `.f16/.f32/.f64`。公开的
+`.b8/.b16/.b32/.b64/.b128` 与 `.f16/.f16x2/.f32/.f64`。公开的
 `declaration_semantics::parameterScalarType()` 对该支持集合进行分类；结果只表示类型
 分类，不表示上下文或版本已通过验证。`.bf16`、`.tf32` 等 instruction alternate format
 不会因为 spelling 被保留就成为合法 declaration type。`.reg` formal 继续使用既有
@@ -46,7 +42,7 @@ arithmetic register operand。
 ## Alignment、pointer 与大小
 
 显式 declaration / pointee alignment 必须为正的二次幂。省略 declaration alignment 时
-采用 element 的自然对齐；即使显式值恰好等于自然值，也单独保留显式指定这一事实。
+采用 scalar 大小或整个 vector 大小，与 array count 无关；即使显式值恰好等于自然值，也单独保留显式指定这一事实。
 Frontend 不会从 ABI 关于 1、2、4、8 或 16 字节倍数的表述推断最大 alignment。
 
 `.ptr` 属于 entry input，要求 PTX 2.2。受支持的 scalar pointer type 为 `.b32`、`.b64`、`.s32`、`.s64`、`.u32` 与 `.u64`。
@@ -115,17 +111,11 @@ texture/surface object，普通 `ld.param` 不能加载，物理 layout 也被�
 `opaque_entry_parameters`，在 AST 销毁后仍保留绑定 identity、种类、alignment、array
 shape 与源码位置。
 
-`.f16x2` 是 fundamental type，不同于 alternate packed format。parameter-passing rule
-讨论 base-type scalar 与 vector `.param` formal，因此 frontend 将 `.param .f16x2` 记录为
-legal but unsupported，而不会把它并入 instruction-only type diagnostic。支持它还需要一致的
-parameter-space declaration、direct-call ABI、literal 与 resolved-memory 行为；现有 `ScalarType::F16x2`
-值本身并不构成该 contract。
+Fundamental `.f16x2` 与合法 `.param .v2/.v4` object 在声明、call ABI 和 owned
+layout 检查中保留 native type/shape。Numeric packed literal representation 的独立
+reference gap 见下文。
 
-`.param .v2`/`.v4` shape 仍采用相同的 unsupported 区分。variable rule 允许
-non-predicate fundamental type 的二/四 lane vector，但 parameter-space vector metadata
-仍不在本契约内。
-
-Body-local scalar `.param` compact group 复用普通 group binding：`value<2>` 拥有一个
+Body-local scalar/vector `.param` compact group 复用普通 group binding：`value<2>` 拥有一个
 count 为 2 的 symbol，`value0` 与 `value1` 分别以同一 `SymbolId` 加 index 0/1 引用。
 每个 declarator 只有一个 `BodyLocal` parameter record，不产生 storage declaration record。
 `byte_extent` 是单个 member object 的大小，不是 count 乘以 allocation size；count 由
@@ -135,8 +125,8 @@ owned validation 拒绝缺失或越界的 member index，以及 ordinary symbol 
 提供 AST 时，source association 独立保留 compact count 与 written member reference。
 不生成展开的 source declaration 或逐 member symbol。
 
-通用 array rule 只确立 constant dimension，未解决不同的 header 多维 parameter grammar；
-该行仍为 unresolved。
+Header 多维 parameter array 是单独跟踪的 required 通用 array 扩展；
+本交付保留现有一维 header representation。
 
 本工作不增加 instruction family、simulator execution、argument packing 或物理分配。
 
@@ -158,3 +148,29 @@ mode 的 opaque entry list 与 body-local parameterized group 可汇编；孤立
 回归覆盖明确的 parser 边界、semantic type/role/version/size 验证、resolved declaration
 identity/lifetime，以及单独编译的 installed-package consumer。GPU execution 不属于声明
 验证 gate。
+
+## Fundamental vector 与 packed element
+
+公开 classifier 接纳 17 个非 predicate fundamental element，包括 scalar `.f16x2`。
+它的两个 half component 合为一个四字节 packed scalar，不是隐式 `.v2` formal。
+显式 `.v2/.v4` 包含两个/四个这样的 element；每个 vector 至多 16 字节，因此分别有
+16/12 个合法 element 组合。Header/body `.param`、device/prototype input/return
+保留该 shape。Sized parameter vector array 受支持；自然 alignment 是整个 vector
+大小，byte extent 再乘各维。Compact count 不乘入单个 member object 的 extent。
+Register vector array、vector pointer、predicate、opaque 与 instruction-only element
+仍被拒绝，末尾 unsized byte input 仍只允许 scalar。
+
+Source 与 AST-free owned validation 重算相同的 padded entry byte limit 与 checked
+extent。Native typed F16x2 parameter/register actual 保留精确 dtype 和显式 shape；
+call 不采用 instruction-style bit compatibility。Packed storage 使用既有 b32 memory
+container；named array index 仍按声明 scalar element 缩放（F16x2 为四字节），不是
+vector 大小。Header 多维 parameter array 是单独跟踪的 required 通用 array 扩展，
+本交付保留现有一维 header representation。
+
+直接 numeric-to-packed F16x2 call literal 没有 adopted representation：整数、zero、
+decimal、0f、0d 不隐含 raw bits、splat 或 lane placement。Frontend 在支持 native
+typed object 的同时明确报告此 reference gap；它与单独必须实现的普通 scalar F16
+literal converter 不同。
+
+已知 opaque entry input 仍为 name-only：numeric aggregate 遍历跳过它们，不分配
+byte 或 padding，同时继续检查后续 numeric/vector input。

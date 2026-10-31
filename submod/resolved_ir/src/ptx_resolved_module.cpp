@@ -2,6 +2,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution_detail.hpp>
 #include "ptx_call_parameter_transfers.hpp"
+#include "ptx_call_target_visibility.hpp"
 
 #include <ptx_frontend/base/ptx_integer.hpp>
 #include <ptx_frontend/semantic/ptx_call_argument_compatibility.hpp>
@@ -1272,6 +1273,9 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
       .call_tables = std::move(call_tables),
       .source_identity = detail::module_source_identity(ast),
   };
+  auto visibility = detail::check_direct_call_visibility(module);
+  if (!visibility.empty())
+    return std::unexpected(std::move(visibility));
   auto transfers = detail::check_call_parameter_transfers(module);
   if (!transfers.empty())
     return std::unexpected(std::move(transfers));

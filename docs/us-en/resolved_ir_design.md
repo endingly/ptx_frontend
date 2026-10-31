@@ -484,6 +484,17 @@ formal-typed literals, and enforces function-local `.param` qualification,
 predication, and staging adjacency. The generated checker remains responsible
 for one resolved instruction and target-aware descriptor rules.
 
+Complete-module direct calls require a prior declaration or definition of the actual
+bound device-function SymbolId. The shared source/owned pass uses retained lexical
+events and declaration occurrences at exactly one positive target range inside its
+call; unknown or ambiguous ordering is rejected. Compatible prior prototypes and
+modern self-recursion work. Alias visibility uses the alias identity, not an earlier
+canonical target. Copied/cloned owned calls may retarget to another compatible
+already-declared function at that event without rejoining diagnostic spelling;
+later-only targets and malformed use locations fail. Source association remains
+independent. Instruction fragments retain partial-context resolution, while indirect
+register/metadata/table calls keep their separate rules.
+
 `<ptx_frontend/semantic/ptx_function_contract.hpp>` exposes the canonical
 function-signature contract without a Syntax AST dependency. Its parameter
 contracts use semantic state-space and pointer-space enums, `ScalarType` and a

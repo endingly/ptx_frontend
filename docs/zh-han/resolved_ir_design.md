@@ -400,6 +400,15 @@ call-context 工作：它取得 canonical prototype/definition signature，检�
 adjacency 约束。generated checker 仍只负责一个 resolved instruction 及 target-aware descriptor
 规则。
 
+完整 module 的 direct call 要求实际绑定的 device-function SymbolId 在调用前已有
+declaration/definition。共享 source/owned pass 通过保留的 lexical event 与 declaration
+occurrence 检查 call 内唯一、正坐标、非空 target range；未知或歧义 order 会拒绝。
+兼容的先行 prototype 与现代 self-recursion 合法；alias 使用自身 identity 的可见性，
+不借用更早的 canonical target。Copy/clone 后的 owned call 可在该 event 改指向另一
+兼容且已声明的函数，不按 diagnostic spelling 重联；later-only target 与 malformed
+location 拒绝。Source association 独立检查。Instruction fragment 保留 partial-context
+解析，indirect register/metadata/table call 继续使用各自规则。
+
 `<ptx_frontend/semantic/ptx_function_contract.hpp>` 提供不依赖 Syntax AST 的 canonical
 function-signature contract。其 parameter contract 使用 semantic state-space 与 pointer-space
 enum、`ScalarType` 和 typed vector shape，以及只为诊断保留的 invalid spelling；数值字段是

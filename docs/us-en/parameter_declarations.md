@@ -202,3 +202,8 @@ This is distinct from the separately required ordinary scalar F16 literal conver
 
 Known opaque entry inputs remain name-only: numeric aggregate traversal skips them
 without assigning bytes or padding, and continues checking later numeric/vector inputs.
+
+Complete-module direct-call targets must have a prior declaration/definition of
+the actual bound function or alias identity. Prior compatible prototypes suffice;
+whole-module lookup of a later declaration does not establish visibility. This
+source/owned check is independent of the exact parameter ABI and staging rules.

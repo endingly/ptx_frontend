@@ -174,3 +174,7 @@ literal converter 不同。
 
 已知 opaque entry input 仍为 name-only：numeric aggregate 遍历跳过它们，不分配
 byte 或 padding，同时继续检查后续 numeric/vector input。
+
+完整 module 的 direct-call target 必须在 use 前声明/定义实际绑定的 function 或 alias
+identity；兼容的先行 prototype 足够，whole-module lookup 找到 later declaration
+不代表已可见。此 source/owned 检查独立于精确 parameter ABI 与 staging 规则。

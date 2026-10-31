@@ -351,6 +351,8 @@ TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
 .func defined_before(.reg .u32 input) { }
 .func bytes(.param .align 8 .b8 input[]);
 .func immediate(.reg .u8 high, .reg .s8 low, .reg .f32 float);
+.func defined_after(.reg .u32 input);
+.func renamed(.reg .u32 declaration_name);
 .entry caller() {
   .reg .u32 %r;
   .param .align 8 .b8 blob[8];
@@ -363,7 +365,6 @@ TEST(ResolvedModule, AcceptsDirectCallsAcrossFunctionLifecycles) {
   call immediate, (255, -128, 0f3f800000);
 }
 .func defined_after(.reg .u32 input) { }
-.func renamed(.reg .u32 declaration_name);
 .func renamed(.reg .u32 definition_name) {
   .reg .u32 %self;
   call renamed, (%self);

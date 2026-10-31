@@ -533,6 +533,9 @@ struct SymbolTableBuilder {
           else if (const auto* call_set =
                        std::get_if<syntax_ast::AstCallTargetSet>(&operand))
             indexSourceRange(call_set->name.syntax.range);
+          else if (const auto* call_target =
+                       std::get_if<syntax_ast::AstCallTarget>(&operand))
+            indexSourceRange(call_target->range);
         }
       } else if (const auto* block =
                      std::get_if<std::unique_ptr<syntax_ast::AstBlock>>(&item);

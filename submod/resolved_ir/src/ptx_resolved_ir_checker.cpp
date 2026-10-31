@@ -1123,8 +1123,11 @@ CheckResult check_operands(
         (operand.register_vector &&
          operand.register_vector->source.kind ==
              ResolvedVectorSourceKind::NamedVector) ||
-        (operand.mov_value_vector && operand.mov_value_vector->source.kind ==
-                                         ResolvedVectorSourceKind::NamedVector);
+        (operand.mov_value_vector &&
+         operand.mov_value_vector->source.kind ==
+             ResolvedVectorSourceKind::NamedVector) ||
+        (operand.value_vector && operand.value_vector->source.kind ==
+                                     ResolvedVectorSourceKind::NamedVector);
     bool matches_view =
         !operand.register_vector ||
         operand.vector_arity == operand.register_vector->elements.size();
@@ -1141,7 +1144,7 @@ CheckResult check_operands(
             matches_view && operand.vector_element_registers[index] ==
                                 (lane ? &*lane : nullptr);
       }
-    const bool valid_source =
+    bool valid_source =
         operand.mov_value_vector
             ? valid_mov_vector_source(*operand.mov_value_vector,
                                       operand.locations, false,
@@ -1157,6 +1160,53 @@ CheckResult check_operands(
                                 descriptor->vector_type_policy ==
                                     VectorTypePolicy::Aggregate) &&
                                !descriptor->source_value_vector)));
+    if (operand.value_vector ||
+        (descriptor && descriptor->source_value_vector)) {
+      const auto* value = operand.value_vector;
+      bool matches_value =
+          descriptor && descriptor->source_value_vector && value &&
+          operand.actual_shape == OperandShape::Vector &&
+          operand.vector_arity == value->elements.size() &&
+          operand.vector_arity <= kMaxOperandElements &&
+          !operand.register_vector && !operand.mov_value_vector;
+      if (matches_value) {
+        for (size_t index = 0; index < value->elements.size(); ++index) {
+          const auto& lane = value->elements[index];
+          if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane)) {
+            matches_value =
+                matches_value &&
+                operand.vector_element_shapes[index] ==
+                    OperandShape::Register &&
+                operand.vector_element_registers[index] == reg &&
+                !operand.vector_element_immediates[index] &&
+                operand.vector_element_types[index] ==
+                    reg->declared_type.value_or(ScalarType::Invalid);
+          } else {
+            const auto& immediate = std::get<ResolvedImmediate>(lane);
+            matches_value =
+                matches_value &&
+                operand.vector_element_shapes[index] ==
+                    OperandShape::Immediate &&
+                operand.vector_element_immediates[index] == &immediate &&
+                !operand.vector_element_registers[index] &&
+                operand.vector_element_types[index] == immediate.type &&
+                operand.vector_immediate_bits[index] == immediate.bits &&
+                operand.vector_immediate_source_bits[index] ==
+                    immediate.integer_source_bits &&
+                operand.vector_immediate_negative[index] ==
+                    immediate.is_negative;
+          }
+        }
+      }
+      valid_source = valid_source && matches_value &&
+                     valid_value_vector_source(*value, operand.locations, false,
+                                               context.instruction_range) &&
+                     (!named || (descriptor && descriptor->allow_named_vector &&
+                                 descriptor->source_value_vector &&
+                                 descriptor->access == OperandAccess::Read &&
+                                 descriptor->vector_type_policy ==
+                                     VectorTypePolicy::Element));
+    }
     if (!valid_source)
       diagnostics.push_back(
           {CheckDiagnosticKind::InvalidVectorOperand,

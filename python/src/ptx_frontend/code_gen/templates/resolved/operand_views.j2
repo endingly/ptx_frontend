@@ -117,6 +117,7 @@
                 OperandView view{
                   .field_id = "{{ model.field_id }}",
                   .actual_shape = {{ model.vector_cpp }},
+                  .value_vector = &{{ model.member_expr }}.value,
                   .vector_arity = {{ model.member_expr }}.value.elements.size(),
                   .locations = {{ model.member_expr }}.locs,
                 };

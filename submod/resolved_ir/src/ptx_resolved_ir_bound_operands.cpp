@@ -3010,17 +3010,31 @@ resolve_value_vector(const syntax_ast::AstOperand& operand,
                      const ResolvedInstructionFields& fields,
                      const ResolveContext* context) {
   const auto* pack = std::get_if<syntax_ast::AstVectorPack>(&operand);
-  if (!pack)
-    return std::unexpected(
-        ResolveDiagnostic{.range = syntax_ast::sourceRange(operand),
-                          .message = "Expected a vector-pack source operand."});
-  const auto type = type_for_operand(binding, fields, pack->range);
+  const auto range = syntax_ast::sourceRange(operand);
+  const auto type = type_for_operand(binding, fields, range);
   if (!type)
     return std::unexpected(type.error());
-  const auto required_arity =
-      vector_arity_for_operand(binding, fields, pack->range);
+  const auto required_arity = vector_arity_for_operand(binding, fields, range);
   if (!required_arity)
     return std::unexpected(required_arity.error());
+  if (!pack && binding.allow_named_vector) {
+    auto registers = resolve_reg_vector(
+        operand, *type, binding.allowed_vector_arities, *required_arity,
+        binding.vector_type_policy, binding.register_width_policy, false, 0,
+        binding.allowed_register_types, binding.require_uniform_register_family,
+        false, context, true);
+    if (!registers)
+      return std::unexpected(registers.error());
+    ResolvedValueVector value{.source = std::move(registers->value.source)};
+    for (auto& lane : registers->value.elements)
+      value.elements.emplace_back(std::move(*lane));
+    WithLocs<ResolvedValueVector> resolved{std::move(value)};
+    resolved.locs = std::move(registers->locs);
+    return resolved;
+  }
+  if (!pack)
+    return std::unexpected(ResolveDiagnostic{
+        .range = range, .message = "Expected a vector-pack source operand."});
   const size_t arity = pack->elements.size();
   if (arity == 0 || arity > checker::kMaxOperandElements ||
       (*required_arity && arity != **required_arity) ||
@@ -3030,7 +3044,7 @@ resolve_value_vector(const syntax_ast::AstOperand& operand,
     return std::unexpected(ResolveDiagnostic{
         .range = pack->range,
         .message = "Value vector has an unsupported lane count."});
-  ResolvedValueVector value;
+  ResolvedValueVector value{.source = {.range = pack->range}};
   value.elements.reserve(arity);
   std::vector<SourceRange> ranges;
   ranges.reserve(arity);

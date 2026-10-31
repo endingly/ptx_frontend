@@ -54,7 +54,7 @@ def _pack(kind: str = "tensor_coordinate", **fields: Any) -> dict[str, Any]:
 
 
 class OperandNormalizationTests(unittest.TestCase):
-    def test_named_vector_option_is_typed_and_register_vector_local(self) -> None:
+    def test_named_vector_option_is_typed_and_binding_local(self) -> None:
         """Named admission is explicit and cannot widen other vector domains."""
         self.assertFalse(normalize_operand(_vector()).vector_allow_named)
         self.assertTrue(normalize_operand(
@@ -66,10 +66,31 @@ class OperandNormalizationTests(unittest.TestCase):
         for value in (1, "true", None, []):
             with self.subTest(value=value), self.assertRaises(TypeError):
                 normalize_operand(_vector(type_policy="element", allow_named=value))
-        for kind, policy in (("value_vector", "element"),
+        for kind, policy in (("value_vector", "aggregate"),
                              ("vector_reg", "element"), ("reg", "element")):
             with self.subTest(kind=kind), self.assertRaises(ValueError):
                 normalize_operand(_vector(kind, type_policy=policy, allow_named=True))
+
+    def test_named_value_vector_requires_readonly_nonsink_element_policy(self) -> None:
+        """Named capacity preserves mixed-value defaults and explicit role limits."""
+        from ptx_frontend.spec.synatax_shapes import operand_syntax_shapes, OperandSyntaxShape
+        raw = _vector("value_vector", type_policy="element", allow_named=True)
+        raw.update(access="read", role="src")
+        normalized = normalize_operand(raw)
+        self.assertTrue(normalized.vector_allow_named)
+        self.assertTrue(operand_syntax_shapes(normalized) & OperandSyntaxShape.IDENTIFIER_REF)
+        default = _vector("value_vector")
+        default.update(access="read", role="src")
+        self.assertFalse(normalize_operand(default).vector_allow_named)
+        for access, sink, policy in (("write", False, "element"),
+                                     ("readwrite", False, "element"),
+                                     ("read", True, "element"),
+                                     ("read", False, "aggregate")):
+            bad = _vector("value_vector", type_policy=policy, allow_named=True,
+                          allow_sink=sink)
+            bad.update(access=access, role="src")
+            with self.subTest(access=access, sink=sink, policy=policy), self.assertRaises(ValueError):
+                normalize_operand(bad)
 
     def assert_rejected(
         self, raw: dict[str, Any], exception: type[Exception], message: str

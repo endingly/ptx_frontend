@@ -7342,6 +7342,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v2_trap_b32_b64
     availability:
       ptx: '1.5'
@@ -7420,6 +7421,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v2_clamp_b8_b16
     availability:
       ptx: '2.0'
@@ -7498,6 +7500,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v2_clamp_b32_b64
     availability:
       ptx: '2.0'
@@ -7576,6 +7579,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v2_zero_b8_b16
     availability:
       ptx: '2.0'
@@ -7654,6 +7658,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v2_zero_b32_b64
     availability:
       ptx: '2.0'
@@ -7732,6 +7737,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_trap_b8_b16
     availability:
       ptx: '1.5'
@@ -7810,6 +7816,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_trap_b32
     availability:
       ptx: '1.5'
@@ -7887,6 +7894,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_clamp_b8_b16
     availability:
       ptx: '2.0'
@@ -7965,6 +7973,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_clamp_b32
     availability:
       ptx: '2.0'
@@ -8042,6 +8051,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_zero_b8_b16
     availability:
       ptx: '2.0'
@@ -8120,6 +8130,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_1d_v4_zero_b32
     availability:
       ptx: '2.0'
@@ -8197,6 +8208,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v1_trap_b8_b16
     availability:
       ptx: '1.5'
@@ -8695,6 +8707,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v2_trap_b32_b64
     availability:
       ptx: '1.5'
@@ -8773,6 +8786,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v2_clamp_b8_b16
     availability:
       ptx: '2.0'
@@ -8851,6 +8865,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v2_clamp_b32_b64
     availability:
       ptx: '2.0'
@@ -8929,6 +8944,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v2_zero_b8_b16
     availability:
       ptx: '2.0'
@@ -9007,6 +9023,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v2_zero_b32_b64
     availability:
       ptx: '2.0'
@@ -9085,6 +9102,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_trap_b8_b16
     availability:
       ptx: '1.5'
@@ -9163,6 +9181,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_trap_b32
     availability:
       ptx: '1.5'
@@ -9240,6 +9259,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_clamp_b8_b16
     availability:
       ptx: '2.0'
@@ -9318,6 +9338,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_clamp_b32
     availability:
       ptx: '2.0'
@@ -9395,6 +9416,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_zero_b8_b16
     availability:
       ptx: '2.0'
@@ -9473,6 +9495,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_2d_v4_zero_b32
     availability:
       ptx: '2.0'
@@ -9550,6 +9573,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v1_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -10048,6 +10072,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v2_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -10126,6 +10151,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v2_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -10204,6 +10230,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v2_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -10282,6 +10309,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v2_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -10360,6 +10388,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v2_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -10438,6 +10467,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -10516,6 +10546,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_trap_b32
     availability:
       ptx: '3.0'
@@ -10593,6 +10624,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -10671,6 +10703,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_clamp_b32
     availability:
       ptx: '3.0'
@@ -10748,6 +10781,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -10826,6 +10860,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_3d_v4_zero_b32
     availability:
       ptx: '3.0'
@@ -10903,6 +10938,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v1_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -11401,6 +11437,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v2_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -11479,6 +11516,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v2_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -11557,6 +11595,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v2_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -11635,6 +11674,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v2_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -11713,6 +11753,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v2_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -11791,6 +11832,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -11869,6 +11911,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_trap_b32
     availability:
       ptx: '3.0'
@@ -11946,6 +11989,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -12024,6 +12068,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_clamp_b32
     availability:
       ptx: '3.0'
@@ -12101,6 +12146,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -12179,6 +12225,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a1d_v4_zero_b32
     availability:
       ptx: '3.0'
@@ -12256,6 +12303,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v1_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -12754,6 +12802,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v2_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -12832,6 +12881,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v2_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -12910,6 +12960,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v2_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -12988,6 +13039,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v2_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -13066,6 +13118,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v2_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -13144,6 +13197,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_trap_b8_b16
     availability:
       ptx: '3.0'
@@ -13222,6 +13276,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_trap_b32
     availability:
       ptx: '3.0'
@@ -13299,6 +13354,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_clamp_b8_b16
     availability:
       ptx: '3.0'
@@ -13377,6 +13433,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_clamp_b32
     availability:
       ptx: '3.0'
@@ -13454,6 +13511,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_zero_b8_b16
     availability:
       ptx: '3.0'
@@ -13532,6 +13590,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_b_data_a2d_v4_zero_b32
     availability:
       ptx: '3.0'
@@ -13609,6 +13668,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v1_trap_b32
     availability:
       ptx: '2.0'
@@ -13805,6 +13865,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v2_clamp_b32
     availability:
       ptx: '2.0'
@@ -13860,6 +13921,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v2_zero_b32
     availability:
       ptx: '2.0'
@@ -13915,6 +13977,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v4_trap_b32
     availability:
       ptx: '2.0'
@@ -13970,6 +14033,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v4_clamp_b32
     availability:
       ptx: '2.0'
@@ -14025,6 +14089,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_1d_v4_zero_b32
     availability:
       ptx: '2.0'
@@ -14080,6 +14145,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v1_trap_b32
     availability:
       ptx: '2.0'
@@ -14276,6 +14342,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v2_clamp_b32
     availability:
       ptx: '2.0'
@@ -14331,6 +14398,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v2_zero_b32
     availability:
       ptx: '2.0'
@@ -14386,6 +14454,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v4_trap_b32
     availability:
       ptx: '2.0'
@@ -14441,6 +14510,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v4_clamp_b32
     availability:
       ptx: '2.0'
@@ -14496,6 +14566,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_2d_v4_zero_b32
     availability:
       ptx: '2.0'
@@ -14551,6 +14622,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v1_trap_b32
     availability:
       ptx: '2.0'
@@ -14747,6 +14819,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v2_clamp_b32
     availability:
       ptx: '2.0'
@@ -14802,6 +14875,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v2_zero_b32
     availability:
       ptx: '2.0'
@@ -14857,6 +14931,7 @@ instructions:
       vector:
         arity: 2
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v4_trap_b32
     availability:
       ptx: '2.0'
@@ -14912,6 +14987,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v4_clamp_b32
     availability:
       ptx: '2.0'
@@ -14967,6 +15043,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
   - name: sust_p_data_3d_v4_zero_b32
     availability:
       ptx: '2.0'
@@ -15022,6 +15099,7 @@ instructions:
       vector:
         arity: 4
         type_policy: element
+        allow_named: true
 - opcode: sured
   section: 9.7.12.3
   doc: Access a typed opaque surface resource.

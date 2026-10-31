@@ -390,8 +390,8 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
 
     if (isinstance(raw.get("vector"), dict)
             and "allow_named" in raw["vector"]
-            and raw["kind"] is not OperandKind.REGISTER_VECTOR):
-        raise ValueError("vector.allow_named requires aggregate- or element-policy reg_vector")
+            and raw["kind"] not in {OperandKind.REGISTER_VECTOR, OperandKind.VALUE_VECTOR}):
+        raise ValueError("vector.allow_named requires a supported register/value-vector policy")
 
     vector_arities: tuple[int, ...] = ()
     vector_arity_expression: OperandVectorArityExpression | None = None
@@ -444,13 +444,15 @@ def _normalize_vector_options(raw: dict[str, Any]) -> _VectorOptions:
         vector_allow_named = vector.get("allow_named", False)
         if not isinstance(vector_allow_named, bool):
             raise TypeError("vector.allow_named must be a boolean")
-        if "allow_named" in vector and (
-            raw["kind"] is not OperandKind.REGISTER_VECTOR
-            or vector_type_policy not in {
+        if "allow_named" in vector and not (
+            (raw["kind"] is OperandKind.REGISTER_VECTOR and vector_type_policy in {
                 OperandVectorTypePolicy.ELEMENT, OperandVectorTypePolicy.AGGREGATE
-            }
+            }) or (raw["kind"] is OperandKind.VALUE_VECTOR
+                   and vector_type_policy is OperandVectorTypePolicy.ELEMENT
+                   and raw["access"] is OperandAccess.READ
+                   and not vector_allow_sink)
         ):
-            raise ValueError("vector.allow_named requires aggregate- or element-policy reg_vector")
+            raise ValueError("vector.allow_named requires aggregate/element reg_vector or read-only nonsink element value_vector")
         if not isinstance(vector_allow_sink, bool):
             raise TypeError(
                 f"{raw['kind']} vector.allow_sink must be a boolean when supplied."

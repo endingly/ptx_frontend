@@ -403,7 +403,7 @@ class GenerationPlanTests(unittest.TestCase):
 
         observed = set()
         aggregate_mov = set()
-        inherited = {"multimem": 0, "suld": 0, "st": 0}
+        inherited = {"multimem": 0, "suld": 0, "st": 0, "sust": 0}
         for entry in self.context.entries:
             opcode = entry.specification.opcode
             for variant in entry.resolved.variants:
@@ -411,8 +411,8 @@ class GenerationPlanTests(unittest.TestCase):
                     for binding in layout.bindings:
                         if binding.allow_named_vector:
                             observed.add(opcode)
-                            self.assertIn(opcode, {"ld", "ldu", "st", "mov", "multimem", "suld"})
-                            inherited_data = (opcode in {"multimem", "suld"} or
+                            self.assertIn(opcode, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+                            inherited_data = (opcode in {"multimem", "suld", "sust"} or
                                               (opcode == "st" and binding.target_field_id == "value"))
                             if (opcode == "mov" and binding.vector_type_policy
                                     is ResolvedVectorTypePolicy.AGGREGATE):
@@ -436,12 +436,12 @@ class GenerationPlanTests(unittest.TestCase):
                                     field.name in {"async", "bulk"} and
                                     field.constant_value is True
                                     for field in variant.modifier_fields))
-                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld"}:
+                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"}:
                             self.assertFalse(binding.allow_named_vector)
                         if opcode == "multimem" and 8 in binding.allowed_vector_arities:
                             self.assertFalse(binding.allow_named_vector)
-        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld"})
-        self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4})
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+        self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4, "sust": 78})
         self.assertEqual(aggregate_mov, {
             ("mov_scalar", "src"), ("mov_scalar", "dst"),
             ("mov_b128_pack_unpack", "src"), ("mov_b128_pack_unpack", "dst"),
@@ -450,6 +450,9 @@ class GenerationPlanTests(unittest.TestCase):
         load_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_data_movement_ld*.gen.cpp"))
         self.assertIn(".allow_named_vector = true", load_source)
         self.assertIn(".register_vector = &", load_source)
+        sust_source = "\n".join(path.read_text() for path in output.rglob("resolved_ir_surface_sust*.gen.cpp"))
+        self.assertTrue(re.search(r"\.value_vector = &(?:selected\.)?data\.value", sust_source))
+        self.assertTrue("observer.value_vector(data.value, data.locs" in sust_source)
         for opcode in ("atom", "red", "cp", "tex"):
             emitted = "\n".join(
                 path.read_text() for path in output.rglob("*.gen.cpp")

@@ -30,6 +30,7 @@ namespace ptx_frontend::resolved_ir {
 
 struct ResolvedRegisterRef;
 struct ResolvedRegisterVector;
+struct ResolvedValueVector;
 struct ResolvedVectorSource;
 struct ResolvedMovValueVector;
 struct ResolvedVectorSpecialRegisterRef;
@@ -1003,6 +1004,9 @@ struct OperandView {
       vector_element_registers{};
   /** Borrowed complete register-vector source; valid only during checking. */
   const ResolvedRegisterVector* register_vector = nullptr;
+  /** Borrowed actual value-vector payload, valid only for the synchronous check;
+   * never point at a temporary or retain it after the owning instruction dies. */
+  const ResolvedValueVector* value_vector = nullptr;
   /** Borrowed ordinary MOV source; null for whole hardware vectors. */
   const ResolvedMovValueVector* mov_value_vector = nullptr;
   /** Borrowed distinct whole-hardware MOV source; never projected scalar lanes. */
@@ -2005,12 +2009,38 @@ struct ResolvedVideoOperand {
   std::optional<SourceRange> minus_range;
 };
 
-/** Read-only braced source lanes retaining register identities or typed values. */
+/** Read-only scalar source lanes with owned brace or named-vector provenance. */
 struct ResolvedValueVector {
   /** Ordered lane payload; WithLocs owns corresponding source ranges. */
   std::vector<RegOrImm> elements;
+  /** Single owned source authority; only complete named containers admit projections. */
+  ResolvedVectorSource source;
+  /** Compare all values and source provenance independently of syntax lifetime. */
   bool operator==(const ResolvedValueVector&) const = default;
 };
+/** Reuse register-vector provenance checks for mixed brace or all-register named sources.
+ * Empty brace ranges remain compatible with legacy standalone construction unless
+ * require_brace_range is set; owned module checks require a complete source range.
+ */
+inline bool valid_value_vector_source(const ResolvedValueVector& value,
+                                      std::span<const SourceRange> locations,
+                                      bool require_brace_range = false,
+                                      SourceRange owner = {}) {
+  if (locations.size() != value.elements.size())
+    return false;
+  ResolvedRegisterVector registers{.source = value.source};
+  for (const auto& lane : value.elements) {
+    if (const auto* reg = std::get_if<ResolvedRegisterRef>(&lane))
+      registers.elements.emplace_back(*reg);
+    else {
+      if (value.source.kind == ResolvedVectorSourceKind::NamedVector)
+        return false;
+      registers.elements.emplace_back(std::nullopt);
+    }
+  }
+  return valid_register_vector_source(registers, locations, require_brace_range,
+                                      owner);
+}
 /** One preserved surface coordinate, with its interpretation and source range. */
 struct ResolvedSurfaceLane {
   /** Scalar register identity or evaluated typed immediate. */

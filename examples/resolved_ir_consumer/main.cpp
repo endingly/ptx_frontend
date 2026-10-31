@@ -549,8 +549,79 @@ bool checkInstalledHeaderArrayRank() {
          ir::validateModule(copy).has_value();
 }
 
+/** Exercise installed value-vector provenance after source destruction and copies. */
+bool checkInstalledValueVectorSources() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.address_size 64
+.global .surfref surf;
+.entry kernel() {
+.reg .v2 .b32 V<2>;
+.reg .s32 x;
+sust.b.1d.v2.b32.trap [surf,x], V1;
+sust.b.1d.v2.b32.trap [surf,x], {V1.r,1};
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser{source};
+    auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned)
+    return false;
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  assigned.functions.front().body.front() =
+      copied.functions.front().body.front()->clone();
+  /** Inspect actual payload pointers only during each synchronous callback. */
+  struct ValueObserver final : ir::detail::IReferenceObserver {
+    /** Count complete named and brace sources separately. */
+    size_t named{}, brace{};
+    /** Accumulate validity without retaining borrowed payload storage. */
+    bool valid = true;
+    /** Check the installed source helper, copy equality, and borrowed view field. */
+    void value_vector(const ir::ResolvedValueVector& value,
+                      std::span<const ptx_frontend::SourceRange> ranges,
+                      ir::checker::AddressSymbolResolutionPolicy) override {
+      const auto copy = value;
+      ir::checker::OperandView view{
+          .field_id = "data",
+          .actual_shape = ir::checker::OperandShape::Vector,
+          .value_vector = &value,
+          .vector_arity = value.elements.size(),
+          .locations = ranges};
+      valid = valid && copy == value && view.value_vector == &value &&
+              ir::valid_value_vector_source(value, ranges, true);
+      if (value.source.kind == ir::ResolvedVectorSourceKind::NamedVector) {
+        ++named;
+        valid = valid && value.source.whole_base &&
+                std::get<ir::ResolvedRegisterRef>(value.elements.front())
+                        .component->origin ==
+                    ir::RegisterComponentOrigin::NamedProjection;
+      } else {
+        ++brace;
+        valid = valid && !value.source.whole_base &&
+                std::holds_alternative<ir::ResolvedImmediate>(
+                    value.elements.back());
+      }
+    }
+  } observer;
+  for (const auto& instruction : assigned.functions.front().body)
+    instruction->visit_references(observer);
+  return observer.valid && observer.named == 1 && observer.brace == 1 &&
+         ir::validateModule(copied) && ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledValueVectorSources())
+    return 1;
   if (!checkInstalledHeaderArrayRank() || !checkInstalledParameterDomain())
     return 1;
   if (!checkInstalledHeaderCompatibility())

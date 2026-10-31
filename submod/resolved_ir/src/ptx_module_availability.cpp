@@ -788,6 +788,13 @@ void collect_operand_references(
         }
     }
   } else if constexpr (std::same_as<Value, ResolvedValueVector>) {
+    const bool named =
+        value.source.kind == ResolvedVectorSourceKind::NamedVector &&
+        valid_value_vector_source(value, locations, true, fallback);
+    if (value.source.whole_base)
+      collect_operand_references(value.source.whole_base->value,
+                                 value.source.whole_base->locs, fallback, uses,
+                                 address_resolution_policy);
     for (size_t index = 0; index < value.elements.size(); ++index) {
       const auto* register_ref =
           std::get_if<ResolvedRegisterRef>(&value.elements[index]);
@@ -797,6 +804,7 @@ void collect_operand_references(
           index < locations.size() ? locations[index] : fallback};
       collect_operand_references(*register_ref, lane_range, fallback, uses,
                                  address_resolution_policy);
+      uses.back().named_vector_projection = named;
     }
   } else if constexpr (std::same_as<Value, ResolvedTensorCoordinate> ||
                        std::same_as<Value, ResolvedTensorIm2colInfo>) {
@@ -1088,6 +1096,10 @@ class ReferenceCollector final : public detail::IReferenceObserver {
   void value_vector(const ResolvedValueVector& value,
                     std::span<const SourceRange> locations,
                     checker::AddressSymbolResolutionPolicy policy) override {
+    if (!valid_value_vector_source(value, locations, true, fallback_))
+      append_model_mismatch(
+          diagnostics_, fallback_,
+          "Owned value vector has invalid source provenance.");
     collect_operand_references(value, locations, fallback_, uses_, policy);
   }
   /** Rejoin owned vector MOV base and lanes, requiring complete source provenance. */

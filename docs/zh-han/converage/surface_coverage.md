@@ -25,4 +25,4 @@ Byte load/store 从 PTX 1.5 起支持。Cache selector 与 clamp/zero 要求 PTX
 
 校验覆盖源码与静态前端事实，不解码间接对象、不证明其运行时资源种类、不从 named member 推断 surface 配置，不执行 formatted conversion 或 reduction，也不证明坐标边界、运行时寄存器自然对齐、format 兼容性、aliasing、memory effect 或 boundary behavior。运行时资源配置与访问有效性仍由程序保证。[安装包 surface consumer](../../../examples/surface_consumer/main.cpp) 验证公共 typed header 与语法树释放后的校验。
 
-SULD v2/v4 data destination 除 brace list 外也接受普通 named register vector，并遵守 binding 的固定 arity 与 element 同宽要求。Syntax 销毁后仍验证保留的 whole declaration 及 canonical projected lane。这不改变 SUST value-vector source form。
+SULD v2/v4 data destination 除 brace list 外也接受普通 named register vector，并遵守 binding 的固定 arity 与 element 同宽要求。Syntax 销毁后仍验证保留的 whole declaration 及 canonical projected lane。SUST v2/v4 data source 也接受拥有完整 base/lane provenance 的普通 named vector。Brace source 保留混合 register/immediate 值及原始 range。SUST element 仍为 SameWidth；formatted source interpretation 不变。

@@ -149,6 +149,28 @@ bool valid_general_register_class(
            actual->declared_type != ScalarType::Pred));
 }
 
+/** Diagnose an affirmative ordinary declaration claim using central type metadata.
+ * Absent standalone facts and non-General register classes retain their own rules;
+ * contextual operand dtypes and logical instruction formats are not declarations.
+ */
+std::optional<CheckDiagnostic> register_declaration_diagnostic(
+    const ResolvedRegisterRef* actual, SourceRange range) {
+  if (!actual || actual->register_class != ResolvedRegisterClass::General ||
+      !actual->declared_type)
+    return std::nullopt;
+  const auto* metadata =
+      base::find_scalar_type_metadata(*actual->declared_type);
+  if (metadata && metadata->register_declaration_usage ==
+                      base::ScalarDeclarationUsage::Fundamental)
+    return std::nullopt;
+  return CheckDiagnostic{
+      .kind = CheckDiagnosticKind::OperandTypeMismatch,
+      .range = range,
+      .message =
+          "An ordinary .reg declaration requires a known fundamental "
+          "scalar type."};
+}
+
 /** Check General class and reject whole vectors borrowed as scalar vector leaves.
  * The caller has already established a nonzero arity within kMaxOperandElements;
  * the enclosing named-vector root is deliberately not inspected here.
@@ -173,6 +195,8 @@ void check_scalar_vector_leaves(const OperandView& operand,
               fmt::format("Scalar element of vector operand '{}' requires "
                           "a General-register class.",
                           field_id)});
+    } else if (auto declaration = register_declaration_diagnostic(reg, range)) {
+      diagnostics.push_back(std::move(*declaration));
     } else if (reg && reg->vector_width)
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedOperandShape,
@@ -1330,6 +1354,14 @@ CheckResult check_operands(
                "A scalar Register operand requires a General-register class."});
       continue;
     }
+    if (operand.actual_shape == OperandShape::Register) {
+      if (auto declaration = register_declaration_diagnostic(
+              operand.register_ref,
+              diagnostic_range(operand.locations, context))) {
+        diagnostics.push_back(std::move(*declaration));
+        continue;
+      }
+    }
     if (operand.actual_shape == OperandShape::Register &&
         operand.register_ref && operand.register_ref->vector_width)
       diagnostics.push_back(
@@ -1834,6 +1866,9 @@ CheckResult check_operands(
             invalid(
                 lane_range.front(),
                 "Vector MOV source requires a scalar non-predicate register.");
+          else if (auto declaration =
+                       register_declaration_diagnostic(reg, lane_range.front()))
+            diagnostics.push_back(std::move(*declaration));
         } else if (const auto* immediate = std::get_if<ResolvedImmediate>(
                        &values.elements[index])) {
           lane.actual_shape = OperandShape::Immediate;
@@ -2059,6 +2094,9 @@ CheckResult check_operands(
                   .message = "Value-vector lane requires a compatible scalar "
                              "general register.",
               });
+            else if (auto declaration =
+                         register_declaration_diagnostic(reg, lane_range))
+              diagnostics.push_back(std::move(*declaration));
           } else if (shape == OperandShape::Immediate) {
             const auto* immediate = operand->vector_element_immediates[index];
             if (!immediate || immediate->type != expected_type ||

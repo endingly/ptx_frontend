@@ -2765,6 +2765,30 @@ void check_declaration_identifiers(const ResolvedModule& module,
   }
 }
 
+/** Check every concrete ordinary .reg declaration independently of reference use.
+ * The binding table owns current declaration facts; retained syntax identity
+ * neither supplies a missing type nor exempts a mutated declaration from legality.
+ */
+void check_register_declaration_types(const ResolvedModule& module,
+                                      checker::CheckDiagnostics& diagnostics) {
+  for (const auto& symbol : module.symbols.symbols()) {
+    if (symbol.kind != binding::SymbolKind::Variable ||
+        symbol.state_space != base::DeclarationStateSpace::Register)
+      continue;
+    const auto* metadata =
+        symbol.type ? base::find_scalar_type_metadata(*symbol.type) : nullptr;
+    if (!metadata || metadata->register_declaration_usage !=
+                         base::ScalarDeclarationUsage::Fundamental)
+      diagnostics.push_back(
+          {.kind = checker::CheckDiagnosticKind::RuleViolation,
+           .range = symbol.declaration_range,
+           .message = fmt::format(
+               "Owned .reg declaration '{}' has an unknown or unsupported "
+               "declaration type; a fundamental scalar type is required.",
+               symbol.name)});
+  }
+}
+
 /** Reject register arrays from owned identities and declaration records. */
 void check_register_arrays(const ResolvedModule& module,
                            checker::CheckDiagnostics& diagnostics) {
@@ -3911,6 +3935,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto parameter_properties = build_parameter_properties(module);
   check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
+  check_register_declaration_types(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_module_declaration_placement(module, policy, diagnostics);
   check_storage_declarations(module, diagnostics);
@@ -4099,6 +4124,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                         explicit_address_size, ast.range, diagnostics);
   check_debug_files(module, diagnostics);
   check_declaration_identifiers(module, diagnostics);
+  check_register_declaration_types(module, diagnostics);
   check_register_arrays(module, diagnostics);
   check_storage_declarations(module, diagnostics);
   check_opaque_storage(module, version, diagnostics);

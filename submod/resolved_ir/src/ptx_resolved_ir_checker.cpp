@@ -134,7 +134,22 @@ std::optional<CheckDiagnostic> check_mbarrier_token_form(
   return std::nullopt;
 }
 
-/** Reject whole declared vectors only when borrowed as scalar vector leaves.
+/** Reconcile a General-register claim with known class facts, without requiring
+ * declaration identity or equating contextualized numeric type caches.
+ * Predicate type facts cannot be reclassified as General by changing a class cache.
+ */
+bool valid_general_register_class(
+    const ResolvedRegisterRef* actual,
+    std::optional<ResolvedRegisterClass> cached_class = std::nullopt,
+    std::optional<ScalarType> cached_type = std::nullopt) {
+  return (!cached_class || *cached_class == ResolvedRegisterClass::General) &&
+         cached_type != ScalarType::Pred &&
+         (!actual ||
+          (actual->register_class == ResolvedRegisterClass::General &&
+           actual->declared_type != ScalarType::Pred));
+}
+
+/** Check General class and reject whole vectors borrowed as scalar vector leaves.
  * The caller has already established a nonzero arity within kMaxOperandElements;
  * the enclosing named-vector root is deliberately not inspected here.
  */
@@ -145,16 +160,26 @@ void check_scalar_vector_leaves(const OperandView& operand,
   const SourceRange& fallback = diagnostic_range(operand.locations, context);
   for (size_t index = 0; index < operand.vector_arity; ++index) {
     const auto* reg = operand.vector_element_registers[index];
-    if (operand.vector_element_shapes[index] == OperandShape::Register && reg &&
-        reg->vector_width)
+    if (operand.vector_element_shapes[index] != OperandShape::Register)
+      continue;
+    const SourceRange range =
+        index < operand.locations.size() ? operand.locations[index] : fallback;
+    if (!valid_general_register_class(reg, std::nullopt,
+                                      operand.vector_element_types[index])) {
       diagnostics.push_back(CheckDiagnostic{
           .kind = CheckDiagnosticKind::UnsupportedOperandShape,
-          .range = index < operand.locations.size() ? operand.locations[index]
-                                                    : fallback,
+          .range = range,
+          .message =
+              fmt::format("Scalar element of vector operand '{}' requires "
+                          "a General-register class.",
+                          field_id)});
+    } else if (reg && reg->vector_width)
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::UnsupportedOperandShape,
+          .range = range,
           .message = fmt::format("Scalar element of vector operand '{}' "
                                  "cannot use a whole vector.",
-                                 field_id),
-      });
+                                 field_id)});
   }
 }
 
@@ -1275,6 +1300,17 @@ CheckResult check_operands(
                             .message = "Register component has invalid "
                                        "explicit-selector provenance."});
     };
+    if (operand.actual_shape == OperandShape::Register &&
+        !valid_general_register_class(operand.register_ref,
+                                      operand.register_class,
+                                      operand.register_type)) {
+      diagnostics.push_back(
+          {.kind = CheckDiagnosticKind::UnsupportedOperandShape,
+           .range = diagnostic_range(operand.locations, context),
+           .message =
+               "A scalar Register operand requires a General-register class."});
+      continue;
+    }
     if (operand.actual_shape == OperandShape::Register &&
         operand.register_ref && operand.register_ref->vector_width)
       diagnostics.push_back(

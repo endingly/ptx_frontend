@@ -2268,13 +2268,6 @@ class Checker {
                  declarator.initializer->range,
                  "Body-local .param declarations cannot have initializers.");
       }
-      if (declarator.parameterized_count) {
-        diagnose(DeclarationDiagnosticKind::UnsupportedParameterDeclaration,
-                 declarator.parameterized_count->range,
-                 "Parameterized body-local .param declaration groups are not "
-                 "modeled by this frontend.");
-        continue;
-      }
       uint64_t bytes = base::scalar_size_of(*scalar);
       for (const auto& dimension : declarator.array_dimensions) {
         if (!dimension.size) {

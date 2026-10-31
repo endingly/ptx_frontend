@@ -1289,7 +1289,11 @@ struct ResolvedParameterDeclaration {
   uint32_t vector_width{1};
   /** Outer-to-inner element counts; null denotes a supported unsized axis. */
   std::vector<std::optional<uint64_t>> array_extents;
-  /** Total declared bytes, absent only for a supported unsized parameter. */
+  /**
+   * Bytes per named object, absent only for a supported unsized parameter.
+   * For compact groups this is each member's extent, without count multiplication
+   * or ABI allocation; the owning SymbolTable retains the group count.
+   */
   std::optional<uint64_t> byte_extent;
   std::optional<call_argument_compatibility::PointerProperties> pointer;
 };

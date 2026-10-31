@@ -926,8 +926,6 @@ TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
       Case{".param .texref texture;",
            DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
-      Case{".param .u32 values<2>;",
-           DeclarationDiagnosticKind::UnsupportedParameterDeclaration},
   };
   for (const auto& test : rejected) {
     const CheckedModule result =
@@ -937,7 +935,7 @@ TEST(PtxDeclarationSemantics, ValidatesBodyLocalParameterForms) {
   }
   const CheckedModule accepted = check(
       ".version 8.0\n.target sm_80\n.entry k() {\n"
-      ".param .u32 matrix[2][3];\n}");
+      ".param .u32 matrix[2][3]; .param .u32 values<2>;\n}");
   EXPECT_TRUE(accepted.binding.diagnostics.empty());
   EXPECT_TRUE(accepted.diagnostics.empty());
 }

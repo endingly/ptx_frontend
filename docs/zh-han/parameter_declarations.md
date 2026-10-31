@@ -21,7 +21,7 @@
 | Header `.param .v2` / `.v4` parameter | 明确的 unsupported parse diagnostic | 不进入 | 无；parameter-space vector storage 仍不在本 contract 范围内 |
 | Header 多维 parameter array | 明确的 unsupported parse diagnostic | 不进入 | 无；header array grammar 仍为 unresolved，不据此宣称 illegal |
 | Body-local vector `.param` | 保留 | 明确的 unsupported diagnostic | 无；保留为 legal-but-unsupported，等待 vector shape 与 call-staging metadata |
-| Body-local parameterized `.param` group (`name<count>`) | 保留 | 明确的 unsupported diagnostic | 无；合法 declaration shorthand 需要逐个展开名称的 identity 与 declaration-order metadata |
+| Body-local parameterized `.param` group (`name<count>`) | 保留 | 支持的 scalar parameter type、正 uint32 count、禁止 array/initializer；保留 body-local availability | 每个 declarator 一个 `BodyLocal` record 与带 count 的 owning symbol；member 使用相同 `SymbolId` 加 index |
 | `.callprototype` 中的 vector 或多维 `.param` formal | header grammar 拒绝时给出明确 unsupported parse diagnostic | 不会到达 | scalar 与一维 array contract 仍受支持；不从 spelling 推断 vector shape 或更高维 header syntax |
 | `.pred`、未知或仅用于指令的 type spelling | 保留 type spelling | 在 `.param` 中拒绝 | 无 |
 | Module-scope `.param` | 保留 | 拒绝 | 无 |
@@ -121,10 +121,20 @@ legal but unsupported，而不会把它并入 instruction-only type diagnostic�
 parameter-space declaration、direct-call ABI、literal 与 resolved-memory 行为；现有 `ScalarType::F16x2`
 值本身并不构成该 contract。
 
-`.param .v2`/`.v4` shape 与 local parameterized group 也采用相同区分。variable rule
-允许 non-predicate fundamental type 的二/四 lane vector，并允许任意 state space 的
-fundamental type 使用 parameterized name。当前 grammar 已保留的 source form 会继续保留，
-但 frontend 不会臆造展开 declaration、vector byte/alignment、call staging 或 public metadata。
+`.param .v2`/`.v4` shape 仍采用相同的 unsupported 区分。variable rule 允许
+non-predicate fundamental type 的二/四 lane vector，但 parameter-space vector metadata
+仍不在本契约内。
+
+Body-local scalar `.param` compact group 复用普通 group binding：`value<2>` 拥有一个
+count 为 2 的 symbol，`value0` 与 `value1` 分别以同一 `SymbolId` 加 index 0/1 引用。
+每个 declarator 只有一个 `BodyLocal` parameter record，不产生 storage declaration record。
+`byte_extent` 是单个 member object 的大小，不是 count 乘以 allocation size；count 由
+symbol 持有。lexical shadowing、member bounds 与 call staging 使用 typed member identity。
+owned validation 拒绝缺失或越界的 member index，以及 ordinary symbol 上多余的 index。
+一致的范围内 member-index edit 是合法 semantic change；owned validation 不重建原始拼写。
+提供 AST 时，source association 独立保留 compact count 与 written member reference。
+不生成展开的 source declaration 或逐 member symbol。
+
 通用 array rule 只确立 constant dimension，未解决不同的 header 多维 parameter grammar；
 该行仍为 unresolved。
 

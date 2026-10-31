@@ -1492,9 +1492,11 @@ void check_module_references(const ResolvedModule& module,
                               "Indirect resource carrier is not a scalar "
                               "64-bit integer or bit register.");
     }
-    if (use.parameterized_index &&
-        (!symbol->parameterized_count ||
-         *use.parameterized_index >= *symbol->parameterized_count)) {
+    if ((use.parameterized_index &&
+         (!symbol->parameterized_count ||
+          *use.parameterized_index >= *symbol->parameterized_count)) ||
+        (symbol->kind == binding::SymbolKind::CallParameter &&
+         symbol->parameterized_count && !use.parameterized_index)) {
       append_model_mismatch(
           diagnostics, use.range,
           "Resolved module operand has an invalid parameterized member index.");

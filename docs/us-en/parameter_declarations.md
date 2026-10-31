@@ -23,7 +23,7 @@ validation before publishing metadata.
 | Header `.param .v2` / `.v4` parameter | Explicit unsupported parse diagnostic | Not reached | None; parameter-space vector storage remains outside this contract |
 | Header multidimensional parameter array | Explicit unsupported parse diagnostic | Not reached | None; context-specific header-array grammar remains unresolved rather than being classified as illegal |
 | Body-local vector `.param` | Retained | Explicit unsupported diagnostic | None; retained legal-but-unsupported boundary pending vector shape and call-staging metadata |
-| Body-local parameterized `.param` group (`name<count>`) | Retained | Explicit unsupported diagnostic | None; legal declaration shorthand needs per-expanded-name identity and declaration-order metadata |
+| Body-local parameterized `.param` group (`name<count>`) | Retained | Supported scalar parameter types, positive uint32 count, no arrays or initializers; existing body-local availability applies | One `BodyLocal` parameter record and one owning symbol with count; members use the same `SymbolId` plus an index |
 | Vector or multidimensional `.param` formal in a `.callprototype` | Explicit unsupported parse diagnostic where the header grammar rejects it | Not reached | Scalar and one-dimensional array contracts remain supported; vector shape and higher-rank header syntax are not inferred |
 | `.pred`, unknown or instruction-only type spelling | Type spelling retained | Rejected for `.param` | None |
 | Module-scope `.param` | Retained | Rejected | None |
@@ -143,13 +143,24 @@ collapsing it into the instruction-only-type diagnostic. Supporting it requires
 coherent parameter-space declaration, direct-call ABI, literal, and resolved-memory behavior;
 the existing `ScalarType::F16x2` value alone is not that contract.
 
-The same distinction applies to `.param .v2`/`.v4` shapes and local
-parameterized groups. The variable rules permit two- and four-lane vectors of
-non-predicate fundamental types and permit parameterized names for fundamental
-types in any state space. The frontend retains those source forms where its
-grammar already does so, but does not manufacture expanded declarations,
-vector bytes/alignment, call staging, or public metadata. The generic array
-rules establish constant dimensions, but do not settle the distinct header
+The same unsupported distinction applies to `.param .v2`/`.v4` shapes. The
+variable rules permit two- and four-lane vectors of non-predicate fundamental
+types, but parameter-space vector metadata remains outside this contract.
+
+Body-local scalar `.param` compact groups reuse the ordinary group binding:
+`value<2>` owns one symbol with count 2, while `value0` and `value1` refer to that
+`SymbolId` with indices 0 and 1. Each declarator has one `BodyLocal` parameter
+record and no storage declaration record. Its `byte_extent` is the extent of
+one member object, not count times an allocation size; the symbol owns the count.
+Lexical shadowing, member bounds, and call staging use the typed member identity.
+Owned validation rejects missing/out-of-range member indices and indices on
+ordinary symbols. A coherent in-range member-index edit is a valid semantic
+change; owned validation does not reconstruct the original spelling. When an AST
+is supplied, source association separately retains compact counts and written
+member references. No expanded source declarations or per-member symbols are
+manufactured.
+
+The generic array rules establish constant dimensions, but do not settle the distinct header
 multidimensional parameter grammar; that row remains unresolved.
 
 No instruction families, simulator execution, argument packing, or physical

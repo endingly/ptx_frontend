@@ -151,7 +151,9 @@ parameter。
 
 只有 function-local `.param` variable 是 call staging。其 `st.param` input store 必须不带
 predicate，并与使用同一 variable 的 call 形成紧邻的连续块；其 `ld.param` return load 也必须不带
-predicate，并紧跟在返回同一 variable 的 call 后。label、declaration 或其他 instruction 会打断该块。
+predicate，并紧跟在返回同一 variable 的 call 后。非执行的 declaration、label、metadata 和词法
+花括号对 instruction 邻接透明；中间的可执行 instruction 会打断该块。binding/scope 规则仍要求
+引用同一个可见的 parameter object/member。这是局部顺序检查，不推断运行时路径上的初始化。
 `call` 自身可以带 predicate。`.uni` 仅保留为程序员的 uniformity assertion，frontend 不尝试不可
 证明的 static uniformity analysis，也不会因 predicated direct `call.uni` 而拒绝它。
 

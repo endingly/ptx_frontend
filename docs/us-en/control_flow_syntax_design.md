@@ -194,7 +194,11 @@ Only function-local `.param` variables are call staging. Their `st.param` input
 stores must be unpredicated and form the contiguous block immediately before a
 call that passes the same variable; their `ld.param` return loads must be
 unpredicated and form the contiguous block immediately after a call returning
-the same variable. Labels, declarations, and other instructions break a block.
+the same variable. Nonexecuting declarations, labels, metadata, and lexical
+braces are transparent to instruction adjacency. Intervening executable
+instructions break a block; binding and scope rules still require the same
+visible parameter object/member. These local checks do not infer runtime path
+initialization.
 `call` itself may be predicated. `.uni` is retained as the programmer's
 uniformity assertion, so the frontend does not attempt unprovable static
 uniformity analysis or reject a predicated direct `call.uni`.

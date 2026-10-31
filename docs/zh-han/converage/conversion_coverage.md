@@ -171,3 +171,5 @@ kernel-parameter contract 拒绝它；device-formal `.local` probe 则按预期�
 `ptxas --version` 以及 `ptxas -arch=<target> <fixture>.ptx -o <fixture>.cubin` 复现。
 ordinary matrix 记录 140 个 accepted case 和四个 8-bit integer-width discrepancy。这些
 observation 是 compiler 工具证据，不能替代 PTX 9.3，也不能以该工具版本验证 PTX 9.2 form。
+
+Scalar F16 numeric source 现经公共 binary64-to-binary16 RNE 路径转换：支持 decimal/F64 expression 与裸 unsigned exact F32，不经过 binary32 中间值。Literal 转换保留 signed zero 与 subnormal，与指令 rounding/FTZ/saturation 无关。既有 CVT source kind 及 rounding 规则不变：四个含 F16 source 的 model template 在这些独立 rounding 检查下仍没有合法 positive。不增加 integer-to-F16 literal reinterpretation；Bit16 precision 规则及 exact F32 expression 禁令保留。

@@ -191,7 +191,8 @@ class SetpCompletenessTests(unittest.TestCase):
                 self.assertIs(operands[0].kind, OperandKind(destination))
                 self.assertEqual(
                     tuple(operand.kind for operand in operands[1:3]),
-                    (OperandKind.REGISTER, OperandKind.REGISTER),
+                    ((OperandKind.REGISTER_OR_IMMEDIATE,) * 2 if type_name == "f16"
+                     else (OperandKind.REGISTER,) * 2),
                 )
                 self.assertEqual(
                     tuple(

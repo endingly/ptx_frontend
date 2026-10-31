@@ -32,13 +32,13 @@ operand_patterns:
 
   set_half_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_half_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: f16, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_bfloat_result_scalar:
@@ -54,24 +54,24 @@ operand_patterns:
 
   set_bfloat_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_bfloat_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: b16, register_width: exact}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
 
   set_integer_result_f16_boolean:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(dtype)"}, register_width: same_width}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16, register_width: same_width}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16, register_width: same_width}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16, register_width: same_width}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16, register_width: same_width}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   set_integer_result_bf16:
@@ -153,13 +153,13 @@ operand_patterns:
 
   setp_f16_single:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16}
 
   setp_f16_single_boolean:
     - {name: dst, kind: pred, role: dst, access: write, type: pred}
-    - {name: src1, kind: reg, role: src1, access: read, type: f16}
-    - {name: src2, kind: reg, role: src2, access: read, type: f16}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: f16}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: f16}
     - {name: combine, kind: pred_source, role: predicate, access: read, type: pred}
 
   setp_f16x2_pair:

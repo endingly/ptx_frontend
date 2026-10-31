@@ -183,10 +183,11 @@ call 不采用 instruction-style bit compatibility。Packed storage 使用既有
 container；named array index 仍按声明 scalar element 缩放（F16x2 为四字节），不是
 vector 大小。Header 多维 parameter array 保留完整轴；call ABI 使用总元素数，自身记录逐轴核对。
 
-直接 numeric-to-packed F16x2 call literal 没有 adopted representation：整数、zero、
-decimal、0f、0d 不隐含 raw bits、splat 或 lane placement。Frontend 在支持 native
-typed object 的同时明确报告此 reference gap；它与单独必须实现的普通 scalar F16
-literal converter 不同。
+Numeric one-to-pair F16x2 call-literal constructor 仍是 reference gap：整数、
+zero、decimal 与 F64 expression 不定义 splat 或 lane placement。同宽、裸 unsigned
+直接 `0f` binary32 whole-word 路径已有 adopted exact-word 解释，其 source producer
+另待实现。这不是 packed literal 的一概禁令，并且不同于已经实现的普通 scalar F16
+numeric converter。
 
 已知 opaque entry input 仍为 name-only：numeric aggregate 遍历跳过它们，不分配
 byte 或 padding，同时继续检查后续 numeric/vector input。
@@ -205,3 +206,5 @@ validation 仍报告既有 missing-context 错误。每个 function 使用自身
 source-aware validation 使用所提供 AST，AST-free validation 使用 owned region。
 未使用 prototype 同样检查。该规则仅针对 formal：普通小宽度/predicate register 声明、
 小宽度 `.param` formal，以及传给匹配 `.param` 的小 register actual，仍合法。
+
+其余条件合法的 scalar F16 Reg 与 Param input 共用 numeric literal 转换，覆盖 direct 及 metadata-backed indirect call。浮点 1.5 或等值 F64 expression 生成 F16 word 0x3e00；原 lexical／转换前 source 保留用于 owned 重算。现代 Register-formal minimum width 仍独立拒绝 scalar Reg F16；已建立的 nonstack legacy call 与 partial AvailableContext 遵循既有 gate。Strict missing context 及 scalar-to-vector no-splat 保留；不增加 packed F16x2 构造。

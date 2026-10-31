@@ -13,7 +13,7 @@
 | ordinary unsigned `.u16/.u32/.u64` | 1.0 / 全部 target | signed-family comparison 加 `.lo/.ls/.hi/.hs`，可选 Boolean form | 采用 ordinary single/pair sink 和 source 规则。 |
 | ordinary `.f32` | 1.0 / 全部 target | 全部 floating comparison：`.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`；可选 Boolean form 与 `.ftz` | 采用 ordinary single/pair sink 和 floating register-or-immediate source 规则。 |
 | ordinary `.f64` | 1.0 / `sm_13` | 相同 floating comparison 与可选 Boolean form；不允许 `.ftz` | 采用 ordinary single/pair sink 和 floating register-or-immediate source 规则。 |
-| `.f16` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有一个 predicate result。source 是 `.f16` 或同宽 `.b16` register；destination 不能为 `_`。 |
+| `.f16` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有一个 predicate result。source 是 `.f16` 或同宽 `.b16` register，或 numeric F16 floating constant；destination 不能为 `_`。 |
 | `.f16x2` | 4.2 / `sm_53` | 全部 floating comparison、可选 Boolean form、可选 `.ftz` | 恰有两个 predicate result，source 是 native `.f16x2` 或 `.b32` register；不允许 sink destination。 |
 | `.bf16` | 7.8 / `sm_90` | 全部 floating comparison 与可选 Boolean form；不允许 `.ftz` | 恰有一个 predicate result，source 是 exact `.b16` register；destination 不能为 `_`。 |
 | `.bf16x2` | 7.8 / `sm_90` | 全部 floating comparison 与可选 Boolean form；不允许 `.ftz` | 恰有两个 predicate result，source 是 exact `.b32` register；不允许 sink destination。 |
@@ -31,3 +31,5 @@ ordinary syntax 允许单个 `_` destination，或 predicate pair 的一个 `_` 
 ## 验证来源
 
 [专用 C++ SETP 测试](../../../submod/resolved_ir/test/test_setp_completeness.cpp) 覆盖所有 family 的 parse、resolve、declared-operand checking、target minimum、modifier/layout negative、predicate-constant truth value，以及 mutation 后的 IR sink validation。[Python database 测试](../../../python/tests/spec/test_setp_completeness.py) 验证 variant、comparison domain、availability、sink boundary、predicate-source kind 和 packed container。这些来源仅定义 frontend 边界；不验证 simulator 或 hardware execution result。
+
+Scalar F16 numeric floating source 使用 RegOrImm 与公共 binary16 RNE converter；Boolean 及 predicate destination 规则不变。这四个字段额外的 explicit raw Bit16 source route 单独跟踪，不由 numeric converter 实现。因此当前 integer-source 拒绝不是这些 SETP role 的规范禁令。BF16 与 packed source policy 保持独立。

@@ -214,3 +214,5 @@ mismatch. The probes are reproducible with `ptxas --version` and
 recorded 140 accepted cases and four 8-bit integer-width discrepancies. Those
 observations are compiler-tool evidence, not a replacement for PTX 9.3, and
 cannot validate PTX 9.2 forms with this tool version.
+
+Scalar F16 numeric sources now convert through the common binary64-to-binary16 RNE path: decimal/F64 expressions and bare unsigned exact F32 are supported, with no binary32 intermediate. Literal conversion preserves signed zero and subnormals independently of instruction rounding/FTZ/saturation. Existing CVT source kinds and rounding rules are unchanged: four modeled F16-source templates remain without a legal positive under those independent rounding checks. Integer-to-F16 literal reinterpretation is not added; Bit16 precision rules and the exact F32 expression ban remain.

@@ -320,6 +320,15 @@ CheckResult check_source_immediate_consistency(const OperandView& operand,
                                                const Context& context) {
   if (!operand.immediate_bits || !operand.immediate_type)
     return {};
+  if ((*operand.immediate_type == ScalarType::F16 ||
+       *operand.immediate_type == ScalarType::BF16) &&
+      (*operand.immediate_bits > 0xffffU || operand.integer_source_bits ||
+       operand.immediate_is_negative.value_or(false)))
+    return std::unexpected(CheckDiagnostics{
+        CheckDiagnostic{.kind = CheckDiagnosticKind::ImmediateValueMismatch,
+                        .range = diagnostic_range(operand.locations, context),
+                        .message = "A scalar half immediate requires a "
+                                   "canonical floating 16-bit word."}});
   const bool packed_raw32 =
       ::ptx_frontend::resolved_ir::detail::is_raw32_fp8x4_type(
           *operand.immediate_type);

@@ -38,23 +38,23 @@ TEST(AddSubAudit, AcceptsAuditedLiteralPositions) {
 
 /** Reject literals outside the audited positions.
  *
- * These are operand-shape rules, so instruction resolution is the right level:
- * the rejection is decided by layout selection alone, with no module binding
- * that an unrelated unresolved name could fail on instead.
+ * Instruction resolution isolates operand and numeric-conversion rules without
+ * an unrelated missing module binding obscuring the rejection.
  */
 TEST(AddSubAudit, RejectsLiteralsOutsideAuditedPositions) {
-  for (const auto source : {
-           // Destinations are registers for every cohort.
-           "add.f32 1.0, %f1, %f2;",
-           "add.f32.bf16 1.0, %b1, %f2;",
-           // The narrow source is register-only, including the BF16 cohort.
-           "add.f32.f16 %f0, 1.0, %f2;",
-           "sub.f32.bf16 %f0, 1.0, %f2;",
-           // The mixed addend and subtrahend admit floating literals only.
-           "add.f32.f16 %f0, %h1, 1;",
-           "sub.f32.f16 %f0, %h1, 1;",
-           "add.f32.bf16 %f0, %b1, 1;",
-       }) {
+  for (
+      const auto source : {
+          // Destinations are registers for every cohort.
+          "add.f32 1.0, %f1, %f2;",
+          "add.f32.bf16 1.0, %b1, %f2;",
+          // Ordinary half sources reject integers; BF16 numeric conversion is still pending.
+          "add.f32.f16 %f0, 1, %f2;",
+          "sub.f32.bf16 %f0, 1.0, %f2;",
+          // The mixed addend and subtrahend admit floating literals only.
+          "add.f32.f16 %f0, %h1, 1;",
+          "sub.f32.f16 %f0, %h1, 1;",
+          "add.f32.bf16 %f0, %b1, 1;",
+      }) {
     SCOPED_TRACE(source);
     const auto parsed = test_helpers::parseInstruction(source);
     ASSERT_INSTRUCTION_PARSE_SUCCEEDS(parsed);
@@ -89,7 +89,7 @@ TEST(AddSubAudit, OwnsMixedAddendImmediateAndRevalidates) {
   EXPECT_EQ(addend->type, ScalarType::F32);
   EXPECT_EQ(addend->bits, 0x3F800000u);
   // The narrow source keeps its register representation, not the wide one.
-  EXPECT_EQ(add.src.value.spelling, "%h1");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(add.src.value).spelling, "%h1");
 
   const auto& sub =
       dynamic_cast<const SubMixedF32&>(*owned->functions.front().body[1]);

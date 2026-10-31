@@ -217,10 +217,12 @@ and explicit shape; calls do not substitute instruction-style bit compatibility.
 Use existing b32 memory access containers for packed storage, while named array
 indices still scale by the declared scalar element (four bytes for F16x2), not vector size.
 
-A direct numeric-to-packed F16x2 call literal has no adopted representation: integers,
-zero, decimal, 0f and 0d values do not imply raw bits, splatting or lane placement.
-The frontend reports this explicit reference gap while supporting native typed objects.
-This is distinct from the separately required ordinary scalar F16 literal converter.
+A numeric one-to-pair F16x2 call-literal constructor remains a reference gap:
+integers, zero, decimal and F64 expressions do not define a splat or lane placement.
+The same-width bare unsigned direct `0f` binary32 whole-word route has an adopted
+exact-word interpretation, with its source producer pending separately. This is
+not a blanket prohibition on packed literals and is distinct from the implemented
+ordinary scalar F16 numeric converter.
 
 Known opaque entry inputs remain name-only: numeric aggregate traversal skips them
 without assigning bytes or padding, and continues checking later numeric/vector inputs.
@@ -243,3 +245,5 @@ function uses its active target region; source-aware validation uses the supplie
 AST and AST-free validation uses owned regions. Unused prototypes are checked too.
 This is a formal rule: ordinary small/predicate register declarations, small
 `.param` formals and matching small-register actuals to `.param` remain legal.
+
+Otherwise eligible scalar F16 Reg and Param inputs share numeric literal conversion, including direct and metadata-backed indirect calls. A floating 1.5 or evaluated F64 equivalent becomes F16 word 0x3e00; original lexical/precast source is retained for owned recomputation. Modern Register-formal minimum width still rejects scalar Reg F16 independently, while established nonstack legacy calls and partial AvailableContext follow their existing gates. Strict missing context and scalar-to-vector no-splat remain. This does not add a packed F16x2 constructor.

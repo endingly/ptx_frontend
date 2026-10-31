@@ -24,7 +24,7 @@ simulator execution semantics。
 | `fma_half_oob`、`fma_half_oob_relu` | 8.1 / `sm_90` | `.rn`、`.oob` 必需；前者可加 `.sat`，后者必须有 `.relu`；两者都不允许 `.ftz`，也拒绝 `.sat` 与 `.relu` 同时出现 | 仅 register 的 `.f16`/`.b16`，或 `.f16x2`/`.b32` packed value |
 | `fma_bf16`、`fma_bf16x2` | 7.0 / `sm_80` | `.rn` 必需；`.relu` 可选；不允许 `.ftz`、`.sat` | 仅 exact `.b16` scalar 或 `.b32` packed register |
 | `fma_bf16_oob`、`fma_bf16x2_oob` | 8.1 / `sm_90` | `.rn`、`.oob` 必需；`.relu` 可选；不允许 `.ftz`、`.sat` | 仅 exact `.b16` scalar 或 `.b32` packed register |
-| `fma_mixed_f32_f16`、`fma_mixed_f32_bf16` | 8.6 / `sm_100` | 四种 rounding mode 之一必需；`.sat` 可选 | destination 和 accumulator `c` 为 `.f32` 或 `.b32`；multiplicand `a`/`b` 仅可为 `.f16`/`.b16` register，bf16 form 为 exact `.b16`；`c` 可为 floating immediate |
+| `fma_mixed_f32_f16`、`fma_mixed_f32_bf16` | 8.6 / `sm_100` | 四种 rounding mode 之一必需；`.sat` 可选 | destination 和 accumulator `c` 为 `.f32` 或 `.b32`；F16 multiplicand `a`/`b` 接受 `.f16`/`.b16` register 或 numeric half constant；当前 bf16 form 保留 exact `.b16` register；`c` 可为 floating immediate |
 
 ## 有意保留的兼容性边界
 
@@ -73,3 +73,5 @@ mixed-precision operand type。
 本文的 coverage 由三个 official PTX 9.3 FMA section 及上述实现和测试界定，不依赖手工
 coverage ledger。较早的 common-kernel corpus 与实际 opcode coverage 不同；不会以
 corpus presence 作为完成闭环的证据。
+
+Mixed F32/F16 multiplicand 现使用 RegOrImm，接受只舍入一次为 binary16 的 numeric floating constant。F32 accumulator 保留既有 numeric 路径。显式 half-arithmetic register-only form 与当前 BF16 mixed-source representation 保持独立；literal 转换不执行 FMA rounding/saturation 的运行结果。

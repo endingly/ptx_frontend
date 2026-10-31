@@ -1176,3 +1176,18 @@ thread 上限及 unsigned literal conversion，不因 whole-vector shape 或运�
 Mbarrier register carrier 的类型按 role 区分，而书写的 instruction modifier 仍为 `.b64`。Opaque arrival/arrival-drop output 与 opaque `pending_count` state input 接受恰好 64 bit 的 fundamental B64/S64/U64/F64 声明。非 parity test/try-wait state input 的语义类型为 U64，接受 B64/S64/U64，拒绝 F64 及所有其他宽度。Frontend 保留每个实际 declared type、SymbolId、member/component 及 range；不做 numeric floating conversion，也不证明运行时 token 内容或先前操作。对齐的 shared-memory `.b64` object 与 register carrier 是不同对象。CTA RegisterOrSink、cluster 强制 Sink policy 及 availability 仍独立。
 
 Report-value output 保留 frontend 带限定的 logical B8 model，并接受同宽 B8/S8/U8 carrier。固定 PTX 9.3 文本没有无歧义地把该异构 report operand 对应到规范 width/type；较新的官方 uint8 示例支持保留的 model，但不关闭固定参照的缺口。Report carrier 测试证明的是保留的 model，不是无条件的 ISA width 认证。Opaque F64 的接受来自已采纳的固定参照类型解释；辅助 assembler 的拒绝记录为工具差异，不构成新的 frontend 类型限制。
+
+标量 F16 数值常量在 use site 转换为 IEEE binary16。Decimal、已求值浮点表达式、exact F64 bits 与裸 unsigned exact F32 literal 均只执行一次 nearest、ties-to-even 舍入。Binary64 bits 直接转为 binary16；exact F32 输入先精确拓宽。Signed zero、渐进 subnormal、溢出为带符号 infinity，以及保留 sign／高 payload 并 quiet 的 NaN 均遵循确定的前端 literal policy，与指令 rounding、FTZ、saturation 无关；这不模拟 CVT 结果。Integer origin 与浮点常量仍有区别。Exact F32 的 sign、括号及运算仍拒绝；Bit16 不继承 numeric half 转换，F16/F16x2 data initializer 仍禁止。
+
+现有 11 个 generated class 中的 20 个字段从 `WithLocs<ResolvedRegisterRef>` 迁移为 `WithLocs<RegOrImm>`；公共 consumer 必须重编译，并在 `.value` 上使用 `std::get_if<ResolvedRegisterRef>` 或 `std::get_if<ResolvedImmediate>`。Variant 名称、add/sub 共享的 F16/BF16 domain、selector 顺序及所有 width／availability 规则不变。
+
+| Generated class | 迁移字段 |
+| --- | --- |
+| `AddMixedF32`, `SubMixedF32` | `src` 各自 |
+| `FmaMixedF32F16` | `src1`, `src2` |
+| `SetHalfF16F16`, `SetHalfF16F16Boolean` | `src1`, `src2` 各自 |
+| `SetHalfBf16F16`, `SetHalfBf16F16Boolean` | `src1`, `src2` 各自 |
+| `SetHalfIntegerF16`, `SetHalfIntegerF16Boolean` | `src1`, `src2` 各自 |
+| `SetpF16`, `SetpF16Boolean` | `src1`, `src2` 各自 |
+
+Canonical 当前 F16/BF16 immediate 是低 16 位 word，没有 integer-source provenance 或 integer-negative flag。普通 instruction IR 保留当前 typed word，因此合法范围内的一致修改可以有效，无需恢复原 literal。Shared mixed BF16 字段即使 written BF16 numeric converter 尚待独立实现，也接受 canonical typed BF16 word。Call 保留原 lexical input 或转换前的 F64 expression value，并在 owned validation 中重算 half word。所有其余条件合法的标量 Reg/Param input 复用该转换；现代小宽度 Register-formal ABI 限制、vector no-splat 与 missing-context 要求仍独立。四个 scalar F16 SETP source 还需要单独 typed-policy delivery 实现 explicit raw Bit16 route；当前 numeric 路径不表示 raw integer 在规范上非法。Packed numeric 构造及 alternate-format converter 仍是独立范围。

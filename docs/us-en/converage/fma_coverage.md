@@ -26,7 +26,7 @@ checking. None has simulator execution semantics.
 | `fma_half_oob`, `fma_half_oob_relu` | 8.1 / `sm_90` | `.rn` and `.oob` required; the former may add `.sat`, the latter requires `.relu`; neither permits `.ftz`, and `.sat` with `.relu` is rejected | register-only `.f16`/`.b16`, or `.f16x2`/`.b32` packed values |
 | `fma_bf16`, `fma_bf16x2` | 7.0 / `sm_80` | `.rn` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
 | `fma_bf16_oob`, `fma_bf16x2_oob` | 8.1 / `sm_90` | `.rn` and `.oob` required; `.relu` optional; `.ftz` and `.sat` are not allowed | exact `.b16` scalar or `.b32` packed registers only |
-| `fma_mixed_f32_f16`, `fma_mixed_f32_bf16` | 8.6 / `sm_100` | one of all four rounding modes required; `.sat` optional | destination and accumulator `c` are `.f32` or `.b32`; multiplicands `a`/`b` are register-only `.f16`/`.b16`, or exact `.b16` for the bf16 form; `c` may be a floating immediate |
+| `fma_mixed_f32_f16`, `fma_mixed_f32_bf16` | 8.6 / `sm_100` | one of all four rounding modes required; `.sat` optional | destination and accumulator `c` are `.f32` or `.b32`; F16 multiplicands `a`/`b` accept `.f16`/`.b16` registers or numeric half constants; the current bf16 form retains exact `.b16` registers; `c` may be a floating immediate |
 
 ## Deliberate compatibility boundaries
 
@@ -80,3 +80,5 @@ The coverage stated here is defined by the three official PTX 9.3 FMA sections
 and the implementation/tests above, not a manual coverage ledger. The older
 common-kernel corpus and actual opcode coverage are distinct: corpus presence
 is not used as evidence of this closure.
+
+Mixed F32/F16 multiplicands now use RegOrImm and accept numeric floating constants converted once to binary16. The F32 accumulator keeps its existing numeric path. Explicit half-arithmetic register-only forms and the current BF16 mixed-source representation remain separate; literal conversion does not execute the FMA rounding/saturation result.

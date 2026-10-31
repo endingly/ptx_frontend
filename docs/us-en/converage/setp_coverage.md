@@ -13,7 +13,7 @@ Every row is modelled through syntax, Resolved IR, and target-aware checking. Th
 | Ordinary unsigned `.u16/.u32/.u64` | 1.0 / all targets | Signed-family comparisons plus `.lo/.ls/.hi/.hs`, with optional Boolean form | The ordinary single/pair sink and source rules apply. |
 | Ordinary `.f32` | 1.0 / all targets | `.eq/.ne/.lt/.le/.gt/.ge/.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`; optional Boolean form and `.ftz` | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
 | Ordinary `.f64` | 1.0 / `sm_13` | The same floating comparison and optional Boolean form; `.ftz` is not legal | The ordinary single/pair sink and floating register-or-immediate source rules apply. |
-| `.f16` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly one predicate result. Sources are `.f16` or same-width `.b16` registers; `_` is not a destination. |
+| `.f16` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly one predicate result. Sources are `.f16` or same-width `.b16` registers, or numeric F16 floating constants; `_` is not a destination. |
 | `.f16x2` | 4.2 / `sm_53` | All floating comparisons, optional Boolean form, optional `.ftz` | Exactly two predicate results and native `.f16x2` or `.b32` register sources; sink destinations are not legal. |
 | `.bf16` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly one predicate result and exact `.b16` register sources; `_` is not a destination. |
 | `.bf16x2` | 7.8 / `sm_90` | All floating comparisons and optional Boolean form; `.ftz` is not legal | Exactly two predicate results and exact `.b32` register sources; sink destinations are not legal. |
@@ -31,3 +31,5 @@ As corroborating compiler evidence, CUDA Toolkit 13.1 `ptxas` probes using PTX 8
 ## Verification sources
 
 [Dedicated C++ SETP tests](../../../submod/resolved_ir/test/test_setp_completeness.cpp) exercise every family through parsing, resolution, declared-operand checking, target minima, modifier/layout negatives, predicate-constant truth values, and mutated-IR sink validation. The [focused Python database test](../../../python/tests/spec/test_setp_completeness.py) verifies variants, comparison domains, availability, sink boundaries, predicate-source kinds, and packed containers. These sources define the frontend boundary; they do not verify simulator or hardware execution.
+
+Scalar F16 numeric floating sources use RegOrImm and the common binary16 RNE converter; Boolean and predicate destination rules are unchanged. The additional explicit raw Bit16 source route for these four fields is separately tracked and is not implemented by the numeric converter. Current integer-source rejection is therefore not a normative prohibition for those SETP roles. BF16 and packed source policies remain separate.

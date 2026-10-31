@@ -9,13 +9,13 @@
 | `add{.rnd}.f64 d, a, b` | PTX 1.0 / SM 13。两个 source 都接受 floating literal；没有 `.ftz` 或 `.sat`。 |
 | `add{.rn}{.ftz}{.sat}.{f16,f16x2} d, a, b` | PTX 4.2 / SM 53。RN-only；`.f16` 接受 `.f16` 或 `.b16`，`.f16x2` 接受 `.f16x2` 或 `.b32`。 |
 | `add{.rn}.{bf16,bf16x2} d, a, b` | PTX 7.8 / SM 90。RN-only，没有 `.ftz` 也没有 `.sat`；绑定精确的 `.b16`/`.b32` bit container。 |
-| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100。**narrow source 位于中间位置**且仅接受 register；FP32 addend 接受 floating literal。 |
+| `add{.rnd}{.sat}.f32.{f16,bf16} d, a, c` | PTX 8.6 / SM 100。**narrow source 位于中间位置**，接受 F16 numeric constant 或 register；FP32 addend 接受 floating literal。 |
 
 `sub` 的表与之镜像。
 
 ## 已确认的 gap 与修复
 
-mixed-precision 的 **FP32 addend/subtrahend** 此前声明为 register-only，会拒绝 `add.f32.f16 %f0, %h1, 1.0;` 与 `sub.f32.bf16 %f0, %b1, 1.0;` 这类合法拼写。assembler 接受它们，因此这是 manual 允许 immediate 的 source 位置上的一处 false reject。该 FP32 operand 现在接受 floating literal，而 narrow source 与 destination 仍为 register，四项均在 assembler 上取得一致。
+mixed-precision 的 **FP32 addend/subtrahend** 此前声明为 register-only，会拒绝 `add.f32.f16 %f0, %h1, 1.0;` 与 `sub.f32.bf16 %f0, %b1, 1.0;` 这类合法拼写。assembler 接受它们，因此这是 manual 允许 immediate 的 source 位置上的一处 false reject。该 FP32 operand 现在接受 floating literal，destination 仍为 register；narrow source 现遵循下述 scalar format 转换契约。
 
 ## 审计后确认原本就正确的部分
 
@@ -37,7 +37,7 @@ std::get<ResolvedRegisterRef>(mixed.addend.value).spelling;  // 之后：registe
 std::get<ResolvedImmediate>(mixed.addend.value).bits;        // 之后：immediate payload
 ```
 
-这些 public member 变更在 installed C++ package `0.1.0` 曾明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。consumer 需按上文迁移到 register-or-immediate variant 的访问方式。不提供 compatibility shim，也不引入并行表示：该改动复用 scalar `add`/`sub` 与 DIV cohort 已在使用的同一条 typed register/immediate 路径。destination 与 narrow source 保持 register payload。Python wheel 版本为 `0.1.0b0`，属于 beta prerelease；installed C++ package 当前为 `0.2.0`。两者是独立的 package 版本，没有锁步要求。
+这些 public member 变更在 installed C++ package `0.1.0` 曾明确构成 API break；其 CMake package compatibility 为 `SameMinorVersion`。consumer 需按上文迁移到 register-or-immediate variant 的访问方式。不提供 compatibility shim，也不引入并行表示：该改动复用 scalar `add`/`sub` 与 DIV cohort 已在使用的同一条 typed register/immediate 路径。destination 保持 register payload；narrow source 现使用下述 RegOrImm。Python wheel 版本为 `0.1.0b0`，属于 beta prerelease；installed C++ package 当前为 `0.2.0`。两者是独立的 package 版本，没有锁步要求。
 
 ## 证据
 
@@ -48,3 +48,5 @@ CUDA 13.3.73 `ptxas` 证据使用 `/usr/local/cuda/bin/ptxas -arch=<arch> <modul
 既有 MUL 与 FMA 回归——包括 mixed FMA、`.f32x2`、ReLU/OOB 及已记录的 assembler-compatibility 例外——未作改动。
 
 Issue 142 的对账现已覆盖该 issue 划定范围内的 §9.7.1 至 §9.7.5 全部 cohort。这里不添加任何 operation 的 execution semantics。
+
+窄 F16 source 也接受经 binary16 RNE 转换的浮点常量；destination 仍为 register，宽 addend/subtrahend 保留 F32 转换。共享 F16/BF16 class 与 modifier domain 不拆分。共享 source 中 canonical owned BF16 16-bit word 有效，即使 written BF16 numeric conversion 仍待独立 delivery；该 producer 边界不是规范 literal 禁令。

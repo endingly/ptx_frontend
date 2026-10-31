@@ -231,7 +231,7 @@ TEST(ResolveAdd, BuildsMixedPrecisionVariantWithTwoTypeSlots) {
   EXPECT_EQ(add->input_type.value, ScalarType::BF16);
   EXPECT_TRUE(add->saturate.value);
   EXPECT_EQ(add->dst.value.spelling, "%f0");
-  EXPECT_EQ(add->src.value.spelling, "%h1");
+  EXPECT_EQ(std::get<ResolvedRegisterRef>(add->src.value).spelling, "%h1");
   // The addend is immediate-capable, so the reference is unwrapped explicitly.
   EXPECT_EQ(std::get<ResolvedRegisterRef>(add->addend.value).spelling, "%f2");
   EXPECT_EQ(add->input_type.locs.front(), ast.modifiers[2].syntax.range);

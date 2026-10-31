@@ -709,8 +709,83 @@ mbarrier.test_wait.b64 p,[barrier],q;
              ir::checker::CheckDiagnosticKind::UnsupportedOperandShape;
 }
 
+/** Exercise migrated half RegOrImm fields and formal-driven values after AST death. */
+bool checkInstalledScalarHalfImmediates() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100a
+.extern .func take(.param .f16 input);
+.entry kernel() {
+.reg .f16 h;
+.reg .f32 f;
+.reg .u32 u;
+.reg .pred p;
+.reg .b64 target;
+proto: .callprototype _ (.param .f16 input);
+cvt.f32.f16 f,1.5;
+fma.rn.f32.f16 f,1.5,h,0.0;
+set.eq.u32.f16 u,1.5,h;
+setp.eq.f16 p,1.5,h;
+call take,(1.5);
+call target,(1.0+0.5),proto;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.back().body.size() != 6)
+    return false;
+  const auto& body = owned->functions.back().body;
+  const auto& cvt = dynamic_cast<const ir::CvtUnroundedBase&>(*body[0]);
+  const auto& fma = dynamic_cast<const ir::FmaMixedF32F16&>(*body[1]);
+  const auto& set = dynamic_cast<const ir::SetHalfIntegerF16&>(*body[2]);
+  const auto& setp = dynamic_cast<const ir::SetpF16&>(*body[3]);
+  for (const auto* value :
+       {std::get_if<ir::ResolvedImmediate>(&cvt.src.value),
+        std::get_if<ir::ResolvedImmediate>(&fma.src1.value),
+        std::get_if<ir::ResolvedImmediate>(&set.src1.value),
+        std::get_if<ir::ResolvedImmediate>(&setp.src1.value)})
+    if (!value || value->type != ir::ScalarType::F16 || value->bits != 0x3e00 ||
+        value->integer_source_bits || value->is_negative)
+      return false;
+  if (!std::holds_alternative<ir::ResolvedRegisterRef>(fma.src2.value))
+    return false;
+  for (size_t index : {4U, 5U}) {
+    const auto& call = dynamic_cast<const ir::CallDirect&>(*body[index]);
+    const auto& literal = std::get<ir::ResolvedCallLiteral>(
+        call.arguments->value.values[0].value);
+    if (!literal.value || literal.value->type != ir::ScalarType::F16 ||
+        literal.value->bits != 0x3e00 || literal.value->integer_source_bits)
+      return false;
+    if (index == 5 &&
+        (!literal.source_value ||
+         !std::holds_alternative<
+             ptx_frontend::declaration_semantics::FloatingConstantValue>(
+             *literal.source_value)))
+      return false;
+  }
+  auto copied = *owned;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  assigned.functions.back().body[1] = copied.functions.back().body[1]->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& altered =
+      dynamic_cast<ir::FmaMixedF32F16&>(*assigned.functions.back().body[1]);
+  std::get<ir::ResolvedImmediate>(altered.src1.value).integer_source_bits = 0;
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledScalarHalfImmediates())
+    return 29;
   if (!checkInstalledMbarrierTokenForms())
     return 1;
   if (!checkInstalledValueVectorSources())

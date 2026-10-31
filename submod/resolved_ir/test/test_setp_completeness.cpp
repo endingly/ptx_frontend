@@ -254,10 +254,24 @@ TEST(SetpCompleteness, RejectsFloatingAndSpecialRegisterCombineSources) {
   EXPECT_FALSE(resolveModule(*special).has_value());
 }
 
-/** Half/bfloat SETP cannot receive an immediate in either data-source slot. */
-TEST(SetpCompleteness, RejectsHalfAndBfloatImmediates) {
+/** Scalar half numeric sources coexist with separately pending Bit/alternate routes. */
+TEST(SetpCompleteness, SeparatesNumericHalfAndPendingSourceRoutes) {
   for (const auto type : {"f16", "f16x2", "bf16", "bf16x2"}) {
     const bool packed = std::string_view(type).ends_with("x2");
+    const std::string carrier = std::string_view(type) == "f16" ? "f16"
+                                : packed                        ? "b32"
+                                                                : "b16";
+    const std::string prefix =
+        ".version 9.3\n.target sm_100\n.entry kernel(){ .reg .pred %p0,%p1; "
+        ".reg ." +
+        carrier + " %r0,%r1; ";
+    const std::string operation =
+        std::string("setp.eq.") + type + (packed ? " %p0|%p1, " : " %p0, ");
+    const auto baseline = parseModule(prefix + operation + "%r0,%r1; }");
+    ASSERT_MODULE_PARSE_SUCCEEDS(baseline);
+    const auto matched = resolveAndValidateModule(*baseline);
+    ASSERT_TRUE(matched) << matched.error().front().message;
+
     for (const auto immediate : {"0x3c00", "1.0"}) {
       for (const bool first : {false, true}) {
         const auto source = std::string("setp.eq.") + type +
@@ -267,7 +281,24 @@ TEST(SetpCompleteness, RejectsHalfAndBfloatImmediates) {
         SCOPED_TRACE(source);
         const auto ast = parseInstruction(source);
         ASSERT_INSTRUCTION_PARSE_SUCCEEDS(ast);
-        EXPECT_FALSE(resolveSetp(*ast));
+        const auto result = resolveSetp(*ast);
+        const bool numeric_half = std::string_view(type) == "f16" &&
+                                  std::string_view(immediate) == "1.0";
+        // F16 raw Bit16 and alternate-format source routes remain separate deliveries,
+        // not normative literal prohibitions inferred from current producer failure.
+        EXPECT_EQ(result.has_value(), numeric_half);
+        const auto complete = parseModule(prefix + source + " }");
+        ASSERT_MODULE_PARSE_SUCCEEDS(complete);
+        EXPECT_EQ(resolveAndValidateModule(*complete).has_value(),
+                  numeric_half);
+
+        if (result && numeric_half) {
+          const auto& form = dynamic_cast<const SetpF16&>(**result);
+          const auto& source_value = first ? form.src1.value : form.src2.value;
+          const auto& value = std::get<ResolvedImmediate>(source_value);
+          EXPECT_EQ(value.type, ScalarType::F16);
+          EXPECT_EQ(value.bits, 0x3c00U);
+        }
       }
     }
   }

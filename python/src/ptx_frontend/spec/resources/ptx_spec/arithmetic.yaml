@@ -199,8 +199,8 @@ operand_patterns:
 
   ternary_mixed_f16:
     - {name: dst, kind: reg, role: dst, access: write, type: {expr: "modifier(result_type)"}}
-    - {name: src1, kind: reg, role: src1, access: read, type: {expr: "modifier(input_type)"}}
-    - {name: src2, kind: reg, role: src2, access: read, type: {expr: "modifier(input_type)"}}
+    - {name: src1, kind: reg_or_imm, role: src1, access: read, type: {expr: "modifier(input_type)"}}
+    - {name: src2, kind: reg_or_imm, role: src2, access: read, type: {expr: "modifier(input_type)"}}
     - {name: src3, kind: reg_or_imm, role: src3, access: read, type: {expr: "modifier(result_type)"}}
 
   ternary_mixed_bf16:
@@ -379,7 +379,7 @@ operand_patterns:
         expr: modifier(result_type)
 
     - name: src
-      kind: reg
+      kind: reg_or_imm
       role: src1
       access: read
       type:
@@ -879,7 +879,7 @@ instructions:
               expr: modifier(result_type)
 
           - name: src
-            kind: reg
+            kind: reg_or_imm
             role: src1
             access: read
             type:

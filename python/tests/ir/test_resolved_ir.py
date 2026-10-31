@@ -697,8 +697,10 @@ class ResolvedIrBuildTest(ResolvedIrFixture, unittest.TestCase):
                 [binding.allowed_shapes for binding in bindings],
                 [
                     (ResolvedOperandShape.REGISTER,),
-                    (ResolvedOperandShape.REGISTER,),
-                    (ResolvedOperandShape.REGISTER,),
+                    ((ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE)
+                     if name == "fma_mixed_f32_f16" else (ResolvedOperandShape.REGISTER,)),
+                    ((ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE)
+                     if name == "fma_mixed_f32_f16" else (ResolvedOperandShape.REGISTER,)),
                     (ResolvedOperandShape.REGISTER, ResolvedOperandShape.IMMEDIATE),
                 ],
             )

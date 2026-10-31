@@ -8,7 +8,8 @@ from ptx_frontend.spec.load_yaml import load_yaml
 from ptx_frontend.spec.normalize.instruction import normalize_instruction_spec
 from ptx_frontend.ir.resolved_ir import from_instruction_spec
 from ptx_frontend.code_gen.emit.resolved_model import _surface_descriptor
-from ptx_frontend.spec.model import SurfaceAddressingMode, SurfaceGeometry
+from ptx_frontend.spec.model import (SurfaceAddressingMode, SurfaceGeometry,
+                                     OperandRegisterWidthPolicy)
 
 SPEC = Path(__file__).resolve().parents[2] / 'src/ptx_frontend/spec/resources/ptx_spec/surface.yaml'
 
@@ -90,6 +91,47 @@ class SurfaceContractTests(unittest.TestCase):
             access_index = 1 - data_index
             self.reject(opcode, lambda row, index=access_index: row['operands'][index].update(role='dst', access='write'))
             self.reject(opcode, lambda row, index=access_index: row['operands'][index].update(type='s32'))
+
+    def test_surface_data_requires_same_width_for_all_dtype_groups(self) -> None:
+        """Preserve narrow grouping while rejecting wider policy for every load/store matrix."""
+
+        for instruction in self.instructions:
+            if instruction.opcode not in {"suld", "sust"}:
+                continue
+            narrow_count = 0
+            for variant in instruction.variants:
+                data = next(operand for operand in variant.operand_layouts[0].operands
+                            if operand.name == "data")
+                self.assertIs(data.register_width_policy, OperandRegisterWidthPolicy.SAME_WIDTH)
+                types = {value.value for modifier in variant.modifiers
+                         if modifier.name == "dtype" for value in modifier.values}
+                narrow_count += bool(types & {"b8", "b16"})
+            self.assertEqual(narrow_count, 45)
+            raw = next(row for row in self.source["instructions"]
+                       if row["opcode"] == instruction.opcode)
+            for narrow in (True, False):
+                variant = next(row for row in raw["variants"] if
+                    bool(set(next(modifier["values"] for modifier in row["modifiers"]
+                                  if modifier["name"] == "dtype")) & {"b8", "b16"}) == narrow)
+                specimen = deepcopy(self.source)
+                selected = next(row for row in specimen["instructions"] if row["opcode"] == instruction.opcode)
+                specimen["instructions"] = [selected]
+                selected["variants"] = [deepcopy(variant)]
+                data = next(operand for operand in selected["variants"][0]["operands"] if operand["name"] == "data")
+                data["register_width"] = "equal_or_wider"
+                with self.assertRaisesRegex(ValueError, "same-width register carriers"):
+                    normalize_instruction_spec(specimen)
+            # Select the known narrow row rather than depending on raw variant order.
+            mixed = deepcopy(next(row for row in raw["variants"] if
+                {"b8", "b16"} & set(next(modifier["values"] for modifier in row["modifiers"]
+                                         if modifier["name"] == "dtype"))))
+            next(modifier for modifier in mixed["modifiers"] if modifier["name"] == "dtype")["values"].append("b32")
+            specimen = deepcopy(self.source)
+            selected = next(row for row in specimen["instructions"] if row["opcode"] == instruction.opcode)
+            specimen["instructions"] = [selected]
+            selected["variants"] = [mixed]
+            with self.assertRaisesRegex(ValueError, "narrow dtype group"):
+                normalize_instruction_spec(specimen)
 
     def test_rejects_weakened_gates(self) -> None:
         """Indirect resources, queries, and 64-bit min/max keep exact floors."""

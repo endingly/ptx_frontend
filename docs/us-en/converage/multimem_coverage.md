@@ -38,6 +38,18 @@ tables, not an unrestricted product. Bulk reduction permits `add` on
 `u32/s32/u64/f32/f64/f16/bf16`, `min/max` on `u32/s32/u64/s64/f16/bf16`,
 `inc/dec` on `u32`, and bitwise operations on `b32/b64`.
 
+Ordinary and release-async multimem data registers have the same width as each
+instruction data element; vector lanes obey that rule individually. Integer
+signedness may differ and same-size Bit carriers remain eligible. Native
+F16x2 permits itself or B32, while nonfundamental BF16/FP8 formats require
+matching-size Bit storage; floating kinds retain their own compatibility.
+Wider B64/B128 carriers cannot supply narrower data elements. The default
+reference type-agreement rule applies: distinct `multimem` instructions do not
+inherit the `ld`/`st`/`cvt` wider-register exception through their suffix names.
+Address carriers, bulk byte-size inputs and byte masks keep their independent
+contracts. Same-width data validation does not prove runtime mappings,
+completion protocols or GPU effects.
+
 The checker uses shared typed operand, modifier, and reference traversal.
 For known declarations it checks global vs shared source spaces, scalar or
 vector source types, byte-address alignment, and bound metadata consistency.

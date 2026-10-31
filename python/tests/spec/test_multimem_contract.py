@@ -5,7 +5,8 @@ import unittest
 
 from ptx_frontend.spec.database import get_packaged_spec_database
 from ptx_frontend.spec.model import (AsyncCompletionKind, ModifierPresence,
-                                     OperandAddressBasePolicy, OperandAddressOffsetDomain, OperandKind)
+                                     OperandAddressBasePolicy, OperandAddressOffsetDomain, OperandKind,
+                                     OperandRegisterWidthPolicy)
 
 
 class MultimemContractTests(unittest.TestCase):
@@ -242,6 +243,25 @@ class MultimemContractTests(unittest.TestCase):
                 self.assertIs(source.kind, OperandKind.REGISTER_OR_IMMEDIATE)
                 if types.isdisjoint({"f32", "f64"}):
                     self.assertEqual(source.immediate_conversion_policy.value, "narrow")
+
+    def test_all_data_register_contracts_are_same_width(self) -> None:
+        """Keep the complete nonbulk data cohort separate from address/size/mask roles."""
+
+        contracts = []
+        for variant in self.variants:
+            for layout in variant.operand_layouts:
+                for operand in layout.operands:
+                    if (operand.name in {"dst", "src"} and operand.kind in {
+                            OperandKind.REGISTER, OperandKind.REGISTER_OR_IMMEDIATE,
+                            OperandKind.REGISTER_VECTOR}):
+                        contracts.append((variant.name, operand))
+                        self.assertIs(operand.register_width_policy,
+                                      OperandRegisterWidthPolicy.SAME_WIDTH)
+        self.assertEqual(len(contracts), 112)
+        self.assertEqual(sum(len(next(modifier for modifier in variant.modifiers
+                                     if modifier.name == operand.type_expression.modifier_name).values)
+                             for name, operand in contracts
+                             for variant in self.variants if variant.name == name), 504)
 
     def test_bulk_direction_mask_and_alignment(self) -> None:
         """Bulk multimem transfers have one direction and no mbarrier operand."""

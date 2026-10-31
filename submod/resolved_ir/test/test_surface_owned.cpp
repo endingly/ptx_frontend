@@ -61,7 +61,7 @@ struct SurfaceCapture final : detail::IReferenceObserver {
   /** Borrowed references stay valid while the owning instruction is alive. */
   const ResolvedSurfaceAccess* access = nullptr;
   const ResolvedSurfaceQueryResource* query = nullptr;
-  /** Borrowed ordinary source vector, used to test widened lane rechecking. */
+  /** Borrowed ordinary source vector, used to test data-width and provenance rechecking. */
   const ResolvedValueVector* source_vector = nullptr;
   /** Observe ordinary mixed register/immediate surface source lanes. */
   void value_vector(const ResolvedValueVector& value,
@@ -195,12 +195,12 @@ TEST(SurfaceOwned, SourceValuesAndIndependentMode) {
     auto module = owned_surface_module(surface_source(R"ptx(
 mov.u64 %handle, surf0;
 suld.b.1d.b8.trap %byte0, [surf0,%x];
-suld.b.1d.b16.trap %b0, [input_surface,{%x}];
-suld.b.a2d.v2.b8.zero {%b0,%b1}, [surf0,{%layer,%x,%y,%b3}];
+suld.b.1d.b16.trap %half0, [input_surface,{%x}];
+suld.b.a2d.v2.b8.zero {%byte0,%byte1}, [surf0,{%layer,%x,%y,%b3}];
 sust.b.1d.b8.trap [surf0,{0}], 1;
 sust.b.1d.v2.b16.trap [surf0,%x], {%half0,2};
-sust.b.1d.v2.b8.trap [surf0,%x], {%b0,1};
-sust.b.1d.v2.b16.trap [surf0,%x], {%b0,%b1};
+sust.b.1d.v2.b8.trap [surf0,%x], {%byte0,1};
+sust.b.1d.v2.b16.trap [surf0,%x], {%half0,%half1};
 sust.p.3d.v4.b32.clamp [surf0,{%x,%y,%z,%b3}], {%b0,1,%b2,3};
 sured.b.add.1d.u32.trap [surf0,{%x}], 1;
 suq.width.b32 %b0, [%handle];
@@ -216,7 +216,11 @@ suld.b.1d.b32.trap %b0, [%handle,0];
 /** Wrong resource declarations, coordinate tuples, and data carriers are rejected. */
 TEST(SurfaceOwned, RejectsWrongBindingsAndShapes) {
   for (const std::string_view body :
-       {"suld.b.1d.b32.trap %b0,[tex0,%x];",
+       {"suld.b.1d.b16.trap %b0, [input_surface,{%x}];",
+        "suld.b.a2d.v2.b8.zero {%b0,%b1}, [surf0,{%layer,%x,%y,%b3}];",
+        "sust.b.1d.v2.b8.trap [surf0,%x], {%b0,1};",
+        "sust.b.1d.v2.b16.trap [surf0,%x], {%b0,%b1};",
+        "suld.b.1d.b32.trap %b0,[tex0,%x];",
         "suld.b.1d.b32.trap %b0,[surf0,{%x,%y}];",
         "suld.b.2d.b32.trap %b0,[surf0,%x];",
         "suld.b.1d.b32.trap %b0,[surf0,%f];",
@@ -288,10 +292,10 @@ TEST(SurfaceOwned, MutationRechecksNestedPayload) {
       validateModule(*module, ModuleValidationPolicy::RequireCompleteContext));
 }
 
-/** Widened source vector carriers are checked again after owned-IR mutation. */
-TEST(SurfaceOwned, WidenedSourceVectorMutation) {
+/** Source-vector widths and immediate provenance are rechecked after mutation. */
+TEST(SurfaceOwned, SourceVectorWidthAndImmediateMutation) {
   auto module = owned_surface_module(
-      surface_source("sust.b.1d.v2.b16.trap [surf0,%x],{%b0,1};"));
+      surface_source("sust.b.1d.v2.b16.trap [surf0,%x],{%half0,1};"));
   ASSERT_TRUE(module);
   auto& instruction = *module->functions.front().body.front();
   SurfaceCapture capture;
@@ -306,6 +310,10 @@ TEST(SurfaceOwned, WidenedSourceVectorMutation) {
   EXPECT_TRUE(instruction.check(context));
   std::get<ResolvedRegisterRef>(values.elements.front()).declared_type =
       ScalarType::B8;
+  EXPECT_FALSE(instruction.check(context));
+  values = original;
+  std::get<ResolvedRegisterRef>(values.elements.front()).declared_type =
+      ScalarType::B32;
   EXPECT_FALSE(instruction.check(context));
   values = original;
   std::get<ResolvedImmediate>(values.elements.back()).type = ScalarType::B32;

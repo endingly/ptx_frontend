@@ -34,6 +34,14 @@ Bulk reduction 的 `add` 类型为 `u32/s32/u64/f32/f64/f16/bf16`，
 `min/max` 类型为 `u32/s32/u64/s64/f16/bf16`，`inc/dec` 只接受 `u32`，
 位操作只接受 `b32/b64`。
 
+普通及 release-async multimem 的 data 寄存器宽度必须等于指令的每个 data element；
+vector 逐 lane 遵守该规则。整数 signedness 可不同，同大小 Bit 载体仍合法。原生 F16x2
+允许自身或 B32，非 fundamental BF16/FP8 格式则要求匹配大小的 Bit 存储；浮点 kind
+保留各自兼容规则。更宽 B64/B128 载体不能充当更窄 data element。适用固定参考的默认
+类型一致规则：独立的 `multimem` 指令不因 suffix 名称而继承 `ld`/`st`/`cvt` 的 wider-register
+例外。Address 载体、bulk byte-size 输入和 byte mask 保留各自独立契约。同宽 data 检查
+不证明运行时 mapping、completion protocol 或 GPU 效果。
+
 检查器复用通用类型化操作数、modifier 和引用遍历。对已知声明检查全局与共享地址空间、
 标量或向量输入类型、字节地址对齐，以及绑定元数据一致性。整数/位类型的标量 store 和
 reduction 输入接受寄存器或在使用处窄转换的整数字面量；`f32/f64` 标量输入接受现有的

@@ -27,6 +27,7 @@ std::string multimem_source(std::string_view body,
 .visible .entry kernel() {
   .local .align 16 .b8 local_value[32];
   .reg .b32 %b<8>;
+  .reg .b8 %byte<8>;
   .reg .u32 %u<8>;
   .reg .u64 %u64;
   .reg .u16 %mask;
@@ -292,6 +293,10 @@ TEST(Multimem, OrdinaryScopeAndSemanticsMatrix) {
           prefix + ".global.add.acc::f32.v2.f16x2 {%b0,%b1}, [mm+16];")));
       EXPECT_TRUE(accepts_multimem(multimem_source(
           prefix +
+          ".max.acc::f16.v8.e4m3 "
+          "{%byte0,%byte1,%byte2,%byte3,%byte4,%byte5,%byte6,%byte7}, [mm];")));
+      EXPECT_FALSE(accepts_multimem(multimem_source(
+          prefix +
           ".max.acc::f16.v8.e4m3 {%b0,%b1,%b2,%b3,%b4,%b5,%b6,%b7}, [mm];")));
     }
     for (std::string_view semantics : {"", "weak.", "relaxed.", "release."}) {
@@ -304,6 +309,10 @@ TEST(Multimem, OrdinaryScopeAndSemanticsMatrix) {
       EXPECT_TRUE(accepts_multimem(multimem_source(
           prefix + ".global.v4.f32 [mm+16], {%f0,%f1,%f2,%f3};")));
       EXPECT_TRUE(accepts_multimem(multimem_source(
+          prefix +
+          ".v8.e5m2 [mm], "
+          "{%byte0,%byte1,%byte2,%byte3,%byte4,%byte5,%byte6,%byte7};")));
+      EXPECT_FALSE(accepts_multimem(multimem_source(
           prefix + ".v8.e5m2 [mm], {%b0,%b1,%b2,%b3,%b4,%b5,%b6,%b7};")));
     }
   }

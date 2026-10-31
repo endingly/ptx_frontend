@@ -18744,7 +18744,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18809,7 +18809,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18876,7 +18876,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -18942,7 +18942,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19009,7 +19009,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19075,7 +19075,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19140,7 +19140,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19204,7 +19204,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19269,7 +19269,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19333,7 +19333,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19398,7 +19398,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19462,7 +19462,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -19536,7 +19536,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19605,7 +19605,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19674,7 +19674,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19741,7 +19741,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19808,7 +19808,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19875,7 +19875,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -19940,7 +19940,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -20004,7 +20004,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -20107,7 +20107,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20215,7 +20215,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20285,7 +20285,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20354,7 +20354,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20481,7 +20481,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20607,7 +20607,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20714,7 +20714,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20820,7 +20820,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20890,7 +20890,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -20959,7 +20959,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21086,7 +21086,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21212,7 +21212,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21319,7 +21319,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21425,7 +21425,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21495,7 +21495,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21564,7 +21564,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21691,7 +21691,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21817,7 +21817,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       - name: address
         kind: addr
         role: addr
@@ -21884,7 +21884,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -21943,7 +21943,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22043,7 +22043,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -22143,7 +22143,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -22204,7 +22204,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22263,7 +22263,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22329,7 +22329,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22395,7 +22395,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -22545,7 +22545,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -22707,7 +22707,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -22790,7 +22790,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -22872,7 +22872,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23052,7 +23052,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23231,7 +23231,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23393,7 +23393,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23554,7 +23554,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23637,7 +23637,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23719,7 +23719,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -23899,7 +23899,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24078,7 +24078,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24240,7 +24240,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24401,7 +24401,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24484,7 +24484,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24566,7 +24566,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24746,7 +24746,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -24925,7 +24925,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25090,7 +25090,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25247,7 +25247,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25327,7 +25327,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25525,7 +25525,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25729,7 +25729,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25812,7 +25812,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -25894,7 +25894,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26116,7 +26116,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26337,7 +26337,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26541,7 +26541,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26744,7 +26744,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26827,7 +26827,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -26909,7 +26909,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27131,7 +27131,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27352,7 +27352,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27556,7 +27556,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27759,7 +27759,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27842,7 +27842,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -27924,7 +27924,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -28146,7 +28146,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -28367,7 +28367,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -28574,7 +28574,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -28773,7 +28773,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -28853,7 +28853,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29006,7 +29006,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29165,7 +29165,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29246,7 +29246,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29326,7 +29326,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29506,7 +29506,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29685,7 +29685,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -29845,7 +29845,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30004,7 +30004,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30085,7 +30085,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30165,7 +30165,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30345,7 +30345,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30524,7 +30524,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30684,7 +30684,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30843,7 +30843,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -30924,7 +30924,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31004,7 +31004,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31184,7 +31184,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31363,7 +31363,7 @@ instructions:
         access: write
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31525,7 +31525,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31679,7 +31679,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31756,7 +31756,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         vector:
           kind: vector
           arity:
@@ -31833,7 +31833,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment
@@ -31895,7 +31895,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
       constraints:
       - kind: address_alignment
         address_operand: address
@@ -31962,7 +31962,7 @@ instructions:
         access: read
         type:
           expr: modifier(type)
-        register_width: equal_or_wider
+        register_width: same_width
         immediate_conversion: narrow
       constraints:
       - kind: address_alignment

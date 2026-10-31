@@ -76,7 +76,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -216,7 +216,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -356,7 +356,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -501,7 +501,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -657,7 +657,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -813,7 +813,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -969,7 +969,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -1124,7 +1124,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -1279,7 +1279,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -1429,7 +1429,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -1569,7 +1569,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -1709,7 +1709,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -1854,7 +1854,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -2010,7 +2010,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -2166,7 +2166,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -2322,7 +2322,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -2477,7 +2477,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -2632,7 +2632,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -2782,7 +2782,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -2922,7 +2922,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -3062,7 +3062,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -3207,7 +3207,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -3363,7 +3363,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -3519,7 +3519,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -3675,7 +3675,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -3830,7 +3830,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -3985,7 +3985,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -4135,7 +4135,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -4275,7 +4275,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -4415,7 +4415,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -4560,7 +4560,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -4716,7 +4716,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -4872,7 +4872,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -5028,7 +5028,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -5183,7 +5183,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -5338,7 +5338,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -5488,7 +5488,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -5628,7 +5628,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -5768,7 +5768,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
     - name: access
       kind: surface_access
       role: src
@@ -5913,7 +5913,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -6069,7 +6069,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -6225,7 +6225,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -6381,7 +6381,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -6536,7 +6536,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -6691,7 +6691,7 @@ instructions:
       access: write
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -6853,7 +6853,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_1d_v1_trap_b32_b64
     availability:
       ptx: '1.5'
@@ -6993,7 +6993,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_1d_v1_clamp_b32_b64
     availability:
       ptx: '2.0'
@@ -7133,7 +7133,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_1d_v1_zero_b32_b64
     availability:
       ptx: '2.0'
@@ -7278,7 +7278,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -7434,7 +7434,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -7590,7 +7590,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -7746,7 +7746,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -7901,7 +7901,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -8056,7 +8056,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -8206,7 +8206,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_2d_v1_trap_b32_b64
     availability:
       ptx: '1.5'
@@ -8346,7 +8346,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_2d_v1_clamp_b32_b64
     availability:
       ptx: '2.0'
@@ -8486,7 +8486,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_2d_v1_zero_b32_b64
     availability:
       ptx: '2.0'
@@ -8631,7 +8631,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -8787,7 +8787,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -8943,7 +8943,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -9099,7 +9099,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -9254,7 +9254,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -9409,7 +9409,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -9559,7 +9559,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_3d_v1_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -9699,7 +9699,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_3d_v1_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -9839,7 +9839,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_3d_v1_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -9984,7 +9984,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -10140,7 +10140,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -10296,7 +10296,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -10452,7 +10452,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -10607,7 +10607,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -10762,7 +10762,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -10912,7 +10912,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a1d_v1_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -11052,7 +11052,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a1d_v1_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -11192,7 +11192,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a1d_v1_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -11337,7 +11337,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -11493,7 +11493,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -11649,7 +11649,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -11805,7 +11805,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -11960,7 +11960,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -12115,7 +12115,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -12265,7 +12265,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a2d_v1_trap_b32_b64
     availability:
       ptx: '3.0'
@@ -12405,7 +12405,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a2d_v1_clamp_b32_b64
     availability:
       ptx: '3.0'
@@ -12545,7 +12545,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
   - name: sust_b_data_a2d_v1_zero_b32_b64
     availability:
       ptx: '3.0'
@@ -12690,7 +12690,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -12846,7 +12846,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -13002,7 +13002,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 2
         type_policy: element
@@ -13158,7 +13158,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -13313,7 +13313,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element
@@ -13468,7 +13468,7 @@ instructions:
       access: read
       type:
         expr: modifier(dtype)
-      register_width: equal_or_wider
+      register_width: same_width
       vector:
         arity: 4
         type_policy: element

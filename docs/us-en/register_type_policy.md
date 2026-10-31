@@ -78,16 +78,22 @@ decisions are:
 | --- | --- |
 | `mul/mad.wide.u32`, `popc/clz`, `bfind/bfe`, ordinary `mad/div/min/max` float forms | Same-width fundamental compatibility; keep each operand's original width |
 | `neg.f16x2` | Native `.f16x2` or `.b32` for both operands, with same-width compatibility |
-| packed `cvt` destination | Require expected `f16x2` with `same_width`, accepting `.f16x2`/`.b32`, not arbitrary 32-bit storage |
-| `cvt` ordinary f32 operands, `mapa/getctarank`, `isspacep` | Same-width compatibility; address shape/state-space checks remain independent |
+| native packed `cvt` data | Native `.f16x2` or compatible Bit carrier; converted-data widening remains independent |
+| `cvt` ordinary f32 operands | Equal-or-wider compatible registers |
+| `mapa/getctarank`, `isspacep` | Address shape/state-space checks remain independent |
 | `vote/match/redux/elect/activemask`, mbarrier counts/parity/hints, decoded cluster CTA IDs | Same-width compatibility; masks, ranges, and target checks remain independent |
 | Alternate-format FMA (`bf16`, `bf16x2`, `f32x2`, mixed bf16 sources) | Retain exact bit-container requirements |
 | Opaque mbarrier state and cluster cancellation response | Retain exact token/response storage and shape requirements |
 | Mbarrier opaque report value | Retain existing exact `.b8` model; the audited manual does not independently establish that declaration width |
 
-This is not a full audit of wider-register `cvt` behavior. The affected f32
-operands now accept compatible **same-width** declarations; further widening
-under PTX section 9.4.1 and the `cvt` instruction rules is outside this correction.
+For `cvt`, the selected instruction-only floating/fixed format requires Bit
+storage even when the operand model records a physical Bit width. Native F16x2
+permits native or Bit declarations. Compatible converted-data Bit carriers can
+widen through B128, with exact BF16/BF16x2 source/destination and TF32 destination
+exceptions. Intrinsic register types obey the same kind/width checks. Scale
+factors require Bit independently, while random-bit auxiliaries retain ordinary
+bit-compatible types; auxiliary width is a separate predicate. See the paired
+[conversion contract](converage/conversion_coverage.md#logical-formats-and-register-carriers).
 
 The regression suite links the real parser, resolver, compatibility helper, and
 generated checker. An independent type matrix and declaration-substitution tests

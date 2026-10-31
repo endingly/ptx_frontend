@@ -89,6 +89,23 @@ half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
   directed ReLU cohort 为 PTX 7.8 / SM 90。`.satfinite` 有独立的较晚 availability，包括
   directed `.rn/.rz` form 的 PTX 8.6 / SM 100。
 
+### 逻辑格式与寄存器载体
+
+InstructionOnly 浮点／定点格式必须使用 Bit 寄存器声明，包括 BF16、TF32、
+packed low-bit、UE8M0 和 S2F6。即使物理 operand model 使用 B8/B16/B32，仍检查
+选定的逻辑格式。原生 fundamental F16x2 则允许原生声明或 Bit 载体；同宽的任意
+signed、unsigned、F32 寄存器不加入该集合。普通 F16/F32/F64 与整数转换保留既有兼容性。
+
+载体 kind 与宽度独立：converted data 允许最宽到 B128 的兼容更宽 Bit 寄存器，
+但 BF16/BF16x2 的 source、destination 及 TF32 destination 必须精确同宽。
+Intrinsic source 使用其规范 kind 和宽度，因此 B32 intrinsic 不能作为要求精确宽度的
+BF16 source。显式向量分量保留有效元素 dtype 与声明身份；完整向量不能充当 scalar data role。
+
+Scale factor 独立编码 UE8M0x2，必须使用 Bit 存储。`rbits` 是随机 bit 数据，
+保留普通兼容 S32/U32/F32 载体；两个辅助 operand 均不继承 converted-data 格式。
+该载体 kind 规则不设定辅助 operand 的宽度谓词、不解释寄存器内容，也不添加 packed
+数字字面量构造。
+
 ### FP8、low-bit、UE8M0、S2F6、stochastic 与 scaled form
 
 modern form 保留 physical packing，不把 instruction-only type spelling 当作 declaration type：

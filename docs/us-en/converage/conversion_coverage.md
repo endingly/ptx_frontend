@@ -108,6 +108,28 @@ The half/bfloat/tf32 cohorts retain their distinct syntax and availability:
   90. `.satfinite` has its own later availability, including PTX 8.6 / SM 100
   for the directed `.rn/.rz` form.
 
+### Logical formats and register carriers
+
+Instruction-only floating/fixed formats require Bit register declarations,
+including BF16, TF32, packed low-bit formats, UE8M0, and S2F6. The selected
+logical format is checked even when the physical operand model uses B8/B16/B32.
+Native fundamental F16x2 instead permits its native declaration or a Bit carrier;
+arbitrary same-width signed, unsigned, and F32 registers do not join that set.
+Ordinary F16/F32/F64 and integer conversions keep their existing compatibility.
+
+Carrier kind and width are independent: converted data admits compatible wider
+Bit registers through B128, except BF16/BF16x2 sources and destinations and TF32
+destinations, which require exact width. Intrinsic sources use their canonical
+kind and width, so a B32 intrinsic cannot supply an exact-width BF16 source.
+Explicit vector components retain their effective element dtype and declaration
+identity; a whole vector cannot supply a scalar data role.
+
+A scale factor independently encodes UE8M0x2 and requires Bit storage. The
+`rbits` operand is random-bit data, so its ordinary compatible S32/U32/F32
+carriers remain legal. Neither auxiliary inherits the converted-data format.
+This carrier-kind rule does not set auxiliary width predicates or interpret
+register contents, and does not add packed numeric-literal construction.
+
 ### FP8, low-bit, UE8M0, S2F6, stochastic, and scaled forms
 
 The modern forms retain their physical packing rather than treating

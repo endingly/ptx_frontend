@@ -117,6 +117,24 @@ const ModifierValueView* find_modifier(
   return it == modifiers.end() ? nullptr : &*it;
 }
 
+/** Borrow the effective declared dtype from either ordinary or intrinsic carriers. */
+std::optional<ScalarType> cvt_register_type(
+    const OperandView* operand) noexcept {
+  if (operand == nullptr)
+    return std::nullopt;
+  return operand->register_type ? operand->register_type
+                                : operand->special_register_type;
+}
+
+/** Alternate floating/fixed formats use Bit storage, unlike packed integers. */
+bool cvt_requires_bit_carrier(ScalarType type) noexcept {
+  const auto* metadata = base::find_scalar_type_metadata(type);
+  return metadata != nullptr &&
+         metadata->register_declaration_usage ==
+             base::ScalarDeclarationUsage::InstructionOnly &&
+         metadata->kind == base::ScalarKind::Float;
+}
+
 /** Return whether a scalar is an integer or bit-size conversion type. */
 bool is_integer_type(ScalarType type) noexcept {
   return base::scalar_kind(type) == base::ScalarKind::Unsigned ||
@@ -2488,10 +2506,37 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
                               "and destination types.");
   }
 
+  // Logical formats remain available here even when a layout uses a physical
+  // Bit type. Width compatibility is checked independently by the layout.
+  for (const auto& operand : operands) {
+    const ScalarType format =
+        operand.field_id == "dst"            ? destination_type
+        : operand.field_id == "scale_factor" ? ScalarType::UE8M0x2
+        : operand.field_id == "src" || operand.field_id == "src1" ||
+                operand.field_id == "src2"
+            ? source_type
+            : ScalarType::Invalid;
+    if (!cvt_requires_bit_carrier(format) && format != ScalarType::F16x2)
+      continue;
+    const auto actual = cvt_register_type(&operand);
+    if (!actual || base::scalar_kind(*actual) == base::ScalarKind::Bit ||
+        (format == ScalarType::F16x2 && *actual == ScalarType::F16x2))
+      continue;
+    return std::unexpected(CheckDiagnostics{CheckDiagnostic{
+        .kind = CheckDiagnosticKind::OperandTypeMismatch,
+        .range = diagnostic_range(operand.locations, context),
+        .message = fmt::format(
+            "cvt format '{}' operand '{}' requires {} register storage.",
+            base::find_scalar_type_metadata(format)->source_spelling,
+            operand.field_id,
+            format == ScalarType::F16x2 ? "native f16x2 or Bit" : "Bit"),
+    }});
+  }
+
   const auto has_exact_width = [](const OperandView* operand, ScalarType type) {
-    return operand == nullptr || !operand->register_type.has_value() ||
-           base::scalar_size_of(*operand->register_type) ==
-               base::scalar_size_of(type);
+    const auto actual = cvt_register_type(operand);
+    return !actual ||
+           base::scalar_size_of(*actual) == base::scalar_size_of(type);
   };
   const bool exact_destination = destination_type == ScalarType::BF16 ||
                                  destination_type == ScalarType::BF16x2 ||

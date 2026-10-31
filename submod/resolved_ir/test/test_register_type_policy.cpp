@@ -564,8 +564,22 @@ TEST(RegisterTypePolicy, PackedHalfNegationAndConversionContainers) {
       "cvt.rn.f16x2.f32 %dst, %src1, %src2; }";
   const auto rejected_destination = resolveSingleInstruction(wrong_destination);
   ASSERT_TRUE(rejected_destination);
-  expectTypeMismatch((*rejected_destination)->check(kContext),
-                     occurrenceRange(wrong_destination, "%dst", 2));
+  const auto destination_check = (*rejected_destination)->check(kContext);
+  ASSERT_FALSE(destination_check);
+  // Both the logical-type policy and the explicit native-carrier rule reject it.
+  ASSERT_EQ(destination_check.error().size(), 2u);
+  EXPECT_NE(destination_check.error()[0].message,
+            destination_check.error()[1].message);
+  for (const auto& diagnostic : destination_check.error()) {
+    EXPECT_EQ(diagnostic.kind,
+              checker::CheckDiagnosticKind::OperandTypeMismatch);
+    EXPECT_EQ(diagnostic.range, occurrenceRange(wrong_destination, "%dst", 2));
+  }
+  EXPECT_TRUE(std::ranges::any_of(
+      destination_check.error(), [](const auto& diagnostic) {
+        return diagnostic.message.find("native f16x2 or Bit") !=
+               std::string::npos;
+      }));
 
   constexpr std::string_view wrong_source =
       ".entry kernel() { .reg .b32 %dst; .reg .u32 %src1; .reg .f32 %src2; "

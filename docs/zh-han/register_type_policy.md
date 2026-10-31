@@ -62,15 +62,20 @@ Module `.reg` 与 `.local` 的 placement 遵循 source target ABI 边界
 | --- | --- |
 | `mul/mad.wide.u32`、`popc/clz`、`bfind/bfe`、普通 `mad/div/min/max` 浮点形式 | 同宽基础类型兼容，保留各 operand 原有位宽 |
 | `neg.f16x2` | 两个 operand 接受 native `.f16x2` 或 `.b32`，使用 same-width compatibility |
-| packed `cvt` 的 destination | expected type 使用 `f16x2` 加 `same_width`，接受 `.f16x2`/`.b32`，不接受任意 32 位存储 |
-| `cvt` 普通 f32 operand、`mapa/getctarank`、`isspacep` | 同宽兼容；address shape/state-space 检查独立保留 |
+| 原生 packed `cvt` data | 原生 `.f16x2` 或兼容 Bit 载体；converted-data widening 独立检查 |
+| `cvt` 普通 f32 operand | EqualOrWider 兼容寄存器 |
+| `mapa/getctarank`、`isspacep` | address shape/state-space 检查独立保留 |
 | `vote/match/redux/elect/activemask`、mbarrier count/parity/hint、解码后的 cluster CTA ID | 同宽兼容；mask、数值范围与 target 检查独立保留 |
 | alternate-format FMA（`bf16`、`bf16x2`、`f32x2`、mixed bf16 source） | 保留 exact bit-container 要求 |
 | opaque mbarrier state 与 cluster cancellation response | 保留 exact token/response 存储及 shape 要求 |
 | mbarrier opaque report value | 保留既有 exact `.b8` 模型；本次查阅手册未独立证实其声明位宽 |
 
-本次不是更宽寄存器 `cvt` 行为的完整审查。受影响的 f32 operand 现在接受兼容的**同宽**
-声明；PTX 9.4.1 节与 `cvt` 指令规则中的进一步 widening 不属于此次修正。
+`cvt` 选定的 InstructionOnly 浮点／定点格式必须使用 Bit 存储，即使 operand model
+仅记录物理 Bit 宽度。原生 F16x2 允许原生或 Bit 声明。兼容 converted-data Bit 载体可
+放宽到 B128，但 BF16/BF16x2 source、destination 与 TF32 destination 必须精确同宽。
+Intrinsic 寄存器类型服从相同 kind／宽度检查。Scale factor 独立要求 Bit，随机 bit
+辅助 operand 则保留普通 bit-compatible 类型；辅助宽度属于独立谓词。参见
+[转换契约](converage/conversion_coverage.md#逻辑格式与寄存器载体)。
 
 回归测试链接真实 parser、resolver、兼容性 helper 和 generated checker。
 独立类型矩阵与声明替换测试不从指令 YAML 推导预期结果；负向用例检查 diagnostic kind

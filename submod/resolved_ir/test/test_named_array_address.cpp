@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <string>
 #include <string_view>
 #include <variant>
@@ -461,32 +463,43 @@ TEST(NamedArrayAddress,
 .version 9.3
 .target sm_90
 .address_size 64
+.extern .func (.param .u32 output[2]) produce32();
+.extern .func (.param .u64 output[2]) produce64();
 .func helper(.param .u32 input[4]) {
   .reg .u64 %rd;
   .reg .u32 %r;
   mov.u64 %rd, input[1];
   .param .u32 staging[2];
+  call (staging), produce32, ();
   ld.param.u32 %r, staging[1];
-  { .param .u64 staging[2]; ld.param.u64 %rd, staging[1]; }
+  { .param .u64 staging[2]; call (staging), produce64, (); ld.param.u64 %rd, staging[1]; }
 }
 )ptx");
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
   auto resolved = resolveModule(*parsed);
   ASSERT_TRUE(resolved) << resolved.error().front().message;
-  const auto& parameters = resolved->functions.front().parameter_declarations;
+  const auto helper = std::ranges::find(
+      resolved->functions, std::string{"helper"}, &ResolvedFunction::name);
+  ASSERT_NE(helper, resolved->functions.end());
+  ASSERT_FALSE(helper->is_prototype);
+  ASSERT_FALSE(helper->is_entry);
+  const auto& body = helper->body;
+  ASSERT_EQ(body.size(), 5u);
+  const auto& parameters = helper->parameter_declarations;
   ASSERT_EQ(parameters.size(), 3u);
   EXPECT_EQ(parameters[0].scalar_type, ScalarType::U32);
   EXPECT_EQ(parameters[1].scalar_type, ScalarType::U32);
   EXPECT_EQ(parameters[2].scalar_type, ScalarType::U64);
-  EXPECT_EQ(mov_address(*resolved, 0).named_index->scalar_stride, 4u);
-  EXPECT_EQ(
-      dynamic_cast<LdExplicitScalar&>(*resolved->functions.front().body[1])
-          .address.value.named_index->scalar_stride,
-      4u);
-  EXPECT_EQ(
-      dynamic_cast<LdExplicitScalar&>(*resolved->functions.front().body[2])
-          .address.value.named_index->scalar_stride,
-      8u);
+  const auto& address = std::get<ResolvedAddress>(
+      dynamic_cast<const MovScalar&>(*body[0]).src_mov_source->value);
+  ASSERT_TRUE(address.named_index);
+  EXPECT_EQ(address.named_index->scalar_stride, 4u);
+  EXPECT_EQ(dynamic_cast<LdExplicitScalar&>(*body[2])
+                .address.value.named_index->scalar_stride,
+            4u);
+  EXPECT_EQ(dynamic_cast<LdExplicitScalar&>(*body[4])
+                .address.value.named_index->scalar_stride,
+            8u);
   EXPECT_TRUE(validateModule(*resolved));
 }
 

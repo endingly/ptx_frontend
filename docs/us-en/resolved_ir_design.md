@@ -493,13 +493,16 @@ keys. Direct-call ABI validation consumes those normalized values without
 reparsing alignment text or the former array-extent string protocol; invalid
 structural data is never silently replaced by a default.
 
-Call-staging adjacency follows the executable instruction sequence within the
-current lexical body. Ordinary variable declarations, `.loc`, and `.pragma` do
-not interrupt argument stores before a call or return loads after it. Labels,
-nested blocks, and call/branch metadata remain scan boundaries; nested bodies
-are checked separately with their own symbol scope. Actual intervening
-instructions and predicated staging accesses remain invalid. The declaration's
-placement does not change which bound parameter identity the call must use.
+Call-staging adjacency follows the owned executable instruction sequence. Variable
+and debug directives, metadata declarations, bare labels and lexical braces are
+transparent. Transfers through a nested block may use the same still-visible outer
+object; distinct shadowed declarations and out-of-scope actuals remain invalid.
+Every intervening instruction interrupts adjacency, and transfers cannot be
+predicated; the call itself may be predicated. Both resolution and AST-free
+validation derive the same bound object/member identity from byte-address and
+named-array forms, including symbolic indices. Offsets do not change which local
+object the call must use. This check does not prove runtime index bounds, byte
+initialization coverage or correctness across arbitrary incoming control paths.
 
 ## Named memory-vector sources
 

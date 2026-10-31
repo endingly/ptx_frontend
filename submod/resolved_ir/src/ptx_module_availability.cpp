@@ -7,6 +7,7 @@
 #include <ptx_frontend/resolved_ir/model/tensor_memory/tcgen05.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_instruction_catalogue.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
+#include "ptx_call_parameter_transfers.hpp"
 #include "ptx_call_tables.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_resolved_ir_private.hpp"
@@ -3747,6 +3748,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                                 diagnostics);
   check_opaque_storage(module, storage_version, diagnostics);
   check_call_tables(module, diagnostics);
+  for (const auto& diagnostic : detail::check_call_parameter_transfers(module))
+    append_model_mismatch(diagnostics, diagnostic.range, diagnostic.message);
   check_cvta_constant_pointer_restriction(module, diagnostics);
   for (const auto& alias : module.function_aliases) {
     const auto* symbol = owned_symbol(module, alias.symbol_id);

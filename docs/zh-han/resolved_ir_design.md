@@ -407,11 +407,13 @@ optional tagged value：omitted、已验证 constant 或 invalid structural key�
 直接消费这些 normalized value，不再重解析 alignment text 或旧 array-extent string protocol；
 invalid structural data 绝不会被静默替换为 default。
 
-call-staging 邻接性按当前词法 body 的执行指令序列检查。普通变量声明、`.loc` 和
-`.pragma` 不打断 call 前的参数 store 或 call 后的返回值 load。标签、嵌套 block 及
-call/branch metadata 仍是扫描边界；嵌套 body 使用自身 symbol scope 独立检查。
-实际插入的执行指令与带 predicate 的 staging 访问仍然非法。声明所在的位置不会改变
-call 必须使用的已绑定参数 identity。
+call-staging 邻接性按 owned 执行指令序列检查。变量/debug directive、metadata 声明、
+裸 label 与词法 brace 均透明。嵌套 block 中的 transfer 可使用仍可见的同一 outer
+object；不同 shadowed 声明或超出作用域的 actual 仍非法。任何插入的执行指令都会
+打断邻接性，transfer 不可带 predicate，call 本身仍可带 predicate。解析及 AST-free
+validation 从 byte-address 与 named-array 形式（包括 symbolic index）推导相同的
+绑定 object/member identity；offset 不改变 call 必须使用的本地 object。本检查不证明
+运行时 index bounds、逐字节初始化覆盖或任意 incoming control path 的正确性。
 
 ## Named memory-vector source
 

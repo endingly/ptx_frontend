@@ -74,6 +74,10 @@ syntax 但 rounding class、loss direction、saturation 或 FTZ endpoint 非法�
 可以是 register-or-immediate；register endpoint 仍保留 PTX width contract。所有 `.f64` direction
 要求 SM 13 或更高。
 
+对于 F16 与 BF16 两种16-bit instruction format，已采用的 equal-format-size integer-valued conversion 规则允许两个方向使用 `.rni/.rzi/.rmi/.rpi`：F16 destination 可选 `.sat`，共八种；BF16 destination 不带 `.sat`，共四种。此规则不使任一方向接受 `.ftz`、`.rna` 或 `.rs`。普通 F16-to-BF16 conversion 损失 significand precision，要求显式 floating rounding；保存的默认 `Rn` 不能补足源码中省略的 modifier。已采用的反向 BF16-to-F16 omission 仍允许，可选 F16 `.sat`；两个方向均保留显式 `.rn/.rz/.rm/.rp`。Cross-half form 要求 PTX7.8／SM90。相等的是 instruction-format size，不是 physical carrier width：F16 endpoint 的合法较宽 Bit carrier 与 BF16 endpoint 的 exact Bit16 存储可同时存在。
+
+Generated presence 保留既有“locations 非空 OR value 不等于 default”规则。因此当前非默认 integer-rounding value 即使清空 location 仍为 present；默认 `Rn` 且 locations 为空表示 absent。手动提供的 modifier view 若 `is_present=false`，则忽略保存的 mode。合法的当前 typed edit 独立于保留的 lexical history 检查。Rounding 选择请求的 GPU operation；前端不执行该 operation 或 saturation。Numeric F16 input `1.5` 在所有 mode 下仍为 source word `0x3e00`。此有界 overlapping-clause interpretation 不扩展其他 format pair、qualifier、converter permission 或 availability。
+
 half/bfloat/tf32 cohort 保留各自独立的 syntax 与 availability：
 
 - Plain scalar `f16 <- f32` 接受四种 floating rounding spelling：`.rn/.rz/.rm/.rp`。special

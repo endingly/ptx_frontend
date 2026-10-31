@@ -2823,12 +2823,17 @@ CheckResult check_cvt_rule(std::span<const ModifierValueView> modifiers,
        source_type == ScalarType::BF16) ||
       (destination_type == ScalarType::BF16 && source_type == ScalarType::F16);
   if (f16_bf16_pair) {
-    if (rounding_mode == RoundingMode::Invalid ||
-        is_float_rounding(rounding_mode)) {
+    if (is_integer_rounding(rounding_mode) || is_float_rounding(rounding_mode))
       return {};
+    if (rounding_mode == RoundingMode::Invalid) {
+      if (destination_type == ScalarType::F16)
+        return {};
+      return cvt_rule_violation(
+          context, "f16 to bf16 conversion requires explicit rounding.");
     }
     return cvt_rule_violation(
-        context, "bfloat conversion pairs only admit floating rounding.");
+        context,
+        "f16/bf16 conversion pairs require floating or integer rounding.");
   }
   if (destination_type == ScalarType::BF16 && source_type == ScalarType::F32) {
     if (is_float_rounding(rounding_mode))

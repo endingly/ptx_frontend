@@ -89,6 +89,10 @@ or FTZ endpoint is invalid. Scalar source operands are register-or-immediate;
 register endpoints retain the PTX width contract. `.f64` directions require
 SM 13 or newer.
 
+For the two16-bit instruction formats F16 and BF16, the adopted equal-format-size integer-valued conversion rule permits `.rni/.rzi/.rmi/.rpi` in both directions: eight F16-destination forms with optional `.sat`, and four BF16-destination forms without `.sat`. Neither direction admits `.ftz`, `.rna`, or `.rs` through this rule. Ordinary F16-to-BF16 conversion loses significand precision and requires explicit floating rounding; stored default `Rn` does not satisfy an omitted source modifier. The adopted reverse BF16-to-F16 omission remains permitted, with optional F16 `.sat`; explicit `.rn/.rz/.rm/.rp` remain valid in both directions. These cross-half forms require PTX7.8/SM90. The equality concerns instruction-format size, not physical carrier width: wider legal Bit carriers at the F16 endpoint coexist with exact Bit16 storage at the BF16 endpoint.
+
+Generated presence preserves the existing `nonempty locations OR value differs from default` rule. Thus current nondefault integer-rounding values remain present even after their locations are cleared; default `Rn` with empty locations is absent. A manually supplied modifier view with `is_present=false` ignores its stored mode. Legal current typed edits are validated independently of retained lexical history. Rounding selects the requested GPU operation; the frontend does not execute it or saturation. A numeric F16 input `1.5` remains source word `0x3e00` in every mode. This bounded overlapping-clause interpretation does not broaden other format pairs, qualifiers, converter permissions, or availability.
+
 The half/bfloat/tf32 cohorts retain their distinct syntax and availability:
 
 - Plain scalar `f16 <- f32` accepts the four floating rounding spellings

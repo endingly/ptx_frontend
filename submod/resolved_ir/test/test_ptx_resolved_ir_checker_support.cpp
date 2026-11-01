@@ -459,6 +459,190 @@ TEST(ResolvedIrChecker, RejectsDnfAtEveryAvailabilityCheckerEntrypoint) {
       memory_vector, vector_fields, vector_operands, context));
 }
 
+/** Every plain fallback returns a located error; synthetic numeric SM contexts isolate the bound. */
+TEST(ResolvedIrChecker, ExclusiveSmBoundAtEveryPlainAndDnfEntrypoint) {
+  for (int mode : {0, 1, 2})
+    for (uint32_t sm : {69u, 70u}) {
+      AvailabilityDescriptor gate{.minimum_sm_version = 30};
+      if (mode == 1)
+        gate.sm_before = 70;
+      if (mode == 2) {
+        gate.any_of[0] = {.minimum_sm_version = 30, .sm_before = 70};
+        gate.any_of_count = 1;
+      }
+      const Context context{.target = {.ptx_version = {9, 3}, .sm_version = sm},
+                            .instruction_range = kInstructionRange};
+      const auto expect_bound = [&](const CheckResult& result) {
+        if (mode == 0 || sm < 70) {
+          EXPECT_TRUE(result);
+          return;
+        }
+        ASSERT_FALSE(result);
+        ASSERT_EQ(result.error().size(), 1u);
+        EXPECT_EQ(result.error()[0].kind,
+                  mode == 1 ? CheckDiagnosticKind::UnsupportedSmVersion
+                            : CheckDiagnosticKind::UnsupportedAvailability);
+        EXPECT_EQ(result.error()[0].range, kInstructionRange);
+      };
+      const VariantDescriptor base_variant{.variant_name = "UpperBound",
+                                           .availability = gate};
+      expect_bound(check_availability(base_variant, context));
+
+      const OperandLayoutDescriptor layouts[] = {{
+          .layout_name = "Dnf",
+          .availability = gate,
+      }};
+      const VariantDescriptor layout_variant{
+          .variant_name = "Dnf",
+          .operand_layouts = layouts,
+      };
+      expect_bound(
+          check_operand_layout_availability(layout_variant, 0, context));
+
+      const ModifierValueAvailabilityDescriptor modifier_descriptors[] = {{
+          .kind_id = "flag",
+          .value_kind = ModifierValueKind::Bool,
+          .bool_value = true,
+          .availability = gate,
+      }};
+      const ModifierValueView modifier_values[] = {{
+          .kind_id = "flag",
+          .value_kind = ModifierValueKind::Bool,
+          .bool_value = true,
+          .is_present = true,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      }};
+      expect_bound(check_modifier_value_availability(modifier_descriptors,
+                                                     modifier_values, context));
+
+      const OperandDescriptor value_descriptors[] = {{
+          .target_field_id = "value",
+          .role = OperandRole::Source,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Register,
+      }};
+      const OperandView value_operand{
+          .field_id = "value",
+          .actual_shape = OperandShape::Register,
+          .value_availability = gate,
+          .value_name = "late_value",
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(value_descriptors, {},
+                                  std::span{&value_operand, 1}, {}, context));
+
+      const AddressStateSpaceDescriptor state_spaces[] = {{
+          .state_space = MemoryStateSpace::Global,
+          .availability = gate,
+      }};
+      const OperandDescriptor state_descriptors[] = {{
+          .target_field_id = "address",
+          .role = OperandRole::Address,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Address,
+          .allowed_address_state_spaces = state_spaces,
+      }};
+      const OperandView state_operand{
+          .field_id = "address",
+          .actual_shape = OperandShape::Address,
+          .address_state_space = MemoryStateSpace::Global,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(state_descriptors, {},
+                                  std::span{&state_operand, 1}, {}, context));
+
+      const OperandDescriptor parameter_descriptors[] = {{
+          .target_field_id = "address",
+          .role = OperandRole::Address,
+          .access = OperandAccess::Read,
+          .allowed_shapes = OperandShape::Address,
+          .state_space_modifier_field_id = "state_space",
+          .parameter_constraint =
+              {
+                  .direction = ParameterDirection::Input,
+                  .function_availability = gate,
+              },
+      }};
+      const FieldView parameter_fields[] = {{
+          .field_id = "state_space",
+          .memory_state_space = MemoryStateSpace::Parameter,
+      }};
+      const OperandView parameter_operand{
+          .field_id = "address",
+          .actual_shape = OperandShape::Address,
+          .address_state_space = MemoryStateSpace::Parameter,
+          .enclosing_function_kind = EnclosingFunctionKind::Device,
+          .parameter_direction = ParameterDirection::Input,
+          .locations = std::span<const SourceRange>{&kInstructionRange, 1},
+      };
+      expect_bound(check_operands(parameter_descriptors, parameter_fields,
+                                  std::span{&parameter_operand, 1}, {},
+                                  context));
+
+      const VariantDescriptor::MemoryVectorDescriptor memory_vector{
+          .type_field_id = "type",
+          .vector_field_id = "vector",
+          .address_field_id = "address",
+          .availability = gate,
+      };
+      const FieldView vector_fields[] = {{
+          .field_id = "type",
+          .scalar_type = ScalarType::U32,
+      }};
+      const OperandView vector_operands[] = {
+          {.field_id = "vector",
+           .actual_shape = OperandShape::Vector,
+           .vector_arity = 8,
+           .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+          {.field_id = "address",
+           .actual_shape = OperandShape::Address,
+           .address_state_space = MemoryStateSpace::Global,
+           .locations = std::span<const SourceRange>{&kInstructionRange, 1}},
+      };
+      expect_bound(check_memory_vector(memory_vector, vector_fields,
+                                       vector_operands, context));
+    }
+}
+
+/** Manual concrete checker facts keep bounds conjunctive with exact identity, capabilities and source options. */
+TEST(ResolvedIrChecker,
+     ExclusiveSmBoundPreservesTargetCapabilityAndMapConjunctions) {
+  constexpr AvailabilityDescriptor gate{
+      .any_of = {{{.exact_target_architecture = {10},
+                   .has_exact_target = true,
+                   .capability_count = 1,
+                   .requires_map_f64_to_f32 = true,
+                   .capabilities = {"tensor"},
+                   .sm_before = 13}}},
+      .any_of_count = 1};
+  constexpr std::array<std::string_view, 1> capabilities{"tensor"};
+  TargetInfo target{.ptx_version = {1, 3},
+                    .sm_version = 10,
+                    .identity = base::parse_target_identity("sm_10"),
+                    .capabilities = capabilities,
+                    .map_f64_to_f32 = true};
+  EXPECT_TRUE(is_available(gate, target));
+  target.sm_version = 13;
+  EXPECT_FALSE(is_available(gate, target));
+  auto unbounded = gate;
+  unbounded.any_of[0].sm_before.reset();
+  EXPECT_TRUE(is_available(unbounded, target));
+  target.sm_version = 10;
+  target.map_f64_to_f32 = false;
+  EXPECT_FALSE(is_available(gate, target));
+  target.map_f64_to_f32 = true;
+  target.capabilities = {};
+  EXPECT_FALSE(is_available(gate, target));
+  target.capabilities = capabilities;
+  target.identity.reset();
+  EXPECT_FALSE(is_available(gate, target));
+  target.identity = base::parse_target_identity("sm_11");
+  EXPECT_FALSE(is_available(gate, target));
+  AvailabilityDescriptor empty{.minimum_sm_version = 70, .sm_before = 70};
+  for (uint32_t sm : {0u, 69u, 70u, 71u})
+    EXPECT_FALSE(is_available(empty, {.sm_version = sm}));
+}
+
 TEST(ResolvedIrChecker, RejectsZeroImmediateMultipleDivisor) {
   constexpr VariantDescriptor::ImmediateMultipleOfDescriptor descriptor{
       .operand_field_id = "count",

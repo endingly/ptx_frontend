@@ -752,6 +752,8 @@ struct AvailabilityClause {
   std::span<const AvailabilityTarget> exact_targets{};
   /** Exclusive PTX version limit; disengaged means unbounded. */
   std::optional<PtxVersion> ptx_before;
+  /** Exclusive numeric SM architecture limit; disengaged means unbounded. */
+  std::optional<uint32_t> sm_before;
 };
 /** Target requirements attached to a variant, layout, modifier, or value. */
 struct AvailabilityDescriptor {
@@ -762,6 +764,8 @@ struct AvailabilityDescriptor {
   uint8_t any_of_count = 0;
   /** Exclusive PTX version limit; disengaged means unbounded. */
   std::optional<PtxVersion> ptx_before;
+  /** Exclusive numeric SM architecture limit; disengaged means unbounded. */
+  std::optional<uint32_t> sm_before;
 };
 struct TypeExpressionDescriptor {
   OperandTypeExpressionKind kind = OperandTypeExpressionKind::None;

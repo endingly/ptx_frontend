@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <concepts>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 #include <ptx_frontend/resolved_ir/model/data_movement/shfl.gen.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_resolution.hpp>
@@ -207,8 +209,8 @@ TEST(LegacyShuffle, OwnsEveryModeLayoutControlAndTarget) {
           }
 }
 
-/** Exact identity, target flavor and PTX floor are independently required. */
-TEST(LegacyShuffle, RequiresExactIdentityFlavorAndPtxFloor) {
+/** The PTX floor and numeric SM bound are independent of identity and flavor. */
+TEST(LegacyShuffle, RequiresPtxFloorWithoutExactIdentityCoupling) {
   for (const auto& item : kLegacyShuffles)
     for (const bool paired : {false, true}) {
       const auto source = legacyShuffleModule(
@@ -233,19 +235,19 @@ TEST(LegacyShuffle, RequiresExactIdentityFlavorAndPtxFloor) {
         EXPECT_FALSE(check());
         target.ptx_version = {3, 0};
         target.identity.reset();
-        EXPECT_FALSE(check());
+        EXPECT_TRUE(check());
         for (const auto suffix : {"a", "f"}) {
           target.identity = base::parse_target_identity(spelling + suffix);
-          EXPECT_FALSE(check());
+          EXPECT_TRUE(check());
         }
         target.identity = base::parse_target_identity("sm_70");
-        EXPECT_FALSE(check());
+        EXPECT_TRUE(check());
       }
     }
 }
 
-/** Unsupported targets do not broaden the finite legacy catalog. */
-TEST(LegacyShuffle, RejectsTargetsOutsideExactDomain) {
+/** Low SM and removed modern configurations remain unavailable. */
+TEST(LegacyShuffle, RejectsLowSmAndRemovedModernConfigurations) {
   for (const auto& item : kLegacyShuffles)
     for (const bool paired : {false, true}) {
       const auto operation =
@@ -367,6 +369,231 @@ TEST(LegacyShuffle, RetargetsWithoutAddingSyncOrMask) {
       EXPECT_EQ(instruction.instruction_kind(), item.kind);
       ASSERT_TRUE(legacyShuffleView(instruction));
       EXPECT_EQ(legacyShuffleView(instruction)->paired != nullptr, paired);
+    }
+}
+
+/** All eight source forms share the complete historical window under real recognized profiles. */
+TEST(LegacyShuffle, CompleteHistoricalWindowAllEightForms) {
+  for (const auto& item : kLegacyShuffles)
+    for (bool paired : {false, true}) {
+      auto op = legacyShuffleOperation(item.mode, paired, false, true);
+      for (const auto& cell : {std::tuple{"3.0", "sm_30", true},
+                               {"3.0", "sm_20", false},
+                               {"6.0", "sm_70", true},
+                               {"6.3", "sm_70", true},
+                               {"6.3", "sm_75", true},
+                               {"6.4", "sm_70", false},
+                               {"6.4", "sm_75", false},
+                               {"6.4", "sm_62", true},
+                               {"9.3", "sm_62", true},
+                               {"9.3", "sm_90", false}}) {
+        const auto& [version, target, expected] = cell;
+        SCOPED_TRACE(op + version + target);
+        auto source = legacyShuffleModule(op, target, version);
+        PtxSyntaxParser p(source);
+        auto ast = p.parseModule();
+        ASSERT_TRUE(ast);
+        auto m = resolveModuleOnly(*ast);
+        ASSERT_TRUE(m) << m.error().front().message;
+        EXPECT_EQ(bool(resolveAndValidateModule(*ast)), expected);
+        for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                            ModuleValidationPolicy::RequireCompleteContext})
+          for (auto result :
+               {validateModule(*m, policy), validateModule(*ast, *m, policy)}) {
+            EXPECT_EQ(bool(result), expected);
+            if (!expected) {
+              ASSERT_FALSE(result);
+              EXPECT_EQ(result.error().front().kind,
+                        checker::CheckDiagnosticKind::UnsupportedAvailability);
+            }
+          }
+      }
+    }
+}
+
+/** Numeric-bound units intentionally include synthetic SM29/69 rather than source profile claims. */
+TEST(LegacyShuffle, ExactNumericPredicateWithoutIdentityOrFlavorCoupling) {
+  for (const auto& item : kLegacyShuffles)
+    for (bool paired : {false, true}) {
+      auto op = legacyShuffleOperation(item.mode, paired, false, false);
+      auto source = legacyShuffleModule(op, "sm_62", "6.4");
+      PtxSyntaxParser parser(source);
+      auto a = parser.parseModule();
+      ASSERT_TRUE(a);
+      auto m = resolveModuleOnly(*a);
+      ASSERT_TRUE(m);
+      for (auto v : {checker::PtxVersion{2, 3}, {3, 0}, {6, 3}, {6, 4}, {9, 3}})
+        for (uint32_t sm : {20u, 29u, 30u, 62u, 69u, 70u, 75u}) {
+          const bool expected = v >= checker::PtxVersion{3, 0} && sm >= 30 &&
+                                (v < checker::PtxVersion{6, 4} || sm < 70);
+          checker::Context c{.target = {.ptx_version = v, .sm_version = sm}};
+          EXPECT_EQ(bool(m->functions.front().body.front()->check(c)),
+                    expected);
+          for (auto flavor : {base::TargetFlavor::ArchitectureSpecific,
+                              base::TargetFlavor::FamilySpecific}) {
+            c.target.identity = base::TargetIdentity{{sm}, flavor, {}};
+            EXPECT_EQ(bool(m->functions.front().body.front()->check(c)),
+                      expected);
+          }
+        }
+    }
+}
+
+/** Retarget context coherently without changing the source identity or introducing history. */
+void shuffleContext(ResolvedModule& m,
+                    std::optional<checker::PtxVersion> version,
+                    std::optional<std::string> target) {
+  for (auto& r : m.header.regions) {
+    r.version = version;
+    r.version_provenance = version ? SourceConfigurationProvenance::Explicit
+                                   : SourceConfigurationProvenance::Missing;
+    r.target_options.clear();
+    if (target)
+      r.target_options.push_back(*target);
+    r.target_provenance = target ? SourceConfigurationProvenance::Explicit
+                                 : SourceConfigurationProvenance::Missing;
+  }
+  for (auto& f : m.functions) {
+    f.source_version = version;
+    f.source_target = target;
+  }
+}
+
+/** Source-dead copies, assignment and cloned instructions retain the same current-context predicate. */
+TEST(LegacyShuffle, CurrentAndSuppliedContextsAcrossRemovalAfterSourceDeath) {
+  for (const auto& item : kLegacyShuffles)
+    for (bool paired : {false, true}) {
+      auto op = legacyShuffleOperation(item.mode, paired, false, true);
+      std::optional<ResolvedModule> owned;
+      {
+        auto source = legacyShuffleModule(op, "sm_75", "6.3");
+        PtxSyntaxParser p(source);
+        auto ast = p.parseModule();
+        ASSERT_TRUE(ast);
+        auto m = resolveAndValidateModule(*ast);
+        ASSERT_TRUE(m);
+        owned = std::move(*m);
+      }
+      auto copy = *owned;
+      ResolvedModule assigned;
+      assigned = copy;
+      auto moved = std::move(assigned);
+      for (auto& f : moved.functions)
+        for (auto& i : f.body)
+          i = i->clone();
+      EXPECT_EQ(moved.functions.front().instruction_ranges,
+                owned->functions.front().instruction_ranges);
+      EXPECT_TRUE(validateModule(moved));
+      auto supplied_source = legacyShuffleModule(op, "sm_75", "6.4");
+      PtxSyntaxParser p(supplied_source);
+      auto ast = p.parseModule();
+      ASSERT_TRUE(ast);
+      for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                          ModuleValidationPolicy::RequireCompleteContext}) {
+        auto result = validateModule(*ast, moved, policy);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().front().kind,
+                  checker::CheckDiagnosticKind::UnsupportedAvailability);
+      }
+      shuffleContext(moved, checker::PtxVersion{6, 4}, "sm_75");
+      EXPECT_FALSE(validateModule(moved));
+      shuffleContext(moved, checker::PtxVersion{6, 4}, "sm_62");
+      EXPECT_TRUE(validateModule(moved));
+      shuffleContext(moved, checker::PtxVersion{6, 4}, "sm_70");
+      EXPECT_FALSE(validateModule(moved));
+      shuffleContext(moved, checker::PtxVersion{6, 3}, "sm_75");
+      EXPECT_TRUE(validateModule(moved));
+      EXPECT_TRUE(validateModule(*owned));
+    }
+}
+
+/** Missing instruction context defers the whole availability predicate; unknown profiles remain errors. */
+TEST(LegacyShuffle, PartialContextDeferralStrictAndUnknownTarget) {
+  auto op = legacyShuffleOperation("up", false, false, true);
+  for (int mode : {0, 1, 2}) {
+    auto source = legacyShuffleModule(op, "sm_75", "6.3");
+    PtxSyntaxParser p(source);
+    auto ast = p.parseModule();
+    ASSERT_TRUE(ast);
+    auto m = resolveAndValidateModule(*ast);
+    ASSERT_TRUE(m);
+    auto version = mode == 0   ? std::optional<checker::PtxVersion>{{6, 4}}
+                   : mode == 1 ? std::optional<checker::PtxVersion>{{2, 3}}
+                               : std::nullopt;
+    auto target =
+        mode == 2 ? std::optional<std::string>{"sm_20"} : std::nullopt;
+    shuffleContext(*m, version, target);
+    auto partial_source = legacyShuffleModule(op, target ? *target : "sm_75",
+                                              mode == 1 ? "2.3" : "6.4");
+    if (!target) {
+      auto start = partial_source.find(".target");
+      partial_source.erase(start, partial_source.find('\n', start) - start + 1);
+    } else
+      partial_source.erase(0, partial_source.find('\n') + 1);
+    PtxSyntaxParser pp(partial_source);
+    auto supplied = pp.parseModule();
+    ASSERT_TRUE(supplied);
+    EXPECT_TRUE(validateModule(*m, ModuleValidationPolicy::AvailableContext));
+    EXPECT_TRUE(validateModule(*supplied, *m,
+                               ModuleValidationPolicy::AvailableContext));
+    for (auto result :
+         {validateModule(*m, ModuleValidationPolicy::RequireCompleteContext),
+          validateModule(*supplied, *m,
+                         ModuleValidationPolicy::RequireCompleteContext)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingValidationContext;
+      }));
+    }
+  }
+  auto unknown_source = legacyShuffleModule(op, "sm_999", "6.4");
+  PtxSyntaxParser p(unknown_source);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  auto m = resolveModuleOnly(*a);
+  ASSERT_TRUE(m);
+  for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                      ModuleValidationPolicy::RequireCompleteContext})
+    for (auto result :
+         {validateModule(*m, policy), validateModule(*a, *m, policy)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::UnknownTarget;
+      }));
+    }
+  for (auto source : {legacyShuffleModule(op, "sm_70", "3.0"),
+                      legacyShuffleModule(op, "sm_75", "6.0")}) {
+    PtxSyntaxParser pp(source);
+    auto aa = pp.parseModule();
+    ASSERT_TRUE(aa);
+    EXPECT_FALSE(resolveAndValidateModule(*aa));
+  }
+}
+
+/** A valid original AST cannot hide a currently absent required destination. */
+TEST(LegacyShuffle, RechecksCurrentPayloadWithOriginalValidAst) {
+  auto source = legacyShuffleModule(
+      legacyShuffleOperation("up", false, false, true), "sm_75", "6.3");
+  PtxSyntaxParser p(source);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  auto m = resolveAndValidateModule(*a);
+  ASSERT_TRUE(m);
+  auto* form =
+      dynamic_cast<ShflUpB32*>(m->functions.front().body.front().get());
+  ASSERT_NE(form, nullptr);
+  form->dst_register.reset();
+  for (auto policy : {ModuleValidationPolicy::AvailableContext,
+                      ModuleValidationPolicy::RequireCompleteContext})
+    for (auto result :
+         {validateModule(*m, policy), validateModule(*a, *m, policy)}) {
+      ASSERT_FALSE(result);
+      EXPECT_TRUE(std::ranges::any_of(result.error(), [](const auto& d) {
+        return d.kind == checker::CheckDiagnosticKind::MissingOperand ||
+               d.kind ==
+                   checker::CheckDiagnosticKind::OperandLayoutPayloadMismatch ||
+               d.kind == checker::CheckDiagnosticKind::UnsupportedOperandShape;
+      }));
     }
 }
 

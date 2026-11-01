@@ -1318,6 +1318,11 @@ $defs:
           ptx_before:
             description: Exclusive PTX version upper bound; omitted means unbounded.
             $ref: "#/$defs/ptx_version"
+          sm_before:
+            description: Exclusive numeric SM upper bound; omitted means unbounded.
+            type: integer
+            minimum: 1
+            maximum: 4294967295
           sm:
             $ref: "#/$defs/sm_version"
           family:
@@ -1334,6 +1339,7 @@ $defs:
           notes:
             type: string
         anyOf:
+          - required: [sm_before]
           - required: [ptx_before]
           - required: [ptx]
           - required: [sm]
@@ -1355,6 +1361,11 @@ $defs:
                 ptx_before:
                   description: Exclusive PTX version upper bound for this conjunction.
                   $ref: "#/$defs/ptx_version"
+                sm_before:
+                  description: Exclusive numeric SM upper bound; omitted means unbounded.
+                  type: integer
+                  minimum: 1
+                  maximum: 4294967295
                 sm:
                   $ref: "#/$defs/sm_version"
                 target:
@@ -1389,6 +1400,7 @@ $defs:
               not:
                 required: [target, targets]
               anyOf:
+                - required: [sm_before]
                 - required: [ptx_before]
                 - required: [ptx]
                 - required: [sm]

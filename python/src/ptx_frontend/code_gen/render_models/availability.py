@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from ptx_frontend.spec.normalize.availability import validate_availability_targets, parse_ptx_version, validate_ptx_interval
+from ptx_frontend.spec.normalize.availability import validate_availability_targets, parse_ptx_version, validate_ptx_interval, validate_sm_interval
 
 from ptx_frontend.spec.normalize import (
     parse_availability_target,
@@ -30,6 +30,7 @@ class AvailabilityClauseModel:
     map_f64_to_f32: str = "false"
     targets: tuple[tuple[int, str], ...] = ()
     ptx_before: tuple[int, int] | None = None
+    sm_before: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,14 +44,18 @@ class AvailabilityModel:
 def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
     """Validate metadata and preserve its exact alternative order."""
 
+    if "any_of" in availability and "sm_before" in availability:
+        raise ValueError("any_of availability cannot mix with legacy fields")
     if "any_of" not in availability:
         validate_ptx_interval(dict(availability))
+        validate_sm_interval(dict(availability))
         major, minor = parse_ptx_version(availability.get("ptx", "0.0"))
         return AvailabilityModel(AvailabilityClauseModel(
             major, minor,
             validate_availability_sm_version(availability.get("sm", 0)),
             validate_availability_family(availability["family"]) if "family" in availability else "",
             ptx_before=parse_ptx_version(availability["ptx_before"]) if "ptx_before" in availability else None,
+            sm_before=availability.get("sm_before"),
         ), ())
     clauses = availability["any_of"]
     assert isinstance(clauses, list)
@@ -60,6 +65,7 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
         if "map_f64_to_f32" in clause and clause["map_f64_to_f32"] is not True:
             raise ValueError("availability map_f64_to_f32 must be Boolean true")
         validate_ptx_interval(clause)
+        validate_sm_interval(clause)
         major, minor = parse_ptx_version(clause.get("ptx", "0.0"))
         targets = validate_availability_targets(clause["targets"]) if "targets" in clause else ()
         if targets and "target" in clause:
@@ -75,6 +81,7 @@ def build_availability(availability: Mapping[str, object]) -> AvailabilityModel:
             str(target is not None).lower(), number, flavor, tuple(capabilities),
             str(clause.get("map_f64_to_f32", False)).lower(), targets,
             parse_ptx_version(clause["ptx_before"]) if "ptx_before" in clause else None,
+            clause.get("sm_before"),
         ))
     return AvailabilityModel(None, tuple(models))
 

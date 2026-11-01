@@ -4093,8 +4093,8 @@ instructions:
       - name: shfl_up_b32
         availability: &shfl_legacy_availability
           any_of:
-            - ptx: "3.0"
-              targets: [sm_30, sm_32, sm_35, sm_37, sm_50, sm_52, sm_53, sm_60, sm_61, sm_62]
+            - {ptx: "3.0", ptx_before: "6.4", sm: 30}
+            - {ptx: "3.0", sm: 30, sm_before: 70}
         modifiers:
           - {name: sync, kind: flag, presence: absent, token: .sync}
           - {name: up, kind: flag, presence: fixed, value: true, token: .up}

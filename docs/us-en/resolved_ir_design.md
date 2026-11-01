@@ -1743,3 +1743,11 @@ MOV address acquisition stays legal, while an explicit writable operand rejects.
 Legacy readonly diagnostics use their original label and instruction range;
 only identical local causes merge. No opcode-specific writer classification or
 new historical instruction permission is inferred.
+
+## Exclusive numeric SM availability bound
+
+Plain availability and each `any_of` clause accept optional `sm_before: 70`. Together with `sm: 30` this means `30 <= SM < 70`; a missing lower bound means zero and an omitted upper bound means unbounded. The field must be a strict uint32 integer greater than the minimum; zero, booleans, floats, strings, explicit null, overflow and empty/reversed intervals are rejected by typed normalization and rendering. JSON Schema applies integer/range constraints; the typed boundary also rejects integral floating values. The existing maximum of six ordered alternatives and prohibition on mixing `any_of` with plain fields remain. No target intersection solver is introduced.
+
+`AvailabilityClause::sm_before` and `AvailabilityDescriptor::sm_before` append disengaged `std::optional<uint32_t>` members after `ptx_before`; rebuild public consumers for this aggregate layout change. The predicate compares concrete `TargetInfo::sm_version`, independently of profile spelling or flavor, while all existing exact-target, family, capability and mapping requirements remain conjunctive. Plain failures produce located `UnsupportedSmVersion` in variant, layout, modifier, operand-value, parameter-address and memory-vector paths; DNF failures retain `UnsupportedAvailability`.
+
+Legacy SHFL uses `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`. Source modules still require recognized profiles and legal profile/version headers. Under `AvailableContext`, missing version or recognized target continues to defer whole-instruction availability, even if another known fact appears incompatible; such success is not full ISA certification. Strict validation reports `MissingValidationContext`; an explicit unknown profile remains `UnknownTarget`. No partial DNF evaluator or opcode-specific context rule is added.

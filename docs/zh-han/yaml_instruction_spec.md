@@ -669,3 +669,11 @@ ctest --preset ci-linux-gcc-debug --output-on-failure
 `video` category 拥有 23 个 opcode variant 和 39 个 operand layout。Variant 的封闭 `video` mapping 包含 `lanes: scalar|two|four`、`operation: arithmetic|shift|compare|mad` 及可选、已验证的 Boolean `sat_modifier`/`po_modifier` 字段引用。每个 `video_operand` 的封闭 mapping 包含逻辑 `position`、typed `selector` policy、可选且引用 `video_type` 字段的 `type_modifier`，以及 `allow_immediate`/`allow_negate`。Normalizer 拒绝角色矛盾、SIMD 立即数、非 Mad 取负、selector topology 错误及缺失字段引用。
 
 `type_use: bit_carrier` 仅允许 Mad C，不能与 `type_modifier` 并用，选择 B32 立即数转换。Type modifier 推导 `ModifierField` 解释；省略 type use 默认 `Unsigned`，用于 set D/C。四个封闭 modifier domain 是 `video_type`、`video_secondary_op`、`video_shift_mode` 和 `video_scale`。Video 语义不转换成普通整数操作别名。语法 shape 推导仅在 scalar merge layout 接受 selected destination，仅在批准的 Mad source slot 接受 arithmetic-negated register。见 [Video 覆盖](converage/video_coverage.md)。
+
+## SM 可用性的数值独占上界
+
+plain availability 与每个 `any_of` clause 支持可选的 `sm_before: 70`。它与 `sm: 30` 共同表示 `30 <= SM < 70`；省略下界时为零，省略上界时无界。字段必须是严格的 uint32 整数且大于下界；typed normalization 与 rendering 拒绝零、布尔、浮点、字符串、显式 null、溢出及空或逆序区间。JSON Schema 检查整数及范围约束，typed 边界还拒绝整数值浮点数。最多六个有序 alternative 和 `any_of` 不得混合 plain field 的规则保持不变，不引入 target 交集求解器。
+
+`AvailabilityClause::sm_before` 和 `AvailabilityDescriptor::sm_before` 在 `ptx_before` 后追加默认缺省的 `std::optional<uint32_t>` member；此 aggregate 布局变化要求重新编译公共 consumer。谓词直接比较具体 `TargetInfo::sm_version`，不依赖 profile 拼写或 flavor；既有 exact-target、family、capability 和 mapping 条件仍为合取。variant、layout、modifier、operand-value、parameter-address 和 memory-vector 的 plain 失败均产生有位置的 `UnsupportedSmVersion`；DNF 失败仍为 `UnsupportedAvailability`。
+
+旧式 SHFL 使用 `any_of: [{ptx: "3.0", ptx_before: "6.4", sm: 30}, {ptx: "3.0", sm: 30, sm_before: 70}]`。source module 仍要求已知 profile 及合法 profile/version header。`AvailableContext` 中缺少 version 或已知 target 时继续推迟整个 instruction availability 检查，即使其他已知事实看似不兼容；成功不构成完整 ISA 认证。严格验证报告 `MissingValidationContext`；显式未知 profile 仍为 `UnknownTarget`。不新增 partial DNF evaluator 或 opcode 特定 context 规则。

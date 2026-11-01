@@ -905,8 +905,76 @@ cvt.rs.satfinite.e2m3x4.f32 d,{1.5,1.0+0.5,0f3fc00000,0d3ff8000000000000},r;
   return !ir::validateModule(assigned);
 }
 
+/** Read all six installed optional FTZ fields and own them beyond source lifetime. */
+bool checkInstalledHalfSetFtz() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 4.2
+.target sm_53
+.entry kernel() {
+.reg .f16 h; .reg .b16 ba,bb; .reg .s32 ia,ib;
+.reg .f64 da,db; .reg .pred p;
+mov.b16 ba,1; mov.b16 bb,2; mov.s32 ia,1; mov.s32 ib,2;
+mov.f64 da,1.0; mov.f64 db,2.0; mov.pred p,1;
+set.eq.ftz.f16.b16 h,ba,bb;
+set.eq.and.ftz.f16.b16 h,ba,bb,p;
+set.eq.ftz.f16.s32 h,ia,ib;
+set.eq.and.ftz.f16.s32 h,ia,ib,p;
+set.eq.ftz.f16.f64 h,da,db;
+set.eq.and.ftz.f16.f64 h,da,db,p;
+set.eq.f16.b16 h,ba,bb;
+set.eq.and.f16.b16 h,ba,bb,p;
+set.eq.f16.s32 h,ia,ib;
+set.eq.and.f16.s32 h,ia,ib,p;
+set.eq.f16.f64 h,da,db;
+set.eq.and.f16.f64 h,da,db,p;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.front().body.size() != 19)
+    return false;
+  auto& body = owned->functions.front().body;
+  std::array<ptx_frontend::WithLocs<bool>*, 12> flags{
+      &dynamic_cast<ir::SetHalfF16Bit&>(*body[7]).ftz,
+      &dynamic_cast<ir::SetHalfF16BitBoolean&>(*body[8]).ftz,
+      &dynamic_cast<ir::SetHalfF16Integer&>(*body[9]).ftz,
+      &dynamic_cast<ir::SetHalfF16IntegerBoolean&>(*body[10]).ftz,
+      &dynamic_cast<ir::SetHalfF16F64&>(*body[11]).ftz,
+      &dynamic_cast<ir::SetHalfF16F64Boolean&>(*body[12]).ftz,
+      &dynamic_cast<ir::SetHalfF16Bit&>(*body[13]).ftz,
+      &dynamic_cast<ir::SetHalfF16BitBoolean&>(*body[14]).ftz,
+      &dynamic_cast<ir::SetHalfF16Integer&>(*body[15]).ftz,
+      &dynamic_cast<ir::SetHalfF16IntegerBoolean&>(*body[16]).ftz,
+      &dynamic_cast<ir::SetHalfF16F64&>(*body[17]).ftz,
+      &dynamic_cast<ir::SetHalfF16F64Boolean&>(*body[18]).ftz};
+  for (size_t index = 0; index < flags.size(); ++index)
+    if (flags[index]->value != (index < 6) ||
+        flags[index]->locs.empty() == (index < 6))
+      return false;
+  ir::ResolvedModule copied(*owned), assigned;
+  assigned = copied;
+  ir::ResolvedFunction function(copied.functions.front());
+  assigned.functions.front() = function;
+  assigned.functions.front().body.back() = function.body.back()->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  auto& forged = dynamic_cast<ir::SetHalfF16F64Boolean&>(
+      *assigned.functions.front().body.back());
+  forged.ftz.value = true;
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledHalfSetFtz())
+    return 32;
   if (!checkInstalledStochasticQuadSources())
     return 31;
   if (!checkInstalledPackIntegerSources())

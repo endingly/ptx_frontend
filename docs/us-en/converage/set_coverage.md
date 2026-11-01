@@ -22,7 +22,7 @@ The half/bfloat forms use the same comparison and optional Boolean-source fields
 
 | Result `.dtype` | Source `.stype` | Minimum PTX / SM | `.ftz` |
 | --- | --- | --- | --- |
-| `.f16` | `.b16/.b32/.b64`, integer 16/32/64, `.f16/.f32/.f64` | 4.2 / 53 | Only `.f16/.f32` source |
+| `.f16` | `.b16/.b32/.b64`, integer 16/32/64, `.f16/.f32/.f64` | 4.2 / 53 | Optional for every listed source |
 | `.bf16` | Same source list | 7.8 / 90 | No |
 | `.u16/.s16/.u32/.s32` | `.f16` | 6.5 / 53 | Optional |
 | `.u16/.s16/.u32/.s32` | `.bf16` | 7.8 / 90 | No |
@@ -30,7 +30,7 @@ The half/bfloat forms use the same comparison and optional Boolean-source fields
 | `.u32/.s32` | `.f16x2` | 6.5 / 53 | Optional |
 | `.bf16x2/.u32/.s32` | `.bf16x2` | 7.8 / 90 | No |
 
-Bit-source comparison permits `.eq/.ne`; signed and unsigned integer sources permit `.eq/.ne/.lt/.le/.gt/.ge`; floating and packed sources permit those six plus `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`. The ordinary unsigned aliases `.lo/.ls/.hi/.hs` do not apply here. `ptxas` 13.3 rejects `.ftz` with bit, integer, and `.f64` sources even for an `.f16` destination, so these generated alternatives exclude it.
+Bit-source comparison permits `.eq/.ne`; signed and unsigned integer sources permit `.eq/.ne/.lt/.le/.gt/.ge`; floating and packed sources permit those six plus `.equ/.neu/.ltu/.leu/.gtu/.geu/.num/.nan`. The ordinary unsigned aliases `.lo/.ls/.hi/.hs` do not apply here. The specific §9.7.7.1 F16-result syntax permits optional `.ftz` for the entire listed source domain, including Bit, integer and F64 sources. Ordinary §9.7.6.1 SET keeps its F32-source-only FTZ condition; BF16/BF16x2 productions still exclude FTZ. Earlier supplemental `ptxas` 13.3 samples rejected some of these F16-result forms; this is tool divergence, not the permission oracle. The frontend records the requested flag without evaluating comparisons or flushing values.
 
 For scalar `.f16` sources, the frontend accepts `.f16` or compatible `.b16` registers and numeric floating constants; scalar `.bf16` sources require exact `.b16` registers. Packed `.f16x2` sources accept `.f16x2` or compatible `.b32` registers, while `.bf16x2` sources require exact `.b32`. Native `.f16x2` results accept `.f16x2` or `.b32`; native `.bf16x2` results require `.b32`. Integer results use width-compatible bit or integer register containers. For packed-source integer results, the written logical `.dtype` remains `.u32` or `.s32`: both admit exactly `.b32/.s32/.u32` destination declarations, with a fixed 32-bit packed result width. `.f32`, native `.f16x2`, narrower/wider registers, predicates, and whole vectors cannot serve as that scalar integer-result destination. This contract is separate from native floating-result SET and from the source-format carrier requirements. Scalar F16 numeric floating immediates are supported; other half/bfloat producer boundaries remain separate; the ordinary bit, integer, `.f32`, and `.f64` source cohorts retain register-or-immediate operands where valid.
 
@@ -39,3 +39,5 @@ The [half/bfloat C++ tests](../../../submod/resolved_ir/test/test_set_half_compl
 The C++ package version 0.2.0 replaces the former generated `Set::EqU32U32` and `Set::LtAndF32S32` alternatives with the typed ordinary families `Bit`, `Signed`, `Unsigned`, `Float`, `FloatF64` and their `Boolean` counterparts. Consumers should select the new alternatives and read `dtype`/`stype` fields to determine the exact type. This is a source and binary API change; rebuild installed C++ consumers with the new headers and library.
 
 Scalar F16 source fields accept numeric floating constants converted to binary16 as well as their existing F16/B16 registers. Boolean predicate sources and all result carriers retain their contracts; scalar BF16 and packed conversion boundaries remain separate. Integer-origin constants are not numeric F16 sources.
+
+The six existing `SetHalfF16Bit`, `SetHalfF16BitBoolean`, `SetHalfF16Integer`, `SetHalfF16IntegerBoolean`, `SetHalfF16F64`, and `SetHalfF16F64Boolean` classes now expose an instance `WithLocs<bool> ftz` in the existing modifier position. Omission stores false with empty locations; written `.ftz` stores true with its token range. A true flag without locations or a false flag with token locations is inconsistent. Copies and clones own the flag and locations after AST destruction, and coherent current typed flag edits remain independent of retained lexical history. These six generated object layouts change source/binary ABI: rebuild consumers against matching headers and libraries. Operands, comparator/Boolean domains, modifier order and PTX4.2/SM53 minimum remain unchanged.

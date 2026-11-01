@@ -340,7 +340,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
         operands: $set_half_result_scalar
@@ -349,7 +349,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [b16, b32, b64]}
         operands: $set_half_result_scalar_boolean
@@ -358,7 +358,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
         operands: $set_half_result_scalar
@@ -367,7 +367,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: required, values: [u16, u32, u64, s16, s32, s64]}
         operands: $set_half_result_scalar_boolean
@@ -412,7 +412,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: absent}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
         operands: $set_half_result_scalar
@@ -421,7 +421,7 @@ instructions:
         modifiers:
           - {name: comparison, kind: comparison, domain: comparison_operators, presence: required, values: [eq, ne, lt, le, gt, ge, equ, neu, ltu, leu, gtu, geu, num, nan]}
           - {name: boolean, kind: boolean_op, domain: boolean_operators, presence: required, values: [and, or, xor]}
-          - {name: ftz, kind: flag, presence: absent}
+          - {name: ftz, kind: flag, presence: optional, default: false, token: .ftz}
           - {name: dtype, kind: type, domain: scalar_types, presence: fixed, value: f16}
           - {name: stype, kind: type, domain: scalar_types, presence: fixed, value: f64}
         operands: $set_half_result_scalar_boolean

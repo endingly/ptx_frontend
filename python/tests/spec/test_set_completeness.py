@@ -95,11 +95,11 @@ class SetCompletenessTests(unittest.TestCase):
             "ltu", "leu", "gtu", "geu", "num", "nan",
         }
         cohorts = {
-            "set_half_f16_bit": ({"f16"}, {"b16", "b32", "b64"}, {"eq", "ne"}, False, "4.2", 53),
-            "set_half_f16_integer": ({"f16"}, {"u16", "u32", "u64", "s16", "s32", "s64"}, {"eq", "ne", "lt", "le", "gt", "ge"}, False, "4.2", 53),
+            "set_half_f16_bit": ({"f16"}, {"b16", "b32", "b64"}, {"eq", "ne"}, True, "4.2", 53),
+            "set_half_f16_integer": ({"f16"}, {"u16", "u32", "u64", "s16", "s32", "s64"}, {"eq", "ne", "lt", "le", "gt", "ge"}, True, "4.2", 53),
             "set_half_f16_f16": ({"f16"}, {"f16"}, floating, True, "4.2", 53),
             "set_half_f16_f32": ({"f16"}, {"f32"}, floating, True, "4.2", 53),
-            "set_half_f16_f64": ({"f16"}, {"f64"}, floating, False, "4.2", 53),
+            "set_half_f16_f64": ({"f16"}, {"f64"}, floating, True, "4.2", 53),
             "set_half_bf16_bit": ({"bf16"}, {"b16", "b32", "b64"}, {"eq", "ne"}, False, "7.8", 90),
             "set_half_bf16_integer": ({"bf16"}, {"u16", "u32", "u64", "s16", "s32", "s64"}, {"eq", "ne", "lt", "le", "gt", "ge"}, False, "7.8", 90),
             "set_half_bf16_f16": ({"bf16"}, {"f16"}, floating, False, "7.8", 90),

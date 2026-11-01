@@ -1270,3 +1270,16 @@ Source-aware validation 对 current owned options/sections 和 supplied AST opti
 配对 witness 只是一项结构对照，不是普遍最低要求或 decoder。因此，非零且结构合法的 section record
 验证成功并不证明实际找到了 DWARF information。有限 debug-off/on 边界测试明确记录此限定；
 不声称完整 recognition、链接或二进制真实性。
+
+current owned `.language` value 是不依赖 context 的 intrinsic data：optional 缺省表示
+省略/default `ptx`；engaged vector 必须非空，且每个 raw token 都须通过统一的公共
+semantic decoder。多个值与重复项保留准确顺序及 spelling。两种 module validation API
+即使缺少 version/target，也会在 owning function range 重查 current value，合法
+supplied source 不能掩盖 current 非法 token。合法 current name/code/list 修改或移除
+optional 不要求与历史 payload 相等。replacement AST identity 仍保存 raw 顺序：
+将 `"ptx"` 改为 `3` 或重排合法 list 仍可触发既有 source-association mismatch；
+redeclaration 则继续比较 ordered decoded aliases。presence 要求 PTX 9.3、适用于所有
+ target；已知过旧 selected/supplied version 即使无 target 也拒绝，只有 version 缺失
+才可在 `AvailableContext` 下推迟 availability。domain 从不推迟，strict context 要求不变。
+新 decoder 是 additive exported semantic function，client 须使用匹配的 installed
+header/library；不增加 payload layout 或 backend language execution 保证。

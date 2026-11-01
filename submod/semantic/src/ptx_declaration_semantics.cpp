@@ -21,6 +21,37 @@
 #include <fmt/format.h>
 
 namespace ptx_frontend::declaration_semantics {
+
+/** Share the existing exact-token language decoder across source and owned contracts. */
+std::optional<uint64_t> languageCode(std::string_view spelling) {
+  if (spelling.size() >= 2 && spelling.front() == '"' &&
+      spelling.back() == '"') {
+    std::string name{spelling.substr(1, spelling.size() - 2)};
+    std::ranges::transform(name, name.begin(), [](unsigned char character) {
+      return static_cast<char>(character >= 'A' && character <= 'Z'
+                                   ? character - 'A' + 'a'
+                                   : character);
+    });
+    static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
+        names = {{{"unknown", 0},
+                  {"ptx", 3},
+                  {"nvvm", 4},
+                  {"cuda c++", 5},
+                  {"cuda c++ tile", 6},
+                  {"tile ir", 7},
+                  {"python-cutile", 8},
+                  {"fortran", 9},
+                  {"optix", 10}}};
+    const auto found = std::ranges::find_if(
+        names, [&name](const std::pair<std::string_view, uint64_t>& entry) {
+          return entry.first == name;
+        });
+    return found == names.end() ? std::nullopt : std::optional{found->second};
+  }
+  const auto code = base::parseIntegerMagnitude(spelling);
+  return code && *code <= 10 ? code : std::nullopt;
+}
+
 namespace {
 
 using syntax_ast::AstConstantBinaryOperator;
@@ -96,31 +127,6 @@ void reportInvalidIntegerLiteral(DiagnosticSink diagnostics,
 
 std::optional<uint64_t> unsignedIntegerLiteral(std::string_view spelling) {
   return base::parseIntegerMagnitude(spelling);
-}
-
-std::optional<uint64_t> languageCode(std::string_view spelling) {
-  if (spelling.size() >= 2 && spelling.front() == '"' &&
-      spelling.back() == '"') {
-    std::string name{spelling.substr(1, spelling.size() - 2)};
-    std::ranges::transform(name, name.begin(), [](unsigned char character) {
-      return static_cast<char>(std::tolower(character));
-    });
-    static constexpr std::array<std::pair<std::string_view, uint64_t>, 9>
-        names = {{{"unknown", 0},
-                  {"ptx", 3},
-                  {"nvvm", 4},
-                  {"cuda c++", 5},
-                  {"cuda c++ tile", 6},
-                  {"tile ir", 7},
-                  {"python-cutile", 8},
-                  {"fortran", 9},
-                  {"optix", 10}}};
-    const auto found = std::ranges::find_if(
-        names, [&name](const auto& entry) { return entry.first == name; });
-    return found == names.end() ? std::nullopt : std::optional{found->second};
-  }
-  const auto code = unsignedIntegerLiteral(spelling);
-  return code && *code <= 10 ? code : std::nullopt;
 }
 
 int64_t asSigned(ExpressionInfo::IntegerValue value) {

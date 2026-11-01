@@ -137,7 +137,7 @@ hardware behavior. `—` = no support at that stage.
 | `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
 | `.weak` | D | E | E | Y | Y | C | Existing linkage qualifier |
 | `.blocksareclusters` | G | T | T | — | Y | C / V | Owned zero-argument entry marker; PTX 9.0 modeled availability and required `.reqntid` + `.reqnctapercluster`; launch rules deferred |
-| `.language` | G | T | T | — | Y | C / V | Owned nonempty official string/integer list; PTX 9.3 modeled availability, no backend-language behavior |
+| `.language` | G | T | T | — | Y | C / V | Current raw nonempty official quoted-name/unsigned0..10 list is rechecked by one exported semantic decoder in both APIs, with duplicates/order retained; known PTX <9.3 rejects independently of missing target. No backend-language behavior |
 
 ## Implementation priority
 

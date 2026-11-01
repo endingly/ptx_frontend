@@ -1462,8 +1462,56 @@ bool checkInstalledDebugLocations() {
   return ast && ast.diagnostics.empty() && ir::validateModule(*ast, moved);
 }
 
+/** Call the installed exported decoder and validate independently owned raw language data. */
+bool checkInstalledLanguageDomain() {
+  namespace ir = ptx_frontend::resolved_ir;
+  namespace sem = ptx_frontend::declaration_semantics;
+  if (sem::languageCode("\"pTx\"") != 3u || sem::languageCode("1") != 1u ||
+      sem::languageCode("2") != 2u || sem::languageCode("11") ||
+      sem::languageCode("\"3\"") || sem::languageCode("ptx") ||
+      sem::languageCode(" \"ptx\"") || sem::languageCode("\"\\x70tx\""))
+    return false;
+  std::optional<ir::ResolvedModule> module;
+  {
+    const std::string source =
+        ".version 9.3\n.target sm_80\n.entry language_kernel() "
+        ".language \"PTX\", 1, 0b11U, \"nvvm\", 2 "
+        "{ .reg .u32 r; mov.u32 r, 1; ret; }\n";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return false;
+    auto resolved = ir::resolveAndValidateModule(*ast);
+    if (!resolved)
+      return false;
+    module.emplace(std::move(*resolved));
+  }
+  const std::vector<std::string> expected{"\"PTX\"", "1", "0b11U", "\"nvvm\"",
+                                          "2"};
+  if (module->functions[0].contract.language_values != expected ||
+      !ir::validateModule(*module))
+    return false;
+  auto copied = *module;
+  ir::ResolvedModule assigned;
+  assigned = copied;
+  assigned.functions[0].body[0] = assigned.functions[0].body[0]->clone();
+  if (assigned.functions[0].contract.language_values != expected ||
+      !ir::validateModule(assigned))
+    return false;
+  assigned.functions[0].contract.language_values =
+      std::vector<std::string>{"4", "0x3U"};
+  if (!ir::validateModule(assigned))
+    return false;
+  assigned.functions[0].contract.language_values =
+      std::vector<std::string>{"11"};
+  return !ir::validateModule(assigned) && ir::validateModule(copied) &&
+         ir::validateModule(*module);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledLanguageDomain())
+    return 38;
   if (!checkInstalledDebugLocations())
     return 37;
   if (!checkInstalledDebugSections())

@@ -1378,3 +1378,5 @@ M19 diagnostics/CI/reproducibility infrastructure
 
 只要这两个方向同时成立，1.0 就可以既诚实，又足以承载 SM80、Hopper 和 Blackwell
 frontend consumer。
+
+`.language` 的 source/ordered-redeclaration/current-owned domain 共用现有 semantic header 导出的 `languageCode`；raw list/order 与 source identity 不改，已知 PTX9.3 下限独立检查，非 backend language execution proof。

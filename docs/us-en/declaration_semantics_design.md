@@ -266,3 +266,17 @@ missing-predicate fix. Source validation checks name leaves and AST-free owned
 validation checks actual bound symbol names with the shared character grammar.
 Diagnostic reference spellings do not reconstruct authoritative identity. All
 independent declaration-role, type, ABI and prior-visibility restrictions remain.
+
+The public `declaration_semantics::languageCode(std::string_view)` in
+`ptx_declaration_semantics.hpp` synchronously borrows exactly one original operand
+token and returns `optional<uint64_t>` without retaining the view. It is the one
+decoder used by source item checks, ordered redeclaration compatibility and owned
+function integrity. Quoted names `unknown`, `ptx`, `nvvm`, `cuda c++`, `cuda c++ tile`,
+`tile ir`, `python-cutile`, `fortran`, `optix` map to 0,3,4,5,6,7,8,9,10 and compare
+with deterministic ASCII case folding. Complete unsigned integer tokens 0..10
+(including Reserved 1/2) accept existing radices and U suffixes. There is no trim,
+expression evaluation, quoted-number coercion or unquoted-name alias. Outer
+quotes are removed but inner escape bytes are not decoded into new name aliases;
+this preserves the frontend decoder boundary, not a general PTX escape ban.
+Omitted directive/default `ptx` handling belongs to the caller; an empty token
+returns no code. Raw list order/quotes/case remain owned data, not a decoded cache.

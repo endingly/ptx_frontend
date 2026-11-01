@@ -1576,3 +1576,20 @@ or a decoder. Validation success for nonzero structurally valid section records
 therefore does not certify that actual DWARF information was found. The finite
 debug-off/on boundary tests record this qualification explicitly; full recognition
 and linked/binary authenticity are not claimed.
+
+Current owned `.language` values are context-independent intrinsic data: an
+absent optional denotes omission/default `ptx`; an engaged vector must be nonempty
+and every raw token must satisfy the shared public semantic decoder. Multiple
+values and duplicates retain exact order and spelling. Both module validation
+APIs recheck current values at the owning function range, even without version or
+target; legal supplied source cannot hide invalid current words. Valid current
+name/code/list edits or optional removal do not require historical equality.
+Replacement AST identity remains raw and ordered: changing `"ptx"` to `3` or
+reordering a valid list can still produce the existing source-association
+mismatch, while ordered decoded aliases remain compatible for redeclarations.
+Presence requires PTX 9.3 on all targets; a known old selected/supplied version
+rejects even with no target, and only missing version may defer availability under
+`AvailableContext`. Domain checking never defers; strict context requirements stay
+unchanged. The new decoder is an additive exported semantic function; clients
+must use the matching installed header/library. No payload layout or backend
+language execution guarantee is added.

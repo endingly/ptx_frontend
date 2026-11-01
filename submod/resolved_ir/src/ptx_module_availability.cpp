@@ -2104,6 +2104,15 @@ void check_resource_contracts(const ResolvedFunction& function,
 /** Validate function-only attribute, signature, and ABI suffix invariants. */
 void check_function_contract_integrity(const ResolvedFunction& function,
                                        checker::CheckDiagnostics& diagnostics) {
+  if (function.contract.language_values &&
+      (function.contract.language_values->empty() ||
+       std::ranges::any_of(*function.contract.language_values,
+                           [](const std::string& value) {
+                             return !declaration_semantics::languageCode(value);
+                           })))
+    append_model_mismatch(
+        diagnostics, function.range,
+        "Resolved .language requires a nonempty list of supported raw tokens.");
   bool unified = false;
   for (const auto& attribute : function.contract.attributes) {
     if (attribute.kind == ResolvedFunctionAttributeKind::Managed) {
@@ -3959,6 +3968,19 @@ std::optional<checker::TargetInfo> owned_target_context(
   };
 }
 
+/** A known language-version failure is independent of target completeness. */
+void check_language_availability(const ResolvedFunction& function,
+                                 std::optional<checker::PtxVersion> version,
+                                 checker::CheckDiagnostics& diagnostics) {
+  if (function.contract.language_values && version &&
+      *version < checker::PtxVersion{9, 3})
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = function.range,
+        .message = ".language requires PTX ISA >= 9.3.",
+    });
+}
+
 /** Check function-level availability using only owned source-level metadata. */
 void check_function_contract_availability(
     const ResolvedFunction& function, const checker::TargetInfo& target,
@@ -3991,9 +4013,6 @@ void check_function_contract_availability(
   if (function.contract.blocks_are_clusters)
     append_requirement(diagnostics, availability({9, 0}, 90, "cluster"), target,
                        function.range, ".blocksareclusters");
-  if (function.contract.language_values)
-    append_requirement(diagnostics, availability({9, 3}), target,
-                       function.range, ".language");
   for (const auto& resource : function.contract.resources)
     append_requirement(diagnostics, resource_availability(resource.kind),
                        target, resource.range, resource_name(resource.kind));
@@ -4236,6 +4255,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       PrototypeAvailabilityKeys emitted;
       check_prototype_availability(function, region->version, profile, emitted,
                                    diagnostics);
+      check_language_availability(function, region->version, diagnostics);
       const auto target =
           owned_target_context(*region, diagnostics, function.range);
       if (target) {
@@ -4454,6 +4474,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       PrototypeAvailabilityKeys emitted;
       check_prototype_availability(*owned, version, active_profile, emitted,
                                    diagnostics);
+      check_language_availability(*owned, version, diagnostics);
       check_body_directives(function->body, version, active_profile,
                             active_target, emitted, diagnostics);
       if (!active_target)
@@ -4466,9 +4487,6 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
         append_requirement(diagnostics, availability({9, 0}, 90, "cluster"),
                            *active_target, function->blocks_are_clusters->range,
                            ".blocksareclusters");
-      if (function->language)
-        append_requirement(diagnostics, availability({9, 3}), *active_target,
-                           function->language->range, ".language");
       for (const auto& resource : function->resources)
         append_requirement(diagnostics, resource_availability(resource.kind),
                            *active_target, resource.range,

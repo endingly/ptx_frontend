@@ -128,7 +128,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.visible` | D | E | E | Y | Y | C | 既有 linkage qualifier |
 | `.weak` | D | E | E | Y | Y | C | 既有 linkage qualifier |
 | `.blocksareclusters` | G | T | T | — | Y | C / V | owned 零参数 entry marker；PTX 9.0 modeled availability，且要求 `.reqntid` + `.reqnctapercluster`；launch rule deferred |
-| `.language` | G | T | T | — | Y | C / V | owned 非空 official string/integer list；PTX 9.3 modeled availability，不实现 backend-language behavior |
+| `.language` | G | T | T | — | Y | C / V | 两种 API 以统一 exported semantic decoder 重查 current raw 非空 official quoted-name/unsigned0..10 list，保留重复及顺序；已知 PTX <9.3 不因 target 缺失而推迟。无 backend-language behavior |
 
 ## 实现优先级
 

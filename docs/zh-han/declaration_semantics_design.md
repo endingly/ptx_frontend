@@ -212,3 +212,15 @@ region；已知 legacy context 不应用该下限，缺失 context 在 partial c
 validation 检查 name leaf，AST-free owned validation 通过共享字符 grammar 检查
 actual bound symbol name；diagnostic reference spelling 不重建权威 identity。
 独立的声明 role、type、ABI 与先行 visibility 限制保持不变。
+
+现有 `ptx_declaration_semantics.hpp` 的公共
+`declaration_semantics::languageCode(std::string_view)` 同步借用一个原始 operand token，
+返回 `optional<uint64_t>` 且不保留 view。source item 检查、ordered redeclaration
+compatibility 与 owned function integrity 统一调用该 decoder。quoted name
+`unknown`、`ptx`、`nvvm`、`cuda c++`、`cuda c++ tile`、`tile ir`、`python-cutile`、
+`fortran`、`optix` 分别映射 0、3、4、5、6、7、8、9、10，以确定性 ASCII folding 比较。
+完整 unsigned integer token 0..10（含 Reserved 1/2）支持既有 radix 与 U suffix。
+不 trim、求值 expression、将 quoted number 转为 code 或接受 unquoted name alias。
+只移除外层 quote，不解码 inner escape bytes 来扩展名称 alias；这是 frontend decoder
+边界，不是一般 PTX escape 禁令。directive 省略/default `ptx` 由 caller 处理，empty
+token 返回无 code。raw list 的顺序、quote 与 case 仍作为 owned data 保存，不新增 decoded cache。

@@ -2801,10 +2801,22 @@ void check_debug_file_availability(
   }
 }
 
+/** Check the raw unsigned size leaf independently of version and target context. */
+void check_debug_file_sizes(
+    std::span<const binding::DebugFileDeclaration> files,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& file : files)
+    if (file.file_size && !base::parseIntegerMagnitude(file.file_size->text))
+      append_model_mismatch(
+          diagnostics, file.file_size->range,
+          ".file file size must be a single unsigned 64-bit integer.");
+}
+
 /** Rejoin retained debug declarations and references without needing source text. */
 void check_debug_files(const ResolvedModule& module,
                        checker::CheckDiagnostics& diagnostics) {
   const auto& table = module.symbols;
+  check_debug_file_sizes(table.debugFiles(), diagnostics);
   std::unordered_map<uint64_t, const binding::DebugFileDeclaration*> first;
   std::vector<bool> covered(table.symbols().size());
   const auto report = [&](SourceRange range, std::string message) {
@@ -4312,6 +4324,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   auto current_references =
       detail::check_debug_section_references(module.sections, module.symbols);
   const auto replacement_binding = binding::bindSymbols(ast);
+  check_debug_file_sizes(replacement_binding.table.debugFiles(), diagnostics);
   auto location_errors =
       detail::check_debug_locations(module.symbols, module, std::nullopt);
   auto replacement_locations =

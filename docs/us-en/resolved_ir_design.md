@@ -449,6 +449,18 @@ the original. Bound `.debug_str` identities also validate `.loc` metadata, but
 `.file`, `.loc`, `.section`, and `.pragma` add no executable Resolved IR nodes or
 instruction attachment.
 
+A present `file_size` is one checked unsigned64 integer token, including zero
+(unavailable) and UINT64_MAX. Decimal, leading-zero octal, binary, hexadecimal and
+optional `u`/`U` suffixes use the existing checked integer-magnitude decoder;
+overflow, signs, floating values, expressions and noninteger leaves reject without
+truncation. Its raw text/range and absence remain owned; no decoded-size cache is
+added. Current symbol-table sizes and supplied/rebound sizes are checked
+independently before optional context gates. Invalid current data cannot be
+masked by valid replacement metadata, while independently valid different `.file`
+datasets retain debug-neutral source identity. Timestamp's separate `time_t`
+domain and existing index, filename, optional-pair, range and reference rules are
+unchanged.
+
 Explicit `.file` timestamp/file-size metadata (including `0, 0`) requires PTX ISA
 3.2 or later; plain `.file` has no such gate. This presence-based check has no SM
 or debug-option requirement and rejects a known older version even without a

@@ -112,7 +112,7 @@ hardware behavior. `—` = no support at that stage.
 | `.entry` | D | E | E | Y | Y | C | Existing function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | Entry-only, zero arguments, PTX 7.8 modeled availability; target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; every repeated normalized ID diagnoses; owned source-ordered payloads; overflow diagnoses; explicit numeric metadata requires PTX >= 3.2 (missing version defers under `AvailableContext`; replacement AST supplies version/metadata) |
+| `.file` | D | T | T | Y | — | C | Decimal/octal/hex uint64 identity; every repeated normalized ID diagnoses; owned source-ordered payloads; file_size is a checked single unsigned64 word (0 through UINT64_MAX) in current and independently supplied data; timestamp domain unchanged; explicit numeric metadata requires PTX >= 3.2 (missing version defers under `AvailableContext`; replacement AST supplies version/metadata) |
 | `.func` | D | E | E | Y | Y | C | Existing function node |
 | `.global` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.local` | D | E | E | Y | Y | C | Existing variable declaration |

@@ -373,6 +373,15 @@ Syntax AST/symbol table 保存，不复制成未解析的 Resolved IR 字符串�
 也验证 `.loc` metadata；`.file`、`.loc`、`.section` 与 `.pragma` 不产生可执行 Resolved IR node，
 也不附着到 instruction。
 
+存在的 `file_size` 是经过检查的 unsigned64 单个整数 token，包括零（unavailable）与
+UINT64_MAX。Decimal、前导零 octal、binary、hexadecimal 及可选 `u`/`U` suffix 复用
+既有 checked integer-magnitude decoder；overflow、符号、浮点值、表达式与非整数叶
+均拒绝，不做截断。仍拥有原始 text/range 与缺省状态，不增加 decoded-size cache。
+Current symbol table 与 supplied/rebound 的 size 在可选 context 门槛之前独立检查；
+合法 replacement metadata 不能遮蔽非法 current data，而各自合法但不同的 `.file`
+dataset 仍保持 debug-neutral source identity。Timestamp 独立的 `time_t` domain，以及
+既有 index、filename、optional-pair、range 与 reference 规则均不变。
+
 显式 `.file` timestamp/file-size metadata（包括 `0, 0`）要求 PTX ISA 3.2 或更高版本；
 普通 `.file` 不受此门槛限制。此检查基于可选字段是否存在，不要求 SM 或 debug option，
 即使没有可识别 target，已知的旧版本也会被拒绝。`AvailableContext` 在 version 缺失时延后检查；

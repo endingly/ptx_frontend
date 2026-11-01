@@ -103,7 +103,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.entry` | D | E | E | Y | Y | C | 既有 function node |
 | `.explicitcluster` | D | T | T | — | Y | C / V | entry-only、零参数、PTX 7.8 modeled availability；target launch feasibility deferred |
 | `.extern` | D | E | E | Y | Y | C | 既有 linkage qualifier |
-| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；overflow 诊断；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
+| `.file` | D | T | T | Y | — | C | decimal/octal/hex uint64 identity；重复的规范化 ID 一律诊断；按源码顺序拥有 payload；file_size 在 current 与独立 supplied data 中检查完整 unsigned64 单叶（0 至 UINT64_MAX）；timestamp domain 不变；显式数值 metadata 要求 PTX >= 3.2（缺失 version 时 `AvailableContext` 延后检查；replacement AST 提供 version/metadata） |
 | `.func` | D | E | E | Y | Y | C | 既有 function node |
 | `.global` | D | E | E | Y | Y | C | 既有 variable declaration |
 | `.local` | D | E | E | Y | Y | C | 既有 variable declaration |

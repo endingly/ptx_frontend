@@ -59,6 +59,12 @@ integer or bit type is preserved; both widths are accepted with either
 `.local`, or `.shared`; omission denotes generic space. Omitted pointee alignment
 defaults to four bytes. Parameter storage alignment and pointee alignment are
 different fields. No host pointer width or launch-address policy is inferred.
+The PTX 2.2 pointer introduction is checked from current owned entry-input
+metadata even when target context is missing. A known older version rejects;
+an unknown version defers under available-context validation and still requires
+context under strict validation. Source-aware validation uses the supplied
+source version, while AST-free validation uses the selected owned source region.
+This does not equate the declared pointer container width with address size.
 Canonical function signatures compare effective alignments: omitted natural
 alignment and an explicit equal value are compatible. Declaration metadata still
 retains the explicit-alignment distinction. Direct and metadata-backed indirect

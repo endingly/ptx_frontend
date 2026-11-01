@@ -1593,3 +1593,12 @@ rejects even with no target, and only missing version may defer availability und
 unchanged. The new decoder is an additive exported semantic function; clients
 must use the matching installed header/library. No payload layout or backend
 language execution guarantee is added.
+
+Owned entry-input `.ptr` availability is derived from the existing parameter
+record and checked against PTX 2.2 before requiring complete target context.
+A coherent version retarget updates the selected region and function metadata;
+copies and instruction clones preserve the same check after AST destruction.
+Source-aware validation instead applies its supplied effective version to current
+pointer presence, without treating the historical cached version as a veto.
+Existing pointer type, shape, alignment and pointee-space checks remain separate;
+the availability diagnostic uses the established function-range fallback.

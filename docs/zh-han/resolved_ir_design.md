@@ -1283,3 +1283,10 @@ redeclaration 则继续比较 ordered decoded aliases。presence 要求 PTX 9.3�
 才可在 `AvailableContext` 下推迟 availability。domain 从不推迟，strict context 要求不变。
 新 decoder 是 additive exported semantic function，client 须使用匹配的 installed
 header/library；不增加 payload layout 或 backend language execution 保证。
+
+Owned entry-input `.ptr` 的可用性从既有 parameter record 推导，在要求完整 target
+context 前先检查 PTX 2.2 门槛。Coherent 版本 retarget 同时更新所选 region 与 function
+metadata；AST 销毁后的 copy 与 instruction clone 仍执行同一检查。带源码验证则将
+supplied effective version 应用于当前 pointer presence，不把历史缓存版本作为否决条件。
+既有 pointer type、shape、alignment 与 pointee-space 检查保持独立；可用性诊断采用
+既有 function-range fallback。

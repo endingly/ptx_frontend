@@ -51,6 +51,10 @@ Frontend 不会从 ABI 关于 1、2、4、8 或 16 字节倍数的表述推断�
 Pointed state space 可为 `.const`、`.global`、`.local` 或 `.shared`，省略时表示 generic。
 Pointee alignment 省略时默认为四字节。Parameter storage alignment 与 pointee alignment
 是不同字段，不推断 host pointer width 或 launch address policy。
+PTX 2.2 的 pointer 引入门槛从当前 owned entry-input metadata 检查，即使缺少 target
+context 也不会跳过已知旧版本的拒绝。未知版本在 available-context 验证中延后，
+strict 验证仍要求完整 context。带源码验证采用 supplied source version，AST-free 验证
+采用所选 owned source region 的版本；这不会把 pointer container 宽度与 address size 等同。
 Canonical function signature 比较有效 alignment：省略的自然对齐与显式指定的同值对齐
 兼容；声明 metadata 仍保留是否显式指定的区别。Direct 与基于 metadata 的 indirect array
 call 使用相同的自然对齐默认值。

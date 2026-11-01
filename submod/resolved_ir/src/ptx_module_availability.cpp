@@ -3981,6 +3981,26 @@ void check_language_availability(const ResolvedFunction& function,
     });
 }
 
+/** A known entry-pointer introduction failure does not require target context. */
+void check_entry_pointer_availability(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  if (!version || *version >= checker::PtxVersion{2, 2})
+    return;
+  if (std::ranges::any_of(function.parameter_declarations,
+                          [](const ResolvedParameterDeclaration& parameter) {
+                            return parameter.role ==
+                                       ParameterDeclarationRole::EntryInput &&
+                                   parameter.pointer.has_value();
+                          }))
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
+        .range = function.range,
+        .message = ".ptr entry parameter requires PTX ISA >= 2.2.",
+    });
+}
+
 /** Check function-level availability using only owned source-level metadata. */
 void check_function_contract_availability(
     const ResolvedFunction& function, const checker::TargetInfo& target,
@@ -4256,6 +4276,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
       check_prototype_availability(function, region->version, profile, emitted,
                                    diagnostics);
       check_language_availability(function, region->version, diagnostics);
+      check_entry_pointer_availability(function, region->version, diagnostics);
       const auto target =
           owned_target_context(*region, diagnostics, function.range);
       if (target) {
@@ -4475,6 +4496,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
       check_prototype_availability(*owned, version, active_profile, emitted,
                                    diagnostics);
       check_language_availability(*owned, version, diagnostics);
+      check_entry_pointer_availability(*owned, version, diagnostics);
       check_body_directives(function->body, version, active_profile,
                             active_target, emitted, diagnostics);
       if (!active_target)

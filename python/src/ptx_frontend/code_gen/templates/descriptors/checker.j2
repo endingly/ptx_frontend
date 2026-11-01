@@ -3,7 +3,7 @@
               .value_kind = {{ model.value_kind }},
 {% for member in model.members %}              .{{ member.name }} = {{ member.expression }},
 {% endfor %}{% if model.availability is not none %}              .availability = {{ availability(model.availability) }},
-{% endif %}
+{% endif %}              .parameter_qualifier = {{ model.parameter_qualifier }},
           }{% endmacro %}{% macro value_availabilities(model) %}  static constexpr std::array<checker::ModifierValueAvailabilityDescriptor, {{ model.value_availabilities|length }}>
       {{ model.name }}_modifier_value_availabilities = {
 {% for value in model.value_availabilities %}{{ modifier_value(value) }}{% if not loop.last %},

@@ -1115,6 +1115,9 @@ struct ModifierValueAvailabilityDescriptor {
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
   AvailabilityDescriptor availability;
+  /** Exact Parameter identity; other memory spaces require Default. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 /** One target-independent semantic modifier value admitted by a variant. */
 struct ModifierValueDomainDescriptor {
@@ -1150,6 +1153,9 @@ struct ModifierValueDomainDescriptor {
   VideoType video_type = VideoType::S32;
   AsyncProxyKind async_proxy_kind = AsyncProxyKind::Async;
   ProxyKindPair proxy_kind_pair = ProxyKindPair::TensormapToGeneric;
+  /** Exact Parameter identity; other memory spaces require Default. */
+  ParameterAddressQualifier parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 struct ModifierValueView {
   std::string_view kind_id;
@@ -1189,6 +1195,9 @@ struct ModifierValueView {
    * so that existing positional aggregate initializers keep compiling.
    */
   ModifierSlotTag slot;
+  /** Current same-modifier identity; nullopt denotes an inconsistent projection. */
+  std::optional<ParameterAddressQualifier> parameter_qualifier =
+      ParameterAddressQualifier::Default;
 };
 struct VariantDescriptor {
   std::string_view variant_name;

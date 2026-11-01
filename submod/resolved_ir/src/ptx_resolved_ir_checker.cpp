@@ -465,6 +465,55 @@ concept ModifierValueDescriptor =
     std::same_as<std::remove_cvref_t<Descriptor>,
                  ModifierValueDomainDescriptor>;
 
+/** Validate active memory identity without inspecting unrelated payload members. */
+bool valid_memory_identity(
+    MemoryStateSpace space,
+    std::optional<ParameterAddressQualifier> qualifier) noexcept {
+  switch (space) {
+    case MemoryStateSpace::Generic:
+    case MemoryStateSpace::Global:
+    case MemoryStateSpace::Shared:
+    case MemoryStateSpace::Local:
+    case MemoryStateSpace::Constant:
+      return qualifier == ParameterAddressQualifier::Default;
+    case MemoryStateSpace::Parameter:
+      return qualifier == ParameterAddressQualifier::Default ||
+             qualifier == ParameterAddressQualifier::Entry ||
+             qualifier == ParameterAddressQualifier::Function;
+    default:
+      return false;
+  }
+}
+
+/** Reject malformed participating metadata even when it cannot match a row. */
+template <ModifierValueDescriptor Descriptor>
+bool valid_modifier_memory_identity(const Descriptor& descriptor,
+                                    const ModifierValueView& actual) noexcept {
+  return (actual.value_kind != ModifierValueKind::MemoryStateSpace ||
+          valid_memory_identity(actual.memory_state_space,
+                                actual.parameter_qualifier)) &&
+         (descriptor.value_kind != ModifierValueKind::MemoryStateSpace ||
+          valid_memory_identity(descriptor.memory_state_space,
+                                descriptor.parameter_qualifier));
+}
+
+/** Unknown current projections are invalid even if no descriptors are provided. */
+bool valid_modifier_memory_identity(const ModifierValueView& actual) noexcept {
+  return actual.value_kind != ModifierValueKind::MemoryStateSpace ||
+         valid_memory_identity(actual.memory_state_space,
+                               actual.parameter_qualifier);
+}
+
+/** Known qualified Parameter identities are present independently of locations. */
+bool modifier_is_present(const ModifierValueView& actual) noexcept {
+  return actual.is_present ||
+         (actual.value_kind == ModifierValueKind::MemoryStateSpace &&
+          actual.memory_state_space == MemoryStateSpace::Parameter &&
+          actual.parameter_qualifier &&
+          (*actual.parameter_qualifier == ParameterAddressQualifier::Entry ||
+           *actual.parameter_qualifier == ParameterAddressQualifier::Function));
+}
+
 /** Compare one generated typed modifier value with a projected resolved value. */
 template <ModifierValueDescriptor Descriptor>
 bool matches_modifier_value(const Descriptor& descriptor,
@@ -495,7 +544,8 @@ bool matches_modifier_value(const Descriptor& descriptor,
     case ModifierValueKind::VectorArity:
       return descriptor.vector_arity == actual.vector_arity;
     case ModifierValueKind::MemoryStateSpace:
-      return descriptor.memory_state_space == actual.memory_state_space;
+      return descriptor.memory_state_space == actual.memory_state_space &&
+             descriptor.parameter_qualifier == actual.parameter_qualifier;
     case ModifierValueKind::MemoryConsistency:
       return descriptor.memory_consistency == actual.memory_consistency;
     case ModifierValueKind::MemoryScope:
@@ -2470,7 +2520,7 @@ CheckResult check_operand_layout_modifiers(
 
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
-    if (!actual.is_present)
+    if (!modifier_is_present(actual))
       continue;
     if (!std::ranges::contains(layout.forbidden_modifiers, actual.slot))
       continue;
@@ -2565,7 +2615,21 @@ CheckResult check_modifier_value_availability(
     std::span<const ModifierValueView> actual_values, const Context& context) {
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
-    if (!actual.is_present)
+    if (!valid_modifier_memory_identity(actual) ||
+        std::ranges::any_of(descriptors, [&actual](const auto& entry) {
+          return entry.kind_id == actual.kind_id &&
+                 !valid_modifier_memory_identity(entry, actual);
+        })) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = diagnostic_range(actual.locations, context),
+          .message = fmt::format(
+              "Modifier '{}' has an invalid memory identity.", actual.kind_id),
+      });
+      continue;
+    }
+
+    if (!modifier_is_present(actual))
       continue;
 
     const auto it = std::ranges::find_if(
@@ -2634,6 +2698,20 @@ CheckResult check_modifier_value_domain(
     std::span<const ModifierValueView> actual_values, const Context& context) {
   CheckDiagnostics diagnostics;
   for (const ModifierValueView& actual : actual_values) {
+    if (!valid_modifier_memory_identity(actual) ||
+        std::ranges::any_of(descriptors, [&actual](const auto& entry) {
+          return entry.kind_id == actual.kind_id &&
+                 !valid_modifier_memory_identity(entry, actual);
+        })) {
+      diagnostics.push_back(CheckDiagnostic{
+          .kind = CheckDiagnosticKind::ModifierValueDomainMismatch,
+          .range = diagnostic_range(actual.locations, context),
+          .message = fmt::format(
+              "Modifier '{}' has an invalid memory identity.", actual.kind_id),
+      });
+      continue;
+    }
+
     const auto it = std::ranges::find_if(
         descriptors, [&actual](const ModifierValueDomainDescriptor& entry) {
           return matches_modifier_value(entry, actual);

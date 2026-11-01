@@ -18,6 +18,7 @@ from ptx_frontend.ir.resolved_ir import (
 from ptx_frontend.code_gen.resolved_value_traits import (
     modifier_descriptor_default_members,
     modifier_value_cpp_expr,
+    parameter_qualifier_cpp_expr,
 )
 
 
@@ -37,6 +38,7 @@ class CheckerModifierValueModel:
     value_kind: str
     members: tuple[CheckerModifierMemberModel, ...]
     availability: AvailabilityModel | None
+    parameter_qualifier: str
 
 @dataclass(frozen=True)
 class CheckerLayoutModel:
@@ -213,7 +215,8 @@ def _build_modifier_value(entry: ResolvedModifierValueAvailability | ResolvedMod
         else "checker::ModifierValueDomainDescriptor", entry.source_kind_id,
         cpp_value(CppDomain.CHECKER_MODIFIER_VALUE_KINDS, entry.value_kind.value, backend=backend),
         tuple(CheckerModifierMemberModel(name, selected_value if kind is entry.value_kind else defaults[kind])
-              for name, kind in members), availability)
+              for name, kind in members), availability,
+        parameter_qualifier_cpp_expr(entry.value_kind, entry.value))
 
 
 def _build_variant(instruction: ResolvedInstruction, variant: ResolvedVariant, backend: CodegenUnit,

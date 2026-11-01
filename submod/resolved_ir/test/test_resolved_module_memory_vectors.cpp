@@ -1324,9 +1324,7 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
   EXPECT_EQ(kernel_explicit.address.value.enclosing_function_kind,
             EnclosingFunctionKind::Entry);
   const auto old_kernel_load = kernel_load.check(old_context);
-  ASSERT_FALSE(old_kernel_load.has_value());
-  EXPECT_EQ(old_kernel_load.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  ASSERT_TRUE(old_kernel_load.has_value());
   EXPECT_TRUE(kernel_load.check(supported_context).has_value());
 
   const auto& syntax_device = std::get<syntax_ast::AstFunction>(ast.items[2]);
@@ -1345,17 +1343,15 @@ TEST(ResolvedModule, ChecksExplicitParameterAddressSemantics) {
       std::get<ResolvedSymbolRef>(device_explicit.address.value.base);
   EXPECT_FALSE(input_symbol.address_availability.has_value());
 
-  const auto expect_old_target = [&](const auto& instruction) {
+  const auto expect_plain_target = [&](const auto& instruction) {
     const auto checked = instruction.check(old_context);
-    ASSERT_FALSE(checked.has_value());
-    EXPECT_EQ(checked.error()[0].kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    ASSERT_TRUE(checked.has_value());
     EXPECT_TRUE(instruction.check(supported_context).has_value());
   };
-  expect_old_target(device_load);
-  expect_old_target(*resolved->functions[1].body[1]);
-  expect_old_target(*resolved->functions[1].body[2]);
-  expect_old_target(*resolved->functions[1].body[3]);
+  expect_plain_target(device_load);
+  expect_plain_target(*resolved->functions[1].body[1]);
+  expect_plain_target(*resolved->functions[1].body[2]);
+  expect_plain_target(*resolved->functions[1].body[3]);
 
   const auto expect_direction_mismatch = [&](const auto& instruction) {
     const auto checked = instruction.check(supported_context);
@@ -1401,18 +1397,25 @@ TEST(ResolvedModule, ChecksStandaloneExplicitParameterAvailability) {
       .target = {.ptx_version = {8, 2}, .sm_version = 70},
   };
   const auto old_load = resolved_load.check(old_context);
-  ASSERT_FALSE(old_load.has_value());
-  EXPECT_EQ(old_load.error().front().kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  ASSERT_TRUE(old_load.has_value());
   const auto old_store = resolved_store.check(old_context);
-  ASSERT_FALSE(old_store.has_value());
-  EXPECT_EQ(old_store.error()[0].kind,
-            checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+  ASSERT_TRUE(old_store.has_value());
 
   auto supported_context = old_context;
   supported_context.target = {.ptx_version = {8, 3}, .sm_version = 70};
   EXPECT_TRUE(resolved_load.check(supported_context).has_value());
   EXPECT_TRUE(resolved_store.check(supported_context).has_value());
+  // Qualified identities retain the canonical 8.3 floor independently of plain param.
+  for (const auto source :
+       {"ld.param::entry.u32 %r0, [%rd0];", "ld.param::func.u32 %r0, [%rd0];",
+        "st.param::func.u32 [%rd0], %r0;"}) {
+    const auto qualified = resolve_standalone(source);
+    const auto unavailable = qualified->check(old_context);
+    ASSERT_FALSE(unavailable);
+    EXPECT_EQ(unavailable.error().front().kind,
+              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    EXPECT_TRUE(qualified->check(supported_context));
+  }
 }
 
 TEST(ResolvedModule, RejectsNarrowStoreSourceRegisterType) {
@@ -2166,9 +2169,11 @@ TEST(ResolvedModule, ResolvesAndChecksLocalCallParameterAddresses) {
   };
   const auto expect_availability = [&](const auto& instruction) {
     const auto checked = instruction.check(old_context);
-    ASSERT_FALSE(checked.has_value());
-    EXPECT_EQ(checked.error()[0].kind,
-              checker::CheckDiagnosticKind::UnsupportedPtxVersion);
+    ASSERT_TRUE(checked.has_value());
+    EXPECT_TRUE(instruction.check(checker::Context{
+        .target = {.ptx_version = {2, 0}, .sm_version = 20},
+        .instruction_range = ast.range,
+    }));
     EXPECT_TRUE(instruction.check(supported_context).has_value());
   };
   expect_availability(store);

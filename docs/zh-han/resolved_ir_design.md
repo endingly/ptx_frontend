@@ -1345,3 +1345,21 @@ metadata；AST 销毁后的 copy 与 instruction clone 仍执行同一检查。�
 supplied effective version 应用于当前 pointer presence，不把历史缓存版本作为否决条件。
 既有 pointer type、shape、alignment 与 pointee-space 检查保持独立；可用性诊断采用
 既有 function-range fallback。
+
+Parameter modifier metadata 使用精确的 typed identity
+`(MemoryStateSpace::Parameter, ParameterAddressQualifier)`。domain 与
+availability descriptor 追加默认值为 `Default` 的 `parameter_qualifier`；
+`ModifierValueView` 追加默认 engaged `Default` 的 optional 成员。
+原有 positional aggregate initializer 的含义保持不变，但公共布局的 ABI
+发生变化，consumer 必须使用匹配的头文件和库重新构建。未知投影
+（`nullopt`）、无效 enum 或带 qualifier 的非 Parameter space 均独立于 target
+和拼写 presence 被拒绝。非默认 Parameter qualifier 在清空 location 后仍具有
+语义 presence，因此普通 Parameter 不会命中 8.3 的 qualified availability row。
+
+生成的 view 读取与同一 normalized modifier binding 关联的当前直接 address，
+或选中的直接 symbol；嵌套 symbol 的默认值不构成第二份 written qualifier。
+固定形式使用唯一 canonical identity，register alternative 不需要虚构 qualifier
+payload。关联的真实 written qualifier 必须一致。现有 typed parameter-address
+preservation policy 可从固定普通 modifier 派生 Entry frame qualifier；该 frame
+事实单独验证，不改变固定 modifier identity。既有 frame、readonly、declaration、
+source identity 以及 Shared/atomic qualifier guard 继续生效。

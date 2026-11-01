@@ -66,6 +66,7 @@
                   .is_present = {{ model.is_present }},
                   .locations = {{ model.locations }},
                   .slot = ModifierSlotTag{{ "{" }}{{ model.slot_index }}},
+                  .parameter_qualifier = {{ model.parameter_qualifier }},
               }{% endif -%}
 {% endmacro %}
 {% macro operand_view(model) -%}

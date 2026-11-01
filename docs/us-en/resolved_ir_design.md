@@ -1672,3 +1672,24 @@ Source-aware validation instead applies its supplied effective version to curren
 pointer presence, without treating the historical cached version as a veto.
 Existing pointer type, shape, alignment and pointee-space checks remain separate;
 the availability diagnostic uses the established function-range fallback.
+
+Parameter modifier metadata uses the exact typed identity
+`(MemoryStateSpace::Parameter, ParameterAddressQualifier)`. The domain and
+availability descriptors append a `parameter_qualifier` member defaulting to
+`Default`; `ModifierValueView` appends an optional member with an engaged
+`Default`. Existing positional aggregate initializers keep their meaning, but
+these public layouts change ABI: rebuild consumers with matching headers and
+libraries. An unknown projection (`nullopt`), invalid enum, or qualified
+non-Parameter space rejects independently of target and spelling presence.
+A non-default Parameter qualifier is semantically present even after locations
+are cleared. Plain Parameter therefore cannot select an 8.3 qualified row.
+
+Generated views use the current direct address or selected direct symbol tied
+to the same normalized modifier binding. Nested symbol defaults do not supply
+a second written qualifier. Fixed forms use their unique canonical identity;
+register alternatives need no qualifier payload. Associated faithful written
+qualifiers must agree. The existing typed parameter-address preservation policy
+can derive an Entry frame qualifier from a fixed plain modifier; that frame
+fact is validated separately and does not change the fixed modifier identity.
+Existing frame, readonly, declaration, source identity, and Shared/atomic
+qualifier guards continue to apply.

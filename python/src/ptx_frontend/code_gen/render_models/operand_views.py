@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ptx_frontend.code_gen.cpp_backend import CppDomain, cpp_default, cpp_value
-from ptx_frontend.code_gen.resolved_value_traits import modifier_default_cpp_expr, modifier_descriptor_members
+from ptx_frontend.code_gen.resolved_value_traits import modifier_default_cpp_expr, modifier_descriptor_members, parameter_qualifier_cpp_expr
 from ptx_frontend.ir.resolved_ir import (
     ResolvedField, ResolvedFieldOrigin, ResolvedFieldStorage,
     ResolvedModifierDefault, ResolvedVariant, ResolvedValueKind,
@@ -95,6 +95,7 @@ class ModifierValueViewModel:
     is_present: str
     locations: str
     slot_index: int
+    parameter_qualifier: str
     structure: Literal["modifier_value_view"] = "modifier_value_view"
 
 
@@ -643,6 +644,64 @@ def _modifier_default_cpp_value(
     )
 
 
+def _parameter_qualifier_projection(
+    variant: ResolvedVariant, field: ResolvedField, backend: CodegenUnit,
+) -> str:
+    """Project only current payloads associated with this exact modifier binding.
+
+    Fixed facts need no payload. Dynamic Parameter domains require a bound
+    address. Every participating direct address/symbol fact must agree.
+    """
+
+    from ptx_frontend.code_gen.resolved_layout import operand_slots, operand_slot_for_field
+
+    default = "ParameterAddressQualifier::Default"
+    if field.value_kind is not ResolvedValueKind.MEMORY_STATE_SPACE:
+        return default
+    values = [d.value for d in variant.modifier_value_domains
+              if d.source_kind_id == field.source_name]
+    if not any(isinstance(v, str) and v.startswith("param") for v in values):
+        return default
+    fixed = field.storage is ResolvedFieldStorage.STATIC_CONSTANT
+    initial = parameter_qualifier_cpp_expr(field.value_kind, field.constant_value) if fixed else "std::nullopt"
+    statements = [f"std::optional<ParameterAddressQualifier> qualifier = {initial};"]
+    slots = operand_slots(variant, backend)
+    associated = set()
+    for layout in variant.operand_layouts:
+        for binding in layout.bindings:
+            if binding.state_space_modifier_field_id != field.name:
+                continue
+            operand = next(f for f in layout.fields if f.name == binding.target_field_id)
+            slot = operand_slot_for_field(slots, operand, backend)
+            if slot.optional:
+                raise ValueError(f"{variant.variant_id}: uncovered optional Parameter association")
+            frame_derived = (fixed and field.constant_value == "param"
+                             and binding.preserve_parameter_address_space
+                             and binding.parameter_constraint is not None
+                             and binding.parameter_constraint.direction == "input")
+            associated.add((slot.member_name, operand.value_kind, frame_derived))
+    if not fixed and not associated:
+        raise ValueError(f"{variant.variant_id}: missing required Parameter association")
+    for name, kind, frame_derived in sorted(associated, key=lambda item: item[0]):
+        member = f"selected.{name}.value"
+        if kind is ResolvedValueKind.ADDRESS:
+            facts = [(f"{member}.parameter_qualifier", None)]
+        elif kind is ResolvedValueKind.MOV_SOURCE and fixed:
+            facts = [("fact->parameter_qualifier", f"std::get_if<{t}>(&{member})")
+                     for t in ("ResolvedAddress", "ResolvedSymbolRef")]
+        else:
+            raise ValueError(f"{variant.variant_id}: uncovered Parameter association {kind}")
+        for fact, guard in facts:
+            body = (f"if ({fact} != ParameterAddressQualifier::Default && "
+                    f"{fact} != ParameterAddressQualifier::Entry && "
+                    f"{fact} != ParameterAddressQualifier::Function) return std::nullopt;")
+            if not frame_derived:
+                body += f" if (qualifier && *qualifier != {fact}) return std::nullopt; qualifier = {fact};"
+            statements.append(f"if (const auto* fact = {guard}) {{ {body} }}" if guard else body)
+    statements.append("return qualifier;")
+    return "[&]() -> std::optional<ParameterAddressQualifier> { " + " ".join(statements) + " }()"
+
+
 def build_check_modifier_value_view(
     variant: ResolvedVariant,
     field: ResolvedField,
@@ -727,6 +786,7 @@ def build_check_modifier_value_view(
         is_present=is_present,
         locations=locations,
         slot_index=slot_index,
+        parameter_qualifier=_parameter_qualifier_projection(variant, field, backend),
     )
 
 

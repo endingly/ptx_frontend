@@ -139,7 +139,7 @@ TEST(ModuleStrictInvariants, TargetItemsAreClassifiedAtEveryBoundary) {
   }
   auto module = resolve_owned_fixture(
       ".version 9.3\n.target sm_12, texmode_independent, debug, "
-      "map_f64_to_f32\n");
+      "map_f64_to_f32\n.section .debug_info {.b8 0}\n");
   ASSERT_TRUE(module);
   EXPECT_TRUE(validateModule(*module));
   for (const auto option : {"bogus", "sm_90"}) {

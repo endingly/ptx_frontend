@@ -109,7 +109,7 @@ class TensorIm2colInfoTests(unittest.TestCase):
             with self.subTest(rank=rank):
                 self.assertEqual(
                     availability(f"cp_async_bulk_tensor_{rank}d_shared_cluster_im2col_w"),
-                    wider,
+                    {"any_of": wider["any_of"][:2]},
                 )
         for name in (
             "cp_async_bulk_tensor_3d_shared_cta_im2col_w128",

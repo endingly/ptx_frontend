@@ -6711,7 +6711,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -6734,7 +6734,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7325,7 +7325,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7357,7 +7357,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7550,7 +7550,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7582,7 +7582,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7775,7 +7775,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -7807,7 +7807,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8718,7 +8718,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -8742,7 +8742,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.tile::gather4.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9031,7 +9031,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9065,7 +9065,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9277,7 +9277,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9311,7 +9311,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9523,7 +9523,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9557,7 +9557,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9801,7 +9801,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -9825,7 +9825,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10437,7 +10437,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10470,7 +10470,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10668,7 +10668,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10701,7 +10701,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10899,7 +10899,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -10932,7 +10932,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11876,7 +11876,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -11903,7 +11903,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.2d.shared::cluster.global.tile::gather4.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::1 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], %mask;", valid: true}
       - name: cp_async_bulk_tensor_2d_shared_cluster_tile_gather4_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12219,7 +12219,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12256,7 +12256,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.3d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_3d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12483,7 +12483,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12520,7 +12520,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.4d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_4d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12747,7 +12747,7 @@ instructions:
 
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cta_group
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}
@@ -12784,7 +12784,7 @@ instructions:
           - {ptx: "cp.async.bulk.tensor.5d.shared::cluster.global.im2col::w.mbarrier::complete_tx::bytes.multicast::cluster.cta_group::2 [dst], [tensor_map, {%r0, %r1, %r2, %r3, %r4}], [mbar], {%h0, %h1}, %mask;", valid: true}
       - name: cp_async_bulk_tensor_5d_shared_cluster_im2col_w_multicast_cta_group_cache_hint
         completion_kind: mbarrier_complete_tx_bytes
-        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}, {ptx: "9.0", sm: 110, family: sm_110f}]}
+        availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
         modifiers:
           - {name: async, kind: flag, presence: fixed, value: true, token: .async}
           - {name: bulk, kind: flag, presence: fixed, value: true, token: .bulk}

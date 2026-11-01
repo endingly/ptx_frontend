@@ -885,7 +885,7 @@ def _build_variant(
     tensor_destination = _build_tensor_destination(semantic_variant, tensor_access_mode)
     tensor_multicast = _build_tensor_multicast(semantic_variant, tensor_access_mode)
     tensor_cta_group_applicable = _build_tensor_cta_group(
-        semantic_variant, tensor_access_mode, tensor_multicast
+        semantic_variant, tensor_access_mode, tensor_multicast, tensor_destination
     )
     expected_tensor_rank = _build_expected_tensor_rank(semantic_variant, tensor_access_mode)
     active_modifiers = tuple(
@@ -1430,8 +1430,9 @@ def _build_tensor_multicast(
 
 def _build_tensor_cta_group(
     variant: VariantSpec, mode: TensorAccessMode | None, multicast: bool,
+    tensor_destination: TensorDestination | None,
 ) -> bool:
-    """Validate a written tensor-load CTA group and preserve omitted applicability."""
+    """Validate the mode/destination target intersection and preserve omission."""
 
     if mode is None:
         return False
@@ -1478,8 +1479,15 @@ def _build_tensor_cta_group(
     qualified = {"any_of": [
         {"ptx": "8.6", "sm": 100, "target": "sm_100a"},
         {"ptx": "8.8", "sm": 100, "family": "sm_100f"},
-        {"ptx": "9.0", "sm": 110, "family": "sm_110f"},
     ]}
+    restricted_cluster_mode = (
+        mode in {TensorAccessMode.TILE_GATHER4, TensorAccessMode.IM2COL_W}
+        and tensor_destination is TensorDestination.CLUSTER
+    )
+    if not restricted_cluster_mode:
+        qualified["any_of"].append(
+            {"ptx": "9.0", "sm": 110, "family": "sm_110f"}
+        )
     if variant.availability != qualified:
         raise ValueError(f"variant {variant.name!r}: invalid CTA-group target gate")
     return True

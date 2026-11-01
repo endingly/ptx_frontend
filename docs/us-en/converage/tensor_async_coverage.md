@@ -16,3 +16,21 @@ The checker requires exactly one signed-32 coordinate per rank for ordinary tile
 The modeled TMA family also includes selected `tensormap.replace` and `tensormap.cp_fenceproxy` forms, tensor reduction, rank 3–5 `im2col`/`im2col::w`/`im2col::w::128`, rank-2 four-row gather/scatter, cluster multicast masks, and explicit `.cta_group::1/::2` routing. Their exact mode, direction, operand, and target combinations are selected by the generated descriptors; an adjacent unsupported combination fails selection or checking. Omitted, group-1, and group-2 TMA spellings may coexist in one function because TMA group routing is per instruction. The separate [TCGEN group rule](tensor_memory_allocation_coverage.md) applies only to TCGEN instructions.
 
 [`TensorMapKnownFacts` and the selected-use projection](../tensor_map_known_facts.md) can conditionally check caller-supplied descriptor facts against a typed selected instruction. `project_tensor_known_access_context(const Instruction&, const checker::Context&)` returns a copied access and diagnostics: a non-tensor form has neither; malformed tensor metadata has diagnostics and no access; an unavailable target retains the copied access with availability marked false. This query does not decode or authenticate the raw 128-byte descriptor. Descriptor contents, rank agreement with actual bytes, swizzle, stride, bounds, barrier locality, and runtime synchronization remain unproven without caller facts or execution. Canonical `.L2::cache_hint` and optional final B64 cache-policy operands are covered for the supported tensor load, store, reduction, and prefetch forms; see [tensor cache controls](../tensor_cache_controls.md). A raw-object decoder is outside this frontend slice because the fixed manual does not provide a complete 128-byte field layout; the known-facts and cache queries do not decode descriptor bytes. The [frontend closeout matrix](tensor_async_closeout.md) links each roadmap requirement to source and tests.
+
+For destination `.shared::cluster`, rank-2 `.tile::gather4` and rank-3–5 plain
+`.im2col::w` require exact `sm_100a` from PTX8.6, or the `sm_100f` family from
+PTX8.8. The catalog's `sm_103a`/`sm_103f` profiles retain that family feature;
+generic numeric `sm_100`/`sm_103` and cross-family `sm_110a`/`sm_110f` do not
+satisfy this specific feature clause. Cache-hint, information, multicast and
+written CTA-group forms inherit the same restriction. A separate CTA-group or
+multicast allowance cannot override it: all applicable conditions intersect.
+
+Adjacent `.im2col::w::128`, `.tile::scatter4` and ordinary tiled CTA-group forms
+retain their independent `110a/f` grants. Shared-CTA gather4 and W retain their
+own generic SM100-or-higher rule. The frontend follows the pinned PTX9.3
+feature-specific Target Notes; possible manual/tool divergence does not grant
+a broader target family. The [target regressions](../../../submod/resolved_ir/test/test_tensor_target_restrictions.cpp)
+separate actual availability diagnostics from optional `TensorMapKnownFacts`
+results. Missing descriptor facts can remain `Unresolved` even on an available
+target; an unavailable target still returns copied selected-use facts with
+availability false. Neither status authenticates MAP bytes or runtime completion.

@@ -79,8 +79,11 @@ class TensorGatherScatterTests(unittest.TestCase):
             variants["cp_async_bulk_tensor_2d_shared_cta_tile_gather4"].availability,
             {"ptx": "8.6", "sm": 100},
         )
+        self.assertEqual(
+            variants["cp_async_bulk_tensor_2d_shared_cluster_tile_gather4"].availability,
+            {"any_of": qualified["any_of"][:2]},
+        )
         for name in (
-            "cp_async_bulk_tensor_2d_shared_cluster_tile_gather4",
             "cp_async_bulk_prefetch_tensor_2d_tile_gather4",
             "cp_async_bulk_tensor_2d_global_shared_cta_tile_scatter4",
         ):

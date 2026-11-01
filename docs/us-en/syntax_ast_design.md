@@ -149,7 +149,8 @@ AST or second raw semantic payload is retained. Section names are metadata,
 not ordinary declarations. `.loc` attachment and offset validation remain
 separate. `.pragma` preserves a nonempty
 comma-separated string list at module, entry-header, and function/nested-block
-statement scope; it does not enter binding or Resolved IR. Entry-header
+statement scope. Pragma strings do not create bound names; the resolved module
+owns their advisory records with the actual bound placement scope. Entry-header
 pragmas may be interleaved with the four supported kernel-resource directives;
 their concrete order remains lossless in the CST header token sequence.
 `CstRecoveryNode` is the tagged CST-only recovery model: `Inserted`

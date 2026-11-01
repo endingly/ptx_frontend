@@ -461,6 +461,31 @@ datasets retain debug-neutral source identity. Timestamp's separate `time_t`
 domain and existing index, filename, optional-pair, range and reference rules are
 unchanged.
 
+`ResolvedModule::pragmas` owns source-traversal-ordered `ResolvedPragma` values:
+`placement` (`Module`, `EntryHeader`, or `Statement`), `scope_id`, raw owning
+`AstSyntax` string leaves and the whole directive `range`. Module placement uses
+module scope; header placement uses the actual entry declaration occurrence;
+statement scopes reach an actual function definition through its lexical blocks,
+not a canonical symbol's first prototype scope. Pragma strings create no names
+and have no frontend backend/loop/execution interpretation. Empty quoted content
+is valid; a retained empty list, unquoted leaf, invalid scope/placement or invalid
+whole/leaf range is not. Known current and supplied module ranges each contain
+their own records; an all-zero owner range defers containment. Within-list order is checked; records are not sorted or
+joined to historical text. Grouped spellings/ranges do not replace exact CST
+comma/trivia serialization.
+
+Copies, assignments and moves own the complete vector alongside the module table.
+Function-only copies do not acquire module advisory metadata. Current records are
+intrinsically checked in both validation APIs. Supplied AST projection is checked
+independently; its version selects the PTX 2.0 introduction, so valid neutral
+replacement may remove pragmas and lower to PTX 1.5 without an old-presence veto.
+AST-free availability uses the current module version. Known old versions reject
+even without target context; only unknown version defers under `AvailableContext`.
+Invalid current data cannot be masked by valid replacement, or vice versa. This
+public layout addition requires consumer rebuild. The explicit public
+`ptx_syntax_sections.hpp` value dependency supplies `AstSyntax` while `AstModule`
+and `AstInstruction` remain incomplete through the module-only header boundary.
+
 Explicit `.file` timestamp/file-size metadata (including `0, 0`) requires PTX ISA
 3.2 or later; plain `.file` has no such gate. This presence-based check has no SM
 or debug-option requirement and rejects a known older version even without a

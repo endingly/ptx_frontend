@@ -11,6 +11,7 @@
 #include "ptx_call_tables.hpp"
 #include "ptx_debug_sections.hpp"
 #include "ptx_module_source_context.hpp"
+#include "ptx_pragma_metadata.hpp"
 #include "ptx_source_identity.hpp"
 #include "ptx_storage_declarations.hpp"
 
@@ -1285,12 +1286,14 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
 
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
+  auto pragmas = detail::pragma_records(ast, binding_result.table);
   ResolvedModule module{
       .symbols = std::move(binding_result.table),
       .functions = std::move(functions),
       .function_aliases = std::move(function_aliases),
       .header = std::move(header),
       .sections = std::move(sections),
+      .pragmas = std::move(pragmas),
       .range = ast.range,
       .storage_declarations = std::move(*storage),
       .call_tables = std::move(call_tables),

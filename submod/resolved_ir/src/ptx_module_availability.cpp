@@ -13,6 +13,7 @@
 #include "ptx_debug_locations.hpp"
 #include "ptx_debug_sections.hpp"
 #include "ptx_module_source_context.hpp"
+#include "ptx_pragma_metadata.hpp"
 #include "ptx_resolved_ir_private.hpp"
 #include "ptx_source_identity.hpp"
 
@@ -4060,6 +4061,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto section_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  auto pragma_errors = detail::check_pragmas(module, section_version);
+  diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
+                     pragma_errors.end());
   auto location_errors =
       detail::check_debug_locations(module.symbols, module, section_version);
   diagnostics.insert(diagnostics.end(), location_errors.begin(),
@@ -4324,6 +4328,13 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   auto current_references =
       detail::check_debug_section_references(module.sections, module.symbols);
   const auto replacement_binding = binding::bindSymbols(ast);
+  auto pragma_errors = detail::check_pragmas(module, std::nullopt);
+  auto replacement_pragmas =
+      detail::check_pragmas(ast, replacement_binding.table, version);
+  diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
+                     pragma_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_pragmas.begin(),
+                     replacement_pragmas.end());
   check_debug_file_sizes(replacement_binding.table.debugFiles(), diagnostics);
   auto location_errors =
       detail::check_debug_locations(module.symbols, module, std::nullopt);

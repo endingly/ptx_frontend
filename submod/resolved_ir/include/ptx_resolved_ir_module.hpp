@@ -346,6 +346,21 @@ struct ResolvedCallTableContract {
 /** Reuse the small owning section value records; no source or AST object is borrowed. */
 using ResolvedDebugSection = syntax_ast::AstSectionDirective;
 
+/** Written advisory placement, independent of pragma content or executable effects. */
+enum class ResolvedPragmaPlacement : uint8_t { Module, EntryHeader, Statement };
+
+/** Owning opaque advisory metadata; all scope identities refer to its module table. */
+struct ResolvedPragma {
+  /** Written placement, with no backend-string interpretation. */
+  ResolvedPragmaPlacement placement{};
+  /** Actual module, entry declaration occurrence, or function/block scope. */
+  binding::ScopeId scope_id;
+  /** Owned raw quoted string spellings and ranges, in written list order. */
+  std::vector<syntax_ast::AstSyntax> strings;
+  /** Complete physical directive range containing every string leaf. */
+  SourceRange range;
+};
+
 /** Owns all resolved declarations, functions, and source correspondence data. */
 struct ResolvedModule {
   /** Owning symbol table; every retained SymbolId and ScopeId refers to it. */
@@ -358,6 +373,8 @@ struct ResolvedModule {
   ResolvedModuleHeader header;
   /** Ordered owning fragments, including repeated names and nonempty relocations. */
   std::vector<ResolvedDebugSection> sections;
+  /** Owning advisory records in source traversal order; never executable nodes. */
+  std::vector<ResolvedPragma> pragmas;
   /** Source extent of the complete module. */
   SourceRange range;
   /** Owned non-parameter storage declarations, in source traversal order. */

@@ -382,6 +382,25 @@ Current symbol table 与 supplied/rebound 的 size 在可选 context 门槛之�
 dataset 仍保持 debug-neutral source identity。Timestamp 独立的 `time_t` domain，以及
 既有 index、filename、optional-pair、range 与 reference 规则均不变。
 
+`ResolvedModule::pragmas` 按源码遍历顺序拥有 `ResolvedPragma`：`placement`
+（`Module`、`EntryHeader` 或 `Statement`）、`scope_id`、拥有式 raw `AstSyntax`
+string leaf 与整条 directive 的 `range`。Module 使用 module scope；header 使用实际
+entry declaration occurrence；statement 经 lexical block 到达实际 function definition，
+不使用 canonical symbol 的首个 prototype scope。Pragma string 不创建名字，也不定义
+frontend backend/loop/execution 解释。空的 quoted content 合法；保留的空 list、非 quoted
+leaf、非法 scope/placement 或 whole/leaf range 均拒绝。已知 current 与 supplied module
+range 各自包含自身 record；全零 owner range 延后 containment。检查 list 内顺序，但不排序 record
+或将其与历史文本关联；grouped spelling/range 不替代 CST comma/trivia 的精确序列化。
+
+Copy、assignment 与 move 将整个 vector 和 module table 一同拥有；function-only copy
+不会取得 module advisory metadata。两个验证 API 均对 current record 做 intrinsic 检查，
+supplied AST projection 独立检查并采用其版本执行 PTX 2.0 门槛；合法 neutral replacement
+可删除 pragma 并降至 PTX 1.5，不受旧 presence 否决。AST-free availability 使用当前
+module version。缺少 target 也不跳过已知旧版本；只有未知 version 在 `AvailableContext`
+中延后。合法 replacement 不能遮蔽非法 current data，反向亦然。此 public layout 新增
+要求 consumer rebuild；显式 public `ptx_syntax_sections.hpp` value dependency 提供
+`AstSyntax`，module-only header 仍保持 `AstModule` 与 `AstInstruction` incomplete。
+
 显式 `.file` timestamp/file-size metadata（包括 `0, 0`）要求 PTX ISA 3.2 或更高版本；
 普通 `.file` 不受此门槛限制。此检查基于可选字段是否存在，不要求 SM 或 debug option，
 即使没有可识别 target，已知的旧版本也会被拒绝。`AvailableContext` 在 version 缺失时延后检查；

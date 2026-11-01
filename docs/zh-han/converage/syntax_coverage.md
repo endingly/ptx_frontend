@@ -18,7 +18,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复的规范化 ID 一律诊断（包括相同 metadata），symbol table 拥有 payload，overflow 会诊断；显式数值 metadata（包括 `0, 0`）要求 PTX ISA >= 3.2，不依赖 SM/debug option |
 | Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；保存 owning SymbolTable record 并检查 modulewide preceding base triple，不生成可执行 instruction |
 | Debug section directive | 支持子集 | CST 保留 raw token/trivia 与 typed entry；拥有式 AST/module integer list、signed byte addend、single symbol 与同 section label difference 检查原始范围/locality/版本；`.debug_str` typed label 在 metadata namespace 绑定，链接后的 DWARF 值仍未知 |
-| Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；pragma 不进入 binding 或 Resolved IR |
+| Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；string 不创建 bound name；module 拥有带实际 placement scope 的 opaque advisory record |
 | Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST，并以 normalized function-contract value 自主保存。declaration semantics 拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；module validation 检查已建模 PTX/target minimum。launch feasibility、occupancy 与 physical resource allocation 仍不检查。 |
 | Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回/输入参数列表、`.noreturn`、`.func` ABI suffix、`.language` 与 entry `.blocksareclusters`。Resolved function 会 independent 于 AST 地拥有 normalized signature、linkage/canonical identity、已支持 attribute、ABI suffix、resource，以及 language/cluster marker。 |
 | Formal parameter | 支持子集 | `.reg/.param`、alignment、fundamental scalar/v2/v4 type（含 packed scalar F16x2）、pointer space/alignment，以及由结构化 constant expression 指定长度的 array |
@@ -115,7 +115,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.minnctapersm` | D | T | T | — | Y | C / V | entry-only normalized resource；warning/device feasibility deferred |
 | `.noreturn` | D | E | E | — | Y | C / V | device `.func`/`.callprototype`；检查 return-parameter conflict。两种 module route 均重查 prototype PTX 6.4 / SM 30 minima，不因另一个 context fact 未知而跳过已知失败。 |
 | `.param` | D | E | E | Y | Y | C | 既有 variable/formal/call-parameter declaration |
-| `.pragma` | D | T | T | — | — | — | backend string interpretation 刻意未实现 |
+| `.pragma` | D | T | T | — | Y | V | module/entry-header/statement record 拥有 raw string、range 与实际 scope；独立于 target 要求 PTX >= 2.0；不解释 backend string 或执行效果 |
 | `.reg` | D | E | E | Y | Y | C | 既有 variable/formal declaration |
 | `.reqnctapercluster` | D | T | T | — | Y | C / V | entry-only normalized resource、PTX 7.8 modeled availability；与 `.maxclusterrank` 冲突 |
 | `.reqntid` | D | T | T | — | Y | C / V | entry-only normalized resource；与 `.maxntid` 冲突；launch feasibility deferred |

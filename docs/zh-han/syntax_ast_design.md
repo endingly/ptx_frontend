@@ -120,7 +120,8 @@ single symbol、checked signed addend 与同 section label difference。不保�
 或第二份 raw semantic payload。section name 是 metadata，不是普通声明；`.loc` 附着与 offset
 验证仍是独立边界。除此之外，当前 module grammar
 会在 module、entry header 和 function/nested-block statement scope 保留 `.pragma` 的非空、
-comma-separated string list；它不进入 binding 或 Resolved IR。entry header 中 pragma 可与四个
+comma-separated string list。Pragma string 不创建 bound name；resolved module 拥有
+带实际 bound placement scope 的 advisory record。entry header 中 pragma 可与四个
 已支持的 kernel-resource directive 交错，具体顺序仍由 CST header token sequence 无损保留。
 `CstRecoveryNode` 是当前带 tag 的纯 CST recovery 模型：`Inserted` 持有 expected
 `TokenKind` 和 zero-width range、没有 token-buffer span；`Skipped` 持有非空的真实 source-token

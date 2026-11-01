@@ -1508,8 +1508,82 @@ bool checkInstalledLanguageDomain() {
          ir::validateModule(*module);
 }
 
+/** Consume owning advisory records from the installed public module layout. */
+bool checkInstalledPragmas() {
+  namespace ir = ptx_frontend::resolved_ir;
+  std::optional<ir::ResolvedModule> module;
+  {
+    const std::string source = R"ptx(.version 2.0
+.target sm_13
+.pragma "module", "";
+.entry pragma_kernel() .pragma "header"; {
+.pragma "body";
+{ .pragma "nested", "opaque"; }
+ret;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return false;
+    auto result = ir::resolveAndValidateModule(*ast);
+    if (!result)
+      return false;
+    module.emplace(std::move(*result));
+  }
+  if (!module || module->pragmas.size() != 4 || !ir::validateModule(*module))
+    return false;
+  const auto& records = module->pragmas;
+  if (records[0].placement != ir::ResolvedPragmaPlacement::Module ||
+      records[0].scope_id != module->symbols.moduleScope() ||
+      records[0].strings.size() != 2 || records[0].strings[1].text != "\"\"" ||
+      records[1].placement != ir::ResolvedPragmaPlacement::EntryHeader ||
+      records[1].scope_id != module->functions[0].declaration_scope ||
+      records[2].placement != ir::ResolvedPragmaPlacement::Statement ||
+      records[3].placement != ir::ResolvedPragmaPlacement::Statement ||
+      records[3].strings[0].text != "\"nested\"" ||
+      module->symbols.scope(records[3].scope_id).parent != records[2].scope_id)
+    return false;
+  const std::vector<std::vector<std::string>> expected{
+      {"\"module\"", "\"\""},
+      {"\"header\""},
+      {"\"body\""},
+      {"\"nested\"", "\"opaque\""}};
+  for (size_t i = 0; i < records.size(); ++i) {
+    const auto& record = records[i];
+    if (record.strings.size() != expected[i].size() ||
+        record.range.start.line == 0 || record.range.end.line == 0)
+      return false;
+    for (size_t j = 0; j < record.strings.size(); ++j) {
+      const auto& leaf = record.strings[j];
+      if (leaf.text != expected[i][j] || leaf.range.start.line == 0 ||
+          leaf.range.end.line == 0)
+        return false;
+    }
+  }
+  const auto copied = *module;
+  ir::ResolvedModule assigned = copied;
+  assigned.pragmas.clear();
+  assigned = copied;
+  ir::ResolvedModule moved = std::move(assigned);
+  if (!ir::validateModule(copied) || !ir::validateModule(moved) ||
+      moved.pragmas[3].strings[1].text != "\"opaque\"" ||
+      moved.pragmas[3].strings[1].range != records[3].strings[1].range)
+    return false;
+  ptx_frontend::PtxSyntaxParser replacement(
+      ".version 1.5\n.target sm_13\n.entry pragma_kernel() { { } ret; }\n");
+  const auto ast = replacement.parseModule();
+  if (!ast || !ast.diagnostics.empty() || !ir::resolveAndValidateModule(*ast) ||
+      !ir::validateModule(*ast, moved))
+    return false;
+  moved.pragmas[0].strings.clear();
+  return !ir::validateModule(*ast, moved) && ir::validateModule(copied);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledPragmas())
+    return 39;
   if (!checkInstalledLanguageDomain())
     return 38;
   if (!checkInstalledDebugLocations())

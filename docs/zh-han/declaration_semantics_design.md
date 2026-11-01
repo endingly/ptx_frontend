@@ -109,6 +109,12 @@ module scope 的同名 item 先由 binding 合并到稳定的 `SymbolId`，再�
   诊断；
 - `.extern .func` 只能是 prototype，不能带 body。
 
+`.weak` 在所有 target 上要求 PTX 3.1。Source pass 在每个 typed variable/function
+occurrence 的 weak qualifier 处检查，包含未使用 prototype。Binding 保留首个 canonical
+linkage；成功 module owning handoff 前，兼容 redeclaration 必须具有相同 linkage 与
+signature。Mixed weak/nonweak declaration 仍不兼容。来自已拒绝 mixed source 的
+binding-only table 不保留每个历史 qualifier；不新增 occurrence-history API 或 weak linker 行为。
+
 redeclaration 的 alignment 按 effective value 比较，但每个 declaration occurrence
 仍保留 source provenance 与 range。对于已建模的 fundamental storage，省略的
 alignment 是 scalar byte size（scalar array 也相同），或完整 `.v2`/`.v4` element

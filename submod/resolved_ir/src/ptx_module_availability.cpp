@@ -70,6 +70,7 @@ enum class DirectiveAvailability {
   CallPrototype,
   BranchTargets,
   CallTargets,
+  Weak,
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
@@ -78,6 +79,8 @@ enum class DirectiveAvailability {
 checker::AvailabilityDescriptor directive_availability(
     DirectiveAvailability directive) {
   switch (directive) {
+    case DirectiveAvailability::Weak:
+      return availability({3, 1});
     case DirectiveAvailability::Alias:
       return availability({6, 3}, 30);
     case DirectiveAvailability::CallPrototype:
@@ -133,10 +136,15 @@ void append_minimum_requirement(
   diagnostics.push_back({
       .kind = checker::CheckDiagnosticKind::UnsupportedAvailability,
       .range = range,
-      .message = fmt::format("{} requires PTX ISA >= {}.{} and SM >= {}.",
-                             subject, requirement.minimum_ptx_version.major,
-                             requirement.minimum_ptx_version.minor,
-                             requirement.minimum_sm_version),
+      .message =
+          requirement.minimum_sm_version == 0
+              ? fmt::format("{} requires PTX ISA >= {}.{}.", subject,
+                            requirement.minimum_ptx_version.major,
+                            requirement.minimum_ptx_version.minor)
+              : fmt::format("{} requires PTX ISA >= {}.{} and SM >= {}.",
+                            subject, requirement.minimum_ptx_version.major,
+                            requirement.minimum_ptx_version.minor,
+                            requirement.minimum_sm_version),
   });
 }
 
@@ -4045,6 +4053,37 @@ void check_entry_pointer_availability(
     });
 }
 
+/** All symbols/storage use the common language version; region equality remains required. */
+void check_module_weak_availability(const ResolvedModule& module,
+                                    std::optional<checker::PtxVersion> version,
+                                    checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& symbol : module.symbols.symbols())
+    if (symbol.linkage == binding::SymbolLinkage::Weak)
+      append_minimum_requirement(
+          diagnostics, emitted, DirectiveAvailability::Weak, version,
+          std::nullopt, symbol.declaration_range, ".weak");
+  for (const auto& storage : module.storage_declarations)
+    if (storage.linkage == binding::SymbolLinkage::Weak)
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::Weak, version,
+                                 std::nullopt, storage.range, ".weak");
+}
+
+/** Either current function fact is sufficient; every occurrence selects its own region. */
+void check_function_weak_availability(
+    const ResolvedModule& module, const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    checker::CheckDiagnostics& diagnostics) {
+  const auto* symbol = owned_symbol(module, function.symbol_id);
+  if (function.contract.linkage != binding::SymbolLinkage::Weak &&
+      (!symbol || symbol->linkage != binding::SymbolLinkage::Weak))
+    return;
+  DirectiveAvailabilityKeys emitted;
+  append_minimum_requirement(diagnostics, emitted, DirectiveAvailability::Weak,
+                             version, std::nullopt, function.range, ".weak");
+}
+
 /** Check function-level availability using only owned source-level metadata. */
 void check_function_contract_availability(
     const ResolvedFunction& function, const checker::TargetInfo& target,
@@ -4092,6 +4131,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
   const auto section_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  check_module_weak_availability(module, section_version, diagnostics);
   auto pragma_errors = detail::check_pragmas(module, section_version);
   diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
                      pragma_errors.end());
@@ -4314,6 +4354,8 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                      "source target context.",
       });
     }
+    check_function_weak_availability(
+        module, function, region ? region->version : std::nullopt, diagnostics);
     if (region) {
       const auto profile =
           region->target_options.empty()
@@ -4349,6 +4391,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
     return associations;
   const auto version = detail::module_version(ast);
   checker::CheckDiagnostics diagnostics;
+  check_module_weak_availability(module, version, diagnostics);
   auto section_errors =
       detail::check_debug_sections(module.sections, version, module.range);
   const auto replacement_sections = detail::debug_sections(ast);
@@ -4549,6 +4592,7 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                    std::get_if<syntax_ast::AstFunction>(&item)) {
       require_context(function->range);
       const auto* owned = source_function(*function, module);
+      check_function_weak_availability(module, *owned, version, diagnostics);
       DirectiveAvailabilityKeys emitted;
       check_target_list_availability(*owned, version, active_profile, emitted,
                                      diagnostics);

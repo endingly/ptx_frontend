@@ -471,6 +471,16 @@ inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `Availabl
 availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
 这不表示 instruction attachment、解码 line table 或 string-address execution。
 
+Canonical symbol、storage occurrence record 与 function contract 中的 current weak
+linkage 对已知版本要求 PTX 3.1，不依赖 target context。每个 Weak symbol（包含
+symbol-only function）与 storage record 使用既有全部 region 版本相等约束保证的 common
+module version；function occurrence contract 仍使用各自准确的 selected region；function contract 或 canonical symbol
+任一 weak fact 均足够，包含未使用 prototype。Source-aware validation 在 supplied context
+下检查 current fact，并独立检查每个 supplied weak occurrence；weak qualifier 仍是
+nonneutral source identity。只有缺少 version 可在 `AvailableContext` 中延后，strict context
+与 unknown-target 诊断保留。Copy 保留现有 typed fact；不新增 cache-equality、历史 qualifier
+registry、public layout 或 linker simulation。
+
 Current retained `.branchtargets` 与 `.calltargets` 均要求 PTX 2.1 / SM 20，
 包含未使用和 nested declaration。它们复用下面的 minimum-only 机制：AST-free 使用
 准确的 selected-region context，source-aware 对 current record 和独立 supplied typed

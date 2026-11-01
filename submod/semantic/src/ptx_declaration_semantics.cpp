@@ -946,6 +946,7 @@ class Checker {
     checkKernelResources(module);
     checkM11Directives(module);
     checkCommonLinkage(module);
+    checkWeakLinkage(module, module_version);
     std::optional<uint32_t> active_target;
     for (const auto& item : module.items) {
       if (const auto* target =
@@ -1433,6 +1434,27 @@ class Checker {
       if (!unsignedIntegerLiteral(value.text)) {
         reportInvalidIntegerLiteral(&diagnostics_, value.text, value.range);
       }
+    }
+  }
+
+  /** Check each typed source occurrence, never a canonical symbol's first qualifier. */
+  void checkWeakLinkage(const syntax_ast::AstModule& module,
+                        std::optional<PtxVersion> version) {
+    const auto check =
+        [&](const std::vector<syntax_ast::AstSyntax>& qualifiers) {
+          if (declarationLinkage(qualifiers) != binding::SymbolLinkage::Weak)
+            return;
+          for (const auto& qualifier : qualifiers)
+            if (qualifier.text == ".weak")
+              requirePtx(version, {3, 1}, qualifier.range, ".weak");
+        };
+    for (const auto& item : module.items) {
+      if (const auto* declaration =
+              std::get_if<syntax_ast::AstVariableDeclaration>(&item))
+        check(declaration->qualifiers);
+      else if (const auto* function =
+                   std::get_if<syntax_ast::AstFunction>(&item))
+        check(function->qualifiers);
     }
   }
 

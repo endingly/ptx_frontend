@@ -140,6 +140,14 @@ decides whether the redeclaration is legal:
   definitions report diagnostics carrying the previous source range;
 - an `.extern .func` must be a prototype and cannot have a body.
 
+`.weak` requires PTX 3.1 on all targets. The source pass checks each typed
+variable/function occurrence at its weak qualifier, including unused prototypes.
+Binding retains the first canonical linkage; compatible redeclarations require
+identical linkage and signatures before successful module ownership handoff.
+Mixed weak/nonweak declarations remain incompatible. A binding-only table from
+rejected mixed source does not retain every historical qualifier; no additional
+occurrence-history API or weak linker behavior is implied.
+
 Redeclaration alignment compares its effective value while retaining source
 provenance and ranges on every declaration occurrence. For modeled fundamental
 storage, an omitted alignment is the scalar byte size (also for scalar arrays)

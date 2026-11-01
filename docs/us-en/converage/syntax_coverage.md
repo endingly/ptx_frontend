@@ -135,7 +135,7 @@ hardware behavior. `—` = no support at that stage.
 | `.tex` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.version` | D | T | T | — | Y | V | Owned source version participates in target-aware module validation |
 | `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
-| `.weak` | D | E | E | Y | Y | C | Existing linkage qualifier |
+| `.weak` | D | E | E | Y | Y | C | PTX 3.1 / all targets; each supplied occurrence and current owned symbol/storage/function fact, including unused prototypes; no weak-linker simulation |
 | `.blocksareclusters` | G | T | T | — | Y | C / V | Owned zero-argument entry marker; PTX 9.0 modeled availability and required `.reqntid` + `.reqnctapercluster`; launch rules deferred |
 | `.language` | G | T | T | — | Y | C / V | Current raw nonempty official quoted-name/unsigned0..10 list is rechecked by one exported semantic decoder in both APIs, with duplicates/order retained; known PTX <9.3 rejects independently of missing target. No backend-language behavior |
 

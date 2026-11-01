@@ -576,6 +576,18 @@ defer availability under `AvailableContext`, never numeric, identity or preceden
 failures. No instruction attachment, decoded line table or string-address execution
 is implied.
 
+Current weak linkage in canonical symbols, storage occurrence records and
+function contracts requires known PTX 3.1, independently of target context.
+Every Weak symbol, including a symbol-only function, and storage record uses the
+common module version guaranteed by the existing equality of all region versions.
+Function occurrence contracts also use each exact selected region. Either retained function contract or canonical weak symbol is
+sufficient, including unused prototypes. Source-aware validation checks current
+facts under supplied context and independently checks every supplied weak
+occurrence; weak qualifiers remain nonneutral source identity. Missing version
+alone may defer under `AvailableContext`, while strict context and unknown-target
+diagnostics remain. Copies retain existing typed facts; no cache-equality,
+historical qualifier registry, public layout or linker simulation is added.
+
 Current retained `.branchtargets` and `.calltargets` each require PTX 2.1 / SM 20,
 including unused and nested declarations. Their availability reuses the same
 minimum-only mechanism below: exact selected-region context when AST-free,

@@ -522,7 +522,7 @@ family scope，绝不表示整部 PTX ISA。
 | --- | --- | --- | --- |
 | M2-I01 | ✅ | lexical SymbolTable | module/function scope 与 shadowing |
 | M2-I02 | ✅ | reference classification | declared/external/special/unresolved 分离 |
-| M2-I03 | ✅ | declaration semantics | array/initializer/redeclaration/prototype |
+| M2-I03 | ✅ | declaration semantics | array/initializer/redeclaration/prototype；weak typed presence PTX 3.1/all targets，current/supplied 独立检查，无 linker simulation |
 | M2-I04 | ✅ | constant evaluator | 64-bit、cast、unary/binary/conditional/shift |
 | M2-I05 | ✅ | call/branch syntax node | call group 不与 vector 共用 |
 | M2-I06 | ✅ | execution predicate binding | SymbolId/type/negation/range |

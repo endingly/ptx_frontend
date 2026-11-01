@@ -132,7 +132,7 @@ hardware behavior. `—` = no support at that stage.
 | `.section` | D | T | T | Y | Y | C / V | Owning module metadata, typed integer/relocation grammar and static locality; no executable node or DWARF decoder |
 | `.shared` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.sreg` | G | R | — | — | — | — | Unmodeled special-register declaration |
-| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee |
+| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee; known debug + zero sections rejects, while actual DWARF recognition remains a qualified reference boundary |
 | `.tex` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.version` | D | T | T | — | Y | V | Owned source version participates in target-aware module validation |
 | `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
@@ -151,3 +151,5 @@ but the current specification provides no separate grammar, constraints, or
 examples. The frontend will not invent syntax from that sentence; a node will
 be added only when normative grammar or verifiable `ptxas` behavior is
 available.
+
+For `.target debug`, zero section records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.

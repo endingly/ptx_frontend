@@ -139,3 +139,5 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前规范没有给出独立
 语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的
 `ptxas` 行为后才会增加对应节点。
+
+对 `.target debug`，零 section record 是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。

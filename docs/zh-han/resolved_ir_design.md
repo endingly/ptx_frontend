@@ -1225,3 +1225,22 @@ AST-free 检查重验当前 owning record；source-aware 检查按 supplied effe
 source-identity mismatch，合法 replacement 也不能掩盖非法 current payload。
 这只证明有限源码语法及静态 locality，不证明 DWARF 解码、链接字节值、target-debug DWARF recognition
 或 GPU 执行。
+
+### Target debug 缺失检查与 recognition 边界
+
+只要文件内任一 `.target` 指定 `debug`，缺失条件就适用于整个文件，不依赖 section 与
+前后 target region 的位置。已知 `debug` 且 owning section record 为零是确定错误；即使
+`AvailableContext` 缺少 version 也拒绝。`.file`、`.loc` 或保留的 debug-string symbol identity
+不能替代 section。既有 PTX 3.0 option gate 与完整 context 要求保持独立。
+Source-aware validation 对 current owned options/sections 和 supplied AST options/sections
+分别复用私有缺失规则；合法一侧不能掩盖另一侧的确定缺失或非法 typed payload。
+合法且不同的数据集仍保持 section-neutral source association。不增加 presence bit、公共 enum 或 decoder。
+
+**D-DEBUG-DWARF-PRESENCE-RECOGNITION 仍是 reference boundary，不是 code PASS。**
+固定的 [target 条款](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+和 [section grammar](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-section)
+没有给 arbitrary name、empty section、label-only section 或非空 typed data 定义充分 recognition
+条件。`.debug_` 前缀、whitelist、非空 payload 或强制 `.debug_info`/`.debug_abbrev` 配对都会发明该条件。
+配对 witness 只是一项结构对照，不是普遍最低要求或 decoder。因此，非零且结构合法的 section record
+验证成功并不证明实际找到了 DWARF information。有限 debug-off/on 边界测试明确记录此限定；
+不声称完整 recognition、链接或二进制真实性。

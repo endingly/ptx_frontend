@@ -1788,6 +1788,40 @@ void check_header_features(std::optional<checker::PtxVersion> version,
   }
 }
 
+/** Borrow the first known debug directive range across all owned source regions. */
+std::optional<SourceRange> target_debug_range(
+    const ResolvedModuleHeader& header) {
+  for (const auto& region : header.regions)
+    for (const auto& option : region.target_options)
+      if (base::classify_target_directive_item(option) ==
+          base::TargetDirectiveItemKind::Debug)
+        return region.range;
+  return std::nullopt;
+}
+/** A supplied AST contributes its own file-wide debug option facts. */
+std::optional<SourceRange> target_debug_range(
+    const syntax_ast::AstModule& ast) {
+  for (const auto& item : ast.items)
+    if (const auto* target = std::get_if<syntax_ast::AstTargetDirective>(&item))
+      for (const auto& option : target->targets)
+        if (base::classify_target_directive_item(option.text) ==
+            base::TargetDirectiveItemKind::Debug)
+          return option.range;
+  return std::nullopt;
+}
+/** Reject definite absence only; section records do not certify decoded DWARF. */
+void check_target_debug_sections(std::optional<SourceRange> debug_range,
+                                 std::span<const ResolvedDebugSection> sections,
+                                 checker::CheckDiagnostics& diagnostics) {
+  if (debug_range && sections.empty())
+    diagnostics.push_back({
+        .kind = checker::CheckDiagnosticKind::RuleViolation,
+        .range = *debug_range,
+        .message = "Target debug requires DWARF information, but this dataset "
+                   "contains no sections.",
+    });
+}
+
 /** Validate header payload/provenance consistency under public IR mutation. */
 void check_header_region(const ResolvedSourceTargetRegion& region,
                          SourceRange range,
@@ -3882,6 +3916,8 @@ void check_function_contract_availability(
 checker::CheckResult validateModule(const ResolvedModule& module,
                                     ModuleValidationPolicy policy) {
   checker::CheckDiagnostics diagnostics;
+  check_target_debug_sections(target_debug_range(module.header),
+                              module.sections, diagnostics);
   const auto section_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
@@ -4127,6 +4163,10 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   auto section_errors =
       detail::check_debug_sections(module.sections, version, module.range);
   const auto replacement_sections = detail::debug_sections(ast);
+  check_target_debug_sections(target_debug_range(module.header),
+                              module.sections, diagnostics);
+  check_target_debug_sections(target_debug_range(ast), replacement_sections,
+                              diagnostics);
   auto replacement_errors =
       detail::check_debug_sections(replacement_sections, version, ast.range);
   auto current_references =

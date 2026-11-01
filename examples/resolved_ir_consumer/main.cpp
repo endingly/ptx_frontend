@@ -398,6 +398,7 @@ bool checkInstalledCombinedSourceStates() {
       const std::string source = std::string{".version 9.3\n.target sm_90"} +
                                  (debug ? ", debug" : "") + R"ptx(
 .address_size 64
+.section .debug_info {.b8 0}
 .global .u32 memory;
 .entry kernel(.param .u32 input_map) {
   .reg .u32 %r;

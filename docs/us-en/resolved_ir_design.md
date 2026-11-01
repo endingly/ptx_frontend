@@ -1517,3 +1517,28 @@ debug labels. Valid changed section data does not cause executable source-identi
 mismatch. Invalid current data cannot be hidden by valid replacement sections.
 This checks the bounded source grammar and static locality, not DWARF decoding,
 linked byte values, target-debug DWARF recognition or GPU execution.
+
+### Target debug absence and recognition boundary
+
+The file-wide `.target debug` requirement applies if any target directive selects
+`debug`, including earlier or later regions. Known `debug` with zero owning
+section records is a determinate violation, even under `AvailableContext` with
+missing version information. `.file`, `.loc`, or retained debug-string symbol
+identities cannot replace sections. The existing PTX 3.0 option gate and complete
+context requirements remain independent. Source-aware validation applies the same
+private absence rule separately to current owned options/sections and supplied AST
+options/sections; neither dataset can conceal the other's definite absence or
+invalid typed payload. Valid differing datasets retain section-neutral source
+association. No presence bit, public enum or decoder is added.
+
+**D-DEBUG-DWARF-PRESENCE-RECOGNITION remains a reference boundary, not a code PASS.**
+The pinned [target clause](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
+and [section grammar](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-section)
+do not specify a sufficient recognition criterion for arbitrary names, empty
+sections, label-only sections or nonempty typed data. A `.debug_` prefix, whitelist,
+nonempty payload or mandatory `.debug_info`/`.debug_abbrev` pair would invent such a
+criterion. The paired witness is one structural control, not a universal minimum
+or a decoder. Validation success for nonzero structurally valid section records
+therefore does not certify that actual DWARF information was found. The finite
+debug-off/on boundary tests record this qualification explicitly; full recognition
+and linked/binary authenticity are not claimed.

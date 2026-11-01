@@ -11,6 +11,7 @@
 #include <ptx_frontend/cst/ptx_cst_parser.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_descriptors.hpp>
+#include <ptx_frontend/resolved_ir/ptx_tcgen_descriptors.hpp>
 #include <ptx_frontend/semantic/ptx_declaration_semantics.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_parser.hpp>
 
@@ -1140,8 +1141,195 @@ red.async.release.sys.global.add.u32 [dst],u;
   return !ir::validateModule(assigned);
 }
 
+/** Verify required mask members, borrowed ordinals and AST-independent ownership. */
+bool checkInstalledRequiredTcgenMasks() {
+  namespace ir = ptx_frontend::resolved_ir;
+  for (const bool sparse : {false, true})
+    for (const std::string kind : {"f16", "tf32", "i8", "f8f6f4"})
+      for (const unsigned group : {1u, 2u})
+        for (const bool shared : {false, true})
+          for (const bool scale : {false, true}) {
+            if (scale && kind != "f16" && kind != "tf32")
+              continue;
+            std::string mask = "{";
+            for (unsigned lane = 0; lane < (group == 1 ? 4u : 8u); ++lane)
+              mask += (lane ? ",m" : "m") + std::to_string(lane);
+            mask += "}";
+            const std::string instruction =
+                "tcgen05.mma" + std::string(sparse ? ".sp" : "") +
+                ".cta_group::" + std::to_string(group) + ".kind::" + kind +
+                " [d]," + (shared ? std::string("ad") : "[a]") + ",bd," +
+                (sparse ? "[sp]," : "") + "i," + mask + ",p" +
+                (scale ? ",15" : "") + ";";
+            std::optional<ir::ResolvedModule> owned;
+            {
+              const std::string source =
+                  ".version 9.3\n.target sm_100a\n.address_size 64\n.entry "
+                  "kernel(){"
+                  ".reg .b32 d,a,sp,i,m<8>; .reg .b64 ad,bd; .reg .pred p;" +
+                  instruction + "}";
+              ptx_frontend::PtxSyntaxParser parser(source);
+              const auto ast = parser.parseModule();
+              if (!ast || !ast.diagnostics.empty())
+                return false;
+              auto module = ir::resolveAndValidateModule(*ast);
+              if (!module)
+                return false;
+              owned.emplace(std::move(*module));
+            }
+            auto& instruction_ref = *owned->functions.front().body.front();
+            const ptx_frontend::WithLocs<ir::ResolvedRegisterVector>* member =
+                nullptr;
+            unsigned ordinal = 99;
+            const ir::ResolvedRegisterVector* borrowed = nullptr;
+            switch (instruction_ref.instruction_kind()) {
+              case ir::Tcgen05MmaF16::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaF16&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_f16_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaTf32::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaTf32&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_tf32_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaI8::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaI8&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_i8_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaF8f6f4::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaF8f6f4&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_f8f6f4_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaSpF16::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaSpF16&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_sparse_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaSpTf32::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaSpTf32&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_sparse_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaSpI8::kind: {
+                const auto& form =
+                    dynamic_cast<const ir::Tcgen05MmaSpI8&>(instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_sparse_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              case ir::Tcgen05MmaSpF8f6f4::kind: {
+                const auto& form = dynamic_cast<const ir::Tcgen05MmaSpF8f6f4&>(
+                    instruction_ref);
+                member = &form.disable_output_lane;
+                ordinal = form.operand_layout.value;
+                const auto view = ir::tcgen_mma_sparse_view(instruction_ref);
+                if (!view)
+                  return false;
+                borrowed = view->disable_output_lane;
+                break;
+              }
+              default:
+                return false;
+            }
+            const unsigned expected =
+                (kind == "f16" || kind == "tf32")
+                    ? (shared ? 0u : 2u) + (scale ? 1u : 0u)
+                    : (shared ? 0u : 1u);
+            if (!member || borrowed != &member->value || ordinal != expected ||
+                member->value.elements.size() != (group == 1 ? 4u : 8u) ||
+                member->locs.empty())
+              return false;
+            ir::ResolvedModule copied(*owned), assigned;
+            assigned = copied;
+            ir::ResolvedFunction function(copied.functions.front());
+            assigned.functions.front() = function;
+            assigned.functions.front().body.front() =
+                function.body.front()->clone();
+            if (!ir::validateModule(*owned) || !ir::validateModule(copied) ||
+                !ir::validateModule(assigned))
+              return false;
+          }
+  for (const std::string instruction :
+       {"tcgen05.mma.ws.cta_group::1.kind::f16 [d],ad,bd,i,p;",
+        "tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale "
+        "[d],ad,bd,i,[sa],[sb],p;"}) {
+    std::optional<ir::ResolvedModule> owned;
+    {
+      const std::string source =
+          ".version 9.3\n.target sm_100a\n.address_size 64\n.entry kernel(){"
+          ".reg .b32 d,i,sa,sb; .reg .b64 ad,bd; .reg .pred p;" +
+          instruction + "}";
+      ptx_frontend::PtxSyntaxParser parser(source);
+      const auto ast = parser.parseModule();
+      if (!ast || !ast.diagnostics.empty())
+        return false;
+      auto module = ir::resolveAndValidateModule(*ast);
+      if (!module)
+        return false;
+      owned.emplace(std::move(*module));
+    }
+    if (!ir::validateModule(*owned))
+      return false;
+    if (const auto mx =
+            ir::tcgen_mma_mx8_view(*owned->functions.front().body.front())) {
+      if (!mx->scale_selector ||
+          mx->scale_selector->value != ir::TcgenScaleVectorSize::Absent)
+        return false;
+    }
+    ir::ResolvedModule copied(*owned);
+    if (!ir::validateModule(copied))
+      return false;
+  }
+  return true;
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledRequiredTcgenMasks())
+    return 35;
   if (!checkInstalledRedAsyncDefault())
     return 34;
   if (!checkInstalledHalfFmaModifiers())

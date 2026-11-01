@@ -470,22 +470,6 @@ instructions:
         modifier_order_aliases:
           - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
-          - name: shared_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: shared_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: shared_mask_no_scale
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -502,22 +486,6 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
-          - name: tensor_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -562,22 +530,6 @@ instructions:
         modifier_order_aliases:
           - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
-          - name: shared_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: shared_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: shared_mask_no_scale
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -594,22 +546,6 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
-          - name: tensor_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -657,13 +593,6 @@ instructions:
         modifier_order_aliases:
           - [mma, kind, cta_group, ashift, collector]
         operand_layouts:
-          - name: shared_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -671,13 +600,6 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -709,13 +631,6 @@ instructions:
               - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
               - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
-          - name: shared_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -723,13 +638,6 @@ instructions:
               - {name: b, kind: reg, role: src, access: read, type: b64}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -1598,24 +1506,6 @@ instructions:
               - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
               - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
-          - name: shared_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: shared_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: shared_mask_no_scale
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -1634,24 +1524,6 @@ instructions:
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
-          - name: tensor_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -1696,24 +1568,6 @@ instructions:
               - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
               - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
-          - name: shared_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: shared_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: shared_mask_no_scale
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -1732,24 +1586,6 @@ instructions:
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-              - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
-          - name: tensor_no_mask_no_scale
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask_scale
-            availability: {any_of: [{ptx: "8.6", sm: 100, target: sm_100a}, {ptx: "8.8", sm: 100, family: sm_100f}]}
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
               - {name: scale_input_d, kind: imm, role: immediate, access: read, type: u32}
           - name: tensor_mask_no_scale
@@ -1794,14 +1630,6 @@ instructions:
               - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
               - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
-          - name: shared_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -1810,14 +1638,6 @@ instructions:
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:
@@ -1853,14 +1673,6 @@ instructions:
               - {value: "collector::a::lastuse", token: ".collector::a::lastuse"}
               - {value: "collector::a::discard", token: ".collector::a::discard"}
         operand_layouts:
-          - name: shared_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: reg, role: src, access: read, type: b64}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: shared_mask
             operands:
               - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
@@ -1869,14 +1681,6 @@ instructions:
               - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
               - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: disable_output_lane, kind: reg_vector, role: mask, access: read, type: b32, vector: {kind: vector, arity: [1, 2, 3, 4, 5, 6, 7, 8], type_policy: element, allowed_register_types: [b32, u32, s32, f32]}}
-              - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
-          - name: tensor_no_mask
-            operands:
-              - {name: d, kind: tensor_memory_address_bracket, role: dst, access: read_write, type: u32}
-              - {name: a, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: b, kind: reg, role: src, access: read, type: b64}
-              - {name: sp_meta, kind: tensor_memory_address_bracket, role: src, access: read, type: u32}
-              - {name: idesc, kind: reg, role: src, access: read, type: b32}
               - {name: enable_input_d, kind: pred_source, role: predicate, access: read}
           - name: tensor_mask
             operands:

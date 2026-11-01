@@ -9,9 +9,8 @@ encodings; the known-operation query never reads live descriptor registers.
 The canonical order is
 `tcgen05.mma.cta_group::{1,2}.kind::f8f6f4 [d-tmem], a, b-desc,
 idesc, {disable-output-lane}, enable-input-d`. A is a shared descriptor
-register or bracketed Tensor Memory address. The optional mask contains
-four or eight 32-bit bit-registers for group 1 or 2. Four A-placement/mask
-layouts and two located group values yield eight typed source topologies.
+register or bracketed Tensor Memory address. The required mask contains
+four or eight 32-bit bit-registers for group 1 or 2. Two A-placement layouts and two located group values yield four typed source topologies.
 There is no source `scale-input-d`, `.satfinite`, or block-scale operand in this ordinary form. The frontend accepts the printed canonical modifier
 order; the adjacent `.mma.kind::f8f6f4.cta_group` spelling is excluded.
 

@@ -8,8 +8,8 @@
 规范源码顺序为
 `tcgen05.mma.cta_group::{1,2}.kind::f8f6f4 [d-tmem], a, b-desc,
 idesc, {disable-output-lane}, enable-input-d`。A 可以是共享描述符寄存器或带方括号的
-Tensor Memory 地址。可选掩码按组 1/2 分别含四/八个 32 位位寄存器。
-四种 A 位置／掩码布局乘以两个带源码位置的组值，形成八种类型化源码拓扑。
+Tensor Memory 地址。必需掩码按组 1/2 分别含四/八个 32 位位寄存器。
+两种 A 位置布局乘以两个带源码位置的组值，形成四种类型化源码拓扑。
 普通形式没有源码 `scale-input-d`、`.satfinite` 或块缩放操作数。
 前端接受印出的规范 modifier 顺序；相邻的 `.mma.kind::f8f6f4.cta_group` 拼写被排除。
 

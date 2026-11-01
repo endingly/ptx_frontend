@@ -19,7 +19,7 @@ class TcgenMmaSparseContractTests(unittest.TestCase):
         raw = load_yaml(packaged_spec_dir() / "tensor_memory_data_movement.yaml")
         variants = {item.name: item for item in
                     normalize_instruction_spec(raw)[0].variants}
-        expected = {"f16": 8, "tf32": 8, "f8f6f4": 4, "i8": 4}
+        expected = {"f16": 4, "tf32": 4, "f8f6f4": 2, "i8": 2}
         for kind, count in expected.items():
             variant = variants[f"tcgen05_mma_sp_{kind}"]
             self.assertEqual(len(variant.operand_layouts), count)

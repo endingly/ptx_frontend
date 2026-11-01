@@ -63,16 +63,17 @@ TEST(TcgenMmaSparse, SourceTopologyAndTargets) {
             "tcgen05.mma.sp.cta_group::" + std::to_string(group) +
             ".kind::" + std::string(kind) + " [%d], " +
             (shared_a ? "%ad" : "[%a]") + ", %bd, ";
-        const std::string tail = ", %i, %p;";
-        SCOPED_TRACE(prefix);
-        EXPECT_TRUE(accepts_sparse(sparse_source(prefix + "[%sp]" + tail)));
-        EXPECT_FALSE(accepts_sparse(sparse_source(prefix + "%sp" + tail)));
-        EXPECT_FALSE(accepts_sparse(sparse_source(prefix + "%i, [%sp], %p;")));
-        EXPECT_FALSE(accepts_sparse(
-            sparse_source(prefix + "[%sp]" + tail, "sm_90a", "8.6")));
         const std::string mask = group == 1
                                      ? "{%m0,%m1,%m2,%m3}"
                                      : "{%m0,%m1,%m2,%m3,%m4,%m5,%m6,%m7}";
+        const std::string tail = ", %i, " + mask + ", %p;";
+        SCOPED_TRACE(prefix);
+        EXPECT_FALSE(accepts_sparse(sparse_source(prefix + "[%sp], %i, %p;")));
+        EXPECT_FALSE(accepts_sparse(sparse_source(prefix + "%sp" + tail)));
+        EXPECT_FALSE(accepts_sparse(
+            sparse_source(prefix + "%i, [%sp], " + mask + ", %p;")));
+        EXPECT_FALSE(accepts_sparse(
+            sparse_source(prefix + "[%sp]" + tail, "sm_90a", "8.6")));
         EXPECT_TRUE(accepts_sparse(
             sparse_source(prefix + "[%sp], %i, " + mask + ", %p;")));
         EXPECT_FALSE(accepts_sparse(
@@ -86,21 +87,21 @@ TEST(TcgenMmaSparse, SourceTopologyAndTargets) {
   EXPECT_TRUE(accepts_sparse(sparse_source(
       "tcgen05.mma.sp.cta_group::1.kind::f16 [%d], %ad, %bd, [%sp], %i, "
       "{%a,%a,%a,%a}, %p, 15;")));
-  EXPECT_FALSE(accepts_sparse(sparse_source(
-      "tcgen05.mma.sp.cta_group::1.kind::i8 [%d], %ad, %bd, [%sp], %i, "
-      "%p, 1;")));
+  EXPECT_FALSE(accepts_sparse(
+      sparse_source("tcgen05.mma.sp.cta_group::1.kind::i8 [%d], %ad, %bd, "
+                    "[%sp], %i, {%i, %i, %i, %i}, %p, 1;")));
   EXPECT_FALSE(accepts_sparse(sparse_source(
       "tcgen05.sp.mma.cta_group::1.kind::f16 [%d], %ad, %bd, [%sp], %i, "
-      "%p;")));
+      "{%i,%i,%i,%i}, %p;")));
 }
 
 /** Sparse metadata and bound register facts survive syntax-tree destruction. */
 TEST(TcgenMmaSparse, OwnedViewAndTamper) {
   std::optional<ResolvedModule> owned;
   {
-    auto ast = parse_sparse(sparse_source(
-        "tcgen05.mma.sp.cta_group::1.kind::f16 [%d], %ad, %bd, [%sp], "
-        "%i, %p;"));
+    auto ast = parse_sparse(
+        sparse_source("tcgen05.mma.sp.cta_group::1.kind::f16 [%d], %ad, %bd, "
+                      "[%sp], %i, {%i, %i, %i, %i}, %p;"));
     ASSERT_TRUE(ast);
     auto result = resolveAndValidateModule(*ast);
     ASSERT_TRUE(result.has_value());

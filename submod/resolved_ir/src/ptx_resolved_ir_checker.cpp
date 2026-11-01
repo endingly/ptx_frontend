@@ -3503,6 +3503,9 @@ CheckResult check_tcgen_mma_sources(
         "TCGEN WS zero-column descriptor requires scalar General "
         "b64/u64/s64.",
         CheckDiagnosticKind::OperandTypeMismatch);
+  if (!ws && scale_selector == nullptr && mask == nullptr)
+    return cvt_rule_violation(
+        context, "Non-WS unscaled MMA requires an output-lane mask.");
   if (mask) {
     const size_t expected = group == TcgenCtaGroup::One ? 4 : 8;
     if (mask->value.elements.size() != expected)

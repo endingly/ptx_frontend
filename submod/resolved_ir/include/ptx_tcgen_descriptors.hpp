@@ -56,7 +56,7 @@ struct TcgenMmaF16View {
   TcgenInstructionDescriptorView instruction;
   /** Required predicate source, retaining negation or constant truth. */
   const ResolvedPredicateSource* enable_d;
-  /** Optional output-lane register mask. */
+  /** Required output-lane mask; non-null on a successful borrowed view. */
   const ResolvedRegisterVector* disable_output_lane;
   /** Optional D-scale source immediate with original integer bits. */
   const ResolvedImmediate* scale_d;
@@ -66,16 +66,14 @@ struct TcgenMmaF16View {
 inline std::optional<TcgenMmaF16View> tcgen_mma_f16_view(
     const Instruction& instruction) noexcept {
   const auto* mma = dynamic_cast<const Tcgen05MmaF16*>(&instruction);
-  if (!mma || mma->operand_layout.value >= 8)
+  if (!mma || mma->operand_layout.value >= 4)
     return std::nullopt;
   const auto layout = mma->operand_layout.value;
-  const bool shared_a = layout < 4;
+  const bool shared_a = layout < 2;
   const bool scaled = (layout & 1U) != 0;
-  const bool masked = (layout & 2U) != 0;
   if (mma->a_register.has_value() != shared_a ||
       mma->a_tcgen_bracketed_address.has_value() == shared_a ||
-      mma->scale_input_d.has_value() != scaled ||
-      mma->disable_output_lane.has_value() != masked)
+      mma->scale_input_d.has_value() != scaled)
     return std::nullopt;
   TcgenMmaF16View view{
       .group = mma->cta_group.value,
@@ -85,8 +83,7 @@ inline std::optional<TcgenMmaF16View> tcgen_mma_f16_view(
       .b = {&mma->b.value, MatrixFragmentRole::B},
       .instruction = {&mma->idesc.value},
       .enable_d = &mma->enable_input_d.value,
-      .disable_output_lane =
-          masked ? &mma->disable_output_lane->value : nullptr,
+      .disable_output_lane = &mma->disable_output_lane.value,
       .scale_d = scaled ? &mma->scale_input_d->value : nullptr};
   if (shared_a)
     view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
@@ -118,7 +115,7 @@ struct TcgenMmaTf32View {
   TcgenInstructionDescriptorView instruction;
   /** Required predicate source, retaining negation or constant truth. */
   const ResolvedPredicateSource* enable_d;
-  /** Optional output-lane register mask. */
+  /** Required output-lane mask; non-null on a successful borrowed view. */
   const ResolvedRegisterVector* disable_output_lane;
   /** Optional D-scale source immediate with original integer bits. */
   const ResolvedImmediate* scale_d;
@@ -128,16 +125,14 @@ struct TcgenMmaTf32View {
 inline std::optional<TcgenMmaTf32View> tcgen_mma_tf32_view(
     const Instruction& instruction) noexcept {
   const auto* mma = dynamic_cast<const Tcgen05MmaTf32*>(&instruction);
-  if (!mma || mma->operand_layout.value >= 8)
+  if (!mma || mma->operand_layout.value >= 4)
     return std::nullopt;
   const auto layout = mma->operand_layout.value;
-  const bool shared_a = layout < 4;
+  const bool shared_a = layout < 2;
   const bool scaled = (layout & 1U) != 0;
-  const bool masked = (layout & 2U) != 0;
   if (mma->a_register.has_value() != shared_a ||
       mma->a_tcgen_bracketed_address.has_value() == shared_a ||
-      mma->scale_input_d.has_value() != scaled ||
-      mma->disable_output_lane.has_value() != masked)
+      mma->scale_input_d.has_value() != scaled)
     return std::nullopt;
   TcgenMmaTf32View view{
       .group = mma->cta_group.value,
@@ -147,8 +142,7 @@ inline std::optional<TcgenMmaTf32View> tcgen_mma_tf32_view(
       .b = {&mma->b.value, MatrixFragmentRole::B},
       .instruction = {&mma->idesc.value},
       .enable_d = &mma->enable_input_d.value,
-      .disable_output_lane =
-          masked ? &mma->disable_output_lane->value : nullptr,
+      .disable_output_lane = &mma->disable_output_lane.value,
       .scale_d = scaled ? &mma->scale_input_d->value : nullptr};
   if (shared_a)
     view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
@@ -179,7 +173,7 @@ struct TcgenMmaI8View {
   TcgenInstructionDescriptorView instruction;
   /** Required predicate source, retaining negation or constant truth. */
   const ResolvedPredicateSource* enable_d;
-  /** Optional group-sized output-lane bit-register mask. */
+  /** Required group-sized mask; non-null on a successful borrowed view. */
   const ResolvedRegisterVector* disable_output_lane;
 };
 
@@ -187,14 +181,12 @@ struct TcgenMmaI8View {
 inline std::optional<TcgenMmaI8View> tcgen_mma_i8_view(
     const Instruction& instruction) noexcept {
   const auto* mma = dynamic_cast<const Tcgen05MmaI8*>(&instruction);
-  if (!mma || mma->operand_layout.value >= 4)
+  if (!mma || mma->operand_layout.value >= 2)
     return std::nullopt;
   const auto layout = mma->operand_layout.value;
-  const bool shared_a = layout < 2;
-  const bool masked = (layout & 1U) != 0;
+  const bool shared_a = layout == 0;
   if (mma->a_register.has_value() != shared_a ||
-      mma->a_tcgen_bracketed_address.has_value() == shared_a ||
-      mma->disable_output_lane.has_value() != masked)
+      mma->a_tcgen_bracketed_address.has_value() == shared_a)
     return std::nullopt;
   TcgenMmaI8View view{.group = mma->cta_group.value,
                       .d = &mma->d.value,
@@ -203,8 +195,7 @@ inline std::optional<TcgenMmaI8View> tcgen_mma_i8_view(
                       .b = {&mma->b.value, MatrixFragmentRole::B},
                       .instruction = {&mma->idesc.value},
                       .enable_d = &mma->enable_input_d.value,
-                      .disable_output_lane =
-                          masked ? &mma->disable_output_lane->value : nullptr};
+                      .disable_output_lane = &mma->disable_output_lane.value};
   if (shared_a)
     view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
                                                  MatrixFragmentRole::A};
@@ -233,7 +224,7 @@ struct TcgenMmaF8F6F4View {
   TcgenInstructionDescriptorView instruction;
   /** Required predicate source, retaining negation or constant truth. */
   const ResolvedPredicateSource* enable_d;
-  /** Optional group-sized output-lane bit-register mask. */
+  /** Required group-sized mask; non-null on a successful borrowed view. */
   const ResolvedRegisterVector* disable_output_lane;
 };
 
@@ -241,14 +232,12 @@ struct TcgenMmaF8F6F4View {
 inline std::optional<TcgenMmaF8F6F4View> tcgen_mma_f8f6f4_view(
     const Instruction& instruction) noexcept {
   const auto* mma = dynamic_cast<const Tcgen05MmaF8f6f4*>(&instruction);
-  if (!mma || mma->operand_layout.value >= 4)
+  if (!mma || mma->operand_layout.value >= 2)
     return std::nullopt;
   const auto layout = mma->operand_layout.value;
-  const bool shared_a = layout < 2;
-  const bool masked = (layout & 1U) != 0;
+  const bool shared_a = layout == 0;
   if (mma->a_register.has_value() != shared_a ||
-      mma->a_tcgen_bracketed_address.has_value() == shared_a ||
-      mma->disable_output_lane.has_value() != masked)
+      mma->a_tcgen_bracketed_address.has_value() == shared_a)
     return std::nullopt;
   TcgenMmaF8F6F4View view{
       .group = mma->cta_group.value,
@@ -258,8 +247,7 @@ inline std::optional<TcgenMmaF8F6F4View> tcgen_mma_f8f6f4_view(
       .b = {&mma->b.value, MatrixFragmentRole::B},
       .instruction = {&mma->idesc.value},
       .enable_d = &mma->enable_input_d.value,
-      .disable_output_lane =
-          masked ? &mma->disable_output_lane->value : nullptr};
+      .disable_output_lane = &mma->disable_output_lane.value};
   if (shared_a)
     view.a_shared = TcgenMmaSharedDescriptorView{&mma->a_register->value,
                                                  MatrixFragmentRole::A};
@@ -410,7 +398,7 @@ struct TcgenMmaSparseView {
   TcgenInstructionDescriptorView instruction;
   /** Required input-D predicate source. */
   const ResolvedPredicateSource* enable_d;
-  /** Optional group-sized output-lane mask. */
+  /** Required group-sized mask; non-null on a successful borrowed view. */
   const ResolvedRegisterVector* disable_output_lane;
   /** Optional source D-scale immediate, only for f16 or tf32. */
   const ResolvedImmediate* scale_d;
@@ -430,33 +418,30 @@ std::optional<TcgenMmaSparseView> borrow(const Form& mma,
                                          TcgenMmaKind kind) noexcept {
   constexpr bool scaled_kind = std::same_as<Form, Tcgen05MmaSpF16> ||
                                std::same_as<Form, Tcgen05MmaSpTf32>;
-  constexpr unsigned layout_count = scaled_kind ? 8 : 4;
+  constexpr unsigned layout_count = scaled_kind ? 4 : 2;
   if (mma.operand_layout.value >= layout_count)
     return std::nullopt;
   const auto layout = mma.operand_layout.value;
-  const bool shared_a = layout < (scaled_kind ? 4U : 2U);
-  const bool masked = (layout & (scaled_kind ? 2U : 1U)) != 0;
+  const bool shared_a = layout < (scaled_kind ? 2U : 1U);
   const bool scaled = scaled_kind && (layout & 1U) != 0;
   if (mma.a_register.has_value() != shared_a ||
-      mma.a_tcgen_bracketed_address.has_value() == shared_a ||
-      mma.disable_output_lane.has_value() != masked)
+      mma.a_tcgen_bracketed_address.has_value() == shared_a)
     return std::nullopt;
   if constexpr (scaled_kind) {
     if (mma.scale_input_d.has_value() != scaled)
       return std::nullopt;
   }
-  TcgenMmaSparseView view{
-      .kind = kind,
-      .group = mma.cta_group.value,
-      .d = &mma.d.value,
-      .a_shared = std::nullopt,
-      .a_tmem = nullptr,
-      .b = {&mma.b.value, MatrixFragmentRole::B},
-      .metadata = &mma.sp_meta.value,
-      .instruction = {&mma.idesc.value},
-      .enable_d = &mma.enable_input_d.value,
-      .disable_output_lane = masked ? &mma.disable_output_lane->value : nullptr,
-      .scale_d = nullptr};
+  TcgenMmaSparseView view{.kind = kind,
+                          .group = mma.cta_group.value,
+                          .d = &mma.d.value,
+                          .a_shared = std::nullopt,
+                          .a_tmem = nullptr,
+                          .b = {&mma.b.value, MatrixFragmentRole::B},
+                          .metadata = &mma.sp_meta.value,
+                          .instruction = {&mma.idesc.value},
+                          .enable_d = &mma.enable_input_d.value,
+                          .disable_output_lane = &mma.disable_output_lane.value,
+                          .scale_d = nullptr};
   if constexpr (scaled_kind) {
     if (scaled)
       view.scale_d = &mma.scale_input_d->value;

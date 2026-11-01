@@ -4,12 +4,16 @@
 
 | 固定源码家族 | Kind | 结构化操作数布局 | 专项契约 |
 | --- | --- | ---: | --- |
-| `tcgen05.mma` | f16、tf32、f8f6f4、i8、mxf8f6f4、mxf4、mxf4nvf4 | 30 | [f16](tcgen_mma_coverage.md)、[tf32](tcgen_mma_tf32_coverage.md)、[f8](tcgen_mma_f8f6f4_coverage.md)、[i8](tcgen_mma_i8_coverage.md)、[MX8](tcgen_mma_mx8_coverage.md)、[MX4](tcgen_mma_mx4_coverage.md)、[MX NV](tcgen_mma_mxnv_coverage.md) |
-| `tcgen05.mma.sp` | 同样七种 kind | 30 | [普通稀疏](tcgen_mma_sparse_coverage.md)、[稀疏 MX](tcgen_mma_sparse_mx_coverage.md) |
+| `tcgen05.mma` | f16、tf32、f8f6f4、i8、mxf8f6f4、mxf4、mxf4nvf4 | 18 | [f16](tcgen_mma_coverage.md)、[tf32](tcgen_mma_tf32_coverage.md)、[f8](tcgen_mma_f8f6f4_coverage.md)、[i8](tcgen_mma_i8_coverage.md)、[MX8](tcgen_mma_mx8_coverage.md)、[MX4](tcgen_mma_mx4_coverage.md)、[MX NV](tcgen_mma_mxnv_coverage.md) |
+| `tcgen05.mma.sp` | 同样七种 kind | 18 | [普通稀疏](tcgen_mma_sparse_coverage.md)、[稀疏 MX](tcgen_mma_sparse_mx_coverage.md) |
 | `tcgen05.mma.ws` | f16、tf32、f8f6f4、i8 | 16 | [稠密 WS](tcgen_mma_ws_dense_coverage.md) |
 | `tcgen05.mma.ws.sp` | 同样四种 kind | 16 | [稀疏 WS](tcgen_mma_ws_sparse_coverage.md) |
 
-92 个布局统计操作数结构，不等于每一种 CTA group、selector、collector 动作或目标的笛卡尔积。规范化来源统计将其展开为 152 条已记录的拓扑元组；相对保存的 40 条基线元组，新增 112 条、移除零条，40 个既有元组键也增加了可选限定符契约。统计核对了精确家族／kind 集合及 237 项来源断言，生成类身份与条件规则另有 [C++ 源码／已知值测试](../../../submod/resolved_ir/test/)和 [Python 规则测试](../../../python/tests/spec/)。这些数字只描述当前固定来源模型，不能推广至未来 PTX 版本的全部拼写。
+当前 68 个布局统计操作数结构，不等于每一种 CTA group、selector、collector 动作或目标的笛卡尔积。
+普通非 WS dense/sparse mask 必需：group 1 四个标量项，group 2 八个。
+删除 24 个省略 mask 的布局保留全部 22 个家族/kind 身份及其他域。
+此前统计的 92 个布局和 152 条拓扑元组是历史数据，包含现在已拒绝的省略形式。
+生成身份与条件规则另有 [C++ 测试](../../../submod/resolved_ir/test/)和 [Python 测试](../../../python/tests/spec/)。
 
 普通非 WS 形式保持各 kind 的 group、M/N/K、A 位置、掩码、D 缩放、转置与目标规则。[A collector 与 ashift](tcgen_mma_a_collector_coverage.md)扩展既有八种稠密／稀疏身份，不建立重叠类。六种稠密／稀疏 MX 身份共用两种 A 位置、带来源的类型化 selector、缩放 A/B 的 Tensor Memory 地址及 [A collector 控制](tcgen_mma_mx_a_collector_coverage.md)；不带通道掩码、D 缩放或 ashift。MX 缩放数据行明确保存 kind、稀疏状态、K、selector、角色、因子数、合法 ID 和放置策略。MX8 省略 selector 推导 1X；MX4 省略时推导 block32；MX NV 必须写出 selector。稀疏 MX 查询使用真实稀疏行及隐含的 F32 输出：表 46/47 不编码 D 类型字段。共享缩放行的生成投影保留稠密／稀疏身份，因此因子与 ID 检查能选中正确行。
 
@@ -19,7 +23,7 @@
 
 已知值报告可拒绝矛盾的描述符字段、形状／类型／目标组合、稀疏元数据索引、缩放事实和通道声明，但**不能**证明调用方字值等于运行时不透明的 `idesc`、共享描述符、零列字或 Tensor Memory 内容。固定表 47 的 MX4 K96 缩放 ID 域为 0/2，而后面的 K96 图也画出 1/3；前端执行已定义指令字的交集，记录冲突，不凭空扩大接受范围。M32 稀疏 WS 的元数据放置图尚未确立，因此报告保留 `MetadataLayoutRule`。固定来源未确定物理规则时，无缩放低位打包及部分低位转置仍是显式义务。实时稀疏内容、各 lane 的缩放放置、collector 历史、完成前来源稳定性、分配、同步和数值结果同样未获证明。
 
-最终来源快照采用 Clang 21 Debug、Ninja 及配置好的 LLD 驱动路径验证。完整 CTest **1,357/1,357** 通过，其中 `TcgenMma*` 专项 **64/64**；Python CI 套件 **518/518** 通过。**13/13** 个已安装 MMA consumer 均完成配置、构建和运行；Python 3.14 wheel 构建、安装及资源 smoke 也通过。生成计划包含 **101 个条目、4,530 个形式、5,663 个操作数布局、913 个多布局形式和 390 个输出**（11 个全局输出，另有七类合计 379 个）。`GeneratorJobsTests.test_parallel_artifacts_match_serial_bytes_and_stable_manifest` 用合成发射器验证项目的并行写入／manifest 协议；`TcgenDescriptorGenerationTests.test_emitted_tables_are_deterministic_and_cover_literal_rules` 验证 TCGEN 描述符行。两者都不是对全部 390 个输出进行独立逐字节对比的声明。
+历史集成快照采用 Clang 21 Debug、Ninja 及配置好的 LLD 驱动路径验证。完整 CTest **1,357/1,357** 通过，其中 `TcgenMma*` 专项 **64/64**；Python CI 套件 **518/518** 通过。**13/13** 个已安装 MMA consumer 均完成配置、构建和运行；Python 3.14 wheel 构建、安装及资源 smoke 也通过。生成计划包含 **101 个条目、4,530 个形式、5,663 个操作数布局、913 个多布局形式和 390 个输出**（11 个全局输出，另有七类合计 379 个）。`GeneratorJobsTests.test_parallel_artifacts_match_serial_bytes_and_stable_manifest` 用合成发射器验证项目的并行写入／manifest 协议；`TcgenDescriptorGenerationTests.test_emitted_tables_are_deterministic_and_cover_literal_rules` 验证 TCGEN 描述符行。两者都不是对全部 390 个输出进行独立逐字节对比的声明。
 
 集成序列中的首次 resolved-IR 构建耗时 **543.24 秒**、子进程峰值 RSS **4,146,040 KiB**；最终核心修复后的增量 resolved-IR 构建耗时 **197.11 秒**、峰值 **2,755,800 KiB**。两次缓存状态不同，不能当作干净构建性能对照。随后完整目标构建耗时 **11.93 秒**，完整 CTest 耗时 **106.40 秒**。固定 `ptxas` **13.3.73** 检查点的 **31/31 项预期结果**一致：19 组新增 kind、八项 collector／ashift／零列控制、两项精确 103a 稀疏 MX 和两项 selector 省略对照（30 项接受、一项预期拒绝）。最终构建未重跑该汇编语料；它也未覆盖全部目标或寄存器拼写，没有运行 GPU。[仓库中的源码测试](../../../submod/resolved_ir/test/test_tcgen_mma_sparse_mx.cpp)、[已知数据行测试](../../../python/tests/spec/test_tcgen_mma_sparse_mx_contract.py)与[安装后示例](../../../examples/tcgen_mma_ws_sparse_consumer/)可独立重跑前端正反例。
 

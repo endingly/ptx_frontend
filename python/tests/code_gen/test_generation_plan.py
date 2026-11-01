@@ -398,10 +398,14 @@ class GenerationPlanTests(unittest.TestCase):
         self.assertIn("WithLocs<bool> uni", generated)
 
     def test_named_vector_data_admission_is_operand_local(self) -> None:
-        """Opted memory and explicit MOV slots do not widen unrelated families."""
-        from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy
+        """Named-vector admission is confined to exact eligible data bindings."""
+        from ptx_frontend.ir.resolved_ir import ResolvedVectorTypePolicy, ResolvedOperandRole
 
         observed = set()
+        quad_keys = {(name, "default", "src") for name in (
+            "cvt_rs_satfinite_f4x4_f32", "cvt_rs_satfinite_f6x4_f32",
+            "cvt_rs_satfinite_f8x4_f32")}
+        seen_quad = set()
         aggregate_mov = set()
         inherited = {"multimem": 0, "suld": 0, "st": 0, "sust": 0}
         for entry in self.context.entries:
@@ -409,12 +413,21 @@ class GenerationPlanTests(unittest.TestCase):
             for variant in entry.resolved.variants:
                 for layout in variant.operand_layouts:
                     for binding in layout.bindings:
+                        key = (variant.variant_id, layout.layout_id, binding.target_field_id)
+                        quad_source = opcode == "cvt" and key in quad_keys
                         if binding.allow_named_vector:
                             observed.add(opcode)
-                            self.assertIn(opcode, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+                            self.assertTrue(quad_source or opcode in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
                             inherited_data = (opcode in {"multimem", "suld", "sust"} or
                                               (opcode == "st" and binding.target_field_id == "value"))
-                            if (opcode == "mov" and binding.vector_type_policy
+                            if quad_source:
+                                seen_quad.add(key)
+                                self.assertIs(binding.vector_type_policy, ResolvedVectorTypePolicy.ELEMENT)
+                                self.assertEqual(binding.allowed_vector_arities, (4,))
+                                self.assertEqual(binding.target_field_id, "src")
+                                self.assertIs(binding.role, ResolvedOperandRole.SOURCE)
+                                self.assertTrue(binding.source_value_vector)
+                            elif (opcode == "mov" and binding.vector_type_policy
                                     is ResolvedVectorTypePolicy.AGGREGATE):
                                 aggregate_mov.add((variant.variant_id, binding.target_field_id))
                                 self.assertEqual(binding.allowed_vector_arities, (2, 4))
@@ -436,11 +449,12 @@ class GenerationPlanTests(unittest.TestCase):
                                     field.name in {"async", "bulk"} and
                                     field.constant_value is True
                                     for field in variant.modifier_fields))
-                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"}:
+                        if opcode not in {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"} and not quad_source:
                             self.assertFalse(binding.allow_named_vector)
                         if opcode == "multimem" and 8 in binding.allowed_vector_arities:
                             self.assertFalse(binding.allow_named_vector)
-        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust"})
+        self.assertEqual(seen_quad, quad_keys)
+        self.assertEqual(observed, {"ld", "ldu", "st", "mov", "multimem", "suld", "sust", "cvt"})
         self.assertEqual(inherited, {"multimem": 42, "suld": 60, "st": 4, "sust": 78})
         self.assertEqual(aggregate_mov, {
             ("mov_scalar", "src"), ("mov_scalar", "dst"),
@@ -469,7 +483,7 @@ class GenerationPlanTests(unittest.TestCase):
             variant for entry in context.entries for variant in entry.resolved.variants
         )
         self.assertEqual((len(context.entries), len(forms)), (137, 5452))
-        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7480)
+        self.assertEqual(sum(len(form.operand_layouts) for form in forms), 7456)
         self.assertEqual(sum(len(form.operand_layouts) > 1 for form in forms), 1232)
         for form in forms:
             slots = operand_slots(form, self.backend)

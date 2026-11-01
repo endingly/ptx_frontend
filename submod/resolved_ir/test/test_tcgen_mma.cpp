@@ -87,20 +87,23 @@ TEST(TcgenMmaF16, SourceTopologyAndOneWrittenAlias) {
               ".kind::f16 [%d], " + a + ", %bd, %i" +
               (mask ? ", " + lanes : "") + ", %p" + (scale ? ", 15" : "") + ";";
           SCOPED_TRACE(body);
-          EXPECT_TRUE(accepts_mma(mma_source(body)));
+          EXPECT_EQ(accepts_mma(mma_source(body)), mask);
         }
       }
     }
   }
-  EXPECT_TRUE(accepts_mma(mma_source(
-      "tcgen05.mma.kind::f16.cta_group::1 [%d], %ad, %bd, %i, !%p;")));
-  EXPECT_TRUE(accepts_mma(
-      mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, 2;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.kind::f16.cta_group::1 [%d], %ad, "
+                             "%bd, %i, {%i, %i, %i, %i}, !%p;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, "
+                             "%bd, %i, {%i, %i, %i, %i}, 2;")));
   EXPECT_TRUE(accepts_mma(
       mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %ua, %ub, %ui, "
                  "{%fm0, %fm1, %fm2, %fm3}, 0;")));
-  EXPECT_TRUE(accepts_mma(mma_source(
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %sa, %sb, %si, 1;")));
+  EXPECT_TRUE(
+      accepts_mma(mma_source("tcgen05.mma.cta_group::1.kind::f16 [%d], %sa, "
+                             "%sb, %si, {%i, %i, %i, %i}, 1;")));
 }
 
 /** Preserve integer truth after conversion and release of syntax storage. */
@@ -117,7 +120,7 @@ TEST(TcgenMmaF16, OwnedIntegerPredicateTruth) {
     {
       auto ast = parse_mma(mma_source(
           std::string("tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, "
-                      "%i, ") +
+                      "%i, {%i, %i, %i, %i}, ") +
           source + ";"));
       ASSERT_TRUE(ast);
       auto result = resolveAndValidateModule(*ast);
@@ -139,31 +142,41 @@ TEST(TcgenMmaF16, OwnedIntegerPredicateTruth) {
 /** Carrier, predicate, mask, scale and source-grammar negatives stay closed. */
 TEST(TcgenMmaF16, RejectsMalformedSourcesAndTargets) {
   for (std::string_view instruction : {
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %fa, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], 0, %bd, %i, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %fi, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, 0, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %ui;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %fa, %bd, %i, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], 0, %bd, %i, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %fi, {%i, %i, "
+           "%i, %i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, 0, {%i, %i, %i, "
+           "%i}, %p;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %ui;",
            "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%m0, %m1, "
            "%m2}, %p;",
            "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, {%m0, %m1, "
            "%m2, %m3}, %p;",
            "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {}, %p;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, -1;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, 16;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, "
-           "4294967296;",
-           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, %ui;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, -1;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, 16;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, 4294967296;",
+           "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, "
+           "%i, %i}, %p, %ui;",
            "tcgen05.mma.kind::f16.cta_group::1.kind::f16 [%d], %ad, %bd, %i, "
-           "%p;",
+           "{%i, %i, %i, %i}, %p;",
        }) {
     SCOPED_TRACE(instruction);
     EXPECT_FALSE(accepts_mma(mma_source(instruction)));
   }
   const std::string plain =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p;";
   const std::string scaled =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p, 0;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p, 0;";
   for (const auto& [target, version, plain_ok, scaled_ok] : {
            std::tuple{"sm_100a", "8.6", true, true},
            std::tuple{"sm_100f", "8.7", false, false},
@@ -195,7 +208,6 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   auto& instruction = *owned->functions.front().body[0].get();
   auto& form = dynamic_cast<Tcgen05MmaF16&>(instruction);
   ASSERT_TRUE(form.a_register);
-  ASSERT_TRUE(form.disable_output_lane);
   ASSERT_TRUE(form.scale_input_d);
   const auto context = mma_context(*owned);
   const auto reject = [&]() {
@@ -208,7 +220,7 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   EXPECT_EQ(tcgen_mma_f16_view(instruction)->instruction.source,
             &form.idesc.value);
   EXPECT_EQ(tcgen_mma_f16_view(instruction)->disable_output_lane,
-            &form.disable_output_lane->value);
+            &form.disable_output_lane.value);
   ASSERT_TRUE(std::holds_alternative<ResolvedPredicate>(
       *tcgen_mma_f16_view(instruction)->enable_d));
   EXPECT_TRUE(
@@ -234,22 +246,22 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.idesc.value.declared_type = ScalarType::F32;
   reject();
   form.idesc.value.declared_type = ScalarType::B32;
-  const auto last_lane = form.disable_output_lane->value.elements.back();
-  form.disable_output_lane->value.elements.pop_back();
+  const auto last_lane = form.disable_output_lane.value.elements.back();
+  form.disable_output_lane.value.elements.pop_back();
   reject();
-  form.disable_output_lane->value.elements.push_back(last_lane);
-  form.disable_output_lane->value.elements[0]->register_class =
+  form.disable_output_lane.value.elements.push_back(last_lane);
+  form.disable_output_lane.value.elements[0]->register_class =
       ResolvedRegisterClass::Predicate;
   reject();
-  form.disable_output_lane->value.elements[0]->register_class =
+  form.disable_output_lane.value.elements[0]->register_class =
       ResolvedRegisterClass::General;
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B64;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B64;
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B32;
-  ASSERT_TRUE(form.disable_output_lane->value.elements[0]->symbol_id);
-  form.disable_output_lane->value.elements[0]->declared_type.reset();
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B32;
+  ASSERT_TRUE(form.disable_output_lane.value.elements[0]->symbol_id);
+  form.disable_output_lane.value.elements[0]->declared_type.reset();
   reject();
-  form.disable_output_lane->value.elements[0]->declared_type = ScalarType::B32;
+  form.disable_output_lane.value.elements[0]->declared_type = ScalarType::B32;
   auto& predicate = std::get<ResolvedPredicate>(form.enable_input_d.value);
   predicate.register_ref.register_class = ResolvedRegisterClass::General;
   reject();
@@ -286,11 +298,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.enable_input_d.locs.front().start.line = 0;
   reject();
   form.enable_input_d.locs.front() = predicate_range;
-  ASSERT_EQ(form.disable_output_lane->locs.size(), 4U);
-  const auto mask_range = form.disable_output_lane->locs.back();
-  form.disable_output_lane->locs.pop_back();
+  ASSERT_EQ(form.disable_output_lane.locs.size(), 4U);
+  const auto mask_range = form.disable_output_lane.locs.back();
+  form.disable_output_lane.locs.pop_back();
   reject();
-  form.disable_output_lane->locs.push_back(mask_range);
+  form.disable_output_lane.locs.push_back(mask_range);
   ASSERT_EQ(form.scale_input_d->locs.size(), 1U);
   const auto scale_range = form.scale_input_d->locs.front();
   form.scale_input_d->locs.front().end.line = 0;
@@ -330,7 +342,7 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
   form.operand_layout.value = 0;
   reject();
   EXPECT_FALSE(tcgen_mma_f16_view(instruction));
-  form.operand_layout.value = 3;
+  form.operand_layout.value = 1;
   EXPECT_TRUE(instruction.check(context).has_value());
   EXPECT_TRUE(validateModule(*owned).has_value());
 }
@@ -338,9 +350,11 @@ TEST(TcgenMmaF16, RechecksOwnedRolesAndRestoration) {
 /** MMA joins TCGEN-only per-body group checks and arrive-one eligibility. */
 TEST(TcgenMmaF16, GroupParticipationAndBodyReset) {
   const std::string mma_one =
-      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::1.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, "
+      "%i}, %p;";
   const std::string mma_two =
-      "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, %p;";
+      "tcgen05.mma.cta_group::2.kind::f16 [%d], %ad, %bd, %i, {%i, %i, %i, %i, "
+      "%i, %i, %i, %i}, %p;";
   EXPECT_FALSE(accepts_mma(
       mma_source(mma_one + "\n  tcgen05.cp.cta_group::2.128x256b [%d], %ad;")));
   EXPECT_FALSE(accepts_mma(

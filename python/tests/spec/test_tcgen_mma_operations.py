@@ -46,15 +46,15 @@ class TcgenF16OperationTests(unittest.TestCase):
         self.assertEqual({gate.feature for gate in rules.F16_TARGET_GATES
                           if gate.scaled_d}, {"sm_100a", "sm_100f"})
 
-    def test_source_topology_keeps_optional_presence(self) -> None:
-        """Absence differs from empty mask; original scale cannot wrap."""
+    def test_source_topology_requires_mask_preserves_optional_scale(self) -> None:
+        """Absent and empty masks reject; optional original scale cannot wrap."""
 
-        raw = {"group": 1, "a_placement": "shared", "mask_count": None,
+        raw = {"group": 1, "a_placement": "shared", "mask_count": 4,
                "scale_source_value": None}
-        self.assertIsNone(normalize_f16_source_topology(raw).mask_count)
+        self.assertEqual(normalize_f16_source_topology(raw).mask_count, 4)
         self.assertEqual(normalize_f16_source_topology({
             **raw, "mask_count": 4, "scale_source_value": 15}).mask_count, 4)
-        for changed in ({"mask_count": 0}, {"mask_count": 5},
+        for changed in ({"mask_count": None}, {"mask_count": 0}, {"mask_count": 5},
                         {"scale_source_value": -1},
                         {"scale_source_value": 16},
                         {"scale_source_value": 1 << 32},
@@ -192,16 +192,16 @@ class TcgenF16OperationTests(unittest.TestCase):
         mma = next(item for item in normalize_instruction_spec(raw)[0].variants
                    if item.name == "tcgen05_mma_f16")
         self.assertIs(mma.rule, SemanticRule.TENSOR_MEMORY_MMA)
-        self.assertEqual(len(mma.operand_layouts), 8)
+        self.assertEqual(len(mma.operand_layouts), 4)
         self.assertEqual(mma.modifier_order_aliases,
                          (("mma", "kind", "cta_group", "ashift", "collector"),))
         self.assertEqual({layout.name for layout in mma.operand_layouts}, {
             f"{a}_{m}_{s}" for a in ("shared", "tensor")
-            for m in ("mask", "no_mask") for s in ("scale", "no_scale")})
+            for m in ("mask",) for s in ("scale", "no_scale")})
         self.assertEqual({len(layout.operands)
-                          for layout in mma.operand_layouts}, {5, 6, 7})
+                          for layout in mma.operand_layouts}, {6, 7})
         self.assertEqual(len([layout for layout in mma.operand_layouts
-                              if layout.availability]), 4)
+                              if layout.availability]), 2)
 
     def test_generated_a_role_uses_typed_operand(self) -> None:
         """A misleading layout label cannot choose register versus tmem A."""

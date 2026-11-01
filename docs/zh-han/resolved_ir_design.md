@@ -443,6 +443,18 @@ inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `Availabl
 availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
 这不表示 instruction attachment、解码 line table 或 string-address execution。
 
+即使 unused 或 nested，current retained call prototype 也会检查 availability。
+base 要求 PTX 2.1 / SM 20，`.noreturn` 要求 PTX 6.4 / SM 30，两个 ABI-preservation
+suffix 均要求 PTX 9.0 / SM 80。AST-free validation 只采用 function 已验证的 selected
+region；source-aware validation 以 supplied active context 分别检查 current prototype
+字段与独立 supplied prototype syntax，version/target retarget 不增加历史 payload 限制。
+这四个 conjunctive minimum-only rule 分别判断已知 version 与 recognized profile：
+即使另一事实缺失，已知失败仍拒绝。`AvailableContext` 只推迟未知 prerequisite；strict
+missing-context 与 unknown-target 诊断保持。每个 target event 清除此前 recognized
+profile，不猜 version/target number，也不引入 generic partial-DNF 解释。
+普通 function/instruction availability 保留 full-context gate；count、variant、identity
+与 signature 合同不变，不证明 physical register preservation。
+
 ## Named memory-vector source
 
 普通 `ld`/`st`、`ld.global.nc` 和 `ldu` 的 data operand 在既有 brace 外接受普通

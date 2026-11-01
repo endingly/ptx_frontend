@@ -159,6 +159,12 @@ at module scope is rejected. Binding owns the local label. Current indirect-call
 layouts consume that bound prototype identity and reuse the shared call ABI
 contract; see [Resolved IR](resolved_ir_design.md) for entry points and limits.
 
+Current owned and supplied prototype contracts independently enforce base
+PTX 2.1 / SM 20, `.noreturn` PTX 6.4 / SM 30, and both ABI suffixes PTX 9.0 /
+SM 80, including independently known partial context. Nested and unused prototypes
+are included; ordinary instruction availability and runtime ABI behavior are not
+expanded by these checks.
+
 ## Function-local `.calltargets` syntax
 
 PTX 9.3 `.calltargets` is likewise a dedicated function-body CST/AST node.

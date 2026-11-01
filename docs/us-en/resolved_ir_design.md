@@ -539,6 +539,21 @@ defer availability under `AvailableContext`, never numeric, identity or preceden
 failures. No instruction attachment, decoded line table or string-address execution
 is implied.
 
+Current retained call prototypes are checked even when unused or nested. Their
+base requires PTX 2.1 / SM 20, `.noreturn` requires PTX 6.4 / SM 30, and either
+ABI-preservation suffix requires PTX 9.0 / SM 80. AST-free validation uses exactly
+the function's validated selected region. Source-aware validation checks current
+prototype fields and independently supplied prototype syntax with the supplied
+active context; version/target retargeting adds no historical payload veto.
+These four conjunctive minimum-only rules evaluate known version and recognized
+profile independently: a known failure rejects even if the other fact is absent.
+Only unknown prerequisites defer under `AvailableContext`; strict missing-context
+checks and unknown-target diagnostics remain. Target events clear the active
+recognized profile, and no guessed version, target number or generic partial-DNF
+interpretation is introduced. Ordinary function/instruction availability retains
+its full-context gates. Counts, variants, identities and signatures retain their
+existing contracts; this does not prove physical register preservation.
+
 ## Named memory-vector sources
 
 Ordinary `ld`/`st`, `ld.global.nc`, and `ldu` accept a named ordinary `.reg .v2`

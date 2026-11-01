@@ -83,20 +83,19 @@ Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留
 parser 明确拒绝。`Y` = 作为 owned binding/Resolved-IR contract 保存；`I` = consuming
 instruction 保留/check 已绑定 identity；`C` = direct binding/declaration semantic check；
 `V` = 当前 AST-free `validateModule` traversal 会执行 target-aware validation。仅被保留不等于
-`V`：prototype ABI/`.noreturn` availability 与 storage-declaration attribute availability 仍走
-AST/declaration-validation path。`V` 只验证已建模 source-profile requirement，不建立 launch
+`V`：storage-declaration attribute availability 仍走 AST/declaration-validation path。`V` 只验证已建模 source-profile requirement，不建立 launch
 feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无支持。
 
 | Directive | Token | CST | Syntax AST | Binding | Resolved IR | Target / semantic | 明确边界 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `.address_size` | D | T | T | — | Y | C | 拥有带 explicit/defaulted provenance 的 effective 32/64-bit source-header width；作为 header integrity revalidate，不用于构建 `checker::TargetInfo`，也不表示 host-address 或 allocation |
 | `.alias` | G | T | T | Y | Y / I | C / V | owned 同 module device-function alias；不做 linker/backend alias |
-| `.abi_preserve` | G | T | T | — | Y | C / V（仅 `.func`） | 两种 form 均拥有 ABI metadata。PTX 9.0 availability 对 `.func` 为 AST-free；`.callprototype` availability 仍为 AST-backed。不进行 physical register assignment。 |
-| `.abi_preserve_control` | G | T | T | — | Y | C / V（仅 `.func`） | 两种 form 均拥有 ABI metadata。PTX 9.0 availability 对 `.func` 为 AST-free；`.callprototype` availability 仍为 AST-backed。不进行 physical register assignment。 |
+| `.abi_preserve` | G | T | T | — | Y | C / V | 两种 form 均拥有 ABI metadata。current owned prototype 与独立 supplied prototype 均重查 PTX 9.0 / SM 80 minima，包括 partial known context。不进行 physical register assignment。 |
+| `.abi_preserve_control` | G | T | T | — | Y | C / V | 两种 form 均拥有 ABI metadata。current owned prototype 与独立 supplied prototype 均重查 PTX 9.0 / SM 80 minima，包括 partial known context。不进行 physical register assignment。 |
 | `.align` | D | E | E | Y | Y | C | declaration/parameter alignment |
 | `.attribute` | G | T | T | — | Y | C / V（仅 function） | 仅 typed `.managed` 与 `.unified(id,id)` placement/version subset。AST-free target availability 覆盖 function attribute；已保留 storage attribute 当前仍通过 AST/declaration validation 检查。不进行 runtime allocation 或 host-address interpretation。 |
 | `.branchtargets` | D | T | T | Y | Y / I | C / I | 拥有 bound、expanded logical target；`brx.idx` consumer 为 PTX 6.0 / SM 30，不提供 CFG/protocol proof |
-| `.callprototype` | D | T | T | Y | Y / I | C / I | 拥有 normalized signature 与已支持 ABI metadata。AST-free validation 会 recheck identity、scope 与 signature，不检查 prototype ABI/`.noreturn` availability；indirect-call availability 仍由 consumer 决定。 |
+| `.callprototype` | D | T | T | Y | Y / I | C / V / I | 拥有 normalized signature 与已支持 ABI metadata。两种 module validation route 依 selected region 重查 base PTX 2.1 / SM 20 与实际 suffix minima；identity/scope/signature 与 indirect-call consumer 检查仍独立。 |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；indirect-call availability 仍由 consumer 决定 |
 | Call-table flist array | D | T | T | Y | Y / I | C / I | 已初始化 scalar u32/u64 一维 global/const array；拥有真实 storage identity、sparse 显式 function slot、完整公共 signature、lexical order 与 AST-free storage/function 关联。允许重复/隐式 zero tail；不证明 runtime pointer membership。 |
 | `.common` | D | E | E | Y | Y | C / V | 普通 module-scope global definition 的独立 Common linkage；PTX 5.0 / SM 20，沿用 initializer/layout，AST-free eligibility 与有序 target 检查；无跨 object linker |
@@ -114,7 +113,7 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.maxnreg` | D | T | T | — | Y | C / V | entry-only normalized resource，含 modeled availability；occupancy implication deferred |
 | `.maxntid` | D | T | T | — | Y | C / V | entry-only normalized resource；与 `.reqntid` 冲突；launch feasibility deferred |
 | `.minnctapersm` | D | T | T | — | Y | C / V | entry-only normalized resource；warning/device feasibility deferred |
-| `.noreturn` | D | E | E | — | Y | C / V（仅 `.func`） | device `.func`/`.callprototype`；检查 return-parameter conflict，但 AST-free PTX 6.4 availability 当前只对 `.func` recheck；prototype availability 仍为 AST-backed。 |
+| `.noreturn` | D | E | E | — | Y | C / V | device `.func`/`.callprototype`；检查 return-parameter conflict。两种 module route 均重查 prototype PTX 6.4 / SM 30 minima，不因另一个 context fact 未知而跳过已知失败。 |
 | `.param` | D | E | E | Y | Y | C | 既有 variable/formal/call-parameter declaration |
 | `.pragma` | D | T | T | — | — | — | backend string interpretation 刻意未实现 |
 | `.reg` | D | E | E | Y | Y | C | 既有 variable/formal declaration |

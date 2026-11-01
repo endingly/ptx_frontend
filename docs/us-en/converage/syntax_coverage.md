@@ -90,9 +90,8 @@ existing declaration/function node; `R` = explicitly rejected by the parser.
 `Y` = retained as an owned binding/Resolved-IR contract; `I` = a consuming
 instruction retains/checks its bound identity; `C` = direct binding/declaration
 semantic check; `V` = the current AST-free `validateModule` traversal performs
-target-aware validation. Retention alone does not imply `V`: prototype ABI/
-`.noreturn` availability and storage-declaration attribute availability remain
-AST/declaration-validation paths. `V` validates only modeled source-profile
+target-aware validation. Retention alone does not imply `V`: storage-declaration attribute availability
+remains an AST/declaration-validation path. `V` validates only modeled source-profile
 requirements; it does not establish launch feasibility, simulator execution, or
 hardware behavior. `—` = no support at that stage.
 
@@ -100,12 +99,12 @@ hardware behavior. `—` = no support at that stage.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `.address_size` | D | T | T | — | Y | C | Owned effective 32/64-bit source-header width with explicit/defaulted provenance; it is revalidated as header integrity, not used to construct `checker::TargetInfo` or host-address meaning |
 | `.alias` | G | T | T | Y | Y / I | C / V | Owned same-module device-function alias; no linker/backend aliasing |
-| `.abi_preserve` | G | T | T | — | Y | C / V (`.func` only) | Both forms own ABI metadata. PTX 9.0 availability is AST-free for `.func`; `.callprototype` availability remains AST-backed. No physical register assignment. |
-| `.abi_preserve_control` | G | T | T | — | Y | C / V (`.func` only) | Both forms own ABI metadata. PTX 9.0 availability is AST-free for `.func`; `.callprototype` availability remains AST-backed. No physical register assignment. |
+| `.abi_preserve` | G | T | T | — | Y | C / V | Both forms own ABI metadata. PTX 9.0 / SM 80 minima are rechecked for current owned prototypes and independently supplied prototypes, including partial known context. No physical register assignment. |
+| `.abi_preserve_control` | G | T | T | — | Y | C / V | Both forms own ABI metadata. PTX 9.0 / SM 80 minima are rechecked for current owned prototypes and independently supplied prototypes, including partial known context. No physical register assignment. |
 | `.align` | D | E | E | Y | Y | C | Declaration/parameter alignment |
 | `.attribute` | G | T | T | — | Y | C / V (function only) | Only typed `.managed` and `.unified(id,id)` placement/version subset. AST-free target availability covers function attributes; retained storage attributes are currently checked through AST/declaration validation. No runtime allocation or host-address interpretation. |
 | `.branchtargets` | D | T | T | Y | Y / I | C / I | Owns bound, expanded logical targets; `brx.idx` consumer is PTX 6.0 / SM 30, with no CFG/protocol proof |
-| `.callprototype` | D | T | T | Y | Y / I | C / I | Owns normalized signature and supported ABI metadata. AST-free validation rechecks its identity, scope, and signature, not prototype ABI/`.noreturn` availability; indirect-call availability remains consumer-driven. |
+| `.callprototype` | D | T | T | Y | Y / I | C / V / I | Owns normalized signature and supported ABI metadata. Both module validation routes recheck base PTX 2.1 / SM 20 and present suffix minima against the selected region; identity/scope/signature and indirect-call consumer checks remain independent. |
 | `.calltargets` | D | T | T | Y | Y / I | C / I | Owns ordered bound/canonical function targets and their shared signature; indirect-call availability remains consumer-driven |
 | Call-table flist arrays | D | T | T | Y | Y / I | C / I | Initialized scalar u32/u64 one-dimensional global/const arrays; owned real-storage identity, sparse explicit function slots, common full signature, lexical order and AST-free storage/function rejoin. Duplicates/implicit zero tails allowed; no runtime pointer-membership proof. |
 | `.common` | D | E | E | Y | Y | C / V | Distinct Common linkage on ordinary module-scope global definitions; PTX 5.0 / SM 20, ordinary initializers/layout, AST-free eligibility and ordered target checks; no cross-object linker |
@@ -123,7 +122,7 @@ hardware behavior. `—` = no support at that stage.
 | `.maxnreg` | D | T | T | — | Y | C / V | Entry-only normalized resource with modeled availability; occupancy implication deferred |
 | `.maxntid` | D | T | T | — | Y | C / V | Entry-only normalized resource; conflicts with `.reqntid`; launch feasibility deferred |
 | `.minnctapersm` | D | T | T | — | Y | C / V | Entry-only normalized resource; warning/device feasibility deferred |
-| `.noreturn` | D | E | E | — | Y | C / V (`.func` only) | Device `.func`/`.callprototype`; return-parameter conflict is checked, but AST-free PTX 6.4 availability is currently rechecked only for `.func`; prototype availability remains AST-backed. |
+| `.noreturn` | D | E | E | — | Y | C / V | Device `.func`/`.callprototype`; return-parameter conflict is checked. Prototype PTX 6.4 / SM 30 minima are rechecked in both module routes, independently of whether the other context fact is known. |
 | `.param` | D | E | E | Y | Y | C | Existing variable/formal/call-parameter declaration |
 | `.pragma` | D | T | T | — | — | — | Backend string interpretation intentionally absent |
 | `.reg` | D | E | E | Y | Y | C | Existing variable/formal declaration |

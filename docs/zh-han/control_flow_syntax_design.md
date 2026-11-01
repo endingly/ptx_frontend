@@ -117,6 +117,11 @@ semantic spelling 与 source range。declaration semantics 会拒绝 return para
 保留其 bound identity；当前 indirect-call layout 消费该 prototype identity，
 并复用公共 call ABI contract。entry point 与边界见 [Resolved IR](resolved_ir_design.md)。
 
+current owned 与 supplied prototype contract 独立检查 base PTX 2.1 / SM 20、
+`.noreturn` PTX 6.4 / SM 30，以及两个 ABI suffix 的 PTX 9.0 / SM 80 minima，
+包括各自独立已知的 partial context。nested 与 unused prototype 也参与检查；
+不因此扩大普通 instruction availability 或 runtime ABI behavior 的保证。
+
 ## function-local `.calltargets` 语法
 
 PTX 9.3 `.calltargets` 同样使用专用的 function-body CST/AST node。它保留 label、colon、

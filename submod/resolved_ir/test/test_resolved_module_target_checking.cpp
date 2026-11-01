@@ -667,7 +667,29 @@ prototype: .callprototype _ .noreturn .abi_preserve 1 .abi_preserve_control 1;
   ASSERT_MODULE_PARSE_SUCCEEDS(parsed_module_2);
   const auto sm30 = checkModuleAvailability(*parsed_module_2, *resolved);
   ASSERT_FALSE(sm30.has_value());
-  ASSERT_EQ(sm30.error().size(), 4u);
+  ASSERT_EQ(sm30.error().size(), 6u);
+  // Current metadata and supplied syntax retain independent source extents.
+  const auto& supplied_function =
+      std::get<syntax_ast::AstFunction>(parsed_module_2->items[3]);
+  const auto& supplied_prototype =
+      std::get<syntax_ast::AstCallPrototype>(supplied_function.body.front());
+  const auto& retained_prototype = resolved->functions[1].call_prototypes[0];
+  const std::array expected_ranges{
+      supplied_function.abi_preserve->range,
+      supplied_function.abi_preserve_control->range,
+      supplied_prototype.abi_preserve->range,
+      supplied_prototype.abi_preserve_control->range,
+      retained_prototype.abi_preserve->range,
+      retained_prototype.abi_preserve_control->range};
+  for (const auto range : expected_ranges)
+    EXPECT_EQ(std::ranges::count_if(sm30.error(),
+                                    [&](const auto& diagnostic) {
+                                      return diagnostic.kind ==
+                                                 checker::CheckDiagnosticKind::
+                                                     UnsupportedAvailability &&
+                                             diagnostic.range == range;
+                                    }),
+              1);
   for (const auto& diagnostic : sm30.error()) {
     EXPECT_EQ(diagnostic.kind,
               checker::CheckDiagnosticKind::UnsupportedAvailability);

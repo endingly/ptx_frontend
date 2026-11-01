@@ -207,6 +207,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".reqntid"              { TOK(DotReqntid); }
 ".minnctapersm"         { TOK(DotMinnctapersm); }
 ".maxnctapersm"         { TOK(DotMaxnctapersm); }
+"@@DWARF"              { TOK(AtAtDwarf); }
 ".reqnctapercluster"    { TOK(DotReqnctapercluster); }
 ".explicitcluster"      { TOK(DotExplicitcluster); }
 ".maxclusterrank"       { TOK(DotMaxclusterrank); }

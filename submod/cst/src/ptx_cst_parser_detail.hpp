@@ -81,6 +81,7 @@ enum class ModuleSourceForm {
   Directive,
   Pragma,
   Section,
+  LegacyDwarf,
   Alias,
   Function,
   Qualifier,
@@ -97,6 +98,8 @@ inline ModuleSourceForm classifyModuleSource(const PtxToken& token) {
     return ModuleSourceForm::Pragma;
   if (kind == TokenKind::DotSection)
     return ModuleSourceForm::Section;
+  if (kind == TokenKind::AtAtDwarf)
+    return ModuleSourceForm::LegacyDwarf;
   if (kind == TokenKind::DotIdent && token.text == ".alias")
     return ModuleSourceForm::Alias;
   if (kind == TokenKind::DotEntry || kind == TokenKind::DotFunc)
@@ -120,9 +123,9 @@ inline bool isSectionRecoveryBoundary(const PtxToken& token) {
 /** Recognize potential successors when inserting a missing body semicolon. */
 inline bool isFunctionBodyItemStart(TokenKind kind) {
   return kind == TokenKind::LBrace || kind == TokenKind::At ||
-         kind == TokenKind::Ident || isVariableStateSpace(kind) ||
-         kind == TokenKind::DotLoc || kind == TokenKind::DotPragma ||
-         kind == TokenKind::DotCallPrototype ||
+         kind == TokenKind::AtAtDwarf || kind == TokenKind::Ident ||
+         isVariableStateSpace(kind) || kind == TokenKind::DotLoc ||
+         kind == TokenKind::DotPragma || kind == TokenKind::DotCallPrototype ||
          kind == TokenKind::DotCallTargets ||
          kind == TokenKind::DotBranchTargets;
 }

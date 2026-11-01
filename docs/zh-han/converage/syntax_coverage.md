@@ -18,6 +18,7 @@ archived PTX 9.3 及固定 simulator execution 对 11 个常用 operation name �
 | Debug file directive | 支持子集 | outermost `.file file_index "filename"` 与可选且成对的 `, timestamp, file_size`；decimal/octal/hex uint64 ID 在 debug-only namespace 中 binding，重复的规范化 ID 一律诊断（包括相同 metadata），symbol table 拥有 payload，overflow 会诊断；显式数值 metadata（包括 `0, 0`）要求 PTX ISA >= 3.2，不依赖 SM/debug option |
 | Debug location directive | 支持子集 | function/nested-block `.loc file line column` 的 decimal/octal/hex file ID 与成对 PTX 7.2 `function_name`/`inlined_at` payload 会验证已绑定 file ID 与 `.debug_str` section/label identity；保存 owning SymbolTable record 并检查 modulewide preceding base triple，不生成可执行 instruction |
 | Debug section directive | 支持子集 | CST 保留 raw token/trivia 与 typed entry；拥有式 AST/module integer list、signed byte addend、single symbol 与同 section label difference 检查原始范围/locality/版本；`.debug_str` typed label 在 metadata namespace 绑定，链接后的 DWARF 值仍未知 |
+| Legacy debug serialization | 闭合语法支持 | `@@DWARF`、PTX [1.2,2.0)、unsigned hex width/single wide label/有限 section header；owning source-wide scope stream、独立格式检查，无 decoder |
 | Backend pragma directive | 支持子集 | module、`.entry` header 与 function/nested-block statement 的 `.pragma` 保留非空 comma-separated string list 到 CST/AST；string 不创建 bound name；module 拥有带实际 placement scope 的 opaque advisory record |
 | Kernel resource directive | 支持子集 | entry header 的 `.maxnreg n`、`.maxntid nx[,ny[,nz]]`、`.reqntid nx[,ny[,nz]]`、`.minnctapersm ncta`、`.maxnctapersm ncta`、`.reqnctapercluster nx[,ny[,nz]]`、零参数 `.explicitcluster` 与 `.maxclusterrank n` 进入专用 CST/AST，并以 normalized function-contract value 自主保存。declaration semantics 拒绝同一 entry 同时使用 `.maxntid` 与 `.reqntid`、`.reqnctapercluster` 与 `.maxclusterrank`；module validation 检查已建模 PTX/target minimum。launch feasibility、occupancy 与 physical resource allocation 仍不检查。 |
 | Function | 支持子集 | `.entry/.func` definition、`.func` prototype、visibility/linkage qualifier、返回/输入参数列表、`.noreturn`、`.func` ABI suffix、`.language` 与 entry `.blocksareclusters`。Resolved function 会 independent 于 AST 地拥有 normalized signature、linkage/canonical identity、已支持 attribute、ABI suffix、resource，以及 language/cluster marker。 |
@@ -76,7 +77,7 @@ Lexer 能切分矩阵以外的源码，Syntax AST 也可能以文本形式保留
 此表逐 spelling 覆盖 PTX ISA Table 1 的 35 个 directive，以及该表遗漏的五项：5.4.8 的
 `.attribute`、11.4 的 `.abi_preserve`、`.abi_preserve_control` 和 11.8 的
 `.blocksareclusters`、`.language`。它回答 coverage matrix 的六个 pipeline 问题。legacy
-非 dot spelling `@@dwarf` 与 `.ptr` 等 attribute 刻意不属于这份 dot-directive registry。
+非 dot spelling `@@DWARF` 与 `.ptr` 等 attribute 刻意不属于这份 dot-directive registry。
 
 图例：`D` = 专用 lexer token；`G` = 通用 `DotIdent`（仍可 tokenize，但不表示 CST
 支持）。`T` = typed directive CST/AST；`E` = 进入既有 declaration/function node；`R` =
@@ -139,7 +140,7 @@ PTX ISA 的 variable declaration 概述提到 optional fixed address，但当前
 语法、约束或示例。frontend 不会据此发明语法；只有获得规范性 grammar 或可验证的
 `ptxas` 行为后才会增加对应节点。
 
-对 `.target debug`，零 section record 是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。
+对 `.target debug`，modern section record 和 legacy record 同时为零是确定错误。非零 record 仅通过缺失检查；实际 DWARF recognition 仍为 **D-DEBUG-DWARF-PRESENCE-RECOGNITION**，不由 name、空/非空、label 或 typed byte 认证。
 
 
 历史 entry body input：PTX 1.0–1.3 保留 owning `LegacyEntryInput`，支持 input LD/MOV、readonly/frame/cache 重连和32764-byte checked logical ceiling；1.4+ header ABI 与2.0+ body call slot 保持区分。精确历史 physical launch packing 仍 reference-boundary qualified。见[parameter contract](../parameter_declarations.md)。

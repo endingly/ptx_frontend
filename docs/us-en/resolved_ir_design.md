@@ -1624,15 +1624,15 @@ linked byte values, target-debug DWARF recognition or GPU execution.
 ### Target debug absence and recognition boundary
 
 The file-wide `.target debug` requirement applies if any target directive selects
-`debug`, including earlier or later regions. Known `debug` with zero owning
-section records is a determinate violation, even under `AvailableContext` with
+`debug`, including earlier or later regions. Known `debug` with zero owning modern section records AND zero legacy records
+is a determinate violation, even under `AvailableContext` with
 missing version information. `.file`, `.loc`, or retained debug-string symbol
-identities cannot replace sections. The existing PTX 3.0 option gate and complete
+identities cannot replace serialized debug records. The existing PTX 3.0 option gate and complete
 context requirements remain independent. Source-aware validation applies the same
-private absence rule separately to current owned options/sections and supplied AST
-options/sections; neither dataset can conceal the other's definite absence or
+private absence rule separately to current owned options/modern sections/legacy records and supplied AST
+options/modern sections/legacy records; neither dataset can conceal the other's definite absence or
 invalid typed payload. Valid differing datasets retain section-neutral source
-association. No presence bit, public enum or decoder is added.
+association. No presence cache, recognition enum or decoder is added.
 
 **D-DEBUG-DWARF-PRESENCE-RECOGNITION remains a reference boundary, not a code PASS.**
 The pinned [target clause](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
@@ -1641,7 +1641,7 @@ do not specify a sufficient recognition criterion for arbitrary names, empty
 sections, label-only sections or nonempty typed data. A `.debug_` prefix, whitelist,
 nonempty payload or mandatory `.debug_info`/`.debug_abbrev` pair would invent such a
 criterion. The paired witness is one structural control, not a universal minimum
-or a decoder. Validation success for nonzero structurally valid section records
+or a decoder. Validation success for nonzero structurally valid section or legacy records
 therefore does not certify that actual DWARF information was found. The finite
 debug-off/on boundary tests record this qualification explicitly; full recognition
 and linked/binary authenticity are not claimed.
@@ -1790,3 +1790,57 @@ Coherent current numeric edits remain valid; changing written resource kind or
 value in a replacement AST retains the existing source-association rule.
 
 Source reference: [PTX ISA maximum-CTA directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm).
+
+
+### Legacy debug serialization
+
+The case-sensitive `@@DWARF` marker introduces one closed production at module,
+function-body or nested-block statement scope. It is supported for PTX ISA
+**[1.2, 2.0)** on every recognized source target. Function headers do not admit it.
+The forms are `.byte` unsigned hexadecimal lists (0..255), `.4byte` lists
+(0..UINT32_MAX) and `.quad` lists (0..UINT64_MAX). Lists are nonempty. The two wider
+forms also admit one ordinary or singly dotted symbolic label, retained unlinked;
+there is no ordinary PTX symbol-resolution requirement for that label.
+
+`0x`/`0X` with optional `U`/`u` follows existing PTX integer token inheritance;
+this suffix choice is derived rather than explicit wording of the legacy syntax.
+Signs, decimal/octal/binary values, mixed symbol/numeric lists, addends,
+differences, label definitions and arbitrary host assembly are outside this model.
+The published example's header is supported as `.section name, "", @progbits`.
+Generalizing its name to an ordinary or singly dotted identifier is derived from
+the example; flags remain exactly empty and the type remains exactly `progbits`.
+
+Whitespace, comments and newlines separate tokens without ending a record. One
+structurally complete payload and an optional semicolon end it. The next token is
+handled by ordinary PTX grammar; malformed records preserve following markers,
+blocks and functions through structural recovery. Lossless CST tokens retain
+comments and source text. Owning AST values retain exact marker/word/header
+spellings and within-record ranges, including separate `@` and `progbits` leaves.
+
+`ptx_syntax_legacy_dwarf.hpp` contains only small owning values. It does not expose
+module, instruction or expression AST definitions. One shared `AstLegacyDwarfRecord`
+is used in module/body variants, and `ResolvedModule::legacy_dwarf_records` is the
+sole ordered stream of `{value, scope_id}` wrappers. Actual declaration-occurrence
+and block scopes come from the module's symbol table; a canonical function's
+preferred owned scope does not replace its definition occurrence. Metadata creates
+no executable node, label slot or instruction-provenance index. Module and function
+source identities exclude it while ordinary program constructs remain relevant.
+
+Both current and supplied datasets validate their own typed words, ranges, scope
+ownership and format windows. Source-aware validation uses the supplied effective
+version for both datasets; AST-free validation uses current module context. Known
+out-of-window versions reject without a complete target. Missing version under
+`AvailableContext` defers only the format window; intrinsic checks continue and
+strict missing-context checks remain. Coherent current metadata edits and differing
+valid datasets do not require old source-byte equality. Cross-format replacement
+requires removal or reconstruction of current incompatible format data.
+
+For `.target debug`, definite absence means **zero modern sections AND zero legacy
+records**, independently in each dataset. An unknown linked label, a header or
+nonempty bytes only avoid this definite-absence result. They do not certify actual
+DWARF recognition, decoding, linked addresses or binary authenticity. A known full
+legacy context cannot combine the pre-2.0 format with the PTX-3.0 debug option;
+missing-version tests are partial-context controls only.
+
+References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).

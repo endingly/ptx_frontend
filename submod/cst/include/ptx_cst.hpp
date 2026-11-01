@@ -603,12 +603,42 @@ struct CstRecoveryNode {
   SourceRange range;
 };
 
+/** Token-backed legacy numeric-list or single-symbol payload. */
+struct CstLegacyDwarfData {
+  /** Written directive and closed value-role selection. */
+  TokenId directive{};
+  std::variant<std::vector<TokenId>, TokenId> value;
+  /** Commas remain lexical data, not a second semantic value list. */
+  std::vector<TokenId> commas;
+  /** Half-open token-buffer extent of this payload in its owning CstFile. */
+  CstTokenRange token_range;
+};
+/** Token-backed finite legacy section header with separate @ and type leaves. */
+struct CstLegacyDwarfSectionHeader {
+  /** Separate source leaves, valid for the owning CstFile token-buffer lifetime. */
+  TokenId directive{}, name{}, flags{}, type_prefix{}, type_name{};
+  /** Original punctuation and complete half-open header extent. */
+  std::vector<TokenId> commas;
+  CstTokenRange token_range;
+};
+/** One closed serialization production after an exact marker. */
+struct CstLegacyDwarfRecord {
+  /** Exact marker in the owning CstFile token buffer. */
+  TokenId marker{};
+  /** Closed lexical production, with no decoded numeric cache. */
+  std::variant<CstLegacyDwarfData, CstLegacyDwarfSectionHeader> payload;
+  /** Optional written punctuation and full half-open record extent. */
+  std::optional<TokenId> terminator;
+  CstTokenRange token_range;
+};
+
 struct CstBlock;
 
 using CstFunctionBodyItem =
     std::variant<CstVariableDeclaration, CstLabel, CstCallPrototype,
                  CstCallTargets, CstBranchTargets, CstLocDirective, CstPragma,
-                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode>;
+                 std::unique_ptr<CstBlock>, CstInstruction, CstRecoveryNode,
+                 CstLegacyDwarfRecord>;
 
 /** A lexically nested function-body block. */
 struct CstBlock {
@@ -643,7 +673,7 @@ struct CstFunction {
 using CstModuleItem =
     std::variant<CstModuleDirective, CstSectionDirective, CstPragma,
                  CstVariableDeclaration, CstAliasDirective, CstFunction,
-                 CstRecoveryNode>;
+                 CstRecoveryNode, CstLegacyDwarfRecord>;
 
 struct CstModule {
   std::vector<CstModuleItem> items;

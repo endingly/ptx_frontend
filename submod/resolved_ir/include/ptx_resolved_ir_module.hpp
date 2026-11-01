@@ -11,6 +11,7 @@
 #include <ptx_frontend/resolved_ir/ptx_resolved_ir_foundation.hpp>
 #include <ptx_frontend/resolved_ir/ptx_resolved_unified_id.hpp>
 #include <ptx_frontend/semantic/ptx_function_contract.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_legacy_dwarf.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::resolved_ir {
@@ -364,6 +365,14 @@ struct ResolvedPragma {
   SourceRange range;
 };
 
+/** Owning serialization value with its actual lexical scope in the module table. */
+struct ResolvedLegacyDwarfRecord {
+  /** Original typed marker, payload and within-record physical provenance. */
+  syntax_ast::AstLegacyDwarfRecord value;
+  /** Module or actual function-definition/block occurrence, never a canonical preferred scope. */
+  binding::ScopeId scope_id;
+};
+
 /** Owns all resolved declarations, functions, and source correspondence data. */
 struct ResolvedModule {
   /** Owning symbol table; every retained SymbolId and ScopeId refers to it. */
@@ -386,6 +395,8 @@ struct ResolvedModule {
   std::vector<ResolvedCallTableContract> call_tables;
   /** Executable/declaration syntax identity, excluding debug sections and source-header metadata. */
   std::string source_identity;
+  /** Sole lexical-order stream; values own their text and survive source/AST destruction. */
+  std::vector<ResolvedLegacyDwarfRecord> legacy_dwarf_records;
 };
 
 }  // namespace ptx_frontend::resolved_ir

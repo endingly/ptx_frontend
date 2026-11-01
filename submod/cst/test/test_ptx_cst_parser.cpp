@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include <cstddef>
 #include <initializer_list>
@@ -1910,4 +1911,51 @@ TEST(PtxCstParser, RetainsDeprecatedMaximumCtaHint) {
   EXPECT_TRUE(r.commas.empty());
 }
 
+}  // namespace ptx_frontend
+
+namespace ptx_frontend {
+/** Malformed closed records preserve the next marker, block and function at structural boundaries. */
+TEST(PtxCstParser, RecoversLegacyDwarfAtStructuralBoundaries) {
+  const std::string source = R"ptx(.version 1.3
+.target sm_13
+@@DWARF .byte 0x1,
+@@DWARF .byte 0x2
+.entry k(){@@DWARF .byte 0x1, @@DWARF .byte 0x2
+@@DWARF .byte 0x1, { @@DWARF .byte 0x3 } ret;}
+@@DWARF .byte 0x1,
+.entry next(){ret;}
+)ptx";
+  PtxCstParser p(source);
+  auto c = p.parseModule();
+  ASSERT_TRUE(c);
+  EXPECT_FALSE(c.diagnostics.empty());
+  EXPECT_EQ(c->sourceText(), source);
+  size_t module_records = 0, functions = 0, body_records = 0, blocks = 0;
+  for (const auto& item : c->module()->items) {
+    if (std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(item))
+      ++module_records;
+    if (const auto* f = std::get_if<syntax_cst::CstFunction>(&item)) {
+      ++functions;
+      if (c->token(f->name).text == "k")
+        for (const auto& body : f->body) {
+          if (std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(body))
+            ++body_records;
+          if (const auto* block =
+                  std::get_if<std::unique_ptr<syntax_cst::CstBlock>>(&body);
+              block && *block) {
+            ++blocks;
+            EXPECT_TRUE(std::ranges::any_of((*block)->body, [](const auto&
+                                                                   nested) {
+              return std::holds_alternative<syntax_cst::CstLegacyDwarfRecord>(
+                  nested);
+            }));
+          }
+        }
+    }
+  }
+  EXPECT_EQ(module_records, 1u);
+  EXPECT_EQ(functions, 2u);
+  EXPECT_EQ(body_records, 1u);
+  EXPECT_EQ(blocks, 1u);
+}
 }  // namespace ptx_frontend

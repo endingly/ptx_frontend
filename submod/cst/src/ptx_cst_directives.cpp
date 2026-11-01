@@ -1,5 +1,6 @@
 #include "ptx_cst_parser_detail.hpp"
 
+#include <ptx_frontend/base/ptx_identifier.hpp>
 #include <ptx_frontend/base/ptx_target.hpp>
 
 #include <algorithm>
@@ -7,6 +8,90 @@
 
 namespace ptx_frontend {
 using namespace cst_detail;
+
+/** Parse one finite legacy production; structural successors belong to the outer grammar. */
+std::expected<syntax_cst::CstLegacyDwarfRecord, CstParseDiagnostic>
+PtxCstParser::parseLegacyDwarfRecord() {
+  using namespace syntax_cst;
+  const TokenId marker = consume();
+  const auto error = [&](std::string message) {
+    return std::unexpected(
+        CstParseDiagnostic{token(peek()).range, std::move(message)});
+  };
+  const auto name = [&](TokenId id) {
+    const auto& t = token(id);
+    return isIdentifierToken(t.kind) &&
+           (base::isIdentifier(t.text) ||
+            (t.text.starts_with('.') &&
+             base::isIdentifier(std::string_view(t.text).substr(1))));
+  };
+  CstLegacyDwarfRecord record{.marker = marker};
+  TokenId last = marker;
+  if (token(peek()).kind == TokenKind::DotSection) {
+    CstLegacyDwarfSectionHeader header{.directive = consume()};
+    if (!name(peek()))
+      return error("expected legacy section name");
+    header.name = consume();
+    auto comma = expect(TokenKind::Comma, "legacy section comma");
+    if (!comma)
+      return std::unexpected(comma.error());
+    header.commas.push_back(*comma);
+    if (token(peek()).kind != TokenKind::String || token(peek()).text != "\"\"")
+      return error("legacy section requires empty quoted flags");
+    header.flags = consume();
+    comma = expect(TokenKind::Comma, "legacy section type comma");
+    if (!comma)
+      return std::unexpected(comma.error());
+    header.commas.push_back(*comma);
+    auto at = expect(TokenKind::At, "legacy section @ prefix");
+    if (!at)
+      return std::unexpected(at.error());
+    header.type_prefix = *at;
+    if (token(peek()).kind != TokenKind::Ident ||
+        token(peek()).text != "progbits")
+      return error("legacy section requires progbits type");
+    last = header.type_name = consume();
+    header.token_range = {header.directive, last + 1};
+    record.payload = std::move(header);
+  } else {
+    const auto& directive = token(peek());
+    if (directive.kind != TokenKind::DotIdent ||
+        (directive.text != ".byte" && directive.text != ".4byte" &&
+         directive.text != ".quad"))
+      return error(
+          "expected legacy .byte, .4byte, .quad or .section production");
+    const bool byte = directive.text == ".byte";
+    CstLegacyDwarfData data{.directive = consume()};
+    if (token(peek()).kind == TokenKind::Hex) {
+      std::vector<TokenId> values{consume()};
+      last = values.back();
+      while (token(peek()).kind == TokenKind::Comma) {
+        data.commas.push_back(consume());
+        if (token(peek()).kind != TokenKind::Hex)
+          return error("expected unsigned hexadecimal word after legacy comma");
+        values.push_back(consume());
+        last = values.back();
+      }
+      data.value = std::move(values);
+    } else {
+      if (byte || !name(peek()))
+        return error(
+            "expected legacy unsigned hexadecimal list or single wide symbol");
+      last = consume();
+      data.value = last;
+      if (token(peek()).kind == TokenKind::Comma)
+        return error("legacy symbol production accepts one label");
+    }
+    data.token_range = {data.directive, last + 1};
+    record.payload = std::move(data);
+  }
+  if (token(peek()).kind == TokenKind::Semicolon) {
+    last = consume();
+    record.terminator = last;
+  }
+  record.token_range = {marker, last + 1};
+  return record;
+}
 
 /** Parse source-location metadata without interpreting file or scope identities. */
 std::expected<syntax_cst::CstLocDirective, CstParseDiagnostic>
@@ -262,6 +347,13 @@ PtxCstParser::parseFunctionBodyItem(CstParseDiagnostics& diagnostics,
     if (!declaration)
       return std::unexpected(declaration.error());
     return std::move(*declaration);
+  }
+
+  if (token(peek()).kind == TokenKind::AtAtDwarf) {
+    auto record = parseLegacyDwarfRecord();
+    if (!record)
+      return std::unexpected(record.error());
+    return std::move(*record);
   }
 
   if (token(peek()).kind == TokenKind::DotLoc) {
@@ -835,6 +927,17 @@ CstParseResult PtxCstParser::parseModule() {
       }
       last = pragma->token_range.last - 1;
       items.emplace_back(std::move(*pragma));
+      continue;
+    }
+
+    if (qualifiers.empty() && source_form == ModuleSourceForm::LegacyDwarf) {
+      auto record = parseLegacyDwarfRecord();
+      if (!record) {
+        recover_item(item_first, std::move(record.error()));
+        continue;
+      }
+      last = record->token_range.last - 1;
+      items.emplace_back(std::move(*record));
       continue;
     }
 

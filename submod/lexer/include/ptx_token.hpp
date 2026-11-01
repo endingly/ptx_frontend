@@ -124,6 +124,8 @@ enum class TokenKind : uint16_t {
   Binary,  // 0b/0B integer, optional u/U suffix; appended for stable token values
   /** Deprecated entry resource hint; appended to preserve existing token values. */
   DotMaxnctapersm,
+  /** Canonical legacy debug serialization marker; existing token values are stable. */
+  AtAtDwarf,
 };
 
 enum class TriviaKind : uint8_t {

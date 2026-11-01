@@ -11,6 +11,7 @@
 
 #include <ptx_frontend/base/ptx_ast_types.hpp>
 #include <ptx_frontend/common/source_loc.hpp>
+#include <ptx_frontend/syntax/ptx_syntax_legacy_dwarf.hpp>
 #include <ptx_frontend/syntax/ptx_syntax_sections.hpp>
 
 namespace ptx_frontend::syntax_ast {
@@ -533,7 +534,8 @@ struct AstBlock;
 using AstFunctionBodyItem =
     std::variant<AstVariableDeclaration, AstLabel, AstCallPrototype,
                  AstCallTargets, AstBranchTargets, AstLocDirective, AstPragma,
-                 std::unique_ptr<AstBlock>, AstInstruction>;
+                 std::unique_ptr<AstBlock>, AstInstruction,
+                 AstLegacyDwarfRecord>;
 
 /** A lexically nested function-body block. */
 struct AstBlock {
@@ -566,7 +568,7 @@ using AstModuleItem =
     std::variant<AstVersionDirective, AstTargetDirective,
                  AstAddressSizeDirective, AstFileDirective, AstSectionDirective,
                  AstPragma, AstVariableDeclaration, AstAliasDirective,
-                 AstFunction>;
+                 AstFunction, AstLegacyDwarfRecord>;
 
 struct AstModule {
   std::vector<AstModuleItem> items;

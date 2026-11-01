@@ -851,6 +851,48 @@ syntax_ast::AstLocDirective lowerLocDirective(
   };
 }
 
+/** Copy closed legacy tokens into the shared small owning value representation. */
+syntax_ast::AstLegacyDwarfRecord lowerLegacyDwarf(
+    const syntax_cst::CstFile& cst,
+    const syntax_cst::CstLegacyDwarfRecord& record) {
+  syntax_ast::AstLegacyDwarfRecord result{
+      .marker = leafSyntax(cst, record.marker),
+      .range = cst.sourceRange(record.token_range)};
+  if (const auto* data =
+          std::get_if<syntax_cst::CstLegacyDwarfData>(&record.payload)) {
+    const auto directive = leafSyntax(cst, data->directive);
+    syntax_ast::AstLegacyDwarfData copied{
+        .kind = directive.text == ".byte"
+                    ? syntax_ast::LegacyDwarfDataKind::Byte
+                : directive.text == ".4byte"
+                    ? syntax_ast::LegacyDwarfDataKind::FourByte
+                    : syntax_ast::LegacyDwarfDataKind::Quad,
+        .directive = directive,
+        .range = cst.sourceRange(data->token_range)};
+    if (const auto* words =
+            std::get_if<std::vector<syntax_cst::TokenId>>(&data->value)) {
+      std::vector<syntax_ast::AstSyntax> values;
+      for (auto id : *words)
+        values.push_back(leafSyntax(cst, id));
+      copied.value = std::move(values);
+    } else
+      copied.value =
+          leafSyntax(cst, std::get<syntax_cst::TokenId>(data->value));
+    result.payload = std::move(copied);
+  } else {
+    const auto& header =
+        std::get<syntax_cst::CstLegacyDwarfSectionHeader>(record.payload);
+    result.payload = syntax_ast::AstLegacyDwarfSectionHeader{
+        .directive = leafSyntax(cst, header.directive),
+        .name = leafSyntax(cst, header.name),
+        .flags = leafSyntax(cst, header.flags),
+        .type_prefix = leafSyntax(cst, header.type_prefix),
+        .type_name = leafSyntax(cst, header.type_name),
+        .range = cst.sourceRange(header.token_range)};
+  }
+  return result;
+}
+
 syntax_ast::AstPragma lowerPragma(const syntax_cst::CstFile& cst,
                                   const syntax_cst::CstPragma& pragma) {
   std::vector<syntax_ast::AstSyntax> strings;
@@ -936,6 +978,9 @@ syntax_ast::AstFunctionBodyItem lowerFunctionBodyItem(
           std::get_if<syntax_cst::CstLocDirective>(&body_item)) {
     return lowerLocDirective(cst, *location);
   }
+  if (const auto* record =
+          std::get_if<syntax_cst::CstLegacyDwarfRecord>(&body_item))
+    return lowerLegacyDwarf(cst, *record);
   if (const auto* pragma = std::get_if<syntax_cst::CstPragma>(&body_item))
     return lowerPragma(cst, *pragma);
   if (const auto* block =
@@ -1052,6 +1097,12 @@ AstModuleLowerResult lowerSyntaxModule(const syntax_cst::CstFile& cst) {
     if (const auto* section =
             std::get_if<syntax_cst::CstSectionDirective>(&item)) {
       ast.items.emplace_back(lowerSection(cst, *section));
+      continue;
+    }
+
+    if (const auto* record =
+            std::get_if<syntax_cst::CstLegacyDwarfRecord>(&item)) {
+      ast.items.emplace_back(lowerLegacyDwarf(cst, *record));
       continue;
     }
 

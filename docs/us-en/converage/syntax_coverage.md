@@ -20,6 +20,7 @@ execution evidence for eleven commonly used operation names.
 | Debug file directive | Supported subset | Outermost `.file file_index "filename"` with optional paired `, timestamp, file_size`; decimal/octal/hex uint64 IDs bind in a debug-only namespace, all repeated normalized IDs diagnose (including identical metadata), payloads are owned in the symbol table, and overflow diagnoses; explicit numeric metadata (including `0, 0`) requires PTX ISA >= 3.2, independently of SM/debug options |
 | Debug location directive | Supported subset | Function/nested-block `.loc file line column`, with decimal/octal/hex file IDs and paired PTX 7.2 `function_name`/`inlined_at` payload, validates bound file IDs and `.debug_str` section/label identity; it retains owning SymbolTable records and checks modulewide preceding base triples, without executable instructions |
 | Debug section directive | Supported subset | CST retains raw tokens/trivia and typed entries; owning AST/module integer lists, signed byte addends, single symbols and same-section label differences are checked for original range/locality/version; `.debug_str` typed labels bind in the metadata namespace; linked DWARF values remain unknown |
+| Legacy debug serialization | Supported closed grammar | `@@DWARF`, PTX [1.2,2.0), unsigned hex widths/single wide label/finite section header; owning source-wide scoped stream, independent format checks; no decoder |
 | Backend pragma directive | Supported subset | Module, `.entry` header, and function/nested-block statement `.pragma` preserve a nonempty comma-separated string list in CST/AST; strings create no bound names; module owns opaque advisory records with actual placement scopes |
 | Kernel resource directives | Supported subset | Entry headers retain `.maxnreg n`, `.maxntid nx[,ny[,nz]]`, `.reqntid nx[,ny[,nz]]`, `.minnctapersm ncta`, `.maxnctapersm ncta`, `.reqnctapercluster nx[,ny[,nz]]`, zero-argument `.explicitcluster`, and `.maxclusterrank n` with dedicated CST/AST and owned normalized function-contract values. Declaration semantics rejects same-entry `.maxntid` plus `.reqntid` and `.reqnctapercluster` plus `.maxclusterrank`; module validation checks modeled PTX/target minima. Launch feasibility, occupancy, and physical resource allocation remain unchecked. |
 | Functions | Supported subset | `.entry`/`.func` definitions, `.func` prototypes, visibility/linkage qualifiers, return/input parameter lists, `.noreturn`, `.func` ABI suffixes, `.language`, and entry `.blocksareclusters`. Resolved functions own their normalized signature, linkage/canonical identity, supported attributes, ABI suffixes, resources, and language/cluster markers independently of the AST. |
@@ -81,7 +82,7 @@ This is the per-spelling registry for the 35 directives in PTX ISA Table 1,
 plus five directives omitted by that table: `.attribute` from 5.4.8,
 `.abi_preserve` and `.abi_preserve_control` from 11.4, and
 `.blocksareclusters` and `.language` from 11.8. It answers the coverage
-matrix's six pipeline questions. Legacy non-dot `@@dwarf` and attributes such
+matrix's six pipeline questions. Legacy non-dot `@@DWARF` and attributes such
 as `.ptr` are intentionally outside this dot-directive registry.
 
 Legend: `D` = dedicated lexer token; `G` = generic `DotIdent` (still tokenized,
@@ -131,7 +132,7 @@ hardware behavior. `—` = no support at that stage.
 | `.section` | D | T | T | Y | Y | C / V | Owning module metadata, typed integer/relocation grammar and static locality; no executable node or DWARF decoder |
 | `.shared` | D | E | E | Y | Y | C | Existing variable declaration |
 | `.sreg` | G | R | — | — | — | — | Unmodeled special-register declaration |
-| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee; known debug + zero sections rejects, while actual DWARF recognition remains a qualified reference boundary |
+| `.target` | D | T | T | — | Y | V | Owned source-target options build `checker::TargetInfo` for recognized profiles; no physical target selection or translation guarantee; known debug + zero modern sections AND zero legacy records rejects, while actual DWARF recognition remains a qualified reference boundary |
 | `.tex` | G | R | — | — | — | — | Unmodeled declaration directive |
 | `.version` | D | T | T | — | Y | V | Owned source version participates in target-aware module validation |
 | `.visible` | D | E | E | Y | Y | C | Existing linkage qualifier |
@@ -151,7 +152,7 @@ examples. The frontend will not invent syntax from that sentence; a node will
 be added only when normative grammar or verifiable `ptxas` behavior is
 available.
 
-For `.target debug`, zero section records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.
+For `.target debug`, zero modern section records AND zero legacy records are a definite error. Nonzero records only satisfy the absence check: actual DWARF recognition remains **D-DEBUG-DWARF-PRESENCE-RECOGNITION**, not certified by names, emptiness, labels or typed bytes.
 
 
 Historical entry body inputs: PTX 1.0–1.3 uses owned `LegacyEntryInput` roles with input LD/MOV, read-only/frame/cache joins and a checked 32764-byte logical ceiling; PTX 1.4+ header ABI and PTX 2.0+ body call slots stay distinct. Exact historical physical launch packing remains reference-boundary qualified. See [parameter contract](../parameter_declarations.md).

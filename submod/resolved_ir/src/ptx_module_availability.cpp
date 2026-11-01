@@ -13,6 +13,7 @@
 #include "ptx_call_target_visibility.hpp"
 #include "ptx_debug_locations.hpp"
 #include "ptx_debug_sections.hpp"
+#include "ptx_legacy_dwarf.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_pragma_metadata.hpp"
 #include "ptx_resolved_ir_private.hpp"
@@ -2245,15 +2246,17 @@ std::optional<SourceRange> target_debug_range(
   return std::nullopt;
 }
 /** Reject definite absence only; section records do not certify decoded DWARF. */
-void check_target_debug_sections(std::optional<SourceRange> debug_range,
-                                 std::span<const ResolvedDebugSection> sections,
-                                 checker::CheckDiagnostics& diagnostics) {
-  if (debug_range && sections.empty())
+void check_target_debug_sections(
+    std::optional<SourceRange> debug_range,
+    std::span<const ResolvedDebugSection> sections,
+    std::span<const ResolvedLegacyDwarfRecord> legacy,
+    checker::CheckDiagnostics& diagnostics) {
+  if (debug_range && sections.empty() && legacy.empty())
     diagnostics.push_back({
         .kind = checker::CheckDiagnosticKind::RuleViolation,
         .range = *debug_range,
         .message = "Target debug requires DWARF information, but this dataset "
-                   "contains no sections.",
+                   "contains no sections or legacy debug records.",
     });
 }
 
@@ -4599,10 +4602,14 @@ checker::CheckResult validateModule(const ResolvedModule& module,
                                     ModuleValidationPolicy policy) {
   checker::CheckDiagnostics diagnostics;
   check_target_debug_sections(target_debug_range(module.header),
-                              module.sections, diagnostics);
+                              module.sections, module.legacy_dwarf_records,
+                              diagnostics);
   const auto section_version = module.header.regions.empty()
                                    ? std::optional<checker::PtxVersion>{}
                                    : module.header.regions.front().version;
+  auto legacy_errors = detail::check_legacy_dwarf(module, section_version);
+  diagnostics.insert(diagnostics.end(), legacy_errors.begin(),
+                     legacy_errors.end());
   check_module_weak_availability(module, section_version, diagnostics);
   auto pragma_errors = detail::check_pragmas(module, section_version);
   diagnostics.insert(diagnostics.end(), pragma_errors.begin(),
@@ -4880,15 +4887,25 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   auto section_errors =
       detail::check_debug_sections(module.sections, version, module.range);
   const auto replacement_sections = detail::debug_sections(ast);
+  const auto replacement_binding = binding::bindSymbols(ast);
+  const auto replacement_legacy =
+      detail::legacy_dwarf_records(ast, replacement_binding.table);
+  auto legacy_errors = detail::check_legacy_dwarf(module, version);
+  auto replacement_legacy_errors = detail::check_legacy_dwarf(
+      ast, replacement_binding.table, replacement_legacy, version);
+  diagnostics.insert(diagnostics.end(), legacy_errors.begin(),
+                     legacy_errors.end());
+  diagnostics.insert(diagnostics.end(), replacement_legacy_errors.begin(),
+                     replacement_legacy_errors.end());
   check_target_debug_sections(target_debug_range(module.header),
-                              module.sections, diagnostics);
-  check_target_debug_sections(target_debug_range(ast), replacement_sections,
+                              module.sections, module.legacy_dwarf_records,
                               diagnostics);
+  check_target_debug_sections(target_debug_range(ast), replacement_sections,
+                              replacement_legacy, diagnostics);
   auto replacement_errors =
       detail::check_debug_sections(replacement_sections, version, ast.range);
   auto current_references =
       detail::check_debug_section_references(module.sections, module.symbols);
-  const auto replacement_binding = binding::bindSymbols(ast);
   auto pragma_errors = detail::check_pragmas(module, std::nullopt);
   auto replacement_pragmas =
       detail::check_pragmas(ast, replacement_binding.table, version);

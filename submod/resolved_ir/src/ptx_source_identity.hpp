@@ -449,7 +449,9 @@ inline void function_body(
             instruction(output, node);
           } else if constexpr (std::same_as<Node,
                                             syntax_ast::AstLocDirective> ||
-                               std::same_as<Node, syntax_ast::AstPragma>) {
+                               std::same_as<Node, syntax_ast::AstPragma> ||
+                               std::same_as<Node,
+                                            syntax_ast::AstLegacyDwarfRecord>) {
             // Debug locations and opaque pragmas are intentionally neutral.
           } else {
             static_assert(always_false_v<Node>);
@@ -517,7 +519,8 @@ inline std::string module_source_identity(const syntax_ast::AstModule& module) {
                         std::same_as<Node, syntax_ast::AstTargetDirective> ||
                         std::same_as<Node, syntax_ast::AstFileDirective> ||
                         std::same_as<Node, syntax_ast::AstSectionDirective> ||
-                        std::same_as<Node, syntax_ast::AstPragma>) {
+                        std::same_as<Node, syntax_ast::AstPragma> ||
+                        std::same_as<Node, syntax_ast::AstLegacyDwarfRecord>) {
             // Context/debug directives do not alter resolution-owned content.
           } else if constexpr (std::same_as<
                                    Node, syntax_ast::AstAddressSizeDirective>) {

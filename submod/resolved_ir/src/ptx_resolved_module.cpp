@@ -10,6 +10,7 @@
 
 #include "ptx_call_tables.hpp"
 #include "ptx_debug_sections.hpp"
+#include "ptx_legacy_dwarf.hpp"
 #include "ptx_module_source_context.hpp"
 #include "ptx_pragma_metadata.hpp"
 #include "ptx_source_identity.hpp"
@@ -1042,6 +1043,16 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
   if (!diagnostics.empty())
     return std::unexpected(std::move(diagnostics));
 
+  auto legacy_records = detail::legacy_dwarf_records(ast, binding_result.table);
+  auto legacy_errors = detail::check_legacy_dwarf(
+      ast, binding_result.table, legacy_records, detail::module_version(ast));
+  for (const auto& error : legacy_errors)
+    diagnostics.push_back({.range = error.range,
+                           .message = error.message,
+                           .checker_kind = error.kind});
+  if (!diagnostics.empty())
+    return std::unexpected(std::move(diagnostics));
+
   auto sections = detail::debug_sections(ast);
   auto section_errors = detail::check_debug_sections(
       sections, detail::module_version(ast), ast.range);
@@ -1329,6 +1340,7 @@ std::expected<ResolvedModule, ModuleResolveDiagnostics> resolveModuleOnly(
       .storage_declarations = std::move(*storage),
       .call_tables = std::move(call_tables),
       .source_identity = detail::module_source_identity(ast),
+      .legacy_dwarf_records = std::move(legacy_records),
   };
   auto legacy_size = detail::check_legacy_entry_input_sizes(module);
   if (!legacy_size.empty())

@@ -1308,12 +1308,12 @@ source-identity mismatch，合法 replacement 也不能掩盖非法 current payl
 ### Target debug 缺失检查与 recognition 边界
 
 只要文件内任一 `.target` 指定 `debug`，缺失条件就适用于整个文件，不依赖 section 与
-前后 target region 的位置。已知 `debug` 且 owning section record 为零是确定错误；即使
+前后 target region 的位置。已知 `debug` 且 owning modern section record 与 legacy record 同时为零是确定错误；即使
 `AvailableContext` 缺少 version 也拒绝。`.file`、`.loc` 或保留的 debug-string symbol identity
-不能替代 section。既有 PTX 3.0 option gate 与完整 context 要求保持独立。
-Source-aware validation 对 current owned options/sections 和 supplied AST options/sections
+不能替代上述 debug serialization record。既有 PTX 3.0 option gate 与完整 context 要求保持独立。
+Source-aware validation 对 current owned options/modern sections/legacy records 和 supplied AST options/modern sections/legacy records
 分别复用私有缺失规则；合法一侧不能掩盖另一侧的确定缺失或非法 typed payload。
-合法且不同的数据集仍保持 section-neutral source association。不增加 presence bit、公共 enum 或 decoder。
+合法且不同的数据集仍保持 section-neutral source association。不增加 presence cache、recognizer enum 或 decoder。
 
 **D-DEBUG-DWARF-PRESENCE-RECOGNITION 仍是 reference boundary，不是 code PASS。**
 固定的 [target 条款](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#ptx-module-directives-target)
@@ -1445,3 +1445,46 @@ version。当前 numeric value 的一致修改合法；替换 AST 中书写的 r
 value 仍受现有 source association 规则检查。
 
 源码依据：[PTX ISA 最大 CTA 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm)。
+
+
+### 历史调试序列化
+
+大小写敏感的 `@@DWARF` marker 在 module、function body 或 nested block statement
+位置引入一条闭合 production；支持所有已识别 source target 的 PTX ISA **[1.2, 2.0)**，
+不授予 function header 位置。`.byte` 为 unsigned hexadecimal list（0..255），
+`.4byte` 为 0..UINT32_MAX，`.quad` 为 0..UINT64_MAX；list 必须非空。后两者还支持
+单个普通或单前导点 symbolic label，保留为未链接值，不要求普通 PTX symbol binding。
+
+`0x`/`0X` 以及可选 `U`/`u` 后缀继承现有 PTX integer token；后缀是派生选择，并非
+历史语法的显式措辞。一元正负号、decimal/octal/binary 数值、symbol/numeric 混合 list、
+addend、difference、label definition 和任意 host assembly 不在模型中。支持公开例子
+的 `.section name, "", @progbits` header；将 name 泛化为普通或单前导点 identifier
+来自该例子，flags 仍须恰为空字符串，type 仍须恰为 `progbits`。
+
+空白、注释和换行分隔 token，不结束 record。一个结构完整的 payload 加可选分号
+结束 record，后续 token 返回普通 PTX grammar；错误恢复保留后续 marker、block
+和 function。Lossless CST 保存注释及 source text；owning AST value 保留精确
+marker、word/header spelling 和 record 内 range，`@`、`progbits` 是独立 leaf。
+
+`ptx_syntax_legacy_dwarf.hpp` 仅含小型 owning value，不引入 module、instruction
+或 expression AST 定义。Module/body variant 复用同一个 `AstLegacyDwarfRecord`；
+`ResolvedModule::legacy_dwarf_records` 是唯一有序 `{value, scope_id}` stream。
+Scope 来自模块 symbol table 的实际 declaration occurrence 和 block；canonical
+function 的 preferred owned scope 不能代替实际 definition occurrence。Metadata 不生成
+executable node、label slot 或 instruction provenance index；module/function source
+identity 忽略它，普通程序结构仍影响 identity。
+
+Current 和 supplied dataset 独立检查 typed word、range、scope ownership 及格式窗口。
+Source-aware 对两者采用 supplied effective version，AST-free 使用当前 module context。
+已知越界版本即使缺少完整 target 也拒绝；`AvailableContext` 缺少版本时仅延迟格式
+窗口，intrinsic 检查继续，Strict 缺失 context 仍拒绝。合法当前 metadata 修改和合法
+不同 dataset 无需旧 source byte equality；跨格式替换须移除或重建当前不兼容格式数据。
+
+`.target debug` 的确定缺失为每个 dataset 独立满足 **modern section 为零且 legacy
+record 为零**。未知 linked label、header 或非空 byte 仅避免确定缺失，不能认证实际
+DWARF recognition、解码、linked address 或 binary authenticity。已知完整 legacy
+context 无法同时满足 pre-2.0 格式及 PTX-3.0 debug option；缺版本测试仅是 partial
+context control。
+
+依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。

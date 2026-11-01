@@ -66,6 +66,7 @@ class PtxCstParser {
     RightBrace,
     FunctionBoundary,
     ModuleItem,
+    BodyItem,
     Eof,
   };
 
@@ -208,6 +209,9 @@ class PtxCstParser {
       CstParseDiagnostics& diagnostics, BlockDepth block_depth);
   std::expected<syntax_cst::CstModuleDirective, CstParseDiagnostic>
   parseModuleDirective();
+  /** Parse one finite legacy payload, leaving the next structural item untouched. */
+  std::expected<syntax_cst::CstLegacyDwarfRecord, CstParseDiagnostic>
+  parseLegacyDwarfRecord();
   std::expected<syntax_cst::CstSectionDirective, CstParseDiagnostic>
   parseSectionDirective(CstParseDiagnostics& diagnostics);
   std::expected<syntax_cst::CstFunction, CstParseDiagnostic> parseFunction(

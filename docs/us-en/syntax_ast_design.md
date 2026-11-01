@@ -283,3 +283,57 @@ the existing `AstConstantOperand` copy operation deep-clones its owned expressio
 [public member migration](parameter_declarations.md).
 
 `ptx_syntax_sections.hpp` exposes only the owning syntax leaf and section value records. Including the public module header keeps full instruction/module/expression AST types incomplete; `ptx_syntax_ast.hpp` remains the complete-AST entrypoint.
+
+
+### Legacy debug serialization
+
+The case-sensitive `@@DWARF` marker introduces one closed production at module,
+function-body or nested-block statement scope. It is supported for PTX ISA
+**[1.2, 2.0)** on every recognized source target. Function headers do not admit it.
+The forms are `.byte` unsigned hexadecimal lists (0..255), `.4byte` lists
+(0..UINT32_MAX) and `.quad` lists (0..UINT64_MAX). Lists are nonempty. The two wider
+forms also admit one ordinary or singly dotted symbolic label, retained unlinked;
+there is no ordinary PTX symbol-resolution requirement for that label.
+
+`0x`/`0X` with optional `U`/`u` follows existing PTX integer token inheritance;
+this suffix choice is derived rather than explicit wording of the legacy syntax.
+Signs, decimal/octal/binary values, mixed symbol/numeric lists, addends,
+differences, label definitions and arbitrary host assembly are outside this model.
+The published example's header is supported as `.section name, "", @progbits`.
+Generalizing its name to an ordinary or singly dotted identifier is derived from
+the example; flags remain exactly empty and the type remains exactly `progbits`.
+
+Whitespace, comments and newlines separate tokens without ending a record. One
+structurally complete payload and an optional semicolon end it. The next token is
+handled by ordinary PTX grammar; malformed records preserve following markers,
+blocks and functions through structural recovery. Lossless CST tokens retain
+comments and source text. Owning AST values retain exact marker/word/header
+spellings and within-record ranges, including separate `@` and `progbits` leaves.
+
+`ptx_syntax_legacy_dwarf.hpp` contains only small owning values. It does not expose
+module, instruction or expression AST definitions. One shared `AstLegacyDwarfRecord`
+is used in module/body variants, and `ResolvedModule::legacy_dwarf_records` is the
+sole ordered stream of `{value, scope_id}` wrappers. Actual declaration-occurrence
+and block scopes come from the module's symbol table; a canonical function's
+preferred owned scope does not replace its definition occurrence. Metadata creates
+no executable node, label slot or instruction-provenance index. Module and function
+source identities exclude it while ordinary program constructs remain relevant.
+
+Both current and supplied datasets validate their own typed words, ranges, scope
+ownership and format windows. Source-aware validation uses the supplied effective
+version for both datasets; AST-free validation uses current module context. Known
+out-of-window versions reject without a complete target. Missing version under
+`AvailableContext` defers only the format window; intrinsic checks continue and
+strict missing-context checks remain. Coherent current metadata edits and differing
+valid datasets do not require old source-byte equality. Cross-format replacement
+requires removal or reconstruction of current incompatible format data.
+
+For `.target debug`, definite absence means **zero modern sections AND zero legacy
+records**, independently in each dataset. An unknown linked label, a header or
+nonempty bytes only avoid this definite-absence result. They do not certify actual
+DWARF recognition, decoding, linked addresses or binary authenticity. A known full
+legacy context cannot combine the pre-2.0 format with the PTX-3.0 debug option;
+missing-version tests are partial-context controls only.
+
+References: [legacy debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+and [legacy-format window](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives).

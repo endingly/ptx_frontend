@@ -223,3 +223,46 @@ Function header 与局部 `.callprototype` 数组在 `array_dimensions` 中复�
 既有 `AstConstantOperand` copy 操作深度 clone 自身拥有的 expression，详见[公共 member migration](parameter_declarations.md)。
 
 `ptx_syntax_sections.hpp` 仅公开 owning syntax leaf 与 section value record。公共 module header 仍保持 instruction/module/expression AST type 不完整；`ptx_syntax_ast.hpp` 仍是完整 AST 的入口。
+
+
+### 历史调试序列化
+
+大小写敏感的 `@@DWARF` marker 在 module、function body 或 nested block statement
+位置引入一条闭合 production；支持所有已识别 source target 的 PTX ISA **[1.2, 2.0)**，
+不授予 function header 位置。`.byte` 为 unsigned hexadecimal list（0..255），
+`.4byte` 为 0..UINT32_MAX，`.quad` 为 0..UINT64_MAX；list 必须非空。后两者还支持
+单个普通或单前导点 symbolic label，保留为未链接值，不要求普通 PTX symbol binding。
+
+`0x`/`0X` 以及可选 `U`/`u` 后缀继承现有 PTX integer token；后缀是派生选择，并非
+历史语法的显式措辞。一元正负号、decimal/octal/binary 数值、symbol/numeric 混合 list、
+addend、difference、label definition 和任意 host assembly 不在模型中。支持公开例子
+的 `.section name, "", @progbits` header；将 name 泛化为普通或单前导点 identifier
+来自该例子，flags 仍须恰为空字符串，type 仍须恰为 `progbits`。
+
+空白、注释和换行分隔 token，不结束 record。一个结构完整的 payload 加可选分号
+结束 record，后续 token 返回普通 PTX grammar；错误恢复保留后续 marker、block
+和 function。Lossless CST 保存注释及 source text；owning AST value 保留精确
+marker、word/header spelling 和 record 内 range，`@`、`progbits` 是独立 leaf。
+
+`ptx_syntax_legacy_dwarf.hpp` 仅含小型 owning value，不引入 module、instruction
+或 expression AST 定义。Module/body variant 复用同一个 `AstLegacyDwarfRecord`；
+`ResolvedModule::legacy_dwarf_records` 是唯一有序 `{value, scope_id}` stream。
+Scope 来自模块 symbol table 的实际 declaration occurrence 和 block；canonical
+function 的 preferred owned scope 不能代替实际 definition occurrence。Metadata 不生成
+executable node、label slot 或 instruction provenance index；module/function source
+identity 忽略它，普通程序结构仍影响 identity。
+
+Current 和 supplied dataset 独立检查 typed word、range、scope ownership 及格式窗口。
+Source-aware 对两者采用 supplied effective version，AST-free 使用当前 module context。
+已知越界版本即使缺少完整 target 也拒绝；`AvailableContext` 缺少版本时仅延迟格式
+窗口，intrinsic 检查继续，Strict 缺失 context 仍拒绝。合法当前 metadata 修改和合法
+不同 dataset 无需旧 source byte equality；跨格式替换须移除或重建当前不兼容格式数据。
+
+`.target debug` 的确定缺失为每个 dataset 独立满足 **modern section 为零且 legacy
+record 为零**。未知 linked label、header 或非空 byte 仅避免确定缺失，不能认证实际
+DWARF recognition、解码、linked address 或 binary authenticity。已知完整 legacy
+context 无法同时满足 pre-2.0 格式及 PTX-3.0 debug option；缺版本测试仅是 partial
+context control。
+
+依据：[历史 debug marker](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives-atatdwarf)
+及[历史格式窗口](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#debugging-directives)。

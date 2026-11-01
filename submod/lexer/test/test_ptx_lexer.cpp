@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 
 #include <string>
 #include <string_view>
@@ -872,4 +873,18 @@ TEST(PtxLexer, RecognizesDeprecatedMaximumCtaHint) {
   EXPECT_EQ(tokens[1].text, "0x4U");
   EXPECT_EQ(tokens[2].kind, TokenKind::DotMinnctapersm);
   EXPECT_NE(tokens[4].kind, TokenKind::DotMaxnctapersm);
+}
+
+/** The exact legacy marker does not alter dotted longest-match or predicate tokenization. */
+TEST(PtxLexer, RecognizesLegacyDwarfMarkerAndDottedWidth) {
+  PtxLexer lexer("@@DWARF .4byte .4 4byte @%p");
+  EXPECT_EQ(lexer.next().kind, TokenKind::AtAtDwarf);
+  auto width = lexer.next();
+  EXPECT_EQ(width.kind, TokenKind::DotIdent);
+  EXPECT_EQ(width.text, ".4byte");
+  EXPECT_EQ(lexer.next().kind, TokenKind::F64);
+  EXPECT_NE(lexer.next().kind, TokenKind::DotIdent);
+  auto wrong = lex_all("@@dwarf .byte 0x1");
+  EXPECT_FALSE(std::ranges::any_of(
+      wrong, [](const auto& t) { return t.kind == TokenKind::AtAtDwarf; }));
 }

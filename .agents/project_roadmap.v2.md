@@ -636,6 +636,7 @@ numeric packed `.f16x2` literal representation。
 | M8-I03 | ✅ | `.file` | lossless payload |
 | M8-I04 | ✅ | `.loc` | owning ordered SymbolTable basic/inline triples；共同 current/replacement numeric/binding/prior-base 检查；无 instruction attachment/DWARF decoder |
 | M8-I05 | ✅ | `.section` | matched brace/raw CST tokens + owning typed integer/relocation metadata；检查范围/locality/版本，非 DWARF decoder |
+| Legacy debug serialization | ✅ | `@@DWARF` | closed unsigned hex/single wide symbol/finite header；PTX [1.2,2.0)；owning source-wide scoped values，非 decoder/recognizer |
 | M8-I06 | ✅ | `.pragma` | owning Module advisory records/raw strings/ranges/actual occurrence scopes；PTX 2.0；current/source 独立 intrinsic 与 neutral replacement；无 backend 执行解释 |
 | M8-I07 | ✅ | kernel-resource directives | maxnreg/maxntid/reqntid/minnctapersm/maxnctapersm (distinct deprecated hint, PTX >= 1.3; modeled u32 capacity) |
 | M8-I08 | ✅ | directive coverage boundary | PTX 9.3 directive boundary |

@@ -122,6 +122,8 @@ enum class TokenKind : uint16_t {
   DotParam,
 
   Binary,  // 0b/0B integer, optional u/U suffix; appended for stable token values
+  /** Deprecated entry resource hint; appended to preserve existing token values. */
+  DotMaxnctapersm,
 };
 
 enum class TriviaKind : uint8_t {

@@ -1222,6 +1222,7 @@ class Checker {
   static PtxVersion minimumPtxVersion(syntax_ast::AstKernelResourceKind kind) {
     switch (kind) {
       case syntax_ast::AstKernelResourceKind::MaxNreg:
+      case syntax_ast::AstKernelResourceKind::MaxNctaPerSm:
       case syntax_ast::AstKernelResourceKind::MaxNtid:
         return {1, 3};
       case syntax_ast::AstKernelResourceKind::ReqNtid:
@@ -1247,6 +1248,8 @@ class Checker {
         return ".reqntid";
       case syntax_ast::AstKernelResourceKind::MinNctaPerSm:
         return ".minnctapersm";
+      case syntax_ast::AstKernelResourceKind::MaxNctaPerSm:
+        return ".maxnctapersm";
       case syntax_ast::AstKernelResourceKind::ReqNctaPerCluster:
         return ".reqnctapercluster";
       case syntax_ast::AstKernelResourceKind::ExplicitCluster:

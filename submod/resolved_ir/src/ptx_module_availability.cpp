@@ -78,11 +78,14 @@ enum class DirectiveAvailability {
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
+  MaxNctaPerSm,
 };
 
 checker::AvailabilityDescriptor directive_availability(
     DirectiveAvailability directive) {
   switch (directive) {
+    case DirectiveAvailability::MaxNctaPerSm:
+      return availability({1, 3});
     case DirectiveAvailability::BodyParameter:
     case DirectiveAvailability::Recursion:
     case DirectiveAvailability::PossibleRecursion:
@@ -207,6 +210,7 @@ checker::AvailabilityDescriptor resource_availability(
   using Kind = syntax_ast::AstKernelResourceKind;
   switch (kind) {
     case Kind::MaxNreg:
+    case Kind::MaxNctaPerSm:
     case Kind::MaxNtid:
       return availability({1, 3});
     case Kind::ReqNtid:
@@ -232,6 +236,8 @@ std::string_view resource_name(syntax_ast::AstKernelResourceKind kind) {
       return ".reqntid";
     case Kind::MinNctaPerSm:
       return ".minnctapersm";
+    case Kind::MaxNctaPerSm:
+      return ".maxnctapersm";
     case Kind::ReqNctaPerCluster:
       return ".reqnctapercluster";
     case Kind::ExplicitCluster:
@@ -248,6 +254,7 @@ checker::AvailabilityDescriptor resource_availability(
   using Kind = ResolvedKernelResourceKind;
   switch (kind) {
     case Kind::MaxNreg:
+    case Kind::MaxNctaPerSm:
     case Kind::MaxNtid:
       return availability({1, 3});
     case Kind::ReqNtid:
@@ -274,6 +281,8 @@ std::string_view resource_name(ResolvedKernelResourceKind kind) {
       return ".reqntid";
     case Kind::MinNctaPerSm:
       return ".minnctapersm";
+    case Kind::MaxNctaPerSm:
+      return ".maxnctapersm";
     case Kind::ReqNctaPerCluster:
       return ".reqnctapercluster";
     case Kind::ExplicitCluster:
@@ -2356,7 +2365,7 @@ void check_module_texture_mode(const ResolvedModuleHeader& header,
 void check_resource_contracts(const ResolvedFunction& function,
                               checker::CheckDiagnostics& diagnostics) {
   constexpr size_t resource_kind_count =
-      static_cast<size_t>(ResolvedKernelResourceKind::MaxClusterRank) + 1;
+      static_cast<size_t>(ResolvedKernelResourceKind::MaxNctaPerSm) + 1;
   std::array<bool, resource_kind_count> seen{};
   bool has_max_ntid = false;
   bool has_req_ntid = false;
@@ -2385,10 +2394,29 @@ void check_resource_contracts(const ResolvedFunction& function,
                                                                        : 1;
     if (resource.values.size() != expected_values ||
         resource.explicit_value_count > resource.values.size() ||
-        (dimensions && resource.explicit_value_count == 0)) {
+        (dimensions && resource.explicit_value_count == 0) ||
+        (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm &&
+         resource.explicit_value_count != 1)) {
       append_model_mismatch(
           diagnostics, resource.range,
           "Resolved kernel resource has an invalid dimensional payload.");
+    }
+    if (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm &&
+        resource.range != SourceRange{}) {
+      const auto start = [](SourceRange r) {
+        return std::pair{r.start.line, r.start.column};
+      };
+      const auto end = [](SourceRange r) {
+        return std::pair{r.end.line, r.end.column};
+      };
+      if (!valid_instruction_range(resource.range) ||
+          (function.range != SourceRange{} &&
+           (!valid_instruction_range(function.range) ||
+            start(resource.range) < start(function.range) ||
+            end(function.range) < end(resource.range))))
+        append_model_mismatch(
+            diagnostics, resource.range,
+            "Resolved .maxnctapersm has an invalid source range.");
     }
     if (dimensions) {
       for (size_t i = resource.explicit_value_count; i < resource.values.size();
@@ -4515,6 +4543,18 @@ void check_function_weak_availability(
                              version, std::nullopt, function.range, ".weak");
 }
 
+/** Check the deprecated hint against independently known effective PTX context. */
+void check_max_ncta_availability(const ResolvedFunction& function,
+                                 std::optional<checker::PtxVersion> version,
+                                 checker::CheckDiagnostics& diagnostics) {
+  DirectiveAvailabilityKeys emitted;
+  for (const auto& resource : function.contract.resources)
+    if (resource.kind == ResolvedKernelResourceKind::MaxNctaPerSm)
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::MaxNctaPerSm, version,
+                                 std::nullopt, resource.range, ".maxnctapersm");
+}
+
 /** Check function-level availability using only owned source-level metadata. */
 void check_function_contract_availability(
     const ResolvedFunction& function, const checker::TargetInfo& target,
@@ -4548,8 +4588,9 @@ void check_function_contract_availability(
     append_requirement(diagnostics, availability({9, 0}, 90, "cluster"), target,
                        function.range, ".blocksareclusters");
   for (const auto& resource : function.contract.resources)
-    append_requirement(diagnostics, resource_availability(resource.kind),
-                       target, resource.range, resource_name(resource.kind));
+    if (resource.kind != ResolvedKernelResourceKind::MaxNctaPerSm)
+      append_requirement(diagnostics, resource_availability(resource.kind),
+                         target, resource.range, resource_name(resource.kind));
 }
 
 }  // namespace
@@ -4785,6 +4826,7 @@ checker::CheckResult validateModule(const ResolvedModule& module,
               ? std::optional<base::TargetProfile>{}
               : base::find_target_profile(region->target_options.front());
       DirectiveAvailabilityKeys emitted;
+      check_max_ncta_availability(function, region->version, diagnostics);
       check_body_parameter_roles(function, region->version, profile,
                                  diagnostics);
       check_target_list_availability(function, region->version, profile,
@@ -4995,8 +5037,11 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
   check_call_graph_joins(module, graph_joins);
   const auto call_graph = current_call_graph(module, graph_joins);
   append_call_graph_diagnostics(diagnostics, graph_joins);
-  for (const auto& function : module.functions)
+  for (const auto& function : module.functions) {
     check_current_function_source_context(module, function, diagnostics);
+    check_resource_contracts(function, diagnostics);
+    check_max_ncta_availability(function, version, diagnostics);
+  }
   std::optional<checker::TargetInfo> active_target;
   /** Recognized target facts remain usable when no PTX version is supplied. */
   std::optional<base::TargetProfile> active_profile;
@@ -5088,9 +5133,10 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                            *active_target, function->blocks_are_clusters->range,
                            ".blocksareclusters");
       for (const auto& resource : function->resources)
-        append_requirement(diagnostics, resource_availability(resource.kind),
-                           *active_target, resource.range,
-                           resource_name(resource.kind));
+        if (resource.kind != syntax_ast::AstKernelResourceKind::MaxNctaPerSm)
+          append_requirement(diagnostics, resource_availability(resource.kind),
+                             *active_target, resource.range,
+                             resource_name(resource.kind));
       check_function_register_formals(*owned, *active_target, diagnostics);
       check_instruction_body(*owned, *active_target, texture_mode, diagnostics,
                              address_intrinsic_causes[index]);

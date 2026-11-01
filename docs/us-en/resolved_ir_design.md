@@ -1764,3 +1764,29 @@ Availability singular and span exact-target requirements compare validation-feat
 Historical instruction data changes only the adopted231 parents:219 preserve existing100A clauses and add101A, with101F only where an original110F branch exists;12 block-selector parents append an8.8 historical101A/F clause. All854 original110 conditions and their floors remain, the DNF limit stays six, and the25 restricted cluster gather4/im2col-W parents remain unchanged. TCGEN closed rows retain kind, scaled-D and explicit scale-vector restrictions: written block16/32 historical gates require8.8, while100-only vector and scaled-D paths remain100-only. Generated operational queries first validate the exact source profile and its minimum version, then apply feature matching. Unknown words and addresses remain unresolved obligations, not facts inferred from live registers.
 
 Both module validators independently join current function `source_region`, `source_version` and exact `source_target` to the current owned region. A valid replacement AST cannot mask contradictory caches. Intrinsically coherent101/110 contexts may be retargeted through a supplied header when the current payload is legal under that effective context; retained availability is not a historical veto. Missing full instruction context still follows the existing `AvailableContext` deferral and strict `MissingValidationContext` policy.
+
+
+### Deprecated maximum-CTA hint
+
+Entry headers accept `.maxnctapersm ncta` from PTX ISA 1.3 on every recognized
+source target, including PTX 2.0 and later. Deprecation does not impose an upper
+version bound. The distinct `MaxNctaPerSm` AST/owned kind is an optimization hint:
+additional CTAs may still execute, so it is not a hard runtime occupancy cap.
+`.maxntid` is optional, and `.minnctapersm` may coexist as a separate resource.
+
+One complete unsigned integer token is checked before projection into the existing
+`uint32_t` resource value, including zero and `UINT32_MAX`; overflowing values do
+not wrap. This is the frontend's modeled resource capacity. The published grammar
+does not specify this bit width, and validation does not prove hardware occupancy
+or driver feasibility. CST/AST leaves retain written radix/suffix/ranges while
+alive; owning contracts retain only kind, normalized values, explicit count and
+range, with no parallel raw spelling field.
+
+Both validators check current payload shape, entry placement and known range
+containment. Known PTX context below 1.3 rejects even without a complete target;
+missing version defers availability under `AvailableContext` while intrinsic
+checks continue. The source-aware route uses the supplied effective version.
+Coherent current numeric edits remain valid; changing written resource kind or
+value in a replacement AST retains the existing source-association rule.
+
+Source reference: [PTX ISA maximum-CTA directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm).

@@ -453,6 +453,8 @@ enum class AstKernelResourceKind : uint8_t {
   ReqNctaPerCluster,
   ExplicitCluster,
   MaxClusterRank,
+  /** Written deprecated maximum-CTA optimization hint, distinct from the minimum. */
+  MaxNctaPerSm,
 };
 
 /** A per-entry kernel resource constraint retained from the function header. */

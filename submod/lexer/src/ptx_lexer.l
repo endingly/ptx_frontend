@@ -206,6 +206,7 @@ STRING          \"([^\\\"\n\r]|\\.)*\"
 ".maxntid"              { TOK(DotMaxntid); }
 ".reqntid"              { TOK(DotReqntid); }
 ".minnctapersm"         { TOK(DotMinnctapersm); }
+".maxnctapersm"         { TOK(DotMaxnctapersm); }
 ".reqnctapercluster"    { TOK(DotReqnctapercluster); }
 ".explicitcluster"      { TOK(DotExplicitcluster); }
 ".maxclusterrank"       { TOK(DotMaxclusterrank); }

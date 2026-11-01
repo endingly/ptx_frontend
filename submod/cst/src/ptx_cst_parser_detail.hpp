@@ -58,6 +58,7 @@ inline bool isVariableStateSpace(TokenKind kind);
 inline bool isKernelResourceDirective(TokenKind kind) {
   return kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMaxntid ||
          kind == TokenKind::DotReqntid || kind == TokenKind::DotMinnctapersm ||
+         kind == TokenKind::DotMaxnctapersm ||
          kind == TokenKind::DotReqnctapercluster ||
          kind == TokenKind::DotExplicitcluster ||
          kind == TokenKind::DotMaxclusterrank;

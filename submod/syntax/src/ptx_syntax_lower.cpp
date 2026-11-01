@@ -877,6 +877,9 @@ syntax_ast::AstKernelResourceDirective lowerKernelResourceDirective(
     case TokenKind::DotReqntid:
       kind = syntax_ast::AstKernelResourceKind::ReqNtid;
       break;
+    case TokenKind::DotMaxnctapersm:
+      kind = syntax_ast::AstKernelResourceKind::MaxNctaPerSm;
+      break;
     case TokenKind::DotMinnctapersm:
       kind = syntax_ast::AstKernelResourceKind::MinNctaPerSm;
       break;

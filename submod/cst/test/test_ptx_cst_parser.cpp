@@ -1892,3 +1892,22 @@ TEST(PtxCstParser, ParsesNegatedIntegerInstructionOperands) {
 
 }  // namespace
 }  // namespace ptx_frontend
+
+namespace ptx_frontend {
+/** Existing resource CST retains exact keyword and complete integer leaves without a spelling adapter. */
+TEST(PtxCstParser, RetainsDeprecatedMaximumCtaHint) {
+  constexpr std::string_view source = ".entry k() .maxnctapersm 0x4U {ret;}";
+  PtxCstParser p(source);
+  auto a = p.parseModule();
+  ASSERT_TRUE(a);
+  EXPECT_EQ(a->sourceText(), source);
+  const auto& f = std::get<syntax_cst::CstFunction>(a->module()->items[0]);
+  ASSERT_EQ(f.resources.size(), 1u);
+  const auto& r = f.resources[0];
+  EXPECT_EQ(a->token(r.directive).kind, TokenKind::DotMaxnctapersm);
+  ASSERT_EQ(r.values.size(), 1u);
+  EXPECT_EQ(a->token(r.values[0]).text, "0x4U");
+  EXPECT_TRUE(r.commas.empty());
+}
+
+}  // namespace ptx_frontend

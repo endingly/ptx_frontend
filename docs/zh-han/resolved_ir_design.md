@@ -1423,3 +1423,25 @@ availability 的 singular 与 span exact-target 要求通过该 helper 比较 va
 历史指令数据仅修改已采用的231个 parent：219个保留100A clause并加入101A，仅原有110F分支时加入101F；12个 block-selector parent 追加8.8历史101A/F clause。854个原110条件及其版本门槛全部保留，DNF上限仍为六，25个受限 cluster gather4/im2col-W parent 不变。TCGEN 闭合 row 保留 kind、scaled-D 与显式 scale-vector 限制：历史 written block16/32 门槛为8.8，100-only vector 和 scaled-D 路径仍限定100。生成的 operational query 先验证精确 source profile 及其最低版本，再匹配 feature；未知 word 与地址仍为未决义务，不从实时 register 推断事实。
 
 两个 module validator 均独立检查当前 function 的 `source_region`、`source_version`、精确 `source_target` 与当前 owned region 一致。合法 replacement AST 不能掩盖矛盾 cache。101/110 context 自身一致且当前 payload 在 supplied effective context 下合法时，允许通过 supplied header retarget；保留的 availability 不成为历史否决。缺少完整 instruction context 时继续既有 `AvailableContext` 推迟及严格 `MissingValidationContext` 政策。
+
+
+### 已弃用的最大 CTA 提示
+
+Entry header 从 PTX ISA 1.3 起接受 `.maxnctapersm ncta`，适用于所有已识别
+source target，包含 PTX 2.0 及后续版本；弃用不表示版本上界。独立的 AST/owned
+`MaxNctaPerSm` kind 表达优化提示：仍可执行额外 CTA，因此不是 runtime occupancy
+硬上限。`.maxntid` 可省略，`.minnctapersm` 可作为独立 resource 同时存在。
+
+完整 unsigned integer token 经检查后进入现有 `uint32_t` resource value，允许
+零及 `UINT32_MAX`，溢出不截断。该范围仅为 frontend 已建模容量；公开语法未指定
+此位宽，检查不证明硬件 occupancy 或 driver 可执行性。CST/AST 存活时保留书写的
+radix、suffix 和 range；owned contract 仅保留 kind、normalized values、explicit
+count 和 range，不增加平行 raw spelling 字段。
+
+两个 validator 都检查当前 payload shape、entry placement 和已知 range containment。
+已知 PTX 版本低于 1.3 时，即使 target 不完整也拒绝；`AvailableContext` 缺少版本时
+只延迟 availability，intrinsic 检查继续。Source-aware 路径采用 supplied effective
+version。当前 numeric value 的一致修改合法；替换 AST 中书写的 resource kind 或
+value 仍受现有 source association 规则检查。
+
+源码依据：[PTX ISA 最大 CTA 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm)。

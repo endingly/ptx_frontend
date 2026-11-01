@@ -187,6 +187,8 @@ ResolvedKernelResourceKind resource_kind(
       return ResolvedKind::ReqNtid;
     case AstKind::MinNctaPerSm:
       return ResolvedKind::MinNctaPerSm;
+    case AstKind::MaxNctaPerSm:
+      return ResolvedKind::MaxNctaPerSm;
     case AstKind::ReqNctaPerCluster:
       return ResolvedKind::ReqNctaPerCluster;
     case AstKind::ExplicitCluster:

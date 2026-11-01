@@ -317,3 +317,29 @@ global ceiling; no double axes/vector multiplication or invented256 legacy cap.
 `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` remains qualified for exact historical
 physical launch packing. See the [parameter contract](parameter_declarations.md)
 for context windows, intrinsic guarantees and preserved limitations.
+
+
+### Deprecated maximum-CTA hint
+
+Entry headers accept `.maxnctapersm ncta` from PTX ISA 1.3 on every recognized
+source target, including PTX 2.0 and later. Deprecation does not impose an upper
+version bound. The distinct `MaxNctaPerSm` AST/owned kind is an optimization hint:
+additional CTAs may still execute, so it is not a hard runtime occupancy cap.
+`.maxntid` is optional, and `.minnctapersm` may coexist as a separate resource.
+
+One complete unsigned integer token is checked before projection into the existing
+`uint32_t` resource value, including zero and `UINT32_MAX`; overflowing values do
+not wrap. This is the frontend's modeled resource capacity. The published grammar
+does not specify this bit width, and validation does not prove hardware occupancy
+or driver feasibility. CST/AST leaves retain written radix/suffix/ranges while
+alive; owning contracts retain only kind, normalized values, explicit count and
+range, with no parallel raw spelling field.
+
+Both validators check current payload shape, entry placement and known range
+containment. Known PTX context below 1.3 rejects even without a complete target;
+missing version defers availability under `AvailableContext` while intrinsic
+checks continue. The source-aware route uses the supplied effective version.
+Coherent current numeric edits remain valid; changing written resource kind or
+value in a replacement AST retains the existing source-association rule.
+
+Source reference: [PTX ISA maximum-CTA directive](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm).

@@ -161,6 +161,7 @@ PtxCstParser::parseKernelResourceDirective() {
   std::vector<TokenId> commas;
 
   if (kind == TokenKind::DotMaxnreg || kind == TokenKind::DotMinnctapersm ||
+      kind == TokenKind::DotMaxnctapersm ||
       kind == TokenKind::DotMaxclusterrank) {
     if (token(peek()).kind == TokenKind::Comma) {
       return std::unexpected(CstParseDiagnostic{

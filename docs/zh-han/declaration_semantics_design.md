@@ -254,3 +254,25 @@ return staging，MOV 保持 `.param`；现代 BodyLocal staging 不变。Checked
 不重复乘 axes/vector，也不套用1.4的256-byte header cap。
 `D-H03-LEGACY-ENTRY-EXACT-AGGREGATE-LIMIT` 对精确历史 physical launch packing
 仍 qualified。详见[parameter contract](parameter_declarations.md)的窗口与边界。
+
+
+### 已弃用的最大 CTA 提示
+
+Entry header 从 PTX ISA 1.3 起接受 `.maxnctapersm ncta`，适用于所有已识别
+source target，包含 PTX 2.0 及后续版本；弃用不表示版本上界。独立的 AST/owned
+`MaxNctaPerSm` kind 表达优化提示：仍可执行额外 CTA，因此不是 runtime occupancy
+硬上限。`.maxntid` 可省略，`.minnctapersm` 可作为独立 resource 同时存在。
+
+完整 unsigned integer token 经检查后进入现有 `uint32_t` resource value，允许
+零及 `UINT32_MAX`，溢出不截断。该范围仅为 frontend 已建模容量；公开语法未指定
+此位宽，检查不证明硬件 occupancy 或 driver 可执行性。CST/AST 存活时保留书写的
+radix、suffix 和 range；owned contract 仅保留 kind、normalized values、explicit
+count 和 range，不增加平行 raw spelling 字段。
+
+两个 validator 都检查当前 payload shape、entry placement 和已知 range containment。
+已知 PTX 版本低于 1.3 时，即使 target 不完整也拒绝；`AvailableContext` 缺少版本时
+只延迟 availability，intrinsic 检查继续。Source-aware 路径采用 supplied effective
+version。当前 numeric value 的一致修改合法；替换 AST 中书写的 resource kind 或
+value 仍受现有 source association 规则检查。
+
+源码依据：[PTX ISA 最大 CTA 指令](https://docs.nvidia.com/cuda/archive/13.3.0/parallel-thread-execution/index.html#performance-tuning-directives-maxnctapersm)。

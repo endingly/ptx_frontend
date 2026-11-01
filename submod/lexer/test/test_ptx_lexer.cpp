@@ -862,3 +862,14 @@ TEST(PtxLexerNew, PeekDoesNotConsume) {
   auto c3 = lexer.consume();
   EXPECT_EQ(c3.kind, TokenKind::Eof);
 }
+
+/** Exact deprecated directive spelling remains distinct from the minimum and generic dot names. */
+TEST(PtxLexer, RecognizesDeprecatedMaximumCtaHint) {
+  auto tokens = lex_all(".maxnctapersm 0x4U .minnctapersm 2 .maxnctapersmx");
+  ASSERT_EQ(tokens.size(), 5u);
+  EXPECT_EQ(tokens[0].kind, TokenKind::DotMaxnctapersm);
+  EXPECT_EQ(tokens[0].text, ".maxnctapersm");
+  EXPECT_EQ(tokens[1].text, "0x4U");
+  EXPECT_EQ(tokens[2].kind, TokenKind::DotMinnctapersm);
+  EXPECT_NE(tokens[4].kind, TokenKind::DotMaxnctapersm);
+}

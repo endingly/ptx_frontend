@@ -77,6 +77,8 @@ enum class ResolvedKernelResourceKind : uint8_t {
   ReqNctaPerCluster,
   ExplicitCluster,
   MaxClusterRank,
+  /** Written deprecated maximum-CTA optimization hint, distinct from the minimum. */
+  MaxNctaPerSm,
 };
 
 /** Owned source-level resource directive, not a physical allocation decision. */

@@ -103,7 +103,7 @@ Cache hint 仍使用末尾的 64 位 policy 布局，并遵循相同 global 地�
 
 | 模式 | 合法操作/类型组合 | 形式及目标下限 |
 | --- | --- | --- |
-| Shared completion | `inc/dec.u32`、`min/max.{u32,s32}`、`and/or/xor.b32`、`add.{u32,s32,u64}` | `red.async.relaxed.cluster{.shared::cluster}.mbarrier::complete_tx::bytes.{op}.{type} [a], b, [mbar]`；PTX 8.1 / SM 90 |
+| Shared completion | `inc/dec.u32`、`min/max.{u32,s32}`、`and/or/xor.b32`、`add.{u32,s32,u64}` | `red.async.relaxed.cluster{.shared::cluster}{.mbarrier::complete_tx::bytes}.{op}.{type} [a], b, [mbar]`；PTX 8.1 / SM 90 |
 | Global release | `add.{u32,s32,u64,s64}` | `red.async{.mmio}.release.{gpu\|sys}{.global}.add.{type} [a], b`；PTX 8.7 / SM 100 |
 
 可选地址后缀在 `Red::address_qualifier` 中独立保留：shared completion 可省略为
@@ -114,9 +114,16 @@ mbarrier 地址必须指向 shared；来源未知的 generic 寄存器地址在�
 shared-cluster。Release 模式中已知目标必须指向 global；来源未知的 generic
 寄存器地址在运行时必须指向 global。目标要求自然 4 或 8 字节对齐，mbarrier
 地址要求 8 字节对齐。`.mmio` 只允许 release `.sys`，不能与 release `.gpu`
-搭配。Shared completion 后缀必须显式写出：尽管 ISA Conditions 文字描述了
-省略时的默认值，PTX 9.3 语法及 `ptxas` 均拒绝省略。前端无法静态证明 shared
-目标与已初始化的 barrier 位于同一个远端 CTA；这属于运行时义务。
+搭配。
+
+对于 relaxed 模式，具体的 PTX Conditions 条款规定省略 completion 时默认采用
+`.mbarrier::complete_tx::bytes`；显式写出时也只允许这一 mechanism。两种形式都必须
+保留第三个 `[mbar]` 操作数。该具体默认规则优先于将 completion 印为必需的示意
+syntax，以及描述省略时采用 end-CTA completion 的通用 Qualifiers 文字。
+Release 模式仍是独立的双操作数形式，禁止显式 completion。历史 assembler 对
+relaxed 省略形式的拒绝仅作为补充工具差异，不决定 frontend grammar。
+前端无法证明 shared 目标与已初始化的 barrier 位于同一个远端 CTA，也不执行
+reduction/transaction/synchronization 语义；这些仍是运行时义务。
 
 其他同步标量操作/类型组合，如 `.add.s64`、64 位 `.inc/.dec`、带类型化 64 位后缀
 的位操作、标量浮点 `.min/.max` 以及 `red.cas`/`red.exch`，仍不受支持。
@@ -133,3 +140,22 @@ C++ 包版本为 0.7.0，consumer 需要使用匹配的已安装头文件与库�
 分别有三个与两个操作数；consumer 应读取保留的地址限定符、completion、scope
 及 MMIO 字段，而非假定同步布局。16 个异步分支追加在 `Red` 下。
 Python wheel 版本为 0.1.0b3，因为打包的 YAML 和生成模型契约已变化。
+
+十二个 shared class（`RedAsyncSharedIncU32`、`RedAsyncSharedDecU32`、
+`RedAsyncSharedMinU32`、`RedAsyncSharedMinS32`、`RedAsyncSharedMaxU32`、
+`RedAsyncSharedMaxS32`、`RedAsyncSharedAndB32`、`RedAsyncSharedOrB32`、
+`RedAsyncSharedXorB32`、`RedAsyncSharedAddU32`、`RedAsyncSharedAddS32`、
+`RedAsyncSharedAddU64`）现提供 instance `WithLocs<bool> completion`，替代 static
+constant。读取 `object.completion.value` 获取有效 mechanism（始终为 true），读取
+`.locs` 区分书写 presence：省略时 locations 为空，显式形式保留 token。
+False 不属于该单值 domain，即使没有 token 也非法。普通双值 optional flag 仍遵循
+既有 value/token 一致性规则。Generated C++ layout 变化要求重编译 consumer；四个
+release class 以及 shared 的三个 operand payload 保持不变。清空 true completion
+的 locations 是合法当前 IR 修改；supplied AST association 独立检查 retained source identity。
+
+[默认值测试](../../../submod/resolved_ir/test/test_red_async_default.cpp) 覆盖全部
+48 种 shared modifier product、64 种 release candidate（24 允许、40 拒绝）、
+target/version 边界、单值 domain mutation，以及真实 AST 销毁后的 copy/clone。
+[安装 consumer](../../../examples/resolved_ir_consumer/main.cpp) 在无 source storage 时
+读取全部十二个迁移字段并保留 release control。这些检查不证明 barrier 已初始化或
+运行时 completion。

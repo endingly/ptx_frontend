@@ -2932,7 +2932,7 @@ instructions:
     section: "9.7.14.6"
     doc: "Synchronous scalar/vector reductions and two asynchronous modes."
     atomic_address_qualifier: {state_space_modifier: state_space, address_operand: address}
-    syntax: "red{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.{op}{.noftz}{.L2::cache_hint}.v{2|4|8}.{type} [address], {src}{, cache_policy} | red.async.relaxed.cluster{.shared::cluster}.mbarrier::complete_tx::bytes.{op}.{type} [address], src, [mbarrier] | red.async{.mmio}.release.{gpu|sys}{.global}.add.{type} [address], src"
+    syntax: "red{.sem}{.scope}{.space}.{op}{.L2::cache_hint}.{type} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.{f16|f16x2|bf16|bf16x2} [address], src{, cache_policy} | red{.sem}{.scope}{.space}.{op}{.noftz}{.L2::cache_hint}.v{2|4|8}.{type} [address], {src}{, cache_policy} | red.async.relaxed.cluster{.shared::cluster}{.mbarrier::complete_tx::bytes}.{op}.{type} [address], src, [mbarrier] | red.async{.mmio}.release.{gpu|sys}{.global}.add.{type} [address], src"
 
     variants:
       - name: red_global_add_u32
@@ -3820,7 +3820,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: inc, kind: flag, presence: fixed, value: true, token: .inc}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         operands: $red_async_shared
@@ -3838,7 +3838,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: dec, kind: flag, presence: fixed, value: true, token: .dec}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         operands: $red_async_shared
@@ -3856,7 +3856,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: min, kind: flag, presence: fixed, value: true, token: .min}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         operands: $red_async_shared
@@ -3874,7 +3874,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: min, kind: flag, presence: fixed, value: true, token: .min}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         operands: $red_async_shared
@@ -3892,7 +3892,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: max, kind: flag, presence: fixed, value: true, token: .max}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         operands: $red_async_shared
@@ -3910,7 +3910,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: max, kind: flag, presence: fixed, value: true, token: .max}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         operands: $red_async_shared
@@ -3928,7 +3928,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: bit_and, kind: flag, presence: fixed, value: true, token: .and}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         operands: $red_async_shared
@@ -3946,7 +3946,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: bit_or, kind: flag, presence: fixed, value: true, token: .or}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         operands: $red_async_shared
@@ -3964,7 +3964,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: bit_xor, kind: flag, presence: fixed, value: true, token: .xor}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: b32}
         operands: $red_async_shared
@@ -3982,7 +3982,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: add, kind: flag, presence: fixed, value: true, token: .add}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u32}
         operands: $red_async_shared
@@ -4000,7 +4000,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: add, kind: flag, presence: fixed, value: true, token: .add}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: s32}
         operands: $red_async_shared
@@ -4018,7 +4018,7 @@ instructions:
           - {name: semantics, kind: semantics, domain: memory_consistencies, presence: fixed, value: relaxed}
           - {name: scope, kind: scope, domain: memory_scopes, presence: fixed, value: cluster}
           - {name: state_space, kind: state_space, domain: memory_state_spaces, presence: optional, default: generic, values: [shared::cluster]}
-          - {name: completion, kind: flag, presence: fixed, value: true, token: .mbarrier::complete_tx::bytes}
+          - {name: completion, kind: flag, presence: optional, default: true, values: [true], token: .mbarrier::complete_tx::bytes}
           - {name: add, kind: flag, presence: fixed, value: true, token: .add}
           - {name: type, kind: type, domain: scalar_types, presence: fixed, value: u64}
         operands: $red_async_shared

@@ -124,7 +124,7 @@ A cache hint keeps the same final 64-bit policy layout and global-address rule.
 
 | Mode | Legal operation/type pairs | Form and target floor |
 | --- | --- | --- |
-| Shared completion | `inc/dec.u32`, `min/max.{u32,s32}`, `and/or/xor.b32`, `add.{u32,s32,u64}` | `red.async.relaxed.cluster{.shared::cluster}.mbarrier::complete_tx::bytes.{op}.{type} [a], b, [mbar]`; PTX 8.1 / SM 90 |
+| Shared completion | `inc/dec.u32`, `min/max.{u32,s32}`, `and/or/xor.b32`, `add.{u32,s32,u64}` | `red.async.relaxed.cluster{.shared::cluster}{.mbarrier::complete_tx::bytes}.{op}.{type} [a], b, [mbar]`; PTX 8.1 / SM 90 |
 | Global release | `add.{u32,s32,u64,s64}` | `red.async{.mmio}.release.{gpu\|sys}{.global}.add.{type} [a], b`; PTX 8.7 / SM 100 |
 
 The optional address suffix is retained independently as `Red::address_qualifier`:
@@ -137,11 +137,19 @@ register addresses carry a runtime shared-cluster obligation. Known release-mode
 destinations must be global; unknown generic register addresses carry a runtime
 global obligation. Destinations require natural 4- or 8-byte alignment, and
 the mbarrier address requires 8-byte alignment. `.mmio` is available only with
-release `.sys`; release `.gpu` has no MMIO form. The shared completion suffix
-is mandatory: although ISA Conditions prose describes an omitted default,
-PTX 9.3 syntax and `ptxas` reject omission. The frontend cannot prove that the
-shared destination and initialized barrier are in the same remote CTA; that is
-a runtime obligation.
+release `.sys`; release `.gpu` has no MMIO form.
+
+For relaxed mode, the specific PTX Conditions clause supplies
+`.mbarrier::complete_tx::bytes` when completion is omitted; it is also the only
+permitted explicit mechanism. The third `[mbar]` operand remains required in
+both forms. This specific default takes precedence over the schematic syntax
+that prints completion as mandatory and the generic Qualifiers prose describing
+end-CTA completion on omission. Release mode remains a separate two-operand
+form and forbids explicit completion. Historical assembler rejection of relaxed
+omission is supplemental tool divergence, rather than the frontend grammar.
+The frontend cannot prove that the shared destination and initialized barrier
+are in the same remote CTA, or execute reduction/transaction/synchronization
+semantics; those remain runtime obligations.
 
 Other synchronous scalar operation/type pairs, including `.add.s64`, 64-bit `.inc/.dec`,
 typed 64-bit bitwise suffixes, scalar float `.min/.max`, and `red.cas`/`red.exch`,
@@ -162,3 +170,24 @@ address qualifier, completion, scope, and MMIO fields instead of assuming a
 synchronous layout. The 16 asynchronous alternatives are appended under `Red`.
 The Python wheel version is 0.1.0b3 because its packaged YAML and generated
 model contract changed.
+
+The twelve shared classes (`RedAsyncSharedIncU32`, `RedAsyncSharedDecU32`,
+`RedAsyncSharedMinU32`, `RedAsyncSharedMinS32`, `RedAsyncSharedMaxU32`,
+`RedAsyncSharedMaxS32`, `RedAsyncSharedAndB32`, `RedAsyncSharedOrB32`,
+`RedAsyncSharedXorB32`, `RedAsyncSharedAddU32`, `RedAsyncSharedAddS32`,
+`RedAsyncSharedAddU64`) now expose instance `WithLocs<bool> completion` instead
+of a static constant. Read `object.completion.value` for the effective mechanism
+(always true), and `.locs` for written presence: omission has empty locations,
+explicit spelling retains its token. False is outside this singleton domain,
+even without a token. Ordinary two-valued optional flags retain their existing
+value/token consistency rule. Generated C++ layouts change and require consumer
+rebuilding; the four release classes and all three shared operand payloads stay
+unchanged. Clearing a true completion's locations is a valid current IR edit;
+association with a supplied AST independently checks retained source identity.
+
+[Default tests](../../../submod/resolved_ir/test/test_red_async_default.cpp)
+cover all 48 shared modifier products and 64 release candidates (24 allowed,
+40 rejected), target/version boundaries, singleton-domain mutations and actual
+AST-dead copies/clones. The [installed consumer](../../../examples/resolved_ir_consumer/main.cpp)
+reads all twelve migrated fields and retains a release control without source
+storage. These checks do not prove initialized barriers or runtime completion.

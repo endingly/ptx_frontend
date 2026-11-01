@@ -1945,8 +1945,9 @@ class ResolvedIrMemoryAndEmissionTest(ResolvedIrFixture, unittest.TestCase):
                                        address.allowed_address_state_spaces), spaces)
                 self.assertEqual(variant.address_alignments[0].type_field_id, "type")
                 if cohort is shared:
+                    # The barrier role admits shared symbols as well as register bases.
                     self.assertEqual(bindings[2].address_base_policy,
-                                     OperandAddressBasePolicy.REGISTER)
+                                     OperandAddressBasePolicy.ANY)
                     self.assertEqual(bindings[2].address_offset_domain,
                                      OperandAddressOffsetDomain.SIGNED32)
                     self.assertEqual(variant.address_alignments[1].alignment, 8)

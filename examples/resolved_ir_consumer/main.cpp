@@ -1049,8 +1049,101 @@ fma.rn.oob.bf16x2 d,x,y,z;
   return !ir::validateModule(assigned);
 }
 
+/** Read all twelve installed default-true completion controls beyond AST lifetime. */
+bool checkInstalledRedAsyncDefault() {
+  namespace ir = ptx_frontend::resolved_ir;
+  auto owned = [] {
+    const std::string source = R"ptx(
+.version 9.3
+.target sm_100
+.entry kernel(){
+.reg .u64 dst,bar,q; .reg .u32 u; .reg .s32 s; .reg .b32 b;
+mov.u64 dst,0;mov.u64 bar,8;mov.u64 q,1;mov.u32 u,1;mov.s32 s,1;mov.b32 b,1;
+red.async.relaxed.cluster.inc.u32 [dst],u,[bar];
+red.async.relaxed.cluster.dec.u32 [dst],u,[bar];
+red.async.relaxed.cluster.min.u32 [dst],u,[bar];
+red.async.relaxed.cluster.min.s32 [dst],s,[bar];
+red.async.relaxed.cluster.max.u32 [dst],u,[bar];
+red.async.relaxed.cluster.max.s32 [dst],s,[bar];
+red.async.relaxed.cluster.and.b32 [dst],b,[bar];
+red.async.relaxed.cluster.or.b32 [dst],b,[bar];
+red.async.relaxed.cluster.xor.b32 [dst],b,[bar];
+red.async.relaxed.cluster.add.u32 [dst],u,[bar];
+red.async.relaxed.cluster.add.s32 [dst],s,[bar];
+red.async.relaxed.cluster.add.u64 [dst],q,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.inc.u32 [dst],u,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.dec.u32 [dst],u,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.u32 [dst],u,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.min.s32 [dst],s,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.max.u32 [dst],u,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.max.s32 [dst],s,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.and.b32 [dst],b,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.or.b32 [dst],b,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.xor.b32 [dst],b,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 [dst],u,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.s32 [dst],s,[bar];
+red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u64 [dst],q,[bar];
+red.async.release.sys.global.add.u32 [dst],u;
+}
+)ptx";
+    ptx_frontend::PtxSyntaxParser parser(source);
+    const auto ast = parser.parseModule();
+    if (!ast || !ast.diagnostics.empty())
+      return std::expected<ir::ResolvedModule, ir::ModuleResolveDiagnostics>{
+          std::unexpected(ir::ModuleResolveDiagnostics{})};
+    return ir::resolveAndValidateModule(*ast);
+  }();
+  if (!owned || owned->functions.front().body.size() != 31)
+    return false;
+  auto& body = owned->functions.front().body;
+  std::array<ptx_frontend::WithLocs<bool>*, 24> completion{
+      &dynamic_cast<ir::RedAsyncSharedIncU32&>(*body[6]).completion,
+      &dynamic_cast<ir::RedAsyncSharedDecU32&>(*body[7]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMinU32&>(*body[8]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMinS32&>(*body[9]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMaxU32&>(*body[10]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMaxS32&>(*body[11]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAndB32&>(*body[12]).completion,
+      &dynamic_cast<ir::RedAsyncSharedOrB32&>(*body[13]).completion,
+      &dynamic_cast<ir::RedAsyncSharedXorB32&>(*body[14]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddU32&>(*body[15]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddS32&>(*body[16]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddU64&>(*body[17]).completion,
+      &dynamic_cast<ir::RedAsyncSharedIncU32&>(*body[18]).completion,
+      &dynamic_cast<ir::RedAsyncSharedDecU32&>(*body[19]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMinU32&>(*body[20]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMinS32&>(*body[21]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMaxU32&>(*body[22]).completion,
+      &dynamic_cast<ir::RedAsyncSharedMaxS32&>(*body[23]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAndB32&>(*body[24]).completion,
+      &dynamic_cast<ir::RedAsyncSharedOrB32&>(*body[25]).completion,
+      &dynamic_cast<ir::RedAsyncSharedXorB32&>(*body[26]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddU32&>(*body[27]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddS32&>(*body[28]).completion,
+      &dynamic_cast<ir::RedAsyncSharedAddU64&>(*body[29]).completion,
+  };
+  for (size_t index = 0; index < completion.size(); ++index)
+    if (!completion[index]->value ||
+        completion[index]->locs.empty() != (index < 12))
+      return false;
+  if (body.back()->instruction_kind() != ir::RedAsyncReleaseAddU32::kind)
+    return false;
+  ir::ResolvedModule copied(*owned), assigned;
+  assigned = copied;
+  ir::ResolvedFunction function(copied.functions.front());
+  assigned.functions.front() = function;
+  assigned.functions.front().body[29] = function.body[29]->clone();
+  if (!ir::validateModule(copied) || !ir::validateModule(assigned))
+    return false;
+  dynamic_cast<ir::RedAsyncSharedAddU64&>(*assigned.functions.front().body[29])
+      .completion.value = false;
+  return !ir::validateModule(assigned);
+}
+
 /** Exercise exact-form and module resolution from the installed component. */
 int main() {
+  if (!checkInstalledRedAsyncDefault())
+    return 34;
   if (!checkInstalledHalfFmaModifiers())
     return 33;
   if (!checkInstalledHalfSetFtz())

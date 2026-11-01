@@ -1905,7 +1905,6 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
   for (std::string_view instruction : {
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.s64 "
            "[%a], %sd, [barrier];",
-           "red.async.relaxed.cluster.add.u32 [%a], %u, [barrier];",
            "red.async.relaxed.cluster.mbarrier::complete_tx::bytes.add.u32 "
            "[%a], %u;",
            "red.async.relaxed.gpu.mbarrier::complete_tx::bytes.add.u32 [%a], "
@@ -1944,6 +1943,16 @@ TEST(AtomicReductionCoverage, RejectsInvalidAsyncReductionForms) {
     const auto parsed = test_helpers::parseModule(source);
     ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
     EXPECT_FALSE(resolveAndValidateModule(*parsed).has_value()) << instruction;
+  }
+  // The same aligned third barrier operand remains valid with either spelling.
+  for (const auto completion : {"", ".mbarrier::complete_tx::bytes"}) {
+    const auto parsed = test_helpers::parseModule(
+        ".version 9.3\n.target sm_100\n.shared .align 8 .b64 barrier;\n"
+        ".entry kernel(){.reg .u64 %a;.reg .u32 %u;mov.u64 %a,0;mov.u32 %u,1;"
+        "red.async.relaxed.cluster" +
+        std::string(completion) + ".add.u32 [%a],%u,[barrier];}");
+    ASSERT_MODULE_PARSE_SUCCEEDS(parsed);
+    ASSERT_TRUE(resolveAndValidateModule(*parsed));
   }
 }
 

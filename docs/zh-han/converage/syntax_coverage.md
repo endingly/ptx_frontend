@@ -94,9 +94,9 @@ feasibility、simulator execution 或 hardware behavior；`—` = 该阶段无�
 | `.abi_preserve_control` | G | T | T | — | Y | C / V | 两种 form 均拥有 ABI metadata。current owned prototype 与独立 supplied prototype 均重查 PTX 9.0 / SM 80 minima，包括 partial known context。不进行 physical register assignment。 |
 | `.align` | D | E | E | Y | Y | C | declaration/parameter alignment |
 | `.attribute` | G | T | T | — | Y | C / V（仅 function） | 仅 typed `.managed` 与 `.unified(id,id)` placement/version subset。AST-free target availability 覆盖 function attribute；已保留 storage attribute 当前仍通过 AST/declaration validation 检查。不进行 runtime allocation 或 host-address interpretation。 |
-| `.branchtargets` | D | T | T | Y | Y / I | C / I | 拥有 bound、expanded logical target；`brx.idx` consumer 为 PTX 6.0 / SM 30，不提供 CFG/protocol proof |
+| `.branchtargets` | D | T | T | Y | Y / I | C / I | 拥有 bound、expanded logical target；unused/nested presence 要求 PTX 2.1 / SM 20；`brx.idx` consumer 为 PTX 6.0 / SM 30，不提供 CFG/protocol proof |
 | `.callprototype` | D | T | T | Y | Y / I | C / V / I | 拥有 normalized signature 与已支持 ABI metadata。两种 module validation route 依 selected region 重查 base PTX 2.1 / SM 20 与实际 suffix minima；identity/scope/signature 与 indirect-call consumer 检查仍独立。 |
-| `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；indirect-call availability 仍由 consumer 决定 |
+| `.calltargets` | D | T | T | Y | Y / I | C / I | 拥有 ordered bound/canonical function target 及 shared signature；unused/nested presence 独立要求 PTX 2.1 / SM 20；indirect-call instruction 另行检查 |
 | Call-table flist array | D | T | T | Y | Y / I | C / I | 已初始化 scalar u32/u64 一维 global/const array；拥有真实 storage identity、sparse 显式 function slot、完整公共 signature、lexical order 与 AST-free storage/function 关联。允许重复/隐式 zero tail；不证明 runtime pointer membership。 |
 | `.common` | D | E | E | Y | Y | C / V | 普通 module-scope global definition 的独立 Common linkage；PTX 5.0 / SM 20，沿用 initializer/layout，AST-free eligibility 与有序 target 检查；无跨 object linker |
 | `.const` | D | E | E | Y | Y | C | 既有 variable declaration |

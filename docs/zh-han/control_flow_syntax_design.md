@@ -130,6 +130,14 @@ Parser 会拒绝 empty list、trailing comma、缺少 local label 或 module sco
 semantics 要求每个 member 是此前声明的 device `.func`，以逐项 range 诊断 duplicate，并要求
 canonical signature 相同。
 
+`.branchtargets` 与 `.calltargets` 均要求 PTX 2.1 和 SM 20，包含 nested block
+中未使用的 declaration。AST-free validation 使用 function 选中的 owned region；
+source-aware validation 采用 supplied active context，分别检查 current record 与
+supplied typed declaration。已知 version 与可识别 profile 的下限在 full-context 门槛前
+独立检查；只有未知 prerequisite 在 `AvailableContext` 中延后。Strict context、unknown-target
+诊断、nonneutral payload identity、member binding、signature 与 declaration-order
+检查均保留既有契约。
+
 ## function-local `.branchtargets` 语法
 
 `.branchtargets` 现在有自己的 function-body CST/AST node。其非空且有序的 list 会保留

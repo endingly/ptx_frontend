@@ -576,6 +576,14 @@ defer availability under `AvailableContext`, never numeric, identity or preceden
 failures. No instruction attachment, decoded line table or string-address execution
 is implied.
 
+Current retained `.branchtargets` and `.calltargets` each require PTX 2.1 / SM 20,
+including unused and nested declarations. Their availability reuses the same
+minimum-only mechanism below: exact selected-region context when AST-free,
+supplied active context for current records and independently supplied typed
+nodes when source-aware. Known failing prerequisites reject before full context
+is available. Target-list payload remains nonneutral source identity; these
+checks add no CFG, execution, public layout or new member/signature policy.
+
 Current retained call prototypes are checked even when unused or nested. Their
 base requires PTX 2.1 / SM 20, `.noreturn` requires PTX 6.4 / SM 30, and either
 ABI-preservation suffix requires PTX 9.0 / SM 80. AST-free validation uses exactly

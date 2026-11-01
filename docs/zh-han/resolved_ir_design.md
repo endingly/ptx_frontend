@@ -471,6 +471,13 @@ inline attribute 要求 PTX 7.2，无架构下限。缺少 version 时 `Availabl
 availability 判断，但不能推迟 numeric、identity 或 precedence 错误。
 这不表示 instruction attachment、解码 line table 或 string-address execution。
 
+Current retained `.branchtargets` 与 `.calltargets` 均要求 PTX 2.1 / SM 20，
+包含未使用和 nested declaration。它们复用下面的 minimum-only 机制：AST-free 使用
+准确的 selected-region context，source-aware 对 current record 和独立 supplied typed
+node 使用 supplied active context。缺少 full context 时也拒绝已知失败的 prerequisite。
+Target-list payload 仍属于 nonneutral source identity；不新增 CFG、execution、public layout
+或 member/signature policy。
+
 即使 unused 或 nested，current retained call prototype 也会检查 availability。
 base 要求 PTX 2.1 / SM 20，`.noreturn` 要求 PTX 6.4 / SM 30，两个 ABI-preservation
 suffix 均要求 PTX 9.0 / SM 80。AST-free validation 只采用 function 已验证的 selected

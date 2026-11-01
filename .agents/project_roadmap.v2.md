@@ -616,8 +616,8 @@ numeric packed `.f16x2` literal representation。
 | ID | 状态 | Issue | 闭环摘要 |
 | --- | --- | --- | --- |
 | M7-I01 | ✅ | `.callprototype` | grammar/signature/scope/range；current-owned/supplied minimum-only availability 按 selected context 独立重查，非 runtime ABI proof |
-| M7-I02 | ✅ | `.calltargets` | ordered target list |
-| M7-I03 | ✅ | `.branchtargets` | function-local identity |
+| M7-I02 | ✅ | `.calltargets` | ordered target list；unused/nested presence PTX 2.1 / SM 20，known context 独立检查 |
+| M7-I03 | ✅ | `.branchtargets` | function-local identity；unused/nested presence PTX 2.1 / SM 20，known context 独立检查 |
 | M7-I04 | ✅ | metadata symbol kind | stable SymbolId |
 | M7-I05 | ✅ | metadata declaration semantics | order/member/scope/duplicate |
 | M7-I06 | ✅ | indirect callee value | register/prototype/target-set |

@@ -175,6 +175,15 @@ Declaration semantics requires every member to be a prior device `.func`,
 diagnoses duplicates using individual member ranges, and requires equal
 canonical signatures.
 
+`.branchtargets` and `.calltargets` each require PTX 2.1 and SM 20, including
+unused declarations in nested blocks. AST-free validation uses the function's
+selected owned region; source-aware validation checks both current records and
+supplied typed declarations with the supplied active context. Known version and
+recognized profile minima are checked independently before full-context gates;
+only unknown prerequisites defer under `AvailableContext`. Strict context and
+unknown-target diagnostics, nonneutral payload identity, member binding,
+signatures and declaration-order checks retain their existing contracts.
+
 ## Function-local `.branchtargets` syntax
 
 `.branchtargets` now has its own function-body CST/AST node. Its non-empty

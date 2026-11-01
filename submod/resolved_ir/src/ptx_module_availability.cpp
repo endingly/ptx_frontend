@@ -68,6 +68,8 @@ checker::AvailabilityDescriptor availability(checker::PtxVersion minimum_ptx,
 enum class DirectiveAvailability {
   Alias,
   CallPrototype,
+  BranchTargets,
+  CallTargets,
   Noreturn,
   AbiPreserve,
   AbiPreserveControl,
@@ -79,6 +81,8 @@ checker::AvailabilityDescriptor directive_availability(
     case DirectiveAvailability::Alias:
       return availability({6, 3}, 30);
     case DirectiveAvailability::CallPrototype:
+    case DirectiveAvailability::BranchTargets:
+    case DirectiveAvailability::CallTargets:
       return availability({2, 1}, 20);
     case DirectiveAvailability::Noreturn:
       return availability({6, 4}, 30);
@@ -103,19 +107,19 @@ void append_requirement(checker::CheckDiagnostics& diagnostics,
   });
 }
 
-/** Exact identity for the four prototype diagnostics, whose messages are fixed per rule. */
-using PrototypeAvailabilityKey =
+/** Exact identity for conjunctive directive diagnostics, whose messages are fixed per rule. */
+using DirectiveAvailabilityKey =
     std::tuple<DirectiveAvailability, int32_t, int32_t, int32_t, int32_t>;
-/** Validation-local duplicate suppression shared only by current/source prototype checks. */
-using PrototypeAvailabilityKeys = std::set<PrototypeAvailabilityKey>;
+/** Validation-local duplicate suppression shared by current/source directive checks. */
+using DirectiveAvailabilityKeys = std::set<DirectiveAvailabilityKey>;
 
-/** Check independently known prerequisites of a minimum-only prototype requirement. */
-void append_prototype_requirement(
-    checker::CheckDiagnostics& diagnostics, PrototypeAvailabilityKeys& emitted,
+/** Check independently known prerequisites of a minimum-only directive requirement. */
+void append_minimum_requirement(
+    checker::CheckDiagnostics& diagnostics, DirectiveAvailabilityKeys& emitted,
     DirectiveAvailability feature, std::optional<checker::PtxVersion> version,
     const std::optional<base::TargetProfile>& profile, SourceRange range,
     std::string_view subject) {
-  // These four descriptors have only conjunctive minima, no DNF/family clauses.
+  // These descriptors have only conjunctive minima, no DNF/family clauses.
   const auto requirement = directive_availability(feature);
   if ((!version || *version >= requirement.minimum_ptx_version) &&
       (!profile ||
@@ -136,28 +140,45 @@ void append_prototype_requirement(
   });
 }
 
+/** Check every retained target list independently of any instruction consumer. */
+void check_target_list_availability(
+    const ResolvedFunction& function,
+    std::optional<checker::PtxVersion> version,
+    const std::optional<base::TargetProfile>& profile,
+    DirectiveAvailabilityKeys& emitted,
+    checker::CheckDiagnostics& diagnostics) {
+  for (const auto& branches : function.branch_target_sets)
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::BranchTargets, version,
+                               profile, branches.range, ".branchtargets");
+  for (const auto& targets : function.call_target_sets)
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::CallTargets, version,
+                               profile, targets.range, ".calltargets");
+}
+
 /** Enumerate current retained prototypes, including those collected from nested blocks. */
 void check_prototype_availability(
     const ResolvedFunction& function,
     std::optional<checker::PtxVersion> version,
     const std::optional<base::TargetProfile>& profile,
-    PrototypeAvailabilityKeys& emitted,
+    DirectiveAvailabilityKeys& emitted,
     checker::CheckDiagnostics& diagnostics) {
   for (const auto& prototype : function.call_prototypes) {
-    append_prototype_requirement(diagnostics, emitted,
-                                 DirectiveAvailability::CallPrototype, version,
-                                 profile, prototype.range, ".callprototype");
+    append_minimum_requirement(diagnostics, emitted,
+                               DirectiveAvailability::CallPrototype, version,
+                               profile, prototype.range, ".callprototype");
     if (prototype.is_noreturn)
-      append_prototype_requirement(
+      append_minimum_requirement(
           diagnostics, emitted, DirectiveAvailability::Noreturn, version,
           profile, prototype.range, ".noreturn on .callprototype");
     if (prototype.abi_preserve)
-      append_prototype_requirement(diagnostics, emitted,
-                                   DirectiveAvailability::AbiPreserve, version,
-                                   profile, prototype.abi_preserve->range,
-                                   ".abi_preserve on .callprototype");
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::AbiPreserve, version,
+                                 profile, prototype.abi_preserve->range,
+                                 ".abi_preserve on .callprototype");
     if (prototype.abi_preserve_control)
-      append_prototype_requirement(
+      append_minimum_requirement(
           diagnostics, emitted, DirectiveAvailability::AbiPreserveControl,
           version, profile, prototype.abi_preserve_control->range,
           ".abi_preserve_control on .callprototype");
@@ -283,36 +304,46 @@ void check_function_directives(
         target, abi_preserve_control->range, ".abi_preserve_control");
 }
 
-/** Recheck supplied prototypes with partial facts; attributes still require full context. */
+/** Recheck supplied control declarations with partial facts; attributes need full context. */
 void check_body_directives(
     const std::vector<syntax_ast::AstFunctionBodyItem>& body,
     std::optional<checker::PtxVersion> version,
     const std::optional<base::TargetProfile>& profile,
     const std::optional<checker::TargetInfo>& target,
-    PrototypeAvailabilityKeys& emitted,
+    DirectiveAvailabilityKeys& emitted,
     checker::CheckDiagnostics& diagnostics) {
   for (const auto& item : body) {
     if (const auto* declaration =
             std::get_if<syntax_ast::AstVariableDeclaration>(&item)) {
       if (target)
         check_attributes(declaration->attributes, *target, diagnostics);
+    } else if (const auto* branches =
+                   std::get_if<syntax_ast::AstBranchTargets>(&item)) {
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::BranchTargets, version,
+                                 profile, branches->range, ".branchtargets");
+    } else if (const auto* targets =
+                   std::get_if<syntax_ast::AstCallTargets>(&item)) {
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::CallTargets, version,
+                                 profile, targets->range, ".calltargets");
     } else if (const auto* prototype =
                    std::get_if<syntax_ast::AstCallPrototype>(&item)) {
-      append_prototype_requirement(
-          diagnostics, emitted, DirectiveAvailability::CallPrototype, version,
-          profile, prototype->range, ".callprototype");
+      append_minimum_requirement(diagnostics, emitted,
+                                 DirectiveAvailability::CallPrototype, version,
+                                 profile, prototype->range, ".callprototype");
       if (prototype->noreturn_directive)
-        append_prototype_requirement(
+        append_minimum_requirement(
             diagnostics, emitted, DirectiveAvailability::Noreturn, version,
             profile, prototype->noreturn_directive->range,
             ".noreturn on .callprototype");
       if (prototype->abi_preserve)
-        append_prototype_requirement(
-            diagnostics, emitted, DirectiveAvailability::AbiPreserve, version,
-            profile, prototype->abi_preserve->range,
-            ".abi_preserve on .callprototype");
+        append_minimum_requirement(diagnostics, emitted,
+                                   DirectiveAvailability::AbiPreserve, version,
+                                   profile, prototype->abi_preserve->range,
+                                   ".abi_preserve on .callprototype");
       if (prototype->abi_preserve_control)
-        append_prototype_requirement(
+        append_minimum_requirement(
             diagnostics, emitted, DirectiveAvailability::AbiPreserveControl,
             version, profile, prototype->abi_preserve_control->range,
             ".abi_preserve_control on .callprototype");
@@ -4288,7 +4319,9 @@ checker::CheckResult validateModule(const ResolvedModule& module,
           region->target_options.empty()
               ? std::optional<base::TargetProfile>{}
               : base::find_target_profile(region->target_options.front());
-      PrototypeAvailabilityKeys emitted;
+      DirectiveAvailabilityKeys emitted;
+      check_target_list_availability(function, region->version, profile,
+                                     emitted, diagnostics);
       check_prototype_availability(function, region->version, profile, emitted,
                                    diagnostics);
       check_language_availability(function, region->version, diagnostics);
@@ -4516,7 +4549,9 @@ checker::CheckResult validateModule(const syntax_ast::AstModule& ast,
                    std::get_if<syntax_ast::AstFunction>(&item)) {
       require_context(function->range);
       const auto* owned = source_function(*function, module);
-      PrototypeAvailabilityKeys emitted;
+      DirectiveAvailabilityKeys emitted;
+      check_target_list_availability(*owned, version, active_profile, emitted,
+                                     diagnostics);
       check_prototype_availability(*owned, version, active_profile, emitted,
                                    diagnostics);
       check_language_availability(*owned, version, diagnostics);
